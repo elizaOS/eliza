@@ -12,6 +12,10 @@ import {
   type UUID,
 } from '@elizaos/core';
 import { createGoalDataService, type GoalData } from '../services/goalDataService';
+import {
+  extractGoalSelectionTemplate,
+  extractGoalUpdateTemplate,
+} from '../generated/prompts/typescript/prompts.js';
 
 // Interface for goal selection properties
 interface GoalSelection {
@@ -25,74 +29,6 @@ interface GoalUpdate {
   name?: string;
   description?: string;
 }
-
-/**
- * Template for extracting which goal to update from the user's message
- */
-const extractGoalTemplate = `
-# Task: Extract Goal Selection Information
-
-## User Message
-{{text}}
-
-## Available Goals
-{{availableGoals}}
-
-## Instructions
-Parse the user's message to identify which goal they want to update or modify.
-Match against the list of available goals by name or description.
-If multiple goals have similar names, choose the closest match.
-
-Return an XML object with:
-<response>
-  <goalId>ID of the goal being updated, or 'null' if not found</goalId>
-  <goalName>Name of the goal being updated, or 'null' if not found</goalName>
-  <isFound>'true' or 'false' indicating if a matching goal was found</isFound>
-</response>
-
-## Example Output Format
-<response>
-  <goalId>123e4567-e89b-12d3-a456-426614174000</goalId>
-  <goalName>Learn French fluently</goalName>
-  <isFound>true</isFound>
-</response>
-
-If no matching goal was found:
-<response>
-  <goalId>null</goalId>
-  <goalName>null</goalName>
-  <isFound>false</isFound>
-</response>
-`;
-
-/**
- * Template for extracting goal update information
- */
-const extractUpdateTemplate = `
-# Task: Extract Goal Update Information
-
-## User Message
-{{text}}
-
-## Current Goal Details
-{{goalDetails}}
-
-## Instructions
-Parse the user's message to determine what changes they want to make to the goal.
-Only name and description can be updated.
-
-Return an XML object with these potential fields (only include fields that should be changed):
-<response>
-  <name>New name for the goal</name>
-  <description>New description for the goal</description>
-</response>
-
-## Example Output Format
-<response>
-  <name>Learn Spanish fluently</name>
-  <description>Achieve conversational fluency in Spanish within 12 months</description>
-</response>
-`;
 
 /**
  * Extracts which goal the user wants to update
@@ -115,7 +51,7 @@ async function extractGoalSelection(
         text: message.content.text || '',
         availableGoals: goalsText,
       },
-      template: extractGoalTemplate,
+      template: extractGoalSelectionTemplate,
     });
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -165,7 +101,7 @@ async function extractGoalUpdate(
         text: message.content.text || '',
         goalDetails,
       },
-      template: extractUpdateTemplate,
+      template: extractGoalUpdateTemplate,
     });
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {

@@ -13,8 +13,9 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 import xml.etree.ElementTree as ET
 
-from elizaos.logger import create_logger
-from elizaos.types.agent import Character
+from elizaos.logger import Logger, create_logger
+from elizaos.settings import decrypt_secret, get_salt
+from elizaos.types.agent import Character, TemplateType
 from elizaos.types.components import (
     Action,
     ActionResult,
@@ -29,11 +30,13 @@ from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
 from elizaos.types.model import GenerateTextOptions, GenerateTextResult, LLMMode, ModelType
 from elizaos.types.plugin import Plugin, Route
-from elizaos.types.primitives import UUID, Content, as_uuid
+from elizaos.types.primitives import UUID, Content, as_uuid, string_to_uuid
 from elizaos.types.runtime import IAgentRuntime, RuntimeSettings, SendHandlerFunction, TargetInfo
 from elizaos.types.service import Service
 from elizaos.types.state import State, StateData
 from elizaos.types.task import TaskWorker
+from elizaos.utils import compose_prompt_from_state as _compose_prompt_from_state
+from elizaos.utils import get_current_time_ms as _get_current_time_ms
 
 # Import message service (lazy to avoid circular imports)
 _message_service_class: type | None = None
@@ -163,8 +166,9 @@ class AgentRuntime(IAgentRuntime):
         self._llm_mode_option = llm_mode
         # Store check_should_respond option (None means check settings at runtime)
         self._check_should_respond_option = check_should_respond
-        # Generate agent ID from character name or random UUID
-        self._agent_id = agent_id or as_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, resolved_character.name)))
+        # Generate deterministic agent ID from character name for cross-language compatibility.
+        # Matches TypeScript behavior: character.id ?? opts.agentId ?? stringToUuid(character.name).
+        self._agent_id = agent_id or resolved_character.id or string_to_uuid(resolved_character.name)
         self._character = resolved_character
         self._adapter = adapter
         self._conversation_length = conversation_length
@@ -191,7 +195,7 @@ class AgentRuntime(IAgentRuntime):
         self._action_results: dict[str, list[ActionResult]] = {}
 
         # Logger with configurable log level (defaults to ERROR)
-        self._logger = create_logger(namespace=character.name if character else "agent", level=log_level.upper())
+        self._logger = create_logger(namespace=resolved_character.name, level=log_level.upper())
 
         # Store initial plugins for later registration
         self._initial_plugins = plugins or []
@@ -205,12 +209,18 @@ class AgentRuntime(IAgentRuntime):
 
     # Properties
     @property
+    def logger(self) -> Logger:
+        """Get the runtime logger."""
+        return self._logger
+
+    @property
     def message_service(self) -> Any:
         """Get the message service for handling incoming messages."""
         if self._message_service is None:
             service_class = _get_message_service_class()
             self._message_service = service_class()
         return self._message_service
+
     @property
     def agent_id(self) -> UUID:
         return self._agent_id
@@ -362,25 +372,103 @@ class AgentRuntime(IAgentRuntime):
         return service_type in self._services and len(self._services[service_type]) > 0
 
     # Settings
-    def set_setting(self, key: str, value: str | bool | None, _secret: bool = False) -> None:
-        self._settings[key] = value
+    def set_setting(self, key: str, value: str | bool | int | float | None, secret: bool = False) -> None:
+        """
+        Set a runtime setting.
+
+        Mirrors TypeScript behavior:
+        - secret=True stores into character.secrets
+        - secret=False stores into character.settings
+        """
+
+        if value is None:
+            return
+
+        if secret:
+            if self._character.secrets is None:
+                self._character.secrets = {}
+            self._character.secrets[key] = value  # type: ignore[assignment]
+            return
+
+        if self._character.settings is None:
+            self._character.settings = {}
+        self._character.settings[key] = value  # type: ignore[assignment]
 
     def get_setting(self, key: str) -> str | bool | int | float | None:
-        # Check runtime settings first
-        if key in self._settings:
-            return self._settings[key]
+        """
+        Get a runtime setting.
 
-        # Check character settings
-        if self._character.settings and key in self._character.settings:
-            setting = self._character.settings[key]
-            if isinstance(setting, (str, bool, int)):
-                return setting
+        Mirrors TypeScript priority:
+        1) character.secrets
+        2) character.settings
+        3) character.settings.secrets (nested secrets)
+        4) runtime constructor settings (`self._settings`)
+        """
 
-        # Check character secrets
-        if self._character.secrets and key in self._character.secrets:
-            return self._character.secrets[key]
+        settings = self._character.settings
+        secrets = self._character.secrets
+
+        nested_secrets: dict[str, object] | None = None
+        if isinstance(settings, dict):
+            nested = settings.get("secrets")
+            if isinstance(nested, dict):
+                nested_secrets = nested
+
+        value: object | None
+        if isinstance(secrets, dict) and key in secrets:
+            value = secrets.get(key)
+        elif isinstance(settings, dict) and key in settings:
+            value = settings.get(key)
+        elif isinstance(nested_secrets, dict) and key in nested_secrets:
+            value = nested_secrets.get(key)
+        else:
+            value = self._settings.get(key)
+
+        if value is None:
+            return None
+
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value
+        if isinstance(value, str):
+            decrypted = decrypt_secret(value, get_salt())
+            if decrypted == "true":
+                return True
+            if decrypted == "false":
+                return False
+            return decrypted
 
         return None
+
+    def get_all_settings(self) -> dict[str, str | bool | int | float | None]:
+        """Return a merged view of all known setting keys with their resolved values."""
+
+        keys: set[str] = set(self._settings.keys())
+        if isinstance(self._character.settings, dict):
+            keys.update(self._character.settings.keys())
+            nested = self._character.settings.get("secrets")
+            if isinstance(nested, dict):
+                keys.update(nested.keys())
+        if isinstance(self._character.secrets, dict):
+            keys.update(self._character.secrets.keys())
+
+        return {k: self.get_setting(k) for k in keys}
+
+    def compose_prompt(self, *, state: State, template: TemplateType) -> str:
+        """Compose a prompt from a `State` (TS parity: composePromptFromState)."""
+
+        return _compose_prompt_from_state(state=state, template=template)
+
+    def compose_prompt_from_state(self, *, state: State, template: TemplateType) -> str:
+        """Compose a prompt from a `State` (explicit form)."""
+
+        return _compose_prompt_from_state(state=state, template=template)
+
+    def get_current_time_ms(self) -> int:
+        """Get current time in ms (used by bootstrap actions)."""
+
+        return _get_current_time_ms()
 
     def get_conversation_length(self) -> int:
         return self._conversation_length
@@ -924,13 +1012,19 @@ class AgentRuntime(IAgentRuntime):
     # Model usage
     async def use_model(
         self,
-        model_type: str,
-        params: dict[str, Any],
+        model_type: str | ModelType,
+        params: dict[str, Any] | None = None,
         provider: str | None = None,
+        **kwargs: Any,
     ) -> Any:
         """Use a model for inference."""
+        effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
+        if params is None:
+            params = dict(kwargs)
+        elif kwargs:
+            params = {**params, **kwargs}
+
         # Apply LLM mode override for text generation models
-        effective_model_type = model_type
         llm_mode = self.get_llm_mode()
         if llm_mode != LLMMode.DEFAULT:
             # List of text generation model types that can be overridden
@@ -942,15 +1036,15 @@ class AgentRuntime(IAgentRuntime):
                 ModelType.TEXT_COMPLETION.value,
             ]
 
-            if model_type in text_generation_models:
+            if effective_model_type in text_generation_models:
                 override_model_type = (
                     ModelType.TEXT_SMALL.value
                     if llm_mode == LLMMode.SMALL
                     else ModelType.TEXT_LARGE.value
                 )
-                if model_type != override_model_type:
+                if effective_model_type != override_model_type:
                     self.logger.debug(
-                        f"LLM mode override applied: {model_type} -> {override_model_type} (mode: {llm_mode})"
+                        f"LLM mode override applied: {effective_model_type} -> {override_model_type} (mode: {llm_mode})"
                     )
                     effective_model_type = override_model_type
 
@@ -989,21 +1083,22 @@ class AgentRuntime(IAgentRuntime):
                 params["maxTokens"] = options.max_tokens
             # System prompt handled separately via character config
 
-        result = await self.use_model(str(model_type), params)
+        result = await self.use_model(model_type, params)
         return GenerateTextResult(text=str(result))
 
     def register_model(
         self,
-        model_type: str,
+        model_type: str | ModelType,
         handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
         provider: str,
         priority: int = 0,
     ) -> None:
         """Register a model handler."""
-        if model_type not in self._models:
-            self._models[model_type] = []
+        key = model_type.value if isinstance(model_type, ModelType) else model_type
+        if key not in self._models:
+            self._models[key] = []
 
-        self._models[model_type].append(
+        self._models[key].append(
             ModelHandler(handler=handler, provider=provider, priority=priority)
         )
 

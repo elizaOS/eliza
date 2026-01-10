@@ -18,27 +18,10 @@ import {
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-/**
- * Template for extracting message reference for pinning.
- */
-export const pinMessageTemplate = `# Pinning a Discord message
-{{recentMessages}}
+import { pinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
 
-# Instructions: {{senderName}} wants to pin a message. Extract which message they want to pin.
-
-Examples:
-- "pin that message" -> messageRef: "last"
-- "pin the last message" -> messageRef: "last"
-- "pin john's message about the meeting" -> messageRef: "john meeting"
-- "pin message 123456789" -> messageRef: "123456789"
-
-Your response must be formatted as a JSON block:
-\`\`\`json
-{
-  "messageRef": "<last|previous|message-id|search-text>"
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { pinMessageTemplate };
 
 const getMessageRef = async (
   runtime: IAgentRuntime,

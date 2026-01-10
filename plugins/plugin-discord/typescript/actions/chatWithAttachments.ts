@@ -15,39 +15,13 @@ import {
   type State,
   trimTokens,
 } from "@elizaos/core";
+import {
+  attachmentSummarizationTemplate as summarizationTemplate,
+  attachmentIdsTemplate,
+} from "../generated/prompts/typescript/prompts.js";
 
-export const summarizationTemplate = `# Summarized so far (we are adding to this)
-{{currentSummary}}
-
-# Current attachments we are summarizing
-{{attachmentsWithText}}
-
-Summarization objective: {{objective}}
-
-# Instructions: Summarize the attachments. Return the summary. Do not acknowledge this request, just summarize and continue the existing summary if there is one. Capture any important details based on the objective. Only respond with the new summary text.`;
-
-/**
- * Template for generating a summary of specific attachments based on recent messages.
- * This template includes placeholders for recentMessages, senderName, objective, and attachmentIds.
- * To generate a response, the user's objective and a list of attachment IDs must be determined.
- *
- * @type {string}
- */
-export const attachmentIdsTemplate = `# Messages we are summarizing
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting a summary of specific attachments. Your goal is to determine their objective, along with the list of attachment IDs to summarize.
-The "objective" is a detailed description of what the user wants to summarize based on the conversation.
-The "attachmentIds" is an array of attachment IDs that the user wants to summarize. If not specified, default to including all attachments from the conversation.
-
-Your response must be formatted as a JSON block with this structure:
-\`\`\`json
-{
-  "objective": "<What the user wants to summarize>",
-  "attachmentIds": ["<Attachment ID 1>", "<Attachment ID 2>", ...]
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { summarizationTemplate, attachmentIdsTemplate };
 
 /**
  * Retrieves attachment IDs from a model using a prompt generated from the current state and a template.

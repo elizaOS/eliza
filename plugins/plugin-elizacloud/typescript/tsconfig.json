@@ -13,9 +13,9 @@
     "isolatedModules": true,
     "noEmit": true,
     "outDir": "./dist",
-    "rootDir": "./typescript",
+    "rootDir": ".",
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["typescript/**/*.ts"],
-  "exclude": ["node_modules", "dist", "python", "rust"]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

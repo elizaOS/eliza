@@ -1,15 +1,21 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./typescript",
+    "rootDir": ".",
     "outDir": "./dist",
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
     "declaration": true,
     "declarationMap": true,
     "noEmit": true,
     "types": ["node"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["./typescript/**/*.ts"],
-  "exclude": ["./typescript/__tests__/**", "./typescript/**/*.test.ts", "./dist/**"]
+  "include": ["./**/*.ts"],
+  "exclude": ["__tests__/**", "**/*.test.ts", "dist/**"]
 }
 

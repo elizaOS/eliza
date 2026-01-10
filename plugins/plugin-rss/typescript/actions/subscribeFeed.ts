@@ -1,6 +1,7 @@
 import type {
     Action,
     ActionExample,
+    ActionResult,
     HandlerCallback,
     HandlerOptions,
     IAgentRuntime,
@@ -24,25 +25,25 @@ export const subscribeFeedAction: Action = {
         _options?: HandlerOptions,
         callback?: HandlerCallback,
         _responses?: Memory[]
-    ) => {
+    ): Promise<ActionResult> => {
         runtime.logger.log('SUBSCRIBE_RSS_FEED Starting handler...');
 
         const service = runtime.getService('RSS') as RssService;
         if (!service) {
             runtime.logger.error('RSS service not found');
             callback?.(createMessageReply(runtime, message, 'RSS service is not available'));
-            return;
+            return { success: false, error: 'RSS service not found' };
         }
 
-        const urls = extractUrls(message.content.text);
+        const urls = extractUrls(message.content.text || '');
         
         if (!urls.length) {
             runtime.logger.warn('No valid URLs found in message');
             callback?.(createMessageReply(runtime, message, 'Please provide a valid RSS feed URL'));
-            return;
+            return { success: false, error: 'No valid URLs found' };
         }
 
-        const url = urls[0];
+        const url = urls[0]!;
         runtime.logger.debug({ url }, 'Attempting to subscribe to feed');
 
         // Fetch the feed to validate it and get the title
@@ -51,7 +52,7 @@ export const subscribeFeedAction: Action = {
         if (!feedData || !feedData.items) {
             runtime.logger.error({ url }, 'Invalid or empty RSS feed');
             callback?.(createMessageReply(runtime, message, `Unable to fetch RSS feed from ${url}. Please check the URL and try again.`));
-            return;
+            return { success: false, error: 'Invalid or empty RSS feed' };
         }
 
         // Subscribe to the feed
@@ -71,6 +72,7 @@ export const subscribeFeedAction: Action = {
                 `Failed to subscribe to ${url}. You may already be subscribed to this feed.`
             ));
         }
+        return { success };
     },
 
     examples: [

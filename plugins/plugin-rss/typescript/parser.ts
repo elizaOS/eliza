@@ -36,7 +36,8 @@ function parseTag(tag: string, str: string): string[] {
 /**
  * Helper function to parse CDATA sections
  */
-function parseCDATA(str: string): string {
+function parseCDATA(str: string | undefined): string {
+  if (!str) return '';
   return str.replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1');
 }
 
@@ -80,14 +81,14 @@ function parseEnclosure(itemXml: string): RssEnclosure | null {
  */
 function parseItem(itemXml: string): RssItem {
   return {
-    title: parseTag('title', itemXml)[0] || '',
-    link: parseTag('link', itemXml)[0] || '',
-    pubDate: parseTag('pubDate', itemXml)[0] || '',
-    description: parseCDATA(parseTag('description', itemXml)[0] || ''),
-    author: parseTag('author', itemXml)[0] || '',
-    category: parseTag('category', itemXml) || [],
-    comments: parseTag('comments', itemXml)[0] || '',
-    guid: parseTag('guid', itemXml)[0] || '',
+    title: parseTag('title', itemXml)[0] ?? '',
+    link: parseTag('link', itemXml)[0] ?? '',
+    pubDate: parseTag('pubDate', itemXml)[0] ?? '',
+    description: parseCDATA(parseTag('description', itemXml)[0]),
+    author: parseTag('author', itemXml)[0] ?? '',
+    category: parseTag('category', itemXml) ?? [],
+    comments: parseTag('comments', itemXml)[0] ?? '',
+    guid: parseTag('guid', itemXml)[0] ?? '',
     enclosure: parseEnclosure(itemXml)
   };
 }
@@ -118,15 +119,15 @@ export function parseRssToJson(xml: string): RssFeed {
 
     // Extract standard RSS channel elements
     const channel: RssFeed = {
-      title: parseTag('title', channelXml)[0] || '',
-      description: parseCDATA(parseTag('description', channelXml)[0] || ''),
-      link: parseTag('link', channelXml)[0] || '',
-      language: parseTag('language', channelXml)[0] || '',
-      copyright: parseTag('copyright', channelXml)[0] || '',
-      lastBuildDate: parseTag('lastBuildDate', channelXml)[0] || '',
-      generator: parseTag('generator', channelXml)[0] || '',
-      docs: parseTag('docs', channelXml)[0] || '',
-      ttl: parseTag('ttl', channelXml)[0] || '',
+      title: parseTag('title', channelXml)[0] ?? '',
+      description: parseCDATA(parseTag('description', channelXml)[0]),
+      link: parseTag('link', channelXml)[0] ?? '',
+      language: parseTag('language', channelXml)[0] ?? '',
+      copyright: parseTag('copyright', channelXml)[0] ?? '',
+      lastBuildDate: parseTag('lastBuildDate', channelXml)[0] ?? '',
+      generator: parseTag('generator', channelXml)[0] ?? '',
+      docs: parseTag('docs', channelXml)[0] ?? '',
+      ttl: parseTag('ttl', channelXml)[0] ?? '',
       image: parseImage(channelXml),
       items: []
     };

@@ -7,7 +7,9 @@ including UUID, Content, Media, and Metadata.
 
 from __future__ import annotations
 
+import hashlib
 import re
+import urllib.parse
 import uuid as uuid_module
 from enum import Enum
 from typing import Annotated, Any
@@ -55,6 +57,45 @@ def as_uuid(id_str: str | uuid_module.UUID) -> str:
         ValueError: If the string is not a valid UUID format
     """
     return _coerce_uuid(id_str)
+
+
+def string_to_uuid(target: str | int | uuid_module.UUID) -> str:
+    """
+    Convert a string or number to a deterministic UUID.
+
+    This matches the TypeScript implementation (`stringToUuid`) and the Rust implementation
+    (`string_to_uuid`) exactly:
+    - If the input is already a UUID string, it is returned unchanged.
+    - Otherwise, `encodeURIComponent` is applied to the input string.
+    - The UUID is derived from the first 16 bytes of SHA-1(escapedStr).
+    - RFC4122 variant bits are set, and the version nibble is set to `0x0` (legacy/custom).
+    """
+
+    if isinstance(target, uuid_module.UUID):
+        return str(target)
+
+    if isinstance(target, int):
+        target_str = str(target)
+    elif isinstance(target, str):
+        target_str = target
+    else:
+        raise TypeError("Value must be string")
+
+    # If already a UUID, return as-is to avoid re-hashing (matches TS behavior)
+    if UUID_PATTERN.match(target_str):
+        return target_str
+
+    # JS encodeURIComponent escapes everything except: A-Z a-z 0-9 - _ . ! ~ * ' ( )
+    escaped = urllib.parse.quote(target_str, safe="-_.!~*'()")
+    digest = hashlib.sha1(escaped.encode("utf-8")).digest()  # noqa: S324 (required for parity)
+
+    b = bytearray(digest[:16])
+    # Set RFC4122 variant bits: 10xxxxxx
+    b[8] = (b[8] & 0x3F) | 0x80
+    # Set custom version nibble to 0x0 (matches TS tests expecting version 0)
+    b[6] &= 0x0F
+
+    return str(uuid_module.UUID(bytes=bytes(b)))
 
 
 class ContentType(str, Enum):

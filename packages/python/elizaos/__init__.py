@@ -20,7 +20,16 @@ from elizaos.prompts import (
     UPDATE_SETTINGS_TEMPLATE,
 )
 from elizaos.runtime import AgentRuntime
+from elizaos.settings import (
+    decrypt_object_values,
+    decrypt_secret,
+    decrypt_string_value,
+    encrypt_object_values,
+    encrypt_string_value,
+    get_salt,
+)
 from elizaos.services import DefaultMessageService, IMessageService, MessageProcessingResult
+from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 from elizaos.types import (
     DEFAULT_UUID,
     UUID,
@@ -79,6 +88,7 @@ from elizaos.types import (
     TaskWorker,
     World,
     as_uuid,
+    string_to_uuid,
 )
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
 
@@ -116,6 +126,7 @@ __all__ = [
     "DEFAULT_UUID",
     "UUID",
     "as_uuid",
+    "string_to_uuid",
     "Content",
     "ContentType",
     "Media",
@@ -204,4 +215,15 @@ __all__ = [
     "SHOULD_RESPOND_TEMPLATE",
     "UPDATE_ENTITY_TEMPLATE",
     "UPDATE_SETTINGS_TEMPLATE",
+    # Settings / secrets helpers
+    "get_salt",
+    "encrypt_string_value",
+    "decrypt_string_value",
+    "encrypt_object_values",
+    "decrypt_object_values",
+    "decrypt_secret",
+    # Prompt composition helpers
+    "compose_prompt",
+    "compose_prompt_from_state",
+    "get_current_time_ms",
 ]

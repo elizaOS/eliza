@@ -60,7 +60,8 @@
     "vitest": "^3.0.0"
   },
   "scripts": {
-    "build": "bun run build.ts && tsc -p tsconfig.build.json",
+    "build:prompts": "node ../../../packages/prompts/scripts/generate-plugin-prompts.js ../prompts ./generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build.ts && tsc -p tsconfig.build.json",
     "dev": "bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write .",

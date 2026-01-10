@@ -12,6 +12,10 @@ import {
   type UUID,
 } from '@elizaos/core';
 import { createTodoDataService, type TodoData } from '../services/todoDataService';
+import {
+  extractTaskSelectionTemplate,
+  extractTaskUpdateTemplate,
+} from '../generated/prompts/typescript/prompts.js';
 
 // Interface for task selection properties
 interface TaskSelection {
@@ -29,79 +33,6 @@ interface TaskUpdate {
   dueDate?: string | null;
   recurring?: 'daily' | 'weekly' | 'monthly';
 }
-
-/**
- * Template for extracting which task to update from the user's message
- */
-const extractTaskTemplate = `
-# Task: Extract Task Selection Information
-
-## User Message
-{{text}}
-
-## Available Tasks
-{{availableTasks}}
-
-## Instructions
-Parse the user\'s message to identify which task they want to update or modify.
-Match against the list of available tasks by name or description.
-If multiple tasks have similar names, choose the closest match.
-
-Return an XML object with:
-<response>
-  <taskId>ID of the task being updated, or \'null\' if not found</taskId>
-  <taskName>Name of the task being updated, or \'null\' if not found</taskName>
-  <isFound>\'true\' or \'false\' indicating if a matching task was found</isFound>
-</response>
-
-## Example Output Format
-<response>
-  <taskId>123e4567-e89b-12d3-a456-426614174000</taskId>
-  <taskName>Finish report</taskName>
-  <isFound>true</isFound>
-</response>
-
-If no matching task was found:
-<response>
-  <taskId>null</taskId>
-  <taskName>null</taskName>
-  <isFound>false</isFound>
-</response>
-`;
-
-/**
- * Template for extracting task update information
- */
-const extractUpdateTemplate = `
-# Task: Extract Task Update Information
-
-## User Message
-{{text}}
-
-## Current Task Details
-{{taskDetails}}
-
-## Instructions
-Parse the user\'s message to determine what changes they want to make to the task.
-Only include fields that the user explicitly wants to update.
-
-Return an XML object with these potential fields (only include fields that should be changed):
-<response>
-  <name>New name for the task</name>
-  <description>New description for the task</description>
-  <priority>New priority (1-4, where 1 is highest)</priority>
-  <urgent>\'true\' or \'false\' for whether the task is urgent</urgent>
-  <dueDate>New due date in ISO format (YYYY-MM-DD), or \'null\' to remove the due date</dueDate>
-  <recurring>New recurrence pattern (\'daily\', \'weekly\', \'monthly\')</recurring>
-</response>
-
-## Example Output Format
-<response>
-  <description>Updated task description</description>
-  <priority>2</priority>
-  <dueDate>2023-04-30</dueDate>
-</response>
-`;
 
 /**
  * Extracts which task the user wants to update
@@ -124,7 +55,7 @@ async function extractTaskSelection(
         text: message.content.text || '',
         availableTasks: tasksText,
       },
-      template: extractTaskTemplate,
+      template: extractTaskSelectionTemplate,
     });
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -191,7 +122,7 @@ async function extractTaskUpdate(
         text: message.content.text || '',
         taskDetails,
       },
-      template: extractUpdateTemplate,
+      template: extractTaskUpdateTemplate,
     });
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {

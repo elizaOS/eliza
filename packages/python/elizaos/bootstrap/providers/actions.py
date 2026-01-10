@@ -12,14 +12,7 @@ from typing import TYPE_CHECKING
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
-    from elizaos.types import (
-        Action,
-        ActionParameter,
-        ActionParameterSchema,
-        IAgentRuntime,
-        Memory,
-        State,
-    )
+    from elizaos.types import Action, ActionParameter, ActionParameterSchema, IAgentRuntime, Memory, State
 
 
 def format_action_names(actions: list[Action]) -> str:
@@ -46,7 +39,11 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
             if param.schema_def.default is not None
             else ""
         )
-        enum_str = f" [values: {', '.join(param.schema_def.enum)}]" if param.schema_def.enum else ""
+        enum_str = (
+            f" [values: {', '.join(param.schema_def.enum)}]"
+            if param.schema_def.enum
+            else ""
+        )
         lines.append(
             f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str})"
         )
@@ -83,7 +80,7 @@ async def get_actions(
     for action in runtime.actions:
         try:
             # Validate each action against the current message
-            is_valid = await action.validate(runtime, message, state)
+            is_valid = await action.validate_fn(runtime, message, state)
             if is_valid:
                 validated_actions.append(action)
         except Exception as e:
@@ -139,3 +136,5 @@ actions_provider = Provider(
     get=get_actions,
     position=-1,
 )
+
+

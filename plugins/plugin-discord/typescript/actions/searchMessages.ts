@@ -14,34 +14,10 @@ import type { Collection, Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-/**
- * Template for extracting search parameters from the user's request.
- */
-export const searchMessagesTemplate = `# Searching for Discord messages
-{{recentMessages}}
+import { searchMessagesTemplate } from "../generated/prompts/typescript/prompts.js";
 
-# Instructions: {{senderName}} is requesting to search for messages in Discord. Extract:
-1. The search query/keywords
-2. The channel to search in (current if not specified)
-3. Optional filters like author, time range, or message count
-
-Examples:
-- "search for messages containing 'meeting'" -> query: "meeting", channelIdentifier: "current", NO author field
-- "find messages from @user about bugs" -> query: "bugs", channelIdentifier: "current", author: "user"
-- "search #general for links from last week" -> query: "links", channelIdentifier: "general", timeRange: "week"
-- "search for messages about 'spartan' in this channel" -> query: "spartan", channelIdentifier: "current"
-
-Your response must be formatted as a JSON block:
-\`\`\`json
-{
-  "query": "<search keywords>",
-  "channelIdentifier": "<channel-name|channel-id|current>",
-  "author": "<username>",  // ONLY include this field if a specific author was mentioned
-  "timeRange": "<hour|day|week|month>",  // ONLY include if a time range was specified
-  "limit": <number between 1-100, default 20>
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { searchMessagesTemplate };
 
 const getSearchParams = async (
   runtime: IAgentRuntime,
