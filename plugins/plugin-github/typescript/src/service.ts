@@ -1,0 +1,1176 @@
+/**
+ * GitHub service implementation.
+ *
+ * Provides the main GitHubService for interacting with the GitHub API.
+ */
+
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { Octokit } from "@octokit/rest";
+import { GitHubPluginConfig, validateGitHubConfig } from "./config";
+import {
+  BranchExistsError,
+  BranchNotFoundError,
+  FileNotFoundError,
+  GitHubApiError,
+  IssueNotFoundError,
+  mapOctokitError,
+  MergeConflictError,
+  PullRequestNotFoundError,
+  RepositoryNotFoundError,
+} from "./error";
+import type {
+  CreateBranchParams,
+  CreateCommentParams,
+  CreateCommitParams,
+  CreateIssueParams,
+  CreatePullRequestParams,
+  CreateReviewParams,
+  FileChange,
+  GetFileParams,
+  GitHubBranch,
+  GitHubComment,
+  GitHubCommit,
+  GitHubDirectoryEntry,
+  GitHubFileContent,
+  GitHubIssue,
+  GitHubPullRequest,
+  GitHubRepository,
+  GitHubReview,
+  GitHubUser,
+  ListIssuesParams,
+  ListPullRequestsParams,
+  MergePullRequestParams,
+  RepositoryRef,
+  UpdateIssueParams,
+  UpdatePullRequestParams,
+} from "./types";
+
+/** Service name constant */
+export const GITHUB_SERVICE_NAME = "github";
+
+/**
+ * GitHub service for elizaOS.
+ *
+ * Manages interaction with the GitHub API for repository operations,
+ * issue tracking, pull requests, code reviews, and more.
+ */
+export class GitHubService extends Service {
+  static override serviceType = GITHUB_SERVICE_NAME;
+  
+  /** Service capability description */
+  capabilityDescription = "Provides GitHub integration for repository operations, issues, pull requests, and code management";
+  
+  private octokit: Octokit | null = null;
+  protected pluginConfig: GitHubPluginConfig | null = null;
+
+  /**
+   * Get the service name.
+   */
+  get name(): string {
+    return GITHUB_SERVICE_NAME;
+  }
+
+  /**
+   * Get the current configuration.
+   */
+  getConfig(): GitHubPluginConfig {
+    if (!this.pluginConfig) {
+      throw new Error("GitHub service not initialized");
+    }
+    return this.pluginConfig;
+  }
+
+  /**
+   * Get the Octokit client.
+   */
+  private getClient(): Octokit {
+    if (!this.octokit) {
+      throw new Error("GitHub service not initialized");
+    }
+    return this.octokit;
+  }
+
+  /**
+   * Start the GitHub service.
+   */
+  static override async start(runtime: IAgentRuntime): Promise<GitHubService> {
+    logger.info("Starting GitHub service...");
+
+    const service = new GitHubService(runtime);
+    
+    // Validate and store config
+    service.pluginConfig = validateGitHubConfig(runtime);
+
+    // Create Octokit client
+    service.octokit = new Octokit({
+      auth: service.pluginConfig.apiToken,
+      userAgent: "elizaos-plugin-github/1.0.0",
+    });
+
+    // Verify authentication
+    try {
+      const { data: user } = await service.octokit.users.getAuthenticated();
+      logger.info(`GitHub service started - authenticated as ${user.login}`);
+    } catch (error) {
+      const ghError = mapOctokitError(error, "", "");
+      logger.error(`GitHub authentication failed: ${ghError.message}`);
+      throw ghError;
+    }
+
+    return service;
+  }
+
+  /**
+   * Stop the GitHub service.
+   */
+  async stop(): Promise<void> {
+    logger.info("Stopping GitHub service...");
+    this.octokit = null;
+    this.pluginConfig = null;
+    logger.info("GitHub service stopped");
+  }
+
+  // ===========================================================================
+  // Repository Operations
+  // ===========================================================================
+
+  /**
+   * Get repository information.
+   */
+  async getRepository(params: RepositoryRef): Promise<GitHubRepository> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.repos.get({ owner, repo });
+      return this.mapRepository(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * List repositories for a user or organization.
+   */
+  async listRepositories(
+    username?: string,
+    options?: { type?: "all" | "owner" | "member"; perPage?: number; page?: number },
+  ): Promise<GitHubRepository[]> {
+    const client = this.getClient();
+
+    try {
+      const { data } = username
+        ? await client.repos.listForUser({
+            username,
+            type: options?.type ?? "owner",
+            per_page: options?.perPage ?? 30,
+            page: options?.page ?? 1,
+          })
+        : await client.repos.listForAuthenticatedUser({
+            type: options?.type ?? "all",
+            per_page: options?.perPage ?? 30,
+            page: options?.page ?? 1,
+          });
+
+      return data.map((r) => this.mapRepository(r));
+    } catch (error) {
+      throw mapOctokitError(error, username ?? "", "");
+    }
+  }
+
+  // ===========================================================================
+  // Issue Operations
+  // ===========================================================================
+
+  /**
+   * Create an issue.
+   */
+  async createIssue(params: CreateIssueParams): Promise<GitHubIssue> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.issues.create({
+        owner,
+        repo,
+        title: params.title,
+        body: params.body,
+        assignees: params.assignees,
+        labels: params.labels,
+        milestone: params.milestone,
+      });
+
+      return this.mapIssue(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * Get an issue by number.
+   */
+  async getIssue(params: RepositoryRef & { issueNumber: number }): Promise<GitHubIssue> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.issues.get({
+        owner,
+        repo,
+        issue_number: params.issueNumber,
+      });
+
+      return this.mapIssue(data);
+    } catch (error) {
+      const ghError = mapOctokitError(error, owner, repo);
+      if (ghError instanceof RepositoryNotFoundError) {
+        throw new IssueNotFoundError(params.issueNumber, owner, repo);
+      }
+      throw ghError;
+    }
+  }
+
+  /**
+   * Update an issue.
+   */
+  async updateIssue(params: UpdateIssueParams): Promise<GitHubIssue> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.issues.update({
+        owner,
+        repo,
+        issue_number: params.issueNumber,
+        title: params.title,
+        body: params.body,
+        state: params.state,
+        state_reason: params.stateReason,
+        assignees: params.assignees,
+        labels: params.labels,
+        milestone: params.milestone ?? undefined,
+      });
+
+      return this.mapIssue(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * List issues.
+   */
+  async listIssues(params: ListIssuesParams): Promise<GitHubIssue[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.issues.listForRepo({
+        owner,
+        repo,
+        state: params.state ?? "open",
+        labels: params.labels,
+        sort: params.sort ?? "created",
+        direction: params.direction ?? "desc",
+        assignee: params.assignee,
+        creator: params.creator,
+        mentioned: params.mentioned,
+        per_page: params.perPage ?? 30,
+        page: params.page ?? 1,
+      });
+
+      // Filter out pull requests (GitHub API includes them in issues)
+      return data
+        .filter((issue) => !issue.pull_request)
+        .map((issue) => this.mapIssue(issue));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * Close an issue.
+   */
+  async closeIssue(
+    params: RepositoryRef & { issueNumber: number; reason?: "completed" | "not_planned" },
+  ): Promise<GitHubIssue> {
+    return this.updateIssue({
+      ...params,
+      state: "closed",
+      stateReason: params.reason ?? "completed",
+    });
+  }
+
+  /**
+   * Reopen an issue.
+   */
+  async reopenIssue(
+    params: RepositoryRef & { issueNumber: number },
+  ): Promise<GitHubIssue> {
+    return this.updateIssue({
+      ...params,
+      state: "open",
+      stateReason: "reopened",
+    });
+  }
+
+  // ===========================================================================
+  // Pull Request Operations
+  // ===========================================================================
+
+  /**
+   * Create a pull request.
+   */
+  async createPullRequest(
+    params: CreatePullRequestParams,
+  ): Promise<GitHubPullRequest> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.create({
+        owner,
+        repo,
+        title: params.title,
+        body: params.body,
+        head: params.head,
+        base: params.base,
+        draft: params.draft,
+        maintainer_can_modify: params.maintainerCanModify,
+      });
+
+      return this.mapPullRequest(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * Get a pull request by number.
+   */
+  async getPullRequest(
+    params: RepositoryRef & { pullNumber: number },
+  ): Promise<GitHubPullRequest> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.get({
+        owner,
+        repo,
+        pull_number: params.pullNumber,
+      });
+
+      return this.mapPullRequest(data);
+    } catch (error) {
+      const ghError = mapOctokitError(error, owner, repo);
+      if (ghError instanceof RepositoryNotFoundError) {
+        throw new PullRequestNotFoundError(params.pullNumber, owner, repo);
+      }
+      throw ghError;
+    }
+  }
+
+  /**
+   * Update a pull request.
+   */
+  async updatePullRequest(
+    params: UpdatePullRequestParams,
+  ): Promise<GitHubPullRequest> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.update({
+        owner,
+        repo,
+        pull_number: params.pullNumber,
+        title: params.title,
+        body: params.body,
+        state: params.state,
+        base: params.base,
+        maintainer_can_modify: params.maintainerCanModify,
+      });
+
+      return this.mapPullRequest(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * List pull requests.
+   */
+  async listPullRequests(
+    params: ListPullRequestsParams,
+  ): Promise<GitHubPullRequest[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.list({
+        owner,
+        repo,
+        state: params.state ?? "open",
+        head: params.head,
+        base: params.base,
+        sort: params.sort ?? "created",
+        direction: params.direction ?? "desc",
+        per_page: params.perPage ?? 30,
+        page: params.page ?? 1,
+      });
+
+      return data.map((pr) => this.mapPullRequest(pr));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * Merge a pull request.
+   */
+  async mergePullRequest(
+    params: MergePullRequestParams,
+  ): Promise<{ sha: string; merged: boolean; message: string }> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.merge({
+        owner,
+        repo,
+        pull_number: params.pullNumber,
+        commit_title: params.commitTitle,
+        commit_message: params.commitMessage,
+        merge_method: params.mergeMethod ?? "merge",
+        sha: params.sha,
+      });
+
+      return {
+        sha: data.sha,
+        merged: data.merged,
+        message: data.message,
+      };
+    } catch (error) {
+      const ghError = mapOctokitError(error, owner, repo);
+      if (ghError instanceof GitHubApiError && ghError.status === 405) {
+        throw new MergeConflictError(params.pullNumber, owner, repo);
+      }
+      throw ghError;
+    }
+  }
+
+  /**
+   * Close a pull request without merging.
+   */
+  async closePullRequest(
+    params: RepositoryRef & { pullNumber: number },
+  ): Promise<GitHubPullRequest> {
+    return this.updatePullRequest({
+      ...params,
+      state: "closed",
+    });
+  }
+
+  // ===========================================================================
+  // Review Operations
+  // ===========================================================================
+
+  /**
+   * Create a review on a pull request.
+   */
+  async createReview(params: CreateReviewParams): Promise<GitHubReview> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.createReview({
+        owner,
+        repo,
+        pull_number: params.pullNumber,
+        body: params.body,
+        event: params.event,
+        commit_id: params.commitId,
+        comments: params.comments?.map((c) => ({
+          path: c.path,
+          line: c.line,
+          body: c.body,
+          side: c.side,
+          start_line: c.startLine,
+          start_side: c.startSide,
+        })),
+      });
+
+      return this.mapReview(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * List reviews on a pull request.
+   */
+  async listReviews(
+    params: RepositoryRef & { pullNumber: number },
+  ): Promise<GitHubReview[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.pulls.listReviews({
+        owner,
+        repo,
+        pull_number: params.pullNumber,
+      });
+
+      return data.map((r) => this.mapReview(r));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  // ===========================================================================
+  // Comment Operations
+  // ===========================================================================
+
+  /**
+   * Create a comment on an issue or pull request.
+   */
+  async createComment(params: CreateCommentParams): Promise<GitHubComment> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.issues.createComment({
+        owner,
+        repo,
+        issue_number: params.issueNumber,
+        body: params.body,
+      });
+
+      return this.mapComment(data);
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * List comments on an issue or pull request.
+   */
+  async listComments(
+    params: RepositoryRef & { issueNumber: number; perPage?: number; page?: number },
+  ): Promise<GitHubComment[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.issues.listComments({
+        owner,
+        repo,
+        issue_number: params.issueNumber,
+        per_page: params.perPage ?? 30,
+        page: params.page ?? 1,
+      });
+
+      return data.map((c) => this.mapComment(c));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  // ===========================================================================
+  // Branch Operations
+  // ===========================================================================
+
+  /**
+   * Create a new branch.
+   */
+  async createBranch(params: CreateBranchParams): Promise<GitHubBranch> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      // First, get the SHA of the source ref
+      let sha: string;
+
+      if (params.fromRef.match(/^[0-9a-f]{40}$/i)) {
+        // It's already a SHA
+        sha = params.fromRef;
+      } else {
+        // It's a branch name, get its SHA
+        const { data: refData } = await client.git.getRef({
+          owner,
+          repo,
+          ref: `heads/${params.fromRef}`,
+        });
+        sha = refData.object.sha;
+      }
+
+      // Create the new branch
+      await client.git.createRef({
+        owner,
+        repo,
+        ref: `refs/heads/${params.branchName}`,
+        sha,
+      });
+
+      return {
+        name: params.branchName,
+        sha,
+        protected: false,
+      };
+    } catch (error) {
+      const ghError = mapOctokitError(error, owner, repo);
+      if (ghError.message.includes("already exists")) {
+        throw new BranchExistsError(params.branchName, owner, repo);
+      }
+      throw ghError;
+    }
+  }
+
+  /**
+   * Delete a branch.
+   */
+  async deleteBranch(
+    params: RepositoryRef & { branchName: string },
+  ): Promise<void> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      await client.git.deleteRef({
+        owner,
+        repo,
+        ref: `heads/${params.branchName}`,
+      });
+    } catch (error) {
+      const ghError = mapOctokitError(error, owner, repo);
+      if (ghError instanceof RepositoryNotFoundError) {
+        throw new BranchNotFoundError(params.branchName, owner, repo);
+      }
+      throw ghError;
+    }
+  }
+
+  /**
+   * List branches.
+   */
+  async listBranches(
+    params: RepositoryRef & { perPage?: number; page?: number },
+  ): Promise<GitHubBranch[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.repos.listBranches({
+        owner,
+        repo,
+        per_page: params.perPage ?? 30,
+        page: params.page ?? 1,
+      });
+
+      return data.map((b) => ({
+        name: b.name,
+        sha: b.commit.sha,
+        protected: b.protected,
+      }));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  // ===========================================================================
+  // File Operations
+  // ===========================================================================
+
+  /**
+   * Get file content.
+   */
+  async getFile(params: GetFileParams): Promise<GitHubFileContent> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.repos.getContent({
+        owner,
+        repo,
+        path: params.path,
+        ref: params.branch,
+      });
+
+      if (Array.isArray(data)) {
+        throw new FileNotFoundError(
+          `${params.path} is a directory, not a file`,
+          owner,
+          repo,
+        );
+      }
+
+      if (data.type !== "file") {
+        throw new FileNotFoundError(
+          `${params.path} is not a file`,
+          owner,
+          repo,
+        );
+      }
+
+      // Decode content
+      let content = "";
+      if ("content" in data && data.content) {
+        content = Buffer.from(data.content, "base64").toString("utf-8");
+      }
+
+      return {
+        name: data.name,
+        path: data.path,
+        content,
+        sha: data.sha,
+        size: data.size,
+        type: data.type as "file",
+        encoding: "encoding" in data ? (data.encoding ?? "base64") : "base64",
+        htmlUrl: data.html_url ?? "",
+        downloadUrl: data.download_url,
+      };
+    } catch (error) {
+      const ghError = mapOctokitError(error, owner, repo);
+      if (ghError instanceof RepositoryNotFoundError) {
+        throw new FileNotFoundError(params.path, owner, repo);
+      }
+      throw ghError;
+    }
+  }
+
+  /**
+   * List directory contents.
+   */
+  async listDirectory(
+    params: GetFileParams,
+  ): Promise<GitHubDirectoryEntry[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      const { data } = await client.repos.getContent({
+        owner,
+        repo,
+        path: params.path,
+        ref: params.branch,
+      });
+
+      if (!Array.isArray(data)) {
+        throw new FileNotFoundError(
+          `${params.path} is a file, not a directory`,
+          owner,
+          repo,
+        );
+      }
+
+      return data.map((entry) => ({
+        name: entry.name,
+        path: entry.path,
+        sha: entry.sha,
+        size: entry.size,
+        type: entry.type as "file" | "dir" | "symlink" | "submodule",
+        htmlUrl: entry.html_url ?? "",
+        downloadUrl: entry.download_url,
+      }));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  // ===========================================================================
+  // Commit Operations
+  // ===========================================================================
+
+  /**
+   * Create a commit with multiple file changes.
+   */
+  async createCommit(params: CreateCommitParams): Promise<GitHubCommit> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+
+    try {
+      // Get the current commit SHA for the branch
+      let parentSha = params.parentSha;
+      if (!parentSha) {
+        const { data: refData } = await client.git.getRef({
+          owner,
+          repo,
+          ref: `heads/${params.branch}`,
+        });
+        parentSha = refData.object.sha;
+      }
+
+      // Get the tree of the parent commit
+      const { data: parentCommit } = await client.git.getCommit({
+        owner,
+        repo,
+        commit_sha: parentSha,
+      });
+
+      // Create blobs for each file
+      const treeItems: Array<{
+        path: string;
+        mode: "100644" | "100755" | "040000" | "160000" | "120000";
+        type: "blob" | "tree" | "commit";
+        sha?: string;
+      }> = [];
+
+      for (const file of params.files) {
+        if (file.operation === "delete") {
+          // For deletions, we simply don't include the file in the new tree
+          continue;
+        }
+
+        const { data: blob } = await client.git.createBlob({
+          owner,
+          repo,
+          content: file.content,
+          encoding: file.encoding ?? "utf-8",
+        });
+
+        treeItems.push({
+          path: file.path,
+          mode: "100644",
+          type: "blob",
+          sha: blob.sha,
+        });
+      }
+
+      // Create a new tree
+      const { data: newTree } = await client.git.createTree({
+        owner,
+        repo,
+        base_tree: parentCommit.tree.sha,
+        tree: treeItems,
+      });
+
+      // Create the commit
+      const { data: commit } = await client.git.createCommit({
+        owner,
+        repo,
+        message: params.message,
+        tree: newTree.sha,
+        parents: [parentSha],
+        author: params.authorName
+          ? {
+              name: params.authorName,
+              email: params.authorEmail ?? `${params.authorName}@users.noreply.github.com`,
+            }
+          : undefined,
+      });
+
+      // Update the branch reference
+      await client.git.updateRef({
+        owner,
+        repo,
+        ref: `heads/${params.branch}`,
+        sha: commit.sha,
+      });
+
+      return {
+        sha: commit.sha,
+        message: commit.message,
+        author: {
+          name: commit.author?.name ?? "Unknown",
+          email: commit.author?.email ?? "",
+          date: commit.author?.date ?? new Date().toISOString(),
+        },
+        committer: {
+          name: commit.committer?.name ?? "Unknown",
+          email: commit.committer?.email ?? "",
+          date: commit.committer?.date ?? new Date().toISOString(),
+        },
+        timestamp: commit.author?.date ?? new Date().toISOString(),
+        htmlUrl: commit.html_url,
+        parents: commit.parents.map((p) => p.sha),
+      };
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  /**
+   * List commits.
+   */
+  async listCommits(
+    params: RepositoryRef & {
+      branch?: string;
+      path?: string;
+      perPage?: number;
+      page?: number;
+    },
+  ): Promise<GitHubCommit[]> {
+    const client = this.getClient();
+    const { owner, repo } = this.resolveRepoRef(params);
+    const branch = params.branch ?? this.pluginConfig?.branch ?? "main";
+
+    try {
+      const { data } = await client.repos.listCommits({
+        owner,
+        repo,
+        sha: branch,
+        path: params.path,
+        per_page: params.perPage ?? 30,
+        page: params.page ?? 1,
+      });
+
+      return data.map((c) => ({
+        sha: c.sha,
+        message: c.commit.message,
+        author: {
+          name: c.commit.author?.name ?? "Unknown",
+          email: c.commit.author?.email ?? "",
+          date: c.commit.author?.date ?? "",
+        },
+        committer: {
+          name: c.commit.committer?.name ?? "Unknown",
+          email: c.commit.committer?.email ?? "",
+          date: c.commit.committer?.date ?? "",
+        },
+        timestamp: c.commit.author?.date ?? "",
+        htmlUrl: c.html_url,
+        parents: c.parents.map((p) => p.sha),
+      }));
+    } catch (error) {
+      throw mapOctokitError(error, owner, repo);
+    }
+  }
+
+  // ===========================================================================
+  // User Operations
+  // ===========================================================================
+
+  /**
+   * Get the authenticated user.
+   */
+  async getAuthenticatedUser(): Promise<GitHubUser> {
+    const client = this.getClient();
+
+    try {
+      const { data } = await client.users.getAuthenticated();
+      return this.mapUser(data);
+    } catch (error) {
+      throw mapOctokitError(error, "", "");
+    }
+  }
+
+  /**
+   * Get a user by username.
+   */
+  async getUser(username: string): Promise<GitHubUser> {
+    const client = this.getClient();
+
+    try {
+      const { data } = await client.users.getByUsername({ username });
+      return this.mapUser(data);
+    } catch (error) {
+      throw mapOctokitError(error, "", "");
+    }
+  }
+
+  // ===========================================================================
+  // Helper Methods
+  // ===========================================================================
+
+  /**
+   * Resolve repository reference with defaults.
+   */
+  private resolveRepoRef(params: Partial<RepositoryRef>): { owner: string; repo: string } {
+    const owner = params.owner ?? this.pluginConfig?.owner;
+    const repo = params.repo ?? this.pluginConfig?.repo;
+
+    if (!owner || !repo) {
+      throw new Error(
+        "Repository owner and name are required. Configure defaults or provide them explicitly.",
+      );
+    }
+
+    return { owner, repo };
+  }
+
+  // ===========================================================================
+  // Mapping Methods
+  // ===========================================================================
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapRepository(data: any): GitHubRepository {
+    return {
+      id: data.id,
+      name: data.name,
+      fullName: data.full_name,
+      owner: this.mapUser(data.owner),
+      description: data.description,
+      private: data.private,
+      fork: data.fork,
+      defaultBranch: data.default_branch,
+      language: data.language,
+      stargazersCount: data.stargazers_count,
+      forksCount: data.forks_count,
+      openIssuesCount: data.open_issues_count,
+      watchersCount: data.watchers_count,
+      htmlUrl: data.html_url,
+      cloneUrl: data.clone_url,
+      sshUrl: data.ssh_url,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      pushedAt: data.pushed_at,
+      topics: data.topics ?? [],
+      license: data.license
+        ? {
+            key: data.license.key,
+            name: data.license.name,
+            spdxId: data.license.spdx_id,
+            url: data.license.url,
+          }
+        : null,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapUser(data: any): GitHubUser {
+    return {
+      id: data.id,
+      login: data.login,
+      name: data.name ?? null,
+      avatarUrl: data.avatar_url,
+      htmlUrl: data.html_url,
+      type: data.type,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapIssue(data: any): GitHubIssue {
+    return {
+      number: data.number,
+      title: data.title,
+      body: data.body,
+      state: data.state,
+      stateReason: data.state_reason ?? null,
+      user: this.mapUser(data.user),
+      assignees: (data.assignees ?? []).map((a: unknown) => this.mapUser(a)),
+      labels: (data.labels ?? []).map((l: unknown) => this.mapLabel(l)),
+      milestone: data.milestone ? this.mapMilestone(data.milestone) : null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      closedAt: data.closed_at,
+      htmlUrl: data.html_url,
+      comments: data.comments,
+      isPullRequest: !!data.pull_request,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapLabel(data: any): { id: number; name: string; color: string; description: string | null; default: boolean } {
+    if (typeof data === "string") {
+      return { id: 0, name: data, color: "", description: null, default: false };
+    }
+    return {
+      id: data.id,
+      name: data.name,
+      color: data.color,
+      description: data.description,
+      default: data.default,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapMilestone(data: any): {
+    number: number;
+    title: string;
+    description: string | null;
+    state: "open" | "closed";
+    dueOn: string | null;
+    createdAt: string;
+    updatedAt: string;
+    closedAt: string | null;
+    openIssues: number;
+    closedIssues: number;
+  } {
+    return {
+      number: data.number,
+      title: data.title,
+      description: data.description,
+      state: data.state,
+      dueOn: data.due_on,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      closedAt: data.closed_at,
+      openIssues: data.open_issues,
+      closedIssues: data.closed_issues,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapPullRequest(data: any): GitHubPullRequest {
+    return {
+      number: data.number,
+      title: data.title,
+      body: data.body,
+      state: data.state,
+      draft: data.draft ?? false,
+      merged: data.merged ?? false,
+      mergeable: data.mergeable,
+      mergeableState: data.mergeable_state ?? "unknown",
+      user: this.mapUser(data.user),
+      head: {
+        ref: data.head.ref,
+        label: data.head.label,
+        sha: data.head.sha,
+        repo: data.head.repo
+          ? { owner: data.head.repo.owner.login, repo: data.head.repo.name }
+          : null,
+      },
+      base: {
+        ref: data.base.ref,
+        label: data.base.label,
+        sha: data.base.sha,
+        repo: data.base.repo
+          ? { owner: data.base.repo.owner.login, repo: data.base.repo.name }
+          : null,
+      },
+      assignees: (data.assignees ?? []).map((a: unknown) => this.mapUser(a)),
+      requestedReviewers: (data.requested_reviewers ?? []).map((r: unknown) =>
+        this.mapUser(r),
+      ),
+      labels: (data.labels ?? []).map((l: unknown) => this.mapLabel(l)),
+      milestone: data.milestone ? this.mapMilestone(data.milestone) : null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      closedAt: data.closed_at,
+      mergedAt: data.merged_at,
+      htmlUrl: data.html_url,
+      commits: data.commits ?? 0,
+      additions: data.additions ?? 0,
+      deletions: data.deletions ?? 0,
+      changedFiles: data.changed_files ?? 0,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapReview(data: any): GitHubReview {
+    return {
+      id: data.id,
+      user: this.mapUser(data.user),
+      body: data.body,
+      state: data.state,
+      commitId: data.commit_id,
+      htmlUrl: data.html_url,
+      submittedAt: data.submitted_at,
+    };
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
+  private mapComment(data: any): GitHubComment {
+    return {
+      id: data.id,
+      body: data.body,
+      user: this.mapUser(data.user),
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      htmlUrl: data.html_url,
+    };
+  }
+}
+

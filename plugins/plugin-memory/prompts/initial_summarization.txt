@@ -1,0 +1,31 @@
+# Task: Summarize Conversation
+
+You are analyzing a conversation to create a concise summary that captures the key points, topics, and important details.
+
+# Recent Messages
+{{recentMessages}}
+
+# Instructions
+Generate a summary that:
+1. Captures the main topics discussed
+2. Highlights key information shared
+3. Notes any decisions made or questions asked
+4. Maintains context for future reference
+5. Is concise but comprehensive
+
+**IMPORTANT**: Keep the summary under 2500 tokens. Be comprehensive but concise.
+
+Also extract:
+- **Topics**: List of main topics discussed (comma-separated)
+- **Key Points**: Important facts or decisions (bullet points)
+
+Respond in this XML format:
+<summary>
+  <text>Your comprehensive summary here</text>
+  <topics>topic1, topic2, topic3</topics>
+  <keyPoints>
+    <point>First key point</point>
+    <point>Second key point</point>
+  </keyPoints>
+</summary>
+

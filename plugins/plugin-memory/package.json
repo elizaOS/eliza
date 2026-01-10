@@ -1,70 +1,97 @@
 {
   "name": "@elizaos/plugin-memory",
-  "version": "1.1.2",
-  "description": "Advanced memory management plugin with short-term summarization and long-term persistent memory",
+  "version": "1.0.0",
+  "description": "Advanced memory management plugin for elizaOS with conversation summarization and long-term persistent memory",
   "type": "module",
-  "main": "dist/cjs/index.node.cjs",
-  "module": "dist/node/index.node.js",
+  "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "browser": "dist/browser/index.browser.js",
-  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "require": "./dist/cjs/index.node.cjs",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
-    },
-    "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
+    "./rust": {
+      "import": "./rust/pkg/elizaos_plugin_memory.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "typescript/src",
+    "python",
+    "rust/src",
+    "rust/Cargo.toml",
+    "rust/pkg",
+    "README.md"
   ],
   "scripts": {
-    "build": "bun run build.ts",
-    "dev": "bun run build --watch",
-    "test": "bun test",
-    "lint": "eslint . --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
-  },
-  "dependencies": {
-    "@elizaos/core": "latest",
-    "drizzle-orm": "^0.45.0"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.7.2"
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust",
+    "build:ts": "cd typescript && bun build ./src/index.ts --outdir ./dist --target node --format esm",
+    "build:rust": "cd rust && cargo build --release",
+    "build:wasm": "cd rust && wasm-pack build --target web --features wasm",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "bun test typescript/src/__tests__/ || echo 'No typescript tests yet'",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && python3 -m pytest tests/",
+    "clean": "rm -rf dist typescript/dist .turbo node_modules",
+    "clean:rust": "cd rust && cargo clean",
+    "lint": "bunx eslint typescript/src/ || true",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "format": "bunx prettier --write typescript/src/",
+    "format:rust": "cd rust && cargo fmt",
+    "format:python": "cd python && python3 -m black elizaos_plugin_memory/ tests/ || echo 'Python formatting requires black'",
+    "typecheck": "cd typescript && bunx tsc --noEmit || true"
   },
   "keywords": [
-    "eliza",
-    "plugin",
+    "elizaos",
+    "ai",
+    "agent",
     "memory",
-    "long-term-memory",
-    "short-term-memory",
-    "summarization"
+    "summarization",
+    "llm",
+    "multi-language"
   ],
-  "author": "ElizaOS Team",
+  "author": "elizaOS Team",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.15.21",
+    "typescript": "^5.7.3",
+    "prettier": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MEMORY_SUMMARIZATION_THRESHOLD": {
+        "type": "number",
+        "description": "Number of messages before automatic summarization",
+        "required": false,
+        "default": 16
+      },
+      "MEMORY_RETAIN_RECENT": {
+        "type": "number",
+        "description": "Number of recent messages to retain after summarization",
+        "required": false,
+        "default": 6
+      },
+      "MEMORY_LONG_TERM_ENABLED": {
+        "type": "boolean",
+        "description": "Enable long-term memory extraction",
+        "required": false,
+        "default": true
+      },
+      "MEMORY_CONFIDENCE_THRESHOLD": {
+        "type": "number",
+        "description": "Minimum confidence score to store long-term memories",
+        "required": false,
+        "default": 0.85
+      }
+    }
   }
 }

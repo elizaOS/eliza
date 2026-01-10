@@ -43,11 +43,6 @@
       "types": "./dist/browser/index.browser.d.ts",
       "import": "./dist/browser/index.browser.js",
       "default": "./dist/browser/index.browser.js"
-    },
-    "./browser/browser": {
-      "types": "./dist/browser/index.browser.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
     }
   },
   "sideEffects": false,

@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
+# Import shared types from core
+from elizaos.types import MemoryType  # noqa: F401 - re-exported
+
 
 class EmbeddingProvider(str, Enum):
     """Supported embedding providers."""
@@ -23,14 +26,6 @@ class TextProvider(str, Enum):
     ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
     GOOGLE = "google"
-
-
-class MemoryType(str, Enum):
-    """Types of memory items."""
-
-    DOCUMENT = "document"
-    FRAGMENT = "fragment"
-    MESSAGE = "message"
 
 
 @dataclass

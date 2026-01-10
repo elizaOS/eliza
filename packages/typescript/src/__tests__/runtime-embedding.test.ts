@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime.ts";
 import { EventType, type IDatabaseAdapter, type Memory, type UUID } from "../types";
 import type { EmbeddingGenerationPayload } from "../types/events.ts";
@@ -12,7 +12,7 @@ function createMinimalMockAdapter(): IDatabaseAdapter {
   return new Proxy({} as IDatabaseAdapter, {
     get: (_target, prop) => {
       if (prop === "db") return {};
-      return mock().mockResolvedValue(null);
+      return vi.fn().mockResolvedValue(null);
     },
   });
 }
@@ -40,7 +40,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
 
     // Track emitted events
     const originalEmitEvent = runtime.emitEvent.bind(runtime);
-    runtime.emitEvent = mock(
+    runtime.emitEvent = vi.fn(
       async (event: string | string[], payload: unknown) => {
         const events = Array.isArray(event) ? event : [event];
         for (const e of events) {
@@ -245,7 +245,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
   describe("Integration with addEmbeddingToMemory", () => {
     it("should work alongside synchronous embedding generation", async () => {
       // Mock the useModel for synchronous embedding with a simulated delay
-      runtime.useModel = mock().mockImplementation(
+      runtime.useModel = vi.fn().mockImplementation(
         async (modelType: string) => {
           if (modelType === "TEXT_EMBEDDING") {
             // Simulate a realistic embedding generation delay

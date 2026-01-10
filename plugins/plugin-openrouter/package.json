@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-openrouter",
   "version": "1.5.17",
   "type": "module",
-  "main": "dist/cjs/index.node.cjs",
+  "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
-  "types": "dist/node/index.d.ts",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-openrouter.git"
@@ -12,17 +12,51 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
       "types": "./dist/node/index.d.ts",
       "import": "./dist/node/index.node.js",
-      "require": "./dist/cjs/index.node.cjs",
-      "browser": "./dist/browser/index.browser.js",
-      "node": "./dist/node/index.node.js",
       "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "./rust/pkg/web/elizaos_plugin_openrouter.js",
+        "default": "./rust/pkg/web/elizaos_plugin_openrouter.js"
+      },
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_openrouter.js",
+        "default": "./rust/pkg/node/elizaos_plugin_openrouter.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_openrouter.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "rust/pkg"
   ],
+  "sideEffects": false,
   "dependencies": {
     "@ai-sdk/openai": "^2.0.32",
     "@ai-sdk/ui-utils": "1.2.11",
@@ -40,14 +74,24 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "bun run build.ts",
-    "dev": "bun --hot build.ts",
-    "lint": "prettier --write ./src",
+    "build": "cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "test:watch": "bun test --watch"
+    "test:unit": "bun test typescript/__tests__/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "test:python": "cd python && pytest",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_openrouter"
   },
   "publishConfig": {
     "access": "public"

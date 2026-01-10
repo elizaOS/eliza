@@ -32,7 +32,7 @@ describe('getMidpointPrice Action', () => {
 
     // Setup mock runtime
     mockRuntime = {
-      getSetting: vi.fn((key: string) => {
+      getSetting: vi.mock((key: string) => {
         if (key === 'CLOB_API_URL') return 'https://clob.polymarket.com';
         return undefined;
       }),
@@ -62,7 +62,7 @@ describe('getMidpointPrice Action', () => {
   describe('validate', () => {
     it('should return false when CLOB_API_URL is not provided', async () => {
       const mockRuntimeNoUrl = {
-        getSetting: vi.fn(() => undefined),
+        getSetting: vi.mock(() => undefined),
       } as any;
 
       const result = await getMidpointPriceAction.validate(mockRuntimeNoUrl, mockMemory, mockState);
@@ -196,7 +196,7 @@ describe('getMidpointPrice Action', () => {
 
     it('should throw error when CLOB_API_URL is not configured', async () => {
       const mockRuntimeNoUrl = {
-        getSetting: vi.fn(() => undefined),
+        getSetting: vi.mock(() => undefined),
       } as any;
 
       await expect(

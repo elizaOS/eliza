@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "bun:test";
+import { describe, test, expect, beforeEach } from "vitest";
 import { useStore, selectCurrentRoom, selectMessages, selectTaskStats } from "../lib/store.js";
 import type { ChatRoom, Message, CodeTask, UUID } from "../types.js";
 

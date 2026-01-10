@@ -25,6 +25,7 @@
 //! ```
 
 pub mod actions;
+pub mod autonomy;
 pub mod error;
 pub mod evaluators;
 pub mod providers;
@@ -182,6 +183,9 @@ fn get_actions(config: &CapabilityConfig) -> Vec<Box<dyn Action>> {
     if config.enable_extended {
         result.extend(extended_actions());
     }
+    if config.enable_autonomy {
+        result.extend(autonomy_actions());
+    }
 
     result
 }
@@ -201,6 +205,9 @@ fn get_providers(config: &CapabilityConfig) -> Vec<Box<dyn Provider>> {
     if config.enable_extended {
         result.extend(extended_providers());
     }
+    if config.enable_autonomy {
+        result.extend(autonomy_providers());
+    }
 
     result
 }
@@ -215,6 +222,7 @@ fn get_evaluators(config: &CapabilityConfig) -> Vec<Box<dyn Evaluator>> {
     if config.enable_extended {
         result.extend(extended_evaluators());
     }
+    // Autonomy has no evaluators currently
 
     result
 }
@@ -290,6 +298,25 @@ fn extended_providers() -> Vec<Box<dyn Provider>> {
 fn extended_evaluators() -> Vec<Box<dyn Evaluator>> {
     vec![
         Box::new(evaluators::ReflectionEvaluator),
+    ]
+}
+
+// ============================================================================
+// Autonomy capabilities - opt-in
+// ============================================================================
+
+/// Autonomy actions: SEND_TO_ADMIN
+fn autonomy_actions() -> Vec<Box<dyn Action>> {
+    vec![
+        Box::new(autonomy::SendToAdminAction),
+    ]
+}
+
+/// Autonomy providers: ADMIN_CHAT_HISTORY, AUTONOMY_STATUS
+fn autonomy_providers() -> Vec<Box<dyn Provider>> {
+    vec![
+        Box::new(autonomy::AdminChatProvider),
+        Box::new(autonomy::AutonomyStatusProvider),
     ]
 }
 

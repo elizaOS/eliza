@@ -1,0 +1,258 @@
+/**
+ * BlueSky API client using AT Protocol.
+ */
+
+import { BskyAgent, RichText } from "@atproto/api";
+import { logger } from "@elizaos/core";
+import { LRUCache } from "lru-cache";
+import type {
+  BlueSkyPost,
+  BlueSkyProfile,
+  TimelineRequest,
+  TimelineResponse,
+  CreatePostRequest,
+  BlueSkySession,
+  BlueSkyNotification,
+  BlueSkyConversation,
+  BlueSkyMessage,
+  SendMessageRequest,
+} from "./types";
+import {
+  CACHE_TTL,
+  CACHE_SIZE,
+  BLUESKY_CHAT_SERVICE_DID,
+  BlueSkyError,
+} from "./types";
+
+export interface BlueSkyClientConfig {
+  service: string;
+  handle: string;
+  password: string;
+  dryRun: boolean;
+}
+
+export class BlueSkyClient {
+  private readonly agent: BskyAgent;
+  private session: BlueSkySession | null = null;
+  private readonly profileCache: LRUCache<string, BlueSkyProfile>;
+
+  constructor(private readonly config: BlueSkyClientConfig) {
+    this.agent = new BskyAgent({ service: config.service });
+    this.profileCache = new LRUCache({
+      max: CACHE_SIZE.PROFILE,
+      ttl: CACHE_TTL.PROFILE,
+    });
+  }
+
+  async authenticate(): Promise<BlueSkySession> {
+    const response = await this.agent.login({
+      identifier: this.config.handle,
+      password: this.config.password,
+    });
+
+    if (!response.success) {
+      throw new BlueSkyError("Authentication failed", "AUTH_FAILED");
+    }
+
+    this.session = {
+      did: response.data.did,
+      handle: response.data.handle,
+      email: response.data.email,
+      accessJwt: response.data.accessJwt,
+      refreshJwt: response.data.refreshJwt,
+    };
+
+    logger.info("Authenticated with BlueSky", { handle: this.session.handle });
+    return this.session;
+  }
+
+  getSession(): BlueSkySession | null {
+    return this.session;
+  }
+
+  async getProfile(handle: string): Promise<BlueSkyProfile> {
+    const cached = this.profileCache.get(handle);
+    if (cached) return cached;
+
+    const response = await this.agent.getProfile({ actor: handle });
+    const profile: BlueSkyProfile = {
+      did: response.data.did,
+      handle: response.data.handle,
+      displayName: response.data.displayName,
+      description: response.data.description,
+      avatar: response.data.avatar,
+      banner: response.data.banner,
+      followersCount: response.data.followersCount,
+      followsCount: response.data.followsCount,
+      postsCount: response.data.postsCount,
+      indexedAt: response.data.indexedAt,
+      createdAt: response.data.createdAt,
+    };
+
+    this.profileCache.set(handle, profile);
+    return profile;
+  }
+
+  async getTimeline(params: TimelineRequest = {}): Promise<TimelineResponse> {
+    const response = await this.agent.getTimeline({
+      algorithm: params.algorithm,
+      limit: params.limit ?? 50,
+      cursor: params.cursor,
+    });
+
+    return {
+      cursor: response.data.cursor,
+      feed: response.data.feed.map((item) => ({
+        post: item.post as BlueSkyPost,
+        reply: item.reply ? {
+          root: item.reply.root as BlueSkyPost,
+          parent: item.reply.parent as BlueSkyPost,
+        } : undefined,
+        reason: item.reason as Record<string, unknown>,
+      })),
+    };
+  }
+
+  async sendPost(request: CreatePostRequest): Promise<BlueSkyPost> {
+    if (this.config.dryRun) {
+      logger.info("Dry run: would create post", { text: request.content.text });
+      return this.mockPost(request.content.text);
+    }
+
+    const rt = new RichText({ text: request.content.text });
+    await rt.detectFacets(this.agent);
+
+    const record: Record<string, unknown> = {
+      $type: "app.bsky.feed.post",
+      text: rt.text,
+      facets: rt.facets,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (request.replyTo) {
+      record.reply = { root: request.replyTo, parent: request.replyTo };
+    }
+
+    if (request.content.embed) {
+      record.embed = request.content.embed;
+    }
+
+    const response = await this.agent.post(record);
+    const thread = await this.agent.getPostThread({ uri: response.uri, depth: 0 });
+
+    if (thread.data.thread.$type !== "app.bsky.feed.defs#threadViewPost") {
+      throw new BlueSkyError("Failed to retrieve created post", "POST_CREATE_FAILED");
+    }
+
+    return (thread.data.thread as { post: BlueSkyPost }).post;
+  }
+
+  async deletePost(uri: string): Promise<void> {
+    if (this.config.dryRun) {
+      logger.info("Dry run: would delete post", { uri });
+      return;
+    }
+    await this.agent.deletePost(uri);
+  }
+
+  async likePost(uri: string, cid: string): Promise<void> {
+    if (this.config.dryRun) {
+      logger.info("Dry run: would like post", { uri });
+      return;
+    }
+    await this.agent.like(uri, cid);
+  }
+
+  async repost(uri: string, cid: string): Promise<void> {
+    if (this.config.dryRun) {
+      logger.info("Dry run: would repost", { uri });
+      return;
+    }
+    await this.agent.repost(uri, cid);
+  }
+
+  async getNotifications(limit = 50, cursor?: string): Promise<{
+    notifications: BlueSkyNotification[];
+    cursor?: string;
+  }> {
+    const response = await this.agent.listNotifications({ limit, cursor });
+    return {
+      notifications: response.data.notifications as BlueSkyNotification[],
+      cursor: response.data.cursor,
+    };
+  }
+
+  async updateSeenNotifications(): Promise<void> {
+    await this.agent.updateSeenNotifications();
+  }
+
+  async getConversations(limit = 50, cursor?: string): Promise<{
+    conversations: BlueSkyConversation[];
+    cursor?: string;
+  }> {
+    const response = await this.agent.api.chat.bsky.convo.listConvos(
+      { limit, cursor },
+      { headers: { "atproto-proxy": BLUESKY_CHAT_SERVICE_DID } }
+    );
+    return {
+      conversations: response.data.convos as BlueSkyConversation[],
+      cursor: response.data.cursor,
+    };
+  }
+
+  async getMessages(convoId: string, limit = 50, cursor?: string): Promise<{
+    messages: BlueSkyMessage[];
+    cursor?: string;
+  }> {
+    const response = await this.agent.api.chat.bsky.convo.getMessages(
+      { convoId, limit, cursor },
+      { headers: { "atproto-proxy": BLUESKY_CHAT_SERVICE_DID } }
+    );
+    return {
+      messages: response.data.messages as BlueSkyMessage[],
+      cursor: response.data.cursor,
+    };
+  }
+
+  async sendMessage(request: SendMessageRequest): Promise<BlueSkyMessage> {
+    if (this.config.dryRun) {
+      logger.info("Dry run: would send message", { convoId: request.convoId });
+      return this.mockMessage(request.message.text ?? "");
+    }
+
+    const response = await this.agent.api.chat.bsky.convo.sendMessage(
+      { convoId: request.convoId, message: { text: request.message.text ?? "" } },
+      { headers: { "atproto-proxy": BLUESKY_CHAT_SERVICE_DID } }
+    );
+    return response.data as BlueSkyMessage;
+  }
+
+  async cleanup(): Promise<void> {
+    this.profileCache.clear();
+    this.session = null;
+  }
+
+  private mockPost(text: string): BlueSkyPost {
+    const now = new Date().toISOString();
+    return {
+      uri: `mock://post/${Date.now()}`,
+      cid: `mock-cid-${Date.now()}`,
+      author: {
+        did: this.session?.did ?? "did:plc:mock",
+        handle: this.session?.handle ?? "mock.handle",
+      },
+      record: { $type: "app.bsky.feed.post", text, createdAt: now },
+      indexedAt: now,
+    };
+  }
+
+  private mockMessage(text: string): BlueSkyMessage {
+    return {
+      id: `mock-msg-${Date.now()}`,
+      rev: "1",
+      text,
+      sender: { did: this.session?.did ?? "did:plc:mock" },
+      sentAt: new Date().toISOString(),
+    };
+  }
+}

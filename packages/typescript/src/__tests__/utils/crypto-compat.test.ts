@@ -3,7 +3,7 @@
  * Verifies cross-platform cryptographic operations work correctly
  */
 
-import { describe, expect, it } from "bun:test";
+import {  describe, expect, it  } from "vitest";
 import { BufferUtils } from "../../utils/buffer";
 import {
   createCipheriv,

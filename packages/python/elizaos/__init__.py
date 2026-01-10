@@ -8,6 +8,17 @@ including the AgentRuntime, plugin system, and all core types.
 from elizaos.character import parse_character, validate_character_config
 from elizaos.logger import Logger, create_logger
 from elizaos.plugin import load_plugin, register_plugin
+from elizaos.prompts import (
+    BOOLEAN_FOOTER,
+    CHOOSE_OPTION_TEMPLATE,
+    IMAGE_GENERATION_TEMPLATE,
+    MESSAGE_HANDLER_TEMPLATE,
+    REFLECTION_TEMPLATE,
+    REPLY_TEMPLATE,
+    SHOULD_RESPOND_TEMPLATE,
+    UPDATE_ENTITY_TEMPLATE,
+    UPDATE_SETTINGS_TEMPLATE,
+)
 from elizaos.runtime import AgentRuntime
 from elizaos.services import DefaultMessageService, IMessageService, MessageProcessingResult
 from elizaos.types import (
@@ -36,6 +47,7 @@ from elizaos.types import (
     FragmentMetadata,
     HandlerCallback,
     HandlerOptions,
+    LLMMode,
     Log,
     Media,
     Memory,
@@ -167,6 +179,7 @@ __all__ = [
     # Types - Logging
     "Log",
     # Types - Model
+    "LLMMode",
     "ModelType",
     # Logger
     "create_logger",
@@ -181,4 +194,14 @@ __all__ = [
     "DefaultMessageService",
     "IMessageService",
     "MessageProcessingResult",
+    # Prompts
+    "BOOLEAN_FOOTER",
+    "CHOOSE_OPTION_TEMPLATE",
+    "IMAGE_GENERATION_TEMPLATE",
+    "MESSAGE_HANDLER_TEMPLATE",
+    "REFLECTION_TEMPLATE",
+    "REPLY_TEMPLATE",
+    "SHOULD_RESPOND_TEMPLATE",
+    "UPDATE_ENTITY_TEMPLATE",
+    "UPDATE_SETTINGS_TEMPLATE",
 ]

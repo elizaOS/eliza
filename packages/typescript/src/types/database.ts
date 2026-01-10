@@ -35,6 +35,10 @@ export interface BaseLogBody {
   messageId?: UUID;
   roomId?: UUID;
   entityId?: UUID;
+  startTime?: number;
+  endTime?: number;
+  duration?: number;
+  source?: string;
   metadata?: Record<string, LogBodyValue>;
 }
 
@@ -71,6 +75,7 @@ export interface ActionLogPrompt {
  */
 export interface ActionLogBody extends BaseLogBody {
   action?: string;
+  actionName?: string;
   actionId?: UUID | string;
   message?: string;
   messageId?: UUID;
@@ -126,6 +131,7 @@ export interface EmbeddingLogBody extends BaseLogBody {
   status?: string;
   memoryId?: string;
   duration?: number;
+  error?: string | Error;
 }
 
 /**

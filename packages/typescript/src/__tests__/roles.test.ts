@@ -1,13 +1,10 @@
-import {
-  afterEach,
+import { afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  type MockFunction,
-  mock,
-  spyOn,
-} from "bun:test";
+  vi,
+  vi } from "vitest";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";
@@ -19,10 +16,10 @@ describe("roles utilities", () => {
   let getAllWorldsMock: MockFunction<() => Promise<World[]>>;
 
   beforeEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
 
     // Set up scoped mocks for this test
-    spyOn(entities, "createUniqueUuid").mockImplementation(
+    vi.spyOn(entities, "createUniqueUuid").mockImplementation(
       (_runtime: IAgentRuntime, serverId: string) =>
         `unique-${serverId}` as UUID,
     );
@@ -36,13 +33,13 @@ describe("roles utilities", () => {
             method as keyof typeof logger_module.logger
           ] === "function"
         ) {
-          spyOn(
+          vi.spyOn(
             logger_module.logger,
             method as keyof typeof logger_module.logger,
           ).mockImplementation(() => {});
         } else {
           logger_module.logger[method as keyof typeof logger_module.logger] =
-            mock(
+            vi.fn(
               () => {},
             ) as (typeof logger_module.logger)[keyof typeof logger_module.logger];
         }
@@ -71,7 +68,7 @@ describe("roles utilities", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   describe("getUserServerRole", () => {

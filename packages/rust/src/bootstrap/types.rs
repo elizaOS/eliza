@@ -12,6 +12,7 @@ use uuid::Uuid;
 ///
 /// - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
 /// - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+/// - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
 #[derive(Debug, Clone, Default)]
 pub struct CapabilityConfig {
     /// Disable basic capabilities (default: false)
@@ -20,6 +21,8 @@ pub struct CapabilityConfig {
     pub enable_extended: bool,
     /// Skip the character provider (used for anonymous agents without a character file)
     pub skip_character_provider: bool,
+    /// Enable autonomy capabilities (default: false)
+    pub enable_autonomy: bool,
 }
 
 impl CapabilityConfig {
@@ -39,6 +42,7 @@ impl CapabilityConfig {
             disable_basic: false,
             enable_extended: true,
             skip_character_provider: false,
+            enable_autonomy: false,
         }
     }
 
@@ -48,6 +52,7 @@ impl CapabilityConfig {
             disable_basic: true,
             enable_extended: true,
             skip_character_provider: false,
+            enable_autonomy: false,
         }
     }
 
@@ -57,6 +62,27 @@ impl CapabilityConfig {
             disable_basic: false,
             enable_extended: false,
             skip_character_provider: true,
+            enable_autonomy: false,
+        }
+    }
+
+    /// Create a config with autonomy enabled
+    pub fn with_autonomy() -> Self {
+        Self {
+            disable_basic: false,
+            enable_extended: false,
+            skip_character_provider: false,
+            enable_autonomy: true,
+        }
+    }
+
+    /// Create a config with extended and autonomy enabled
+    pub fn with_extended_and_autonomy() -> Self {
+        Self {
+            disable_basic: false,
+            enable_extended: true,
+            skip_character_provider: false,
+            enable_autonomy: true,
         }
     }
 }

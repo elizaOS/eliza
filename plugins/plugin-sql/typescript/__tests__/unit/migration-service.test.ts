@@ -1,18 +1,18 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Plugin } from "@elizaos/core";
 import { DatabaseMigrationService } from "../../migration-service";
 
 // Mock the logger to avoid console output during tests
 const mockLogger = {
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
-  debug: mock(() => {}),
+  info: vi.fn(() => {}),
+  warn: vi.fn(() => {}),
+  error: vi.fn(() => {}),
+  debug: vi.fn(() => {}),
 };
 
-// In bun:test, we'll use simpler mocking approaches
+// In vitest, we use vi.fn() for mocking
 // Mock the custom migrator
-const mockRunPluginMigrations = mock(() => Promise.resolve());
+const mockRunPluginMigrations = vi.fn(() => Promise.resolve());
 
 // For this test, we'll spy on the actual logger rather than mock the entire module
 
@@ -30,12 +30,12 @@ describe("DatabaseMigrationService", () => {
     // Create mock database
     mockDb = {
       query: {
-        agentTable: { findFirst: mock(() => {}) },
-        entityTable: { findFirst: mock(() => {}) },
-        memoryTable: { findFirst: mock(() => {}) },
+        agentTable: { findFirst: vi.fn(() => {}) },
+        entityTable: { findFirst: vi.fn(() => {}) },
+        memoryTable: { findFirst: vi.fn(() => {}) },
       },
-      transaction: mock(() => {}),
-      execute: mock(() => Promise.resolve({ rows: [] })),
+      transaction: vi.fn(() => {}),
+      execute: vi.fn(() => Promise.resolve({ rows: [] })),
     };
 
     migrationService = new DatabaseMigrationService();
@@ -52,7 +52,7 @@ describe("DatabaseMigrationService", () => {
     it("should initialize with database", async () => {
       await migrationService.initializeWithDatabase(mockDb);
 
-      // In bun:test we focus on state rather than log assertions
+      // In vitest we can use vi.spyOn() for log assertions if needed
       // Access private db property for testing
       const testService = migrationService as unknown as { db: typeof mockDb };
       expect(testService.db).toBe(mockDb);

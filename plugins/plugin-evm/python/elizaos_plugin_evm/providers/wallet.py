@@ -3,6 +3,8 @@ EVM Wallet Provider using web3.py.
 """
 
 import logging
+import secrets
+from dataclasses import dataclass
 from decimal import Decimal
 
 from eth_account import Account
@@ -28,24 +30,75 @@ from elizaos_plugin_evm.types import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class GeneratedKey:
+    """Result of auto-generating a private key."""
+
+    private_key: str
+    """The generated private key (hex-encoded with 0x prefix)."""
+
+    address: str
+    """The corresponding wallet address."""
+
+
+def generate_private_key() -> GeneratedKey:
+    """
+    Generate a new random private key.
+
+    This function generates a cryptographically secure random private key
+    that can be used to initialize a wallet provider.
+
+    Returns:
+        GeneratedKey containing the private key and address.
+
+    Example:
+        >>> generated = generate_private_key()
+        >>> print(f"Address: {generated.address}")
+        >>> print(f"Private key: {generated.private_key}")
+    """
+    # Generate 32 random bytes for the private key
+    private_key_bytes = secrets.token_bytes(32)
+    private_key = f"0x{private_key_bytes.hex()}"
+
+    # Derive the account to get the address
+    account = Account.from_key(private_key)
+
+    logger.warning("═" * 67)
+    logger.warning("⚠️  No private key provided - generating new wallet")
+    logger.warning(f"📍 New wallet address: {account.address}")
+    logger.warning("💾 Please save the private key securely!")
+    logger.warning("⚠️  IMPORTANT: Back up your private key for production use!")
+    logger.warning("═" * 67)
+
+    return GeneratedKey(private_key=private_key, address=account.address)
+
+
 class EVMWalletProvider:
     """EVM wallet provider using web3.py."""
 
-    def __init__(self, private_key: str) -> None:
+    def __init__(self, private_key: str | None = None) -> None:
         """
         Initialize the wallet provider.
 
+        If no private key is provided, a new one will be generated automatically
+        and a warning will be logged.
+
         Args:
             private_key: The private key in hex format (with or without 0x prefix).
+                         If None or empty, a new key will be generated.
 
         Raises:
-            EVMError: If the private key is invalid.
+            EVMError: If the private key is invalid (but not if it's missing).
         """
-        if not private_key:
-            raise EVMError.invalid_params("Private key is required")
+        self._generated_key: GeneratedKey | None = None
 
-        # Normalize the private key
-        key = private_key if private_key.startswith("0x") else f"0x{private_key}"
+        if not private_key:
+            # Auto-generate a new private key
+            self._generated_key = generate_private_key()
+            key = self._generated_key.private_key
+        else:
+            # Normalize the private key
+            key = private_key if private_key.startswith("0x") else f"0x{private_key}"
 
         try:
             self._account: LocalAccount = Account.from_key(key)
@@ -53,6 +106,16 @@ class EVMWalletProvider:
             raise EVMError.invalid_params(f"Invalid private key: {e}") from e
 
         self._clients: dict[SupportedChain, AsyncWeb3] = {}
+
+    @property
+    def was_auto_generated(self) -> bool:
+        """Check if the private key was auto-generated."""
+        return self._generated_key is not None
+
+    @property
+    def generated_key(self) -> GeneratedKey | None:
+        """Get the generated key info if auto-generated, None otherwise."""
+        return self._generated_key
 
     @property
     def address(self) -> str:

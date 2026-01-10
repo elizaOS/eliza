@@ -57,7 +57,7 @@ jobs:
             **✅ REQUIRED:**
             - TypeScript types (no 'any')
             - Tests with bun test ONLY
-            - Use @elizaos/core imports (not packages/core)
+            - Use @elizaos/core imports (not packages/typescript)
             - Functional code (no classes)
             - Error handling
 

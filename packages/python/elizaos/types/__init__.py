@@ -103,6 +103,7 @@ from elizaos.types.model import (
     ImageDescriptionParams,
     ImageDescriptionResult,
     ImageGenerationParams,
+    LLMMode,
     ModelHandler,
     ModelSettings,
     ModelType,
@@ -383,6 +384,7 @@ __all__ = [
     "DbConnection",
     "VECTOR_DIMS",
     # Model
+    "LLMMode",
     "ModelType",
     "ModelTypeName",
     "ModelSettings",

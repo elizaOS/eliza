@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import {  beforeEach, describe, expect, it  } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { AgentRuntime } from "../runtime";
 import { ServiceType, type UUID } from "../types";

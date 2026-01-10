@@ -20,6 +20,7 @@ class CapabilityConfig:
     
     - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
     - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+    - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
     """
     
     disable_basic: bool = False
@@ -30,6 +31,9 @@ class CapabilityConfig:
     
     skip_character_provider: bool = False
     """Skip the character provider (used for anonymous agents without a character file)"""
+    
+    enable_autonomy: bool = False
+    """Enable autonomy capabilities (default: False)"""
 
 
 class EvaluatorResult(BaseModel):

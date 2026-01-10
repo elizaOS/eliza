@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, jest, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, jest, vi } from "vitest";
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { IAgentRuntime, Memory, State, UUID } from '@elizaos/core';
@@ -6,12 +6,12 @@ import { processKnowledgeAction } from '../src/actions';
 import { KnowledgeService } from '../src/service';
 
 // Mock the fs and path modules
-mock.module('node:fs', () => ({
+vi.mock('node:fs', () => ({
   existsSync: jest.fn(),
   readFileSync: jest.fn(),
 }));
 
-mock.module('node:path', () => ({
+vi.mock('node:path', () => ({
   basename: jest.fn(),
   extname: jest.fn(),
 }));

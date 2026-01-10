@@ -74,7 +74,7 @@ jobs:
       - name: Link packages globally
         run: |
           # Link core package first (everything depends on it)
-          cd packages/core
+          cd packages/typescript
           bun link
           cd ../..
           echo "Linked @elizaos/core package globally"
@@ -132,7 +132,7 @@ jobs:
         run: bun install -g bats
 
       - name: Run CLI TypeScript tests
-        run: cross-env bun test tests/commands/
+        run: cross-env vitest run tests/commands/
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true

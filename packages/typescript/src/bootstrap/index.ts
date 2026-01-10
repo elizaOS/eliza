@@ -1,5 +1,7 @@
 import {
   type ActionEventPayload,
+  type ActionLogBody,
+  type BaseLogBody,
   ChannelType,
   type Content,
   ContentType,
@@ -16,7 +18,9 @@ import {
   logger,
   type Media,
   type Memory,
+  MemoryType,
   type MentionContext,
+  type MessageMetadata,
   type MessagePayload,
   ModelType,
   messageHandlerTemplate,
@@ -35,8 +39,12 @@ import { v4 } from "uuid";
 import * as actions from "./actions/index.ts";
 import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
+import * as autonomy from "./autonomy/index.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
+import { FollowUpService } from "../services/followUp.ts";
+import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
+import type { Service } from "../types/service.ts";
 
 /** Shape of image description XML response */
 interface ImageDescriptionXml {
@@ -442,7 +450,7 @@ export function shouldRespond(
   const sourceStr = (messageContentSource && messageContentSource.toLowerCase()) || "";
 
   // 1. DM/VOICE_DM/API channels: always respond (private channels)
-  if (respondChannels.has(roomType)) {
+  if (roomType && respondChannels.has(roomType)) {
     return {
       shouldRespond: true,
       skipEvaluation: true,
@@ -563,16 +571,16 @@ const postGeneratedHandler = async ({
     worldId,
   });
 
-  const message = {
+  const message: Memory = {
     id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
-    roomId,
-    content: {},
+    roomId: roomId as UUID,
+    content: {} as Content,
     metadata: {
       entityName: runtime.character.name,
-      type: "message",
-    },
+      type: MemoryType.MESSAGE,
+    } as MessageMetadata & { entityName: string },
   };
 
   // generate thought of which providers to use using messageHandlerTemplate
@@ -612,11 +620,9 @@ const postGeneratedHandler = async ({
   // Retry if missing required fields
   let retries = 0;
   const maxRetries = 3;
-  const responseContentThought = responseContent && responseContent.thought;
-  const responseContentActions = responseContent && responseContent.actions;
   while (
     retries < maxRetries &&
-    (!responseContentThought || !responseContentActions)
+    (!responseContent?.thought || !responseContent?.actions)
   ) {
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
@@ -665,7 +671,7 @@ const postGeneratedHandler = async ({
   }
 
   // update stats with correct providers
-  const responseContentProviders = responseContent && responseContent.providers;
+  const responseContentProviders = responseContent?.providers;
   state = await runtime.composeState(message, responseContentProviders);
 
   // Generate prompt for tweet content
@@ -1266,15 +1272,15 @@ const events: PluginEvents = {
           roomId: payload.roomId,
           type: "action_event",
           body: {
-            runId: content?.runId ?? "",
-            actionId: content?.actionId ?? "",
+            runId: (content?.runId as string | undefined) ?? "",
+            actionId: (content?.actionId as string | undefined) ?? "",
             actionName: actionName,
             roomId: payload.roomId,
             messageId: payload.messageId,
             timestamp: Date.now(),
-            planStep: content?.planStep ?? "",
+            planStep: (content?.planStep as string | undefined) ?? "",
             source: "actionHandler",
-          },
+          } as ActionLogBody,
         });
         logger.debug(
           {
@@ -1388,7 +1394,7 @@ const events: PluginEvents = {
             entityId: payload.entityId,
             startTime: payload.startTime,
             source: payload.source || "unknown",
-          },
+          } as BaseLogBody,
         });
         logger.debug(
           {
@@ -1429,7 +1435,7 @@ const events: PluginEvents = {
             duration: payload.duration,
             error: payload.error,
             source: payload.source || "unknown",
-          },
+          } as BaseLogBody,
         });
         logger.debug(
           {
@@ -1471,7 +1477,7 @@ const events: PluginEvents = {
             duration: payload.duration,
             error: payload.error,
             source: payload.source || "unknown",
-          },
+          } as BaseLogBody,
         });
         logger.debug(
           {
@@ -1516,6 +1522,7 @@ const events: PluginEvents = {
  * Configuration for bootstrap capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
  * - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+ * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
  */
 export interface CapabilityConfig {
   /** Disable basic capabilities (default: false) */
@@ -1524,6 +1531,8 @@ export interface CapabilityConfig {
   enableExtended?: boolean;
   /** Skip the character provider (used for anonymous agents without a character file) */
   skipCharacterProvider?: boolean;
+  /** Enable autonomy capabilities (default: false) */
+  enableAutonomy?: boolean;
 }
 
 // Basic capabilities - included by default
@@ -1547,33 +1556,59 @@ const basic = {
     actions.noneAction,
   ],
   evaluators: [],
-  services: [TaskService, EmbeddingGenerationService],
+  services: [TaskService, EmbeddingGenerationService] as unknown as (typeof Service)[],
 };
 
 // Extended capabilities - opt-in
+// Includes rolodex/contact management, relationship tracking, and follow-up scheduling
 const extended = {
   providers: [
     providers.choiceProvider,
+    providers.contactsProvider,
     providers.factsProvider,
+    providers.followUpsProvider,
     providers.knowledgeProvider,
     providers.relationshipsProvider,
     providers.roleProvider,
     providers.settingsProvider,
   ],
   actions: [
+    actions.addContactAction,
     actions.choiceAction,
     actions.followRoomAction,
-    actions.unfollowRoomAction,
+    actions.generateImageAction,
     actions.muteRoomAction,
-    actions.unmuteRoomAction,
+    actions.removeContactAction,
+    actions.scheduleFollowUpAction,
+    actions.searchContactsAction,
     actions.sendMessageAction,
+    actions.unfollowRoomAction,
+    actions.unmuteRoomAction,
+    actions.updateContactAction,
     actions.updateEntityAction,
     actions.updateRoleAction,
     actions.updateSettingsAction,
-    actions.generateImageAction,
   ],
-  evaluators: [evaluators.reflectionEvaluator],
-  services: [],
+  evaluators: [
+    evaluators.reflectionEvaluator,
+    evaluators.relationshipExtractionEvaluator,
+  ],
+  services: [RolodexService, FollowUpService] as unknown as (typeof Service)[],
+};
+
+// Autonomy capabilities - opt-in
+// Provides autonomous operation with continuous agent thinking loop
+const autonomyCapabilities = {
+  providers: [
+    autonomy.adminChatProvider,
+    autonomy.autonomyStatusProvider,
+  ],
+  actions: [
+    autonomy.sendToAdminAction,
+  ],
+  evaluators: [],
+  services: [autonomy.AutonomyService] as unknown as (typeof Service)[],
+  routes: autonomy.autonomyRoutes,
 };
 
 /**
@@ -1591,18 +1626,25 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
     actions: [
       ...(config.disableBasic ? [] : basic.actions),
       ...(config.enableExtended ? extended.actions : []),
+      ...(config.enableAutonomy ? autonomyCapabilities.actions : []),
     ],
     providers: [
       ...(config.disableBasic ? [] : basicProviders),
       ...(config.enableExtended ? extended.providers : []),
+      ...(config.enableAutonomy ? autonomyCapabilities.providers : []),
     ],
     evaluators: [
       ...(config.disableBasic ? [] : basic.evaluators),
       ...(config.enableExtended ? extended.evaluators : []),
+      ...(config.enableAutonomy ? autonomyCapabilities.evaluators : []),
     ],
     services: [
       ...(config.disableBasic ? [] : basic.services),
       ...(config.enableExtended ? extended.services : []),
+      ...(config.enableAutonomy ? autonomyCapabilities.services : []),
+    ],
+    routes: [
+      ...(config.enableAutonomy ? autonomyCapabilities.routes : []),
     ],
     events,
   };
@@ -1614,4 +1656,7 @@ export const bootstrapPlugin: Plugin = createBootstrapPlugin();
 export default bootstrapPlugin;
 
 // Export capability arrays for direct access if needed
-export { basic as basicCapabilities, extended as extendedCapabilities };
+export { basic as basicCapabilities, extended as extendedCapabilities, autonomyCapabilities };
+
+// Export autonomy components for direct access
+export * from "./autonomy/index.ts";

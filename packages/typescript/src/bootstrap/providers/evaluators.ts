@@ -4,6 +4,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderValue,
   State,
 } from "@elizaos/core";
 import { addHeader } from "@elizaos/core";
@@ -127,7 +128,6 @@ export const evaluatorsProvider: Provider = {
         : "";
 
     const values = {
-      evaluatorsData,
       evaluators,
       evaluatorNames,
       evaluatorExamples,
@@ -138,6 +138,9 @@ export const evaluatorsProvider: Provider = {
 
     return {
       values,
+      data: {
+        evaluatorsData: evaluatorsData as unknown as ProviderValue,
+      },
       text,
     };
   },

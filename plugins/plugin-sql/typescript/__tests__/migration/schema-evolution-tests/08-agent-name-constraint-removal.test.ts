@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import {  beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";

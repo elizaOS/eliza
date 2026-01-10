@@ -2,7 +2,7 @@
  * Tests for SimpleHNSW
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import {  describe, it, expect, beforeEach  } from "vitest";
 import { SimpleHNSW } from "../hnsw";
 
 describe("SimpleHNSW", () => {

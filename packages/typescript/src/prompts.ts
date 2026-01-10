@@ -1,3 +1,18 @@
+/**
+ * Prompt templates for elizaOS
+ *
+ * NOTE: These prompts are now sourced from the shared @elizaos/prompts package.
+ * This file re-exports them for backwards compatibility.
+ * To modify prompts, edit the .txt files in packages/prompts/prompts/ and run:
+ *   cd packages/prompts && npm run build
+ */
+
+// Re-export all prompts from the shared prompts package
+// When the prompts package is properly integrated, this will become:
+// export * from '@elizaos/prompts';
+
+// For now, we define the prompts inline but they match the shared package format
+
 export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
 
 <providers>
@@ -248,14 +263,14 @@ Summarize what the assistant has done so far and provide a final response to the
 {{messageDirections}}
 
 # Conversation Summary
-Below is the user’s original request and conversation so far:
+Below is the user's original request and conversation so far:
 {{recentMessages}}
 
 # Execution Trace
 Here are the actions taken by the assistant to fulfill the request:
 {{actionResults}}
 
-# Assistant’s Last Reasoning Step
+# Assistant's Last Reasoning Step
 {{recentMessage}}
 
 # Instructions
@@ -270,3 +285,242 @@ Here are the actions taken by the assistant to fulfill the request:
 </response>
 </output>
 `;
+
+// Shared action templates
+export const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
+
+{{providers}}
+
+# Instructions: Write the next message for {{agentName}}.
+"thought" should be a short description of what the agent is thinking about and planning.
+"text" should be the next message for {{agentName}} which they will send to the conversation.
+
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
+
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the XML response format without any preamble or explanation.
+
+Respond using XML format like this:
+<response>
+    <thought>Your thought here</thought>
+    <text>Your message here</text>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const chooseOptionTemplate = `# Task: Choose an option from the available choices.
+
+{{providers}}
+
+# Available Options:
+{{options}}
+
+# Instructions: 
+Analyze the options and select the most appropriate one based on the current context.
+Provide your reasoning and the selected option ID.
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the selection</thought>
+    <selected_id>The ID of the selected option</selected_id>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+export const imageGenerationTemplate = `# Task: Generate an image prompt for {{agentName}}.
+
+{{providers}}
+
+# Instructions:
+Based on the conversation, create a detailed prompt for image generation.
+The prompt should be specific, descriptive, and suitable for AI image generation.
+
+# Recent conversation:
+{{recentMessages}}
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the image prompt</thought>
+    <prompt>Detailed image generation prompt</prompt>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+export const reflectionTemplate = `# Task: Reflect on recent agent behavior and interactions.
+
+{{providers}}
+
+# Recent Interactions:
+{{recentInteractions}}
+
+# Instructions:
+Analyze the agent's recent behavior and interactions. Consider:
+1. Was the communication clear and helpful?
+2. Were responses appropriate for the context?
+3. Were any mistakes made?
+4. What could be improved?
+
+Respond using XML format like this:
+<response>
+    <thought>Your detailed analysis</thought>
+    <quality_score>Score 0-100 for overall quality</quality_score>
+    <strengths>What went well</strengths>
+    <improvements>What could be improved</improvements>
+    <learnings>Key takeaways for future interactions</learnings>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+export const updateSettingsTemplate = `# Task: Update settings based on the request.
+
+{{providers}}
+
+# Current Settings:
+{{settings}}
+
+# Instructions:
+Based on the request, determine which settings to update.
+Only update settings that the user has explicitly requested.
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the settings changes</thought>
+    <updates>
+        <update>
+            <key>setting_key</key>
+            <value>new_value</value>
+        </update>
+    </updates>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+export const updateEntityTemplate = `# Task: Update entity information.
+
+{{providers}}
+
+# Current Entity Information:
+{{entityInfo}}
+
+# Instructions:
+Based on the request, determine what information about the entity should be updated.
+Only update fields that the user has explicitly requested to change.
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the entity update</thought>
+    <entity_id>The entity ID to update</entity_id>
+    <updates>
+        <field>
+            <name>field_name</name>
+            <value>new_value</value>
+        </field>
+    </updates>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+
+export const optionExtractionTemplate = `# Task: Extract selected task and option from user message
+
+# Available Tasks:
+{{tasks}}
+
+# Recent Messages:
+{{recentMessages}}
+
+# Instructions:
+1. Review the user's message and identify which task and option they are selecting
+2. Match against the available tasks and their options, including ABORT
+3. Return the task ID (shortened UUID) and selected option name exactly as listed above
+4. If no clear selection is made, return null for both fields
+
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Return in XML format:
+<response>
+  <taskId>string_or_null</taskId>
+  <selectedOption>OPTION_NAME_or_null</selectedOption>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+// UPPERCASE aliases for backwards compatibility
+export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
+export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
+export const POST_CREATION_TEMPLATE = postCreationTemplate;
+export const BOOLEAN_FOOTER = booleanFooter;
+export const IMAGE_DESCRIPTION_TEMPLATE = imageDescriptionTemplate;
+export const MULTI_STEP_DECISION_TEMPLATE = multiStepDecisionTemplate;
+export const MULTI_STEP_SUMMARY_TEMPLATE = multiStepSummaryTemplate;
+export const REPLY_TEMPLATE = replyTemplate;
+export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
+export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
+export const REFLECTION_TEMPLATE = reflectionTemplate;
+export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
+export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
+export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
+
+export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
+
+{{providers}}
+
+# Examples:
+{{evaluationExamples}}
+
+# Entities in Room
+{{entitiesInRoom}}
+
+# Existing Relationships
+{{existingRelationships}}
+
+# Current Context:
+Agent Name: {{agentName}}
+Room Type: {{roomType}}
+Message Sender: {{senderName}} (ID: {{senderId}})
+
+{{recentMessages}}
+
+# Known Facts:
+{{knownFacts}}
+
+# Instructions:
+1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
+2. Extract new facts from the conversation.
+3. Identify and describe relationships between entities.
+  - The sourceEntityId is the UUID of the entity initiating the interaction.
+  - The targetEntityId is the UUID of the entity being interacted with.
+  - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Generate a response in the following format:
+<response>
+  <thought>a self-reflective thought on the conversation</thought>
+  <facts>
+    <fact>
+      <claim>factual statement</claim>
+      <type>fact|opinion|status</type>
+      <in_bio>false</in_bio>
+      <already_known>false</already_known>
+    </fact>
+    <!-- Add more facts as needed -->
+  </facts>
+  <relationships>
+    <relationship>
+      <sourceEntityId>entity_initiating_interaction</sourceEntityId>
+      <targetEntityId>entity_being_interacted_with</targetEntityId>
+      <tags>group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2</tags>
+    </relationship>
+    <!-- Add more relationships as needed -->
+  </relationships>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ActionEventPayload,
   ChannelType,
@@ -22,13 +22,13 @@ describe("Message Handler Logic", () => {
   let _mockCallback: HandlerCallback;
 
   beforeEach(() => {
-    // Note: bun:test doesn't have vi.useFakeTimers(), skipping timer mocking
+    // Note: vitest has vi.useFakeTimers() available, but skipping timer mocking for this test
 
     // Use shared setupActionTest instead of manually creating mocks
     const setup = setupActionTest({
       runtimeOverrides: {
         // Override default runtime methods for testing message handlers
-        useModel: mock().mockImplementation((modelType, params) => {
+        useModel: vi.fn().mockImplementation((modelType, params) => {
           const paramsPrompt = params && params.prompt;
           if (paramsPrompt && typeof paramsPrompt === "string" && paramsPrompt.includes("should respond template")) {
             return Promise.resolve(
@@ -52,7 +52,7 @@ describe("Message Handler Logic", () => {
           return Promise.resolve({});
         }),
 
-        composeState: mock().mockResolvedValue({
+        composeState: vi.fn().mockResolvedValue({
           values: {
             agentName: "Test Agent",
             recentMessages: "User: Test message",
@@ -62,7 +62,7 @@ describe("Message Handler Logic", () => {
           },
         }),
 
-        getRoom: mock().mockResolvedValue({
+        getRoom: vi.fn().mockResolvedValue({
           id: "test-room-id",
           name: "Test Room",
           type: ChannelType.GROUP,
@@ -71,7 +71,7 @@ describe("Message Handler Logic", () => {
           source: "test",
         }),
 
-        getParticipantUserState: mock().mockResolvedValue("ACTIVE"),
+        getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
       },
       messageOverrides: {
         content: {
@@ -99,8 +99,8 @@ describe("Message Handler Logic", () => {
   });
 
   afterEach(() => {
-    // Note: bun:test doesn't need vi.useRealTimers(), skipping
-    mock.restore();
+    // Note: vitest has vi.useRealTimers() available, but skipping for this test
+    vi.clearAllMocks();
   });
 
   it("should register all expected event handlers", () => {
@@ -155,7 +155,7 @@ describe("Reaction Events", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should store reaction messages correctly", async () => {
@@ -189,7 +189,7 @@ describe("Reaction Events", () => {
     expect(reactionHandler).toBeDefined();
 
     // Simulate a duplicate key error
-    mockRuntime.createMemory = mock().mockRejectedValue({ code: "23505" });
+    mockRuntime.createMemory = vi.fn().mockRejectedValue({ code: "23505" });
 
     if (reactionHandler) {
       // Should not throw when handling duplicate error
@@ -215,10 +215,10 @@ describe("World and Entity Events", () => {
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest({
       runtimeOverrides: {
-        ensureConnection: mock().mockResolvedValue(undefined),
-        ensureWorldExists: mock().mockResolvedValue(undefined),
-        ensureRoomExists: mock().mockResolvedValue(undefined),
-        getEntityById: mock().mockImplementation((entityId) => {
+        ensureConnection: vi.fn().mockResolvedValue(undefined),
+        ensureWorldExists: vi.fn().mockResolvedValue(undefined),
+        ensureRoomExists: vi.fn().mockResolvedValue(undefined),
+        getEntityById: vi.fn().mockImplementation((entityId) => {
           return Promise.resolve({
             id: entityId,
             names: ["Test User"],
@@ -233,7 +233,7 @@ describe("World and Entity Events", () => {
             },
           });
         }),
-        updateEntity: mock().mockResolvedValue(undefined),
+        updateEntity: vi.fn().mockResolvedValue(undefined),
       },
     });
 
@@ -241,7 +241,7 @@ describe("World and Entity Events", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should handle ENTITY_JOINED events", async () => {
@@ -310,7 +310,7 @@ describe("World and Entity Events", () => {
     expect(entityLeftHandler).toBeDefined();
 
     // Simulate error in getEntityById
-    mockRuntime.getEntityById = mock().mockRejectedValue(
+    mockRuntime.getEntityById = vi.fn().mockRejectedValue(
       new Error("Entity not found"),
     );
 
@@ -345,7 +345,7 @@ describe("Event Lifecycle Events", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should handle ACTION_STARTED events", async () => {

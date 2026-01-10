@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { ChannelType, stringToUuid, type IAgentRuntime, type Room, type Task, type UUID } from "@elizaos/core";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata, TaskPaneVisibility } from "../types.js";

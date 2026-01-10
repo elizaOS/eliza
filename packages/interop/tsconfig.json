@@ -2,11 +2,14 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./typescript",
+    "rootDir": ".",
     "types": ["node"],
     "noEmit": false,
     "declaration": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@elizaos/core": ["../typescript/src/index.ts"]
+    }
   },
   "include": ["typescript/**/*.ts"],
   "exclude": ["typescript/**/*.test.ts", "node_modules", "dist"]

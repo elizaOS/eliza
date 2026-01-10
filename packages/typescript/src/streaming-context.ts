@@ -4,11 +4,10 @@
  * Follows the OpenTelemetry ContextManager pattern:
  * - Interface for context management
  * - Platform-specific implementations (Node.js AsyncLocalStorage, Browser Stack)
- * - Global singleton configured at startup
+ * - Auto-detected at runtime - no separate entry points needed
  *
  * @see https://opentelemetry.io/docs/languages/js/context/
  */
-import type { UUID } from "./types";
 
 /**
  * Streaming context containing callbacks for streaming lifecycle.
@@ -42,25 +41,95 @@ export interface IStreamingContextManager {
 }
 
 /**
- * Default no-op context manager used before platform-specific manager is configured.
- * Always returns undefined - streaming will not be automatic.
+ * Stack-based context manager for browser environments.
+ * Safe because browser typically has 1 runtime per request.
+ * Supports nested contexts via stack push/pop.
  */
-class NoopContextManager implements IStreamingContextManager {
-  run<T>(_context: StreamingContext | undefined, fn: () => T): T {
-    return fn();
+class StackContextManager implements IStreamingContextManager {
+  private stack: Array<StreamingContext | undefined> = [];
+
+  run<T>(context: StreamingContext | undefined, fn: () => T): T {
+    this.stack.push(context);
+    try {
+      return fn();
+    } finally {
+      this.stack.pop();
+    }
   }
 
   active(): StreamingContext | undefined {
-    return undefined;
+    return this.stack.length > 0
+      ? this.stack[this.stack.length - 1]
+      : undefined;
   }
 }
 
-// Global singleton - will be configured by index.node.ts or index.browser.ts
-let globalContextManager: IStreamingContextManager = new NoopContextManager();
+// Global singleton - auto-configured on first access
+let globalContextManager: IStreamingContextManager | null = null;
+let contextManagerInitialized = false;
+
+/**
+ * Detect if running in Node.js environment
+ */
+function isNodeEnvironment(): boolean {
+  return (
+    typeof process !== "undefined" &&
+    typeof process.versions !== "undefined" &&
+    typeof process.versions.node !== "undefined"
+  );
+}
+
+/**
+ * Create the appropriate context manager for the current environment.
+ * Uses AsyncLocalStorage in Node.js, Stack-based in browser.
+ */
+async function createContextManager(): Promise<IStreamingContextManager> {
+  if (isNodeEnvironment()) {
+    try {
+      // Dynamic import to avoid bundling Node.js code in browser builds
+      const { AsyncLocalStorage } = await import("node:async_hooks");
+      return {
+        storage: new AsyncLocalStorage<StreamingContext | undefined>(),
+        run<T>(context: StreamingContext | undefined, fn: () => T): T {
+          return (this as { storage: InstanceType<typeof AsyncLocalStorage<StreamingContext | undefined>> }).storage.run(context, fn);
+        },
+        active(): StreamingContext | undefined {
+          return (this as { storage: InstanceType<typeof AsyncLocalStorage<StreamingContext | undefined>> }).storage.getStore();
+        },
+      } as IStreamingContextManager & { storage: InstanceType<typeof AsyncLocalStorage<StreamingContext | undefined>> };
+    } catch {
+      // Fallback to stack-based if async_hooks not available
+      return new StackContextManager();
+    }
+  }
+  return new StackContextManager();
+}
+
+/**
+ * Get or create the global context manager.
+ * Lazily initializes on first access.
+ */
+function getOrCreateContextManager(): IStreamingContextManager {
+  if (!globalContextManager) {
+    // Synchronous fallback - use Stack until async init completes
+    globalContextManager = new StackContextManager();
+    
+    // Async upgrade to AsyncLocalStorage in Node.js
+    if (isNodeEnvironment() && !contextManagerInitialized) {
+      contextManagerInitialized = true;
+      createContextManager().then((manager) => {
+        globalContextManager = manager;
+      }).catch(() => {
+        // Keep using StackContextManager
+      });
+    }
+  }
+  return globalContextManager;
+}
 
 /**
  * Set the global streaming context manager.
- * Called during initialization by platform-specific entry points.
+ * Can be used to override the auto-detected manager.
  *
  * @param manager - The context manager to use globally
  */
@@ -68,14 +137,15 @@ export function setStreamingContextManager(
   manager: IStreamingContextManager,
 ): void {
   globalContextManager = manager;
+  contextManagerInitialized = true;
 }
 
 /**
  * Get the global streaming context manager.
- * Useful for testing or advanced use cases.
+ * Auto-detects and creates the appropriate manager on first access.
  */
 export function getStreamingContextManager(): IStreamingContextManager {
-  return globalContextManager;
+  return getOrCreateContextManager();
 }
 
 /**
@@ -101,7 +171,7 @@ export function runWithStreamingContext<T>(
   context: StreamingContext | undefined,
   fn: () => T,
 ): T {
-  return globalContextManager.run(context, fn);
+  return getOrCreateContextManager().run(context, fn);
 }
 
 /**
@@ -111,5 +181,5 @@ export function runWithStreamingContext<T>(
  * @returns The current streaming context or undefined
  */
 export function getStreamingContext(): StreamingContext | undefined {
-  return globalContextManager.active();
+  return getOrCreateContextManager().active();
 }

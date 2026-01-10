@@ -1,12 +1,11 @@
-import {
-  afterEach,
+import { afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  mock,
+  vi,
   setSystemTime,
-} from "bun:test";
+  vi } from "vitest";
 import {
   type Content,
   type DetokenizeTextParams,
@@ -334,7 +333,7 @@ describe("Utils Comprehensive Tests", () => {
 
     beforeEach(() => {
       mockRuntime = {
-        useModel: mock(async (type, params) => {
+        useModel: vi.fn(async (type, params) => {
           if (type === "TEXT_TOKENIZER_ENCODE") {
             // Simple mock: each word is a token
             return params.prompt.split(" ");
@@ -1269,7 +1268,7 @@ describe("Utils Comprehensive Tests", () => {
 
   it("trimTokens truncates using runtime tokenizer", async () => {
     const runtime = {
-      useModel: mock(
+      useModel: vi.fn(
         async (
           type: (typeof ModelType)[keyof typeof ModelType],
           params:

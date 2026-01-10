@@ -1,18 +1,33 @@
 #!/usr/bin/env bun
 /**
- * Dual build script for @elizaos/plugin-services (Node + Browser)
+ * Build script for @elizaos/plugin-elizacloud
+ * 
+ * Builds the TypeScript implementation for Node.js and Browser environments.
+ * For multi-language builds (Rust, Python), see respective folders.
  */
+
+import { existsSync } from "node:fs";
+import { mkdir, writeFile, rename } from "node:fs/promises";
+import { join } from "node:path";
 
 const externalDeps = ["@elizaos/core", "@ai-sdk/openai", "ai", "js-tiktoken"];
 
 async function build() {
   const totalStart = Date.now();
+  const distDir = join(process.cwd(), "dist");
+
+  // Clean dist directory
+  if (existsSync(distDir)) {
+    await Bun.$`rm -rf ${distDir}`;
+  }
+
+  await mkdir(distDir, { recursive: true });
 
   // Node build
   const nodeStart = Date.now();
-  console.log("🔨 Building @elizaos/plugin-services for Node...");
+  console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
   const nodeResult = await Bun.build({
-    entrypoints: ["src/index.node.ts"],
+    entrypoints: ["typescript/index.node.ts"],
     outdir: "dist/node",
     target: "node",
     format: "esm",
@@ -30,9 +45,9 @@ async function build() {
 
   // Browser build
   const browserStart = Date.now();
-  console.log("🌐 Building @elizaos/plugin-services for Browser...");
+  console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
   const browserResult = await Bun.build({
-    entrypoints: ["src/index.browser.ts"],
+    entrypoints: ["typescript/index.browser.ts"],
     outdir: "dist/browser",
     target: "browser",
     format: "esm",
@@ -50,9 +65,9 @@ async function build() {
 
   // Node CJS build
   const cjsStart = Date.now();
-  console.log("🧱 Building @elizaos/plugin-services for Node (CJS)...");
+  console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
   const cjsResult = await Bun.build({
-    entrypoints: ["src/index.node.ts"],
+    entrypoints: ["typescript/index.node.ts"],
     outdir: "dist/cjs",
     target: "node",
     format: "cjs",
@@ -66,7 +81,6 @@ async function build() {
   }
   // Rename .js to .cjs for correct loading when package type is module
   try {
-    const { rename } = await import("node:fs/promises");
     await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
   } catch (e) {
     // If file not found (different bundling output), surface the error
@@ -79,7 +93,6 @@ async function build() {
   // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
-  const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
   await $`tsc --project tsconfig.build.json`;
   await mkdir("dist/node", { recursive: true });

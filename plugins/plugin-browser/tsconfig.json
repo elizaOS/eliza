@@ -1,24 +1,9 @@
 {
-    "compilerOptions": {
-        "outDir": "dist",
-        "rootDir": "src",
-        "lib": ["ESNext", "dom"],
-        "module": "Preserve",
-        "moduleResolution": "Bundler",
-        "strict": false,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": false,
-        "allowImportingTsExtensions": true,
-        "declaration": true,
-        "emitDeclarationOnly": true,
-        "resolveJsonModule": true,
-        "noImplicitAny": false,
-        "allowJs": true,
-        "checkJs": false,
-        "noEmitOnError": false,
-        "moduleDetection": "force",
-        "allowArbitraryExtensions": true
-    },
-    "include": ["src/**/*.ts"]
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@elizaos/config/typescript/tsconfig.plugin.json",
+  "compilerOptions": {
+    "baseUrl": "./src"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "cypress.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }

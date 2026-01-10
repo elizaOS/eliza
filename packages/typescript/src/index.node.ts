@@ -3,13 +3,9 @@
  *
  * This file exports all modules including Node.js-specific functionality.
  * This is the full API surface of the core package.
+ *
+ * Note: Streaming context manager is now auto-detected at runtime.
  */
-
-// Configure Node.js-specific streaming context manager (AsyncLocalStorage)
-import { setStreamingContextManager } from "./streaming-context";
-import { createNodeStreamingContextManager } from "./streaming-context.node";
-
-setStreamingContextManager(createNodeStreamingContextManager());
 
 // Export all core modules
 export * from "./actions";

@@ -1,0 +1,2 @@
+export { shellHistoryProvider, default } from "./shellHistoryProvider";
+

@@ -6,5 +6,5 @@
 **/.venv/**
 **/coverage/**
 **/scripts/async-optimizer.js
-**/packages/core/python/**
+**/packages/python/**
 

@@ -1,96 +1,91 @@
 {
   "name": "@elizaos/plugin-goals",
-  "description": "Todo list plugin for ElizaOS",
-  "version": "1.0.0",
+  "description": "Goals management plugin for ElizaOS - tracking and achieving objectives",
+  "version": "1.2.0",
   "type": "module",
-  "private": true,
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
   "packageType": "plugin",
   "platform": "node",
-  "license": "UNLICENSED",
-  "author": "ElizaOS",
+  "license": "MIT",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
-    "elizaos"
+    "elizaos",
+    "goals",
+    "objectives",
+    "task-management"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos-plugins/plugin-autonomous"
+    "url": "https://github.com/elizaos/elizaos"
   },
   "homepage": "https://elizaos.ai",
-  "bugs": {
-    "url": "https://github.com/elizaos-plugins/plugin-autonomous/issues"
-  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./rust": {
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_goals.js",
+        "default": "./rust/pkg/node/elizaos_plugin_goals.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_goals.js"
     }
   },
   "files": [
     "dist",
-    "README.md",
-    ".npmignore",
-    "package.json",
-    "tsup.config.ts"
+    "rust/pkg",
+    "README.md"
   ],
+  "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "drizzle-orm": "^0.44.2",
-    "start-server-and-test": "^2.0.5",
-    "uuid": "^11.0.3",
-    "zod": "3.24.2"
+    "@elizaos/core": "^1.6.1"
   },
-  "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "^1.0.0",
-    "cypress": "^13.6.3",
-    "dotenv": "16.4.5",
-    "drizzle-kit": "^0.30.1",
-    "prettier": "3.5.3",
-    "ts-node": "^10.9.2",
-    "tsup": "^8.4.0",
-    "typescript": "^5.5.4",
-    "vitest": "^1.6.0"
+    "@types/bun": "^1.2.18",
+    "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "start": "elizaos start",
-    "dev": "elizaos dev",
-    "build": "tsup",
-    "lint": "prettier --write ./src",
-    "test": "elizaos test && npm run test:e2e:headless",
-    "test:skip-tsc": "node scripts/test-without-tsc.js",
-    "test:unit": "vitest run",
-    "cypress:open": "cypress open",
-    "cypress:run": "cypress run",
-    "cypress:test": "cypress run --spec 'cypress/e2e/**/*.cy.ts'",
-    "test:e2e": "node scripts/test-e2e.js",
-    "test:e2e:headless": "CYPRESS_HEADED=false node scripts/test-e2e.js",
-    "test:e2e:ci": "CI=true node scripts/test-e2e-ci.js",
-    "publish": "elizaos publish",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "__test__": "bun test"
+    "build": "cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "cd typescript && bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules tsconfig.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test typescript/tests/",
+    "test:integration": "bun test typescript/__tests__/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "test:python": "cd python && pytest",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_goals"
   },
   "publishConfig": {
     "access": "public"
   },
-  "resolutions": {
-    "zod": "3.24.2"
-  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
-      }
-    }
-  },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+    "pluginParameters": {},
+    "description": "Goals management plugin for tracking and achieving objectives"
+  }
 }

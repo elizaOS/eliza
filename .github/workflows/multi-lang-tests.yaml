@@ -7,20 +7,20 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - 'packages/core/rust/**'
-      - 'packages/core/python/**'
+      - 'packages/rust/**'
+      - 'packages/python/**'
       - 'packages/plugin-sql/rust/**'
       - 'packages/plugin-sql/python/**'
-      - 'packages/core/interop/**'
+      - 'packages/interop/**'
       - '.github/workflows/multi-lang-tests.yaml'
   pull_request:
     branches: [main, develop]
     paths:
-      - 'packages/core/rust/**'
-      - 'packages/core/python/**'
+      - 'packages/rust/**'
+      - 'packages/python/**'
       - 'packages/plugin-sql/rust/**'
       - 'packages/plugin-sql/python/**'
-      - 'packages/core/interop/**'
+      - 'packages/interop/**'
       - '.github/workflows/multi-lang-tests.yaml'
 
 concurrency:
@@ -54,26 +54,26 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/core/rust/target
-          key: ${{ runner.os }}-cargo-elizaos-core-${{ hashFiles('packages/core/rust/Cargo.lock') }}
+            packages/rust/target
+          key: ${{ runner.os }}-cargo-elizaos-core-${{ hashFiles('packages/rust/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-elizaos-core-
 
       - name: Check formatting
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo clippy --all-targets -- -D warnings
         continue-on-error: true
 
       - name: Run tests
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo test --all-features
 
       - name: Build release
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo build --release
 
   # ============================================
@@ -163,25 +163,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-elizaos-${{ matrix.python-version }}-${{ hashFiles('packages/core/python/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-elizaos-${{ matrix.python-version }}-${{ hashFiles('packages/python/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-elizaos-${{ matrix.python-version }}-
 
       - name: Install dependencies
-        working-directory: packages/core/python
+        working-directory: packages/python
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
       - name: Run ruff (linting)
-        working-directory: packages/core/python
+        working-directory: packages/python
         run: |
           pip install ruff
           ruff check .
         continue-on-error: true
 
       - name: Run tests
-        working-directory: packages/core/python
+        working-directory: packages/python
         run: |
           python -m pytest tests/ -v --tb=short
 
@@ -230,7 +230,7 @@ jobs:
             ${{ runner.os }}-pip-elizaos-plugin-sql-${{ matrix.python-version }}-
 
       - name: Install core package first
-        working-directory: packages/core/python
+        working-directory: packages/python
         run: |
           python -m pip install --upgrade pip
           pip install -e .
@@ -267,7 +267,7 @@ jobs:
       matrix:
         package:
           - name: elizaos-core
-            path: packages/core/rust
+            path: packages/rust
           - name: elizaos-plugin-sql
             path: packages/plugin-sql/rust
 
@@ -336,12 +336,12 @@ jobs:
         run: bun run build
 
       - name: Run TypeScript interop tests
-        working-directory: packages/core/interop/typescript
+        working-directory: packages/interop/typescript
         run: |
           bun test || true
 
       - name: Run Python interop tests
-        working-directory: packages/core/interop/python
+        working-directory: packages/interop/python
         run: |
           pip install pytest pytest-asyncio
           # Install the core package first

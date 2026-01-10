@@ -1,0 +1,58 @@
+[package]
+name = "elizaos-plugin-browser"
+version = "1.0.0"
+edition = "2021"
+description = "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+keywords = ["elizaos", "plugin", "browser", "automation"]
+categories = ["web-programming", "development-tools"]
+
+[lib]
+name = "elizaos_browser"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json"] }
+
+# URL handling
+url = "2.5"
+
+# Regex
+regex = "1.10"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.6", features = ["v4"] }
+
+# Async traits
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = []
+full = []
+

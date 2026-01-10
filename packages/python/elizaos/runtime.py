@@ -7,9 +7,11 @@ This module provides the main runtime for elizaOS agents.
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
+import xml.etree.ElementTree as ET
 
 from elizaos.logger import create_logger
 from elizaos.types.agent import Character
@@ -25,7 +27,7 @@ from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
 from elizaos.types.environment import Entity, Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
-from elizaos.types.model import GenerateTextOptions, GenerateTextResult, ModelType
+from elizaos.types.model import GenerateTextOptions, GenerateTextResult, LLMMode, ModelType
 from elizaos.types.plugin import Plugin, Route
 from elizaos.types.primitives import UUID, Content, as_uuid
 from elizaos.types.runtime import IAgentRuntime, RuntimeSettings, SendHandlerFunction, TargetInfo
@@ -103,6 +105,9 @@ class AgentRuntime(IAgentRuntime):
         disable_basic_capabilities: bool = False,
         enable_extended_capabilities: bool = False,
         action_planning: bool | None = None,
+        llm_mode: LLMMode | None = None,
+        check_should_respond: bool | None = None,
+        enable_autonomy: bool = False,
     ) -> None:
         """
         Initialize the AgentRuntime.
@@ -122,6 +127,15 @@ class AgentRuntime(IAgentRuntime):
                 When True (default), agent can plan and execute multiple actions per response.
                 When False, agent executes only a single action per response (performance
                 optimization useful for game situations where state updates with every action).
+            llm_mode: LLM mode for overriding model selection.
+                LLMMode.DEFAULT (default): Use the model type specified in the use_model call.
+                LLMMode.SMALL: Override all text generation model calls to use TEXT_SMALL.
+                LLMMode.LARGE: Override all text generation model calls to use TEXT_LARGE.
+            check_should_respond: Enable or disable the shouldRespond evaluation.
+                When True (default), the agent evaluates whether to respond to each message.
+                When False, the agent always responds (ChatGPT mode).
+            enable_autonomy: Enable autonomy capabilities for autonomous agent operation.
+                When True, the agent can operate autonomously with its own thinking loop.
         """
         global _anonymous_agent_counter
 
@@ -140,10 +154,15 @@ class AgentRuntime(IAgentRuntime):
         # Store capability options
         self._capability_disable_basic = disable_basic_capabilities
         self._capability_enable_extended = enable_extended_capabilities
+        self._capability_enable_autonomy = enable_autonomy
         # Flag to track if the character was auto-generated (no character provided)
         self._is_anonymous_character = is_anonymous
         # Store action planning option (None means check settings at runtime)
         self._action_planning_option = action_planning
+        # Store LLM mode option (None means check settings at runtime)
+        self._llm_mode_option = llm_mode
+        # Store check_should_respond option (None means check settings at runtime)
+        self._check_should_respond_option = check_should_respond
         # Generate agent ID from character name or random UUID
         self._agent_id = agent_id or as_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, resolved_character.name)))
         self._character = resolved_character
@@ -288,12 +307,17 @@ class AgentRuntime(IAgentRuntime):
             )
             skip_character_provider = self._is_anonymous_character
 
-            if disable_basic or enable_extended or skip_character_provider:
+            enable_autonomy = self._capability_enable_autonomy or (
+                settings.get("ENABLE_AUTONOMY") in (True, "true")
+            )
+            
+            if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
                 config = CapabilityConfig(
                     disable_basic=disable_basic,
                     enable_extended=enable_extended,
                     skip_character_provider=skip_character_provider,
+                    enable_autonomy=enable_autonomy,
                 )
                 plugin_to_register = create_bootstrap_plugin(config)
 
@@ -386,6 +410,58 @@ class AgentRuntime(IAgentRuntime):
         # Default to True (action planning enabled)
         return True
 
+    def get_llm_mode(self) -> LLMMode:
+        """
+        Get the LLM mode for model selection override.
+
+        - LLMMode.DEFAULT: Use the model type specified in the use_model call (no override)
+        - LLMMode.SMALL: Override all text generation model calls to use TEXT_SMALL
+        - LLMMode.LARGE: Override all text generation model calls to use TEXT_LARGE
+
+        Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
+        """
+        # Constructor option takes precedence
+        if self._llm_mode_option is not None:
+            return self._llm_mode_option
+
+        # Check character settings
+        setting = self.get_setting("LLM_MODE")
+        if setting is not None and isinstance(setting, str):
+            upper = setting.upper()
+            if upper == "SMALL":
+                return LLMMode.SMALL
+            elif upper == "LARGE":
+                return LLMMode.LARGE
+            elif upper == "DEFAULT":
+                return LLMMode.DEFAULT
+
+        # Default to DEFAULT (no override)
+        return LLMMode.DEFAULT
+
+    def is_check_should_respond_enabled(self) -> bool:
+        """
+        Check if the shouldRespond evaluation is enabled.
+
+        When enabled (default: True), the agent evaluates whether to respond to each message.
+        When disabled, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
+
+        Priority: constructor option > character setting CHECK_SHOULD_RESPOND > default (True)
+        """
+        # Constructor option takes precedence
+        if self._check_should_respond_option is not None:
+            return self._check_should_respond_option
+
+        # Check character settings
+        setting = self.get_setting("CHECK_SHOULD_RESPOND")
+        if setting is not None:
+            if isinstance(setting, bool):
+                return setting
+            if isinstance(setting, str):
+                return setting.lower() != "false"
+
+        # Default to True (check should respond is enabled)
+        return True
+
     # Component registration
     def register_provider(self, provider: Provider) -> None:
         self._providers.append(provider)
@@ -397,6 +473,198 @@ class AgentRuntime(IAgentRuntime):
         self._evaluators.append(evaluator)
 
     # Action processing
+    @staticmethod
+    def _parse_param_value(value: str) -> str | int | float | bool | None:
+        raw = value.strip()
+        if raw == "":
+            return None
+        lower = raw.lower()
+        if lower == "true":
+            return True
+        if lower == "false":
+            return False
+        if lower == "null":
+            return None
+        # Try int first, then float
+        try:
+            if re.fullmatch(r"-?\d+", raw):
+                return int(raw)
+            if re.fullmatch(r"-?\d+\.\d+", raw):
+                return float(raw)
+        except Exception:
+            # Fallback to string
+            return raw
+        return raw
+
+    def _parse_action_params(self, params_raw: object | None) -> dict[str, dict[str, object]]:
+        """
+        Parse action parameters from either:
+        - Nested dict structure (e.g. {"MOVE": {"direction": "north"}})
+        - XML string (inner content of <params> or full <params>...</params>)
+        """
+        if params_raw is None:
+            return {}
+
+        if isinstance(params_raw, str):
+            # Wrap if needed so ElementTree can parse
+            xml_text = (
+                params_raw
+                if "<params" in params_raw
+                else f"<params>{params_raw}</params>"
+            )
+            try:
+                root = ET.fromstring(xml_text)
+            except ET.ParseError:
+                return {}
+
+            if root.tag.lower() != "params":
+                return {}
+
+            result: dict[str, dict[str, object]] = {}
+            for action_elem in list(root):
+                action_name = action_elem.tag.upper()
+                action_params: dict[str, object] = {}
+                for param_elem in list(action_elem):
+                    text = param_elem.text or ""
+                    action_params[param_elem.tag] = self._parse_param_value(text)
+                if action_params:
+                    result[action_name] = action_params
+            return result
+
+        if isinstance(params_raw, dict):
+            result_dict: dict[str, dict[str, object]] = {}
+            for action_name, params_value in params_raw.items():
+                action_key = str(action_name).upper()
+
+                normalized_params_value = params_value
+                if (
+                    isinstance(normalized_params_value, list)
+                    and len(normalized_params_value) > 0
+                    and isinstance(normalized_params_value[0], dict)
+                ):
+                    normalized_params_value = normalized_params_value[0]
+
+                if not isinstance(normalized_params_value, dict):
+                    continue
+
+                action_params: dict[str, object] = {}
+                for param_name, raw_value in normalized_params_value.items():
+                    key = str(param_name)
+                    if isinstance(raw_value, str):
+                        action_params[key] = self._parse_param_value(raw_value)
+                    else:
+                        action_params[key] = raw_value
+
+                if action_params:
+                    result_dict[action_key] = action_params
+            return result_dict
+
+        return {}
+
+    def _validate_action_params(
+        self, action: Action, extracted: dict[str, object] | None
+    ) -> tuple[bool, dict[str, object] | None, list[str]]:
+        errors: list[str] = []
+        validated: dict[str, object] = {}
+
+        if not action.parameters:
+            return True, None, []
+
+        for param_def in action.parameters:
+            extracted_value = extracted.get(param_def.name) if extracted else None
+
+            # Treat explicit None as missing
+            if extracted_value is None:
+                if param_def.required:
+                    errors.append(
+                        f"Required parameter '{param_def.name}' was not provided for action {action.name}"
+                    )
+                elif param_def.schema_def.default is not None:
+                    validated[param_def.name] = param_def.schema_def.default
+                continue
+
+            schema_type = param_def.schema_def.type
+
+            if schema_type == "string":
+                if not isinstance(extracted_value, str):
+                    errors.append(
+                        f"Parameter '{param_def.name}' expected string, got {type(extracted_value).__name__}"
+                    )
+                    continue
+                if param_def.schema_def.enum and extracted_value not in param_def.schema_def.enum:
+                    errors.append(
+                        f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema_def.enum)}"
+                    )
+                    continue
+                if param_def.schema_def.pattern and not re.fullmatch(
+                    param_def.schema_def.pattern, extracted_value
+                ):
+                    errors.append(
+                        f"Parameter '{param_def.name}' value '{extracted_value}' does not match pattern: {param_def.schema_def.pattern}"
+                    )
+                    continue
+                validated[param_def.name] = extracted_value
+                continue
+
+            if schema_type == "number":
+                if isinstance(extracted_value, bool) or not isinstance(
+                    extracted_value, (int, float)
+                ):
+                    errors.append(
+                        f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"
+                    )
+                    continue
+                if (
+                    param_def.schema_def.minimum is not None
+                    and float(extracted_value) < float(param_def.schema_def.minimum)
+                ):
+                    errors.append(
+                        f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema_def.minimum}"
+                    )
+                    continue
+                if (
+                    param_def.schema_def.maximum is not None
+                    and float(extracted_value) > float(param_def.schema_def.maximum)
+                ):
+                    errors.append(
+                        f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema_def.maximum}"
+                    )
+                    continue
+                validated[param_def.name] = extracted_value
+                continue
+
+            if schema_type == "boolean":
+                if not isinstance(extracted_value, bool):
+                    errors.append(
+                        f"Parameter '{param_def.name}' expected boolean, got {type(extracted_value).__name__}"
+                    )
+                    continue
+                validated[param_def.name] = extracted_value
+                continue
+
+            if schema_type == "array":
+                if not isinstance(extracted_value, list):
+                    errors.append(
+                        f"Parameter '{param_def.name}' expected array, got {type(extracted_value).__name__}"
+                    )
+                    continue
+                validated[param_def.name] = extracted_value
+                continue
+
+            if schema_type == "object":
+                if not isinstance(extracted_value, dict):
+                    errors.append(
+                        f"Parameter '{param_def.name}' expected object, got {type(extracted_value).__name__}"
+                    )
+                    continue
+                validated[param_def.name] = extracted_value
+                continue
+
+            # Unknown schema type: treat as pass-through
+            validated[param_def.name] = extracted_value
+
+        return (len(errors) == 0, validated if validated else None, errors)
+
     async def process_actions(
         self,
         message: Memory,
@@ -405,29 +673,74 @@ class AgentRuntime(IAgentRuntime):
         callback: HandlerCallback | None = None,
         _options: dict[str, Any] | None = None,
     ) -> None:
-        """Process actions for a message."""
-        if not message.content.actions:
+        """Process actions selected by the model response (supports optional <params>)."""
+        if not responses:
             return
 
-        # Determine which actions to process based on action planning mode
-        actions_to_process = message.content.actions
-        if not self.is_action_planning_enabled() and len(actions_to_process) > 1:
-            # Single-action mode: only process the first action
-            self.logger.debug(
-                f"Action planning disabled, limiting to first action: {actions_to_process[0]}, "
-                f"skipping: {actions_to_process[1:]}"
-            )
-            actions_to_process = [actions_to_process[0]]
+        # Collect actions from response messages (mirrors TypeScript behavior)
+        actions_to_process: list[str] = []
+        if self.is_action_planning_enabled():
+            for response in responses:
+                if response.content.actions:
+                    actions_to_process.extend(
+                        [a for a in response.content.actions if isinstance(a, str)]
+                    )
+        else:
+            for response in responses:
+                if response.content.actions:
+                    first = response.content.actions[0]
+                    if isinstance(first, str):
+                        actions_to_process = [first]
+                    break
 
-        for action_name in actions_to_process:
-            action = self._get_action_by_name(action_name)
-            if action:
+        if not actions_to_process:
+            return
+
+        for response in responses:
+            if not response.content.actions:
+                continue
+
+            for response_action in response.content.actions:
+                if not isinstance(response_action, str):
+                    continue
+
+                # Respect single-action mode: only execute the first collected action
+                if not self.is_action_planning_enabled() and actions_to_process:
+                    if response_action != actions_to_process[0]:
+                        continue
+
+                action = self._get_action_by_name(response_action)
+                if not action:
+                    self.logger.error(f"Action not found: {response_action}")
+                    continue
+
+                options_obj = HandlerOptions()
+
+                # Parse and validate optional action parameters
+                if action.parameters:
+                    params_raw = getattr(response.content, "params", None)
+                    params_by_action = self._parse_action_params(params_raw)
+                    extracted = (
+                        params_by_action.get(response_action.upper())
+                        or params_by_action.get(action.name.upper())
+                    )
+                    valid, validated_params, errors = self._validate_action_params(
+                        action, extracted
+                    )
+                    if not valid:
+                        self.logger.error(
+                            f"Action parameter validation failed for {action.name}: {errors}"
+                        )
+                        continue
+                    if validated_params:
+                        options_obj.parameters = validated_params
+
                 try:
                     result = await action.handler(
                         self,
                         message,
                         state,
-                        HandlerOptions(),
+                        options_obj,
                         callback,
                         responses,
                     )
@@ -441,7 +754,7 @@ class AgentRuntime(IAgentRuntime):
                             self._action_results[message_id].append(result)
 
                 except Exception as e:
-                    self.logger.error(f"Action {action_name} failed: {e}")
+                    self.logger.error(f"Action {response_action} failed: {e}")
 
     def _get_action_by_name(self, name: str) -> Action | None:
         for action in self._actions:
@@ -616,10 +929,35 @@ class AgentRuntime(IAgentRuntime):
         provider: str | None = None,
     ) -> Any:
         """Use a model for inference."""
-        handlers = self._models.get(model_type, [])
+        # Apply LLM mode override for text generation models
+        effective_model_type = model_type
+        llm_mode = self.get_llm_mode()
+        if llm_mode != LLMMode.DEFAULT:
+            # List of text generation model types that can be overridden
+            text_generation_models = [
+                ModelType.TEXT_SMALL.value,
+                ModelType.TEXT_LARGE.value,
+                ModelType.TEXT_REASONING_SMALL.value,
+                ModelType.TEXT_REASONING_LARGE.value,
+                ModelType.TEXT_COMPLETION.value,
+            ]
+
+            if model_type in text_generation_models:
+                override_model_type = (
+                    ModelType.TEXT_SMALL.value
+                    if llm_mode == LLMMode.SMALL
+                    else ModelType.TEXT_LARGE.value
+                )
+                if model_type != override_model_type:
+                    self.logger.debug(
+                        f"LLM mode override applied: {model_type} -> {override_model_type} (mode: {llm_mode})"
+                    )
+                    effective_model_type = override_model_type
+
+        handlers = self._models.get(effective_model_type, [])
 
         if not handlers:
-            raise RuntimeError(f"No model handler registered for: {model_type}")
+            raise RuntimeError(f"No model handler registered for: {effective_model_type}")
 
         # Sort by priority and get highest
         handlers.sort(key=lambda h: h.priority, reverse=True)

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+binaries/
+*.blob
+sea-config.json
+.env
+.env.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log* 

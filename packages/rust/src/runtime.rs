@@ -151,6 +151,19 @@ pub struct RuntimeOptions {
     /// optimization useful for game situations where state updates with every action).
     /// When None, the ACTION_PLANNING setting will be checked.
     pub action_planning: Option<bool>,
+    /// LLM mode for overriding model selection.
+    /// When Some(LLMMode::Small), all text generation model calls use TEXT_SMALL.
+    /// When Some(LLMMode::Large), all text generation model calls use TEXT_LARGE.
+    /// When Some(LLMMode::Default) or None, uses the model type specified in the call.
+    pub llm_mode: Option<crate::types::LLMMode>,
+    /// Enable or disable the shouldRespond evaluation.
+    /// When Some(true) (default), the agent evaluates whether to respond to each message.
+    /// When Some(false), the agent always responds (ChatGPT mode).
+    /// When None, the CHECK_SHOULD_RESPOND setting will be checked.
+    pub check_should_respond: Option<bool>,
+    /// Enable autonomy capabilities for autonomous agent operation.
+    /// When true, the agent can operate autonomously with its own thinking loop.
+    pub enable_autonomy: bool,
 }
 
 /// Event handler function type
@@ -292,6 +305,10 @@ pub struct AgentRuntime {
     is_anonymous_character: bool,
     /// Action planning option (None means check settings at runtime)
     action_planning_option: Option<bool>,
+    /// LLM mode option (None means check settings at runtime)
+    llm_mode_option: Option<crate::types::LLMMode>,
+    /// Check should respond option (None means check settings at runtime)
+    check_should_respond_option: Option<bool>,
 }
 
 /// Service trait for long-running services
@@ -352,6 +369,8 @@ impl AgentRuntime {
             capability_enable_extended: opts.enable_extended_capabilities,
             is_anonymous_character: is_anonymous,
             action_planning_option: opts.action_planning,
+            llm_mode_option: opts.llm_mode,
+            check_should_respond_option: opts.check_should_respond,
         };
 
         Ok(runtime)
@@ -390,6 +409,55 @@ impl AgentRuntime {
         }
 
         // Default to true (action planning enabled)
+        true
+    }
+
+    /// Get the LLM mode for model selection override.
+    /// 
+    /// - `LLMMode::Default`: Use the model type specified in the use_model call (no override)
+    /// - `LLMMode::Small`: Override all text generation model calls to use TEXT_SMALL
+    /// - `LLMMode::Large`: Override all text generation model calls to use TEXT_LARGE
+    /// 
+    /// Priority: constructor option > character setting LLM_MODE > default (Default)
+    pub async fn get_llm_mode(&self) -> crate::types::LLMMode {
+        // Constructor option takes precedence
+        if let Some(mode) = self.llm_mode_option {
+            return mode;
+        }
+
+        // Check character settings
+        if let Some(setting) = self.get_setting("LLM_MODE").await {
+            if let SettingValue::String(s) = setting {
+                return crate::types::LLMMode::from_str(&s);
+            }
+        }
+
+        // Default to Default (no override)
+        crate::types::LLMMode::Default
+    }
+
+    /// Check if the shouldRespond evaluation is enabled.
+    /// 
+    /// When enabled (default: true), the agent evaluates whether to respond to each message.
+    /// When disabled, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
+    /// 
+    /// Priority: constructor option > character setting CHECK_SHOULD_RESPOND > default (true)
+    pub async fn is_check_should_respond_enabled(&self) -> bool {
+        // Constructor option takes precedence
+        if let Some(enabled) = self.check_should_respond_option {
+            return enabled;
+        }
+
+        // Check character settings
+        if let Some(setting) = self.get_setting("CHECK_SHOULD_RESPOND").await {
+            match setting {
+                SettingValue::Bool(b) => return b,
+                SettingValue::String(s) => return s.to_lowercase() != "false",
+                _ => {}
+            }
+        }
+
+        // Default to true (check should respond is enabled)
         true
     }
 
@@ -861,6 +929,7 @@ impl AgentRuntime {
     /// Use a model to generate text
     /// 
     /// This looks up the registered handler for the given model type and calls it.
+    /// Applies LLM mode override for text generation models if configured.
     /// 
     /// # Example
     /// ```rust,ignore
@@ -871,11 +940,45 @@ impl AgentRuntime {
     /// })).await?;
     /// ```
     pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
+        use crate::types::model_type;
+
+        // Apply LLM mode override for text generation models
+        let llm_mode = self.get_llm_mode().await;
+        let effective_model_type = if llm_mode != crate::types::LLMMode::Default {
+            // List of text generation model types that can be overridden
+            let text_generation_models = [
+                model_type::TEXT_SMALL,
+                model_type::TEXT_LARGE,
+                model_type::TEXT_REASONING_SMALL,
+                model_type::TEXT_REASONING_LARGE,
+                model_type::TEXT_COMPLETION,
+            ];
+
+            if text_generation_models.contains(&model_type) {
+                let override_model = match llm_mode {
+                    crate::types::LLMMode::Small => model_type::TEXT_SMALL,
+                    crate::types::LLMMode::Large => model_type::TEXT_LARGE,
+                    crate::types::LLMMode::Default => model_type,
+                };
+                if model_type != override_model {
+                    debug!(
+                        "LLM mode override applied: {} -> {} (mode: {:?})",
+                        model_type, override_model, llm_mode
+                    );
+                }
+                override_model
+            } else {
+                model_type
+            }
+        } else {
+            model_type
+        };
+
         let handler = {
             #[cfg(not(feature = "wasm"))]
             {
                 let handlers = self.model_handlers.read().await;
-                handlers.get(model_type).map(|h| {
+                handlers.get(effective_model_type).map(|h| {
                     // We need to call the handler - create a boxed future
                     h(params.clone())
                 })
@@ -883,7 +986,7 @@ impl AgentRuntime {
             #[cfg(feature = "wasm")]
             {
                 let handlers = self.model_handlers.read().unwrap();
-                handlers.get(model_type).map(|h| h(params.clone()))
+                handlers.get(effective_model_type).map(|h| h(params.clone()))
             }
         };
 
@@ -891,7 +994,7 @@ impl AgentRuntime {
             Some(future) => future.await,
             None => Err(anyhow::anyhow!(
                 "No model handler registered for type: {}. Register a model handler using register_model() or pass a plugin with model handlers.",
-                model_type
+                effective_model_type
             )),
         }
     }

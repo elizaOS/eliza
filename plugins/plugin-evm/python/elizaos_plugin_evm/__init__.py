@@ -31,6 +31,7 @@ from elizaos_plugin_evm.constants import (
 )
 from elizaos_plugin_evm.error import EVMError, EVMErrorCode
 from elizaos_plugin_evm.providers import EVMWalletProvider
+from elizaos_plugin_evm.providers.wallet import GeneratedKey, generate_private_key
 from elizaos_plugin_evm.types import (
     BridgeParams,
     BridgeStatus,
@@ -51,6 +52,9 @@ __all__ = [
     "__version__",
     # Provider
     "EVMWalletProvider",
+    # Key generation
+    "GeneratedKey",
+    "generate_private_key",
     # Types
     "SupportedChain",
     "TokenInfo",

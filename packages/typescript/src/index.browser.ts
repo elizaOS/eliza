@@ -3,13 +3,9 @@
  *
  * This file exports only browser-compatible modules and provides
  * stubs or alternatives for Node.js-specific functionality.
+ *
+ * Note: Streaming context manager is now auto-detected at runtime.
  */
-
-// Configure Browser-specific streaming context manager (Stack-based)
-import { setStreamingContextManager } from "./streaming-context";
-import { createBrowserStreamingContextManager } from "./streaming-context.browser";
-
-setStreamingContextManager(createBrowserStreamingContextManager());
 
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";

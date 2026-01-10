@@ -1,142 +1,231 @@
-# Client-GitHub for Eliza Framework
+# @elizaos/plugin-github
+
+Multi-language GitHub plugin for elizaOS agents with full feature parity across TypeScript, Python, and Rust implementations.
 
 ## Overview
 
-The `client-github` module is a component of the Eliza framework designed to interact with GitHub repositories. It provides functionalities to clone repositories, manage branches, create pull requests, and maintain file-based knowledge for Eliza agents.
+This plugin provides comprehensive GitHub integration for elizaOS agents, enabling them to:
 
-This client leverages GitHub's REST API via the `@octokit/rest` library and includes robust error handling and configuration validation.
-
-## Features
-
-- **Repository Management**: Clone, pull, and switch branches
-- **File Processing**: Generate agent memories from repository files
-- **Pull Request Management**: Create and manage pull requests programmatically
-- **Commit Operations**: Stage, commit, and push files with ease
-- **Knowledge Base Integration**: Convert repository content into agent memories
-- **Branch Management**: Flexible branch switching and creation
+- Create and manage issues
+- Create, review, and merge pull requests
+- Create branches and push code changes
+- Comment on issues and PRs
+- Clone and interact with repositories locally
 
 ## Installation
 
-Install the package as part of the Eliza framework:
-bash
-pnpm add @elizaos/client-github
+### TypeScript/JavaScript
+
+```bash
+npm install @elizaos/plugin-github
+# or
+bun add @elizaos/plugin-github
+```
+
+### Python
+
+```bash
+pip install elizaos-plugin-github
+# or
+poetry add elizaos-plugin-github
+```
+
+### Rust
+
+```toml
+[dependencies]
+elizaos-plugin-github = "1.0.0"
+```
 
 ## Configuration
 
-The GitHub client requires the following environment variables:
+Set the following environment variables:
 
-| Variable           | Description                        | Required |
-|-------------------|------------------------------------|----------|
-| `GITHUB_OWNER`    | Owner of the GitHub repository     | Yes      |
-| `GITHUB_REPO`     | Repository name                    | Yes      |
-| `GITHUB_BRANCH`   | Target branch (default: `main`)    | Yes      |
-| `GITHUB_PATH`     | Path to focus on within the repo   | Yes      |
-| `GITHUB_API_TOKEN`| GitHub API token for authentication| Yes      |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_API_TOKEN` | Yes | GitHub personal access token |
+| `GITHUB_OWNER` | No | Default repository owner |
+| `GITHUB_REPO` | No | Default repository name |
+| `GITHUB_BRANCH` | No | Default branch (default: main) |
+| `GITHUB_PATH` | No | Local path for cloning repos |
+
+### Token Permissions
+
+Your GitHub token should have the following scopes:
+- `repo` - Full control of private repositories
+- `workflow` - Update GitHub Actions workflows (optional)
+- `write:packages` - Upload packages (optional)
 
 ## Usage
 
-### Initialization
-typescript:packages/client-github/README.md
-import { GitHubClientInterface } from "@elizaos/client-github";
-// Initialize the client
-const client = await GitHubClientInterface.start(runtime);
-
-### Creating Memories
+### TypeScript
 
 ```typescript
-// Convert repository files to agent memories
-await client.createMemoriesFromFiles();
+import { githubPlugin } from '@elizaos/plugin-github';
 
-// Convert repository files to agent memories
-await client.createMemoriesFromFiles();
+// Register with your agent
+const agent = new AgentRuntime({
+  plugins: [githubPlugin],
+  // ... other config
+});
 ```
 
-### Creating Pull Requests
+### Python
 
-```typescript
-await client.createPullRequest(
-    "Feature: Add new functionality",
-    "feature/new-feature",
-    [
-        {
-            path: "src/feature.ts",
-            content: "// New feature implementation"
-        }
-    ],
-    "Implements new functionality with tests"
-);
+```python
+from elizaos_plugin_github import GitHubService, GitHubConfig
 
-await client.createPullRequest(
-"Feature: Add new functionality",
-"feature/new-feature",
-[
-{
-path: "src/feature.ts",
-content: "// New feature implementation"
-}
-],
-"Implements new functionality with tests"
-);
+config = GitHubConfig.from_env()
+service = GitHubService(config)
+await service.start()
+
+# Create an issue
+issue = await service.create_issue(
+    owner="my-org",
+    repo="my-repo",
+    title="Bug: Something is broken",
+    body="Description of the issue",
+    labels=["bug"]
+)
 ```
 
-### Direct Commits
+### Rust
 
-```typescript
-await client.createCommit(
-    "Update configuration",
-    [
-        {
-            path: "config.json",
-            content: JSON.stringify(config, null, 2)
-        }
-    ]
-);
+```rust
+use elizaos_plugin_github::{GitHubConfig, GitHubService, CreateIssueParams};
+
+let config = GitHubConfig::from_env()?;
+let mut service = GitHubService::new(config);
+service.start().await?;
+
+let issue = service.create_issue(CreateIssueParams {
+    owner: "my-org".to_string(),
+    repo: "my-repo".to_string(),
+    title: "Bug: Something is broken".to_string(),
+    body: Some("Description".to_string()),
+    assignees: vec![],
+    labels: vec!["bug".to_string()],
+    milestone: None,
+}).await?;
 ```
 
-## API Reference
+## Actions
 
-### GitHubClientInterface
+All implementations provide these actions:
 
-- `start(runtime: IAgentRuntime)`: Initialize the client
-- `stop(runtime: IAgentRuntime)`: Clean up resources
+| Action | Description |
+|--------|-------------|
+| `CREATE_GITHUB_ISSUE` | Create a new issue |
+| `CREATE_GITHUB_PULL_REQUEST` | Create a new pull request |
+| `CREATE_GITHUB_COMMENT` | Comment on an issue or PR |
+| `CREATE_GITHUB_BRANCH` | Create a new branch |
+| `PUSH_CODE` | Push code changes to a branch |
+| `MERGE_GITHUB_PULL_REQUEST` | Merge a pull request |
+| `REVIEW_GITHUB_PULL_REQUEST` | Review a pull request |
 
-### GitHubClient
+## Providers
 
-- `initialize()`: Set up repository and configuration
-- `createMemoriesFromFiles()`: Generate agent memories
-- `createPullRequest(title: string, branch: string, files: Array<{path: string, content: string}>, description?: string)`: Create PR
-- `createCommit(message: string, files: Array<{path: string, content: string}>)`: Direct commit
+| Provider | Description |
+|----------|-------------|
+| `repositoryState` | Current repository information and status |
+| `issueContext` | Context about recent issues |
 
-## Scripts
+## Project Structure
+
+```
+plugin-github/
+├── package.json           # Root package with build scripts
+├── README.md              # This file
+├── typescript/            # TypeScript implementation
+│   ├── src/
+│   │   ├── actions/       # GitHub actions
+│   │   ├── providers/     # Context providers
+│   │   ├── config.ts      # Configuration
+│   │   ├── error.ts       # Error types
+│   │   ├── service.ts     # Main service
+│   │   ├── types.ts       # Type definitions
+│   │   └── index.ts       # Entry point
+│   └── __tests__/         # Tests
+├── python/                # Python implementation
+│   ├── elizaos_plugin_github/
+│   │   ├── actions/       # GitHub actions
+│   │   ├── providers/     # Context providers
+│   │   ├── config.py      # Configuration
+│   │   ├── error.py       # Error types
+│   │   ├── service.py     # Main service
+│   │   ├── types.py       # Type definitions
+│   │   └── __init__.py    # Entry point
+│   └── tests/             # Tests
+└── rust/                  # Rust implementation
+    ├── src/
+    │   ├── actions/       # GitHub actions
+    │   ├── providers/     # Context providers
+    │   ├── config.rs      # Configuration
+    │   ├── error.rs       # Error types
+    │   ├── service.rs     # Main service
+    │   ├── types.rs       # Type definitions
+    │   └── lib.rs         # Entry point
+    └── tests/             # Tests
+```
+
+## Building
 
 ```bash
-# Build the project
-pnpm run build
+# Build all implementations
+bun run build
 
-# Development with watch mode
-pnpm run dev
-
-# Lint the codebase
-pnpm run lint
+# Build individually
+bun run build:ts      # TypeScript
+bun run build:python  # Python
+bun run build:rust    # Rust
 ```
 
-## Dependencies
+## Testing
 
-- `@elizaos/core`: ^0.1.7-alpha.2
-- `@octokit/rest`: ^20.1.1
-- `@octokit/types`: ^12.6.0
-- `glob`: ^10.4.5
-- `simple-git`: ^3.27.0
+```bash
+# Run all tests
+bun test
 
-## Development Dependencies
+# Run individually
+bun run test:ts      # TypeScript
+bun run test:python  # Python
+bun run test:rust    # Rust
+```
 
-- `@types/glob`: ^8.1.0
-- `tsup`: ^8.3.5
+## Feature Parity
 
-## Contribution
+All three implementations maintain feature parity:
 
-Contributions are welcome! Please ensure all code adheres to the framework's standards and passes linting checks.
+| Feature | TypeScript | Python | Rust |
+|---------|------------|--------|------|
+| Issue CRUD | ✅ | ✅ | ✅ |
+| PR Management | ✅ | ✅ | ✅ |
+| Branch Operations | ✅ | ✅ | ✅ |
+| Code Push | ✅ | ✅ | ✅ |
+| Reviews | ✅ | ✅ | ✅ |
+| Comments | ✅ | ✅ | ✅ |
+| Webhooks | ✅ | ✅ | 🔄 |
+| Local Git | ✅ | ✅ | 🔄 |
+
+✅ = Implemented | 🔄 = Planned
+
+## Error Handling
+
+All implementations use strongly-typed errors with no `unknown` or `any` types:
+
+```typescript
+// TypeScript
+import { GitHubError, RepositoryNotFoundError } from '@elizaos/plugin-github';
+
+try {
+  await service.getRepository('owner', 'repo');
+} catch (error) {
+  if (error instanceof RepositoryNotFoundError) {
+    console.log(`Repository not found: ${error.owner}/${error.repo}`);
+  }
+}
+```
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+MIT

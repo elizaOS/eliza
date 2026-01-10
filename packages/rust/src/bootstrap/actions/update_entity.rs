@@ -5,32 +5,12 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::{PluginError, PluginResult};
+use crate::prompts::UPDATE_ENTITY_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-
-const UPDATE_ENTITY_TEMPLATE: &str = r#"# Task: Update entity information.
-
-{{providers}}
-
-# Current Entity Information:
-{{entityInfo}}
-
-# Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the entity update</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <field_name>The field to update</field_name>
-    <field_value>The new value</field_value>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."#;
 
 /// Action for updating entity information.
 pub struct UpdateEntityAction;

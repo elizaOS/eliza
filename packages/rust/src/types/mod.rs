@@ -3,7 +3,17 @@
 //! This module contains all the fundamental types used throughout the elizaOS system.
 //! All types are designed to serialize/deserialize to JSON in a format identical to
 //! the TypeScript implementation.
+//!
+//! ## Proto-generated Types
+//!
+//! The `generated` submodule contains types generated from Protocol Buffer schemas.
+//! These are the single source of truth for cross-language interoperability.
+//! For new code, prefer using types from `generated` for better compatibility.
 
+// Proto-generated types (single source of truth)
+pub mod generated;
+
+// Legacy types (for backwards compatibility)
 mod agent;
 mod components;
 mod database;
@@ -64,9 +74,9 @@ pub use messaging::{
 pub use model::{
     model_settings, model_type, DetokenizeTextParams, GenerateTextOptions, GenerateTextParams,
     GenerateTextResult, ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams,
-    ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat, ResponseFormatType,
-    TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo, TokenizeTextParams,
-    TranscriptionParams,
+    LLMMode, ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat,
+    ResponseFormatType, TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo,
+    TokenizeTextParams, TranscriptionParams,
 };
 pub use plugin::{
     ComponentTypeDefinition, HttpMethod, ModelHandlerFn, Plugin, PluginDefinition,

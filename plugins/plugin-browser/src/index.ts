@@ -1,12 +1,17 @@
-import {
-    BrowserService,
-} from "./services/browser"
+// Export service
+export { StagehandService, BrowserSession } from './service.js';
 
-export const browserPlugin = {
-  name: "default",
-  description: "Default plugin, with basic actions and evaluators",
-  services: [new BrowserService() as any],
-  actions: [],
-};
+// Export actions for testing
+export {
+  browserNavigateAction,
+  browserClickAction,
+  browserTypeAction,
+  browserSelectAction,
+  browserExtractAction,
+  browserScreenshotAction,
+} from './plugin.js';
 
-export default browserPlugin;
+// Re-export plugin
+export { stagehandPlugin } from './plugin.js';
+import { stagehandPlugin } from './plugin.js';
+export default stagehandPlugin;

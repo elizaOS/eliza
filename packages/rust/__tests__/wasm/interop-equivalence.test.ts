@@ -5,7 +5,7 @@
  * to the TypeScript implementation for all core types and operations.
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import {  beforeAll, describe, expect, it  } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Character, Content, Memory } from "@elizaos/core";

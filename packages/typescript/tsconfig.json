@@ -7,6 +7,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
+      "@elizaos/core": ["packages/typescript/src/index.ts"],
+      "@elizaos/core/*": ["packages/typescript/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"]
     }
   },
@@ -14,7 +16,8 @@
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
-    "src/__tests__/**/*",
+    "src/**/__tests__/**",
+    "vitest.config.ts",
     "node_modules",
     "dist"
   ]

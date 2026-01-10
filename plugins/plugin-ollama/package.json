@@ -2,8 +2,8 @@
   "name": "@elizaos/plugin-ollama",
   "version": "1.2.4",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
@@ -12,31 +12,81 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "./rust/pkg/web/elizaos_plugin_ollama.js",
+        "default": "./rust/pkg/web/elizaos_plugin_ollama.js"
+      },
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_ollama.js",
+        "default": "./rust/pkg/node/elizaos_plugin_ollama.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_ollama.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "rust/pkg"
   ],
+  "sideEffects": false,
   "dependencies": {
     "@ai-sdk/ui-utils": "^1.2.8",
     "@elizaos/core": "^1.0.0",
     "ai": "^4.3.9",
     "js-tiktoken": "^1.0.18",
-    "ollama-ai-provider": "^1.2.0",
-    "tsup": "8.4.0"
+    "ollama-ai-provider": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.4",
+    "prettier": "3.5.3",
+    "typescript": "^5.8.2"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "lint": "prettier --write ./src",
+    "build": "cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "cd typescript && bun run build.ts --watch",
+    "lint": "prettier --write ./typescript",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
     "test": "bun test",
+    "test:unit": "bun test typescript/__tests__/",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "test:python": "cd python && pytest",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_ollama",
     "postinstall": "bun scripts/install-ollama.js"
   },
   "publishConfig": {
@@ -95,10 +145,5 @@
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "devDependencies": {
-    "@types/node": "^24.0.4",
-    "prettier": "3.5.3",
-    "typescript": "^5.8.2"
-  }
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }

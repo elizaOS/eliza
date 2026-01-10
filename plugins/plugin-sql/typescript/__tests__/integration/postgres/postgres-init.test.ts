@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -15,23 +15,23 @@ describe("PostgreSQL Initialization Tests", () => {
 
     mockRuntime = {
       agentId: "00000000-0000-0000-0000-000000000000",
-      getSetting: mock(),
-      registerDatabaseAdapter: mock(),
-      registerService: mock(),
-      getService: mock(),
-      hasElizaOS: mock(() => false),
+      getSetting: vi.fn(),
+      registerDatabaseAdapter: vi.fn(),
+      registerService: vi.fn(),
+      getService: vi.fn(),
+      hasElizaOS: vi.fn(() => false),
       logger: {
-        info: mock(() => {}),
-        debug: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
+        info: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
       },
     } as any;
   });
 
   afterEach(() => {
     process.env = originalEnv;
-    // Mocks auto-clear in bun:test;
+    // Mocks auto-clear in vitest;
   });
 
   it("should initialize with PostgreSQL when POSTGRES_URL is provided", async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, type Mock } from "bun:test";
+import {  beforeEach, describe, expect, it, type Mock  } from "vitest";
 import {
   type ActionResult,
   type Content,
@@ -541,7 +541,7 @@ describe("API Routes", () => {
 describe("Event Handlers", () => {
   beforeEach(() => {
     // Clear logger spy calls
-    // Note: logger methods are mocked in test setup, but bun:test doesn't expose .calls directly
+    // Note: logger methods are mocked in test setup, vitest exposes .mock.calls
     // These assignments are for compatibility with test setup
     if ("calls" in logger.debug) {
       (logger.debug as Mock).mockClear();

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "eliza-plugin-simple-voice"
+version = "0.1.0"
+description = "Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "ElizaOS Team" }
+]
+keywords = [
+    "elizaos",
+    "plugin",
+    "tts",
+    "text-to-speech",
+    "sam",
+    "retro",
+    "voice-synthesis",
+    "1980s"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ai16z/eliza"
+Repository = "https://github.com/ai16z/eliza/tree/main/plugins/plugin-simple-voice/python"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/eliza_plugin_simple_voice"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["src/eliza_plugin_simple_voice/tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+

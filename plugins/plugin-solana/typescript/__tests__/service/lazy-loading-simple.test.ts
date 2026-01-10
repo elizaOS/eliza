@@ -7,7 +7,7 @@
  * 3. Service can load the wallet on-demand after reloadKeys()
  */
 
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
@@ -24,10 +24,10 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
     const originalSubscribe = SolanaService.prototype.subscribeToAccount;
     const originalUpdate = SolanaService.prototype.updateWalletData;
 
-    SolanaService.prototype.subscribeToAccount = mock(async () => {
+    SolanaService.prototype.subscribeToAccount = vi.fn(async () => {
       console.log("🔇 Mocked subscribeToAccount (no network call)");
     });
-    SolanaService.prototype.updateWalletData = mock(async () => {
+    SolanaService.prototype.updateWalletData = vi.fn(async () => {
       console.log("🔇 Mocked updateWalletData (no network call)");
     });
 
@@ -55,7 +55,7 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
       loreManager: {} as any,
       cacheManager: {} as any,
       services: new Map(),
-      getSetting: mock((key: string) => {
+      getSetting: vi.fn((key: string) => {
         // Support both SOLANA_* and WALLET_* prefixes
         const character = mockRuntime.character;
         const characterSettings = character && character.settings;
@@ -68,7 +68,7 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
         }
         return undefined;
       }),
-      setSetting: mock((key: string, value: string) => {
+      setSetting: vi.fn((key: string, value: string) => {
         const character = mockRuntime.character;
         const characterSettings = character && character.settings;
         if (!characterSettings || !characterSettings.secrets) {
@@ -79,17 +79,17 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
           characterSettingsSecrets[key] = value;
         }
       }),
-      getServiceLoadPromise: mock(() => Promise.resolve(undefined)),
-      getService: mock(() => null),
-      getCache: mock(() => null),
-      setCache: mock(() => {}),
+      getServiceLoadPromise: vi.fn(() => Promise.resolve(undefined)),
+      getService: vi.fn(() => null),
+      getCache: vi.fn(() => null),
+      setCache: vi.fn(() => {}),
       logger: {
-        debug: mock(() => {}),
-        info: mock(() => {}),
-        log: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        success: mock(() => {}),
+        debug: vi.fn(() => {}),
+        info: vi.fn(() => {}),
+        log: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        success: vi.fn(() => {}),
       },
     } as any;
 

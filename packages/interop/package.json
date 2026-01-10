@@ -11,14 +11,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./schema": "./plugin.schema.json"
+    }
   },
   "files": [
     "dist",
     "python",
-    "rust",
-    "plugin.schema.json"
+    "rust"
   ],
   "scripts": {
     "build": "tsc",

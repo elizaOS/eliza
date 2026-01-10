@@ -2,22 +2,61 @@
   "name": "@elizaos/plugin-bluesky",
   "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/elizaos.git"
+  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "@elizaos/source": "./src/index.ts",
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "./rust/pkg/web/elizaos_plugin_bluesky.js",
+        "default": "./rust/pkg/web/elizaos_plugin_bluesky.js"
+      },
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_bluesky.js",
+        "default": "./rust/pkg/node/elizaos_plugin_bluesky.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_bluesky.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "rust/pkg"
   ],
+  "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "^1.0.0",
     "@atproto/api": "^0.13.14",
@@ -26,24 +65,33 @@
     "@atproto/syntax": "^0.3.2",
     "@atproto/xrpc": "^0.6.4",
     "lru-cache": "^11.1.0",
-    "typescript": "^5.8.3",
     "zod": "^3.25.9"
   },
   "devDependencies": {
-    "tsup": "^8.3.5",
-    "vitest": "^3.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "elizaos test",
-    "test:watch": "vitest watch",
-    "test:coverage": "vitest run --coverage",
-    "lint": "prettier --write ./src",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build": "npm run build:prompts && cd typescript && bun run build.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json",
+    "dev": "cd typescript && bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format": "prettier --write .",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test typescript/__tests__/unit/",
+    "test:integration": "bun test typescript/__tests__/integration/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "test:python": "cd python && pytest",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_bluesky"
   },
   "publishConfig": {
     "access": "public"
@@ -51,10 +99,18 @@
   "agentConfig": {
     "pluginType": "elizaos:client:1.0.0",
     "pluginParameters": {
+      "BLUESKY_ENABLED": {
+        "type": "boolean",
+        "description": "Enables or disables the BlueSky plugin.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
       "BLUESKY_DRY_RUN": {
         "type": "boolean",
         "description": "Enables or disables dry run mode when interacting with BlueSky; when true, operations are simulated but not executed.",
         "required": false,
+        "default": false,
         "sensitive": false
       },
       "BLUESKY_HANDLE": {
@@ -76,7 +132,7 @@
         "default": "https://bsky.social",
         "sensitive": false
       },
-      "MAX_POST_LENGTH": {
+      "BLUESKY_MAX_POST_LENGTH": {
         "type": "number",
         "description": "Maximum number of characters allowed in a BlueSky post.",
         "required": false,
@@ -85,61 +141,61 @@
       },
       "BLUESKY_POLL_INTERVAL": {
         "type": "number",
-        "description": "Polling interval in milliseconds for BlueSky operations such as fetching new posts.",
+        "description": "Polling interval in seconds for BlueSky operations such as fetching new notifications.",
         "required": false,
-        "default": 60000,
+        "default": 60,
         "sensitive": false
       },
-      "ENABLE_POST": {
+      "BLUESKY_ENABLE_POSTING": {
         "type": "boolean",
         "description": "Enables or disables the ability to post to BlueSky.",
         "required": false,
         "default": true,
         "sensitive": false
       },
-      "POST_INTERVAL_MIN": {
+      "BLUESKY_POST_INTERVAL_MIN": {
         "type": "number",
-        "description": "Minimum interval in milliseconds between automated posts.",
+        "description": "Minimum interval in seconds between automated posts.",
         "required": false,
-        "default": 300000,
+        "default": 1800,
         "sensitive": false
       },
-      "POST_INTERVAL_MAX": {
+      "BLUESKY_POST_INTERVAL_MAX": {
         "type": "number",
-        "description": "Maximum interval in milliseconds between automated posts.",
+        "description": "Maximum interval in seconds between automated posts.",
         "required": false,
-        "default": 3600000,
+        "default": 3600,
         "sensitive": false
       },
-      "ENABLE_ACTION_PROCESSING": {
+      "BLUESKY_ENABLE_ACTION_PROCESSING": {
         "type": "boolean",
         "description": "Turns on or off automated action processing for BlueSky events.",
         "required": false,
         "default": true,
         "sensitive": false
       },
-      "ACTION_INTERVAL": {
+      "BLUESKY_ACTION_INTERVAL": {
         "type": "number",
-        "description": "Interval in milliseconds between action-processing cycles.",
+        "description": "Interval in seconds between action-processing cycles.",
         "required": false,
-        "default": 60000,
+        "default": 120,
         "sensitive": false
       },
-      "POST_IMMEDIATELY": {
+      "BLUESKY_POST_IMMEDIATELY": {
         "type": "boolean",
         "description": "If true, posts are published immediately instead of waiting for a schedule.",
         "required": false,
         "default": false,
         "sensitive": false
       },
-      "MAX_ACTIONS_PROCESSING": {
+      "BLUESKY_MAX_ACTIONS_PROCESSING": {
         "type": "number",
         "description": "Maximum number of BlueSky actions to process in a single batch.",
         "required": false,
-        "default": 10,
+        "default": 5,
         "sensitive": false
       },
-      "ENABLE_DMS": {
+      "BLUESKY_ENABLE_DMS": {
         "type": "boolean",
         "description": "Enable processing of direct messages via the chat.bsky API.",
         "required": false,
@@ -148,9 +204,5 @@
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/elizaos/elizaos.git"
-  }
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }

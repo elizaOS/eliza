@@ -20,9 +20,9 @@ on:
         required: false
         type: string
       root_directory:
-        description: 'Only scans files in this directory (relative to repository root, e.g., packages/core/src)'
+        description: 'Only scans files in this directory (relative to repository root, e.g., packages/typescript/src)'
         required: true
-        default: 'packages/core'
+        default: 'packages/typescript'
         type: string
       excluded_directories:
         description: 'Directories to exclude from scanning (comma-separated, relative to root_directory)'

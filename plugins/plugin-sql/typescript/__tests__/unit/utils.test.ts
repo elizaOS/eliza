@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import * as path from "node:path";
 import { expandTildePath, resolveEnvFile, resolvePgliteDir } from "../../utils";
 
 // Mock dotenv to prevent loading actual .env file
-// In bun:test, module mocking is handled differently, but this test doesn't need it
+// In vitest, module mocking is handled with vi.mock(), but this test doesn't need it
 
 describe("Utils", () => {
   describe("expandTildePath", () => {
@@ -48,7 +48,7 @@ describe("Utils", () => {
     beforeEach(() => {
       originalEnv = process.env.PGLITE_DATA_DIR;
       delete process.env.PGLITE_DATA_DIR;
-      // No need to clear all mocks in bun:test
+      // Mocks can be cleared with vi.clearAllMocks() if needed
     });
 
     afterEach(() => {

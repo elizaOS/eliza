@@ -1,6 +1,7 @@
 import {
   asUUID,
   composePrompt,
+  type ActionResult,
   type Entity,
   type Evaluator,
   getEntityDetails,
@@ -8,6 +9,7 @@ import {
   type Memory,
   ModelType,
   parseKeyValueXml,
+  reflectionEvaluatorTemplate,
   type State,
   type UUID,
 } from "@elizaos/core";
@@ -79,68 +81,8 @@ z.object({
   relationships: z.array(relationshipSchema),
 });
 
-/**
- * Template string for generating Agent Reflection, Extracting Facts, and Relationships.
- *
- * @type {string}
- */
-const reflectionTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
-
-{{providers}}
-
-# Examples:
-{{evaluationExamples}}
-
-# Entities in Room
-{{entitiesInRoom}}
-
-# Existing Relationships
-{{existingRelationships}}
-
-# Current Context:
-Agent Name: {{agentName}}
-Room Type: {{roomType}}
-Message Sender: {{senderName}} (ID: {{senderId}})
-
-{{recentMessages}}
-
-# Known Facts:
-{{knownFacts}}
-
-# Instructions:
-1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract new facts from the conversation.
-3. Identify and describe relationships between entities.
-  - The sourceEntityId is the UUID of the entity initiating the interaction.
-  - The targetEntityId is the UUID of the entity being interacted with.
-  - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
-
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
-Go directly to the XML response format without any preamble or explanation.
-
-Generate a response in the following format:
-<response>
-  <thought>a self-reflective thought on the conversation</thought>
-  <facts>
-    <fact>
-      <claim>factual statement</claim>
-      <type>fact|opinion|status</type>
-      <in_bio>false</in_bio>
-      <already_known>false</already_known>
-    </fact>
-    <!-- Add more facts as needed -->
-  </facts>
-  <relationships>
-    <relationship>
-      <sourceEntityId>entity_initiating_interaction</sourceEntityId>
-      <targetEntityId>entity_being_interacted_with</targetEntityId>
-      <tags>group_interaction,voice_interaction,dm_interaction,additional_tag1,additional_tag2</tags>
-    </relationship>
-    <!-- Add more relationships as needed -->
-  </relationships>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+// Use the shared template from prompts
+const reflectionTemplate = reflectionEvaluatorTemplate;
 
 /**
  * Resolve an entity name to their UUID
@@ -190,7 +132,7 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 
   throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
-async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
+async function handler(runtime: IAgentRuntime, message: Memory, state?: State): Promise<ActionResult | undefined> {
   const { agentId, roomId } = message;
 
   if (!agentId || !roomId) {
@@ -202,7 +144,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       },
       "Missing agentId or roomId in message",
     );
-    return;
+    return undefined;
   }
 
   // Run all queries in parallel
@@ -246,7 +188,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         },
         "Getting reflection failed - empty response",
       );
-      return;
+      return undefined;
     }
 
     // Parse XML response
@@ -260,7 +202,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         },
         "Getting reflection failed - failed to parse XML",
       );
-      return;
+      return undefined;
     }
 
     // Perform basic structure validation
@@ -272,7 +214,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         },
         "Getting reflection failed - invalid facts structure",
       );
-      return;
+      return undefined;
     }
 
     if (!reflection.relationships) {
@@ -283,7 +225,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         },
         "Getting reflection failed - invalid relationships structure",
       );
-      return;
+      return undefined;
     }
 
     // Handle facts - parseKeyValueXml returns nested structures differently

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'bun:test';
+import {  describe, expect, it, beforeEach, afterAll, beforeAll  } from "vitest";
 import { starterPlugin, StarterService } from '../index';
 import { createMockRuntime, setupLoggerSpies, MockRuntime } from './test-utils';
 import { HandlerCallback, IAgentRuntime, Memory, State, UUID, logger, type Service } from '@elizaos/core';
@@ -18,7 +18,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  // No global restore needed in bun:test
+  // No global restore needed in vitest
 });
 
 describe('Integration: HelloWorld Action with StarterService', () => {

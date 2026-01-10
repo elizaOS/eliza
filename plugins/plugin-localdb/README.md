@@ -33,7 +33,7 @@ const agent = {
 ### Browser
 
 ```typescript
-import { plugin } from "@elizaos/plugin-localdb/browser";
+import { plugin } from "@elizaos/plugin-localdb";
 
 // Add to your agent configuration
 const agent = {
@@ -121,7 +121,7 @@ await adapter.init();
 ### Browser Usage
 
 ```typescript
-import { LocalDatabaseAdapter, BrowserStorage } from "@elizaos/plugin-localdb/browser";
+import { LocalDatabaseAdapter, BrowserStorage } from "@elizaos/plugin-localdb";
 
 const storage = new BrowserStorage("my-prefix");
 const adapter = new LocalDatabaseAdapter(storage, agentId);

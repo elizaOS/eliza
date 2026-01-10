@@ -1,375 +1,366 @@
 # @elizaos/plugin-todo
 
-A comprehensive task management plugin for Eliza agents with advanced reminder capabilities, cross-platform messaging, and intelligent user behavior learning. This production-ready plugin provides everything needed for sophisticated todo management with enterprise-grade features.
+A multi-language Todo task management plugin for elizaOS, providing comprehensive task functionality with daily recurring, one-off, and aspirational tasks.
 
-## 🌟 Features
+## 🌐 Multi-Language Support
 
-### Core Todo Management
-- ✅ **Complete CRUD operations** for todos with natural language
-- 📅 **Daily recurring tasks** with streak tracking and bonus points
-- 🎯 **One-off tasks** with due dates, priorities (1-4), and urgency flags
-- 🌟 **Aspirational goals** for long-term objectives without pressure
-- 🏆 **Advanced points system** with bonus calculations and history tracking
-- 🏷️ **Normalized tag system** with automatic categorization
-- 📊 **Custom database schema** using Drizzle ORM for reliability
+This plugin is implemented in three languages for maximum flexibility:
 
-### Advanced Reminder System
-- 🔔 **Smart reminder timing** based on learned user behavior patterns
-- 📱 **Cross-platform notifications** via deep rolodex plugin integration
-- ⏰ **Multiple reminder windows** (5min, 15min, 30min, 1hr, 2hr, 24hr)
-- 🎯 **Urgency-aware priority handling** with immediate escalation
-- 📊 **Batch processing** for high-volume reminder scenarios
-- 🛡️ **Cooldown periods** to prevent notification spam
-- 🧠 **Adaptive frequency** based on user response patterns
+| Language | Package | Registry |
+|----------|---------|----------|
+| TypeScript | `@elizaos/plugin-todo` | npm |
+| Rust | `elizaos-plugin-todo` | crates.io |
+| Python | `elizaos-plugin-todo` | PyPI |
 
-### Interactive User Experience
-- 💬 **Rich confirmation workflows** with customizable options
-- 🔄 **Smart action choices**: snooze, dismiss, reschedule, complete
-- 🧠 **Behavior learning engine** that adapts to user preferences
-- 📈 **Dynamic reminder optimization** based on success rates
-- 🎨 **Personalized notification messages** tailored to user style
-- ⏱️ **Timeout handling** with intelligent default actions
-- 🔄 **Bulk confirmation support** for multiple related tasks
+All implementations share the same API design, behavior, and feature set.
 
-### Enterprise Integration & Performance
-- 🔗 **Deep rolodex integration** for entity management and messaging
-- ⚡ **Plugin-task integration** for sophisticated confirmation workflows
-- 📊 **Real-time monitoring** with health metrics and alerting
-- 🛡️ **Circuit breaker patterns** with automatic service recovery
-- 🔄 **Automatic failover** and service restart capabilities
-- 📈 **Performance optimization** with concurrent processing limits
-- 🗄️ **Persistent storage** for user preferences and behavior data
+## Features
 
-## 🏗️ Architecture
+- 📋 **Task Types** - Daily recurring, one-off with deadlines, and aspirational goals
+- ⭐ **Priority Levels** - Critical, High, Medium, Low (1-4)
+- ⏰ **Due Dates** - Track deadlines with automatic overdue detection
+- 🏷️ **Tags** - Organize tasks with custom tags
+- 🔔 **Reminders** - Automatic reminder notifications with quiet hours
+- 💾 **Caching** - High-performance in-memory caching with LRU eviction
+- 🔗 **Integration** - Connects with rolodex for multi-platform notifications
+- 🧪 **Tested** - Comprehensive unit and integration tests
 
-### Service-Oriented Design
+## Quick Start
 
-The plugin follows a microservices-inspired architecture with clear separation of concerns:
+### TypeScript
 
-#### TodoReminderService (Core Engine)
-- **Batch-optimized reminder processing** with configurable concurrency
-- **Multiple reminder types**: overdue, upcoming, daily, scheduled
-- **Intelligent filtering** to prevent duplicate processing
-- **Integration with notification and cross-platform services**
-- **Performance monitoring** with metrics collection
+```typescript
+import { todoPlugin } from "@elizaos/plugin-todo";
+import { AgentRuntime } from "@elizaos/core";
 
-#### TodoIntegrationBridge (Integration Hub)
-- **Central service discovery** for rolodex and plugin-task
-- **Entity synchronization** between todo users and rolodex contacts
-- **Cross-platform message routing** with platform preference handling
-- **Confirmation task lifecycle management** with timeout handling
-- **Caching layer** for improved performance
+// Register the plugin
+const runtime = new AgentRuntime({
+  plugins: [todoPlugin],
+});
 
-#### TodoConfirmationService (User Interaction)
-- **Workflow orchestration** for user confirmations
-- **Preference learning and storage** with behavioral adaptation
-- **Bulk confirmation support** with intelligent grouping
-- **Timeout management** with configurable default actions
-- **A/B testing framework** for optimization
-
-#### SmartReminderService (AI/ML Engine)
-- **User behavior analysis** with pattern recognition
-- **Optimal timing calculation** based on historical data
-- **Confidence scoring** for recommendation quality
-- **Batch optimization** for multiple related todos
-- **Continuous learning** with preference adaptation
-
-#### NotificationService (Delivery Layer)
-- **Multi-channel notification delivery** (browser, in-app, cross-platform)
-- **Queue management** with retry logic and priority handling
-- **User preference enforcement** (quiet hours, channel selection)
-- **Delivery confirmation** and failure tracking
-- **Analytics collection** for optimization
-
-#### TodoMonitoringService (Operations)
-- **Comprehensive health monitoring** across all services
-- **Performance metrics collection** with historical tracking
-- **Intelligent alerting** with configurable rules
-- **Automatic recovery procedures** for common failure scenarios
-- **Real-time dashboard data** for operational visibility
-
-### Data Architecture
-
-#### Enhanced Database Schema
-```sql
--- Core todo management
-todos (id, name, type, priority, due_date, metadata, ...)
-todo_tags (todo_id, tag)
-user_points (entity_id, current_points, total_earned, ...)
-point_history (user_points_id, points, reason, timestamp)
-daily_streaks (todo_id, current_streak, longest_streak, ...)
-
--- Smart features (conceptual - stored in service memory/cache)
-user_behavior_data (user_id, response_patterns, optimal_times, ...)
-reminder_optimization_data (success_rates, timing_analysis, ...)
+// The plugin provides actions:
+// - CREATE_TODO: Create new tasks from natural language
+// - COMPLETE_TODO: Mark tasks as completed
+// - UPDATE_TODO: Modify existing tasks
+// - CANCEL_TODO: Remove tasks
+// - CONFIRM_TODO: Confirm pending task creation
 ```
 
-## 🚀 Installation & Setup
+### Rust
+
+```rust
+use elizaos_plugin_todo::{TodoClient, TodoConfig, TaskType, Priority, CreateTodoParams};
+use uuid::Uuid;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = TodoConfig::from_env()?;
+    let mut client = TodoClient::new(config)?;
+    client.start().await?;
+
+    let todo = client.create_todo(CreateTodoParams {
+        name: "Finish report".to_string(),
+        task_type: TaskType::OneOff,
+        priority: Some(Priority::High),
+        ..Default::default()
+    }).await?;
+
+    println!("Created: {}", todo.name);
+    Ok(())
+}
+```
+
+### Python
+
+```python
+import asyncio
+from elizaos_plugin_todo import TodoClient, TodoConfig, TaskType, Priority
+
+async def main():
+    config = TodoConfig.from_env()
+    
+    async with TodoClient(config) as client:
+        todo = await client.create_todo(
+            name="Finish report",
+            task_type=TaskType.ONE_OFF,
+            priority=Priority.HIGH,
+            agent_id=uuid4(),
+            world_id=uuid4(),
+            room_id=uuid4(),
+            entity_id=uuid4(),
+        )
+        print(f"Created: {todo.name}")
+
+asyncio.run(main())
+```
+
+## Installation
+
+### TypeScript (npm)
 
 ```bash
 npm install @elizaos/plugin-todo
+# or
+bun add @elizaos/plugin-todo
 ```
 
-### Basic Configuration
+### Rust (Cargo)
+
+```toml
+[dependencies]
+elizaos-plugin-todo = "1.0"
+```
+
+### Python (pip)
+
+```bash
+pip install elizaos-plugin-todo
+```
+
+## Configuration
+
+All implementations use the same environment variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | No | - | Database connection string |
+| `TODO_ENABLE_REMINDERS` | No | `true` | Enable reminder notifications |
+| `TODO_REMINDER_INTERVAL_MS` | No | `30000` | Reminder check interval (ms) |
+| `TODO_MIN_REMINDER_INTERVAL_MS` | No | `1800000` | Min interval between reminders |
+| `TODO_QUIET_HOURS_START` | No | `22` | Quiet hours start (hour 0-23) |
+| `TODO_QUIET_HOURS_END` | No | `8` | Quiet hours end (hour 0-23) |
+| `TODO_CACHE_MAX_SIZE` | No | `1000` | Maximum cache entries |
+| `TODO_ENABLE_ROLODEX` | No | `true` | Enable rolodex integration |
+
+## Task Types
+
+### Daily Tasks
+
+Recurring tasks that reset each day. Track streaks and completion status.
 
 ```typescript
-import { TodoPlugin } from '@elizaos/plugin-todo';
-
-const agent = new Agent({
-  plugins: [
-    TodoPlugin,
-    // Recommended companion plugins
-    RolodexPlugin,  // For cross-platform messaging
-    TaskPlugin      // For confirmation workflows
-  ],
-  // ... other configuration
+// TypeScript
+await client.create_todo({
+  name: "Morning exercise",
+  task_type: TaskType.DAILY,
 });
 ```
 
-### Advanced Configuration
+### One-Off Tasks
+
+Single tasks with optional due dates and priorities.
 
 ```typescript
-// Environment variables for fine-tuning
-process.env.TODO_CHECK_INTERVAL = '60000';          // Reminder check frequency
-process.env.TODO_BATCH_SIZE = '10';                 // Batch processing size
-process.env.TODO_MAX_CONCURRENT = '5';              // Concurrent reminder limit
-process.env.TODO_REMINDER_COOLDOWN = '86400000';    // 24hr cooldown period
-process.env.TODO_ENABLE_SMART_REMINDERS = 'true';   // Enable ML features
-process.env.TODO_ENABLE_MONITORING = 'true';        // Enable health monitoring
+await client.create_todo({
+  name: "Finish taxes",
+  task_type: TaskType.ONE_OFF,
+  priority: Priority.HIGH,
+  due_date: new Date("2024-04-15"),
+  is_urgent: true,
+});
 ```
 
-## 💡 Usage Examples
+### Aspirational Goals
 
-### Natural Language Todo Creation
+Long-term goals without specific deadlines.
 
 ```typescript
-// Daily tasks with streak tracking
-"Add a daily task to exercise for 30 minutes"
-"Create a daily reminder to take vitamins"
-
-// Priority-based one-off tasks
-"Add a high priority task to submit the report by Friday"
-"Create an urgent todo to call the client today"
-
-// Aspirational goals
-"I want to learn Japanese someday"
-"Add a goal to write a novel"
+await client.create_todo({
+  name: "Learn a new language",
+  task_type: TaskType.ASPIRATIONAL,
+});
 ```
 
-### Smart Reminder Interactions
+## API Reference
+
+### Actions (TypeScript/elizaOS)
+
+| Action | Description |
+|--------|-------------|
+| `CREATE_TODO` | Create a new task from natural language |
+| `COMPLETE_TODO` | Mark a task as completed |
+| `UPDATE_TODO` | Modify an existing task |
+| `CANCEL_TODO` | Delete a task |
+| `CONFIRM_TODO` | Confirm pending task creation |
+
+### Client Methods
+
+| Method | Description |
+|--------|-------------|
+| `create_todo(params)` | Create a new todo |
+| `get_todo(id)` | Get a todo by ID |
+| `get_todos(filters)` | Get todos with optional filters |
+| `complete_todo(id)` | Mark a todo as completed |
+| `uncomplete_todo(id)` | Mark a todo as not completed |
+| `update_todo(id, updates)` | Update a todo |
+| `delete_todo(id)` | Delete a todo |
+| `get_overdue_todos(filters)` | Get overdue tasks |
+| `reset_daily_todos(filters)` | Reset daily tasks for new day |
+| `add_tags(id, tags)` | Add tags to a todo |
+| `remove_tags(id, tags)` | Remove tags from a todo |
+
+### Types
 
 ```typescript
-// User receives: "⚠️ OVERDUE [URGENT]: Submit quarterly report (was due 2 days ago)"
-// Response options: "✅ Mark Complete", "📅 Reschedule", "😴 Snooze 1 Day", "🔕 Dismiss"
+// Task Types
+type TaskType = 'daily' | 'one-off' | 'aspirational';
 
-// User receives: "⏰ REMINDER: Team meeting in 15 minutes!"
-// Response options: "✅ Mark Complete", "⏰ Snooze 15 min", "⏰ Snooze 1 hour"
+// Priority Levels
+type Priority = 1 | 2 | 3 | 4;  // 1 = Critical, 4 = Low
 
-// User receives: "📅 Daily Reminder: Exercise - Don't break your 5-day streak!"
-// Response options: "✅ Complete", "⏭️ Skip Today", "🔕 Dismiss"
+// Recurring Patterns
+type RecurringPattern = 'daily' | 'weekly' | 'monthly';
+
+// Notification Types
+type NotificationType = 'overdue' | 'upcoming' | 'daily' | 'system';
 ```
 
-### Programmatic API Usage
+## Project Structure
 
-```typescript
-// Smart reminder recommendations
-const smartService = runtime.getService('SMART_REMINDER');
-const recommendation = await smartService.getSmartReminderRecommendation(todo);
-console.log(`Optimal time: ${recommendation.optimalTime}, confidence: ${recommendation.confidence}`);
-
-// Cross-platform messaging
-const bridge = runtime.getService('TODO_INTEGRATION_BRIDGE');
-const success = await bridge.sendCrossPlatformReminder(todo, 'Custom message', 'high');
-
-// Confirmation workflows
-const confirmService = runtime.getService('TODO_CONFIRMATION');
-const taskId = await confirmService.createReminderConfirmation(todo, 'overdue');
-
-// Monitoring and health
-const monitoring = runtime.getService('TODO_MONITORING');
-const metrics = await monitoring.getCurrentMetrics();
-const alerts = await monitoring.getActiveAlerts();
+```
+plugin-todo/
+├── typescript/           # TypeScript implementation
+│   ├── index.ts         # Main entry point
+│   ├── actions/         # Action handlers
+│   ├── providers/       # Data providers
+│   ├── services/        # Background services
+│   ├── types/           # Type definitions
+│   └── __tests__/       # Tests
+├── rust/                 # Rust implementation
+│   ├── src/
+│   │   ├── lib.rs       # Library entry
+│   │   ├── client.rs    # Todo client
+│   │   ├── types.rs     # Type definitions
+│   │   └── ...
+│   └── tests/           # Integration tests
+├── python/              # Python implementation
+│   ├── elizaos_plugin_todo/
+│   │   ├── __init__.py  # Package entry
+│   │   ├── client.py    # Todo client
+│   │   ├── types.py     # Type definitions
+│   │   └── ...
+│   └── tests/           # Tests
+├── package.json         # npm package config
+└── README.md           # This file
 ```
 
-## 📊 Monitoring & Analytics
+## Development
 
-### Real-Time Metrics
-- **Reminder Success Rate**: >95% typical delivery success
-- **User Engagement**: 60-80% confirmation response rate  
-- **Processing Performance**: <2 seconds average reminder processing
-- **Cross-Platform Delivery**: Real-time success/failure tracking
-- **Memory Usage**: Optimized for <100MB sustained usage
+### Prerequisites
 
-### Health Monitoring
-```typescript
-// Service health dashboard data
-const healthReports = await monitoring.checkServiceHealth();
-// Returns status for: TODO_REMINDER, TODO_INTEGRATION_BRIDGE, 
-//                     TODO_CONFIRMATION, SMART_REMINDER, NOTIFICATION
+- **TypeScript**: Bun or Node.js 18+
+- **Rust**: Rust 1.70+ with cargo
+- **Python**: Python 3.11+
 
-// Performance analytics
-const performanceMetrics = await monitoring.trackPerformanceMetrics();
-// Includes: processing times, memory usage, queue metrics, cache hit rates
-```
-
-### Alert System
-- **Automatic alerts** for service failures, high error rates, performance degradation
-- **Intelligent recovery** with circuit breakers and service restart
-- **Escalation rules** based on severity and impact
-- **Historical tracking** for trend analysis and optimization
-
-## 🎯 Advanced Features
-
-### Machine Learning & Optimization
-
-The plugin includes sophisticated ML capabilities:
-
-1. **Behavioral Pattern Recognition**
-   - Learns optimal reminder times per user
-   - Adapts to response patterns and preferences
-   - Optimizes message content based on success rates
-
-2. **Predictive Analytics**
-   - Forecasts best times for task completion
-   - Predicts user availability and responsiveness
-   - Confidence scoring for all recommendations
-
-3. **Continuous Optimization**
-   - A/B tests different reminder strategies
-   - Automatically adjusts frequency based on engagement
-   - Learns from cross-platform delivery success rates
-
-### Enterprise Features
-
-1. **High Availability**
-   - Automatic failover and service recovery
-   - Circuit breaker patterns for external dependencies
-   - Graceful degradation during partial outages
-
-2. **Scalability**
-   - Batch processing for 100+ concurrent reminders
-   - Configurable concurrency limits
-   - Intelligent queue management with priority handling
-
-3. **Security & Privacy**
-   - Encrypted storage for sensitive user data
-   - Configurable data retention policies
-   - Privacy-first behavioral learning
-
-## 🔧 Development
-
-### Testing Strategy
+### Running Tests
 
 ```bash
-# Comprehensive test suite
-npm test                    # Full test suite
-npm run test:unit          # Unit tests with high coverage
-npm run test:integration   # Service integration tests
-npm run test:e2e          # End-to-end workflow tests
-npm run test:performance  # Load and performance tests
+# TypeScript
+cd typescript
+bun test
+
+# Rust
+cd rust
+cargo test
+
+# Python
+cd python
+pip install -e ".[dev]"
+pytest
 ```
 
-### Development Tools
+### Building
 
 ```bash
-# Development workflow
-npm run dev               # Hot-reload development
-npm run build            # Production build
-npm run type-check       # TypeScript validation
-npm run lint             # Code quality checks
-npm run test:watch       # Continuous testing
+# TypeScript
+bun run build
+
+# Rust
+cd rust && cargo build --release
+
+# Python
+cd python && pip install build && python -m build
 ```
 
-### Contributing Guidelines
+### Linting
 
-1. **Service Architecture**: Follow existing patterns for new services
-2. **Testing Requirements**: Maintain >90% test coverage
-3. **Performance Standards**: <2s processing time for all operations
-4. **Documentation**: Comprehensive API documentation required
-5. **Monitoring**: Add metrics for all new features
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-#### Reminders Not Sending
 ```bash
-# Check service health
-curl http://localhost:3000/api/todo/health
+# TypeScript
+bun run lint
 
-# Verify reminder service status
-DEBUG=todo:reminders npm start
+# Rust
+cd rust && cargo clippy
 
-# Check database connectivity
-npm run test:db
+# Python
+cd python && ruff check . && ruff format .
 ```
 
-#### Cross-Platform Integration Issues
-```bash
-# Verify rolodex plugin installation
-DEBUG=rolodex:* npm start
+## Services
 
-# Check entity synchronization
-curl http://localhost:3000/api/todo/entities
+### TodoReminderService
 
-# Test message delivery
-curl -X POST http://localhost:3000/api/todo/test-message
-```
+Handles automatic reminder notifications:
+- Checks for overdue tasks
+- Sends upcoming task reminders
+- Daily task reminders at configured times
+- Rate limiting to prevent notification spam
 
-#### Performance Issues
-```bash
-# Monitor memory usage
-curl http://localhost:3000/api/todo/metrics
+### NotificationManager
 
-# Check queue status
-curl http://localhost:3000/api/todo/queue-status
+Manages notification delivery:
+- In-app notifications
+- Browser notifications (when enabled)
+- Quiet hours respect
+- User preference management
 
-# Analyze slow queries
-DEBUG=todo:performance npm start
-```
+### CacheManager
 
-### Performance Tuning
+High-performance caching:
+- LRU eviction
+- TTL support
+- Pattern-based operations
+- Statistics tracking
+
+## Integration
+
+### Rolodex Integration
+
+When `@elizaos/plugin-rolodex` is available, reminders are sent across all connected platforms:
 
 ```typescript
-// Optimize for high-volume scenarios
-const config = {
-  TODO_BATCH_SIZE: '20',           // Increase batch size
-  TODO_MAX_CONCURRENT: '10',       // Increase concurrency
-  TODO_CHECK_INTERVAL: '30000',    // More frequent checks
-  TODO_CACHE_TTL: '300000'         // Longer cache retention
-};
+// Reminder automatically sent to Discord, Telegram, etc.
+const reminderService = runtime.getService('TODO_REMINDER');
+await reminderService.checkTasksForReminders();
 ```
 
-## 📈 Roadmap
+### Database
 
-### Upcoming Features
-- **AI-powered task prioritization** based on user behavior
-- **Advanced analytics dashboard** with custom metrics
-- **Multi-language support** for international users
-- **API rate limiting** for enterprise deployments
-- **Webhook integrations** for external systems
-- **Mobile push notification** support
-- **Voice interaction** capabilities
+Requires `@elizaos/plugin-sql` for persistent storage. Schema includes:
+- `todos` table for task data
+- `todo_tags` table for tag associations
 
-### Integration Expansions
-- **Calendar integration** for due date synchronization
-- **Slack/Discord bot** commands
-- **Email reminder** integration
-- **Time tracking** for completed tasks
-- **Project management** tool integrations
+## Error Handling
 
-## 📄 License
+All implementations follow a **fail-fast** philosophy:
+- Input validation with clear error messages
+- No silent failures
+- Descriptive error types
 
-MIT License - see LICENSE file for details.
+### Error Types
 
-## 🤝 Support
+| Error | Description |
+|-------|-------------|
+| `ValidationError` | Invalid input parameters |
+| `NotFoundError` | Todo not found |
+| `DatabaseError` | Database operation failed |
+| `ConfigError` | Invalid configuration |
+| `ReminderError` | Reminder operation failed |
+| `NotificationError` | Notification delivery failed |
 
-- **Documentation**: Comprehensive guides and API reference
-- **Community**: GitHub Discussions for questions and feedback
-- **Issues**: GitHub Issues for bug reports and feature requests
-- **Performance**: Built-in monitoring and health checks
-- **Enterprise**: Professional support available for production deployments
+## License
 
----
+MIT - see [LICENSE](./rust/LICENSE)
 
-**Built with ❤️ for the Eliza ecosystem - Making AI agents more productive, one todo at a time!**
+## Contributing
+
+See the [elizaOS contributing guide](https://github.com/elizaos/eliza/blob/main/CONTRIBUTING.md).

@@ -3,6 +3,7 @@ import {
   type Memory,
   ModelType,
   type Provider,
+  type ProviderValue,
   type State,
 } from "@elizaos/core";
 
@@ -36,7 +37,7 @@ const factsProvider: Provider = {
   name: "FACTS",
   description: "Key facts that the agent knows",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {
       // Parallelize initial data fetching operations including recentInteractions
       const recentMessages = await runtime.getMemories({
@@ -87,7 +88,7 @@ const factsProvider: Provider = {
             facts: "",
           },
           data: {
-            facts: allFacts,
+            facts: allFacts as unknown as ProviderValue,
           },
           text: "No facts available.",
         };
@@ -104,7 +105,7 @@ const factsProvider: Provider = {
           facts: formattedFacts,
         },
         data: {
-          facts: allFacts,
+          facts: allFacts as unknown as ProviderValue,
         },
         text,
       };
@@ -122,7 +123,7 @@ const factsProvider: Provider = {
           facts: "",
         },
         data: {
-          facts: [],
+          facts: [] as unknown as ProviderValue,
         },
         text: "Error retrieving facts.",
       };

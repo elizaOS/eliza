@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { summarizationEvaluator } from '../evaluators/summarization';
 import { longTermExtractionEvaluator } from '../evaluators/long-term-extraction';
 import { MemoryService } from '../services/memory-service';
@@ -13,44 +13,44 @@ describe('Evaluators', () => {
 
     // Create mock database
     const mockDb = {
-      insert: mock(() => ({
-        values: mock(async () => {}),
+      insert: vi.fn(() => ({
+        values: vi.fn(async () => {}),
       })),
-      select: mock(() => ({
-        from: mock(() => ({
-          where: mock(() => ({
-            orderBy: mock(() => ({
-              limit: mock(async () => []),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn(async () => []),
             })),
-            limit: mock(async () => []),
+            limit: vi.fn(async () => []),
           })),
         })),
       })),
-      update: mock(() => ({
-        set: mock(() => ({
-          where: mock(async () => {}),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => {}),
         })),
       })),
-      delete: mock(() => ({
-        where: mock(async () => {}),
+      delete: vi.fn(() => ({
+        where: vi.fn(async () => {}),
       })),
     };
 
     mockRuntime = {
       agentId: 'test-agent' as UUID,
       character: { name: 'TestAgent' },
-      getSetting: mock(() => undefined),
-      getService: mock((name: string) => {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn((name: string) => {
         if (name === 'memory') return mockMemoryService;
         return null;
       }),
-      getMemories: mock(async () => []),
-      countMemories: mock(async () => 0),
-      getCache: mock(async () => undefined),
-      setCache: mock(async () => {}),
+      getMemories: vi.fn(async () => []),
+      countMemories: vi.fn(async () => 0),
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => {}),
       db: mockDb,
-      getConnection: mock(async () => ({
-        query: mock(async () => ({ rows: [] })),
+      getConnection: vi.fn(async () => ({
+        query: vi.fn(async () => ({ rows: [] })),
       })),
     } as unknown as IAgentRuntime;
   });
@@ -90,11 +90,11 @@ describe('Evaluators', () => {
       };
 
       // Not reached threshold (default is 16)
-      mockRuntime.getMemories = mock(async () => createMessages(15));
+      mockRuntime.getMemories = vi.fn(async () => createMessages(15));
       expect(await summarizationEvaluator.validate(mockRuntime, message)).toBe(false);
 
       // Reach threshold
-      mockRuntime.getMemories = mock(async () => createMessages(16));
+      mockRuntime.getMemories = vi.fn(async () => createMessages(16));
       expect(await summarizationEvaluator.validate(mockRuntime, message)).toBe(true);
     });
 
@@ -110,13 +110,13 @@ describe('Evaluators', () => {
       };
 
       // Even with threshold reached
-      mockRuntime.countMemories = mock(async () => 50);
+      mockRuntime.countMemories = vi.fn(async () => 50);
 
       expect(await summarizationEvaluator.validate(mockRuntime, message)).toBe(false);
     });
 
     it('should not validate when service is not available', async () => {
-      mockRuntime.getService = mock(() => null);
+      mockRuntime.getService = vi.fn(() => null);
 
       const message: Memory = {
         id: 'msg-1' as UUID,
@@ -150,15 +150,15 @@ describe('Evaluators', () => {
 
       // Mock countMemories to return appropriate counts
       // Below threshold (30), should not trigger
-      mockRuntime.countMemories = mock(async () => 29);
+      mockRuntime.countMemories = vi.fn(async () => 29);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
 
       // At exactly 30 messages (threshold), should trigger
-      mockRuntime.countMemories = mock(async () => 30);
+      mockRuntime.countMemories = vi.fn(async () => 30);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(true);
 
       // At exactly 40 messages (next interval), should trigger again
-      mockRuntime.countMemories = mock(async () => 40);
+      mockRuntime.countMemories = vi.fn(async () => 40);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(true);
     });
 
@@ -173,7 +173,7 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.countMemories = mock(async () => 10);
+      mockRuntime.countMemories = vi.fn(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
 
@@ -189,7 +189,7 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.countMemories = mock(async () => 10);
+      mockRuntime.countMemories = vi.fn(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
 
@@ -204,7 +204,7 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.countMemories = mock(async () => 10);
+      mockRuntime.countMemories = vi.fn(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
   });

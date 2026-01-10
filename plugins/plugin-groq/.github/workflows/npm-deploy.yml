@@ -1,9 +1,12 @@
-name: Publish Package
+name: Publish npm Package
 
 on:
   push:
     branches:
       - 1.x
+    paths:
+      - 'package.json'
+      - 'typescript/**'
   workflow_dispatch:
 
 jobs:
@@ -107,6 +110,24 @@ jobs:
         with:
           tag_name: "v${{ needs.verify_version.outputs.version }}"
           release_name: "v${{ needs.verify_version.outputs.version }}"
-          body: "Release v${{ needs.verify_version.outputs.version }}"
+          body: |
+            Release v${{ needs.verify_version.outputs.version }}
+            
+            ## Installation
+            
+            **npm/bun:**
+            ```bash
+            npm install @elizaos/plugin-groq@${{ needs.verify_version.outputs.version }}
+            ```
+            
+            **PyPI:**
+            ```bash
+            pip install elizaos-plugin-groq==${{ needs.verify_version.outputs.version }}
+            ```
+            
+            **Cargo:**
+            ```bash
+            cargo add elizaos-plugin-groq@${{ needs.verify_version.outputs.version }}
+            ```
           draft: false
           prerelease: false

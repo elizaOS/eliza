@@ -1,22 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventType, type IAgentRuntime } from "@elizaos/core";
 import { bootstrapPlugin } from "../index";
 import { createMockRuntime, type MockRuntime } from "./test-utils";
 
 // Create a mock function for bootstrapPlugin.init since it might not actually exist on the plugin
-// Define mockInit as a mock() once. Its implementation will be set in beforeEach.
-const mockInit = mock();
+// Define mockInit as a vi.fn() once. Its implementation will be set in beforeEach.
+const mockInit = vi.fn();
 
 describe("Bootstrap Plugin", () => {
   let mockRuntime: MockRuntime;
 
   beforeEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
 
     mockRuntime = createMockRuntime({
-      getSetting: mock().mockReturnValue("medium"),
-      getParticipantUserState: mock().mockResolvedValue("ACTIVE"),
-      composeState: mock().mockResolvedValue({}),
+      getSetting: vi.fn().mockReturnValue("medium"),
+      getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
+      composeState: vi.fn().mockResolvedValue({}),
     });
 
     // Set or reset mockInit's implementation for each test
@@ -89,7 +89,7 @@ describe("Bootstrap Plugin", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should have the correct name and description", () => {
@@ -186,13 +186,13 @@ describe("Bootstrap Plugin", () => {
 
   it("should handle initialization errors gracefully", async () => {
     // Setup runtime to fail during registration
-    mockRuntime.registerProvider = mock().mockImplementation(() => {
+    mockRuntime.registerProvider = vi.fn().mockImplementation(() => {
       throw new Error("Registration failed");
     });
 
     // Create a spy for console.error
     const originalConsoleError = console.error;
-    const consoleErrorSpy = mock();
+    const consoleErrorSpy = vi.fn();
     console.error = consoleErrorSpy;
 
     // Should not throw error during initialization

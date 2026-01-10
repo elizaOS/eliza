@@ -262,11 +262,13 @@ export function validateCharacter(data: unknown): CharacterValidationResult {
     };
   }
 
+  const zodError = result.error as { issues?: Array<{ message: string }>; toString: () => string };
+  const errorMessage = zodError.issues?.[0]?.message || zodError.toString() || "Validation failed";
   return {
     success: false,
     error: {
-      message: `Character validation failed: ${result.error.message}`,
-      issues: result.error.issues,
+      message: `Character validation failed: ${errorMessage}`,
+      issues: zodError.issues || [],
     },
   };
 }

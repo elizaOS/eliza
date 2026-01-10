@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import {
   type AgentRuntime,
   ChannelType,

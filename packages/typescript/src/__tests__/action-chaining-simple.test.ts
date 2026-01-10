@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import {  beforeEach, describe, expect, it  } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { ActionPlan, ActionResult } from "../types";
 

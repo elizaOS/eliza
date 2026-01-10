@@ -13,31 +13,10 @@ from uuid import UUID
 
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import CHOOSE_OPTION_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
-
-
-CHOOSE_OPTION_TEMPLATE = """# Task: Choose an option from the available choices.
-
-{{providers}}
-
-# Available Options:
-{{#each options}}
-- [{{this.id}}] {{this.label}}: {{this.description}}
-{{/each}}
-
-# Instructions: 
-Analyze the options and select the most appropriate one based on the current context.
-Provide your reasoning and the selected option ID.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the selection</thought>
-    <selected_id>The ID of the selected option</selected_id>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
 
 
 @dataclass

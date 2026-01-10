@@ -35,14 +35,14 @@ jobs:
 
       - name: Create test env file
         run: |
-          echo "TEST_DATABASE_CLIENT=pglite" > packages/core/.env.test
-          echo "NODE_ENV=test" >> packages/core/.env.test
+          echo "TEST_DATABASE_CLIENT=pglite" > packages/typescript/.env.test
+          echo "NODE_ENV=test" >> packages/typescript/.env.test
 
       - name: Run tests
         timeout-minutes: 15
         env:
           NODE_OPTIONS: '--max-old-space-size=2048'
-        run: cd packages/core && bun test:coverage --timeout 60000
+        run: cd packages/typescript && npm run test:coverage
 
   # Lint and format job
   lint-and-format:

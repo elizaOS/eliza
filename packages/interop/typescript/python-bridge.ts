@@ -12,11 +12,13 @@ import type {
   EvaluationExample,
   Evaluator,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   Plugin,
   Provider,
   ProviderResult,
+  ProviderValue,
   State,
 } from "@elizaos/core";
 import type {
@@ -254,7 +256,6 @@ export class PythonPluginBridge extends EventEmitter {
         } else {
           resolve();
         }
-        });
       });
     }
     this.cleanup();
@@ -326,7 +327,7 @@ function createPluginFromBridge(
       _runtime: IAgentRuntime,
       message: Memory,
       state: State | undefined,
-      options: Record<string, unknown> | undefined,
+      options?: HandlerOptions,
       _callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const response = await bridge.sendRequest<ActionResultResponse>({
@@ -335,15 +336,15 @@ function createPluginFromBridge(
         action: actionDef.name,
         memory: message,
         state: state ?? null,
-        options: options ?? null,
+        options: (options as Record<string, unknown>) ?? null,
       });
       const result = response.result;
       return {
         success: result.success,
         text: result.text,
         error: result.error ? new Error(result.error) : undefined,
-        data: result.data,
-        values: result.values,
+        data: result.data as Record<string, ProviderValue> | undefined,
+        values: result.values as Record<string, ProviderValue> | undefined,
       };
     },
   }));
@@ -371,8 +372,8 @@ function createPluginFromBridge(
         });
         return {
           text: response.result.text,
-          values: response.result.values,
-          data: response.result.data,
+          values: response.result.values as Record<string, ProviderValue> | undefined,
+          data: response.result.data as Record<string, ProviderValue> | undefined,
         };
       },
     }),
@@ -423,8 +424,8 @@ function createPluginFromBridge(
           error: response.result.error
             ? new Error(response.result.error)
             : undefined,
-          data: response.result.data,
-          values: response.result.values,
+          data: response.result.data as Record<string, ProviderValue> | undefined,
+          values: response.result.values as Record<string, ProviderValue> | undefined,
         };
       },
     }),

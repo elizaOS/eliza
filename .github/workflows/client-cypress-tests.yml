@@ -20,7 +20,7 @@ on:
       - 'develop'
     paths:
       - 'packages/client/**'
-      - 'packages/core/**'
+      - 'packages/typescript/**'
       - 'packages/server/**'
       - '.github/workflows/client-cypress-tests.yml'
   pull_request:
@@ -29,7 +29,7 @@ on:
       - 'develop'
     paths:
       - 'packages/client/**'
-      - 'packages/core/**'
+      - 'packages/typescript/**'
       - 'packages/server/**'
       - '.github/workflows/client-cypress-tests.yml'
 

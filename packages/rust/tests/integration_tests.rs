@@ -250,6 +250,9 @@ impl ActionHandler for RespondAction {
                 "message".to_string(),
             ]),
             examples: None,
+            priority: None,
+            tags: None,
+            parameters: None,
         }
     }
 
@@ -306,6 +309,9 @@ impl ActionHandler for SearchAction {
             description: "Search for information".to_string(),
             similes: Some(vec!["find".to_string(), "lookup".to_string()]),
             examples: None,
+            priority: None,
+            tags: None,
+            parameters: None,
         }
     }
 
@@ -1045,6 +1051,7 @@ mod run_management_tests {
 
 mod settings_tests {
     use super::*;
+    use elizaos::types::LLMMode;
 
     /// Test runtime settings
     #[tokio::test]
@@ -1095,6 +1102,205 @@ mod settings_tests {
         // Verify preset setting exists
         let value = runtime.get_setting("PRESET_KEY").await;
         assert_eq!(value, Some(SettingValue::String("preset_value".to_string())));
+    }
+
+    /// Test LLM mode defaults to DEFAULT
+    #[tokio::test]
+    async fn test_llm_mode_default() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mode = runtime.get_llm_mode().await;
+        assert_eq!(mode, LLMMode::Default);
+    }
+
+    /// Test LLM mode from constructor option
+    #[tokio::test]
+    async fn test_llm_mode_constructor_option() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            llm_mode: Some(LLMMode::Small),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mode = runtime.get_llm_mode().await;
+        assert_eq!(mode, LLMMode::Small);
+    }
+
+    /// Test LLM mode LARGE from constructor option
+    #[tokio::test]
+    async fn test_llm_mode_large_constructor_option() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            llm_mode: Some(LLMMode::Large),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let mode = runtime.get_llm_mode().await;
+        assert_eq!(mode, LLMMode::Large);
+    }
+
+    /// Test LLM mode from character setting
+    #[tokio::test]
+    async fn test_llm_mode_from_setting() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Set LLM_MODE via settings
+        runtime
+            .set_setting(
+                "LLM_MODE",
+                SettingValue::String("SMALL".to_string()),
+                false,
+            )
+            .await;
+
+        let mode = runtime.get_llm_mode().await;
+        assert_eq!(mode, LLMMode::Small);
+    }
+
+    /// Test LLM mode constructor option takes precedence over setting
+    #[tokio::test]
+    async fn test_llm_mode_constructor_precedence() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            llm_mode: Some(LLMMode::Large),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Set a different LLM_MODE via settings
+        runtime
+            .set_setting(
+                "LLM_MODE",
+                SettingValue::String("SMALL".to_string()),
+                false,
+            )
+            .await;
+
+        // Constructor option should take precedence
+        let mode = runtime.get_llm_mode().await;
+        assert_eq!(mode, LLMMode::Large);
+    }
+
+    /// Test checkShouldRespond defaults to true
+    #[tokio::test]
+    async fn test_check_should_respond_default() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let enabled = runtime.is_check_should_respond_enabled().await;
+        assert!(enabled);
+    }
+
+    /// Test checkShouldRespond from constructor option (disabled)
+    #[tokio::test]
+    async fn test_check_should_respond_disabled_via_constructor() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            check_should_respond: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let enabled = runtime.is_check_should_respond_enabled().await;
+        assert!(!enabled);
+    }
+
+    /// Test checkShouldRespond from constructor option (enabled)
+    #[tokio::test]
+    async fn test_check_should_respond_enabled_via_constructor() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            check_should_respond: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let enabled = runtime.is_check_should_respond_enabled().await;
+        assert!(enabled);
+    }
+
+    /// Test checkShouldRespond from character setting
+    #[tokio::test]
+    async fn test_check_should_respond_from_setting() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Set CHECK_SHOULD_RESPOND to false via settings
+        runtime
+            .set_setting(
+                "CHECK_SHOULD_RESPOND",
+                SettingValue::String("false".to_string()),
+                false,
+            )
+            .await;
+
+        let enabled = runtime.is_check_should_respond_enabled().await;
+        assert!(!enabled);
+    }
+
+    /// Test checkShouldRespond from boolean setting
+    #[tokio::test]
+    async fn test_check_should_respond_from_bool_setting() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Set CHECK_SHOULD_RESPOND to boolean false via settings
+        runtime
+            .set_setting("CHECK_SHOULD_RESPOND", SettingValue::Bool(false), false)
+            .await;
+
+        let enabled = runtime.is_check_should_respond_enabled().await;
+        assert!(!enabled);
+    }
+
+    /// Test checkShouldRespond constructor option takes precedence over setting
+    #[tokio::test]
+    async fn test_check_should_respond_constructor_precedence() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(create_test_character()),
+            check_should_respond: Some(false),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Set a different value via settings
+        runtime
+            .set_setting("CHECK_SHOULD_RESPOND", SettingValue::Bool(true), false)
+            .await;
+
+        // Constructor option should take precedence
+        let enabled = runtime.is_check_should_respond_enabled().await;
+        assert!(!enabled);
     }
 }
 

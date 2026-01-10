@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Readable } from 'node:stream';
 
 // Create mock telegram API methods
-const sendMessageMock = mock(() =>
+const sendMessageMock = vi.fn(() =>
   Promise.resolve({
     message_id: 123,
     text: 'test',
@@ -11,15 +11,15 @@ const sendMessageMock = mock(() =>
   })
 );
 
-const sendPhotoMock = mock(() => Promise.resolve({ message_id: 124 }));
-const sendChatActionMock = mock(() => Promise.resolve(true));
-const sendVideoMock = mock(() => Promise.resolve({ message_id: 125 }));
-const sendDocumentMock = mock(() => Promise.resolve({ message_id: 126 }));
-const sendAudioMock = mock(() => Promise.resolve({ message_id: 127 }));
-const sendAnimationMock = mock(() => Promise.resolve({ message_id: 128 }));
+const sendPhotoMock = vi.fn(() => Promise.resolve({ message_id: 124 }));
+const sendChatActionMock = vi.fn(() => Promise.resolve(true));
+const sendVideoMock = vi.fn(() => Promise.resolve({ message_id: 125 }));
+const sendDocumentMock = vi.fn(() => Promise.resolve({ message_id: 126 }));
+const sendAudioMock = vi.fn(() => Promise.resolve({ message_id: 127 }));
+const sendAnimationMock = vi.fn(() => Promise.resolve({ message_id: 128 }));
 
 // Mock Telegraf before any imports
-mock.module('telegraf', () => ({
+vi.mock('telegraf', () => ({
   Telegraf: class MockTelegraf {
     telegram = {
       sendMessage: sendMessageMock,
@@ -32,19 +32,19 @@ mock.module('telegraf', () => ({
     };
   },
   Markup: {
-    inlineKeyboard: mock((buttons: any) => ({ reply_markup: { inline_keyboard: buttons } })),
+    inlineKeyboard: vi.fn((buttons: any) => ({ reply_markup: { inline_keyboard: buttons } })),
     button: {
-      url: mock((text: string, url: string) => ({ text, url, type: 'url' })),
-      login: mock((text: string, url: string) => ({ text, url, type: 'login' })),
+      url: vi.fn((text: string, url: string) => ({ text, url, type: 'url' })),
+      login: vi.fn((text: string, url: string) => ({ text, url, type: 'login' })),
     },
   },
 }));
 
 // Mock fs
-mock.module('fs', () => ({
+vi.mock('fs', () => ({
   default: {
-    existsSync: mock(() => true),
-    createReadStream: mock(() => {
+    existsSync: vi.fn(() => true),
+    createReadStream: vi.fn(() => {
       const stream = new Readable();
       stream._read = () => {};
       return stream;
@@ -53,14 +53,14 @@ mock.module('fs', () => ({
 }));
 
 // Mock @elizaos/core
-mock.module('@elizaos/core', () => ({
+vi.mock('@elizaos/core', () => ({
   logger: {
-    debug: mock(),
-    info: mock(),
-    warn: mock(),
-    error: mock(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   },
-  createUniqueUuid: mock(() => 'test-uuid-123'),
+  createUniqueUuid: vi.fn(() => 'test-uuid-123'),
   ChannelType: {
     DM: 'DM',
     GROUP: 'GROUP',
@@ -94,12 +94,12 @@ describe('MessageManager', () => {
     // Create minimal mock runtime
     mockRuntime = {
       agentId: 'test-agent-id',
-      getSetting: mock(() => undefined),
-      useModel: mock(() => Promise.resolve({ title: 'Test', description: 'Test description' })),
-      getService: mock(() => null),
-      emitEvent: mock(),
-      createMemory: mock(() => Promise.resolve(true)),
-      ensureConnection: mock(() => Promise.resolve()),
+      getSetting: vi.fn(() => undefined),
+      useModel: vi.fn(() => Promise.resolve({ title: 'Test', description: 'Test description' })),
+      getService: vi.fn(() => null),
+      emitEvent: vi.fn(),
+      createMemory: vi.fn(() => Promise.resolve(true)),
+      ensureConnection: vi.fn(() => Promise.resolve()),
     } as any;
 
     mockBot = new Telegraf('mock_token');
@@ -107,7 +107,7 @@ describe('MessageManager', () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   describe('sendMessageInChunks', () => {

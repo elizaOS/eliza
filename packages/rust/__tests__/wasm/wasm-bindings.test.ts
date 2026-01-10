@@ -8,7 +8,7 @@
  *   cd packages/rust && ./build-wasm.sh
  */
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import {  beforeAll, describe, expect, it  } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 

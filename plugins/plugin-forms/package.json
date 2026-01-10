@@ -3,8 +3,8 @@
   "description": "Forms plugin for ElizaOS - structured conversational data collection",
   "version": "1.2.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
   "packageType": "plugin",
   "platform": "node",
@@ -29,37 +29,66 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./rust": {
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_forms.js",
+        "default": "./rust/pkg/node/elizaos_plugin_forms.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_forms.js"
     }
   },
   "files": [
     "dist",
+    "rust/pkg",
     "README.md"
   ],
+  "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "^1.2.0",
+    "@elizaos/core": "^1.6.1",
     "uuid": "^11.0.2",
     "zod": "^4.0.5"
   },
   "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "^1.2.0",
     "@types/bun": "^1.2.18",
+    "@types/node": "^25.0.3",
     "@types/uuid": "^10.0.0",
     "dotenv": "^17.2.0",
-    "prettier": "^3.6.2",
-    "typescript": "^5.8.3"
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "bun run build.ts",
-    "dev": "bun run build.ts --watch",
-    "clean": "rm -rf dist && rm -rf .turbo",
-    "lint": "eslint src --fix && prettier --write ./src",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test && elizaos test"
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build": "npm run build:prompts && cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "cd typescript && bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test typescript/__tests__/",
+    "test:integration": "bun test typescript/__tests__/integration/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "test:python": "cd python && pytest",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_forms"
   },
   "publishConfig": {
     "access": "public"

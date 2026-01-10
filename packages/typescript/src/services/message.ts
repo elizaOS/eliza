@@ -396,6 +396,9 @@ export class DefaultMessageService implements IMessageService {
         }
       }
 
+      // Check if shouldRespond evaluation is enabled
+      const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
+
       // Determine if we should respond
       const responseDecision = this.shouldRespond(
         runtime,
@@ -405,14 +408,21 @@ export class DefaultMessageService implements IMessageService {
       );
 
       runtime.logger.debug(
-        { src: "service:message", responseDecision },
+        { src: "service:message", responseDecision, checkShouldRespondEnabled },
         "Response decision",
       );
 
       let shouldRespondToMessage = true;
 
-      // If we can skip the evaluation, use the decision directly
-      if (responseDecision.skipEvaluation) {
+      // If checkShouldRespond is disabled, always respond (ChatGPT mode)
+      if (!checkShouldRespondEnabled) {
+        runtime.logger.debug(
+          { src: "service:message" },
+          "checkShouldRespond disabled, always responding (ChatGPT mode)",
+        );
+        shouldRespondToMessage = true;
+      } else if (responseDecision.skipEvaluation) {
+        // If we can skip the evaluation, use the decision directly
         runtime.logger.debug(
           {
             src: "service:message",
@@ -1526,11 +1536,14 @@ export class DefaultMessageService implements IMessageService {
       }
 
       if (action) {
-        const actionContent = {
+        const actionContent: Content = {
           text: `🔎 Executing action: ${action}`,
           actions: [action],
           thought: thought || "",
         };
+        if (parsedStep && typeof parsedStep.params === "string") {
+          actionContent.params = parsedStep.params;
+        }
 
         await runtime.processActions(
           message,

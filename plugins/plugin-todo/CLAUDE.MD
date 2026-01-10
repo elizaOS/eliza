@@ -2004,7 +2004,7 @@ graph TD
 Every plugin is an object that conforms to the `Plugin` interface. This interface is a manifest of all the capabilities the plugin provides to the runtime.
 
 ```typescript
-// packages/core/src/types.ts (Annotated)
+// packages/typescript/src/types.ts (Annotated)
 export interface Plugin {
   // Required: A unique NPM-style package name. (e.g., '@elizaos/plugin-sql')
   name: string;
@@ -2068,7 +2068,7 @@ The `AgentRuntime` manages a sophisticated plugin lifecycle to ensure stability 
 5.  **Component Registration**: After `init` completes successfully, the runtime registers all other capabilities (`actions`, `providers`, etc.) from the plugin object, making them available to the rest of the system.
 
 ```typescript
-// packages/core/src/runtime.ts
+// packages/typescript/src/runtime.ts
 
 export class AgentRuntime implements IAgentRuntime {
   // ...
@@ -2200,8 +2200,8 @@ export const accountBalanceProvider: Provider = {
 - **Use Services for State**: Avoid global variables. If you need to maintain state (like a connection object, cache, or user session), encapsulate it within a `Service`.
 
 ## References
-- [Core Types (`Plugin`, `Action`, `Provider` etc.)](mdc:packages/core/src/types.ts)
-- [Agent Runtime Implementation](mdc:packages/core/src/runtime.ts)
+- [Core Types (`Plugin`, `Action`, `Provider` etc.)](mdc:packages/typescript/src/types.ts)
+- [Agent Runtime Implementation](mdc:packages/typescript/src/runtime.ts)
 - [Example: SQL Plugin](mdc:packages/plugin-sql/src/index.ts)
 - [Example: Bootstrap Plugin](mdc:packages/plugin-message-handling/src/index.ts)
 
@@ -5925,7 +5925,7 @@ graph TD
 An Agent is defined by a `Character` object, which is typically stored in a `.json` file or a TypeScript module. This object contains all the information the runtime needs to bring an agent to life.
 
 ```typescript
-// packages/core/src/types.ts (Simplified)
+// packages/typescript/src/types.ts (Simplified)
 export interface Character {
   id?: string; // UUID, generated from name if not provided
   name: string;
@@ -6140,7 +6140,7 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: any): Promise<strin
 ## References
 - [Project Management](mdc:elizaos_v2_cli_project.mdc)
 - [Plugin Integration](mdc:elizaos_v2_api_plugins_core.mdc)
-- [Core Types (`Character`)](mdc:packages/core/src/types.ts)
+- [Core Types (`Character`)](mdc:packages/typescript/src/types.ts)
 - [Agent Command Source](mdc:packages/cli/src/commands/agent.ts)
 
 ```
@@ -6174,7 +6174,7 @@ graph TD
     
     subgraph "File System & Path Resolution"
         J[UserEnvironment Utility] --> K{Find Project Root};
-        K -->|Monorepo?| L[packages/core exists];
+        K -->|Monorepo?| L[packages/typescript exists];
         K -->|Standard| M[Current Directory];
         L & M --> N[Resolve .env Path];
         J --> O[Resolve .eliza/config.json Path];
@@ -6272,7 +6272,7 @@ export async function promptForEnvVars(pluginName: string): Promise<void> {
 The `elizaos start` command uses `UserEnvironment` to find the correct `.env` file and loads it using `dotenv`. This populates `process.env`, making the variables available to the entire runtime and all plugins.
 
 ```typescript
-// packages/core/src/runtime.ts
+// packages/typescript/src/runtime.ts
 
 // ✅ DO: Access settings through the runtime's helper method.
 // This provides a consistent access pattern.
@@ -6903,7 +6903,7 @@ graph TD
 This enum in `@elizaos/core` defines the standard categories of models the runtime understands. Plugins should register handlers for one or more of these types.
 
 ```typescript
-// packages/core/src/types.ts (partial)
+// packages/typescript/src/types.ts (partial)
 export const ModelType = {
   TEXT_SMALL: 'TEXT_SMALL',
   TEXT_LARGE: 'TEXT_LARGE',
@@ -6917,7 +6917,7 @@ export const ModelType = {
 A `ModelHandler` is an object that packages the model-calling function with its metadata.
 
 ```typescript
-// packages/core/src/types.ts (partial)
+// packages/typescript/src/types.ts (partial)
 export interface ModelHandler {
   handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
   provider: string; // The name of the plugin providing this handler
@@ -7060,8 +7060,8 @@ export const myFullLlmPlugin: Plugin = {
 ```
 
 ## References
-- [Core Types (`ModelType`, `ModelHandler`, `ModelParamsMap`)](mdc:packages/core/src/types.ts)
-- [Agent Runtime (`registerModel`, `useModel`)](mdc:packages/core/src/runtime.ts)
+- [Core Types (`ModelType`, `ModelHandler`, `ModelParamsMap`)](mdc:packages/typescript/src/types.ts)
+- [Agent Runtime (`registerModel`, `useModel`)](mdc:packages/typescript/src/runtime.ts)
 - [Example: OpenAI Plugin](mdc:packages/plugin-openai/src/index.ts)
 
 ```

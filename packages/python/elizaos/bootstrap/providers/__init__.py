@@ -11,10 +11,12 @@ from .attachments import attachments_provider
 from .capabilities import capabilities_provider
 from .character import character_provider
 from .choice import choice_provider
+from .contacts import contacts_provider
 from .current_time import current_time_provider
 from .entities import entities_provider
 from .evaluators import evaluators_provider
 from .facts import facts_provider
+from .follow_ups import follow_ups_provider
 from .knowledge import knowledge_provider
 from .providers_list import providers_list_provider
 from .recent_messages import recent_messages_provider
@@ -30,10 +32,12 @@ __all__ = [
     "capabilities_provider",
     "character_provider",
     "choice_provider",
+    "contacts_provider",
     "current_time_provider",
     "entities_provider",
     "evaluators_provider",
     "facts_provider",
+    "follow_ups_provider",
     "knowledge_provider",
     "providers_list_provider",
     "recent_messages_provider",
@@ -64,11 +68,13 @@ BASIC_PROVIDERS = [
 # Extended providers - opt-in
 EXTENDED_PROVIDERS = [
     choice_provider,
+    contacts_provider,
     facts_provider,
+    follow_ups_provider,
+    knowledge_provider,
     relationships_provider,
     roles_provider,
     agent_settings_provider,
-    knowledge_provider,
 ]
 
 # All providers list for easy registration (backwards compatibility)

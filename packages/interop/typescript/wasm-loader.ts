@@ -11,11 +11,13 @@ import type {
   EvaluationExample,
   Evaluator,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   Plugin,
   Provider,
   ProviderResult,
+  ProviderValue,
   State,
 } from "@elizaos/core";
 
@@ -262,7 +264,7 @@ function createPluginFromWasm(
       _runtime: IAgentRuntime,
       message: Memory,
       state: State | undefined,
-      options: Record<string, unknown> | undefined,
+      options?: HandlerOptions,
       _callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const resultJson = exports.invoke_action(
@@ -276,8 +278,8 @@ function createPluginFromWasm(
         success: result.success,
         text: result.text,
         error: result.error ? new Error(result.error) : undefined,
-        data: result.data,
-        values: result.values,
+        data: result.data as Record<string, ProviderValue> | undefined,
+        values: result.values as Record<string, ProviderValue> | undefined,
       };
     },
   }));
@@ -304,8 +306,8 @@ function createPluginFromWasm(
         const result: ProviderResultPayload = JSON.parse(resultJson);
         return {
           text: result.text,
-          values: result.values,
-          data: result.data,
+          values: result.values as Record<string, ProviderValue> | undefined,
+          data: result.data as Record<string, ProviderValue> | undefined,
         };
       },
     }),
@@ -351,8 +353,8 @@ function createPluginFromWasm(
           success: result.success,
           text: result.text,
           error: result.error ? new Error(result.error) : undefined,
-          data: result.data,
-          values: result.values,
+          data: result.data as Record<string, ProviderValue> | undefined,
+          values: result.values as Record<string, ProviderValue> | undefined,
         };
       },
     }),

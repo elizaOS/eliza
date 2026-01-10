@@ -1,11 +1,11 @@
-import {
+import { 
   afterAll,
   beforeAll,
   beforeEach,
   describe,
   expect,
   it,
-} from "bun:test";
+ } from "vitest";
 import { sql } from "drizzle-orm";
 import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { RuntimeMigrator } from "../../runtime-migrator";

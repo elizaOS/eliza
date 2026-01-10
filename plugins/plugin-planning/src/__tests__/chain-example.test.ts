@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi } from "vitest";
 import {
   analyzeInputAction,
   processAnalysisAction,
@@ -22,7 +22,7 @@ class TestSuite {
   }
 
   run() {
-    // No-op, bun:test handles execution
+    // No-op, vitest handles execution
   }
 }
 
@@ -110,7 +110,7 @@ describe('Action Chaining', () => {
           },
         };
 
-        const mockCallback = mock();
+        const mockCallback = vi.fn();
         const result3 = await executeFinalAction.handler(
           mockRuntime as any,
           mockMessage as any,
@@ -207,8 +207,8 @@ describe('Action Chaining', () => {
     createUnitTest({
       name: 'should execute cleanup functions',
       fn: async ({ mockRuntime, mockMessage, mockState }) => {
-        const cleanupMock = mock();
-        console.log = mock(); // Mock console.log
+        const cleanupMock = vi.fn();
+        console.log = vi.fn(); // Mock console.log
 
         const result = await executeFinalAction.handler(
           mockRuntime as any,

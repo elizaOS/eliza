@@ -9,8 +9,16 @@ import {
   vi,
 } from "vitest";
 
-import { WalletProvider } from "../providers/wallet";
-import { baseSepolia, getTestChains, sepolia } from "./custom-chain";
+import { WalletProvider } from "../../providers/wallet";
+import {
+  anvil,
+  ANVIL_PRIVATE_KEY,
+  ANVIL_ADDRESS,
+  baseSepolia,
+  getAnvilChain,
+  getTestChains,
+  sepolia,
+} from "../custom-chain";
 
 // Test environment variables - in real tests you'd use a funded testnet wallet
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
@@ -21,6 +29,7 @@ const TEST_RPC_URLS = {
   baseSepolia: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
   optimismSepolia:
     process.env.OP_SEPOLIA_RPC_URL || "https://sepolia.optimism.io",
+  anvil: "http://127.0.0.1:8545",
 };
 
 // Mock the ICacheManager
@@ -295,6 +304,41 @@ describe("Wallet Provider", () => {
       } catch (error) {
         console.warn("Sepolia network unreachable:", error);
       }
+    });
+  });
+
+  describe("Local Anvil Tests (Funded)", () => {
+    let anvilProvider: WalletProvider;
+
+    beforeEach(() => {
+      anvilProvider = new WalletProvider(
+        ANVIL_PRIVATE_KEY,
+        mockCacheManager as any,
+        getAnvilChain(),
+      );
+    });
+
+    it("should connect to local Anvil node", async () => {
+      const publicClient = anvilProvider.getPublicClient("anvil" as any);
+      const blockNumber = await publicClient.getBlockNumber();
+      expect(typeof blockNumber).toBe("bigint");
+    });
+
+    it("should have correct Anvil address", () => {
+      expect(anvilProvider.getAddress()).toBe(ANVIL_ADDRESS);
+    });
+
+    it("should have funded balance on Anvil", async () => {
+      const balance = await anvilProvider.getWalletBalanceForChain("anvil" as any);
+      expect(balance).not.toBeNull();
+      expect(parseFloat(balance!)).toBeGreaterThan(0);
+      console.log(`Anvil balance: ${balance} ETH`);
+    });
+
+    it("should get chain ID from Anvil", async () => {
+      const publicClient = anvilProvider.getPublicClient("anvil" as any);
+      const chainId = await publicClient.getChainId();
+      expect(chainId).toBe(31337);
     });
   });
 });

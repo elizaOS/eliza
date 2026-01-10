@@ -1,88 +1,118 @@
 {
   "name": "@elizaos/plugin-todo",
-  "description": "Todo list plugin for ElizaOS",
   "version": "1.0.0",
   "type": "module",
-  "private": true,
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "packageType": "plugin",
-  "platform": "node",
-  "license": "UNLICENSED",
-  "author": "ElizaOS",
-  "keywords": [
-    "plugin",
-    "elizaos"
-  ],
+  "description": "Multi-language Todo list plugin for elizaOS with TypeScript, Python, and Rust implementations",
+  "main": "typescript/dist/node/index.node.js",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos-plugins/plugin-autonomous"
-  },
-  "homepage": "https://elizaos.ai",
-  "bugs": {
-    "url": "https://github.com/elizaos-plugins/plugin-autonomous/issues"
+    "url": "git+https://github.com/elizaos-plugins/plugin-todo.git"
   },
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
     }
   },
   "files": [
-    "dist",
-    "README.md",
-    ".npmignore",
-    "package.json",
-    "tsup.config.ts"
+    "typescript/dist",
+    "python",
+    "rust",
+    "README.md"
   ],
+  "license": "MIT",
+  "author": "elizaOS Team",
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "todo",
+    "task-management",
+    "multi-language"
+  ],
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos-plugins/plugin-todo/issues"
+  },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-rolodex": "workspace:*",
     "drizzle-orm": "^0.30.10",
-    "start-server-and-test": "^2.0.5",
     "zod": "3.24.2"
   },
-  "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "^1.0.0",
-    "cypress": "^13.6.3",
-    "dotenv": "16.4.5",
-    "drizzle-kit": "^0.21.4",
+    "@types/node": "^25.0.3",
     "prettier": "3.5.3",
-    "ts-node": "^10.9.2",
-    "tsup": "^8.4.0",
-    "typescript": "^5.5.4",
-    "vitest": "^1.6.0"
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "zod": "^3.24.2"
   },
   "scripts": {
-    "start": "elizaos start",
-    "dev": "elizaos dev",
-    "build": "tsup",
-    "lint": "prettier --write ./src",
-    "test": "elizaos test",
-    "publish": "elizaos publish",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "__test__": "bun test"
+    "build": "bun run build:ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_todo",
+    "test": "bun run test:ts",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest"
   },
   "publishConfig": {
     "access": "public"
   },
-  "resolutions": {
-    "zod": "3.24.2"
-  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
+      "ENABLE_REMINDERS": {
+        "type": "boolean",
+        "description": "Enable reminder notifications for todos",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "REMINDER_INTERVAL_MS": {
+        "type": "number",
+        "description": "Interval in milliseconds between reminder checks",
+        "required": false,
+        "default": 30000,
+        "sensitive": false
       }
     }
-  },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  }
 }

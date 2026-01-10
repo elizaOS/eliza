@@ -1819,7 +1819,7 @@ The ElizaOS plugin system is the primary mechanism for extending agent capabilit
 Every plugin is an object that conforms to the `Plugin` interface. This interface is a manifest of all the capabilities the plugin provides to the runtime.
 
 ```typescript
-// packages/core/src/types.ts (Annotated)
+// packages/typescript/src/types.ts (Annotated)
 export interface Plugin {
   // Required: A unique NPM-style package name. (e.g., '@elizaos/plugin-sql')
   name: string;
@@ -1883,7 +1883,7 @@ The `AgentRuntime` manages a sophisticated plugin lifecycle to ensure stability 
 5.  **Component Registration**: After `init` completes successfully, the runtime registers all other capabilities (`actions`, `providers`, etc.) from the plugin object, making them available to the rest of the system.
 
 ```typescript
-// packages/core/src/runtime.ts
+// packages/typescript/src/runtime.ts
 
 export class AgentRuntime implements IAgentRuntime {
   // ...
@@ -2032,8 +2032,8 @@ export const accountBalanceProvider: Provider = {
 
 ## References
 
-- [Core Types (`Plugin`, `Action`, `Provider` etc.)](packages/core/src/types.ts)
-- [Agent Runtime Implementation](packages/core/src/runtime.ts)
+- [Core Types (`Plugin`, `Action`, `Provider` etc.)](packages/typescript/src/types.ts)
+- [Agent Runtime Implementation](packages/typescript/src/runtime.ts)
 - [Example: SQL Plugin](packages/plugin-sql/src/index.ts)
 - [Example: Bootstrap Plugin](packages/plugin-message-handling/src/index.ts)
 
@@ -5559,7 +5559,7 @@ Remember: **Cypress tests run automatically when you run `elizaos test` if Cypre
 An Agent is defined by a `Character` object, which is typically stored in a `.json` file or a TypeScript module. This object contains all the information the runtime needs to bring an agent to life.
 
 ```typescript
-// packages/core/src/types.ts (Simplified)
+// packages/typescript/src/types.ts (Simplified)
 export interface Character {
   id?: string; // UUID, generated from name if not provided
   name: string;
@@ -5773,7 +5773,7 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: any): Promise<strin
 
 - [Project Management](elizaos_v2_cli_project.mdc)
 - [Plugin Integration](elizaos_v2_api_plugins_core.mdc)
-- [Core Types (`Character`)](packages/core/src/types.ts)
+- [Core Types (`Character`)](packages/typescript/src/types.ts)
 - [Agent Command Source](packages/cli/src/commands/agent.ts)
 
 ## ElizaOS Configuration Architecture
@@ -5870,7 +5870,7 @@ export async function promptForEnvVars(pluginName: string): Promise<void> {
 The `elizaos start` command uses `UserEnvironment` to find the correct `.env` file and loads it using `dotenv`. This populates `process.env`, making the variables available to the entire runtime and all plugins.
 
 ```typescript
-// packages/core/src/runtime.ts
+// packages/typescript/src/runtime.ts
 
 // ✅ DO: Access settings through the runtime's helper method.
 // This provides a consistent access pattern.
@@ -6463,7 +6463,7 @@ In ElizaOS, LLMs are integrated via plugins that register `ModelHandler` functio
 This enum in `@elizaos/core` defines the standard categories of models the runtime understands. Plugins should register handlers for one or more of these types.
 
 ```typescript
-// packages/core/src/types.ts (partial)
+// packages/typescript/src/types.ts (partial)
 export const ModelType = {
   TEXT_SMALL: 'TEXT_SMALL',
   TEXT_LARGE: 'TEXT_LARGE',
@@ -6478,7 +6478,7 @@ export const ModelType = {
 A `ModelHandler` is an object that packages the model-calling function with its metadata.
 
 ```typescript
-// packages/core/src/types.ts (partial)
+// packages/typescript/src/types.ts (partial)
 export interface ModelHandler {
   handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
   provider: string; // The name of the plugin providing this handler
@@ -6630,8 +6630,8 @@ export const myFullLlmPlugin: Plugin = {
 
 ## References
 
-- [Core Types (`ModelType`, `ModelHandler`, `ModelParamsMap`)](packages/core/src/types.ts)
-- [Agent Runtime (`registerModel`, `useModel`)](packages/core/src/runtime.ts)
+- [Core Types (`ModelType`, `ModelHandler`, `ModelParamsMap`)](packages/typescript/src/types.ts)
+- [Agent Runtime (`registerModel`, `useModel`)](packages/typescript/src/runtime.ts)
 - [Example: OpenAI Plugin](packages/plugin-openai/src/index.ts)
 
 # ElizaOS Evaluators System

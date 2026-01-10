@@ -1,0 +1,31 @@
+[package]
+name = "elizaos-plugin-linear"
+version = "1.0.0"
+edition = "2021"
+description = "Linear integration plugin for ElizaOS (Rust)"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["elizaos", "plugin", "linear", "project-management", "issue-tracking"]
+categories = ["api-bindings", "development-tools"]
+readme = "README.md"
+
+[lib]
+name = "elizaos_plugin_linear"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+mockall = "0.11"
+tokio-test = "0.4"
+wiremock = "0.5"
+

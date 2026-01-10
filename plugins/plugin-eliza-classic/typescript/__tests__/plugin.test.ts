@@ -2,7 +2,7 @@
  * Tests for ELIZA Classic Plugin
  */
 
-import { describe, test, expect, beforeEach } from "bun:test";
+import {  describe, test, expect, beforeEach  } from "vitest";
 import {
   generateElizaResponse,
   getElizaGreeting,

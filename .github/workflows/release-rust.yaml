@@ -2,7 +2,7 @@ name: Rust Release
 
 # Publish Rust crates to crates.io on release
 # Crates:
-#   - elizaos (packages/core/rust) - core library
+#   - elizaos (packages/rust) - core library
 #   - elizaos-plugin-sql (packages/plugin-sql/rust)
 #   - elizaos-plugin-anthropic (packages/plugin-anthropic/rust)
 #   - elizaos-plugin-discord (packages/plugin-discord/rust)
@@ -86,8 +86,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/core/rust/target
-          key: ${{ runner.os }}-cargo-core-${{ hashFiles('packages/core/rust/Cargo.lock') }}
+            packages/rust/target
+          key: ${{ runner.os }}-cargo-core-${{ hashFiles('packages/rust/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-core-
 
@@ -101,7 +101,7 @@ jobs:
 
       - name: Update crate version
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
@@ -109,39 +109,39 @@ jobs:
 
       - name: Check formatting
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo fmt --all -- --check
 
       - name: Run clippy
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo clippy --features native -- -D warnings
 
       - name: Run tests (native)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo test --features native
 
       - name: Build release (native)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo build --release --features native
 
       - name: Build WASM (web target)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: |
           wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
 
       - name: Build WASM (nodejs target)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: |
           wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
 
       - name: Package WASM artifacts
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: |
           mkdir -p artifacts
           tar -czvf artifacts/elizaos-wasm-web.tar.gz -C pkg/web .
@@ -152,7 +152,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: elizaos-wasm
-          path: packages/core/rust/artifacts/
+          path: packages/rust/artifacts/
           retention-days: 7
 
       - name: Upload WASM to release
@@ -160,19 +160,19 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            packages/core/rust/artifacts/elizaos-wasm-web.tar.gz
-            packages/core/rust/artifacts/elizaos-wasm-node.tar.gz
+            packages/rust/artifacts/elizaos-wasm-web.tar.gz
+            packages/rust/artifacts/elizaos-wasm-node.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify publishable
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         run: cargo publish --dry-run --allow-dirty
 
       - name: Publish to crates.io
         if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
-        working-directory: packages/core/rust
+        working-directory: packages/rust
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: cargo publish --allow-dirty

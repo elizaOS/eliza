@@ -11,6 +11,7 @@ import {
   bootstrapPlugin,
   createBootstrapPlugin,
 } from "./bootstrap/index";
+import { parseActionParams, validateActionParams } from "./actions";
 import { createUniqueUuid } from "./entities";
 import { decryptSecret, getSalt } from "./index";
 import { createLogger } from "./logger";
@@ -145,6 +146,10 @@ export class AgentRuntime implements IAgentRuntime {
   private capabilityOptions: CapabilityConfig = {};
   // Action planning option (undefined means use settings, true/false is explicit)
   private actionPlanningOption?: boolean;
+  // LLM mode option for overriding model selection (undefined means use settings)
+  private llmModeOption?: import("./types").LLMModeType;
+  // Check should respond option (undefined means use settings, defaults to true)
+  private checkShouldRespondOption?: boolean;
   // Flag to track if the character was auto-generated (no character provided)
   private isAnonymousCharacter = false;
 
@@ -201,6 +206,29 @@ export class AgentRuntime implements IAgentRuntime {
      * useful for game situations where state updates with every action).
      */
     actionPlanning?: boolean;
+    /**
+     * LLM mode for overriding model selection.
+     * - "DEFAULT": Use the model type specified in the useModel call (no override)
+     * - "SMALL": Override all text generation model calls to use TEXT_SMALL
+     * - "LARGE": Override all text generation model calls to use TEXT_LARGE
+     * 
+     * This is useful for cost optimization (force SMALL) or quality (force LARGE).
+     * While not recommended for production, it can be a fast way to make the agent run cheaper.
+     */
+    llmMode?: import("./types").LLMModeType;
+    /**
+     * Enable or disable the shouldRespond evaluation.
+     * When true (default), the agent evaluates whether to respond to each message.
+     * When false, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
+     */
+    checkShouldRespond?: boolean;
+    /**
+     * Enable autonomy capabilities for autonomous agent operation.
+     * When true, the agent can operate autonomously with its own thinking loop,
+     * communicating with admin users and running continuous background processing.
+     * Can be enabled at construction time or lazily via settings.
+     */
+    enableAutonomy?: boolean;
   } = {}) {
     // Create default anonymous character if none provided
     let character: Character;
@@ -222,6 +250,7 @@ export class AgentRuntime implements IAgentRuntime {
       disableBasic: opts.disableBasicCapabilities,
       enableExtended: opts.enableExtendedCapabilities,
       skipCharacterProvider: this.isAnonymousCharacter,
+      enableAutonomy: opts.enableAutonomy,
     };
     // Generate deterministic UUID from character name for backward compatibility
     // Falls back to random UUID only if no character name is provided
@@ -254,6 +283,10 @@ export class AgentRuntime implements IAgentRuntime {
     
     // Store action planning option (undefined means check settings at runtime)
     this.actionPlanningOption = opts.actionPlanning;
+    // Store LLM mode option (undefined means check settings at runtime)
+    this.llmModeOption = opts.llmMode;
+    // Store checkShouldRespond option (undefined means check settings at runtime)
+    this.checkShouldRespondOption = opts.checkShouldRespond;
 
     if (opts.allAvailablePlugins) {
       for (const plugin of opts.allAvailablePlugins) {
@@ -347,9 +380,11 @@ export class AgentRuntime implements IAgentRuntime {
       const enableExtended = this.capabilityOptions.enableExtended ?? 
         (settings?.ENABLE_EXTENDED_CAPABILITIES === true || settings?.ENABLE_EXTENDED_CAPABILITIES === "true");
       const skipCharacterProvider = this.capabilityOptions.skipCharacterProvider ?? false;
+      const enableAutonomy = this.capabilityOptions.enableAutonomy ?? 
+        (settings?.ENABLE_AUTONOMY === true || settings?.ENABLE_AUTONOMY === "true");
 
-      if (disableBasic || enableExtended || skipCharacterProvider) {
-        const config: CapabilityConfig = { disableBasic, enableExtended, skipCharacterProvider };
+      if (disableBasic || enableExtended || skipCharacterProvider || enableAutonomy) {
+        const config: CapabilityConfig = { disableBasic, enableExtended, skipCharacterProvider, enableAutonomy };
         const configuredPlugin = createBootstrapPlugin(config);
         pluginToRegister = { ...configuredPlugin, events: plugin.events ?? configuredPlugin.events };
       }
@@ -868,6 +903,63 @@ export class AgentRuntime implements IAgentRuntime {
     return true;
   }
 
+  /**
+   * Get the LLM mode for model selection override.
+   * 
+   * - `DEFAULT`: Use the model type specified in the useModel call (no override)
+   * - `SMALL`: Override all text generation model calls to use TEXT_SMALL
+   * - `LARGE`: Override all text generation model calls to use TEXT_LARGE
+   * 
+   * Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
+   */
+  getLLMMode(): import("./types").LLMModeType {
+    // Constructor option takes precedence
+    if (this.llmModeOption !== undefined) {
+      return this.llmModeOption;
+    }
+
+    // Check character settings
+    const setting = this.getSetting("LLM_MODE");
+    if (setting !== null && typeof setting === "string") {
+      const upper = setting.toUpperCase();
+      if (upper === "SMALL" || upper === "LARGE" || upper === "DEFAULT") {
+        return upper as import("./types").LLMModeType;
+      }
+    }
+
+    // Default to DEFAULT (no override)
+    return "DEFAULT";
+  }
+
+  /**
+   * Check if the shouldRespond evaluation is enabled.
+   * 
+   * When enabled (default: true), the agent evaluates whether to respond to each message.
+   * When disabled, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
+   * 
+   * Priority: constructor option > character setting CHECK_SHOULD_RESPOND > default (true)
+   */
+  isCheckShouldRespondEnabled(): boolean {
+    // Constructor option takes precedence
+    if (this.checkShouldRespondOption !== undefined) {
+      return this.checkShouldRespondOption;
+    }
+
+    // Check character settings
+    const setting = this.getSetting("CHECK_SHOULD_RESPOND");
+    if (setting !== null) {
+      if (typeof setting === "boolean") {
+        return setting;
+      }
+      if (typeof setting === "string") {
+        return setting.toLowerCase() !== "false";
+      }
+    }
+
+    // Default to true (check should respond is enabled)
+    return true;
+  }
+
   registerDatabaseAdapter(adapter: IDatabaseAdapter) {
     if (this.adapter) {
       this.logger.warn(
@@ -1045,6 +1137,11 @@ export class AgentRuntime implements IAgentRuntime {
         continue;
       }
       const actions = response.content.actions;
+      const paramsXml =
+        response.content && typeof response.content.params === "string"
+          ? response.content.params
+          : undefined;
+      const actionParamsByName = parseActionParams(paramsXml);
 
       const actionResults: ActionResult[] = [];
       let accumulatedState = state;
@@ -1198,6 +1295,67 @@ export class AgentRuntime implements IAgentRuntime {
           "Executing action",
         );
 
+        // Validate and attach action parameters (optional)
+        const options: HandlerOptions = {};
+        if (action.parameters && action.parameters.length > 0) {
+          const responseActionKey = responseAction.trim().toUpperCase();
+          const actionKey = action.name.trim().toUpperCase();
+          const extractedParams =
+            actionParamsByName.get(responseActionKey) ??
+            actionParamsByName.get(actionKey);
+          const validation = validateActionParams(action, extractedParams);
+          if (!validation.valid) {
+            const errorMsg = `Invalid parameters for action ${action.name}: ${validation.errors.join("; ")}`;
+            this.logger.error(
+              {
+                src: "agent",
+                agentId: this.agentId,
+                action: action.name,
+                errors: validation.errors,
+              },
+              "Action parameter validation failed",
+            );
+
+            if (actionPlan && actionPlan.steps && actionPlan.steps[actionIndex]) {
+              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+                status: "failed",
+                error: errorMsg,
+              });
+            }
+
+            const failureResult: ActionResult = {
+              success: false,
+              text: errorMsg,
+              error: errorMsg,
+              data: { actionName: action.name },
+            };
+            actionResults.push(failureResult);
+
+            const actionMemory: Memory = {
+              id: uuidv4() as UUID,
+              entityId: message.entityId,
+              roomId: message.roomId,
+              worldId: message.worldId,
+              content: {
+                thought: errorMsg,
+                source: "auto",
+                type: "action_result",
+                actionName: action.name,
+                actionStatus: "failed",
+                runId,
+              },
+            };
+            await this.createMemory(actionMemory, "messages");
+
+            actionIndex++;
+            continue;
+          }
+
+          if (validation.params) {
+            options.parameters = validation.params;
+          }
+        }
+
         const actionId = uuidv4() as UUID;
         // Separate ID for streamed response message (independent from action badge)
         const responseMessageId = uuidv4() as UUID;
@@ -1217,9 +1375,7 @@ export class AgentRuntime implements IAgentRuntime {
         };
 
         // Add plan information to options if multiple actions
-        const options: HandlerOptions = {
-          actionContext: actionContext,
-        };
+        options.actionContext = actionContext;
 
         if (actionPlan) {
           options.actionPlan = {
@@ -2583,8 +2739,39 @@ export class AgentRuntime implements IAgentRuntime {
     params: ModelParamsMap[T],
     provider?: string,
   ): Promise<R> {
-    const modelKey =
+    let modelKey =
       typeof modelType === "string" ? modelType : ModelType[modelType];
+
+    // Apply LLM mode override for text generation models
+    const llmMode = this.getLLMMode();
+    if (llmMode !== "DEFAULT") {
+      // List of text generation model types that can be overridden
+      const textGenerationModels = [
+        ModelType.TEXT_SMALL,
+        ModelType.TEXT_LARGE,
+        ModelType.TEXT_REASONING_SMALL,
+        ModelType.TEXT_REASONING_LARGE,
+        ModelType.TEXT_COMPLETION,
+      ];
+
+      if (textGenerationModels.includes(modelKey as (typeof textGenerationModels)[number])) {
+        const overrideModelKey = llmMode === "SMALL" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+        if (modelKey !== overrideModelKey) {
+          this.logger.debug(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              originalModel: modelKey,
+              overrideModel: overrideModelKey,
+              llmMode,
+            },
+            "LLM mode override applied",
+          );
+          modelKey = overrideModelKey as typeof modelKey;
+        }
+      }
+    }
+
     const paramsObj = params as Record<string, unknown> | null | undefined;
     const promptContent =
       (paramsObj &&

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type Content,
   type IAgentRuntime,
@@ -9,7 +9,7 @@ import {
 import { createMockRuntime } from "./test-utils";
 
 // Mock the internal functions we need to test
-const mockParseKeyValueXml = mock(() => ({
+const mockParseKeyValueXml = vi.fn(() => ({
   thought: "Test thought",
   providers: ["TEST_PROVIDER"],
   action: "TEST_ACTION",
@@ -17,17 +17,17 @@ const mockParseKeyValueXml = mock(() => ({
   text: "Test response text",
 }));
 
-const mockComposePromptFromState = mock(() => "Test prompt");
+const mockComposePromptFromState = vi.fn(() => "Test prompt");
 
 // Mock the runtime methods used in multi-step
-const mockUseModel = mock().mockResolvedValue("Mock LLM response");
-const mockComposeState = mock().mockResolvedValue({
+const mockUseModel = vi.fn().mockResolvedValue("Mock LLM response");
+const mockComposeState = vi.fn().mockResolvedValue({
   values: { recentMessages: "Test messages" },
   data: { actionResults: [] },
 });
-const mockProcessActions = mock().mockResolvedValue(undefined);
-const mockGetSetting = mock().mockReturnValue("6"); // MAX_MULTISTEP_ITERATIONS
-const mockCallback = mock().mockResolvedValue(undefined);
+const mockProcessActions = vi.fn().mockResolvedValue(undefined);
+const mockGetSetting = vi.fn().mockReturnValue("6"); // MAX_MULTISTEP_ITERATIONS
+const mockCallback = vi.fn().mockResolvedValue(undefined);
 
 // Mock the state cache
 const mockStateCache = new Map();
@@ -62,7 +62,7 @@ describe("Multi-Step Workflow Functionality", () => {
         {
           name: "TEST_PROVIDER",
           description: "Test provider",
-          get: mock().mockResolvedValue({
+          get: vi.fn().mockResolvedValue({
             text: "Provider result",
             success: true,
           }),
@@ -70,7 +70,7 @@ describe("Multi-Step Workflow Functionality", () => {
         {
           name: "ANOTHER_PROVIDER",
           description: "Another test provider",
-          get: mock().mockResolvedValue({
+          get: vi.fn().mockResolvedValue({
             text: "Another result",
             success: true,
           }),
@@ -81,15 +81,15 @@ describe("Multi-Step Workflow Functionality", () => {
           name: "TEST_ACTION",
           description: "Test action",
           examples: [],
-          validate: mock().mockResolvedValue(true),
-          handler: mock().mockResolvedValue(true),
+          validate: vi.fn().mockResolvedValue(true),
+          handler: vi.fn().mockResolvedValue(true),
         },
       ],
       logger: {
-        debug: mock(),
-        warn: mock(),
-        error: mock(),
-        info: mock(),
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
       },
     }) as IAgentRuntime;
 
@@ -138,7 +138,7 @@ describe("Multi-Step Workflow Functionality", () => {
         (p: any) => p.name === "TEST_PROVIDER",
       );
       if (mockProvider) {
-        mockProvider.get = mock().mockResolvedValue({
+        mockProvider.get = vi.fn().mockResolvedValue({
           text: "Provider executed successfully",
           success: true,
         });
@@ -149,7 +149,7 @@ describe("Multi-Step Workflow Functionality", () => {
         (a: any) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
-        mockAction.handler = mock().mockResolvedValue(true);
+        mockAction.handler = vi.fn().mockResolvedValue(true);
       }
 
       // Mock final summary generation
@@ -179,7 +179,7 @@ describe("Multi-Step Workflow Functionality", () => {
         (p: any) => p.name === "TEST_PROVIDER",
       );
       if (mockProvider) {
-        mockProvider.get = mock().mockRejectedValue(
+        mockProvider.get = vi.fn().mockRejectedValue(
           new Error("Provider failed"),
         );
       }
@@ -227,7 +227,7 @@ describe("Multi-Step Workflow Functionality", () => {
         (a: any) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
-        mockAction.handler = mock().mockImplementation(() => {
+        mockAction.handler = vi.fn().mockImplementation(() => {
           throw new Error("Action failed");
         });
       }
@@ -352,7 +352,7 @@ describe("Multi-Step Workflow Functionality", () => {
         (a: any) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
-        mockAction.handler = mock().mockResolvedValue(true);
+        mockAction.handler = vi.fn().mockResolvedValue(true);
       }
 
       // Mock the state cache to return action results
@@ -365,7 +365,7 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       // Mock the runtime.stateCache.get method to return our cached results
-      mockRuntime.stateCache.get = mock().mockReturnValue({
+      mockRuntime.stateCache.get = vi.fn().mockReturnValue({
         values: {
           actionResults: [
             { success: true, text: "Action completed successfully" },
@@ -516,7 +516,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
     it("should handle callback errors gracefully", async () => {
       // Mock callback that throws an error asynchronously
-      const errorCallback = mock().mockImplementation(async () => {
+      const errorCallback = vi.fn().mockImplementation(async () => {
         throw new Error("Callback failed");
       });
 

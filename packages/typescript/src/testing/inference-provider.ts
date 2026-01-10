@@ -122,12 +122,12 @@ async function checkOllama(): Promise<InferenceProviderInfo> {
       name: "ollama",
       available: false,
       endpoint: OLLAMA_URL,
-      error: `Invalid response from Ollama: ${parseResult.error.message}`,
+      error: `Invalid response from Ollama: ${(parseResult.error as { issues?: Array<{ message: string }>; toString: () => string }).issues?.[0]?.message || parseResult.error.toString() || "Validation failed"}`,
     };
   }
 
   const parseResultDataModels = parseResult.data.models;
-  const models = (parseResultDataModels && parseResultDataModels.map((m) => m.name)) ?? [];
+  const models = (parseResultDataModels && parseResultDataModels.map((m: { name: string }) => m.name)) ?? [];
 
   return {
     name: "ollama",

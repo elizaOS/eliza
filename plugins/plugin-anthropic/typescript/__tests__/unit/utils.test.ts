@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock logger to silence debug output during tests
 const core = await import("@elizaos/core");
-spyOn(core.logger, "debug").mockImplementation(() => {});
+vi.spyOn(core.logger, "debug").mockImplementation(() => {});
 
 // We'll swap jsonrepair mock per test
 let jsonrepairImpl = (x: string) => x;
 const jsonrepairModule = await import("jsonrepair");
-spyOn(jsonrepairModule, "jsonrepair").mockImplementation((x: string) =>
+vi.spyOn(jsonrepairModule, "jsonrepair").mockImplementation((x: string) =>
   jsonrepairImpl(x),
 );
 

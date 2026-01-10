@@ -55,7 +55,7 @@ pub mod wasm;
 pub use types::*;
 pub use constants::*;
 pub use error::{EVMError, EVMErrorCode};
-pub use providers::wallet::{WalletProvider, WalletProviderConfig};
+pub use providers::wallet::{WalletProvider, WalletProviderConfig, GeneratedKey, generate_private_key};
 pub use actions::transfer::{TransferAction, TransferParams};
 pub use actions::swap::{SwapAction, SwapParams, SwapQuote};
 pub use actions::bridge::{BridgeAction, BridgeParams, BridgeStatus};

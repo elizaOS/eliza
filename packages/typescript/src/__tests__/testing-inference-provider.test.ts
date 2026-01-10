@@ -2,7 +2,7 @@
  * @fileoverview Tests for inference provider detection
  */
 
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   detectInferenceProviders,
   hasInferenceProvider,
@@ -32,7 +32,7 @@ describe("Inference Provider Detection", () => {
       process.env.OPENAI_API_KEY = "sk-test-key";
       
       // Mock Ollama as unavailable
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const result = await detectInferenceProviders();
 
@@ -45,7 +45,7 @@ describe("Inference Provider Detection", () => {
     it("should detect Anthropic when API key is set", async () => {
       process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
       
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const result = await detectInferenceProviders();
 
@@ -57,7 +57,7 @@ describe("Inference Provider Detection", () => {
     it("should detect Google when API key is set", async () => {
       process.env.GOOGLE_API_KEY = "test-google-key";
       
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const result = await detectInferenceProviders();
 
@@ -67,7 +67,7 @@ describe("Inference Provider Detection", () => {
     });
 
     it("should detect Ollama when available", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
           models: [{ name: "llama3.2:1b" }, { name: "nomic-embed-text" }],
@@ -83,7 +83,7 @@ describe("Inference Provider Detection", () => {
     });
 
     it("should handle Ollama returning error status", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
       } as Response);
@@ -96,7 +96,7 @@ describe("Inference Provider Detection", () => {
     });
 
     it("should handle Ollama network error", async () => {
-      globalThis.fetch = mock().mockRejectedValue(new Error("ECONNREFUSED"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
       const result = await detectInferenceProviders();
 
@@ -106,7 +106,7 @@ describe("Inference Provider Detection", () => {
     });
 
     it("should handle Ollama invalid response", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => "not an object",
       } as Response);
@@ -119,7 +119,7 @@ describe("Inference Provider Detection", () => {
     });
 
     it("should report no provider when none available", async () => {
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const result = await detectInferenceProviders();
 
@@ -131,7 +131,7 @@ describe("Inference Provider Detection", () => {
     it("should prefer cloud providers over Ollama", async () => {
       process.env.OPENAI_API_KEY = "sk-test";
       
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ models: [{ name: "llama3.2:1b" }] }),
       } as Response);
@@ -147,14 +147,14 @@ describe("Inference Provider Detection", () => {
   describe("hasInferenceProvider", () => {
     it("should return true when provider is available", async () => {
       process.env.OPENAI_API_KEY = "sk-test";
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const result = await hasInferenceProvider();
       expect(result).toBe(true);
     });
 
     it("should return false when no provider is available", async () => {
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const result = await hasInferenceProvider();
       expect(result).toBe(false);
@@ -164,7 +164,7 @@ describe("Inference Provider Detection", () => {
   describe("requireInferenceProvider", () => {
     it("should return provider when available", async () => {
       process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       const provider = await requireInferenceProvider();
       expect(provider.name).toBe("anthropic");
@@ -172,7 +172,7 @@ describe("Inference Provider Detection", () => {
     });
 
     it("should throw when no provider is available", async () => {
-      globalThis.fetch = mock().mockRejectedValue(new Error("Connection refused"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("Connection refused"));
 
       await expect(requireInferenceProvider()).rejects.toThrow(
         "No inference provider available for integration tests",

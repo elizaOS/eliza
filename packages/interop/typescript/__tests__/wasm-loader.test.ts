@@ -2,7 +2,7 @@
  * Tests for WASM Plugin Loader
  */
 
-import { describe, expect, test } from "bun:test";
+import {  describe, expect, test  } from "vitest";
 import type { PluginManifest, WasmPluginExports } from "../types";
 
 // We need to test the loader logic without actual WASM files

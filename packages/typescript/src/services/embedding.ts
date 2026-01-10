@@ -399,8 +399,8 @@ export class EmbeddingGenerationService extends Service {
 
       // Generate embedding
       const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text: memory.content.text,
-      });
+        text: memory.content.text || "",
+      } as { text: string });
 
       const duration = Date.now() - startTime;
       this.runtime.logger.debug(
@@ -417,7 +417,7 @@ export class EmbeddingGenerationService extends Service {
       if (memory.id) {
         await this.runtime.updateMemory({
           id: memory.id,
-          embedding: embedding as number[],
+          embedding: embedding as unknown as number[],
         });
 
         // Log embedding completion
@@ -437,7 +437,7 @@ export class EmbeddingGenerationService extends Service {
         // Emit completion event
         await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
           runtime: this.runtime,
-          memory: { ...memory, embedding },
+          memory: { ...memory, embedding: embedding as unknown as number[] },
           source: "embeddingService",
         });
       }

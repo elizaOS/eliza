@@ -21,11 +21,8 @@ export default defineConfig({
     global: "globalThis",
   },
   resolve: {
+    // Prioritize browser conditions for package exports
     conditions: ["browser", "import", "module", "default"],
-    alias: {
-      // Ensure browser versions of packages are used
-      "@elizaos/plugin-localdb": "@elizaos/plugin-localdb/browser",
-    },
   },
   optimizeDeps: {
     esbuildOptions: {

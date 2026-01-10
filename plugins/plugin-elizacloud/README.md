@@ -1,189 +1,266 @@
-# ElizaOS Cloud Services Plugin
+# @elizaos/plugin-elizacloud
 
-This plugin provides integration with ElizaOS Cloud's multi-model AI platform, including text generation, image creation, video generation, and more.
+ElizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support.
 
-## Getting Started
+Available in **TypeScript**, **Python**, and **Rust** with uniform APIs.
 
-### 1. Get Your API Key
+## Installation
 
-Visit [https://www.elizacloud.ai/dashboard/api-keys](https://www.elizacloud.ai/dashboard/api-keys) to create your API key. Your key will be in the format: `eliza_xxxxx`
+### TypeScript / JavaScript
 
-### 2. Add the Plugin
-
-Add the plugin to your character configuration:
-
-```json
-"plugins": ["@elizaos-plugins/plugin-elizacloud"]
+```bash
+npm install @elizaos/plugin-elizacloud
+# or
+bun add @elizaos/plugin-elizacloud
 ```
+
+### Python
+
+```bash
+pip install elizaos-plugin-elizacloud
+```
+
+### Rust
+
+```toml
+[dependencies]
+elizaos-plugin-elizacloud = "1.7.4"
+```
+
+## API Comparison
+
+All three implementations provide the same model handlers with uniform naming conventions:
+
+| Model Type | TypeScript | Python | Rust |
+|------------|------------|--------|------|
+| TEXT_SMALL | `handleTextSmall` | `handle_text_small` | `handle_text_small` |
+| TEXT_LARGE | `handleTextLarge` | `handle_text_large` | `handle_text_large` |
+| OBJECT_SMALL | `handleObjectSmall` | `handle_object_small` | `handle_object_small` |
+| OBJECT_LARGE | `handleObjectLarge` | `handle_object_large` | `handle_object_large` |
+| TEXT_EMBEDDING | `handleTextEmbedding` | `handle_text_embedding` | `handle_text_embedding` |
+| TEXT_EMBEDDING (batch) | `handleBatchTextEmbedding` | `handle_batch_text_embedding` | `handle_batch_text_embedding` |
+| IMAGE | `handleImageGeneration` | `handle_image_generation` | `handle_image_generation` |
+| IMAGE_DESCRIPTION | `handleImageDescription` | `handle_image_description` | `handle_image_description` |
+| TEXT_TO_SPEECH | `handleTextToSpeech` | `handle_text_to_speech` | `handle_text_to_speech` |
+| TRANSCRIPTION | `handleTranscription` | `handle_transcription` | `handle_transcription` |
+| TEXT_TOKENIZER_ENCODE | `handleTokenizerEncode` | `handle_tokenizer_encode` | `handle_tokenizer_encode` |
+| TEXT_TOKENIZER_DECODE | `handleTokenizerDecode` | `handle_tokenizer_decode` | `handle_tokenizer_decode` |
+
+## Type Definitions
+
+All implementations share the same type structures:
+
+| Type | Description |
+|------|-------------|
+| `ElizaCloudConfig` | Client configuration (API key, models, etc.) |
+| `TextGenerationParams` | Parameters for text generation |
+| `ObjectGenerationParams` | Parameters for structured JSON generation |
+| `TextEmbeddingParams` | Parameters for embeddings (single or batch) |
+| `ImageGenerationParams` | Parameters for image generation |
+| `ImageDescriptionParams` | Parameters for image description |
+| `ImageDescriptionResult` | Result from image description |
+| `TextToSpeechParams` | Parameters for TTS |
+| `TranscriptionParams` | Parameters for audio transcription |
+| `TokenizeTextParams` | Parameters for tokenization |
+| `DetokenizeTextParams` | Parameters for detokenization |
 
 ## Configuration
 
-The plugin requires these environment variables (can be set in .env file or character settings):
+Get your API key from [https://www.elizacloud.ai/dashboard/api-keys](https://www.elizacloud.ai/dashboard/api-keys)
 
-```json
-"settings": {
-  "ELIZAOS_CLOUD_API_KEY": "eliza_your_api_key_here",
-  "ELIZAOS_CLOUD_BASE_URL": "https://www.elizacloud.ai/api/v1",
-  "ELIZAOS_CLOUD_SMALL_MODEL": "gpt-4o-mini",
-  "ELIZAOS_CLOUD_LARGE_MODEL": "gpt-4o",
-  "ELIZAOS_CLOUD_EMBEDDING_MODEL": "text-embedding-3-small",
-  "ELIZAOS_CLOUD_EMBEDDING_API_KEY": "eliza_your_api_key_here",
-  "ELIZAOS_CLOUD_EMBEDDING_URL": "https://www.elizacloud.ai/api/v1",
-  "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS": "1536",
-  "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL": "gpt-4o-mini",
-  "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS": "8192",
-  "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY": "false",
-  "ELIZAOS_CLOUD_BROWSER_BASE_URL": "https://your-proxy.example.com/api",
-  "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL": "https://your-proxy.example.com/api"
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `api_key` / `ELIZAOS_CLOUD_API_KEY` | Your API key (format: `eliza_xxxxx`) | Required |
+| `base_url` / `ELIZAOS_CLOUD_BASE_URL` | Base URL for API requests | `https://www.elizacloud.ai/api/v1` |
+| `small_model` / `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model | `gpt-4o-mini` |
+| `large_model` / `ELIZAOS_CLOUD_LARGE_MODEL` | Large/powerful model | `gpt-4o` |
+| `embedding_model` / `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
+| `embedding_dimensions` | Embedding vector size | `1536` |
+
+## Usage Examples
+
+### TypeScript
+
+```typescript
+import { elizaOSCloudPlugin } from '@elizaos/plugin-elizacloud';
+
+// Register the plugin with your agent
+const agent = new Agent({
+  plugins: [elizaOSCloudPlugin],
+});
+
+// Use models via runtime
+const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "What is the meaning of life?",
+});
+
+// Structured object generation
+const obj = await runtime.useModel(ModelType.OBJECT_LARGE, {
+  prompt: "Generate a user profile with name and age",
+});
+
+const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  text: "Hello, world!",
+});
+
+// Tokenization
+const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
+  prompt: "Hello tokenizer!",
+  modelType: ModelType.TEXT_SMALL,
+});
+```
+
+### Python
+
+```python
+import asyncio
+from elizaos_plugin_elizacloud import (
+    ElizaCloudClient,
+    ElizaCloudConfig,
+    TextGenerationParams,
+    ObjectGenerationParams,
+    handle_object_large,
+    handle_tokenizer_encode,
+    TokenizeTextParams,
+)
+
+async def main():
+    config = ElizaCloudConfig(api_key="eliza_xxxxx")
+    
+    async with ElizaCloudClient(config) as client:
+        # Text generation
+        text = await client.generate_text(
+            TextGenerationParams(prompt="Hello!"),
+            model_size="large",
+        )
+        print(text)
+    
+    # Structured object generation
+    obj = await handle_object_large(
+        config,
+        ObjectGenerationParams(prompt="Generate a user profile"),
+    )
+    print(obj)
+    
+    # Tokenization
+    tokens = await handle_tokenizer_encode(
+        config,
+        TokenizeTextParams(prompt="Hello tokenizer!"),
+    )
+    print(f"Tokens: {tokens}")
+
+asyncio.run(main())
+```
+
+### Rust
+
+```rust
+use elizaos_plugin_elizacloud::{
+    ElizaCloudClient, ElizaCloudConfig, TextGenerationParams,
+    ObjectGenerationParams, TokenizeTextParams,
+    handle_object_large, handle_tokenizer_encode,
+};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = ElizaCloudConfig::new("eliza_xxxxx");
+    let client = ElizaCloudClient::new(config.clone())?;
+    
+    // Text generation
+    let text = client.generate_text_large(TextGenerationParams {
+        prompt: "What is the meaning of life?".to_string(),
+        ..Default::default()
+    }).await?;
+    println!("{}", text);
+    
+    // Structured object generation
+    let obj = handle_object_large(config.clone(), ObjectGenerationParams {
+        prompt: "Generate a user profile".to_string(),
+        ..Default::default()
+    }).await?;
+    println!("{}", obj);
+    
+    // Tokenization
+    let tokens = handle_tokenizer_encode(config, TokenizeTextParams {
+        prompt: "Hello tokenizer!".to_string(),
+        ..Default::default()
+    }).await?;
+    println!("Tokens: {:?}", tokens);
+    
+    Ok(())
 }
 ```
 
-Or in `.env` file:
-
-```bash
-# Required: Your ElizaOS Cloud API key (get it from https://www.elizacloud.ai/dashboard/api-keys)
-ELIZAOS_CLOUD_API_KEY=eliza_your_api_key_here
-
-# Optional overrides (defaults shown):
-ELIZAOS_CLOUD_BASE_URL=https://www.elizacloud.ai/api/v1
-ELIZAOS_CLOUD_SMALL_MODEL=gpt-4o-mini
-ELIZAOS_CLOUD_LARGE_MODEL=gpt-4o
-ELIZAOS_CLOUD_EMBEDDING_MODEL=text-embedding-3-small
-ELIZAOS_CLOUD_EMBEDDING_API_KEY=eliza_your_api_key_here
-ELIZAOS_CLOUD_EMBEDDING_URL=https://www.elizacloud.ai/api/v1
-ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS=1536
-ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL=gpt-4o-mini
-ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS=8192
-ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY=false
-
-# Browser proxy (frontend builds only)
-ELIZAOS_CLOUD_BROWSER_BASE_URL=https://your-proxy.example.com/api
-ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL=https://your-proxy.example.com/api
-```
-
-### Configuration Options
-
-- `ELIZAOS_CLOUD_API_KEY` (required): Your ElizaOS Cloud API key (format: `eliza_xxxxx`)
-  - Get it from: [https://www.elizacloud.ai/dashboard/api-keys](https://www.elizacloud.ai/dashboard/api-keys)
-- `ELIZAOS_CLOUD_BASE_URL`: ElizaOS Cloud API endpoint (default: `https://www.elizacloud.ai/api/v1`)
-- `ELIZAOS_CLOUD_SMALL_MODEL`: Small/fast model for quick tasks (default: `gpt-4o-mini`)
-  - Available models: `gpt-4o-mini`, `gpt-4o`, `claude-3-5-sonnet`, `gemini-2.0-flash`
-- `ELIZAOS_CLOUD_LARGE_MODEL`: Large/powerful model for complex tasks (default: `gpt-4o`)
-  - Available models: `gpt-4o-mini`, `gpt-4o`, `claude-3-5-sonnet`, `gemini-2.0-flash`
-- `ELIZAOS_CLOUD_EMBEDDING_MODEL`: Model for text embeddings (default: `text-embedding-3-small`)
-- `ELIZAOS_CLOUD_EMBEDDING_API_KEY`: Separate API key for embeddings (defaults to `ELIZAOS_CLOUD_API_KEY`)
-- `ELIZAOS_CLOUD_EMBEDDING_URL`: Separate endpoint for embeddings (defaults to `ELIZAOS_CLOUD_BASE_URL`)
-- `ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS`: Embedding vector dimensions (default: 1536)
-- `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL`: Model for image description (default: `gpt-4o-mini`)
-- `ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS`: Max tokens for image descriptions (default: 8192)
-- `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY`: Enable telemetry for debugging and analytics (default: false)
-- `ELIZAOS_CLOUD_BROWSER_BASE_URL`: Browser-only proxy endpoint (to avoid exposing keys in frontend)
-- `ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL`: Browser-only embeddings proxy endpoint
-
-### Browser mode and proxying
-
-When bundled for the browser, this plugin avoids sending Authorization headers. Set `ELIZAOS_CLOUD_BROWSER_BASE_URL` (and optionally `ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL`) to a server-side proxy you control that injects the ElizaOS Cloud API key. This prevents exposing secrets in frontend builds.
-
-Example minimal proxy (Express):
-
-```ts
-import express from 'express';
-import fetch from 'node-fetch';
-
-const app = express();
-app.use(express.json());
-
-app.post('/api/*', async (req, res) => {
-  const url = `https://www.elizacloud.ai/api/v1/${req.params[0]}`;
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.ELIZAOS_CLOUD_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(req.body),
-  });
-  res.status(r.status).set(Object.fromEntries(r.headers)).send(await r.text());
-});
-
-app.listen(3000);
-```
-
-### Experimental Telemetry
-
-When `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` is set to `true`, the plugin enables advanced telemetry features that provide:
-
-- Enhanced debugging capabilities for model performance issues
-- Detailed usage analytics for optimization
-- Better observability into ElizaOS Cloud API interactions
-- Foundation for future monitoring and analytics features through Sentry or other frameworks
-
-**Note**: This feature is opt-in due to privacy considerations, as telemetry data may contain information about model usage patterns. Enable only when you need enhanced debugging or analytics capabilities.
-
 ## Features
 
-ElizaOS Cloud provides comprehensive AI capabilities through a unified API:
+| Feature | Description |
+|---------|-------------|
+| **Text Generation** | Small (fast) and large (powerful) model support |
+| **Object Generation** | Structured JSON output from natural language |
+| **Text Embeddings** | Single and batch embedding with rate limit handling |
+| **Image Generation** | DALL-E style image generation |
+| **Image Description** | Vision model for describing images |
+| **Text-to-Speech** | Multiple voice options |
+| **Audio Transcription** | Whisper-based audio transcription |
+| **Tokenization** | Token counting, encoding, and decoding |
 
-### Supported Model Types
+## Development
 
-The plugin provides these model classes:
+### Building
 
-- `TEXT_SMALL`: Optimized for fast, cost-effective responses (default: gpt-4o-mini)
-- `TEXT_LARGE`: For complex tasks requiring deeper reasoning (default: gpt-4o)
-- `TEXT_EMBEDDING`: Text embedding model (text-embedding-3-small by default)
-- `IMAGE`: Image generation via Google Gemini (costs 100 credits)
-- `IMAGE_DESCRIPTION`: Image analysis and description (gpt-4o-mini by default)
-- `TRANSCRIPTION`: Audio transcription
-- `TEXT_TO_SPEECH`: Text-to-speech generation
-- `TEXT_TOKENIZER_ENCODE`: Text tokenization
-- `TEXT_TOKENIZER_DECODE`: Token decoding
-- `OBJECT_SMALL`: Object/structured output generation (small model)
-- `OBJECT_LARGE`: Object/structured output generation (large model)
+```bash
+# TypeScript
+bun run build
 
-### Credit System
+# Python
+cd python && pip install -e ".[dev]"
 
-ElizaOS Cloud uses a credit-based pricing model:
-- **Text Generation**: Token-based (varies by model)
-- **Image Generation**: 100 credits per image
-- **Video Generation**: 500 credits per video
-- Purchase credits at: [https://www.elizacloud.ai/dashboard/billing](https://www.elizacloud.ai/dashboard/billing)
-
-## Additional Features
-
-### Image Generation
-
-```js
-await runtime.useModel(ModelType.IMAGE, {
-  prompt: "A sunset over mountains",
-  n: 1, // number of images
-  size: "1024x1024", // image resolution
-});
+# Rust
+cd rust && cargo build --release
 ```
 
-### Audio Transcription
+### Testing
 
-```js
-const transcription = await runtime.useModel(
-  ModelType.TRANSCRIPTION,
-  audioBuffer
-);
+```bash
+# TypeScript
+bun test typescript/
+
+# Python
+cd python && pytest tests/
+
+# Rust
+cd rust && cargo test
 ```
 
-### Image Analysis
+### Linting
 
-```js
-const { title, description } = await runtime.useModel(
-  ModelType.IMAGE_DESCRIPTION,
-  "https://example.com/image.jpg"
-);
+```bash
+# TypeScript
+bun run format
+
+# Python
+cd python && ruff check . && ruff format .
+
+# Rust
+cd rust && cargo clippy && cargo fmt
 ```
 
-### Text Embeddings
+## Publishing
 
-```js
-await runtime.useModel(ModelType.TEXT_EMBEDDING, "text to embed");
-```
+This package is published to:
+- **npm**: `@elizaos/plugin-elizacloud`
+- **PyPI**: `elizaos-plugin-elizacloud`
+- **crates.io**: `elizaos-plugin-elizacloud`
 
-### Tokenizer in browser
+Publishing happens automatically via GitHub Actions when the version in `package.json` changes.
 
-js-tiktoken is WASM and browser-safe; this plugin uses `encodingForModel` directly in both Node and browser builds.
+### Required Secrets
+
+Add these secrets to your GitHub repository:
+- `NPM_TOKEN` - npm access token
+- `PYPI_TOKEN` - PyPI API token
+- `CRATES_IO_TOKEN` - crates.io API token
+
+## License
+
+MIT

@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { v4 as uuidv4 } from 'uuid';
 import {
   analyzeInputAction,
@@ -47,29 +47,29 @@ const createMockRuntime = (overrides?: Partial<IAgentRuntime>): IAgentRuntime =>
     },
 
     // Action registration and selection
-    registerAction: mock((action: Action) => {
+    registerAction: vi.fn((action: Action) => {
       registeredActions.push(action);
     }),
 
-    getAction: mock((name: string) => {
+    getAction: vi.fn((name: string) => {
       return registeredActions.find((a) => a.name === name);
     }),
 
-    getActions: mock(() => registeredActions),
+    getActions: vi.fn(() => registeredActions),
 
     // Provider registration and selection
-    registerProvider: mock((provider: Provider) => {
+    registerProvider: vi.fn((provider: Provider) => {
       registeredProviders.push(provider);
     }),
 
-    getProvider: mock((name: string) => {
+    getProvider: vi.fn((name: string) => {
       return registeredProviders.find((p) => p.name === name);
     }),
 
-    getProviders: mock(() => registeredProviders),
+    getProviders: vi.fn(() => registeredProviders),
 
     // State composition with providers
-    composeState: mock(async (message: Memory, includeList?: string[]) => {
+    composeState: vi.fn(async (message: Memory, includeList?: string[]) => {
       const state: State = {
         values: {},
         data: { providers: {} },
@@ -98,7 +98,7 @@ const createMockRuntime = (overrides?: Partial<IAgentRuntime>): IAgentRuntime =>
     }),
 
     // Model selection (for LLM action selection)
-    useModel: mock(async (type: (typeof ModelType)[keyof typeof ModelType], params: any) => {
+    useModel: vi.fn(async (type: (typeof ModelType)[keyof typeof ModelType], params: any) => {
       if (type === ModelType.TEXT_LARGE) {
         // Simulate LLM selecting actions based on message content
         const prompt = params.prompt || '';
@@ -118,10 +118,10 @@ const createMockRuntime = (overrides?: Partial<IAgentRuntime>): IAgentRuntime =>
     }),
 
     logger: {
-      info: mock(),
-      error: mock(),
-      warn: mock(),
-      debug: mock(),
+      info: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
     },
 
     ...overrides,
@@ -295,7 +295,7 @@ describe('Planning Plugin Scenario Tests', () => {
       };
 
       const state = await runtime.composeState(message);
-      const callback = mock();
+      const callback = vi.fn();
 
       // Step 1: Analyze
       const result1 = await analyzeInputAction.handler(runtime, message, state, {});
@@ -349,7 +349,7 @@ describe('Planning Plugin Scenario Tests', () => {
       };
 
       const state = await runtime.composeState(message);
-      const callback = mock();
+      const callback = vi.fn();
 
       // Analyze
       const result1 = await analyzeInputAction.handler(runtime, message, state, {});
@@ -914,7 +914,7 @@ describe('Planning Plugin Scenario Tests', () => {
       );
 
       // Execute the action
-      const callback = mock();
+      const callback = vi.fn();
       const result = await classificationDependentAction.handler(
         runtime,
         strategicMessage,
@@ -967,7 +967,7 @@ describe('Planning Plugin Scenario Tests', () => {
         content: { text: 'This will fail intentionally' },
       };
 
-      const callback = mock();
+      const callback = vi.fn();
       const emptyState: State = { values: {}, data: {}, text: '' };
       const result = await conditionalFailureAction.handler(
         runtime,

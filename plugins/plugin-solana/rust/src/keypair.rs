@@ -134,6 +134,84 @@ impl WalletConfig {
         })
     }
 
+    /// Load configuration from environment variables, generating a new keypair if none exists.
+    ///
+    /// This method will automatically generate a new Solana keypair if no private key
+    /// or public key is configured. The generated keypair will be stored using the
+    /// provided callback if one is given.
+    ///
+    /// # Arguments
+    /// * `store_callback` - Optional callback to store generated keys.
+    ///                      Signature: `Fn(key: &str, value: &str, is_secret: bool)`
+    ///
+    /// # Returns
+    /// A wallet configuration with a valid keypair.
+    pub fn from_env_or_generate<F>(store_callback: Option<F>) -> SolanaResult<Self>
+    where
+        F: Fn(&str, &str, bool),
+    {
+        let rpc_url = std::env::var("SOLANA_RPC_URL")
+            .unwrap_or_else(|_| crate::DEFAULT_RPC_URL.to_string());
+
+        // Try to get private key first
+        let private_key = std::env::var("SOLANA_PRIVATE_KEY")
+            .or_else(|_| std::env::var("WALLET_PRIVATE_KEY"))
+            .ok();
+
+        let (public_key, keypair_bytes) = if let Some(pk) = private_key {
+            let kp = KeypairUtils::from_string(&pk)?;
+            (kp.pubkey(), Some(kp.to_bytes()))
+        } else {
+            // Check for public key only
+            let pubkey_result = std::env::var("SOLANA_PUBLIC_KEY")
+                .or_else(|_| std::env::var("WALLET_PUBLIC_KEY"));
+
+            if let Ok(pubkey_str) = pubkey_result {
+                (Pubkey::from_str(&pubkey_str)?, None)
+            } else {
+                // No keys found - generate a new keypair
+                let kp = KeypairUtils::generate();
+                let public_key = kp.pubkey();
+                let private_key_base58 = KeypairUtils::to_base58(&kp);
+                let public_key_base58 = public_key.to_string();
+
+                // Store the generated keys if a callback is provided
+                if let Some(ref callback) = store_callback {
+                    callback("SOLANA_PRIVATE_KEY", &private_key_base58, true);
+                    callback("SOLANA_PUBLIC_KEY", &public_key_base58, false);
+                }
+
+                // Log warnings about the auto-generated keypair
+                tracing::warn!(
+                    "⚠️  No Solana wallet found. Generated new wallet automatically."
+                );
+                tracing::warn!("📍 New Solana wallet address: {}", public_key_base58);
+                tracing::warn!(
+                    "🔐 Private key has been stored securely in agent settings."
+                );
+                tracing::warn!(
+                    "💡 Fund this wallet to enable SOL and token transfers."
+                );
+
+                (public_key, Some(kp.to_bytes()))
+            }
+        };
+
+        let slippage_bps = std::env::var("SLIPPAGE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(50);
+
+        Ok(Self {
+            rpc_url,
+            public_key,
+            keypair_bytes,
+            slippage_bps,
+            helius_api_key: std::env::var("HELIUS_API_KEY").ok(),
+            birdeye_api_key: std::env::var("BIRDEYE_API_KEY").ok(),
+        })
+    }
+
     /// Set slippage tolerance.
     #[must_use]
     pub fn with_slippage(mut self, slippage_bps: u16) -> Self {

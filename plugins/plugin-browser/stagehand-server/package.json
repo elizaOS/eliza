@@ -1,0 +1,35 @@
+{
+  "name": "stagehand-server",
+  "version": "1.0.0",
+  "description": "Standalone Stagehand server for browser automation",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "build:binary": "npm run build && npm run build:sea",
+    "build:sea": "node scripts/build-sea.js",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "postinstall": "npm run build || echo 'Build failed, will build at runtime'"
+  },
+  "dependencies": {
+    "@browserbasehq/stagehand": "^1.9.1",
+    "playwright": "^1.49.1",
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "tar": "^6.2.0",
+    "unzipper": "^0.10.14",
+    "postject": "^1.0.0-alpha.6",
+    "esbuild": "^0.20.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

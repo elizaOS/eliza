@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { shortTermMemoryProvider } from '../providers/short-term-memory';
 import { longTermMemoryProvider } from '../providers/long-term-memory';
 import { contextSummaryProvider } from '../providers/context-summary';
@@ -17,47 +17,47 @@ describe('Providers', () => {
 
     // Create mock database
     const mockDb = {
-      insert: mock(() => ({
-        values: mock(async () => {}),
+      insert: vi.fn(() => ({
+        values: vi.fn(async () => {}),
       })),
-      select: mock(() => ({
-        from: mock(() => ({
-          where: mock(() => ({
-            orderBy: mock(() => ({
-              limit: mock(async () => []),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn(async () => []),
             })),
-            limit: mock(async () => []),
+            limit: vi.fn(async () => []),
           })),
         })),
       })),
-      update: mock(() => ({
-        set: mock(() => ({
-          where: mock(async () => {}),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => {}),
         })),
       })),
-      delete: mock(() => ({
-        where: mock(async () => {}),
+      delete: vi.fn(() => ({
+        where: vi.fn(async () => {}),
       })),
     };
 
     mockRuntime = {
       agentId: 'test-agent' as UUID,
       character: { name: 'TestAgent' },
-      getSetting: mock(() => undefined),
-      countMemories: mock(async () => 0),
-      getMemories: mock(async () => []),
-      getMemoriesByRoomIds: mock(async () => []),
-      getRoom: mock(async () => null),
-      getEntitiesForRoom: mock(async () => []),
-      getRoomsForParticipants: mock(async () => []),
-      getConversationLength: mock(() => 16),
-      getService: mock((name: string) => {
+      getSetting: vi.fn(() => undefined),
+      countMemories: vi.fn(async () => 0),
+      getMemories: vi.fn(async () => []),
+      getMemoriesByRoomIds: vi.fn(async () => []),
+      getRoom: vi.fn(async () => null),
+      getEntitiesForRoom: vi.fn(async () => []),
+      getRoomsForParticipants: vi.fn(async () => []),
+      getConversationLength: vi.fn(() => 16),
+      getService: vi.fn((name: string) => {
         if (name === 'memory') return mockMemoryService;
         return null;
       }),
       db: mockDb,
-      getConnection: mock(async () => ({
-        query: mock(async () => ({ rows: [] })),
+      getConnection: vi.fn(async () => ({
+        query: vi.fn(async () => ({ rows: [] })),
       })),
     } as unknown as IAgentRuntime;
 
@@ -117,11 +117,11 @@ describe('Providers', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockSummaryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockSummaryData),
               })),
             })),
           })),
@@ -136,7 +136,7 @@ describe('Providers', () => {
     });
 
     it('should return empty when service is not available', async () => {
-      mockRuntime.getService = mock(() => null);
+      mockRuntime.getService = vi.fn(() => null);
 
       const message: Memory = {
         id: 'msg-1' as UUID,
@@ -235,11 +235,11 @@ describe('Providers', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockMemoryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockMemoryData),
               })),
             })),
           })),
@@ -259,7 +259,7 @@ describe('Providers', () => {
     });
 
     it('should return empty when service is not available', async () => {
-      mockRuntime.getService = mock(() => null);
+      mockRuntime.getService = vi.fn(() => null);
 
       const message: Memory = {
         id: 'msg-1' as UUID,
@@ -284,7 +284,7 @@ describe('Providers', () => {
     });
 
     it('should return empty when no memory service exists', async () => {
-      mockRuntime.getService = mock(() => null);
+      mockRuntime.getService = vi.fn(() => null);
 
       const message: Memory = {
         id: 'msg-1' as UUID,
@@ -346,11 +346,11 @@ describe('Providers', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockSummaryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockSummaryData),
               })),
             })),
           })),
@@ -392,11 +392,11 @@ describe('Providers', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockSummaryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockSummaryData),
               })),
             })),
           })),
@@ -446,8 +446,8 @@ describe('Providers', () => {
         },
       ];
 
-      mockRuntime.getMemories = mock(async () => mockMessages);
-      mockRuntime.getConversationLength = mock(() => 16);
+      mockRuntime.getMemories = vi.fn(async () => mockMessages);
+      mockRuntime.getConversationLength = vi.fn(() => 16);
 
       const result = await recentMessagesProvider.get(mockRuntime, message, mockState);
 
@@ -484,11 +484,11 @@ describe('Providers', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockSummaryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockSummaryData),
               })),
             })),
           })),
@@ -506,7 +506,7 @@ describe('Providers', () => {
         },
       ];
 
-      mockRuntime.getMemories = mock(async () => mockMessages);
+      mockRuntime.getMemories = vi.fn(async () => mockMessages);
 
       const result = await recentMessagesProvider.get(mockRuntime, message, mockState);
 
@@ -567,8 +567,8 @@ describe('Providers', () => {
         },
       ];
 
-      mockRuntime.getMemories = mock(async () => mockMessages);
-      mockRuntime.getConversationLength = mock(() => 16);
+      mockRuntime.getMemories = vi.fn(async () => mockMessages);
+      mockRuntime.getConversationLength = vi.fn(() => 16);
 
       const result = await recentMessagesProvider.get(mockRuntime, message, mockState);
 

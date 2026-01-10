@@ -13,6 +13,31 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class LLMMode(str, Enum):
+    """
+    LLM Mode for overriding model selection.
+
+    - DEFAULT: Use the model type specified in the use_model call (no override)
+    - SMALL: Override all text generation model calls to use TEXT_SMALL
+    - LARGE: Override all text generation model calls to use TEXT_LARGE
+
+    This is useful for cost optimization (force SMALL) or quality (force LARGE).
+    While not recommended for production, it can be a fast way to make the agent run cheaper.
+
+    Example:
+        ```python
+        runtime = AgentRuntime(
+            character=my_character,
+            llm_mode=LLMMode.SMALL,  # All LLM calls will use TEXT_SMALL
+        )
+        ```
+    """
+
+    DEFAULT = "DEFAULT"
+    SMALL = "SMALL"
+    LARGE = "LARGE"
+
+
 class ModelType(str, Enum):
     """
     Model type enumeration.

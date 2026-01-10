@@ -1,6 +1,6 @@
 //! Constants for the EVM plugin
 
-use alloy_primitives::Address;
+use alloy::primitives::Address;
 
 /// Cache key for wallet data storage
 pub const EVM_WALLET_DATA_CACHE_KEY: &str = "evm/wallet/data";

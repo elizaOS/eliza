@@ -1,13 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { AgentRuntime } from "../runtime";
 import type { Agent, Character, IDatabaseAdapter, UUID } from "../types";
 
-// Helper type for bun:test mocks with additional methods
-interface BunMockFunction<T extends (...args: never[]) => unknown> {
+// Helper type for vitest mocks with additional methods
+interface VitestMockFunction<T extends (...args: never[]) => unknown> {
   (...args: Parameters<T>): ReturnType<T>;
-  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
-  mockResolvedValue: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
+  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => VitestMockFunction<T>;
+  mockResolvedValue: (value: Awaited<ReturnType<T>>) => VitestMockFunction<T>;
   mock: {
     calls: Parameters<T>[][];
     results: ReturnType<T>[];
@@ -67,19 +67,19 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     mockAdapter = {
       db: {},
-      init: mock(async () => {}),
-      initialize: mock(async () => {}),
-      close: mock(async () => {}),
-      isReady: mock(async () => true),
-      getConnection: mock(async () => ({})),
+      init: vi.fn(async () => {}),
+      initialize: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      isReady: vi.fn(async () => true),
+      getConnection: vi.fn(async () => ({})),
       getAgent: getAgentMock,
-      getAgents: mock(async () => []),
-      createAgent: mock(async () => true),
+      getAgents: vi.fn(async () => []),
+      createAgent: vi.fn(async () => true),
       updateAgent: updateAgentMock,
-      deleteAgent: mock(async () => true),
-      ensureEmbeddingDimension: mock(async () => {}),
-      log: mock(async () => {}),
-      runPluginMigrations: mock(async () => {}),
+      deleteAgent: vi.fn(async () => true),
+      ensureEmbeddingDimension: vi.fn(async () => {}),
+      log: vi.fn(async () => {}),
+      runPluginMigrations: vi.fn(async () => {}),
       getEntitiesByIds: getEntitiesByIdsMock,
       getRoomsByIds: getRoomsByIdsMock,
       getParticipantsForRoom: getParticipantsForRoomMock,
@@ -87,57 +87,57 @@ describe("ensureAgentExists - Settings Persistence", () => {
       addParticipantsRoom: addParticipantsRoomMock,
       createRooms: createRoomsMock,
       // Add other required methods with minimal implementations
-      getEntitiesForRoom: mock(async () => []),
-      updateEntity: mock(async () => {}),
-      getComponent: mock(async () => null),
-      getComponents: mock(async () => []),
-      createComponent: mock(async () => true),
-      updateComponent: mock(async () => {}),
-      deleteComponent: mock(async () => {}),
-      getMemories: mock(async () => []),
-      getMemoryById: mock(async () => null),
-      getMemoriesByIds: mock(async () => []),
-      getMemoriesByRoomIds: mock(async () => []),
-      getCachedEmbeddings: mock(async () => []),
-      getLogs: mock(async () => []),
-      deleteLog: mock(async () => {}),
-      searchMemories: mock(async () => []),
-      createMemory: mock(async () => "memory-id" as UUID),
-      updateMemory: mock(async () => true),
-      deleteMemory: mock(async () => {}),
-      deleteManyMemories: mock(async () => {}),
-      deleteAllMemories: mock(async () => {}),
-      countMemories: mock(async () => 0),
-      createWorld: mock(async () => "world-id" as UUID),
-      getWorld: mock(async () => null),
-      getAllWorlds: mock(async () => []),
-      updateWorld: mock(async () => {}),
-      removeWorld: mock(async () => {}),
-      getRoomsByWorld: mock(async () => []),
-      updateRoom: mock(async () => {}),
-      deleteRoom: mock(async () => {}),
-      deleteRoomsByWorldId: mock(async () => {}),
-      getRoomsForParticipant: mock(async () => []),
-      getRoomsForParticipants: mock(async () => []),
-      removeParticipant: mock(async () => true),
-      getParticipantsForEntity: mock(async () => []),
-      isRoomParticipant: mock(async () => false),
-      getParticipantUserState: mock(async () => null),
-      setParticipantUserState: mock(async () => {}),
-      createRelationship: mock(async () => true),
-      getRelationship: mock(async () => null),
-      getRelationships: mock(async () => []),
-      updateRelationship: mock(async () => {}),
-      getCache: mock(async () => undefined),
-      setCache: mock(async () => true),
-      deleteCache: mock(async () => true),
-      createTask: mock(async () => "task-id" as UUID),
-      getTasks: mock(async () => []),
-      getTask: mock(async () => null),
-      getTasksByName: mock(async () => []),
-      updateTask: mock(async () => {}),
-      deleteTask: mock(async () => {}),
-      getMemoriesByWorldId: mock(async () => []),
+      getEntitiesForRoom: vi.fn(async () => []),
+      updateEntity: vi.fn(async () => {}),
+      getComponent: vi.fn(async () => null),
+      getComponents: vi.fn(async () => []),
+      createComponent: vi.fn(async () => true),
+      updateComponent: vi.fn(async () => {}),
+      deleteComponent: vi.fn(async () => {}),
+      getMemories: vi.fn(async () => []),
+      getMemoryById: vi.fn(async () => null),
+      getMemoriesByIds: vi.fn(async () => []),
+      getMemoriesByRoomIds: vi.fn(async () => []),
+      getCachedEmbeddings: vi.fn(async () => []),
+      getLogs: vi.fn(async () => []),
+      deleteLog: vi.fn(async () => {}),
+      searchMemories: vi.fn(async () => []),
+      createMemory: vi.fn(async () => "memory-id" as UUID),
+      updateMemory: vi.fn(async () => true),
+      deleteMemory: vi.fn(async () => {}),
+      deleteManyMemories: vi.fn(async () => {}),
+      deleteAllMemories: vi.fn(async () => {}),
+      countMemories: vi.fn(async () => 0),
+      createWorld: vi.fn(async () => "world-id" as UUID),
+      getWorld: vi.fn(async () => null),
+      getAllWorlds: vi.fn(async () => []),
+      updateWorld: vi.fn(async () => {}),
+      removeWorld: vi.fn(async () => {}),
+      getRoomsByWorld: vi.fn(async () => []),
+      updateRoom: vi.fn(async () => {}),
+      deleteRoom: vi.fn(async () => {}),
+      deleteRoomsByWorldId: vi.fn(async () => {}),
+      getRoomsForParticipant: vi.fn(async () => []),
+      getRoomsForParticipants: vi.fn(async () => []),
+      removeParticipant: vi.fn(async () => true),
+      getParticipantsForEntity: vi.fn(async () => []),
+      isRoomParticipant: vi.fn(async () => false),
+      getParticipantUserState: vi.fn(async () => null),
+      setParticipantUserState: vi.fn(async () => {}),
+      createRelationship: vi.fn(async () => true),
+      getRelationship: vi.fn(async () => null),
+      getRelationships: vi.fn(async () => []),
+      updateRelationship: vi.fn(async () => {}),
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => true),
+      deleteCache: vi.fn(async () => true),
+      createTask: vi.fn(async () => "task-id" as UUID),
+      getTasks: vi.fn(async () => []),
+      getTask: vi.fn(async () => null),
+      getTasksByName: vi.fn(async () => []),
+      updateTask: vi.fn(async () => {}),
+      deleteTask: vi.fn(async () => {}),
+      getMemoriesByWorldId: vi.fn(async () => []),
     } as IDatabaseAdapter;
 
     runtime = new AgentRuntime({
@@ -147,7 +147,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should create a new agent when none exists in DB", async () => {
@@ -184,10 +184,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce(existingAgentInDB);
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
@@ -216,7 +216,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     // Verify updateAgent was called with merged settings
     expect(mockAdapter.updateAgent).toHaveBeenCalled();
     const updateCall = (
-      updateAgentMock as BunMockFunction<IDatabaseAdapter["updateAgent"]>
+      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
     ).mock.calls[0];
     // updateAgent signature: (agentId: UUID, agent: Partial<Agent>) => Promise<boolean>
     // So updateCall[1] is Partial<Agent>
@@ -255,10 +255,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce(existingAgentInDB);
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
@@ -282,7 +282,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     await runtime.ensureAgentExists(characterAgent);
 
     const updateCall = (
-      updateAgentMock as BunMockFunction<IDatabaseAdapter["updateAgent"]>
+      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
     ).mock.calls[0];
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
@@ -309,10 +309,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce(existingAgentInDB);
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
@@ -337,7 +337,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     await runtime.ensureAgentExists(characterAgent);
 
     const updateCall = (
-      updateAgentMock as BunMockFunction<IDatabaseAdapter["updateAgent"]>
+      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
     ).mock.calls[0];
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
@@ -359,10 +359,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce(existingAgentInDB);
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
@@ -381,7 +381,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     await runtime.ensureAgentExists(characterAgent);
 
     const updateCall = (
-      updateAgentMock as BunMockFunction<IDatabaseAdapter["updateAgent"]>
+      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
     ).mock.calls[0];
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
@@ -402,10 +402,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce(existingAgentInDB);
     (
-      getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>
+      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
     ).mockResolvedValueOnce(existingAgentInDB);
 
     const characterAgent: Partial<Agent> = {
@@ -417,7 +417,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     await runtime.ensureAgentExists(characterAgent);
 
     const updateCall = (
-      updateAgentMock as BunMockFunction<IDatabaseAdapter["updateAgent"]>
+      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
     ).mock.calls[0];
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
@@ -455,7 +455,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
       // Mock getAgent to return DB agent on first call (ensureAgentExists)
       // and updated agent on second call (after update)
-      (getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>)
+      (getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>)
         .mockResolvedValueOnce(dbAgent)
         .mockResolvedValueOnce({
           ...dbAgent,
@@ -493,30 +493,30 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
       // Mock the services that initialize() expects
       (
-        getEntitiesByIdsMock as BunMockFunction<
+        getEntitiesByIdsMock as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
         >
       ).mockResolvedValue([
         { id: agentId, names: ["TestAgent"], metadata: {}, agentId },
       ]);
       (
-        getRoomsByIdsMock as BunMockFunction<IDatabaseAdapter["getRoomsByIds"]>
+        getRoomsByIdsMock as VitestMockFunction<IDatabaseAdapter["getRoomsByIds"]>
       ).mockResolvedValue([]);
       (
-        getParticipantsForRoomMock as BunMockFunction<
+        getParticipantsForRoomMock as VitestMockFunction<
           IDatabaseAdapter["getParticipantsForRoom"]
         >
       ).mockResolvedValue([]);
       (
-        createEntitiesMock as BunMockFunction<
+        createEntitiesMock as VitestMockFunction<
           IDatabaseAdapter["createEntities"]
         >
       ).mockResolvedValue(true);
       (
-        createRoomsMock as BunMockFunction<IDatabaseAdapter["createRooms"]>
+        createRoomsMock as VitestMockFunction<IDatabaseAdapter["createRooms"]>
       ).mockResolvedValue([agentId]);
       (
-        addParticipantsRoomMock as BunMockFunction<
+        addParticipantsRoomMock as VitestMockFunction<
           IDatabaseAdapter["addParticipantsRoom"]
         >
       ).mockResolvedValue(true);
@@ -561,7 +561,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         },
       } as Agent;
 
-      (getAgentMock as BunMockFunction<IDatabaseAdapter["getAgent"]>)
+      (getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>)
         .mockResolvedValueOnce(dbAgent)
         .mockResolvedValueOnce({
           ...dbAgent,
@@ -592,30 +592,30 @@ describe("ensureAgentExists - Settings Persistence", () => {
       });
 
       (
-        getEntitiesByIdsMock as BunMockFunction<
+        getEntitiesByIdsMock as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
         >
       ).mockResolvedValue([
         { id: agentId, names: ["TestAgent"], metadata: {}, agentId },
       ]);
       (
-        getRoomsByIdsMock as BunMockFunction<IDatabaseAdapter["getRoomsByIds"]>
+        getRoomsByIdsMock as VitestMockFunction<IDatabaseAdapter["getRoomsByIds"]>
       ).mockResolvedValue([]);
       (
-        getParticipantsForRoomMock as BunMockFunction<
+        getParticipantsForRoomMock as VitestMockFunction<
           IDatabaseAdapter["getParticipantsForRoom"]
         >
       ).mockResolvedValue([]);
       (
-        createEntitiesMock as BunMockFunction<
+        createEntitiesMock as VitestMockFunction<
           IDatabaseAdapter["createEntities"]
         >
       ).mockResolvedValue(true);
       (
-        createRoomsMock as BunMockFunction<IDatabaseAdapter["createRooms"]>
+        createRoomsMock as VitestMockFunction<IDatabaseAdapter["createRooms"]>
       ).mockResolvedValue([agentId]);
       (
-        addParticipantsRoomMock as BunMockFunction<
+        addParticipantsRoomMock as VitestMockFunction<
           IDatabaseAdapter["addParticipantsRoom"]
         >
       ).mockResolvedValue(true);

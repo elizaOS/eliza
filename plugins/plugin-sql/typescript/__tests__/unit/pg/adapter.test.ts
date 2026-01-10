@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, it, type Mock, mock } from "bun:test";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
 import { PgDatabaseAdapter } from "../../../pg/adapter";
 import type { PostgresConnectionManager } from "../../../pg/manager";
 
 // Mock the logger module
-mock.module("@elizaos/core", () => ({
+vi.mock("@elizaos/core", () => ({
   logger: {
-    debug: mock(),
-    info: mock(),
-    warn: mock(),
-    error: mock(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
@@ -37,16 +37,16 @@ describe("PgDatabaseAdapter", () => {
 
     // Create a mock manager
     mockManager = {
-      getDatabase: mock(() => ({
+      getDatabase: vi.fn(() => ({
         query: {},
-        transaction: mock(() => {}),
+        transaction: vi.fn(() => {}),
       })),
-      getClient: mock(() => {}),
-      testConnection: mock(() => Promise.resolve(true)),
-      close: mock(() => Promise.resolve()),
-      getConnection: mock(() => ({
-        connect: mock(() => {}),
-        end: mock(() => {}),
+      getClient: vi.fn(() => {}),
+      testConnection: vi.fn(() => Promise.resolve(true)),
+      close: vi.fn(() => Promise.resolve()),
+      getConnection: vi.fn(() => ({
+        connect: vi.fn(() => {}),
+        end: vi.fn(() => {}),
       })),
     };
 
@@ -114,7 +114,7 @@ describe("PgDatabaseAdapter", () => {
 
   describe("getConnection", () => {
     it("should return connection from manager", async () => {
-      const mockConnection = { connect: mock(), end: mock() };
+      const mockConnection = { connect: vi.fn(), end: vi.fn() };
       mockManager.getConnection.mockReturnValue(mockConnection);
 
       const result = await adapter.getConnection();
@@ -142,22 +142,22 @@ describe("PgDatabaseAdapter", () => {
   describe("withDatabase pool-based connection", () => {
     it("should use shared pool-based db instance without acquiring individual clients", async () => {
       const mockDb = {
-        select: mock().mockReturnThis(),
-        from: mock().mockReturnThis(),
-        where: mock().mockReturnThis(),
-        limit: mock().mockResolvedValue([]),
-        transaction: mock(),
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+        transaction: vi.fn(),
       };
 
-      const getClientMock = mock();
+      const getClientMock = vi.fn();
 
       const poolManager = {
-        getDatabase: mock().mockReturnValue(mockDb),
-        getConnection: mock().mockReturnValue({}),
+        getDatabase: vi.fn().mockReturnValue(mockDb),
+        getConnection: vi.fn().mockReturnValue({}),
         getClient: getClientMock,
-        testConnection: mock().mockResolvedValue(true),
-        close: mock().mockResolvedValue(undefined),
-        withEntityContext: mock(),
+        testConnection: vi.fn().mockResolvedValue(true),
+        close: vi.fn().mockResolvedValue(undefined),
+        withEntityContext: vi.fn(),
       } as PostgresConnectionManager;
 
       const poolAdapter = new PgDatabaseAdapter(agentId, poolManager);
@@ -172,27 +172,27 @@ describe("PgDatabaseAdapter", () => {
     it("should handle concurrent operations without race conditions", async () => {
       const results: string[] = [];
       const mockDb = {
-        select: mock().mockImplementation(() => {
+        select: vi.fn().mockImplementation(() => {
           return {
-            from: mock().mockReturnThis(),
-            where: mock().mockReturnThis(),
-            limit: mock().mockImplementation(async () => {
+            from: vi.fn().mockReturnThis(),
+            where: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockImplementation(async () => {
               // Simulate async delay
               await new Promise((resolve) => setTimeout(resolve, 10));
               return [];
             }),
           };
         }),
-        transaction: mock(),
+        transaction: vi.fn(),
       };
 
       const concurrentManager = {
-        getDatabase: mock().mockReturnValue(mockDb),
-        getConnection: mock().mockReturnValue({}),
-        getClient: mock(),
-        testConnection: mock().mockResolvedValue(true),
-        close: mock().mockResolvedValue(undefined),
-        withEntityContext: mock(),
+        getDatabase: vi.fn().mockReturnValue(mockDb),
+        getConnection: vi.fn().mockReturnValue({}),
+        getClient: vi.fn(),
+        testConnection: vi.fn().mockResolvedValue(true),
+        close: vi.fn().mockResolvedValue(undefined),
+        withEntityContext: vi.fn(),
       } as PostgresConnectionManager;
 
       const concurrentAdapter = new PgDatabaseAdapter(

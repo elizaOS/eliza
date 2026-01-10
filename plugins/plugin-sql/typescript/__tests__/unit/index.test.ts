@@ -1,12 +1,10 @@
-import {
-  afterEach,
+import { afterEach,
   beforeEach,
   describe,
   expect,
   it,
   type Mock,
-  mock,
-} from "bun:test";
+  mock,, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -61,17 +59,17 @@ function createMockRuntime(
 ): MockRuntimeForTesting & IAgentRuntime {
   const baseMock: MockRuntimeForTesting = {
     agentId: "00000000-0000-0000-0000-000000000000" as UUID,
-    getSetting: mock(() => null),
-    registerDatabaseAdapter: mock(() => {}),
-    registerService: mock(() => {}),
-    getService: mock(() => {}),
+    getSetting: vi.fn(() => null),
+    registerDatabaseAdapter: vi.fn(() => {}),
+    registerService: vi.fn(() => {}),
+    getService: vi.fn(() => {}),
     databaseAdapter: undefined,
-    hasElizaOS: mock(() => false),
+    hasElizaOS: vi.fn(() => false),
     logger: {
-      info: mock(() => {}),
-      debug: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
+      info: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
     },
     ...overrides,
   };
@@ -189,7 +187,7 @@ describe("SQL Plugin", () => {
         await plugin.init({}, mockRuntime);
       }
 
-      // Logger calls aren't easily testable in bun:test without complex mocking
+      // Logger calls can be tested with vi.spyOn() in vitest
       // Just verify that registerDatabaseAdapter wasn't called
       expect(mockRuntime.registerDatabaseAdapter).not.toHaveBeenCalled();
     });
@@ -197,7 +195,7 @@ describe("SQL Plugin", () => {
     it("should register database adapter when none exists", async () => {
       // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
       process.env.PGLITE_DATA_DIR = tempDir;
-      mockRuntime.getSetting = mock((key) => {
+      mockRuntime.getSetting = vi.fn((key) => {
         // Return temp directory for database paths to avoid directory creation issues
         if (key === "PGLITE_DATA_DIR") {
           return tempDir;
@@ -213,7 +211,7 @@ describe("SQL Plugin", () => {
     });
 
     it("should use POSTGRES_URL when available", async () => {
-      mockRuntime.getSetting = mock((key) => {
+      mockRuntime.getSetting = vi.fn((key) => {
         if (key === "POSTGRES_URL") return "postgresql://localhost:5432/test";
         return null;
       });
@@ -227,7 +225,7 @@ describe("SQL Plugin", () => {
 
     it("should use PGLITE_DATA_DIR when provided", async () => {
       const customDir = path.join(tempDir, "custom-pglite");
-      mockRuntime.getSetting = mock((key) => {
+      mockRuntime.getSetting = vi.fn((key) => {
         if (key === "PGLITE_DATA_DIR") return customDir;
         return null;
       });
@@ -240,7 +238,7 @@ describe("SQL Plugin", () => {
     });
 
     it("should use default path if PGLITE_DATA_DIR is not set", async () => {
-      mockRuntime.getSetting = mock(() => null);
+      mockRuntime.getSetting = vi.fn(() => null);
 
       if (plugin.init) {
         await plugin.init({}, mockRuntime);
@@ -252,7 +250,7 @@ describe("SQL Plugin", () => {
     it("should prefer to use PGLITE_DATA_DIR when environment variable is set", async () => {
       // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
       process.env.PGLITE_DATA_DIR = tempDir;
-      mockRuntime.getSetting = mock(() => null);
+      mockRuntime.getSetting = vi.fn(() => null);
 
       if (plugin.init) {
         await plugin.init({}, mockRuntime);

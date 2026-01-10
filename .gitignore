@@ -207,3 +207,37 @@ standalone.ts
 
 # Continuous Claude cache (local only)
 .claude/cache/
+
+# Proto-generated files (regenerated from schemas/)
+packages/typescript/src/types/generated/
+packages/python/elizaos/types/generated/
+packages/rust/src/types/generated/
+
+# Vitest config files (if not needed in repo)
+vitest.config.ts
+tsconfig.test.json
+
+# Migration status docs (temporary)
+MIGRATION_*.md
+TYPE_AND_LINT_STATUS.md
+
+# Test output files
+test-output.txt
+
+# Vitest type compatibility shims
+packages/typescript/src/types/vitest-*.d.ts
+
+# Migration scripts (temporary)
+scripts/migrate-tests-to-vitest.ts
+scripts/migrate-all-tests.sh
+
+# Plugin-specific ignores
+# Test environment files (anywhere in repo)
+.env.test
+**/.env.test
+
+# Cargo.lock for library crates (plugins are libraries)
+plugins/**/rust/Cargo.lock
+
+# Python poetry lock files (if not needed)
+**/poetry.lock

@@ -6,7 +6,7 @@
  *
  * Works with both PGLite (default) and PostgreSQL (when POSTGRES_URL is set).
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";

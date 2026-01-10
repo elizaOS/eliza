@@ -97,6 +97,29 @@ export interface IAgentRuntime extends IDatabaseAdapter {
    */
   isActionPlanningEnabled(): boolean;
 
+  /**
+   * Get the LLM mode for model selection override.
+   * 
+   * - `DEFAULT`: Use the model type specified in the useModel call (no override)
+   * - `SMALL`: Override all text generation model calls to use TEXT_SMALL  
+   * - `LARGE`: Override all text generation model calls to use TEXT_LARGE
+   * 
+   * This is useful for cost optimization (force SMALL) or quality (force LARGE).
+   * 
+   * Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
+   */
+  getLLMMode(): import("./model").LLMModeType;
+
+  /**
+   * Check if the shouldRespond evaluation is enabled.
+   * 
+   * When enabled (default: true), the agent evaluates whether to respond to each message.
+   * When disabled, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
+   * 
+   * Priority: constructor option > character setting CHECK_SHOULD_RESPOND > default (true)
+   */
+  isCheckShouldRespondEnabled(): boolean;
+
   processActions(
     message: Memory,
     responses: Memory[],

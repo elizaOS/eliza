@@ -58,7 +58,7 @@ jobs:
 
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-  publish:
+  publish_npm:
     needs: verify_version
     if: needs.verify_version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
@@ -93,8 +93,54 @@ jobs:
         env:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  publish_pypi:
+    needs: verify_version
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build Python package
+        working-directory: python
+        run: python -m build
+
+      - name: Publish to PyPI
+        working-directory: python
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: twine upload dist/*
+
+  publish_crates:
+    needs: verify_version
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish to crates.io
+        working-directory: rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty
+
   create_release:
-    needs: [verify_version, publish]
+    needs: [verify_version, publish_npm]
     if: needs.verify_version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -107,6 +153,15 @@ jobs:
         with:
           tag_name: "v${{ needs.verify_version.outputs.version }}"
           release_name: "v${{ needs.verify_version.outputs.version }}"
-          body: "Release v${{ needs.verify_version.outputs.version }}"
+          body: |
+            Release v${{ needs.verify_version.outputs.version }}
+            
+            ## Installation
+            
+            **npm:** `npm install @elizaos/plugin-google-genai@${{ needs.verify_version.outputs.version }}`
+            
+            **PyPI:** `pip install elizaos-plugin-google-genai==${{ needs.verify_version.outputs.version }}`
+            
+            **crates.io:** Add `elizaos-plugin-google-genai = "${{ needs.verify_version.outputs.version }}"` to your Cargo.toml
           draft: false
           prerelease: false
