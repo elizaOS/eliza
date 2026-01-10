@@ -8,7 +8,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{service::Service, service_type, Metadata, Uuid};
+use super::{service::Service, Metadata, UUID};
+
+// Local alias to keep field names aligned with upstream docs/types while using elizaOS's UUID wrapper.
+type Uuid = UUID;
 
 // ============================================================================
 // Token & Wallet Types
@@ -93,6 +96,7 @@ pub struct TokenData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletAsset {
+    /// Token balance information (flattened into the asset)
     #[serde(flatten)]
     pub token: TokenBalance,
     /// Current price in USD
@@ -169,11 +173,15 @@ pub trait WalletService: Service {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolTokenInfo {
+    /// Token mint address
     pub mint: String,
+    /// Token symbol
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
+    /// Token reserve amount in the pool
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reserve: Option<String>,
+    /// Token decimal places
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decimals: Option<u8>,
 }
@@ -182,22 +190,33 @@ pub struct PoolTokenInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolInfo {
+    /// Unique identifier for the pool
     pub id: String,
+    /// Human-readable display name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// DEX/exchange name
     pub dex: String,
+    /// First token in the pool pair
     pub token_a: PoolTokenInfo,
+    /// Second token in the pool pair
     pub token_b: PoolTokenInfo,
+    /// LP token mint address
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lp_token_mint: Option<String>,
+    /// Annual percentage rate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apr: Option<f64>,
+    /// Annual percentage yield
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apy: Option<f64>,
+    /// Total value locked in USD
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tvl: Option<f64>,
+    /// Trading fee percentage
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee: Option<f64>,
+    /// Additional metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
 }
@@ -206,16 +225,24 @@ pub struct PoolInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LpPositionDetails {
+    /// Pool identifier
     pub pool_id: String,
+    /// DEX/exchange name
     pub dex: String,
+    /// LP token balance held
     pub lp_token_balance: TokenBalance,
+    /// Underlying tokens in the position
     pub underlying_tokens: Vec<TokenBalance>,
+    /// Total value in USD
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value_usd: Option<f64>,
+    /// Fees earned from the position
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accrued_fees: Option<Vec<TokenBalance>>,
+    /// Reward tokens earned
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rewards: Option<Vec<TokenBalance>>,
+    /// Additional metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
 }
@@ -224,11 +251,15 @@ pub struct LpPositionDetails {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionResult {
+    /// Whether the transaction was successful
     pub success: bool,
+    /// Transaction ID/hash on the blockchain
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_id: Option<String>,
+    /// Error message if the transaction failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Additional transaction data
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
 }
@@ -237,13 +268,19 @@ pub struct TransactionResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddLiquidityParams {
+    /// Pool identifier
     pub pool_id: String,
+    /// Amount of token A in lamports
     pub token_a_amount_lamports: String,
+    /// Amount of token B in lamports
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_b_amount_lamports: Option<String>,
+    /// Slippage tolerance in basis points
     pub slippage_bps: u32,
+    /// Lower tick index for concentrated liquidity
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tick_lower_index: Option<i32>,
+    /// Upper tick index for concentrated liquidity
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tick_upper_index: Option<i32>,
 }
@@ -252,8 +289,11 @@ pub struct AddLiquidityParams {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveLiquidityParams {
+    /// Pool identifier
     pub pool_id: String,
+    /// Amount of LP tokens to burn in lamports
     pub lp_token_amount_lamports: String,
+    /// Slippage tolerance in basis points
     pub slippage_bps: u32,
 }
 
@@ -306,20 +346,28 @@ pub trait LpService: Service {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptionOptions {
+    /// Language of the audio
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Model to use for transcription
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Sampling temperature for the model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Prompt to guide the transcription
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// Output format (e.g., "json", "text", "srt")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<String>,
+    /// Timestamp granularities to include
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp_granularities: Option<Vec<String>>,
+    /// Whether to include word-level timestamps
     #[serde(skip_serializing_if = "Option::is_none")]
     pub word_timestamps: Option<bool>,
+    /// Whether to include segment-level timestamps
     #[serde(skip_serializing_if = "Option::is_none")]
     pub segment_timestamps: Option<bool>,
 }
@@ -328,20 +376,30 @@ pub struct TranscriptionOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptionSegment {
+    /// Segment identifier
     pub id: u32,
+    /// Transcribed text for this segment
     pub text: String,
+    /// Start time in seconds
     pub start: f64,
+    /// End time in seconds
     pub end: f64,
+    /// Confidence score for this segment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
+    /// Token IDs for this segment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens: Option<Vec<u32>>,
+    /// Temperature used for this segment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Average log probability
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avg_logprob: Option<f64>,
+    /// Compression ratio
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compression_ratio: Option<f64>,
+    /// Probability of no speech in this segment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub no_speech_prob: Option<f64>,
 }
@@ -350,9 +408,13 @@ pub struct TranscriptionSegment {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptionWord {
+    /// The transcribed word
     pub word: String,
+    /// Start time in seconds
     pub start: f64,
+    /// End time in seconds
     pub end: f64,
+    /// Confidence score for this word
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
 }
@@ -361,15 +423,21 @@ pub struct TranscriptionWord {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptionResult {
+    /// Full transcribed text
     pub text: String,
+    /// Detected language
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Audio duration in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// Transcription segments with timestamps
     #[serde(skip_serializing_if = "Option::is_none")]
     pub segments: Option<Vec<TranscriptionSegment>>,
+    /// Word-level transcription with timestamps
     #[serde(skip_serializing_if = "Option::is_none")]
     pub words: Option<Vec<TranscriptionWord>>,
+    /// Overall confidence score
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
 }
@@ -378,14 +446,19 @@ pub struct TranscriptionResult {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpeechToTextOptions {
+    /// Language of the speech
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Model to use for recognition
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Whether to continuously recognize speech
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continuous: Option<bool>,
+    /// Whether to return interim results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interim_results: Option<bool>,
+    /// Maximum number of alternative transcriptions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_alternatives: Option<u32>,
 }
@@ -394,14 +467,19 @@ pub struct SpeechToTextOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextToSpeechOptions {
+    /// Voice identifier to use
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
+    /// Model to use for synthesis
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Speech speed multiplier
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<f32>,
+    /// Audio format (e.g., "mp3", "wav")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    /// Response format for the API
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<String>,
 }
@@ -410,9 +488,13 @@ pub struct TextToSpeechOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceInfo {
+    /// Voice identifier
     pub id: String,
+    /// Display name of the voice
     pub name: String,
+    /// Language code of the voice
     pub language: String,
+    /// Gender of the voice
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gender: Option<String>,
 }
@@ -466,20 +548,30 @@ pub trait TranscriptionService: Service {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoFormat {
+    /// Format identifier
     pub format_id: String,
+    /// Download URL for this format
     pub url: String,
+    /// File extension
     pub extension: String,
+    /// Quality label (e.g., "1080p", "720p")
     pub quality: String,
+    /// File size in bytes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_size: Option<u64>,
+    /// Video codec name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_codec: Option<String>,
+    /// Audio codec name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_codec: Option<String>,
+    /// Resolution (e.g., "1920x1080")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<String>,
+    /// Frames per second
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fps: Option<u32>,
+    /// Bitrate in bits per second
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bitrate: Option<u32>,
 }
@@ -488,21 +580,30 @@ pub struct VideoFormat {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoInfo {
+    /// Video URL
     pub url: String,
+    /// Video title
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Duration in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// Thumbnail image URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<String>,
+    /// Video description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Name of the uploader/channel
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uploader: Option<String>,
+    /// Number of views
     #[serde(skip_serializing_if = "Option::is_none")]
     pub view_count: Option<u64>,
+    /// Upload date (ISO 8601 format)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upload_date: Option<String>,
+    /// Available formats for download
     #[serde(skip_serializing_if = "Option::is_none")]
     pub formats: Option<Vec<VideoFormat>>,
 }
@@ -511,20 +612,28 @@ pub struct VideoInfo {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoDownloadOptions {
+    /// Preferred format ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    /// Preferred quality (e.g., "best", "1080p")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<String>,
+    /// Output file path
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_path: Option<String>,
+    /// Download audio only
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_only: Option<bool>,
+    /// Download video only (no audio)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_only: Option<bool>,
+    /// Download subtitles
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtitles: Option<bool>,
+    /// Embed subtitles in the video
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embed_subs: Option<bool>,
+    /// Write video metadata to JSON file
     #[serde(skip_serializing_if = "Option::is_none")]
     pub write_info_json: Option<bool>,
 }
@@ -533,20 +642,28 @@ pub struct VideoDownloadOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoProcessingOptions {
+    /// Start time for trimming in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<f64>,
+    /// End time for trimming in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_time: Option<f64>,
+    /// Output container format
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_format: Option<String>,
+    /// Target resolution (e.g., "1920x1080")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<String>,
+    /// Target bitrate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bitrate: Option<String>,
+    /// Target framerate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub framerate: Option<u32>,
+    /// Audio codec to use
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_codec: Option<String>,
+    /// Video codec to use
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_codec: Option<String>,
 }
@@ -598,7 +715,9 @@ pub trait VideoService: Service {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserViewport {
+    /// Viewport width in pixels
     pub width: u32,
+    /// Viewport height in pixels
     pub height: u32,
 }
 
@@ -606,14 +725,19 @@ pub struct BrowserViewport {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserNavigationOptions {
+    /// Navigation timeout in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
+    /// Wait condition (e.g., "load", "domcontentloaded", "networkidle")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wait_until: Option<String>,
+    /// Browser viewport size
     #[serde(skip_serializing_if = "Option::is_none")]
     pub viewport: Option<BrowserViewport>,
+    /// Custom user agent string
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_agent: Option<String>,
+    /// Custom HTTP headers
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
 }
@@ -622,9 +746,13 @@ pub struct BrowserNavigationOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenshotClip {
+    /// X coordinate of the clip region
     pub x: u32,
+    /// Y coordinate of the clip region
     pub y: u32,
+    /// Width of the clip region
     pub width: u32,
+    /// Height of the clip region
     pub height: u32,
 }
 
@@ -632,14 +760,19 @@ pub struct ScreenshotClip {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenshotOptions {
+    /// Capture full scrollable page
     #[serde(skip_serializing_if = "Option::is_none")]
     pub full_page: Option<bool>,
+    /// Clip region to capture
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clip: Option<ScreenshotClip>,
+    /// Image format (e.g., "png", "jpeg")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    /// Image quality (0-100, for JPEG)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<u8>,
+    /// Make background transparent
     #[serde(skip_serializing_if = "Option::is_none")]
     pub omit_background: Option<bool>,
 }
@@ -648,9 +781,12 @@ pub struct ScreenshotOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ElementSelector {
+    /// CSS selector string
     pub selector: String,
+    /// Text content to match
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Timeout for finding the element in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
 }
@@ -659,7 +795,9 @@ pub struct ElementSelector {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractedLink {
+    /// URL of the link
     pub url: String,
+    /// Link text content
     pub text: String,
 }
 
@@ -667,7 +805,9 @@ pub struct ExtractedLink {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractedImage {
+    /// Image source URL
     pub src: String,
+    /// Alternative text for the image
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alt: Option<String>,
 }
@@ -676,12 +816,18 @@ pub struct ExtractedImage {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractedContent {
+    /// Plain text content of the page
     pub text: String,
+    /// HTML content of the page
     pub html: String,
+    /// Links found on the page
     pub links: Vec<ExtractedLink>,
+    /// Images found on the page
     pub images: Vec<ExtractedImage>,
+    /// Page title
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Page metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, String>>,
 }
@@ -690,10 +836,13 @@ pub struct ExtractedContent {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClickOptions {
+    /// Click timeout in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
+    /// Force click even if element is not visible
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force: Option<bool>,
+    /// Wait for navigation after clicking
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wait_for_navigation: Option<bool>,
 }
@@ -702,10 +851,13 @@ pub struct ClickOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeOptions {
+    /// Delay between keystrokes in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delay: Option<u32>,
+    /// Timeout for finding the element in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
+    /// Clear existing text before typing
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clear: Option<bool>,
 }
@@ -764,12 +916,16 @@ pub trait BrowserService: Service {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfMetadata {
+    /// Document title
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Document author
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    /// Creation timestamp (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Last modification timestamp (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<String>,
 }
@@ -778,8 +934,11 @@ pub struct PdfMetadata {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfExtractionResult {
+    /// Extracted text content
     pub text: String,
+    /// Total number of pages
     pub page_count: u32,
+    /// Document metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<PdfMetadata>,
 }
@@ -788,12 +947,16 @@ pub struct PdfExtractionResult {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfMargins {
+    /// Top margin in points
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top: Option<f32>,
+    /// Bottom margin in points
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bottom: Option<f32>,
+    /// Left margin in points
     #[serde(skip_serializing_if = "Option::is_none")]
     pub left: Option<f32>,
+    /// Right margin in points
     #[serde(skip_serializing_if = "Option::is_none")]
     pub right: Option<f32>,
 }
@@ -802,14 +965,19 @@ pub struct PdfMargins {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfGenerationOptions {
+    /// Page format (e.g., "A4", "Letter")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    /// Page orientation ("portrait" or "landscape")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub orientation: Option<String>,
+    /// Page margins
     #[serde(skip_serializing_if = "Option::is_none")]
     pub margins: Option<PdfMargins>,
+    /// Header HTML content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub header: Option<String>,
+    /// Footer HTML content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub footer: Option<String>,
 }
@@ -818,10 +986,13 @@ pub struct PdfGenerationOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfConversionOptions {
+    /// Output quality level
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<String>,
+    /// Output format for images
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_format: Option<String>,
+    /// Whether to compress the output
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compression: Option<bool>,
 }
@@ -861,8 +1032,10 @@ pub trait PdfService: Service {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchDateRange {
+    /// Start date (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start: Option<String>,
+    /// End date (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end: Option<String>,
 }
@@ -871,22 +1044,31 @@ pub struct SearchDateRange {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchOptions {
+    /// Maximum number of results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// Result offset for pagination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
+    /// Language filter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// Region filter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
+    /// Date range filter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_range: Option<SearchDateRange>,
+    /// File type filter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_type: Option<String>,
+    /// Site filter (search within a site)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub site: Option<String>,
+    /// Sort order
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_by: Option<String>,
+    /// Safe search setting
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safe_search: Option<String>,
 }
@@ -895,19 +1077,28 @@ pub struct SearchOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
+    /// Result title
     pub title: String,
+    /// Result URL
     pub url: String,
+    /// Result description
     pub description: String,
+    /// Display-friendly URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_url: Option<String>,
+    /// Thumbnail image URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<String>,
+    /// Publication date (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub published_date: Option<String>,
+    /// Source name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Relevance score
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relevance_score: Option<f64>,
+    /// Highlighted snippet from the result
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
 }
@@ -916,16 +1107,23 @@ pub struct SearchResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
+    /// Original search query
     pub query: String,
+    /// Search results
     pub results: Vec<SearchResult>,
+    /// Total number of results available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_results: Option<u64>,
+    /// Time taken for the search in seconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_time: Option<f64>,
+    /// Query suggestions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestions: Option<Vec<String>>,
+    /// Token for fetching the next page
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
+    /// Related search queries
     #[serde(skip_serializing_if = "Option::is_none")]
     pub related_searches: Option<Vec<String>>,
 }
@@ -934,11 +1132,17 @@ pub struct SearchResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
+    /// Page title
     pub title: String,
+    /// Page description
     pub description: String,
+    /// Main content of the page
     pub content: String,
+    /// Page metadata
     pub metadata: HashMap<String, String>,
+    /// Image URLs found on the page
     pub images: Vec<String>,
+    /// Links found on the page
     pub links: Vec<String>,
 }
 
@@ -991,7 +1195,9 @@ pub trait WebSearchService: Service {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailAddress {
+    /// Email address
     pub email: String,
+    /// Display name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -1000,12 +1206,17 @@ pub struct EmailAddress {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailAttachment {
+    /// Attachment filename
     pub filename: String,
+    /// Attachment content as bytes
     pub content: Vec<u8>,
+    /// MIME type of the attachment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
+    /// Content disposition (inline or attachment)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_disposition: Option<String>,
+    /// Content ID for inline attachments
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cid: Option<String>,
 }
@@ -1014,29 +1225,43 @@ pub struct EmailAttachment {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailMessage {
+    /// Sender address
     pub from: EmailAddress,
+    /// Recipient addresses
     pub to: Vec<EmailAddress>,
+    /// CC recipient addresses
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cc: Option<Vec<EmailAddress>>,
+    /// BCC recipient addresses
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bcc: Option<Vec<EmailAddress>>,
+    /// Email subject line
     pub subject: String,
+    /// Plain text body
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// HTML body
     #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
+    /// File attachments
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<EmailAttachment>>,
+    /// Reply-to address
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<EmailAddress>,
+    /// Send date (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
+    /// Message ID header
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
+    /// Referenced message IDs for threading
     #[serde(skip_serializing_if = "Option::is_none")]
     pub references: Option<Vec<String>>,
+    /// Message ID this is replying to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub in_reply_to: Option<String>,
+    /// Email priority
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<String>,
 }
@@ -1045,14 +1270,19 @@ pub struct EmailMessage {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailSendOptions {
+    /// Number of retry attempts
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry: Option<u32>,
+    /// Send timeout in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
+    /// Track email opens
     #[serde(skip_serializing_if = "Option::is_none")]
     pub track_opens: Option<bool>,
+    /// Track link clicks
     #[serde(skip_serializing_if = "Option::is_none")]
     pub track_clicks: Option<bool>,
+    /// Tags for categorization
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 }
@@ -1061,28 +1291,40 @@ pub struct EmailSendOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailSearchOptions {
+    /// Search query string
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
+    /// Filter by sender
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// Filter by recipient
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to: Option<String>,
+    /// Filter by subject
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
+    /// Filter by folder
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// Filter by emails since date (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub since: Option<String>,
+    /// Filter by emails before date (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
+    /// Maximum number of results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// Result offset for pagination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
+    /// Filter by unread status
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unread: Option<bool>,
+    /// Filter by flagged status
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flagged: Option<bool>,
+    /// Filter by attachment presence
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_attachments: Option<bool>,
 }
@@ -1091,14 +1333,20 @@ pub struct EmailSearchOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailFolder {
+    /// Folder display name
     pub name: String,
+    /// Full folder path
     pub path: String,
+    /// Folder type (e.g., "inbox", "sent", "drafts")
     #[serde(rename = "type")]
     pub folder_type: String,
+    /// Total messages in folder
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_count: Option<u32>,
+    /// Unread message count
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unread_count: Option<u32>,
+    /// Child folders
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<EmailFolder>>,
 }
@@ -1107,15 +1355,21 @@ pub struct EmailFolder {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailAccount {
+    /// Account email address
     pub email: String,
+    /// Account display name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Email provider name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Account folders
     #[serde(skip_serializing_if = "Option::is_none")]
     pub folders: Option<Vec<EmailFolder>>,
+    /// Storage quota used in bytes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quota_used: Option<u64>,
+    /// Storage quota limit in bytes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quota_limit: Option<u64>,
 }
@@ -1180,12 +1434,17 @@ pub trait EmailService: Service {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageParticipant {
+    /// Unique identifier for the participant
     pub id: Uuid,
+    /// Display name
     pub name: String,
+    /// Username/handle
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
+    /// Avatar URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// Online status
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
 }
@@ -1194,17 +1453,26 @@ pub struct MessageParticipant {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageAttachment {
+    /// Unique identifier for the attachment
     pub id: Uuid,
+    /// Original filename
     pub filename: String,
+    /// Download URL
     pub url: String,
+    /// MIME type of the file
     pub mime_type: String,
+    /// File size in bytes
     pub size: u64,
+    /// Width in pixels for images/videos
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<u32>,
+    /// Height in pixels for images/videos
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
+    /// Duration in seconds for audio/video
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// Thumbnail URL for previews
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<String>,
 }
@@ -1213,9 +1481,13 @@ pub struct MessageAttachment {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageReaction {
+    /// Emoji used for the reaction
     pub emoji: String,
+    /// Total number of reactions with this emoji
     pub count: u32,
+    /// User IDs who reacted
     pub users: Vec<Uuid>,
+    /// Whether the current user has reacted
     pub has_reacted: bool,
 }
 
@@ -1223,8 +1495,11 @@ pub struct MessageReaction {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageReference {
+    /// ID of the referenced message
     pub message_id: Uuid,
+    /// ID of the channel containing the referenced message
     pub channel_id: Uuid,
+    /// Type of reference (e.g., "reply", "forward")
     #[serde(rename = "type")]
     pub ref_type: String,
 }
@@ -1233,8 +1508,11 @@ pub struct MessageReference {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbedField {
+    /// Field name/title
     pub name: String,
+    /// Field value/content
     pub value: String,
+    /// Whether to display inline with other fields
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inline: Option<bool>,
 }
@@ -1243,14 +1521,19 @@ pub struct EmbedField {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageEmbed {
+    /// Title of the embed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Description text of the embed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// URL associated with the embed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Image URL for the embed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// Custom fields within the embed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fields: Option<Vec<EmbedField>>,
 }
@@ -1259,20 +1542,28 @@ pub struct MessageEmbed {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageContent {
+    /// Plain text content of the message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// HTML formatted content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
+    /// Markdown formatted content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
+    /// File attachments included with the message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<MessageAttachment>>,
+    /// Emoji reactions on the message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reactions: Option<Vec<MessageReaction>>,
+    /// Reference to another message (e.g., reply)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<MessageReference>,
+    /// User IDs mentioned in the message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<Vec<Uuid>>,
+    /// Rich embeds included in the message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embeds: Option<Vec<MessageEmbed>>,
 }
@@ -1281,9 +1572,13 @@ pub struct MessageContent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageThread {
+    /// Unique identifier for the thread
     pub id: Uuid,
+    /// Total number of messages in the thread
     pub message_count: u32,
+    /// User IDs of thread participants
     pub participants: Vec<Uuid>,
+    /// ISO 8601 timestamp of the last message in the thread
     pub last_message_at: String,
 }
 
@@ -1291,17 +1586,26 @@ pub struct MessageThread {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageInfo {
+    /// Unique identifier for the message
     pub id: Uuid,
+    /// ID of the channel containing this message
     pub channel_id: Uuid,
+    /// ID of the user who sent the message
     pub sender_id: Uuid,
+    /// Content of the message
     pub content: MessageContent,
+    /// ISO 8601 timestamp when the message was sent
     pub timestamp: String,
+    /// ISO 8601 timestamp when the message was last edited
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited: Option<String>,
+    /// ISO 8601 timestamp when the message was deleted
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted: Option<String>,
+    /// Whether the message is pinned
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned: Option<bool>,
+    /// Thread information if this message started a thread
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread: Option<MessageThread>,
 }
@@ -1310,16 +1614,22 @@ pub struct MessageInfo {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageSendOptions {
+    /// ID of message to reply to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<Uuid>,
+    /// Whether the message is ephemeral (only visible to sender)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ephemeral: Option<bool>,
+    /// Whether to suppress notifications for this message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub silent: Option<bool>,
+    /// ISO 8601 timestamp for scheduled delivery
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled: Option<String>,
+    /// Thread ID to send the message to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread: Option<Uuid>,
+    /// Client-generated nonce for deduplication
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>,
 }
@@ -1328,24 +1638,34 @@ pub struct MessageSendOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageSearchOptions {
+    /// Text query to search for in messages
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
+    /// Filter by channel ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<Uuid>,
+    /// Filter by sender ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_id: Option<Uuid>,
+    /// Return messages before this ISO 8601 timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
+    /// Return messages after this ISO 8601 timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// Maximum number of messages to return
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// Number of messages to skip for pagination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
+    /// Filter for messages with attachments
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_attachments: Option<bool>,
+    /// Filter for pinned messages only
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned: Option<bool>,
+    /// Filter for messages mentioning this user ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<Uuid>,
 }
@@ -1354,10 +1674,15 @@ pub struct MessageSearchOptions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelPermissions {
+    /// Permission to send messages in the channel
     pub can_send: bool,
+    /// Permission to read messages in the channel
     pub can_read: bool,
+    /// Permission to delete messages in the channel
     pub can_delete: bool,
+    /// Permission to pin messages in the channel
     pub can_pin: bool,
+    /// Permission to manage channel settings
     pub can_manage: bool,
 }
 
@@ -1365,20 +1690,29 @@ pub struct ChannelPermissions {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageChannel {
+    /// Unique identifier for the channel
     pub id: Uuid,
+    /// Display name of the channel
     pub name: String,
+    /// Type of channel (e.g., "dm", "group", "public")
     #[serde(rename = "type")]
     pub channel_type: String,
+    /// Description of the channel
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// List of participants in the channel
     #[serde(skip_serializing_if = "Option::is_none")]
     pub participants: Option<Vec<MessageParticipant>>,
+    /// User's permissions in this channel
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<ChannelPermissions>,
+    /// ISO 8601 timestamp of the last message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_message_at: Option<String>,
+    /// Total number of messages in the channel
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_count: Option<u32>,
+    /// Number of unread messages for the current user
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unread_count: Option<u32>,
 }
@@ -1458,22 +1792,33 @@ pub trait MessagingService: Service {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostMedia {
+    /// Unique identifier for the media
     pub id: Uuid,
+    /// URL where the media is hosted
     pub url: String,
+    /// Type of media (e.g., "image", "video", "audio")
     #[serde(rename = "type")]
     pub media_type: String,
+    /// MIME type of the media file
     pub mime_type: String,
+    /// File size in bytes
     pub size: u64,
+    /// Width in pixels for images/videos
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<u32>,
+    /// Height in pixels for images/videos
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
+    /// Duration in seconds for audio/video
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    /// URL of a thumbnail image
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<String>,
+    /// Description of the media content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Alternative text for accessibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alt_text: Option<String>,
 }
@@ -1482,13 +1827,18 @@ pub struct PostMedia {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostLocation {
+    /// Display name of the location
     pub name: String,
+    /// Street address of the location
     #[serde(skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
+    /// Latitude coordinate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latitude: Option<f64>,
+    /// Longitude coordinate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub longitude: Option<f64>,
+    /// Platform-specific place identifier
     #[serde(skip_serializing_if = "Option::is_none")]
     pub place_id: Option<String>,
 }
@@ -1497,19 +1847,28 @@ pub struct PostLocation {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostAuthor {
+    /// Unique identifier for the author
     pub id: Uuid,
+    /// Username/handle of the author
     pub username: String,
+    /// Display name of the author
     pub display_name: String,
+    /// URL to the author's avatar image
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// Whether the author is verified
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verified: Option<bool>,
+    /// Number of followers the author has
     #[serde(skip_serializing_if = "Option::is_none")]
     pub follower_count: Option<u64>,
+    /// Number of accounts the author follows
     #[serde(skip_serializing_if = "Option::is_none")]
     pub following_count: Option<u64>,
+    /// Biography/description of the author
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bio: Option<String>,
+    /// Author's website URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub website: Option<String>,
 }
@@ -1518,14 +1877,22 @@ pub struct PostAuthor {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostEngagement {
+    /// Total number of likes on the post
     pub likes: u64,
+    /// Total number of shares/reposts
     pub shares: u64,
+    /// Total number of comments
     pub comments: u64,
+    /// Total number of views
     #[serde(skip_serializing_if = "Option::is_none")]
     pub views: Option<u64>,
+    /// Whether the current user has liked this post
     pub has_liked: bool,
+    /// Whether the current user has shared this post
     pub has_shared: bool,
+    /// Whether the current user has commented on this post
     pub has_commented: bool,
+    /// Whether the current user has saved this post
     pub has_saved: bool,
 }
 
@@ -1533,11 +1900,15 @@ pub struct PostEngagement {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostLinkPreview {
+    /// URL of the linked page
     pub url: String,
+    /// Title from the linked page's metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Description from the linked page's metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Preview image URL from the linked page
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
 }
@@ -1546,7 +1917,9 @@ pub struct PostLinkPreview {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PollOption {
+    /// Display text for the poll option
     pub text: String,
+    /// Number of votes for this option
     pub votes: u64,
 }
 
@@ -1554,10 +1927,14 @@ pub struct PollOption {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostPoll {
+    /// Question being asked in the poll
     pub question: String,
+    /// Available options for the poll
     pub options: Vec<PollOption>,
+    /// ISO 8601 timestamp when the poll expires
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
+    /// Whether users can select multiple options
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multiple_choice: Option<bool>,
 }
@@ -1566,20 +1943,28 @@ pub struct PostPoll {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostContent {
+    /// Plain text content of the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// HTML formatted content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
+    /// Media attachments (images, videos, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media: Option<Vec<PostMedia>>,
+    /// Location associated with the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<PostLocation>,
+    /// Hashtags/tags on the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// User IDs mentioned in the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<Vec<Uuid>>,
+    /// Link previews for URLs in the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<PostLinkPreview>>,
+    /// Poll attached to the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub poll: Option<PostPoll>,
 }
@@ -1588,8 +1973,11 @@ pub struct PostContent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostThread {
+    /// Unique identifier for the thread
     pub id: Uuid,
+    /// Position of this post within the thread (1-indexed)
     pub position: u32,
+    /// Total number of posts in the thread
     pub total: u32,
 }
 
@@ -1597,8 +1985,11 @@ pub struct PostThread {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CrossPostedInfo {
+    /// Platform where the post was cross-posted
     pub platform: String,
+    /// Platform-specific identifier for the cross-posted version
     pub platform_id: String,
+    /// URL to the cross-posted version
     pub url: String,
 }
 
@@ -1606,23 +1997,37 @@ pub struct CrossPostedInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostInfo {
+    /// Unique identifier for the post
     pub id: Uuid,
+    /// Author of the post
     pub author: PostAuthor,
+    /// Content of the post
     pub content: PostContent,
+    /// Platform where the post was created
     pub platform: String,
+    /// Platform-specific identifier
     pub platform_id: String,
+    /// URL to the post
     pub url: String,
+    /// ISO 8601 timestamp when the post was created
     pub created_at: String,
+    /// ISO 8601 timestamp when the post was last edited
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited_at: Option<String>,
+    /// ISO 8601 timestamp for scheduled posts
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled_at: Option<String>,
+    /// Engagement metrics for the post
     pub engagement: PostEngagement,
+    /// Visibility setting (e.g., "public", "private", "followers")
     pub visibility: String,
+    /// ID of the post this is replying to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<Uuid>,
+    /// Thread information if part of a thread
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread: Option<PostThread>,
+    /// Information about cross-posted versions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cross_posted: Option<Vec<CrossPostedInfo>>,
 }
@@ -1631,28 +2036,40 @@ pub struct PostInfo {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostCreateOptions {
+    /// Platforms to post to (for cross-posting)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platforms: Option<Vec<String>>,
+    /// ISO 8601 timestamp for scheduled posting
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled_at: Option<String>,
+    /// Visibility setting (e.g., "public", "private", "followers")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<String>,
+    /// ID of post to reply to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<Uuid>,
+    /// Whether to create as part of a thread
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread: Option<bool>,
+    /// Location to tag on the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<PostLocation>,
+    /// Hashtags/tags for the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// User IDs to mention
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<Vec<Uuid>>,
+    /// Whether to allow comments on the post
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_comments: Option<bool>,
+    /// Whether to allow sharing/reposting
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_sharing: Option<bool>,
+    /// Content warning text
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_warning: Option<String>,
+    /// Whether the content is marked as sensitive
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sensitive: Option<bool>,
 }
@@ -1661,30 +2078,43 @@ pub struct PostCreateOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostSearchOptions {
+    /// Text query to search for
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
+    /// Filter by author ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<Uuid>,
+    /// Filter by platform
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform: Option<String>,
+    /// Filter by tags/hashtags
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// Filter by mentioned user IDs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mentions: Option<Vec<Uuid>>,
+    /// Return posts since this ISO 8601 timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub since: Option<String>,
+    /// Return posts before this ISO 8601 timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before: Option<String>,
+    /// Maximum number of posts to return
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    /// Number of posts to skip for pagination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
+    /// Filter for posts with media attachments
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_media: Option<bool>,
+    /// Filter for posts with location data
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_location: Option<bool>,
+    /// Filter by visibility setting
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<String>,
+    /// Sort order (e.g., "recent", "popular", "engagement")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_by: Option<String>,
 }
@@ -1693,10 +2123,13 @@ pub struct PostSearchOptions {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DemographicsData {
+    /// Age distribution (age range -> count)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub age: Option<HashMap<String, u64>>,
+    /// Gender distribution (gender -> count)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gender: Option<HashMap<String, u64>>,
+    /// Geographic distribution (location -> count)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<HashMap<String, u64>>,
 }
@@ -1705,7 +2138,9 @@ pub struct DemographicsData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformingHour {
+    /// Hour of day (0-23)
     pub hour: u32,
+    /// Total engagement during this hour
     pub engagement: u64,
 }
 
@@ -1713,16 +2148,26 @@ pub struct PerformingHour {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostAnalytics {
+    /// ID of the post these analytics are for
     pub post_id: Uuid,
+    /// Platform the analytics are from
     pub platform: String,
+    /// Total number of times the post was shown
     pub impressions: u64,
+    /// Number of unique users who saw the post
     pub reach: u64,
+    /// Engagement metrics for the post
     pub engagement: PostEngagement,
+    /// Number of link clicks
     pub clicks: u64,
+    /// Number of shares/reposts
     pub shares: u64,
+    /// Number of times the post was saved
     pub saves: u64,
+    /// Demographic breakdown of engaged users
     #[serde(skip_serializing_if = "Option::is_none")]
     pub demographics: Option<DemographicsData>,
+    /// Hours with highest engagement
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_performing_hours: Option<Vec<PerformingHour>>,
 }

@@ -33,6 +33,18 @@ from elizaos.types.service import Service
 from elizaos.types.state import State, StateData
 from elizaos.types.task import TaskWorker
 
+# Import message service (lazy to avoid circular imports)
+_message_service_class: type | None = None
+
+
+def _get_message_service_class() -> type:
+    """Lazy load DefaultMessageService to avoid circular imports."""
+    global _message_service_class
+    if _message_service_class is None:
+        from elizaos.services.message_service import DefaultMessageService
+        _message_service_class = DefaultMessageService
+    return _message_service_class
+
 
 class ModelHandler:
     """Represents a registered model handler."""
@@ -54,6 +66,20 @@ class AgentRuntime(IAgentRuntime):
 
     This class implements the IAgentRuntime interface and provides
     the core functionality for running AI agents.
+
+    Example:
+        ```python
+        from elizaos import AgentRuntime, Character, DEFAULT_UUID
+
+        runtime = AgentRuntime(
+            character=Character(name="MyAgent", bio="..."),
+            log_level="info",  # defaults to "error"
+        )
+        await runtime.initialize()
+
+        # For memory creation, use DEFAULT_UUID if no specific room/world needed
+        await runtime.create_memory(memory, "messages")
+        ```
     """
 
     def __init__(
@@ -64,6 +90,7 @@ class AgentRuntime(IAgentRuntime):
         plugins: list[Plugin] | None = None,
         settings: RuntimeSettings | None = None,
         conversation_length: int = 32,
+        log_level: str = "ERROR",
     ) -> None:
         """
         Initialize the AgentRuntime.
@@ -75,6 +102,8 @@ class AgentRuntime(IAgentRuntime):
             plugins: Optional list of plugins to register
             settings: Optional runtime settings
             conversation_length: Number of messages to keep in context
+            log_level: Log level for this runtime (DEBUG, INFO, WARNING, ERROR).
+                       Defaults to "ERROR".
         """
         # Generate agent ID from character name or random UUID
         self._agent_id = agent_id or as_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, character.name)))
@@ -103,8 +132,8 @@ class AgentRuntime(IAgentRuntime):
         # Action results cache
         self._action_results: dict[str, list[ActionResult]] = {}
 
-        # Logger
-        self.logger = create_logger(namespace=character.name)
+        # Logger with configurable log level (defaults to ERROR)
+        self.logger = create_logger(namespace=character.name, level=log_level.upper())
 
         # Store initial plugins for later registration
         self._initial_plugins = plugins or []
@@ -113,7 +142,17 @@ class AgentRuntime(IAgentRuntime):
         self._init_complete = False
         self._init_event = asyncio.Event()
 
+        # Message service (initialized lazily)
+        self._message_service: Any = None
+
     # Properties
+    @property
+    def message_service(self) -> Any:
+        """Get the message service for handling incoming messages."""
+        if self._message_service is None:
+            service_class = _get_message_service_class()
+            self._message_service = service_class()
+        return self._message_service
     @property
     def agent_id(self) -> UUID:
         return self._agent_id

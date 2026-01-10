@@ -1,0 +1,248 @@
+"""
+UPDATE_ENTITY Action - Update entity information.
+
+This action allows the agent to update information about
+an entity (user, agent, or other entity type).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
+from elizaos_plugin_bootstrap.utils.xml import parse_key_value_xml
+
+if TYPE_CHECKING:
+    from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
+
+
+UPDATE_ENTITY_TEMPLATE = """# Task: Update entity information.
+
+{{providers}}
+
+# Current Entity Information:
+{{entityInfo}}
+
+# Instructions:
+Based on the request, determine what information about the entity should be updated.
+Only update fields that the user has explicitly requested to change.
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the entity update</thought>
+    <entity_id>The entity ID to update</entity_id>
+    <updates>
+        <field>
+            <name>field_name</name>
+            <value>new_value</value>
+        </field>
+    </updates>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+
+
+@dataclass
+class UpdateEntityAction:
+    """
+    Action for updating entity information.
+
+    This action is used when:
+    - Entity profile needs updating
+    - Entity metadata should be changed
+    - Entity attributes need modification
+    """
+
+    name: str = "UPDATE_ENTITY"
+    similes: list[str] = field(
+        default_factory=lambda: [
+            "MODIFY_ENTITY",
+            "CHANGE_ENTITY",
+            "EDIT_ENTITY",
+            "UPDATE_PROFILE",
+            "SET_ENTITY_INFO",
+        ]
+    )
+    description: str = (
+        "Update information about an entity. "
+        "Use this to modify entity profiles, metadata, or attributes."
+    )
+
+    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+        """Validate that entity update is possible."""
+        # Check if there's an entity context
+        return message.entity_id is not None
+
+    async def handler(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: State | None = None,
+        options: HandlerOptions | None = None,
+        callback: HandlerCallback | None = None,
+        responses: list[Memory] | None = None,
+    ) -> ActionResult:
+        """Handle entity update."""
+        if state is None:
+            raise ValueError("State is required for UPDATE_ENTITY action")
+
+        entity_id = message.entity_id
+        if not entity_id:
+            return ActionResult(
+                text="No entity specified to update",
+                values={"success": False, "error": "no_entity_id"},
+                data={"actionName": "UPDATE_ENTITY"},
+                success=False,
+            )
+
+        try:
+            # Get current entity info
+            entity = await runtime.get_entity(entity_id)
+            if entity is None:
+                return ActionResult(
+                    text="Entity not found",
+                    values={"success": False, "error": "entity_not_found"},
+                    data={"actionName": "UPDATE_ENTITY"},
+                    success=False,
+                )
+
+            # Compose state with context
+            state = await runtime.compose_state(
+                message, ["RECENT_MESSAGES", "ACTION_STATE", "ENTITY_INFO"]
+            )
+
+            entity_info = f"""
+Entity ID: {entity.id}
+Name: {entity.name or 'Unknown'}
+Type: {entity.entity_type or 'Unknown'}
+"""
+            if entity.metadata:
+                entity_info += f"Metadata: {entity.metadata}"
+
+            prompt = runtime.compose_prompt(
+                state=state,
+                template=runtime.character.templates.get(
+                    "updateEntityTemplate", UPDATE_ENTITY_TEMPLATE
+                ),
+            )
+            prompt = prompt.replace("{{entityInfo}}", entity_info)
+
+            response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
+            parsed_xml = parse_key_value_xml(response_text)
+
+            if parsed_xml is None:
+                raise ValueError("Failed to parse XML response")
+
+            thought = str(parsed_xml.get("thought", ""))
+            target_entity_id_str = str(parsed_xml.get("entity_id", str(entity_id)))
+
+            # Validate target entity ID
+            try:
+                target_entity_id = UUID(target_entity_id_str)
+            except ValueError as e:
+                raise ValueError(f"Invalid entity ID: {target_entity_id_str}") from e
+
+            # Parse updates
+            updates_raw = parsed_xml.get("updates", {})
+            updated_fields: list[str] = []
+
+            if isinstance(updates_raw, dict):
+                field_list = updates_raw.get("field", [])
+                if isinstance(field_list, dict):
+                    field_list = [field_list]
+                for field_update in field_list:
+                    if isinstance(field_update, dict):
+                        field_name = str(field_update.get("name", ""))
+                        field_value = str(field_update.get("value", ""))
+                        if field_name and field_value:
+                            # Apply update to entity
+                            if entity.metadata is None:
+                                entity.metadata = {}
+                            entity.metadata[field_name] = field_value
+                            updated_fields.append(field_name)
+
+            if not updated_fields:
+                return ActionResult(
+                    text="No fields to update",
+                    values={"success": True, "noChanges": True},
+                    data={"actionName": "UPDATE_ENTITY", "thought": thought},
+                    success=True,
+                )
+
+            # Save the updated entity
+            await runtime.update_entity(entity)
+
+            response_content = Content(
+                text=f"Updated entity fields: {', '.join(updated_fields)}",
+                actions=["UPDATE_ENTITY"],
+            )
+
+            if callback:
+                await callback(response_content)
+
+            return ActionResult(
+                text=f"Updated entity: {', '.join(updated_fields)}",
+                values={
+                    "success": True,
+                    "entityUpdated": True,
+                    "entityId": str(target_entity_id),
+                    "updatedFields": ", ".join(updated_fields),
+                },
+                data={
+                    "actionName": "UPDATE_ENTITY",
+                    "entityId": str(target_entity_id),
+                    "updatedFields": updated_fields,
+                    "thought": thought,
+                },
+                success=True,
+            )
+
+        except Exception as error:
+            runtime.logger.error(
+                {
+                    "src": "plugin:bootstrap:action:updateEntity",
+                    "agentId": runtime.agent_id,
+                    "error": str(error),
+                },
+                "Error updating entity",
+            )
+            return ActionResult(
+                text="Error updating entity",
+                values={"success": False, "error": str(error)},
+                data={"actionName": "UPDATE_ENTITY", "error": str(error)},
+                success=False,
+                error=error,
+            )
+
+    @property
+    def examples(self) -> list[list[ActionExample]]:
+        """Example interactions demonstrating the UPDATE_ENTITY action."""
+        return [
+            [
+                ActionExample(
+                    name="{{name1}}",
+                    content=Content(text="Update my profile bio to 'AI enthusiast'."),
+                ),
+                ActionExample(
+                    name="{{name2}}",
+                    content=Content(
+                        text="I'll update your profile information.",
+                        actions=["UPDATE_ENTITY"],
+                    ),
+                ),
+            ],
+        ]
+
+
+# Create the action instance
+update_entity_action = Action(
+    name=UpdateEntityAction.name,
+    similes=UpdateEntityAction().similes,
+    description=UpdateEntityAction.description,
+    validate=UpdateEntityAction().validate,
+    handler=UpdateEntityAction().handler,
+    examples=UpdateEntityAction().examples,
+)
+

@@ -263,3 +263,4 @@ class TestTask:
         assert task.status == TaskStatus.IN_PROGRESS
         assert "important" in (task.tags or [])
 
+

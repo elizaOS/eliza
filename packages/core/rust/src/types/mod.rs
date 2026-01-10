@@ -16,9 +16,12 @@ mod model;
 mod plugin;
 mod primitives;
 mod service;
+mod service_interfaces;
 mod settings;
 mod state;
+mod streaming;
 mod task;
+mod tee;
 mod testing;
 
 // Re-export main types explicitly to avoid ambiguity
@@ -65,16 +68,23 @@ pub use model::{
     TranscriptionParams,
 };
 pub use plugin::{
-    ComponentTypeDefinition, HttpMethod, Plugin, PluginDefinition, ProjectAgentDefinition,
-    ProjectDefinition, RouteDefinition,
+    ComponentTypeDefinition, HttpMethod, ModelHandlerFn, Plugin, PluginDefinition,
+    ProjectAgentDefinition, ProjectDefinition, RouteDefinition,
 };
 pub use primitives::{
-    as_uuid, Content, ContentType, Media, MentionContext, MentionType, Metadata, UUIDError, UUID,
+    as_uuid, string_to_uuid, Content, ContentType, Media, MentionContext, MentionType, Metadata,
+    UUIDError, DEFAULT_UUID_STR, UUID,
 };
 pub use service::{service_type, Service, ServiceDefinition, ServiceError, TypedService};
+pub use service_interfaces::*;
 pub use settings::{EnvironmentConfig, RuntimeSettings, SettingValue};
 pub use state::{State, StateData};
+pub use streaming::IStreamExtractor;
 pub use task::{GetTasksParams, Task, TaskStatus, TaskWorkerDefinition};
+pub use tee::{
+    DeriveKeyAttestationData, RemoteAttestationMessage, RemoteAttestationMessageContent,
+    RemoteAttestationQuote, TeeAgent, TeePluginConfig, TeeType, TEEMode,
+};
 pub use testing::{
     TestCase, TestCaseDefinition, TestError, TestResults, TestSuite, TestSuiteDefinition,
 };

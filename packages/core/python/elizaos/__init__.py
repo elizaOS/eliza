@@ -9,7 +9,9 @@ from elizaos.character import parse_character, validate_character_config
 from elizaos.logger import Logger, create_logger
 from elizaos.plugin import load_plugin, register_plugin
 from elizaos.runtime import AgentRuntime
+from elizaos.services import DefaultMessageService, IMessageService, MessageProcessingResult
 from elizaos.types import (
+    DEFAULT_UUID,
     UUID,
     Action,
     ActionContext,
@@ -99,6 +101,7 @@ __all__ = [
     # Runtime
     "AgentRuntime",
     # Types - Primitives
+    "DEFAULT_UUID",
     "UUID",
     "as_uuid",
     "Content",
@@ -174,4 +177,8 @@ __all__ = [
     # Character utilities
     "parse_character",
     "validate_character_config",
+    # Message service
+    "DefaultMessageService",
+    "IMessageService",
+    "MessageProcessingResult",
 ]

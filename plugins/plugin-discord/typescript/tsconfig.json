@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext", "dom"],
+    "moduleResolution": "Bundler",
+    "outDir": "../dist",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "resolveJsonModule": true,
+    "noImplicitAny": false,
+    "allowJs": false,
+    "checkJs": false,
+    "noEmitOnError": false,
+    "moduleDetection": "force",
+    "allowArbitraryExtensions": true,
+    "baseUrl": ".",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "types": [],
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../../packages/core/src/*"],
+      "discord.js": ["../../../node_modules/discord.js"],
+      "@discordjs/*": ["../../../node_modules/@discordjs/*"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+}
+

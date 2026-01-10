@@ -153,13 +153,13 @@ Use elizaOS agents directly in your applications without the CLI or web interfac
 
 ```bash
 git clone https://github.com/elizaos/eliza.git
-cd eliza/examples
+cd eliza
 
 # Interactive chat
-OPENAI_API_KEY=your_key bun run standalone-cli-chat.ts
+OPENAI_API_KEY=your_key bun run examples/typescript/chat.ts
 
 # Basic message processing
-OPENAI_API_KEY=your_key bun run standalone.ts
+OPENAI_API_KEY=your_key bun run examples/typescript/standalone.ts
 ```
 
 ## 🏛️ Architecture Overview

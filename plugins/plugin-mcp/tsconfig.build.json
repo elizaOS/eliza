@@ -1,0 +1,12 @@
+{
+  "extends": "./typescript/tsconfig.build.json",
+  "compilerOptions": {
+    "rootDir": "./typescript/src",
+    "outDir": "./dist/node",
+    "declaration": true,
+    "declarationDir": "./dist/node",
+    "declarationMap": true
+  },
+  "include": ["typescript/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "typescript/__tests__"]
+}

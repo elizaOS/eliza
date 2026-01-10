@@ -1,0 +1,6 @@
+# elizaOS Python packages (installed from local source)
+# Install with: pip install -e packages/core/python -e packages/plugin-openai/python
+
+# These are editable installs - paths are relative to repo root
+-e ../../packages/core/python
+-e ../../packages/plugin-openai/python

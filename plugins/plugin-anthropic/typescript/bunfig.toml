@@ -1,0 +1,8 @@
+[test]
+preload = []
+timeout = 30000
+
+[test.coverage]
+coverageDirectory = "./coverage"
+
+

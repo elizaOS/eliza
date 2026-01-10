@@ -6,6 +6,12 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
 /**
+ * Model type configuration for shouldRespond evaluation.
+ * Determines which model is used to decide whether the agent should respond.
+ */
+export type ShouldRespondModelType = "small" | "large";
+
+/**
  * Configuration options for message processing
  */
 export interface MessageProcessingOptions {
@@ -42,6 +48,21 @@ export interface MessageProcessingOptions {
    * @param messageId - ID of the message being generated
    */
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+
+  /**
+   * Model type to use for shouldRespond evaluation.
+   * - "small": Use TEXT_SMALL for fast, simple response decisions (default)
+   * - "large": Use TEXT_LARGE for complex reasoning about whether to respond
+   *
+   * Use "large" when the agent needs to:
+   * - Consider complex context for response decisions
+   * - Do preliminary planning/reasoning about response strategy
+   * - Handle nuanced social situations
+   *
+   * Can also be configured via SHOULD_RESPOND_MODEL env setting.
+   * @default "small"
+   */
+  shouldRespondModel?: ShouldRespondModelType;
 }
 
 /**

@@ -2,44 +2,34 @@
 //!
 //! Verifies that UUID generation and handling is compatible with TypeScript
 
+use elizaos::types::{string_to_uuid, UUID};
 use uuid::Uuid;
 
 /// Test that stringToUuid produces the same results as TypeScript
 /// The TypeScript function uses a specific algorithm we need to match
 #[test]
 fn test_string_to_uuid_deterministic() {
-    // Use UUID v5 with DNS namespace (same as TypeScript)
-    let namespace = Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap();
-
-    // Test known inputs and verify outputs are consistent
+    // These are the canonical TypeScript test vectors from
+    // `packages/core/typescript/src/__tests__/utils/stringToUuid.test.ts`.
     let test_cases = vec![
-        ("test", None),      // Will verify Rust is deterministic
-        ("hello", None),     // across multiple calls
-        ("agent-1", None),   // with various inputs
-        ("room-abc", None),  // including special chars
-        ("user@email.com", None),
+        ("test", "a94a8fe5-ccb1-0ba6-9c4c-0873d391e987"),
+        ("hello world", "f0355dd5-2823-054c-ae66-a0b12842c215"),
+        ("", "da39a3ee-5e6b-0b0d-b255-bfef95601890"),
+        ("123", "40bd0015-6308-0fc3-9165-329ea1ff5c5e"),
+        ("user:agent", "a49810ce-da30-0d3b-97ee-d4d47774d8af"),
     ];
 
     for (input, expected) in test_cases {
-        let uuid1 = Uuid::new_v5(&namespace, input.as_bytes());
-        let uuid2 = Uuid::new_v5(&namespace, input.as_bytes());
+        let uuid1 = string_to_uuid(input);
+        let uuid2 = string_to_uuid(input);
 
         // Verify determinism
-        assert_eq!(uuid1, uuid2, "UUID should be deterministic for: {}", input);
+        assert_eq!(uuid1.as_str(), uuid2.as_str(), "UUID should be deterministic");
+        assert_eq!(uuid1.as_str(), expected);
 
-        // Verify format
-        let uuid_str = uuid1.to_string();
-        assert!(
-            Uuid::parse_str(&uuid_str).is_ok(),
-            "UUID should be valid: {}",
-            uuid_str
-        );
-        assert_eq!(uuid_str.len(), 36, "UUID string should be 36 chars");
-
-        // If we have an expected value, verify it matches
-        if let Some(exp) = expected {
-            assert_eq!(uuid_str, exp, "UUID should match expected for: {}", input);
-        }
+        // Verify format via our UUID wrapper (TypeScript uses regex validation)
+        assert!(UUID::new(uuid1.as_str()).is_ok());
+        assert_eq!(uuid1.as_str().len(), 36, "UUID string should be 36 chars");
     }
 }
 
@@ -96,11 +86,6 @@ fn test_uuid_uniqueness() {
 }
 
 /// Test TypeScript-compatible stringToUuid function
-fn string_to_uuid(input: &str) -> String {
-    let namespace = Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap();
-    Uuid::new_v5(&namespace, input.as_bytes()).to_string()
-}
-
 #[test]
 fn test_string_to_uuid_specific_inputs() {
     // These should produce consistent, deterministic UUIDs
@@ -118,15 +103,23 @@ fn test_string_to_uuid_specific_inputs() {
     for input in inputs {
         let uuid1 = string_to_uuid(input);
         let uuid2 = string_to_uuid(input);
-        assert_eq!(uuid1, uuid2, "Should be deterministic for: {:?}", input);
-        assert!(Uuid::parse_str(&uuid1).is_ok(), "Should be valid UUID");
+        assert_eq!(
+            uuid1.as_str(),
+            uuid2.as_str(),
+            "Should be deterministic for: {:?}",
+            input
+        );
+        assert!(UUID::new(uuid1.as_str()).is_ok(), "Should be valid UUID");
     }
 }
 
 #[test]
 fn test_string_to_uuid_different_inputs_produce_different_uuids() {
     let inputs = vec!["input1", "input2", "input3"];
-    let uuids: Vec<String> = inputs.iter().map(|i| string_to_uuid(i)).collect();
+    let uuids: Vec<String> = inputs
+        .iter()
+        .map(|i| string_to_uuid(i).to_string())
+        .collect();
 
     // All should be different
     for i in 0..uuids.len() {

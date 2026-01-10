@@ -204,3 +204,4 @@ class TestBuildCharacterPlugins:
         # Platform plugins after LLM plugins
         assert plugins.index("@elizaos/plugin-discord") > plugins.index("@elizaos/plugin-openai")
 
+

@@ -54,9 +54,22 @@ class ActionContext(BaseModel):
     model_config = {"populate_by_name": True}
 
     def get_previous_result(self, action_name: str) -> ActionResult | None:
-        """Get a specific previous result by action name."""
-        # TODO: Implementation would need action name tracking in previous_results
-        _ = action_name  # Placeholder for future implementation
+        """Get a specific previous result by action name.
+        
+        Searches through previous_results for a result where the action name
+        matches the provided action_name. Action names are stored in result.data.actionName.
+        
+        Args:
+            action_name: The name of the action to find results for
+            
+        Returns:
+            The first matching ActionResult, or None if no match is found
+        """
+        for result in self.previous_results:
+            if result.data and isinstance(result.data, dict):
+                stored_action_name = result.data.get("actionName")
+                if stored_action_name == action_name:
+                    return result
         return None
 
 

@@ -26,6 +26,27 @@ import type {
 
 /**
  * elizaOS - Multi-agent orchestration framework
+ *
+ * @deprecated The elizaOS class is deprecated. Use AgentRuntime directly instead.
+ * Users can simply create a new AgentRuntime with a character and plugins:
+ *
+ * ```typescript
+ * import { AgentRuntime, DEFAULT_UUID } from "@elizaos/core";
+ *
+ * const runtime = new AgentRuntime({
+ *   character: { name: "MyAgent", bio: "..." },
+ *   plugins: [myPlugin],
+ *   logLevel: "info", // defaults to "error"
+ * });
+ * await runtime.initialize();
+ *
+ * // For memory creation, use DEFAULT_UUID if no specific room/world needed:
+ * await runtime.createMemory({
+ *   entityId: userId,
+ *   roomId: DEFAULT_UUID,
+ *   content: { text: "Hello" },
+ * }, "messages");
+ * ```
  */
 export class elizaOS extends EventTarget implements IElizaOS {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();

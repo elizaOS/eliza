@@ -32,6 +32,8 @@
 pub mod character;
 pub mod plugin;
 pub mod runtime;
+pub mod services;
+pub mod settings;
 pub mod types;
 
 #[cfg(feature = "wasm")]
@@ -43,6 +45,8 @@ pub use character::{
 };
 pub use plugin::{load_plugin, resolve_plugin_dependencies, validate_plugin};
 pub use runtime::AgentRuntime;
+pub use services::{DefaultMessageService, IMessageService, MessageProcessingOptions, MessageProcessingResult};
+pub use settings::{decrypt_string_value, encrypt_string_value, get_salt};
 pub use types::*;
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)

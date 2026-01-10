@@ -4,6 +4,60 @@ import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
 /**
+ * JSON Schema type for action parameter validation.
+ * Supports basic JSON Schema properties for parameter definition.
+ */
+export type ActionParameterSchema = {
+  /** The JSON Schema type (string, number, boolean, object, array) */
+  type: "string" | "number" | "boolean" | "object" | "array";
+  /** Description of the parameter for LLM guidance */
+  description?: string;
+  /** Default value if parameter is not provided */
+  default?: string | number | boolean | null;
+  /** Allowed values for enum-style parameters */
+  enum?: string[];
+  /** For object types, define nested properties */
+  properties?: Record<string, ActionParameterSchema>;
+  /** For array types, define the item schema */
+  items?: ActionParameterSchema;
+  /** Minimum value for numbers */
+  minimum?: number;
+  /** Maximum value for numbers */
+  maximum?: number;
+  /** Pattern for string validation (regex) */
+  pattern?: string;
+};
+
+/**
+ * Defines a single parameter for an action.
+ * Parameters are extracted from the conversation by the LLM and passed to the action handler.
+ */
+export interface ActionParameter {
+  /** Parameter name (used as the key in the parameters object) */
+  name: string;
+  /** Human-readable description for LLM guidance */
+  description: string;
+  /** Whether this parameter is required (default: false) */
+  required?: boolean;
+  /** JSON Schema for parameter validation */
+  schema: ActionParameterSchema;
+}
+
+/**
+ * Primitive value types that can be used in action parameters.
+ */
+export type ActionParameterValue = string | number | boolean | null;
+
+/**
+ * Validated parameters passed to an action handler.
+ * Keys are parameter names, values are the validated parameter values.
+ * Supports nested objects and arrays for complex parameter structures.
+ */
+export interface ActionParameters {
+  [key: string]: ActionParameterValue | ActionParameters | ActionParameterValue[] | ActionParameters[];
+}
+
+/**
  * Example content with associated user for demonstration purposes
  */
 export interface ActionExample {
@@ -67,6 +121,34 @@ export interface Action {
 
   /** Optional tags for categorization */
   tags?: string[];
+
+  /**
+   * Optional input parameters for the action.
+   * When defined, the LLM will be prompted to extract these parameters from the conversation
+   * and they will be validated before being passed to the handler via HandlerOptions.parameters.
+   *
+   * Parameters can be required or optional. Optional parameters may have defaults
+   * or can be backfilled inside the action handler if not provided.
+   *
+   * @example
+   * ```typescript
+   * parameters: [
+   *   {
+   *     name: "targetUser",
+   *     description: "The username or ID of the user to send the message to",
+   *     required: true,
+   *     schema: { type: "string" }
+   *   },
+   *   {
+   *     name: "platform",
+   *     description: "The platform to send the message on (telegram, discord, etc)",
+   *     required: false,
+   *     schema: { type: "string", enum: ["telegram", "discord", "twitter"], default: "telegram" }
+   *   }
+   * ]
+   * ```
+   */
+  parameters?: ActionParameter[];
 }
 
 /**
@@ -211,4 +293,24 @@ export interface HandlerOptions {
 
   /** Optional stream chunk callback for streaming responses */
   onStreamChunk?: StreamChunkCallback;
+
+  /**
+   * Validated input parameters extracted from the conversation.
+   * Only present when the action defines parameters and they were successfully extracted.
+   *
+   * Parameters are validated against the action's parameter schema before being passed here.
+   * Optional parameters may be undefined if not provided in the conversation.
+   *
+   * @example
+   * ```typescript
+   * handler: async (runtime, message, state, options) => {
+   *   const params = options?.parameters;
+   *   if (params) {
+   *     const targetUser = params.targetUser as string;
+   *     const platform = params.platform as string ?? "telegram"; // backfill default
+   *   }
+   * }
+   * ```
+   */
+  parameters?: ActionParameters;
 }

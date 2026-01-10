@@ -102,6 +102,29 @@ pub struct PluginDefinition {
     pub schema: Option<HashMap<String, serde_json::Value>>,
 }
 
+/// Model handler function type (async function that takes params and returns result)
+///
+/// This type is used for model handlers registered via plugins. It takes JSON
+/// parameters and returns a string result asynchronously.
+///
+/// For native builds, handlers must be Send + Sync for multi-threaded async.
+/// For WASM builds, this constraint is relaxed since WASM is single-threaded.
+#[cfg(not(feature = "wasm"))]
+pub type ModelHandlerFn = Box<
+    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Model handler function type for WASM builds
+///
+/// This type is used for model handlers registered via plugins. The WASM version
+/// does not require Send + Sync since WebAssembly is single-threaded.
+#[cfg(feature = "wasm")]
+pub type ModelHandlerFn = Box<
+    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>>>>
+>;
+
 /// Full plugin with handlers (runtime representation)
 #[derive(Default)]
 pub struct Plugin {
@@ -113,6 +136,8 @@ pub struct Plugin {
     pub provider_handlers: Vec<Arc<dyn ProviderHandler>>,
     /// Evaluator handlers
     pub evaluator_handlers: Vec<Arc<dyn EvaluatorHandler>>,
+    /// Model handlers (maps model type like "TEXT_LARGE" to handler)
+    pub model_handlers: HashMap<String, ModelHandlerFn>,
     /// Test suites
     pub tests: Vec<TestSuite>,
     /// Initialization function

@@ -8,13 +8,11 @@ including UUID, Content, Media, and Metadata.
 from __future__ import annotations
 
 import re
+import uuid as uuid_module
 from enum import Enum
-from typing import Any, NewType
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator
-
-# UUID type - a strongly typed string representing a universally unique identifier
-UUID = NewType("UUID", str)
+from pydantic import BeforeValidator, BaseModel, Field, field_validator
 
 # UUID validation pattern
 UUID_PATTERN = re.compile(
@@ -23,22 +21,40 @@ UUID_PATTERN = re.compile(
 )
 
 
-def as_uuid(id_str: str) -> UUID:
+def _coerce_uuid(value: str | uuid_module.UUID) -> str:
+    """Coerce UUID objects or strings to validated UUID strings."""
+    if isinstance(value, uuid_module.UUID):
+        return str(value)
+    if isinstance(value, str):
+        if not UUID_PATTERN.match(value):
+            raise ValueError(f"Invalid UUID format: {value}")
+        return value
+    raise TypeError(f"Expected str or UUID, got {type(value).__name__}")
+
+
+# UUID type - accepts both str and uuid.UUID, stores as str
+UUID = Annotated[str, BeforeValidator(_coerce_uuid)]
+
+# The default UUID used when no room or world is specified.
+# This is the nil/zero UUID (00000000-0000-0000-0000-000000000000).
+# Using this allows users to spin up an AgentRuntime without worrying about room/world setup.
+DEFAULT_UUID: str = "00000000-0000-0000-0000-000000000000"
+
+
+def as_uuid(id_str: str | uuid_module.UUID) -> str:
     """
-    Helper function to safely cast a string to a strongly typed UUID.
+    Helper function to safely cast a string or UUID to a validated UUID string.
 
     Args:
-        id_str: The string UUID to validate and cast
+        id_str: The string or UUID to validate and cast
 
     Returns:
-        The same UUID with branded type information
+        The validated UUID as a string
 
     Raises:
         ValueError: If the string is not a valid UUID format
     """
-    if not id_str or not UUID_PATTERN.match(id_str):
-        raise ValueError(f"Invalid UUID format: {id_str}")
-    return UUID(id_str)
+    return _coerce_uuid(id_str)
 
 
 class ContentType(str, Enum):
@@ -128,10 +144,10 @@ class Content(BaseModel):
 
     @field_validator("in_reply_to", "response_message_id", mode="before")
     @classmethod
-    def validate_uuid(cls, v: str | None) -> UUID | None:
+    def validate_uuid(cls, v: str | uuid_module.UUID | None) -> str | None:
         if v is None:
             return None
-        return as_uuid(v)
+        return _coerce_uuid(v)
 
 
 # Metadata is a generic type for metadata objects, allowing for arbitrary key-value pairs

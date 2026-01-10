@@ -316,3 +316,4 @@ class TestAgentRuntimeServices:
         """Test getting registered service types when empty."""
         assert runtime.get_registered_service_types() == []
 
+
