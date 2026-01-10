@@ -1,7 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-import { deleteIssueTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { deleteIssueTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const deleteIssueAction: Action = {
   name: 'DELETE_LINEAR_ISSUE',

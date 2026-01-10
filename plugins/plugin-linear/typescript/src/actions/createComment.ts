@@ -2,7 +2,7 @@ import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCall
 import { LinearService } from '../services/linear';
 import type { LinearCommentInput } from '../types';
 
-import { createCommentTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { createCommentTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const createCommentAction: Action = {
   name: 'CREATE_LINEAR_COMMENT',

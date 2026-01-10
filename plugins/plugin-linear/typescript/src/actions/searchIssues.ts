@@ -10,7 +10,7 @@ import {
 } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 import type { LinearSearchFilters } from '../types';
-import { searchIssuesTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { searchIssuesTemplate } from '../generated/prompts/typescript/prompts.js';
 
 const searchTemplate = searchIssuesTemplate;
 

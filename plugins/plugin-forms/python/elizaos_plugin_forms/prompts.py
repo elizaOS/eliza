@@ -2,17 +2,17 @@
 Shared XML prompts for the elizaOS Forms Plugin.
 
 These prompts are auto-generated from prompts/*.txt files.
-DO NOT EDIT - Generated from ../../dist/prompts/python/prompts.py
+DO NOT EDIT - Generated from ../../typescript/generated/prompts/python/prompts.py
 
 To modify prompts, edit the .txt files in prompts/ and run:
   npm run build:prompts
 """
 
 # Import generated prompts
-# Note: In a real deployment, these would be imported from the generated dist/prompts/python/prompts.py
+# Note: In a real deployment, these would be imported from the generated prompts.py
 # For now, we'll keep the builder functions here but reference the generated templates
 try:
-    from ...dist.prompts.python.prompts import (
+    from ...typescript.generated.prompts.python.prompts import (
         FORM_EXTRACTION_TEMPLATE,
         FORM_CREATION_TEMPLATE,
     )
@@ -21,8 +21,8 @@ except ImportError:
     import sys
     from pathlib import Path
     
-    # Add the dist/prompts/python directory to the path
-    dist_path = Path(__file__).parent.parent.parent / "dist" / "prompts" / "python"
+    # Add the generated prompts directory to the path
+    dist_path = Path(__file__).parent.parent.parent / "typescript" / "generated" / "prompts" / "python"
     if dist_path.exists():
         sys.path.insert(0, str(dist_path.parent))
         from prompts import (

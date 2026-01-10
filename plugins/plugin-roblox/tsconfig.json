@@ -1,6 +1,0 @@
-{
-  "extends": "./typescript/tsconfig.json",
-  "include": ["typescript/**/*.ts"],
-  "exclude": ["node_modules", "dist", "rust", "python"]
-}
-

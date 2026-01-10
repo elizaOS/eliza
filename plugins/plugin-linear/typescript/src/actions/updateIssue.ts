@@ -2,7 +2,7 @@ import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCall
 import { LinearService } from '../services/linear';
 import type { LinearIssueInput } from '../types';
 
-import { updateIssueTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { updateIssueTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const updateIssueAction: Action = {
   name: 'UPDATE_LINEAR_ISSUE',

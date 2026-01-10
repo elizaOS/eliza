@@ -1,7 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-import { listTeamsTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { listTeamsTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const listTeamsAction: Action = {
   name: 'LIST_LINEAR_TEAMS',

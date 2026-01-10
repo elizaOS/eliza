@@ -1,7 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-import { getIssueTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { getIssueTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const getIssueAction: Action = {
   name: 'GET_LINEAR_ISSUE',

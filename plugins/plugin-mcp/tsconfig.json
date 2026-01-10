@@ -1,9 +1,0 @@
-{
-  "extends": "./typescript/tsconfig.json",
-  "compilerOptions": {
-    "rootDir": "./typescript",
-    "outDir": "./dist"
-  },
-  "include": ["typescript/src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "typescript/__tests__"]
-}

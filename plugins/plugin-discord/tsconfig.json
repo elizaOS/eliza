@@ -1,8 +1,0 @@
-{
-  "extends": "./typescript/tsconfig.json",
-  "compilerOptions": {
-    "baseUrl": "./typescript"
-  },
-  "include": ["typescript/**/*.ts"],
-  "exclude": ["typescript/**/__tests__/**", "typescript/**/*.test.ts", "typescript/**/*.spec.ts"]
-}

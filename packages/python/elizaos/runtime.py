@@ -9,9 +9,9 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
-import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
 from typing import Any
+import xml.etree.ElementTree as ET
 
 from elizaos.logger import create_logger
 from elizaos.types.agent import Character
@@ -44,7 +44,6 @@ def _get_message_service_class() -> type:
     global _message_service_class
     if _message_service_class is None:
         from elizaos.services.message_service import DefaultMessageService
-
         _message_service_class = DefaultMessageService
     return _message_service_class
 
@@ -165,9 +164,7 @@ class AgentRuntime(IAgentRuntime):
         # Store check_should_respond option (None means check settings at runtime)
         self._check_should_respond_option = check_should_respond
         # Generate agent ID from character name or random UUID
-        self._agent_id = agent_id or as_uuid(
-            str(uuid.uuid5(uuid.NAMESPACE_DNS, resolved_character.name))
-        )
+        self._agent_id = agent_id or as_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, resolved_character.name)))
         self._character = resolved_character
         self._adapter = adapter
         self._conversation_length = conversation_length
@@ -194,7 +191,7 @@ class AgentRuntime(IAgentRuntime):
         self._action_results: dict[str, list[ActionResult]] = {}
 
         # Logger with configurable log level (defaults to ERROR)
-        self.logger = create_logger(namespace=character.name, level=log_level.upper())
+        self.logger = create_logger(namespace=character.name if character else "agent", level=log_level.upper())
 
         # Store initial plugins for later registration
         self._initial_plugins = plugins or []
@@ -214,7 +211,6 @@ class AgentRuntime(IAgentRuntime):
             service_class = _get_message_service_class()
             self._message_service = service_class()
         return self._message_service
-
     @property
     def agent_id(self) -> UUID:
         return self._agent_id
@@ -282,7 +278,6 @@ class AgentRuntime(IAgentRuntime):
         has_bootstrap = any(p.name == "bootstrap" for p in self._initial_plugins)
         if not has_bootstrap:
             from elizaos.bootstrap import bootstrap_plugin
-
             # Insert bootstrap at the beginning
             self._initial_plugins.insert(0, bootstrap_plugin)
 
@@ -315,10 +310,9 @@ class AgentRuntime(IAgentRuntime):
             enable_autonomy = self._capability_enable_autonomy or (
                 settings.get("ENABLE_AUTONOMY") in (True, "true")
             )
-
+            
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
-
                 config = CapabilityConfig(
                     disable_basic=disable_basic,
                     enable_extended=enable_extended,
@@ -513,7 +507,11 @@ class AgentRuntime(IAgentRuntime):
 
         if isinstance(params_raw, str):
             # Wrap if needed so ElementTree can parse
-            xml_text = params_raw if "<params" in params_raw else f"<params>{params_raw}</params>"
+            xml_text = (
+                params_raw
+                if "<params" in params_raw
+                else f"<params>{params_raw}</params>"
+            )
             try:
                 root = ET.fromstring(xml_text)
             except ET.ParseError:
@@ -549,16 +547,16 @@ class AgentRuntime(IAgentRuntime):
                 if not isinstance(normalized_params_value, dict):
                     continue
 
-                action_params: dict[str, object] = {}
+                inner_action_params: dict[str, object] = {}
                 for param_name, raw_value in normalized_params_value.items():
                     key = str(param_name)
                     if isinstance(raw_value, str):
-                        action_params[key] = self._parse_param_value(raw_value)
+                        inner_action_params[key] = self._parse_param_value(raw_value)
                     else:
-                        action_params[key] = raw_value
+                        inner_action_params[key] = raw_value
 
-                if action_params:
-                    result_dict[action_key] = action_params
+                if inner_action_params:
+                    result_dict[action_key] = inner_action_params
             return result_dict
 
         return {}
@@ -616,15 +614,17 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"
                     )
                     continue
-                if param_def.schema_def.minimum is not None and float(extracted_value) < float(
-                    param_def.schema_def.minimum
+                if (
+                    param_def.schema_def.minimum is not None
+                    and float(extracted_value) < float(param_def.schema_def.minimum)
                 ):
                     errors.append(
                         f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema_def.minimum}"
                     )
                     continue
-                if param_def.schema_def.maximum is not None and float(extracted_value) > float(
-                    param_def.schema_def.maximum
+                if (
+                    param_def.schema_def.maximum is not None
+                    and float(extracted_value) > float(param_def.schema_def.maximum)
                 ):
                     errors.append(
                         f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema_def.maximum}"
@@ -720,9 +720,10 @@ class AgentRuntime(IAgentRuntime):
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
                     params_by_action = self._parse_action_params(params_raw)
-                    extracted = params_by_action.get(
-                        response_action.upper()
-                    ) or params_by_action.get(action.name.upper())
+                    extracted = (
+                        params_by_action.get(response_action.upper())
+                        or params_by_action.get(action.name.upper())
+                    )
                     valid, validated_params, errors = self._validate_action_params(
                         action, extracted
                     )
@@ -986,8 +987,7 @@ class AgentRuntime(IAgentRuntime):
                 params["temperature"] = options.temperature
             if options.max_tokens is not None:
                 params["maxTokens"] = options.max_tokens
-            if options.system:
-                params["system"] = options.system
+            # System prompt handled separately via character config
 
         result = await self.use_model(str(model_type), params)
         return GenerateTextResult(text=str(result))
@@ -1334,7 +1334,7 @@ class AgentRuntime(IAgentRuntime):
             raise RuntimeError("Database adapter not set")
         return await self._adapter.create_memory(memory, table_name, unique)
 
-    async def update_memory(self, memory: dict[str, Any]) -> bool:
+    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
         if not self._adapter:
             return False
         return await self._adapter.update_memory(memory)

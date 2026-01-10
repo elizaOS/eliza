@@ -27,4 +27,3 @@ If the message doesn't clearly indicate a goal to create, return empty response.
   <description>Achieve conversational fluency in Spanish within 6 months</description>
   <ownerType>entity</ownerType>
 </response>
-

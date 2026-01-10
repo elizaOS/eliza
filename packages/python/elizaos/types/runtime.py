@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from elizaos.logger import Logger
 from elizaos.types.database import IDatabaseAdapter
 from elizaos.types.primitives import UUID, Content
 
@@ -203,6 +204,12 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         """Get the conversation length."""
         ...
 
+    @property
+    @abstractmethod
+    def logger(self) -> Logger:
+        """Get the runtime logger."""
+        ...
+
     @abstractmethod
     def is_action_planning_enabled(self) -> bool:
         """
@@ -213,6 +220,15 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         optimization useful for game situations where state updates with every action.
 
         Priority: constructor option > character setting ACTION_PLANNING > default (True)
+        """
+        ...
+
+    @abstractmethod
+    def is_check_should_respond_enabled(self) -> bool:
+        """
+        Check if shouldRespond evaluation is enabled.
+
+        When disabled (ChatGPT mode), the agent always responds without checking.
         """
         ...
 
@@ -422,8 +438,8 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         ...
 
     @abstractmethod
-    async def update_memory(self, memory: Memory) -> bool:
-        """Update a memory."""
+    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
+        """Update a memory (accepts Memory object or dict)."""
         ...
 
     # Run tracking
