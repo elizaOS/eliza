@@ -879,4 +879,44 @@ impl XClient {
             next_token: data["meta"]["next_token"].as_str().map(String::from),
         })
     }
+
+    // =========================================================================
+    // Search Methods
+    // =========================================================================
+
+    /// Search for posts matching a query.
+    pub async fn search_posts(
+        &self,
+        query: &str,
+        max_results: u32,
+        sort_order: Option<&str>,
+    ) -> Result<QueryPostsResponse> {
+        let url = self.url("/tweets/search/recent");
+        let headers = self.get_headers("GET", &url);
+
+        let query_params: Vec<(&str, String)> = vec![
+            ("query", query.to_string()),
+            ("max_results", max_results.min(100).to_string()),
+            ("sort_order", sort_order.unwrap_or("relevancy").to_string()),
+            ("tweet.fields", "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments".to_string()),
+            ("user.fields", "id,name,username,profile_image_url".to_string()),
+            ("media.fields", "url,preview_image_url,type".to_string()),
+            ("expansions", "author_id,attachments.media_keys,referenced_tweets.id".to_string()),
+        ];
+
+        let response = self.client.get(&url).headers(headers).query(&query_params).send().await?;
+        let response = self.check_response(response).await?;
+        let data: serde_json::Value = response.json().await?;
+
+        let includes = &data["includes"];
+        let posts: Vec<Post> = data["data"]
+            .as_array()
+            .map(|arr| arr.iter().map(|t| self.parse_post(t, includes)).collect())
+            .unwrap_or_default();
+
+        Ok(QueryPostsResponse {
+            posts,
+            next_token: data["meta"]["next_token"].as_str().map(String::from),
+        })
+    }
 }
