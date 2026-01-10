@@ -31,7 +31,7 @@ fn test_load_full_character() {
         "system": "You are a comprehensive test agent.",
         "topics": ["testing", "development", "rust"],
         "adjectives": ["thorough", "careful", "precise"],
-        "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"],
+        "plugins": ["@elizaos/plugin-sql"],
         "settings": {
             "debugMode": true,
             "maxTokens": 1000
@@ -141,9 +141,8 @@ fn test_build_plugins_empty_env() {
     let env = HashMap::new();
     let plugins = build_character_plugins(&env);
 
-    // Should have sql, bootstrap, and ollama (fallback)
+    // Should have sql and ollama (fallback); bootstrap is now part of core
     assert!(plugins.contains(&"@elizaos/plugin-sql".to_string()));
-    assert!(plugins.contains(&"@elizaos/plugin-bootstrap".to_string()));
     assert!(plugins.contains(&"@elizaos/plugin-ollama".to_string()));
 }
 
@@ -185,14 +184,13 @@ fn test_build_plugins_with_cloud() {
     assert!(!plugins.contains(&"@elizaos/plugin-elizacloud".to_string()));
 }
 
-/// Test building plugins with IGNORE_BOOTSTRAP
+/// Test that bootstrap is not included in plugins (it's now part of core)
 #[test]
-fn test_build_plugins_ignore_bootstrap() {
-    let mut env = HashMap::new();
-    env.insert("IGNORE_BOOTSTRAP".to_string(), "true".to_string());
-
+fn test_bootstrap_in_core_not_plugins() {
+    let env = HashMap::new();
     let plugins = build_character_plugins(&env);
 
+    // Bootstrap is now part of core, not a separate plugin
     assert!(!plugins.contains(&"@elizaos/plugin-bootstrap".to_string()));
 }
 

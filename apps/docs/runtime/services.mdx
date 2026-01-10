@@ -606,7 +606,6 @@ export const character: Character = {
   name: 'YourAgent',
   plugins: [
     '@elizaos/plugin-sql',
-    '@elizaos/plugin-bootstrap',
     '@elizaos/plugin-mcp', // Add MCP plugin
     // ... other plugins
   ],
@@ -690,7 +689,6 @@ export const character: Character = {
     '@elizaos/plugin-sql',
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    '@elizaos/plugin-bootstrap',
     '@elizaos/plugin-mcp',
   ],
   settings: {

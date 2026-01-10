@@ -78,15 +78,15 @@ async function generateTextByModelType(
   // Get system prompt from character if available
   const systemPrompt = runtime.character.system ?? undefined;
 
+  // Use chat() instead of languageModel() to use the Chat Completions API
+  // which has better compatibility than the Responses API
+  // Note: gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
+  // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
   const generateParams = {
-    model: openai.languageModel(modelName),
+    model: openai.chat(modelName),
     prompt: params.prompt,
     system: systemPrompt,
-    temperature: params.temperature ?? 0.7,
     maxOutputTokens: params.maxTokens ?? 8192,
-    frequencyPenalty: params.frequencyPenalty ?? 0.7,
-    presencePenalty: params.presencePenalty ?? 0.7,
-    stopSequences: params.stopSequences ?? [],
     experimental_telemetry: { isEnabled: getExperimentalTelemetry(runtime) },
   };
 

@@ -30,9 +30,10 @@ pub use agent::{
     MessageExample, StyleConfig, TemplateType,
 };
 pub use components::{
-    ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionPlan, ActionPlanStep,
-    ActionResult, ActionStepStatus, EvaluationExample, EvaluatorDefinition, EvaluatorHandler,
-    HandlerCallback, HandlerOptions, ProviderDefinition, ProviderHandler, ProviderResult,
+    ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionParameter,
+    ActionParameterSchema, ActionPlan, ActionPlanStep, ActionResult, ActionStepStatus,
+    EvaluationExample, EvaluatorDefinition, EvaluatorHandler, HandlerCallback, HandlerOptions,
+    ProviderDefinition, ProviderHandler, ProviderResult,
 };
 pub use database::{
     vector_dims, ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,

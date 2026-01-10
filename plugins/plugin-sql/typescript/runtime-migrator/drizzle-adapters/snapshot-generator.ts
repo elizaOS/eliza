@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { is, SQL } from "drizzle-orm";
+import { extendedHash } from "../crypto-utils";
 import {
   getTableConfig,
   type PgColumn,
@@ -309,10 +309,11 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
 
 /**
  * Calculate hash of a snapshot for change detection
+ * Uses a browser-compatible hash function
  */
 export function hashSnapshot(snapshot: SchemaSnapshot): string {
   const content = JSON.stringify(snapshot);
-  return createHash("sha256").update(content).digest("hex");
+  return extendedHash(content);
 }
 
 /**

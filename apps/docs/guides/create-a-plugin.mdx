@@ -68,12 +68,14 @@ Create a project with a plugin inside using CLI commands:
     In `my-eliza-project/src/character.ts`, add the local path to Eliza's plugins array:
     
     ```typescript src/character.ts
+    import { bootstrapPlugin } from '@elizaos/core';
+    
     export const character: Character = {
       name: 'Eliza',
       plugins: [
         '@elizaos/plugin-sql',
         '@elizaos/plugin-openai',
-        '@elizaos/plugin-bootstrap',
+        bootstrapPlugin,
         './plugin-fal-ai'  // [!code ++]
       ],
     };

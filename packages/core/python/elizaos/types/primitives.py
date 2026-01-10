@@ -106,18 +106,21 @@ class MentionContext(BaseModel):
 class Content(BaseModel):
     """
     Represents the content of a memory, message, or other information.
+
+    This is the primary data structure for messages exchanged between
+    users, agents, and the system.
     """
 
     thought: str | None = Field(default=None, description="The agent's internal thought process")
     text: str | None = Field(default=None, description="The main text content visible to users")
-    actions: list[str] | None = Field(default=None, description="Optional actions to be performed")
+    actions: list[str] | None = Field(default=None, description="Actions to be performed")
     providers: list[str] | None = Field(
-        default=None, description="Optional providers to use for context generation"
+        default=None, description="Providers to use for context generation"
     )
-    source: str | None = Field(default=None, description="Optional source/origin of the content")
-    target: str | None = Field(
-        default=None, description="Optional target/destination for responses"
+    source: str | None = Field(
+        default=None, description="Source/origin of the content (e.g., 'discord', 'telegram')"
     )
+    target: str | None = Field(default=None, description="Target/destination for responses")
     url: str | None = Field(
         default=None,
         description="URL of the original message/post (e.g. tweet URL, Discord message link)",
@@ -128,7 +131,9 @@ class Content(BaseModel):
         description="UUID of parent message if this is a reply/thread",
     )
     attachments: list[Media] | None = Field(default=None, description="Array of media attachments")
-    channel_type: str | None = Field(default=None, alias="channelType", description="Room type")
+    channel_type: str | None = Field(
+        default=None, alias="channelType", description="Channel type where content was sent"
+    )
     mention_context: MentionContext | None = Field(
         default=None,
         alias="mentionContext",
@@ -139,10 +144,30 @@ class Content(BaseModel):
         alias="responseMessageId",
         description="Internal message ID used for streaming coordination",
     )
+    response_id: UUID | None = Field(
+        default=None,
+        alias="responseId",
+        description="Response ID for message tracking",
+    )
+    simple: bool | None = Field(
+        default=None,
+        description="Whether this is a simple response (no actions required)",
+    )
+    action_callbacks: Any | None = Field(
+        default=None,
+        alias="actionCallbacks",
+        description="Results from action callbacks",
+    )
+    eval_callbacks: Any | None = Field(
+        default=None,
+        alias="evalCallbacks",
+        description="Results from evaluator callbacks",
+    )
+    type: str | None = Field(default=None, description="Type marker for internal use")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 
-    @field_validator("in_reply_to", "response_message_id", mode="before")
+    @field_validator("in_reply_to", "response_message_id", "response_id", mode="before")
     @classmethod
     def validate_uuid(cls, v: str | uuid_module.UUID | None) -> str | None:
         if v is None:

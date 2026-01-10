@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ELIZA - elizaOS 2.0 Browser Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --terminal-green: #33ff33;
+      --terminal-green-dim: #1a991a;
+      --terminal-green-glow: #00ff00;
+      --terminal-bg: #0a0a0a;
+      --terminal-bg-light: #1a1a1a;
+      --scanline-opacity: 0.05;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    html, body {
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    
+    body {
+      font-family: 'VT323', 'IBM Plex Mono', monospace;
+      background: 
+        radial-gradient(ellipse at center, #1a1a1a 0%, #0a0a0a 50%, #000 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    /* CRT Monitor Effect */
+    .crt-container {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      height: 90vh;
+      max-height: 700px;
+      background: linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 50%, #0f0f0f 100%);
+      border-radius: 30px;
+      padding: 20px;
+      box-shadow: 
+        0 0 0 4px #333,
+        0 0 0 8px #222,
+        0 0 60px rgba(0, 0, 0, 0.8),
+        inset 0 0 80px rgba(0, 0, 0, 0.5);
+    }
+    
+    .crt-bezel {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: var(--terminal-bg);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 
+        inset 0 0 100px rgba(0, 0, 0, 0.5),
+        inset 0 0 10px rgba(51, 255, 51, 0.1);
+    }
+    
+    /* Scanlines */
+    .crt-bezel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, var(--scanline-opacity)) 2px,
+        rgba(0, 0, 0, var(--scanline-opacity)) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+    
+    /* Screen glow effect */
+    .crt-bezel::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: radial-gradient(
+        ellipse at center,
+        rgba(51, 255, 51, 0.03) 0%,
+        transparent 70%
+      );
+      pointer-events: none;
+      z-index: 99;
+    }
+    
+    .terminal {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 30px;
+      position: relative;
+    }
+    
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid var(--terminal-green-dim);
+    }
+    
+    .header h1 {
+      font-size: 2.5rem;
+      color: var(--terminal-green);
+      text-shadow: 
+        0 0 10px var(--terminal-green-glow),
+        0 0 20px var(--terminal-green-glow),
+        0 0 30px var(--terminal-green-glow);
+      letter-spacing: 0.3em;
+      margin-bottom: 5px;
+      animation: flicker 8s infinite;
+    }
+    
+    .header .subtitle {
+      font-size: 0.9rem;
+      color: var(--terminal-green-dim);
+      letter-spacing: 0.15em;
+    }
+    
+    .header .year {
+      font-size: 1.1rem;
+      color: var(--terminal-green);
+      margin-top: 5px;
+    }
+    
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: var(--terminal-green-dim);
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--terminal-green-dim);
+      margin-bottom: 15px;
+    }
+    
+    .status-bar .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--terminal-green);
+      box-shadow: 0 0 6px var(--terminal-green-glow);
+      animation: pulse 2s infinite;
+    }
+    
+    .status-indicator.loading {
+      animation: blink 0.5s infinite;
+    }
+    
+    /* Chat area */
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 10px;
+      scroll-behavior: smooth;
+    }
+    
+    .chat-container::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    .chat-container::-webkit-scrollbar-track {
+      background: var(--terminal-bg-light);
+    }
+    
+    .chat-container::-webkit-scrollbar-thumb {
+      background: var(--terminal-green-dim);
+      border-radius: 3px;
+    }
+    
+    .message {
+      margin-bottom: 15px;
+      line-height: 1.6;
+    }
+    
+    .message .label {
+      color: var(--terminal-green);
+      font-weight: 500;
+    }
+    
+    .message .text {
+      color: var(--terminal-green);
+      opacity: 0.9;
+    }
+    
+    .message.user .label {
+      color: #88ff88;
+    }
+    
+    .message.eliza .text {
+      text-shadow: 0 0 5px rgba(51, 255, 51, 0.3);
+    }
+    
+    .message.system {
+      color: var(--terminal-green-dim);
+      font-style: italic;
+      text-align: center;
+      padding: 10px;
+      border: 1px dashed var(--terminal-green-dim);
+      margin: 20px 0;
+    }
+    
+    /* Typing indicator */
+    .typing-indicator {
+      display: none;
+      color: var(--terminal-green-dim);
+      margin-bottom: 15px;
+    }
+    
+    .typing-indicator.visible {
+      display: block;
+    }
+    
+    .typing-indicator .dots::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+    
+    /* Input area */
+    .input-area {
+      display: flex;
+      gap: 10px;
+      padding-top: 15px;
+      border-top: 1px solid var(--terminal-green-dim);
+    }
+    
+    .prompt-symbol {
+      color: var(--terminal-green);
+      font-size: 1.2rem;
+      line-height: 38px;
+      text-shadow: 0 0 5px var(--terminal-green-glow);
+    }
+    
+    .input-wrapper {
+      flex: 1;
+      position: relative;
+    }
+    
+    #user-input {
+      width: 100%;
+      background: transparent;
+      border: 1px solid var(--terminal-green-dim);
+      color: var(--terminal-green);
+      font-family: inherit;
+      font-size: 1.1rem;
+      padding: 8px 12px;
+      outline: none;
+      caret-color: var(--terminal-green);
+    }
+    
+    #user-input:focus {
+      border-color: var(--terminal-green);
+      box-shadow: 0 0 10px rgba(51, 255, 51, 0.2);
+    }
+    
+    #user-input::placeholder {
+      color: var(--terminal-green-dim);
+      opacity: 0.5;
+    }
+    
+    #send-btn {
+      background: transparent;
+      border: 1px solid var(--terminal-green);
+      color: var(--terminal-green);
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 8px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    
+    #send-btn:hover {
+      background: var(--terminal-green);
+      color: var(--terminal-bg);
+      box-shadow: 0 0 15px var(--terminal-green-glow);
+    }
+    
+    #send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Footer info */
+    .footer {
+      text-align: center;
+      padding-top: 10px;
+      font-size: 0.75rem;
+      color: var(--terminal-green-dim);
+      opacity: 0.7;
+    }
+    
+    /* Animations */
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      92% { opacity: 1; }
+      93% { opacity: 0.8; }
+      94% { opacity: 1; }
+      97% { opacity: 0.9; }
+      98% { opacity: 1; }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--terminal-green-glow); }
+      50% { opacity: 0.6; box-shadow: 0 0 3px var(--terminal-green-glow); }
+    }
+    
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    
+    @keyframes dots {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+      100% { content: ''; }
+    }
+    
+    /* Turn on animation for boot sequence */
+    .boot-sequence {
+      animation: turnOn 0.5s ease-out;
+    }
+    
+    @keyframes turnOn {
+      0% {
+        filter: brightness(0);
+        transform: scaleY(0.01);
+      }
+      40% {
+        filter: brightness(1.2);
+        transform: scaleY(0.01);
+      }
+      60% {
+        filter: brightness(0.8);
+        transform: scaleY(1);
+      }
+      100% {
+        filter: brightness(1);
+        transform: scaleY(1);
+      }
+    }
+    
+    /* LED indicators on bezel */
+    .led-container {
+      position: absolute;
+      bottom: 8px;
+      right: 20px;
+      display: flex;
+      gap: 8px;
+    }
+    
+    .led {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #333;
+    }
+    
+    .led.power {
+      background: #ff3333;
+      box-shadow: 0 0 4px #ff3333;
+    }
+    
+    .led.active {
+      background: var(--terminal-green);
+      box-shadow: 0 0 4px var(--terminal-green-glow);
+      animation: pulse 1s infinite;
+    }
+    
+    /* Brand plate */
+    .brand-plate {
+      position: absolute;
+      bottom: 6px;
+      left: 20px;
+      font-size: 0.7rem;
+      color: #666;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+    
+    /* Mobile adjustments */
+    @media (max-width: 600px) {
+      .crt-container {
+        border-radius: 15px;
+        padding: 10px;
+      }
+      
+      .crt-bezel {
+        border-radius: 10px;
+      }
+      
+      .terminal {
+        padding: 15px;
+      }
+      
+      .header h1 {
+        font-size: 1.8rem;
+        letter-spacing: 0.15em;
+      }
+      
+      .status-bar {
+        font-size: 0.75rem;
+        flex-direction: column;
+        gap: 5px;
+      }
+      
+      .input-area {
+        flex-direction: column;
+      }
+      
+      .prompt-symbol {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="crt-container">
+    <div class="crt-bezel boot-sequence">
+      <div class="terminal">
+        <header class="header">
+          <h1>ELIZA</h1>
+          <div class="subtitle">elizaOS 2.0 Browser Runtime Demo</div>
+          <div class="year">MIT AI Lab • 1966 • Joseph Weizenbaum</div>
+        </header>
+        
+        <div class="status-bar">
+          <div class="status-item">
+            <span class="status-indicator" id="db-status"></span>
+            <span id="db-status-text">Booting elizaOS...</span>
+          </div>
+          <div class="status-item">
+            <span>elizaOS v2.0 • PGLite</span>
+          </div>
+        </div>
+        
+        <div class="chat-container" id="chat">
+          <div class="message system" id="init-message">
+            <span class="text">Initializing elizaOS AgentRuntime with PGLite database...</span>
+          </div>
+        </div>
+        
+        <div class="typing-indicator" id="typing">
+          <span class="label">ELIZA:</span> <span class="dots"></span>
+        </div>
+        
+        <div class="input-area">
+          <span class="prompt-symbol">></span>
+          <div class="input-wrapper">
+            <input 
+              type="text" 
+              id="user-input" 
+              placeholder="Tell me what's troubling you..." 
+              autocomplete="off"
+              disabled
+            />
+          </div>
+          <button id="send-btn" disabled>Send</button>
+        </div>
+        
+        <div class="footer">
+          Full elizaOS AgentRuntime • PGLite (in-browser PostgreSQL) • Classic ELIZA Plugin
+        </div>
+      </div>
+    </div>
+    
+    <div class="led-container">
+      <div class="led power"></div>
+      <div class="led active" id="activity-led"></div>
+    </div>
+    
+    <span class="brand-plate">elizaOS</span>
+  </div>
+
+  <!-- elizaOS Browser Runtime -->
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

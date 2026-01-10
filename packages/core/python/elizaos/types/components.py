@@ -97,6 +97,10 @@ class ActionPlanInfo(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+# Stream chunk callback type
+StreamChunkCallback = Callable[[str, str | None], Awaitable[None] | None]
+
+
 class HandlerOptions(BaseModel):
     """Options passed to action handlers during execution."""
 
@@ -109,6 +113,10 @@ class HandlerOptions(BaseModel):
         default=None,
         alias="actionPlan",
         description="Multi-step action plan information",
+    )
+    parameters: dict[str, Any] | None = Field(
+        default=None,
+        description="Validated input parameters extracted from conversation",
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}
@@ -135,6 +143,49 @@ Validator = Callable[
 ]
 
 
+class ActionParameterSchema(BaseModel):
+    """JSON Schema type for action parameter validation."""
+
+    type: str = Field(
+        ..., description="JSON Schema type (string, number, boolean, object, array)"
+    )
+    description: str | None = Field(default=None, description="Description for LLM guidance")
+    default: str | int | float | bool | None = Field(
+        default=None, description="Default value if parameter is not provided"
+    )
+    enum: list[str] | None = Field(
+        default=None, description="Allowed values for enum-style parameters"
+    )
+    properties: dict[str, Any] | None = Field(
+        default=None, description="For object types, define nested properties"
+    )
+    items: dict[str, Any] | None = Field(
+        default=None, description="For array types, define the item schema"
+    )
+    minimum: int | float | None = Field(default=None, description="Minimum value for numbers")
+    maximum: int | float | None = Field(default=None, description="Maximum value for numbers")
+    pattern: str | None = Field(default=None, description="Pattern for string validation (regex)")
+
+    model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+class ActionParameter(BaseModel):
+    """Defines a single parameter for an action."""
+
+    name: str = Field(..., description="Parameter name (used as key in parameters object)")
+    description: str = Field(..., description="Human-readable description for LLM guidance")
+    required: bool | None = Field(default=None, description="Whether this parameter is required")
+    schema_def: ActionParameterSchema = Field(
+        ..., alias="schema", description="JSON Schema for parameter validation"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+# Validated parameters passed to an action handler
+ActionParameters = dict[str, str | int | float | bool | None | dict[str, Any] | list[Any]]
+
+
 class Action(BaseModel):
     """Represents an action the agent can perform."""
 
@@ -144,6 +195,11 @@ class Action(BaseModel):
     examples: list[list[ActionExample]] | None = Field(default=None, description="Example usages")
     handler: Handler = Field(..., description="Handler function")
     validate_fn: Validator = Field(..., alias="validate", description="Validation function")
+    priority: int | None = Field(default=None, description="Optional priority for action ordering")
+    tags: list[str] | None = Field(default=None, description="Optional tags for categorization")
+    parameters: list[ActionParameter] | None = Field(
+        default=None, description="Optional input parameters extracted by LLM"
+    )
 
     model_config = {"populate_by_name": True, "extra": "allow", "arbitrary_types_allowed": True}
 

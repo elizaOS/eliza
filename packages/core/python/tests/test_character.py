@@ -158,7 +158,7 @@ class TestBuildCharacterPlugins:
         """Test building plugins with no env vars."""
         plugins = build_character_plugins({})
         assert "@elizaos/plugin-sql" in plugins
-        assert "@elizaos/plugin-bootstrap" in plugins
+        # Bootstrap is now part of core and loaded automatically
         assert "@elizaos/plugin-ollama" in plugins  # Fallback
 
     def test_with_openai(self) -> None:
@@ -183,9 +183,10 @@ class TestBuildCharacterPlugins:
         )
         assert "@elizaos/plugin-discord" in plugins
 
-    def test_ignore_bootstrap(self) -> None:
-        """Test ignoring bootstrap plugin."""
-        plugins = build_character_plugins({"IGNORE_BOOTSTRAP": "true"})
+    def test_bootstrap_in_core(self) -> None:
+        """Test that bootstrap is not in plugins list (it's now part of core)."""
+        plugins = build_character_plugins({})
+        # Bootstrap is now part of core, not a separate plugin
         assert "@elizaos/plugin-bootstrap" not in plugins
 
     def test_plugin_order(self) -> None:

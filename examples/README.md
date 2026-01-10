@@ -131,8 +131,8 @@ All examples use identical APIs across languages:
 |----------|---------|-------------|
 | `OPENAI_API_KEY` | (required) | OpenAI API key |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL |
-| `OPENAI_SMALL_MODEL` | `gpt-4o-mini` | Model for TEXT_SMALL |
-| `OPENAI_LARGE_MODEL` | `gpt-4o` | Model for TEXT_LARGE |
+| `OPENAI_SMALL_MODEL` | `gpt-5-mini` | Model for TEXT_SMALL |
+| `OPENAI_LARGE_MODEL` | `gpt-5` | Model for TEXT_LARGE |
 | `LOG_LEVEL` | `info` | Set to `fatal` to suppress logs |
 | `PGLITE_DATA_DIR` | `memory://` | PGLite storage (TypeScript only) |
 | `POSTGRES_URL` | (optional) | PostgreSQL connection string |
@@ -148,7 +148,7 @@ All examples use identical APIs across languages:
 │  AgentRuntime, MessageService, Model Handlers                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                        Plugins                                   │
-│  plugin-openai, plugin-bootstrap, plugin-sql                     │
+│  plugin-openai, plugin-sql, core (bootstrap)                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Language Bindings                             │
 │  TypeScript (native), Python (elizaos), Rust (elizaos crate)    │

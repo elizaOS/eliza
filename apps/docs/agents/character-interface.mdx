@@ -249,7 +249,7 @@ knowledge: [
 
 ```typescript
 plugins: [
-  "@elizaos/plugin-bootstrap",  // Core functionality
+  "@elizaos/plugin-sql",         // Database functionality
   "@elizaos/plugin-discord",     // Discord integration
   "@elizaos/plugin-openai",      // OpenAI models
   "./custom-plugins/my-plugin"   // Local plugin
@@ -263,7 +263,6 @@ Load plugins conditionally based on environment variables:
 ```typescript
 plugins: [
   // Always loaded
-  "@elizaos/plugin-bootstrap",
   "@elizaos/plugin-sql",
   
   // Conditionally loaded based on API keys
@@ -425,7 +424,6 @@ Core principles:
   
   plugins: [
     '@elizaos/plugin-sql',
-    '@elizaos/plugin-bootstrap',
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),

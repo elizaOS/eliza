@@ -91,6 +91,9 @@ class AgentRuntime(IAgentRuntime):
         settings: RuntimeSettings | None = None,
         conversation_length: int = 32,
         log_level: str = "ERROR",
+        disable_basic_capabilities: bool = False,
+        enable_extended_capabilities: bool = False,
+        action_planning: bool | None = None,
     ) -> None:
         """
         Initialize the AgentRuntime.
@@ -104,7 +107,18 @@ class AgentRuntime(IAgentRuntime):
             conversation_length: Number of messages to keep in context
             log_level: Log level for this runtime (DEBUG, INFO, WARNING, ERROR).
                        Defaults to "ERROR".
+            disable_basic_capabilities: Disable basic bootstrap capabilities (reply, ignore, none)
+            enable_extended_capabilities: Enable extended bootstrap capabilities (facts, roles, etc.)
+            action_planning: Enable action planning mode for multi-action execution.
+                When True (default), agent can plan and execute multiple actions per response.
+                When False, agent executes only a single action per response (performance
+                optimization useful for game situations where state updates with every action).
         """
+        # Store capability options
+        self._capability_disable_basic = disable_basic_capabilities
+        self._capability_enable_extended = enable_extended_capabilities
+        # Store action planning option (None means check settings at runtime)
+        self._action_planning_option = action_planning
         # Generate agent ID from character name or random UUID
         self._agent_id = agent_id or as_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, character.name)))
         self._character = character
@@ -202,6 +216,13 @@ class AgentRuntime(IAgentRuntime):
             await self._adapter.initialize()
             self.logger.debug("Database adapter initialized")
 
+        # Auto-include bootstrapPlugin unless already present
+        has_bootstrap = any(p.name == "bootstrap" for p in self._initial_plugins)
+        if not has_bootstrap:
+            from elizaos.bootstrap import bootstrap_plugin
+            # Insert bootstrap at the beginning
+            self._initial_plugins.insert(0, bootstrap_plugin)
+
         # Register initial plugins
         for plugin in self._initial_plugins:
             await self.register_plugin(plugin)
@@ -214,8 +235,29 @@ class AgentRuntime(IAgentRuntime):
         """Register a plugin with the runtime."""
         from elizaos.plugin import register_plugin
 
-        await register_plugin(self, plugin)
-        self._plugins.append(plugin)
+        plugin_to_register = plugin
+
+        # Handle capability-aware registration for bootstrap plugin
+        if plugin.name == "bootstrap":
+            # Check character settings for capability flags
+            settings = self._character.settings or {}
+            disable_basic = self._capability_disable_basic or (
+                settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
+            )
+            enable_extended = self._capability_enable_extended or (
+                settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+            )
+
+            if disable_basic or enable_extended:
+                from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
+                config = CapabilityConfig(
+                    disable_basic=disable_basic,
+                    enable_extended=enable_extended,
+                )
+                plugin_to_register = create_bootstrap_plugin(config)
+
+        await register_plugin(self, plugin_to_register)
+        self._plugins.append(plugin_to_register)
 
     # Service management
     def get_service(self, service: str) -> Service | None:
@@ -278,6 +320,31 @@ class AgentRuntime(IAgentRuntime):
     def get_conversation_length(self) -> int:
         return self._conversation_length
 
+    def is_action_planning_enabled(self) -> bool:
+        """
+        Check if action planning mode is enabled.
+
+        When enabled (default), the agent can plan and execute multiple actions per response.
+        When disabled, the agent executes only a single action per response - a performance
+        optimization useful for game situations where state updates with every action.
+
+        Priority: constructor option > character setting ACTION_PLANNING > default (True)
+        """
+        # Constructor option takes precedence
+        if self._action_planning_option is not None:
+            return self._action_planning_option
+
+        # Check character settings
+        setting = self.get_setting("ACTION_PLANNING")
+        if setting is not None:
+            if isinstance(setting, bool):
+                return setting
+            if isinstance(setting, str):
+                return setting.lower() == "true"
+
+        # Default to True (action planning enabled)
+        return True
+
     # Component registration
     def register_provider(self, provider: Provider) -> None:
         self._providers.append(provider)
@@ -301,7 +368,17 @@ class AgentRuntime(IAgentRuntime):
         if not message.content.actions:
             return
 
-        for action_name in message.content.actions:
+        # Determine which actions to process based on action planning mode
+        actions_to_process = message.content.actions
+        if not self.is_action_planning_enabled() and len(actions_to_process) > 1:
+            # Single-action mode: only process the first action
+            self.logger.debug(
+                f"Action planning disabled, limiting to first action: {actions_to_process[0]}, "
+                f"skipping: {actions_to_process[1:]}"
+            )
+            actions_to_process = [actions_to_process[0]]
+
+        for action_name in actions_to_process:
             action = self._get_action_by_name(action_name)
             if action:
                 try:

@@ -172,9 +172,8 @@ Eliza is a monorepo that contains all the packages needed to run the entire plat
 │   ├── server/         # Core backend server (Express.js)
 │   ├── client/         # Frontend web interface (React)
 │   ├── cli/            # Command-line tool for managing projects
-│   ├── core/           # Shared utilities and functions
+│   ├── core/           # Shared utilities, bootstrap plugin, and functions
 │   ├── app/            # Cross-platform desktop app (Tauri)
-│   ├── plugin-bootstrap/ # Core communication and event handling plugin
 │   ├── plugin-sql/     # Database integration (Postgres, PGLite)
 │   └── ...             # Other plugins and project starters
 └── ...
@@ -183,7 +182,7 @@ Eliza is a monorepo that contains all the packages needed to run the entire plat
 - **`@elizaos/server`**: The Express.js backend that runs your agents and exposes the API.
 - **`@elizaos/client`**: The React-based web UI for managing and interacting with your agents.
 - **`@elizaos/cli`**: The central tool for scaffolding, running, and managing your projects.
-- **`@elizaos/plugin-bootstrap`**: The mandatory core plugin that handles message processing and basic agent actions.
+- **`@elizaos/core`**: The core package that includes the bootstrap plugin which handles message processing and basic agent actions.
 
 ## 🤝 How to Contribute
 

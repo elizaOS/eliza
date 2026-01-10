@@ -151,14 +151,14 @@ class ImageDescriptionParams(BaseModel):
         description="Custom prompt for analysis",
     )
     max_tokens: int = Field(default=8192, ge=1, description="Maximum tokens for the response")
-    model: str = Field(default="gpt-4o-mini", description="The model to use")
+    model: str = Field(default="gpt-5-mini", description="The model to use")
 
 
 class TextGenerationParams(BaseModel):
     """Parameters for text generation."""
 
     prompt: str = Field(..., min_length=1, description="The prompt for generation")
-    model: str = Field(default="gpt-4o-mini", description="The model to use")
+    model: str = Field(default="gpt-5-mini", description="The model to use")
     system: str | None = Field(default=None, description="System message for the model")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Temperature for sampling")
     max_tokens: int | None = Field(default=None, ge=1, description="Maximum output tokens")
@@ -174,7 +174,7 @@ class ObjectGenerationParams(BaseModel):
     """Parameters for structured object generation."""
 
     prompt: str = Field(..., min_length=1, description="The prompt for generation")
-    model: str = Field(default="gpt-4o-mini", description="The model to use")
+    model: str = Field(default="gpt-5-mini", description="The model to use")
     temperature: float = Field(default=0.0, ge=0.0, le=2.0, description="Temperature for sampling")
 
 
@@ -296,8 +296,8 @@ class OpenAIConfig(BaseModel):
 
     api_key: str = Field(..., min_length=1, description="OpenAI API key")
     base_url: str = Field(default="https://api.openai.com/v1", description="API base URL")
-    small_model: str = Field(default="gpt-4o-mini", description="Small model identifier")
-    large_model: str = Field(default="gpt-4o", description="Large model identifier")
+    small_model: str = Field(default="gpt-5-mini", description="Small model identifier")
+    large_model: str = Field(default="gpt-5", description="Large model identifier")
     embedding_model: str = Field(
         default="text-embedding-3-small", description="Embedding model identifier"
     )

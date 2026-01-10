@@ -237,7 +237,7 @@ Plugins can declare dependencies on other plugins:
 ```typescript
 export const myPlugin: Plugin = {
   name: 'my-plugin',
-  dependencies: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
+  dependencies: ['@elizaos/plugin-sql'],
   testDependencies: ['@elizaos/plugin-test-utils'],
   // ...
 };
@@ -282,9 +282,11 @@ Settings can be accessed through `runtime.getSetting()` which provides a consist
 Plugins are often conditionally loaded based on environment variables:
 
 ```typescript
+import { bootstrapPlugin } from '@elizaos/core';
+
 const plugins = [
-  // Always loaded
-  '@elizaos/plugin-bootstrap',
+  // Bootstrap is included in core
+  bootstrapPlugin,
   
   // Conditionally loaded based on API keys
   ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
@@ -298,14 +300,15 @@ const plugins = [
 
 ## Core Plugins
 
-elizaOS includes two essential core plugins that provide foundational functionality:
+elizaOS includes essential plugins that provide foundational functionality:
 
-### Bootstrap Plugin
-The core message handler and event system for elizaOS agents. Provides essential functionality for message processing, knowledge management, and basic agent operations. It includes:
+### Bootstrap (in @elizaos/core)
+The core message handler and event system is built into `@elizaos/core`. Import `bootstrapPlugin` from `@elizaos/core` to use it. It provides essential functionality for message processing, knowledge management, and basic agent operations:
 - 13 essential actions (REPLY, SEND_MESSAGE, etc.)
 - Core providers (time, character, recent messages)
-- Task service
+- Task service and Embedding service
 - Event handlers
+- Available in TypeScript, Python, and Rust
 
 ### SQL Plugin
 Database integration and management for elizaOS. Features:

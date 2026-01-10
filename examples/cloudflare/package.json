@@ -1,0 +1,32 @@
+{
+  "name": "elizaos-cloudflare-worker",
+  "version": "1.0.0",
+  "description": "elizaOS AI agent running on Cloudflare Workers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "test": "bun run test-client.ts",
+    "test:stream": "bun run test-client.ts --stream",
+    "tail": "wrangler tail",
+    "secret": "wrangler secret put OPENAI_API_KEY"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "wrangler": "^3.99.0"
+  },
+  "dependencies": {},
+  "keywords": [
+    "elizaos",
+    "cloudflare",
+    "workers",
+    "ai",
+    "agent"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

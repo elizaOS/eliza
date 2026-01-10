@@ -1,0 +1,80 @@
+{
+  "name": "@elizaos/plugin-eliza-classic",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "typescript/dist/cjs/index.node.cjs",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-eliza-classic.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "python",
+    "rust"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build": "cd typescript && bun run build.ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}
+

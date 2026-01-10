@@ -143,18 +143,8 @@ pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
         plugins.push("@elizaos/plugin-telegram".to_string());
     }
 
-    // Bootstrap plugin (unless disabled)
-    let ignore_bootstrap = env
-        .get("IGNORE_BOOTSTRAP")
-        .map(|s| {
-            let s = s.trim().to_lowercase();
-            s == "true" || s == "1" || s == "yes"
-        })
-        .unwrap_or(false);
-
-    if !ignore_bootstrap {
-        plugins.push("@elizaos/plugin-bootstrap".to_string());
-    }
+    // Bootstrap plugin is now part of @elizaos/core and loaded automatically
+    // No need to explicitly add it to the plugins list
 
     // Ollama fallback (only if no other LLM providers configured)
     let has_llm_provider = env
@@ -270,9 +260,8 @@ mod tests {
         let env = HashMap::new();
         let plugins = build_character_plugins(&env);
 
-        // Should include sql and bootstrap and ollama fallback
+        // Should include sql and ollama fallback; bootstrap is now part of core
         assert!(plugins.contains(&"@elizaos/plugin-sql".to_string()));
-        assert!(plugins.contains(&"@elizaos/plugin-bootstrap".to_string()));
         assert!(plugins.contains(&"@elizaos/plugin-ollama".to_string()));
     }
 

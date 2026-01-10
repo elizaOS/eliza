@@ -21,8 +21,6 @@
       "@elizaos/core/*": ["packages/core/typescript/src/*"],
       "@elizaos/plugin-sql": ["plugins/plugin-sql/typescript/index.ts"],
       "@elizaos/plugin-sql/*": ["plugins/plugin-sql/typescript/*"],
-      "@elizaos/plugin-bootstrap": ["plugins/plugin-bootstrap/typescript/index.ts"],
-      "@elizaos/plugin-bootstrap/*": ["plugins/plugin-bootstrap/typescript/*"],
       "@elizaos/plugin-openai": ["plugins/plugin-openai/typescript/index.ts"],
       "@elizaos/plugin-openai/*": ["plugins/plugin-openai/typescript/*"]
     }

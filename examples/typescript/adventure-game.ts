@@ -22,12 +22,12 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
+  bootstrapPlugin,
   type Character,
   ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { bootstrapPlugin } from "@elizaos/plugin-bootstrap";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
@@ -641,10 +641,11 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
 `;
 
     // Get AI's decision using the model directly
+    // Note: gpt-5 models don't support temperature - use defaults
+    // Reasoning models need more tokens for their internal reasoning process
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: gameContext,
-      maxTokens: 50,
-      temperature: 0.3,
+      maxTokens: 1000,
     });
 
     // Extract the action from response

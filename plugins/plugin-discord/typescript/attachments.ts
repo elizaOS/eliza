@@ -131,10 +131,10 @@ export class AttachmentManager {
       });
 
       // Convert File to Buffer for transcription
-      const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
+      const transcriptionBuffer = Buffer.from(await audioFile.arrayBuffer());
       const transcription = await this.runtime.useModel(
         ModelType.TRANSCRIPTION,
-        audioBuffer,
+        transcriptionBuffer,
       );
 
       // Assess transcription length before summarizing

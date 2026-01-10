@@ -90,6 +90,22 @@ export interface CharacterSettings {
   /** Presence penalty for all models */
   DEFAULT_PRESENCE_PENALTY?: number | string;
 
+  /**
+   * Whether to disable basic capabilities (default: false).
+   * Basic capabilities include core providers (character, actions, entities, etc.),
+   * core actions (reply, ignore, none), and core services (task, embedding).
+   * Set to true to disable all basic capabilities.
+   */
+  DISABLE_BASIC_CAPABILITIES?: boolean | string;
+
+  /**
+   * Whether to enable extended capabilities (default: false).
+   * Extended capabilities include additional providers (facts, roles, settings, etc.),
+   * additional actions (choice, sendMessage, updateSettings, etc.), and image generation.
+   * Set to true to enable all extended capabilities.
+   */
+  ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
+
   /** Allow additional settings */
   [key: string]: string | boolean | number | Record<string, unknown> | undefined;
 }
