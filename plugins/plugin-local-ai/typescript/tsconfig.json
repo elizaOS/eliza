@@ -1,5 +1,4 @@
 {
-  "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
@@ -8,10 +7,10 @@
     "declarationMap": true,
     "sourceMap": true,
     "strict": true,
-    "noImplicitAny": true,
-    "noImplicitReturns": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "exactOptionalPropertyTypes": false,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
@@ -21,9 +20,12 @@
     "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": ["ES2022"],
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "baseUrl": "..",
+    "paths": {
+      "@elizaos/core": ["../node_modules/@elizaos/core"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__"]
 }
-

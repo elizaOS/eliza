@@ -46,6 +46,7 @@
     "packages/*",
     "apps/*",
     "plugins/*",
+    "plugins/*/typescript",
     "examples/*"
   ],
   "devDependencies": {

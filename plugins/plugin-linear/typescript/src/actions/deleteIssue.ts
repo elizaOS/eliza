@@ -1,16 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-const deleteIssueTemplate = `Given the user's request to delete/archive a Linear issue, extract the issue identifier.
-
-User request: "{{userMessage}}"
-
-Extract and return ONLY a JSON object (no markdown formatting, no code blocks) with:
-{
-  "issueId": "The issue identifier (e.g., ENG-123, COM2-7)"
-}
-
-Return only the JSON object, no other text.`;
+import { deleteIssueTemplate } from '../../../dist/prompts/typescript/prompts.js';
 
 export const deleteIssueAction: Action = {
   name: 'DELETE_LINEAR_ISSUE',

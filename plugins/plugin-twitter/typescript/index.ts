@@ -103,14 +103,18 @@ export const TwitterPlugin: Plugin = {
 
   // Grok model handlers
   models: {
-    [ModelType.TEXT_SMALL]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-      handleTextSmall(runtime, params),
+    [ModelType.TEXT_SMALL]: async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string> => {
+      const result = await handleTextSmall(runtime, params);
+      return typeof result === "string" ? result : result.text;
+    },
 
-    [ModelType.TEXT_LARGE]: (runtime: IAgentRuntime, params: GenerateTextParams) =>
-      handleTextLarge(runtime, params),
+    [ModelType.TEXT_LARGE]: async (runtime: IAgentRuntime, params: GenerateTextParams): Promise<string> => {
+      const result = await handleTextLarge(runtime, params);
+      return typeof result === "string" ? result : result.text;
+    },
 
-    [ModelType.TEXT_EMBEDDING]: (runtime: IAgentRuntime, params: TextEmbeddingParams | string) =>
-      handleTextEmbedding(runtime, params),
+    [ModelType.TEXT_EMBEDDING]: (runtime: IAgentRuntime, params: TextEmbeddingParams | string | null): Promise<number[]> =>
+      handleTextEmbedding(runtime, params ?? ""),
   },
 
   tests: [

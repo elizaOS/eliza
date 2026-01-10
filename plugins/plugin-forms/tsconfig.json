@@ -24,5 +24,6 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["typescript/**/*.ts"],
+  "exclude": ["node_modules", "dist", "typescript/__tests__"]
 }

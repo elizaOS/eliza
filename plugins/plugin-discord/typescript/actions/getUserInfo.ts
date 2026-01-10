@@ -14,7 +14,7 @@ import type { GuildMember } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 // Import generated prompts
-import { getUserInfoTemplate } from "../../dist/prompts/typescript/prompts.js";
+import { getUserInfoTemplate } from "../generated/prompts/typescript/prompts.js";
 
 const getUserIdentifier = async (
   runtime: IAgentRuntime,

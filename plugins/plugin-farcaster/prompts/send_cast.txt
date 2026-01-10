@@ -1,0 +1,2 @@
+Based on this request: "{{request}}", generate a concise Farcaster cast (max 320 characters). Be engaging and use appropriate hashtags if relevant.
+

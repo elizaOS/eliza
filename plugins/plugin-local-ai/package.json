@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-local-ai",
   "version": "1.2.1",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "typescript/dist/node/index.node.js",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-local-ai.git"
@@ -12,35 +12,68 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./typescript/dist/index.d.ts",
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "require": "./typescript/dist/cjs/index.node.cjs",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
     }
   },
   "files": [
-    "dist"
+    "typescript/dist",
+    "python",
+    "rust"
   ],
+  "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "^1.2.1",
     "@huggingface/transformers": "^3.5.1",
     "node-llama-cpp": "3.10.0",
-    "nodejs-whisper": "0.2.9",
     "stream-browserify": "^3.0.0",
-    "tsup": "8.5.0",
     "undici": "^7.10.0",
     "uuid": "11.1.0",
     "whisper-node": "^1.1.1",
     "zod": "4.0.5"
   },
+  "devDependencies": {
+    "@types/node": "^24.0.4",
+    "@types/uuid": "10.0.0",
+    "prettier": "3.6.2",
+    "typescript": "^5.8.2"
+  },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "elizaos test",
-    "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "build": "cd typescript && bun run build.ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_local_ai"
   },
   "publishConfig": {
     "access": "public"
@@ -51,13 +84,13 @@
       "MODELS_DIR": {
         "type": "string",
         "description": "Filesystem path to the directory where AI models are stored; required for initializing the LocalAI plugin during tests.",
-        "required": true,
+        "required": false,
         "sensitive": false
       },
       "CACHE_DIR": {
         "type": "string",
         "description": "Filesystem path to the cache directory for model assets used by the LocalAI plugin during tests.",
-        "required": true,
+        "required": false,
         "sensitive": false
       },
       "LOCAL_SMALL_MODEL": {
@@ -96,10 +129,5 @@
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "devDependencies": {
-    "@types/uuid": "10.0.0",
-    "prettier": "3.6.2",
-    "typescript": "^5.8.2"
-  }
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }

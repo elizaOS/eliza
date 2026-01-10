@@ -1,35 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-const listProjectsTemplate = `Extract project filter criteria from the user's request.
-
-User request: "{{userMessage}}"
-
-The user might ask for projects in various ways:
-- "Show me all projects" → list all projects
-- "Active projects" → filter by state (active/planned/completed)
-- "Projects due this quarter" → filter by target date
-- "Which projects is Sarah managing?" → filter by lead/owner
-- "Projects with high priority issues" → filter by contained issue priority
-- "Projects for the engineering team" → filter by team
-- "Completed projects" → filter by state
-- "Projects starting next month" → filter by start date
-
-Return ONLY a JSON object:
-{
-  "teamFilter": "Team name or key if mentioned",
-  "stateFilter": "active/planned/completed/all",
-  "dateFilter": {
-    "type": "due/starting",
-    "period": "this-week/this-month/this-quarter/next-month/next-quarter",
-    "from": "ISO date if specific",
-    "to": "ISO date if specific"
-  },
-  "leadFilter": "Project lead name if mentioned",
-  "showAll": true/false (true if user explicitly asks for "all")
-}
-
-Only include fields that are clearly mentioned.`;
+import { listProjectsTemplate } from '../../../dist/prompts/typescript/prompts.js';
 
 export const listProjectsAction: Action = {
   name: 'LIST_LINEAR_PROJECTS',

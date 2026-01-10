@@ -1,5 +1,6 @@
-import { Provider, ModelType } from '@elizaos/core';
+import { Provider, ModelType, composePrompt } from '@elizaos/core';
 import type { ClassificationResult } from '../types';
+import { messageClassifierTemplate } from '../../../dist/prompts/typescript/prompts.js';
 
 export const messageClassifierProvider: Provider = {
   name: 'messageClassifier',
@@ -24,43 +25,12 @@ export const messageClassifierProvider: Provider = {
     }
 
     try {
-      const classificationPrompt = `Analyze this user request and classify it for planning purposes:
-
-"${text}"
-
-Classify the request across these dimensions:
-
-1. COMPLEXITY LEVEL:
-- simple: Direct actions that don't require planning
-- medium: Multi-step tasks requiring coordination  
-- complex: Strategic initiatives with multiple stakeholders
-- enterprise: Large-scale transformations with full complexity
-
-2. PLANNING TYPE:
-- direct_action: Single action, no planning needed
-- sequential_planning: Multiple steps in sequence
-- strategic_planning: Complex coordination with stakeholders
-
-3. REQUIRED CAPABILITIES:
-- List specific capabilities needed (analysis, communication, project_management, etc.)
-
-4. STAKEHOLDERS:
-- List types of people/groups involved
-
-5. CONSTRAINTS:
-- List limitations or requirements mentioned
-
-6. DEPENDENCIES:
-- List dependencies between tasks or external factors
-
-Respond in this exact format:
-COMPLEXITY: [simple|medium|complex|enterprise]
-PLANNING: [direct_action|sequential_planning|strategic_planning]  
-CAPABILITIES: [comma-separated list]
-STAKEHOLDERS: [comma-separated list]
-CONSTRAINTS: [comma-separated list]
-DEPENDENCIES: [comma-separated list]
-CONFIDENCE: [0.0-1.0]`;
+      const classificationPrompt = composePrompt({
+        state: {
+          text,
+        },
+        template: messageClassifierTemplate,
+      });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: classificationPrompt,

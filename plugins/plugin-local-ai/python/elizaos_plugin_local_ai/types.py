@@ -3,7 +3,6 @@ Type definitions for the Local AI plugin.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -30,8 +29,8 @@ class EmbeddingModelSpec(ModelSpec):
 class LocalAIConfig:
     """Configuration for the Local AI plugin."""
 
-    models_dir: Optional[str] = None
-    cache_dir: Optional[str] = None
+    models_dir: str | None = None
+    cache_dir: str | None = None
     small_model: str = "DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
     large_model: str = "DeepHermes-3-Llama-3-8B-q4.gguf"
     embedding_model: str = "bge-small-en-v1.5.Q4_K_M.gguf"
@@ -91,4 +90,3 @@ class TranscriptionResult:
 
     text: str
     language: str
-

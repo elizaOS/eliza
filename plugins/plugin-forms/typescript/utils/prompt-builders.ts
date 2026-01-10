@@ -8,7 +8,7 @@ import type { PromptFieldInfo } from "@elizaos/core";
 import {
   FORM_EXTRACTION_TEMPLATE,
   FORM_CREATION_TEMPLATE,
-} from "../../dist/prompts/typescript/prompts.js";
+} from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Build the form extraction prompt with the given user message and fields.

@@ -15,7 +15,7 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
 // Import generated prompts
-import { sendDmTemplate } from "../../dist/prompts/typescript/prompts.js";
+import { sendDmTemplate } from "../generated/prompts/typescript/prompts.js";
 // Re-export for backwards compatibility
 export const dmInfoTemplate = sendDmTemplate;
 

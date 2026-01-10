@@ -69,7 +69,7 @@
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && cd typescript && bun run build.ts",
     "build:ts": "cd typescript && bun run build.ts",
     "build:rust": "cd rust && cargo build --release",
