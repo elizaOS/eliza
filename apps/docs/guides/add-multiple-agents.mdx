@@ -66,7 +66,6 @@ Add `plugin-discord` to Hemingway so he can join Shakespeare in our Discord serv
   "plugins": [
     "@elizaos/plugin-sql",
     "@elizaos/plugin-openai",
-    "@elizaos/plugin-bootstrap",
     "@elizaos/plugin-discord"  // [!code ++]
   ]
 }
@@ -151,7 +150,6 @@ Now let's add `plugin-elevenlabs` to provide high-quality voice synthesis for ou
     "@elizaos/plugin-sql",
     "@elizaos/plugin-openai",
     "@elizaos/plugin-discord",
-    "@elizaos/plugin-bootstrap",
     "@elizaos/plugin-elevenlabs"  // [!code ++]
   ]
 }
@@ -164,7 +162,6 @@ export const character: Character = {
     '@elizaos/plugin-discord',
     '@elizaos/plugin-elevenlabs',  // [!code ++]
     ...(process.env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
   ],
 }
 ```

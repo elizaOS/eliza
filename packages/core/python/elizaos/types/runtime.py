@@ -111,6 +111,35 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         """Get registered routes."""
         ...
 
+    @property
+    @abstractmethod
+    def events(self) -> dict[str, list[Callable[[Any], Awaitable[None]]]]:
+        """Get registered event handlers."""
+        ...
+
+    @property
+    @abstractmethod
+    def state_cache(self) -> dict[str, State]:
+        """Get the state cache."""
+        ...
+
+    @property
+    @abstractmethod
+    def message_service(self) -> Any | None:
+        """Get the message service (if registered)."""
+        ...
+
+    # Database adapter
+    @abstractmethod
+    def register_database_adapter(self, adapter: IDatabaseAdapter) -> None:
+        """Register a database adapter."""
+        ...
+
+    @abstractmethod
+    async def get_connection(self) -> Any:
+        """Get the underlying database connection."""
+        ...
+
     # Plugin management
     @abstractmethod
     async def register_plugin(self, plugin: Plugin) -> None:
@@ -172,6 +201,19 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     @abstractmethod
     def get_conversation_length(self) -> int:
         """Get the conversation length."""
+        ...
+
+    @abstractmethod
+    def is_action_planning_enabled(self) -> bool:
+        """
+        Check if action planning mode is enabled.
+
+        When enabled (default), the agent can plan and execute multiple actions per response.
+        When disabled, the agent executes only a single action per response - a performance
+        optimization useful for game situations where state updates with every action.
+
+        Priority: constructor option > character setting ACTION_PLANNING > default (True)
+        """
         ...
 
     # Action processing
@@ -379,6 +421,11 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         """Clear all agent memories."""
         ...
 
+    @abstractmethod
+    async def update_memory(self, memory: Memory) -> bool:
+        """Update a memory."""
+        ...
+
     # Run tracking
     @abstractmethod
     def create_run_id(self) -> UUID:
@@ -439,4 +486,9 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     @abstractmethod
     async def send_message_to_target(self, target: TargetInfo, content: Content) -> None:
         """Send a message to a target."""
+        ...
+
+    @abstractmethod
+    async def update_world(self, world: World) -> None:
+        """Update a world."""
         ...

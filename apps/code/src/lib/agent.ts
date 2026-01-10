@@ -1,13 +1,13 @@
 import "dotenv/config";
 import {
   AgentRuntime,
+  bootstrapPlugin,
   type Character,
   type Plugin,
 } from "@elizaos/core";
 import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import { bootstrapPlugin } from "@elizaos/plugin-bootstrap";
 import { elizaCodePlugin } from "../plugin/index.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 import { resolveModelProvider } from "./model-provider.js";

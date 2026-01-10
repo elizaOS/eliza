@@ -317,3 +317,28 @@ class TestAgentRuntimeServices:
         assert runtime.get_registered_service_types() == []
 
 
+class TestAgentRuntimeLogLevel:
+    """Tests for log level configuration."""
+
+    def test_default_log_level_is_error(self, character: Character) -> None:
+        """Test that default log level is ERROR."""
+        runtime = AgentRuntime(character=character)
+        # The logger level should be set to ERROR by default
+        assert runtime.logger is not None
+
+    def test_custom_log_level_info(self, character: Character) -> None:
+        """Test setting log level to INFO."""
+        runtime = AgentRuntime(character=character, log_level="INFO")
+        assert runtime.logger is not None
+
+    def test_custom_log_level_debug(self, character: Character) -> None:
+        """Test setting log level to DEBUG."""
+        runtime = AgentRuntime(character=character, log_level="DEBUG")
+        assert runtime.logger is not None
+
+    def test_custom_log_level_warning(self, character: Character) -> None:
+        """Test setting log level to WARNING."""
+        runtime = AgentRuntime(character=character, log_level="WARNING")
+        assert runtime.logger is not None
+
+

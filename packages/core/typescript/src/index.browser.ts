@@ -14,7 +14,6 @@ setStreamingContextManager(createBrowserStreamingContextManager());
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
 export * from "./database";
-export * from "./elizaos";
 export * from "./entities";
 export * from "./logger";
 export * from "./memory";
@@ -25,8 +24,8 @@ export * from "./runtime";
 export * from "./schemas/character";
 export * from "./search";
 export * from "./services";
-export * from "./services/default-message-service";
-export * from "./services/message-service";
+export * from "./services/message";
+export * from "./types/message-service";
 export * from "./settings";
 export * from "./streaming-context";
 // Export everything from types (type-only, safe for browser)

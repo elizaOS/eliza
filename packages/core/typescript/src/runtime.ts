@@ -6,12 +6,17 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 
+import {
+  type CapabilityConfig,
+  bootstrapPlugin,
+  createBootstrapPlugin,
+} from "./bootstrap/index";
 import { createUniqueUuid } from "./entities";
 import { decryptSecret, getSalt } from "./index";
 import { createLogger } from "./logger";
 import { BM25 } from "./search";
-import { DefaultMessageService } from "./services/default-message-service";
-import type { IMessageService } from "./services/message-service";
+import { DefaultMessageService } from "./services/message";
+import type { IMessageService } from "./types/message-service";
 import {
   getStreamingContext,
   runWithStreamingContext,
@@ -40,7 +45,6 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   type IDatabaseAdapter,
-  type IElizaOS,
   type Log,
   type Memory,
   type MemoryMetadata,
@@ -130,17 +134,14 @@ export class AgentRuntime implements IAgentRuntime {
   private sendHandlers = new Map<string, SendHandlerFunction>();
   private eventHandlers: Map<string, Array<(data: EventPayload) => void>> = new Map();
 
-  /**
-   * Reference to the elizaOS instance that created this runtime
-   * Set by elizaOS when runtime is registered
-   * @optional
-   */
-  elizaOS?: IElizaOS;
-
   // A map of all plugins available to the runtime, keyed by name, for dependency resolution.
   private allAvailablePlugins = new Map<string, Plugin>();
   // The initial list of plugins specified by the character configuration.
   private characterPlugins: Plugin[] = [];
+  // Capability options for bootstrap plugin configuration
+  private capabilityOptions: CapabilityConfig = {};
+  // Action planning option (undefined means use settings, true/false is explicit)
+  private actionPlanningOption?: boolean;
 
   public logger;
   private settings: RuntimeSettings;
@@ -183,7 +184,23 @@ export class AgentRuntime implements IAgentRuntime {
      * Valid levels: "trace", "debug", "info", "warn", "error", "fatal"
      */
     logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+    /** Disable basic bootstrap capabilities (reply, ignore, none, core providers) */
+    disableBasicCapabilities?: boolean;
+    /** Enable extended bootstrap capabilities (facts, roles, settings, room actions, etc.) */
+    enableExtendedCapabilities?: boolean;
+    /**
+     * Enable action planning mode for multi-action execution.
+     * When true (default), agent can plan and execute multiple actions per response.
+     * When false, agent executes only a single action per response (performance optimization
+     * useful for game situations where state updates with every action).
+     */
+    actionPlanning?: boolean;
   }) {
+    // Store capability options for use in initialize()
+    this.capabilityOptions = {
+      disableBasic: opts.disableBasicCapabilities,
+      enableExtended: opts.enableExtendedCapabilities,
+    };
     // Generate deterministic UUID from character name for backward compatibility
     // Falls back to random UUID only if no character name is provided
     this.agentId =
@@ -212,6 +229,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.plugins = []; // Initialize plugins as an empty array
     this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
+    
+    // Store action planning option (undefined means check settings at runtime)
+    this.actionPlanningOption = opts.actionPlanning;
 
     if (opts.allAvailablePlugins) {
       for (const plugin of opts.allAvailablePlugins) {
@@ -295,70 +315,87 @@ export class AgentRuntime implements IAgentRuntime {
       return;
     }
 
-    (this.plugins as Plugin[]).push(plugin);
+    // Handle capability-aware registration for bootstrap plugin
+    let pluginToRegister = plugin;
+    if (plugin.name === "bootstrap") {
+      const settings = this.character.settings;
+      // Constructor options take precedence over character settings
+      const disableBasic = this.capabilityOptions.disableBasic ?? 
+        (settings?.DISABLE_BASIC_CAPABILITIES === true || settings?.DISABLE_BASIC_CAPABILITIES === "true");
+      const enableExtended = this.capabilityOptions.enableExtended ?? 
+        (settings?.ENABLE_EXTENDED_CAPABILITIES === true || settings?.ENABLE_EXTENDED_CAPABILITIES === "true");
+
+      if (disableBasic || enableExtended) {
+        const config: CapabilityConfig = { disableBasic, enableExtended };
+        const configuredPlugin = createBootstrapPlugin(config);
+        pluginToRegister = { ...configuredPlugin, events: plugin.events ?? configuredPlugin.events };
+      }
+    }
+
+    (this.plugins as Plugin[]).push(pluginToRegister);
     this.logger.debug(
-      { src: "agent", agentId: this.agentId, plugin: plugin.name },
+      { src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
       "Plugin added",
     );
 
-    if (plugin.init) {
+    if (pluginToRegister.init) {
       const config: Record<string, string> = {};
-      if (plugin.config) {
-        for (const [key, value] of Object.entries(plugin.config)) {
+      if (pluginToRegister.config) {
+        for (const [key, value] of Object.entries(pluginToRegister.config)) {
           if (value !== null && value !== undefined) {
             config[key] = String(value);
           }
         }
       }
-      await plugin.init(config, this as IAgentRuntime);
+      await pluginToRegister.init(config, this as IAgentRuntime);
       this.logger.debug(
-        { src: "agent", agentId: this.agentId, plugin: plugin.name },
+        { src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
         "Plugin initialized",
       );
     }
-    if (plugin.adapter) {
+    if (pluginToRegister.adapter) {
       this.logger.debug(
-        { src: "agent", agentId: this.agentId, plugin: plugin.name },
+        { src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
         "Registering database adapter",
       );
-      this.registerDatabaseAdapter(plugin.adapter);
+      this.registerDatabaseAdapter(pluginToRegister.adapter);
     }
-    if (plugin.actions) {
-      for (const action of plugin.actions) {
+    if (pluginToRegister.actions) {
+      for (const action of pluginToRegister.actions) {
         this.registerAction(action);
       }
     }
-    if (plugin.evaluators) {
-      for (const evaluator of plugin.evaluators) {
+    if (pluginToRegister.evaluators) {
+      for (const evaluator of pluginToRegister.evaluators) {
         this.registerEvaluator(evaluator);
       }
     }
-    if (plugin.providers) {
-      for (const provider of plugin.providers) {
+    if (pluginToRegister.providers) {
+      for (const provider of pluginToRegister.providers) {
         this.registerProvider(provider);
       }
     }
-    if (plugin.models) {
-      for (const [modelType, handler] of Object.entries(plugin.models)) {
+    if (pluginToRegister.models) {
+      for (const [modelType, handler] of Object.entries(pluginToRegister.models)) {
         this.registerModel(
           modelType as ModelTypeName,
           handler as (params: unknown) => Promise<unknown>,
-          plugin.name,
-          plugin.priority,
+          pluginToRegister.name,
+          pluginToRegister.priority,
         );
       }
     }
-    if (plugin.routes) {
-      for (const route of plugin.routes) {
+    if (pluginToRegister.routes) {
+      for (const route of pluginToRegister.routes) {
         // namespace plugin name infront of paths
         const routePath = route.path.startsWith("/")
           ? route.path
           : `/${route.path}`;
-        this.routes.push({ ...route, path: `/${plugin.name}${routePath}` });
+        this.routes.push({ ...route, path: `/${pluginToRegister.name}${routePath}` });
       }
     }
-    if (plugin.events) {
-      for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
+    if (pluginToRegister.events) {
+      for (const [eventName, eventHandlers] of Object.entries(pluginToRegister.events)) {
         for (const eventHandler of eventHandlers) {
           this.registerEvent(
             eventName,
@@ -367,15 +404,15 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
     }
-    if (plugin.services) {
-      for (const service of plugin.services) {
+    if (pluginToRegister.services) {
+      for (const service of pluginToRegister.services) {
         const serviceType = service.serviceType as ServiceTypeName;
 
         this.logger.debug(
           {
             src: "agent",
             agentId: this.agentId,
-            plugin: plugin.name,
+            plugin: pluginToRegister.name,
             serviceType,
           },
           "Registering service",
@@ -397,7 +434,7 @@ export class AgentRuntime implements IAgentRuntime {
             {
               src: "agent",
               agentId: this.agentId,
-              plugin: plugin.name,
+              plugin: pluginToRegister.name,
               serviceType,
               error: error instanceof Error ? error.message : String(error),
             },
@@ -408,7 +445,7 @@ export class AgentRuntime implements IAgentRuntime {
           const handler = this.servicePromiseHandlers.get(serviceType);
           if (handler) {
             const serviceError = new Error(
-              `Service ${serviceType} from plugin ${plugin.name} failed to register: ${error instanceof Error ? error.message : String(error)}`,
+              `Service ${serviceType} from plugin ${pluginToRegister.name} failed to register: ${error instanceof Error ? error.message : String(error)}`,
             );
             handler.reject(serviceError);
             // Clean up the promise handles
@@ -441,16 +478,16 @@ export class AgentRuntime implements IAgentRuntime {
         await service.stop();
       }
     }
-
-    this.elizaOS = undefined;
   }
 
   async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
     const pluginRegistrationPromises: Promise<void>[] = [];
 
-    // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
-    // The runtime now accepts a pre-resolved, ordered list of plugins.
-    const pluginsToLoad = this.characterPlugins;
+    // Auto-include bootstrapPlugin unless already present
+    const hasBootstrap = this.characterPlugins.some(p => p?.name === "bootstrap");
+    const pluginsToLoad = hasBootstrap 
+      ? this.characterPlugins 
+      : [bootstrapPlugin, ...this.characterPlugins];
 
     for (const plugin of pluginsToLoad) {
       if (plugin) {
@@ -778,6 +815,36 @@ export class AgentRuntime implements IAgentRuntime {
     return this.#conversationLength;
   }
 
+  /**
+   * Check if action planning mode is enabled.
+   * 
+   * When enabled (default), the agent can plan and execute multiple actions per response.
+   * When disabled, the agent executes only a single action per response - a performance
+   * optimization useful for game situations where state updates with every action.
+   * 
+   * Priority: constructor option > character setting ACTION_PLANNING > default (true)
+   */
+  isActionPlanningEnabled(): boolean {
+    // Constructor option takes precedence
+    if (this.actionPlanningOption !== undefined) {
+      return this.actionPlanningOption;
+    }
+    
+    // Check character settings
+    const setting = this.getSetting("ACTION_PLANNING");
+    if (setting !== null) {
+      if (typeof setting === "boolean") {
+        return setting;
+      }
+      if (typeof setting === "string") {
+        return setting.toLowerCase() === "true";
+      }
+    }
+    
+    // Default to true (action planning enabled)
+    return true;
+  }
+
   registerDatabaseAdapter(adapter: IDatabaseAdapter) {
     if (this.adapter) {
       this.logger.warn(
@@ -860,15 +927,49 @@ export class AgentRuntime implements IAgentRuntime {
       onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
     },
   ): Promise<void> {
+    // Check if action planning is enabled
+    const actionPlanningEnabled = this.isActionPlanningEnabled();
+    
     // Determine if we have multiple actions to execute
-    const allActions: string[] = [];
-    for (const response of responses) {
-      if (response.content && response.content.actions && response.content.actions.length > 0) {
-        allActions.push(...response.content.actions);
+    let allActions: string[] = [];
+    let responsesToProcess = responses;
+    
+    if (actionPlanningEnabled) {
+      // Multi-action mode: collect all actions
+      for (const response of responses) {
+        if (response.content && response.content.actions && response.content.actions.length > 0) {
+          allActions.push(...response.content.actions);
+        }
+      }
+    } else {
+      // Single-action mode: only take the first action from the first response with actions
+      for (const response of responses) {
+        if (response.content && response.content.actions && response.content.actions.length > 0) {
+          allActions = [response.content.actions[0]];
+          // Create a modified response with only the first action
+          responsesToProcess = [{
+            ...response,
+            content: {
+              ...response.content,
+              actions: [response.content.actions[0]]
+            }
+          }];
+          this.logger.debug(
+            { 
+              src: "agent", 
+              agentId: this.agentId, 
+              selectedAction: response.content.actions[0],
+              skippedActions: response.content.actions.slice(1)
+            },
+            "Action planning disabled, limiting to first action",
+          );
+          break;
+        }
       }
     }
 
-    const hasMultipleActions = allActions.length > 1;
+    // Skip processing if no actions and respect single-action mode
+    const hasMultipleActions = allActions.length > 1 && actionPlanningEnabled;
     const parentRunId = this.getCurrentRunId();
     const runId = this.createRunId();
 
@@ -912,7 +1013,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     let actionIndex = 0;
 
-    for (const response of responses) {
+    for (const response of responsesToProcess) {
       if (!response.content || !response.content.actions || response.content.actions.length === 0) {
         this.logger.warn(
           { src: "agent", agentId: this.agentId },
@@ -3511,9 +3612,5 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error("Database adapter not registered");
     }
     return await this.adapter.isReady();
-  }
-
-  hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS } {
-    return this.elizaOS !== undefined;
   }
 }

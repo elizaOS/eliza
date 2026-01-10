@@ -46,8 +46,8 @@ class OpenAIPlugin:
         self,
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
-        small_model: str = "gpt-4o-mini",
-        large_model: str = "gpt-4o",
+        small_model: str = "gpt-5-mini",
+        large_model: str = "gpt-5",
         embedding_model: str = "text-embedding-3-small",
         embedding_dimensions: int = 1536,
     ) -> None:
@@ -100,16 +100,14 @@ class OpenAIPlugin:
         prompt: str,
         *,
         system: str | None = None,
-        temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> str:
         """
-        Generate text using the small model.
+        Generate text using the small model (gpt-5-mini).
 
         Args:
             prompt: The prompt for generation.
             system: Optional system message.
-            temperature: Sampling temperature.
             max_tokens: Maximum output tokens.
 
         Returns:
@@ -119,7 +117,6 @@ class OpenAIPlugin:
             prompt=prompt,
             model=self._config.small_model,
             system=system,
-            temperature=temperature,
             max_tokens=max_tokens,
         )
         return await self._client.generate_text(params)
@@ -129,16 +126,14 @@ class OpenAIPlugin:
         prompt: str,
         *,
         system: str | None = None,
-        temperature: float = 0.7,
         max_tokens: int | None = None,
     ) -> str:
         """
-        Generate text using the large model.
+        Generate text using the large model (gpt-5).
 
         Args:
             prompt: The prompt for generation.
             system: Optional system message.
-            temperature: Sampling temperature.
             max_tokens: Maximum output tokens.
 
         Returns:
@@ -148,7 +143,6 @@ class OpenAIPlugin:
             prompt=prompt,
             model=self._config.large_model,
             system=system,
-            temperature=temperature,
             max_tokens=max_tokens,
         )
         return await self._client.generate_text(params)
@@ -159,7 +153,6 @@ class OpenAIPlugin:
         *,
         model: str | None = None,
         system: str | None = None,
-        temperature: float = 0.7,
     ) -> AsyncIterator[str]:
         """
         Stream text generation.
@@ -168,7 +161,6 @@ class OpenAIPlugin:
             prompt: The prompt for generation.
             model: Model to use (defaults to large model).
             system: Optional system message.
-            temperature: Sampling temperature.
 
         Yields:
             Text chunks as they are generated.
@@ -177,7 +169,6 @@ class OpenAIPlugin:
             prompt=prompt,
             model=model or self._config.large_model,
             system=system,
-            temperature=temperature,
             stream=True,
         )
         async for chunk in self._client.stream_text(params):
@@ -467,8 +458,8 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
     Configuration is read from environment variables:
     - OPENAI_API_KEY (required)
     - OPENAI_BASE_URL (optional)
-    - OPENAI_SMALL_MODEL (optional, default: gpt-4o-mini)
-    - OPENAI_LARGE_MODEL (optional, default: gpt-4o)
+    - OPENAI_SMALL_MODEL (optional, default: gpt-5-mini)
+    - OPENAI_LARGE_MODEL (optional, default: gpt-5)
     """
     from typing import Any
     from elizaos import Plugin
@@ -484,26 +475,26 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
             _client = OpenAIPlugin(
                 api_key=os.environ.get("OPENAI_API_KEY"),
                 base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-                small_model=os.environ.get("OPENAI_SMALL_MODEL", "gpt-4o-mini"),
-                large_model=os.environ.get("OPENAI_LARGE_MODEL", "gpt-4o"),
+                small_model=os.environ.get("OPENAI_SMALL_MODEL", "gpt-5-mini"),
+                large_model=os.environ.get("OPENAI_LARGE_MODEL", "gpt-5"),
             )
         return _client
     
     async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
+        # Note: gpt-5 models don't support temperature - use defaults
         return await client.generate_text_large(
             params.get("prompt", ""),
             system=params.get("system"),
-            temperature=params.get("temperature", 0.7),
             max_tokens=params.get("maxTokens"),
         )
     
     async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
+        # Note: gpt-5-mini doesn't support temperature - use defaults
         return await client.generate_text_small(
             params.get("prompt", ""),
             system=params.get("system"),
-            temperature=params.get("temperature", 0.7),
             max_tokens=params.get("maxTokens"),
         )
     

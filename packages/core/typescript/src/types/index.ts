@@ -1,7 +1,6 @@
 export * from "./agent";
 export * from "./components";
 export * from "./database";
-export * from "./elizaos";
 export * from "./environment";
 export * from "./events";
 export * from "./knowledge";

@@ -7,6 +7,7 @@ from elizaos.types import (
     ChannelType,
     Character,
     Content,
+    DEFAULT_UUID,
     Entity,
     Memory,
     Plugin,
@@ -44,6 +45,21 @@ class TestUUID:
         upper = "12345678-1234-1234-1234-123456789012".upper()
         assert as_uuid(lower) == lower
         assert as_uuid(upper) == upper
+
+    def test_default_uuid(self) -> None:
+        """Test DEFAULT_UUID is the nil/zero UUID."""
+        assert DEFAULT_UUID == "00000000-0000-0000-0000-000000000000"
+        # Should be a valid UUID format
+        assert as_uuid(DEFAULT_UUID) == DEFAULT_UUID
+
+    def test_default_uuid_can_be_used_in_memory(self) -> None:
+        """Test DEFAULT_UUID can be used for room/world when none specified."""
+        memory = Memory(
+            entity_id=as_uuid("12345678-1234-1234-1234-123456789012"),
+            room_id=DEFAULT_UUID,
+            content=Content(text="Hello"),
+        )
+        assert memory.room_id == DEFAULT_UUID
 
 
 class TestContent:

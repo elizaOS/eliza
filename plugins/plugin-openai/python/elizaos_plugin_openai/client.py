@@ -166,7 +166,7 @@ class OpenAIClient:
     # =========================================================================
 
     # Models that don't support temperature/sampling parameters (reasoning models)
-    _NO_TEMPERATURE_MODELS = frozenset({"o1", "o1-preview", "o1-mini", "o3", "o3-mini"})
+    _NO_TEMPERATURE_MODELS = frozenset({"o1", "o1-preview", "o1-mini", "o3", "o3-mini", "gpt-5", "gpt-5-mini"})
 
     @staticmethod
     def _model_supports_temperature(model: str) -> bool:
@@ -201,15 +201,19 @@ class OpenAIClient:
         }
 
         # Only add temperature/sampling params for models that support them
+        # gpt-5 models use max_completion_tokens instead of max_tokens
         if self._model_supports_temperature(params.model):
             request_body["temperature"] = params.temperature
             request_body["frequency_penalty"] = params.frequency_penalty
             request_body["presence_penalty"] = params.presence_penalty
-
-        if params.max_tokens is not None:
-            request_body["max_tokens"] = params.max_tokens
-        if params.stop is not None:
-            request_body["stop"] = params.stop
+            if params.max_tokens is not None:
+                request_body["max_tokens"] = params.max_tokens
+            if params.stop is not None:
+                request_body["stop"] = params.stop
+        else:
+            # Reasoning models (gpt-5, o1, o3) use max_completion_tokens
+            if params.max_tokens is not None:
+                request_body["max_completion_tokens"] = params.max_tokens
 
         response = await self._client.post("/chat/completions", json=request_body)
         self._raise_for_status(response)
@@ -251,15 +255,19 @@ class OpenAIClient:
         }
 
         # Only add temperature/sampling params for models that support them
+        # gpt-5 models use max_completion_tokens instead of max_tokens
         if self._model_supports_temperature(params.model):
             request_body["temperature"] = params.temperature
             request_body["frequency_penalty"] = params.frequency_penalty
             request_body["presence_penalty"] = params.presence_penalty
-
-        if params.max_tokens is not None:
-            request_body["max_tokens"] = params.max_tokens
-        if params.stop is not None:
-            request_body["stop"] = params.stop
+            if params.max_tokens is not None:
+                request_body["max_tokens"] = params.max_tokens
+            if params.stop is not None:
+                request_body["stop"] = params.stop
+        else:
+            # Reasoning models (gpt-5, o1, o3) use max_completion_tokens
+            if params.max_tokens is not None:
+                request_body["max_completion_tokens"] = params.max_tokens
 
         async with self._client.stream(
             "POST", "/chat/completions", json=request_body

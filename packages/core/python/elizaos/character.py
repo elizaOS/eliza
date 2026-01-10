@@ -221,10 +221,8 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
     if get_env("TELEGRAM_BOT_TOKEN"):
         plugins.append("@elizaos/plugin-telegram")
 
-    # Bootstrap plugin
-    ignore_bootstrap = get_env("IGNORE_BOOTSTRAP")
-    if not ignore_bootstrap or ignore_bootstrap.lower() not in ("true", "1", "yes"):
-        plugins.append("@elizaos/plugin-bootstrap")
+    # Bootstrap plugin is now part of @elizaos/core and loaded automatically
+    # No need to explicitly add it to the plugins list
 
     # Ollama fallback (only if no other LLM providers configured)
     has_llm_provider = any(

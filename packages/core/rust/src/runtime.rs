@@ -141,6 +141,16 @@ pub struct RuntimeOptions {
     pub settings: Option<RuntimeSettings>,
     /// Log level for the runtime. Defaults to Error.
     pub log_level: LogLevel,
+    /// Disable basic bootstrap capabilities (reply, ignore, none)
+    pub disable_basic_capabilities: bool,
+    /// Enable extended bootstrap capabilities (facts, roles, settings, etc.)
+    pub enable_extended_capabilities: bool,
+    /// Enable action planning mode for multi-action execution.
+    /// When Some(true) (default), agent can plan and execute multiple actions per response.
+    /// When Some(false), agent executes only a single action per response (performance
+    /// optimization useful for game situations where state updates with every action).
+    /// When None, the ACTION_PLANNING setting will be checked.
+    pub action_planning: Option<bool>,
 }
 
 /// Event handler function type
@@ -223,6 +233,8 @@ pub type RuntimeModelHandler = Box<
 /// let runtime = AgentRuntime::new(RuntimeOptions {
 ///     character: Some(Character { name: "MyAgent".to_string(), ..Default::default() }),
 ///     log_level: LogLevel::Info, // defaults to Error
+///     disable_basic_capabilities: false,
+///     enable_extended_capabilities: true,
 ///     ..Default::default()
 /// }).await?;
 /// await runtime.initialize()?;
@@ -262,6 +274,11 @@ pub struct AgentRuntime {
     initialized: RwLock<bool>,
     /// Log level for this runtime
     log_level: LogLevel,
+    /// Capability options for bootstrap plugin
+    capability_disable_basic: bool,
+    capability_enable_extended: bool,
+    /// Action planning option (None means check settings at runtime)
+    action_planning_option: Option<bool>,
 }
 
 /// Service trait for long-running services
@@ -304,6 +321,9 @@ impl AgentRuntime {
             current_room_id: Mutex::new(None),
             initialized: RwLock::new(false),
             log_level,
+            capability_disable_basic: opts.disable_basic_capabilities,
+            capability_enable_extended: opts.enable_extended_capabilities,
+            action_planning_option: opts.action_planning,
         };
 
         Ok(runtime)
@@ -312,6 +332,32 @@ impl AgentRuntime {
     /// Get the configured log level for this runtime
     pub fn log_level(&self) -> LogLevel {
         self.log_level
+    }
+
+    /// Check if action planning mode is enabled.
+    /// 
+    /// When enabled (default), the agent can plan and execute multiple actions per response.
+    /// When disabled, the agent executes only a single action per response - a performance
+    /// optimization useful for game situations where state updates with every action.
+    /// 
+    /// Priority: constructor option > character setting ACTION_PLANNING > default (true)
+    pub async fn is_action_planning_enabled(&self) -> bool {
+        // Constructor option takes precedence
+        if let Some(enabled) = self.action_planning_option {
+            return enabled;
+        }
+
+        // Check character settings
+        if let Some(setting) = self.get_setting("ACTION_PLANNING").await {
+            match setting {
+                SettingValue::Bool(b) => return b,
+                SettingValue::String(s) => return s.to_lowercase() == "true",
+                _ => {}
+            }
+        }
+
+        // Default to true (action planning enabled)
+        true
     }
 
     /// Initialize the runtime
@@ -613,11 +659,24 @@ impl AgentRuntime {
     ) -> Result<Vec<ActionResult>> {
         let mut results = Vec::new();
 
+        // Check if action planning is enabled
+        let action_planning_enabled = self.is_action_planning_enabled().await;
+
         // Clone to avoid holding lock across await
         #[cfg(not(feature = "wasm"))]
-        let actions: Vec<_> = self.actions.read().await.iter().cloned().collect();
+        let all_actions: Vec<_> = self.actions.read().await.iter().cloned().collect();
         #[cfg(feature = "wasm")]
-        let actions: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
+        let all_actions: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
+
+        // Limit to single action if action planning is disabled
+        let actions: Vec<_> = if action_planning_enabled {
+            all_actions
+        } else if !all_actions.is_empty() {
+            debug!("Action planning disabled, limiting to first action");
+            vec![all_actions.into_iter().next().unwrap()]
+        } else {
+            all_actions
+        };
 
         for action in actions.iter() {
             // Validate if action should run
@@ -917,5 +976,43 @@ mod tests {
         assert!(!run_id.as_str().is_empty());
 
         runtime.end_run();
+    }
+
+    #[tokio::test]
+    async fn test_default_log_level_is_error() {
+        let runtime = AgentRuntime::new(RuntimeOptions::default()).await.unwrap();
+        assert_eq!(runtime.log_level(), LogLevel::Error);
+    }
+
+    #[tokio::test]
+    async fn test_custom_log_level_info() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            log_level: LogLevel::Info,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert_eq!(runtime.log_level(), LogLevel::Info);
+    }
+
+    #[tokio::test]
+    async fn test_custom_log_level_debug() {
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            log_level: LogLevel::Debug,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert_eq!(runtime.log_level(), LogLevel::Debug);
+    }
+
+    #[test]
+    fn test_log_level_to_tracing() {
+        assert_eq!(LogLevel::Trace.to_tracing_level(), tracing::Level::TRACE);
+        assert_eq!(LogLevel::Debug.to_tracing_level(), tracing::Level::DEBUG);
+        assert_eq!(LogLevel::Info.to_tracing_level(), tracing::Level::INFO);
+        assert_eq!(LogLevel::Warn.to_tracing_level(), tracing::Level::WARN);
+        assert_eq!(LogLevel::Error.to_tracing_level(), tracing::Level::ERROR);
+        assert_eq!(LogLevel::Fatal.to_tracing_level(), tracing::Level::ERROR);
     }
 }

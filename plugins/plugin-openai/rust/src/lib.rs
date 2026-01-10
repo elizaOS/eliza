@@ -82,8 +82,8 @@ impl OpenAIPlugin {
 ///
 /// Optional environment variables:
 /// - `OPENAI_BASE_URL`: Custom API endpoint (default: https://api.openai.com/v1)
-/// - `OPENAI_SMALL_MODEL`: Model for small tasks (default: gpt-4o-mini)
-/// - `OPENAI_LARGE_MODEL`: Model for large tasks (default: gpt-4o)
+/// - `OPENAI_SMALL_MODEL`: Model for small tasks (default: gpt-5-mini)
+/// - `OPENAI_LARGE_MODEL`: Model for large tasks (default: gpt-5)
 pub fn get_openai_plugin() -> AnyhowResult<OpenAIPlugin> {
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?;

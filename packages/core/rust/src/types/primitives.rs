@@ -246,7 +246,10 @@ pub enum MentionType {
     None,
 }
 
-/// Represents the content of a memory, message, or other information
+/// Represents the content of a memory, message, or other information.
+///
+/// This is the primary data structure for messages exchanged between
+/// users, agents, and the system.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
@@ -256,16 +259,16 @@ pub struct Content {
     /// The main text content visible to users
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    /// Optional actions to be performed
+    /// Actions to be performed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actions: Option<Vec<String>>,
-    /// Optional providers to use for context generation
+    /// Providers to use for context generation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub providers: Option<Vec<String>>,
-    /// Optional source/origin of the content
+    /// Source/origin of the content (e.g., 'discord', 'telegram')
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    /// Optional target/destination for responses
+    /// Target/destination for responses
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
     /// URL of the original message/post
@@ -277,7 +280,7 @@ pub struct Content {
     /// Array of media attachments
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Media>>,
-    /// Channel type
+    /// Channel type where this content was sent
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_type: Option<super::ChannelType>,
     /// Platform-provided metadata about mentions
@@ -286,6 +289,21 @@ pub struct Content {
     /// Internal message ID used for streaming coordination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_message_id: Option<UUID>,
+    /// Response ID for message tracking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<UUID>,
+    /// Whether this is a simple response (no actions required)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub simple: Option<bool>,
+    /// Results from action callbacks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_callbacks: Option<Box<Content>>,
+    /// Results from evaluator callbacks
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eval_callbacks: Option<Box<Content>>,
+    /// Type marker for internal use
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
     /// Additional dynamic properties
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -313,6 +331,29 @@ mod tests {
     fn test_uuid_v4_generation() {
         let uuid = UUID::new_v4();
         assert!(UUID_REGEX.is_match(uuid.as_str()));
+    }
+
+    #[test]
+    fn test_default_uuid() {
+        // Test that DEFAULT_UUID_STR is the nil/zero UUID
+        assert_eq!(DEFAULT_UUID_STR, "00000000-0000-0000-0000-000000000000");
+
+        // Test UUID::default_uuid() returns the correct UUID
+        let default = UUID::default_uuid();
+        assert_eq!(default.as_str(), DEFAULT_UUID_STR);
+
+        // Should be a valid UUID format
+        assert!(UUID::new(DEFAULT_UUID_STR).is_ok());
+    }
+
+    #[test]
+    fn test_default_uuid_can_be_used_in_content() {
+        // Test that DEFAULT_UUID can be used where UUIDs are expected
+        let content = Content {
+            in_reply_to: Some(UUID::default_uuid()),
+            ..Default::default()
+        };
+        assert_eq!(content.in_reply_to.unwrap().as_str(), DEFAULT_UUID_STR);
     }
 
     #[test]

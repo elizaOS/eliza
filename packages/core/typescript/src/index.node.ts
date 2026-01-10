@@ -16,7 +16,6 @@ export * from "./actions";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 export * from "./database";
-export * from "./elizaos";
 export * from "./entities";
 export * from "./logger";
 export * from "./memory";
@@ -29,8 +28,8 @@ export * from "./schemas/character";
 export * from "./search";
 export * from "./secrets";
 export * from "./services";
-export * from "./services/default-message-service";
-export * from "./services/message-service";
+export * from "./services/message";
+export * from "./types/message-service";
 export * from "./settings";
 export * from "./streaming-context";
 // Export everything from types

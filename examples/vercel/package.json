@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/vercel-edge-examples",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "elizaOS Vercel Edge Function examples in TypeScript, Python, and Rust",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "bun run build:ts && bun run build:rust",
+    "build:ts": "cd typescript && bun install && tsc",
+    "build:rust": "cd rust && wasm-pack build --target web --out-dir ../api/rust/pkg",
+    "deploy": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod",
+    "test": "bun run test-client.ts",
+    "test:ts": "cd typescript && bun run test",
+    "test:py": "cd python && python3 handler.py",
+    "test:rust": "cd rust && cargo run --bin test_local",
+    "clean": "rm -rf dist .vercel node_modules"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/uuid": "^10.0.0",
+    "@vercel/node": "^5.1.8",
+    "typescript": "^5.8.3",
+    "vercel": "^41.7.3"
+  }
+}
+

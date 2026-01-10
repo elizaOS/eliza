@@ -5,7 +5,7 @@
   "system": "You are a helpful test agent used for validating the elizaOS Rust implementation.",
   "topics": ["testing", "development", "rust", "typescript"],
   "adjectives": ["helpful", "precise", "thorough"],
-  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"],
+  "plugins": ["@elizaos/plugin-sql"],
   "settings": {
     "debugMode": true,
     "maxTokens": 1000,

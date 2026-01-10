@@ -137,6 +137,9 @@ pub struct HandlerOptions {
     /// Multi-step action plan
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action_plan: Option<ActionPlan>,
+    /// Validated input parameters extracted from conversation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<HashMap<String, serde_json::Value>>,
     /// Additional options
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -174,6 +177,54 @@ pub struct EvaluationExample {
 pub type HandlerCallback =
     Arc<dyn Fn(Content) -> Pin<Box<dyn Future<Output = Vec<Memory>> + Send>> + Send + Sync>;
 
+/// JSON Schema for action parameter validation
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionParameterSchema {
+    /// JSON Schema type (string, number, boolean, object, array)
+    #[serde(rename = "type")]
+    pub schema_type: String,
+    /// Description for LLM guidance
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Default value if parameter is not provided
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
+    /// Allowed values for enum-style parameters
+    #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
+    pub enum_values: Option<Vec<String>>,
+    /// For object types, nested properties
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub properties: Option<HashMap<String, serde_json::Value>>,
+    /// For array types, item schema
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<Box<ActionParameterSchema>>,
+    /// Minimum value for numbers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum: Option<f64>,
+    /// Maximum value for numbers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum: Option<f64>,
+    /// Pattern for string validation (regex)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+}
+
+/// Defines a single parameter for an action
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionParameter {
+    /// Parameter name (used as key in parameters object)
+    pub name: String,
+    /// Human-readable description for LLM guidance
+    pub description: String,
+    /// Whether this parameter is required
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    /// JSON Schema for parameter validation
+    pub schema: ActionParameterSchema,
+}
+
 /// Action definition for serialization
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -188,6 +239,15 @@ pub struct ActionDefinition {
     /// Example usages
     #[serde(skip_serializing_if = "Option::is_none")]
     pub examples: Option<Vec<Vec<ActionExample>>>,
+    /// Priority for action ordering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+    /// Tags for categorization
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    /// Input parameters for the action
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<Vec<ActionParameter>>,
 }
 
 /// Provider definition for serialization

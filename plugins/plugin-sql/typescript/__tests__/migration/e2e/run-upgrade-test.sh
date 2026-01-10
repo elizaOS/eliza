@@ -148,7 +148,7 @@ cat > "$TEST_PROJECT_DIR/package.json" << EOF
   },
   "dependencies": {
     "@elizaos/cli": "${SOURCE_VERSION}",
-    "@elizaos/plugin-bootstrap": "${SOURCE_VERSION}",
+    "@elizaos/core": "${SOURCE_VERSION}",
     "@elizaos/plugin-sql": "${SOURCE_VERSION}"
   }
 }
@@ -161,7 +161,7 @@ cat > "$TEST_PROJECT_DIR/character.json" << 'EOF'
   "username": "migration_test",
   "system": "You are a test agent for migration testing.",
   "bio": ["A simple test agent"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"]
+  "plugins": ["@elizaos/plugin-sql"]
 }
 EOF
 
@@ -543,7 +543,7 @@ cat > "$TEST_PROJECT_DIR/package.json" << EOF
   ],
   "dependencies": {
     "@elizaos/cli": "workspace:*",
-    "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "postgres": "^3.4.5"
   }

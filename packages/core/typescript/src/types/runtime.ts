@@ -1,5 +1,5 @@
 import type { Logger } from "../logger";
-import type { IMessageService } from "../services/message-service";
+import type { IMessageService } from "./message-service";
 import type { Character } from "./agent";
 import type {
   Action,
@@ -9,7 +9,6 @@ import type {
   Provider,
 } from "./components";
 import type { DbConnection, IDatabaseAdapter } from "./database";
-import type { IElizaOS } from "./elizaos";
 import type { ChannelType, Entity, Room, World } from "./environment";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
@@ -51,7 +50,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   routes: Route[];
   logger: Logger;
   stateCache: Map<string, State>;
-  elizaOS?: IElizaOS;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -75,8 +73,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   hasService(serviceType: ServiceTypeName | string): boolean;
 
-  hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS };
-
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
 
@@ -89,6 +85,17 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getSetting(key: string): string | boolean | number | null;
 
   getConversationLength(): number;
+
+  /**
+   * Check if action planning mode is enabled.
+   * 
+   * When enabled (default), the agent can plan and execute multiple actions per response.
+   * When disabled, the agent executes only a single action per response - a performance
+   * optimization useful for game situations where state updates with every action.
+   * 
+   * Priority: constructor option > character setting ACTION_PLANNING > default (true)
+   */
+  isActionPlanningEnabled(): boolean;
 
   processActions(
     message: Memory,

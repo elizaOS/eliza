@@ -125,6 +125,15 @@ impl OpenAIClient {
     // Text Generation
     // =========================================================================
 
+    /// Check if model supports temperature/sampling parameters.
+    /// gpt-5 and gpt-5-mini (reasoning models) don't support these.
+    fn model_supports_temperature(model: &str) -> bool {
+        let model_lower = model.to_lowercase();
+        !model_lower.contains("gpt-5")
+            && !model_lower.contains("o1")
+            && !model_lower.contains("o3")
+    }
+
     /// Generate text using chat completions.
     pub async fn generate_text(&self, params: &TextGenerationParams) -> Result<String> {
         let model = params.model.as_deref().unwrap_or(&self.config.large_model);
@@ -147,20 +156,29 @@ impl OpenAIClient {
             "messages": messages,
         });
 
-        if let Some(temp) = params.temperature {
-            body["temperature"] = serde_json::json!(temp);
-        }
-        if let Some(max) = params.max_tokens {
-            body["max_tokens"] = serde_json::json!(max);
-        }
-        if let Some(fp) = params.frequency_penalty {
-            body["frequency_penalty"] = serde_json::json!(fp);
-        }
-        if let Some(pp) = params.presence_penalty {
-            body["presence_penalty"] = serde_json::json!(pp);
-        }
-        if let Some(stop) = &params.stop {
-            body["stop"] = serde_json::json!(stop);
+        // Only add temperature/sampling params for models that support them
+        // gpt-5, gpt-5-mini, o1, o3 models don't support these
+        if Self::model_supports_temperature(model) {
+            if let Some(temp) = params.temperature {
+                body["temperature"] = serde_json::json!(temp);
+            }
+            if let Some(fp) = params.frequency_penalty {
+                body["frequency_penalty"] = serde_json::json!(fp);
+            }
+            if let Some(pp) = params.presence_penalty {
+                body["presence_penalty"] = serde_json::json!(pp);
+            }
+            if let Some(stop) = &params.stop {
+                body["stop"] = serde_json::json!(stop);
+            }
+            if let Some(max) = params.max_tokens {
+                body["max_tokens"] = serde_json::json!(max);
+            }
+        } else {
+            // Reasoning models (gpt-5, o1, o3) use max_completion_tokens instead of max_tokens
+            if let Some(max) = params.max_tokens {
+                body["max_completion_tokens"] = serde_json::json!(max);
+            }
         }
 
         let response = self
@@ -205,11 +223,20 @@ impl OpenAIClient {
             "stream": true,
         });
 
-        if let Some(temp) = params.temperature {
-            body["temperature"] = serde_json::json!(temp);
-        }
-        if let Some(max) = params.max_tokens {
-            body["max_tokens"] = serde_json::json!(max);
+        // Only add temperature for models that support it
+        // gpt-5 models use max_completion_tokens instead of max_tokens
+        if Self::model_supports_temperature(model) {
+            if let Some(temp) = params.temperature {
+                body["temperature"] = serde_json::json!(temp);
+            }
+            if let Some(max) = params.max_tokens {
+                body["max_tokens"] = serde_json::json!(max);
+            }
+        } else {
+            // Reasoning models use max_completion_tokens
+            if let Some(max) = params.max_tokens {
+                body["max_completion_tokens"] = serde_json::json!(max);
+            }
         }
 
         let response = self
@@ -470,13 +497,14 @@ impl OpenAIClient {
     /// Generate a structured JSON object.
     ///
     /// Convenience method that wraps `generate_text` with JSON-focused prompting.
+    /// Note: gpt-5 models don't support temperature, so it's not passed.
     pub async fn generate_object(
         &self,
         prompt: &str,
-        temperature: Option<f32>,
+        _temperature: Option<f32>,
     ) -> Result<serde_json::Value> {
-        let params = TextGenerationParams::new(format!("Respond with only valid JSON. {}", prompt))
-            .temperature(temperature.unwrap_or(0.0));
+        // Note: temperature is ignored for gpt-5 models (reasoning models)
+        let params = TextGenerationParams::new(format!("Respond with only valid JSON. {}", prompt));
 
         let response = self.generate_text(&params).await?;
 

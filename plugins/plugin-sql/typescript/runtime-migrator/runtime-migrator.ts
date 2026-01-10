@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { logger } from "@elizaos/core";
+import { stringToBigInt } from "./crypto-utils";
 import { sql } from "drizzle-orm";
 import { getRow } from "../types";
 import { DatabaseIntrospector } from "./drizzle-adapters/database-introspector";
@@ -135,29 +135,10 @@ export class RuntimeMigrator {
    * Generate a stable advisory lock ID from plugin name
    * PostgreSQL advisory locks use bigint, so we need to hash the plugin name
    * and convert to a stable bigint value
+   * Uses browser-compatible hashing
    */
   private getAdvisoryLockId(pluginName: string): bigint {
-    // Create a hash of the plugin name
-    const hash = createHash("sha256").update(pluginName).digest();
-
-    // Take first 8 bytes for a 64-bit integer
-    const buffer = hash.slice(0, 8);
-
-    // Convert to bigint
-    let lockId = BigInt(`0x${buffer.toString("hex")}`);
-
-    // Ensure the value fits in PostgreSQL's positive bigint range
-    // Use a mask to keep only 63 bits (ensures positive in signed 64-bit)
-    // This preserves uniqueness better than modulo and avoids collisions
-    const mask63Bits = 0x7fffffffffffffffn; // 63 bits set to 1
-    lockId = lockId & mask63Bits;
-
-    // Ensure non-zero (extremely unlikely but handle it)
-    if (lockId === 0n) {
-      lockId = 1n;
-    }
-
-    return lockId;
+    return stringToBigInt(pluginName);
   }
 
   /**

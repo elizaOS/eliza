@@ -19,7 +19,6 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@types/three": "^0.182.0",

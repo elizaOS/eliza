@@ -1,0 +1,5 @@
+/**
+ * Node.js entry point for ELIZA Classic Plugin
+ */
+export * from "./index";
+

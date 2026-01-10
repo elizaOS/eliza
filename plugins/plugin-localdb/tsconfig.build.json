@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.build.template.json",
+  "compilerOptions": {
+    "rootDir": "./typescript",
+    "outDir": "./dist/browser",
+    "declaration": true,
+    "declarationMap": true,
+    "composite": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
+  },
+  "include": ["./typescript/**/*.ts"],
+  "exclude": ["./typescript/__tests__/**", "./typescript/**/*.test.ts"]
+}
+

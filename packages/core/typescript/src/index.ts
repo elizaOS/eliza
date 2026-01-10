@@ -8,11 +8,11 @@
 
 // Then all other exports
 export * from "./actions";
+// Export bootstrap plugin and capabilities
+export * from "./bootstrap/index";
 // Export character utilities
 export * from "./character";
 export * from "./database";
-// Export elizaOS
-export * from "./elizaos";
 export * from "./entities";
 export * from "./logger";
 export * from "./memory";
@@ -24,8 +24,8 @@ export * from "./schemas/character";
 export * from "./search";
 export * from "./secrets";
 export * from "./services";
-export * from "./services/default-message-service";
-export * from "./services/message-service";
+export * from "./services/message";
+export * from "./types/message-service";
 export * from "./settings";
 // Export streaming context utilities
 export * from "./streaming-context";

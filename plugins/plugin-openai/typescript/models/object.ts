@@ -58,8 +58,6 @@ async function generateObjectByModelType(
     throw new Error("Object generation requires a non-empty prompt");
   }
 
-  const temperature = params.temperature ?? 0;
-
   // Log if schema is provided (currently ignored in no-schema mode)
   if (params.schema) {
     logger.debug(
@@ -68,11 +66,12 @@ async function generateObjectByModelType(
     );
   }
 
+  // Use chat() instead of languageModel() to use the Chat Completions API
+  // Note: gpt-5 models don't support temperature parameter - use defaults
   const { object, usage } = await generateObject({
-    model: openai.languageModel(modelName),
+    model: openai.chat(modelName),
     output: "no-schema",
     prompt: params.prompt,
-    temperature,
     experimental_repairText: getJsonRepairFunction(),
   });
 

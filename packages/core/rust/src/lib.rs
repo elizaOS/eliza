@@ -44,7 +44,7 @@ pub use character::{
     build_character_plugins, merge_character_defaults, parse_character, validate_character,
 };
 pub use plugin::{load_plugin, resolve_plugin_dependencies, validate_plugin};
-pub use runtime::AgentRuntime;
+pub use runtime::{AgentRuntime, LogLevel, RuntimeOptions};
 pub use services::{DefaultMessageService, IMessageService, MessageProcessingOptions, MessageProcessingResult};
 pub use settings::{decrypt_string_value, encrypt_string_value, get_salt};
 pub use types::*;

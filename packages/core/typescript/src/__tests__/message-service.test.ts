@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { ChannelType, EventType, ModelType } from "../index";
-import { DefaultMessageService } from "../services/default-message-service";
-import type { IMessageService } from "../services/message-service";
+import { DefaultMessageService } from "../services/message";
+import type { IMessageService } from "../types/message-service";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";

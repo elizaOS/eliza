@@ -52,7 +52,7 @@ fn test_character_deserialization_from_typescript() {
         "system": "You are a helpful test agent.",
         "topics": ["testing", "development"],
         "adjectives": ["helpful", "precise"],
-        "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"]
+        "plugins": ["@elizaos/plugin-sql"]
     }"#;
 
     let character: Character = serde_json::from_str(ts_json).unwrap();

@@ -285,7 +285,7 @@ export function getTranscriptionModel(runtime: IAgentRuntime): string {
  * @returns The TTS model name
  */
 export function getTTSModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "OPENAI_TTS_MODEL") ?? "gpt-5-mini-tts";
+  return getSetting(runtime, "OPENAI_TTS_MODEL") ?? "tts-1";
 }
 
 /**
