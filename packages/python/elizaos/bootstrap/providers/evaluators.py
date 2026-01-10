@@ -29,10 +29,12 @@ async def get_evaluators(
     evaluator_info: list[dict[str, str]] = []
 
     for evaluator in runtime.evaluators:
-        evaluator_info.append({
-            "name": evaluator.name,
-            "description": getattr(evaluator, "description", "No description"),
-        })
+        evaluator_info.append(
+            {
+                "name": evaluator.name,
+                "description": getattr(evaluator, "description", "No description"),
+            }
+        )
 
     if not evaluator_info:
         return ProviderResult(
@@ -45,9 +47,7 @@ async def get_evaluators(
             },
         )
 
-    formatted_evaluators = "\n".join(
-        f"- {e['name']}: {e['description']}" for e in evaluator_info
-    )
+    formatted_evaluators = "\n".join(f"- {e['name']}: {e['description']}" for e in evaluator_info)
 
     text = f"# Available Evaluators\n{formatted_evaluators}"
 
@@ -70,5 +70,3 @@ evaluators_provider = Provider(
     get=get_evaluators,
     dynamic=False,
 )
-
-

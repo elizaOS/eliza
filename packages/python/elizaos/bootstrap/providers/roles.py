@@ -61,11 +61,13 @@ async def get_roles(
                         except Exception:
                             entity_name = str(entity_id)[:8]
 
-                        role_info.append({
-                            "entityId": str(entity_id),
-                            "entityName": entity_name,
-                            "role": str(role),
-                        })
+                        role_info.append(
+                            {
+                                "entityId": str(entity_id),
+                                "entityName": entity_name,
+                                "role": str(role),
+                            }
+                        )
         except Exception as e:
             runtime.logger.debug(
                 {
@@ -89,11 +91,13 @@ async def get_roles(
                         None,
                     )
                     if not existing:
-                        role_info.append({
-                            "entityId": str(message.entity_id),
-                            "entityName": entity.name or "Unknown",
-                            "role": str(sender_role),
-                        })
+                        role_info.append(
+                            {
+                                "entityId": str(message.entity_id),
+                                "entityName": entity.name or "Unknown",
+                                "role": str(sender_role),
+                            }
+                        )
         except Exception:
             pass
 
@@ -108,9 +112,7 @@ async def get_roles(
             },
         )
 
-    formatted_roles = "\n".join(
-        format_role_info(r["entityName"], r["role"]) for r in role_info
-    )
+    formatted_roles = "\n".join(format_role_info(r["entityName"], r["role"]) for r in role_info)
 
     text = f"# Entity Roles\n{formatted_roles}"
 
@@ -133,5 +135,3 @@ roles_provider = Provider(
     get=get_roles,
     dynamic=True,
 )
-
-

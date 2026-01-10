@@ -7,7 +7,7 @@ current time, date, timezone, and related information.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from elizaos.types import Provider, ProviderResult
@@ -30,7 +30,7 @@ async def get_current_time_context(
     - Human-readable date and time
     - Day of week
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Format various time representations
     iso_timestamp = now.isoformat()
@@ -73,4 +73,3 @@ current_time_provider = Provider(
     get=get_current_time_context,
     dynamic=True,  # Time changes constantly
 )
-

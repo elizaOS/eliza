@@ -299,7 +299,9 @@ pub struct AgentRuntime {
     /// Log level for this runtime
     log_level: LogLevel,
     /// Capability options for bootstrap plugin
+    #[allow(dead_code)]
     capability_disable_basic: bool,
+    #[allow(dead_code)]
     capability_enable_extended: bool,
     /// Flag to track if the character was auto-generated (no character provided)
     is_anonymous_character: bool,
@@ -426,10 +428,8 @@ impl AgentRuntime {
         }
 
         // Check character settings
-        if let Some(setting) = self.get_setting("LLM_MODE").await {
-            if let SettingValue::String(s) = setting {
-                return crate::types::LLMMode::from_str(&s);
-            }
+        if let Some(SettingValue::String(s)) = self.get_setting("LLM_MODE").await {
+            return crate::types::LLMMode::parse(&s);
         }
 
         // Default to Default (no override)

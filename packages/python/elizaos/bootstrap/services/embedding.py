@@ -166,4 +166,3 @@ class EmbeddingService(Service):
             return 0.0
 
         return dot_product / (magnitude1 * magnitude2)
-

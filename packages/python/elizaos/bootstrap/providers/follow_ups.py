@@ -7,7 +7,7 @@ for use in prompts.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from elizaos.types import Provider, ProviderResult
@@ -39,7 +39,9 @@ async def get_follow_ups_context(
 
     try:
         # Get upcoming follow-ups
-        upcoming = await follow_up_service.get_upcoming_follow_ups(days_ahead=7, include_overdue=True)
+        upcoming = await follow_up_service.get_upcoming_follow_ups(
+            days_ahead=7, include_overdue=True
+        )
 
         if not upcoming:
             return ProviderResult(
@@ -48,7 +50,7 @@ async def get_follow_ups_context(
                 data={},
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Separate overdue and upcoming
         overdue_items: list[dict[str, str]] = []
@@ -110,7 +112,9 @@ async def get_follow_ups_context(
         if suggestions:
             text_summary += "\nSuggested follow-ups:\n"
             for s in suggestions[:3]:
-                text_summary += f"- {s.entity_name} ({s.days_since_last_contact} days since last contact)\n"
+                text_summary += (
+                    f"- {s.entity_name} ({s.days_since_last_contact} days since last contact)\n"
+                )
 
         return ProviderResult(
             text=text_summary.strip(),
@@ -147,4 +151,3 @@ follow_ups_provider = Provider(
     get=get_follow_ups_context,
     dynamic=True,
 )
-

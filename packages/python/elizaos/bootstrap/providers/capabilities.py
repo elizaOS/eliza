@@ -88,5 +88,3 @@ capabilities_provider = Provider(
     get=get_capabilities,
     dynamic=False,
 )
-
-

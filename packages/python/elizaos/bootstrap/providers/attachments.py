@@ -67,9 +67,7 @@ async def get_attachments(
             },
         )
 
-    formatted_attachments = "\n".join(
-        format_attachment(att) for att in attachments
-    )
+    formatted_attachments = "\n".join(format_attachment(att) for att in attachments)
 
     text = f"# Attachments ({len(attachments)})\n{formatted_attachments}"
 
@@ -93,5 +91,3 @@ attachments_provider = Provider(
     get=get_attachments,
     dynamic=True,
 )
-
-

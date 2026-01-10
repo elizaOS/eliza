@@ -110,4 +110,3 @@ recent_messages_provider = Provider(
     get=get_recent_messages_context,
     dynamic=True,  # Messages change constantly
 )
-

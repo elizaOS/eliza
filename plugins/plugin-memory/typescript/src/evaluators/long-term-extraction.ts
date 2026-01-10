@@ -8,7 +8,7 @@ import {
 } from '@elizaos/core';
 import { MemoryService } from '../services/memory-service';
 import { LongTermMemoryCategory, type MemoryExtraction } from '../types';
-import { longTermExtractionTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { longTermExtractionTemplate } from '../generated/prompts/typescript/prompts.js';
 
 /**
  * Template for extracting long-term memories using cognitive science memory types

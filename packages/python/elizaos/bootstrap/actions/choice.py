@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from uuid import UUID
 
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import CHOOSE_OPTION_TEMPLATE
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -182,4 +181,3 @@ choose_option_action = Action(
     handler=ChooseOptionAction().handler,
     examples=ChooseOptionAction().examples,
 )
-

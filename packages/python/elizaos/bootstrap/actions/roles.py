@@ -12,8 +12,8 @@ from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -74,8 +74,7 @@ class UpdateRoleAction:
         ]
     )
     description: str = (
-        "Update the role of an entity in a world. "
-        "Use this to manage permissions and access levels."
+        "Update the role of an entity in a world. Use this to manage permissions and access levels."
     )
 
     async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
@@ -262,4 +261,3 @@ update_role_action = Action(
     handler=UpdateRoleAction().handler,
     examples=UpdateRoleAction().examples,
 )
-

@@ -1,0 +1,148 @@
+{
+  "name": "@elizaos/plugin-solana",
+  "version": "1.2.6",
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-solana.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./rust": {
+      "import": "../rust/pkg/elizaos_plugin_solana.js",
+      "default": "../rust/pkg/elizaos_plugin_solana.js"
+    }
+  },
+  "files": [
+    "dist",
+    "../rust/pkg",
+    "types"
+  ],
+  "scripts": {
+    "build": "bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "bun run build.ts --watch",
+    "test": "bun test __tests__/",
+    "test:unit": "bun test __tests__/",
+    "test:integration": "bun test __tests__/integration/",
+    "lint": "prettier --write .",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:rust": "cd ../rust && ./build.sh",
+    "build:rust:native": "cd ../rust && cargo build --release",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "typecheck:rust": "cd ../rust && cargo check --all-targets",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_solana || echo 'mypy not installed, skipping typecheck'",
+    "test:python": "cd ../python && pytest tests/ -v"
+  },
+  "dependencies": {
+    "@solana/spl-token": "0.4.14",
+    "@solana/spl-token-metadata": "^0.1.6",
+    "@solana/web3.js": "^1.98.0",
+    "bignumber.js": "9.3.0",
+    "bs58": "6.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@elizaos/core": "latest",
+    "@elizaos/service-interfaces": "latest",
+    "@types/bun": "^1.3.0",
+    "bun-types": "^1.3.1",
+    "prettier": "3.5.3",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "latest",
+    "@elizaos/service-interfaces": "latest",
+    "form-data": "4.0.2",
+    "whatwg-url": "7.1.0"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SOL_ADDRESS": {
+        "type": "string",
+        "description": "The mint/contract address used to represent native SOL when interacting with token swap logic.",
+        "required": true,
+        "sensitive": false
+      },
+      "SOLANA_RPC_URL": {
+        "type": "string",
+        "description": "The Solana RPC endpoint the application should connect to.",
+        "required": false,
+        "default": "https://api.mainnet-beta.solana.com",
+        "sensitive": false
+      },
+      "WALLET_SECRET_SALT": {
+        "type": "string",
+        "description": "Salt used to derive or encrypt the Solana wallet's secret key; required if the direct secret key is not provided.",
+        "required": false,
+        "sensitive": false
+      },
+      "WALLET_SECRET_KEY": {
+        "type": "string",
+        "description": "Base58-encoded Solana wallet secret (private) key; required if WALLET_SECRET_SALT is not supplied.",
+        "required": false,
+        "sensitive": true
+      },
+      "WALLET_PUBLIC_KEY": {
+        "type": "string",
+        "description": "Base58-encoded Solana wallet public key corresponding to WALLET_SECRET_KEY.",
+        "required": false,
+        "sensitive": false
+      },
+      "SOLANA_PUBLIC_KEY": {
+        "type": "string",
+        "description": "Alternative name accepted by runtime for the wallet's public key.",
+        "required": false,
+        "sensitive": false
+      },
+      "SLIPPAGE": {
+        "type": "string",
+        "description": "Maximum acceptable slippage (likely as a percentage or basis points) for Solana swaps/transactions.",
+        "required": true,
+        "sensitive": false
+      },
+      "HELIUS_API_KEY": {
+        "type": "string",
+        "description": "API key for accessing the Helius Solana infrastructure services.",
+        "required": true,
+        "sensitive": true
+      },
+      "BIRDEYE_API_KEY": {
+        "type": "string",
+        "description": "API key for accessing Birdeye market data services.",
+        "required": true,
+        "sensitive": true
+      },
+      "SOLANA_PRIVATE_KEY": {
+        "type": "string",
+        "description": "The Solana wallet private key in base58 or base64 format, used to create a Keypair when private key access is required.",
+        "required": false,
+        "sensitive": true
+      },
+      "WALLET_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Alternative variable name for the Solana wallet private key in base58 or base64.",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  }
+}

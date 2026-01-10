@@ -1,0 +1,101 @@
+{
+  "name": "@elizaos/plugin-forms",
+  "description": "Forms plugin for ElizaOS - structured conversational data collection",
+  "version": "1.2.0",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "elizaOS",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "forms",
+    "data-collection",
+    "conversational-forms",
+    "multi-step-forms"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/elizaos/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./rust": {
+      "node": {
+        "import": "../rust/pkg/node/elizaos_plugin_forms.js",
+        "default": "../rust/pkg/node/elizaos_plugin_forms.js"
+      },
+      "default": "../rust/pkg/node/elizaos_plugin_forms.js"
+    }
+  },
+  "files": [
+    "dist",
+    "../rust/pkg",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "^1.6.1",
+    "uuid": "^11.0.2",
+    "zod": "^4.0.5"
+  },
+  "peerDependencies": {},
+  "devDependencies": {
+    "@types/bun": "^1.2.18",
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^10.0.0",
+    "dotenv": "^17.2.0",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test __tests__/",
+    "test:integration": "bun test __tests__/integration/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:rust:wasm": "cd ../rust && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "test:python": "cd ../python && pytest",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_forms"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {},
+    "description": "Forms management plugin for structured conversational data collection"
+  }
+}

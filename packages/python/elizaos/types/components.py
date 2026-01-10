@@ -55,13 +55,13 @@ class ActionContext(BaseModel):
 
     def get_previous_result(self, action_name: str) -> ActionResult | None:
         """Get a specific previous result by action name.
-        
+
         Searches through previous_results for a result where the action name
         matches the provided action_name. Action names are stored in result.data.actionName.
-        
+
         Args:
             action_name: The name of the action to find results for
-            
+
         Returns:
             The first matching ActionResult, or None if no match is found
         """
@@ -152,9 +152,7 @@ Validator = Callable[
 class ActionParameterSchema(BaseModel):
     """JSON Schema type for action parameter validation."""
 
-    type: str = Field(
-        ..., description="JSON Schema type (string, number, boolean, object, array)"
-    )
+    type: str = Field(..., description="JSON Schema type (string, number, boolean, object, array)")
     description: str | None = Field(default=None, description="Description for LLM guidance")
     default: str | int | float | bool | None = Field(
         default=None, description="Default value if parameter is not provided"

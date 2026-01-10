@@ -190,4 +190,3 @@ unfollow_room_action = Action(
     handler=UnfollowRoomAction().handler,
     examples=UnfollowRoomAction().examples,
 )
-

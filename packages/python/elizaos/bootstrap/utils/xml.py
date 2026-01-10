@@ -107,5 +107,3 @@ def parse_nested_tags(content: str) -> dict[str, Any] | list[Any] | None:
             simplified[key] = values
 
     return simplified
-
-

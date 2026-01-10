@@ -52,12 +52,14 @@ async def get_contacts_context(
         for contact in contacts:
             entity = await runtime.get_entity(contact.entity_id)
             name = entity.name if entity and entity.name else "Unknown"
-            contact_details.append({
-                "id": str(contact.entity_id),
-                "name": name,
-                "categories": ",".join(contact.categories),
-                "tags": ",".join(contact.tags),
-            })
+            contact_details.append(
+                {
+                    "id": str(contact.entity_id),
+                    "name": name,
+                    "categories": ",".join(contact.categories),
+                    "tags": ",".join(contact.tags),
+                }
+            )
 
         # Group by category
         grouped: dict[str, list[dict[str, str]]] = {}
@@ -113,4 +115,3 @@ contacts_provider = Provider(
     get=get_contacts_context,
     dynamic=True,
 )
-

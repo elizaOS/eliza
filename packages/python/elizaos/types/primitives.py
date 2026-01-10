@@ -12,7 +12,7 @@ import uuid as uuid_module
 from enum import Enum
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator, BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 # UUID validation pattern
 UUID_PATTERN = re.compile(
@@ -177,4 +177,3 @@ class Content(BaseModel):
 
 # Metadata is a generic type for metadata objects, allowing for arbitrary key-value pairs
 Metadata = dict[str, Any]
-

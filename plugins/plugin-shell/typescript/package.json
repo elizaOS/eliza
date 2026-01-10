@@ -1,0 +1,97 @@
+{
+  "name": "@elizaos/plugin-shell",
+  "version": "1.2.0",
+  "description": "Shell command execution plugin for ElizaOS with directory restrictions and history tracking",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust"
+  ],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "shell",
+    "terminal",
+    "command",
+    "history"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "^1.2.0",
+    "cross-spawn": "^7.0.6",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^20.11.16",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1"
+  },
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:python": "cd ../python && python -m build",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "test": "bun test",
+    "test:ts": "bun test",
+    "test:rust": "cd ../rust && cargo test",
+    "test:python": "cd ../python && pytest",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SHELL_ENABLED": {
+        "type": "boolean",
+        "description": "Enable or disable the shell plugin (disabled by default for safety)",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "SHELL_ALLOWED_DIRECTORY": {
+        "type": "string",
+        "description": "The directory that shell commands are restricted to. Commands cannot execute outside this directory.",
+        "required": true,
+        "sensitive": false
+      },
+      "SHELL_TIMEOUT": {
+        "type": "number",
+        "description": "Maximum command execution timeout in milliseconds",
+        "required": false,
+        "default": 30000,
+        "sensitive": false
+      },
+      "SHELL_FORBIDDEN_COMMANDS": {
+        "type": "string",
+        "description": "Comma-separated list of additional forbidden commands",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

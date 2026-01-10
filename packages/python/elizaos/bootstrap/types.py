@@ -17,21 +17,21 @@ from pydantic import BaseModel, Field
 class CapabilityConfig:
     """
     Configuration for bootstrap capabilities.
-    
+
     - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
     - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
     - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
     """
-    
+
     disable_basic: bool = False
     """Disable basic capabilities (default: False)"""
-    
+
     enable_extended: bool = False
     """Enable extended capabilities (default: False)"""
-    
+
     skip_character_provider: bool = False
     """Skip the character provider (used for anonymous agents without a character file)"""
-    
+
     enable_autonomy: bool = False
     """Enable autonomy capabilities (default: False)"""
 
@@ -47,13 +47,11 @@ class EvaluatorResult(BaseModel):
     model_config = {"populate_by_name": True}
 
     @classmethod
-    def pass_result(cls, score: int, reason: str) -> "EvaluatorResult":
+    def pass_result(cls, score: int, reason: str) -> EvaluatorResult:
         """Create a passing evaluation result."""
         return cls(score=score, passed=True, reason=reason)
 
     @classmethod
-    def fail_result(cls, score: int, reason: str) -> "EvaluatorResult":
+    def fail_result(cls, score: int, reason: str) -> EvaluatorResult:
         """Create a failing evaluation result."""
         return cls(score=score, passed=False, reason=reason)
-
-

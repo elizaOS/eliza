@@ -129,7 +129,7 @@ class SendMessageAction:
                 await callback(response_content)
 
             return ActionResult(
-                text=f"Message sent to room",
+                text="Message sent to room",
                 values={
                     "success": True,
                     "messageSent": True,
@@ -190,4 +190,3 @@ send_message_action = Action(
     handler=SendMessageAction().handler,
     examples=SendMessageAction().examples,
 )
-

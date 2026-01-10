@@ -87,7 +87,7 @@ async def get_character_context(
             )
             style_sections.append(f"Posts: {', '.join(post_style)}")
         if style_sections:
-            sections.append(f"\n## Communication Style\n" + "\n".join(style_sections))
+            sections.append("\n## Communication Style\n" + "\n".join(style_sections))
 
     context_text = "\n".join(sections)
 
@@ -113,4 +113,3 @@ character_provider = Provider(
     get=get_character_context,
     dynamic=False,  # Character doesn't change during runtime
 )
-

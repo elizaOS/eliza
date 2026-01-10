@@ -4,10 +4,10 @@ import pytest
 from pydantic import ValidationError
 
 from elizaos.types import (
+    DEFAULT_UUID,
     ChannelType,
     Character,
     Content,
-    DEFAULT_UUID,
     Entity,
     Memory,
     Plugin,
@@ -278,5 +278,3 @@ class TestTask:
         )
         assert task.status == TaskStatus.IN_PROGRESS
         assert "important" in (task.tags or [])
-
-

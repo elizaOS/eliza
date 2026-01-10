@@ -11,52 +11,62 @@ from typing import TYPE_CHECKING
 
 from elizaos.types.components import Action, ActionResult, HandlerOptions
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import UUID, as_uuid, Content
+from elizaos.types.primitives import UUID, Content, as_uuid
 
-from .service import AutonomyService, AUTONOMY_SERVICE_TYPE
+from .service import AUTONOMY_SERVICE_TYPE, AutonomyService
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from elizaos.types.runtime import IAgentRuntime
     from elizaos.types.state import State
-    from collections.abc import Awaitable, Callable
 
 
 async def _validate_send_to_admin(
-    runtime: "IAgentRuntime",
+    runtime: IAgentRuntime,
     message: Memory,
-    _state: "State | None" = None,
+    _state: State | None = None,
 ) -> bool:
     """Validate send to admin action."""
     # Only allow in autonomous context
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return False
-    
+
     autonomous_room_id = autonomy_service.get_autonomous_room_id()
     if not autonomous_room_id or message.room_id != autonomous_room_id:
         return False
-    
+
     # Check if admin is configured
     admin_user_id = runtime.get_setting("ADMIN_USER_ID")
     if not admin_user_id:
         return False
-    
+
     # Check for admin-related keywords
     text = (message.content.text or "").lower() if message.content else ""
     admin_keywords = [
-        "admin", "user", "tell", "notify", "inform", "update",
-        "message", "send", "communicate", "report", "alert",
+        "admin",
+        "user",
+        "tell",
+        "notify",
+        "inform",
+        "update",
+        "message",
+        "send",
+        "communicate",
+        "report",
+        "alert",
     ]
-    
+
     return any(keyword in text for keyword in admin_keywords)
 
 
 async def _handle_send_to_admin(
-    runtime: "IAgentRuntime",
+    runtime: IAgentRuntime,
     message: Memory,
-    state: "State | None" = None,
+    state: State | None = None,
     options: HandlerOptions | None = None,
-    callback: "Callable[[Content], Awaitable[None]] | None" = None,
+    callback: Callable[[Content], Awaitable[None]] | None = None,
     responses: list[Memory] | None = None,
 ) -> ActionResult:
     """Handle send to admin action."""
@@ -68,7 +78,7 @@ async def _handle_send_to_admin(
             text="Autonomy service not available",
             data={"error": "Service unavailable"},
         )
-    
+
     autonomous_room_id = autonomy_service.get_autonomous_room_id()
     if not autonomous_room_id or message.room_id != autonomous_room_id:
         return ActionResult(
@@ -76,7 +86,7 @@ async def _handle_send_to_admin(
             text="Send to admin only available in autonomous context",
             data={"error": "Invalid context"},
         )
-    
+
     # Get admin user ID
     admin_user_id = runtime.get_setting("ADMIN_USER_ID")
     if not admin_user_id:
@@ -85,32 +95,44 @@ async def _handle_send_to_admin(
             text="No admin user configured. Set ADMIN_USER_ID in settings.",
             data={"error": "No admin configured"},
         )
-    
+
     # Find target room
-    admin_messages = await runtime.get_memories({
-        "roomId": runtime.agent_id,
-        "count": 10,
-        "tableName": "memories",
-    })
-    
+    admin_messages = await runtime.get_memories(
+        {
+            "roomId": runtime.agent_id,
+            "count": 10,
+            "tableName": "memories",
+        }
+    )
+
     target_room_id: UUID
     if admin_messages and len(admin_messages) > 0:
         target_room_id = admin_messages[-1].room_id or runtime.agent_id
     else:
         target_room_id = runtime.agent_id
-    
+
     # Extract and format message
     autonomous_thought = message.content.text or "" if message.content else ""
-    
+
     if "completed" in autonomous_thought or "finished" in autonomous_thought:
-        message_to_admin = f"I've completed a task and wanted to update you. My thoughts: {autonomous_thought}"
-    elif "problem" in autonomous_thought or "issue" in autonomous_thought or "error" in autonomous_thought:
-        message_to_admin = f"I encountered something that might need your attention: {autonomous_thought}"
+        message_to_admin = (
+            f"I've completed a task and wanted to update you. My thoughts: {autonomous_thought}"
+        )
+    elif (
+        "problem" in autonomous_thought
+        or "issue" in autonomous_thought
+        or "error" in autonomous_thought
+    ):
+        message_to_admin = (
+            f"I encountered something that might need your attention: {autonomous_thought}"
+        )
     elif "question" in autonomous_thought or "unsure" in autonomous_thought:
-        message_to_admin = f"I have a question and would appreciate your guidance: {autonomous_thought}"
+        message_to_admin = (
+            f"I have a question and would appreciate your guidance: {autonomous_thought}"
+        )
     else:
         message_to_admin = f"Autonomous update: {autonomous_thought}"
-    
+
     # Create and store message
     admin_message = Memory(
         id=as_uuid(str(uuid.uuid4())),
@@ -127,21 +149,23 @@ async def _handle_send_to_admin(
         ),
         created_at=int(uuid.uuid4().time),
     )
-    
+
     await runtime.create_memory(admin_message, "memories")
-    
+
     success_message = f"Message sent to admin in room {str(target_room_id)[:8]}..."
-    
+
     if callback:
-        await callback(Content(
-            text=success_message,
-            data={
-                "adminUserId": str(admin_user_id),
-                "targetRoomId": str(target_room_id),
-                "messageContent": message_to_admin,
-            },
-        ))
-    
+        await callback(
+            Content(
+                text=success_message,
+                data={
+                    "adminUserId": str(admin_user_id),
+                    "targetRoomId": str(target_room_id),
+                    "messageContent": message_to_admin,
+                },
+            )
+        )
+
     return ActionResult(
         success=True,
         text=success_message,
@@ -177,4 +201,3 @@ send_to_admin_action = Action(
     validate_fn=_validate_send_to_admin,
     handler=_handle_send_to_admin,
 )
-

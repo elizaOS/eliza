@@ -60,7 +60,9 @@ async def get_knowledge_context(
                 entry_dict = {
                     "id": str(entry.id) if entry.id else "",
                     "text": knowledge_text,
-                    "source": str(entry.metadata.get("source", "unknown")) if entry.metadata else "unknown",
+                    "source": str(entry.metadata.get("source", "unknown"))
+                    if entry.metadata
+                    else "unknown",
                 }
                 knowledge_entries.append(entry_dict)
                 sections.append(f"- {knowledge_text}")
@@ -95,4 +97,3 @@ knowledge_provider = Provider(
     get=get_knowledge_context,
     dynamic=True,  # Knowledge relevance depends on the message
 )
-

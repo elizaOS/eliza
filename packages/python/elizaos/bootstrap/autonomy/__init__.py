@@ -6,10 +6,10 @@ Provides autonomous operation capabilities for agents.
 
 from __future__ import annotations
 
-from .types import AutonomyConfig, AutonomyStatus
-from .service import AutonomyService, AUTONOMY_SERVICE_TYPE
 from .action import send_to_admin_action
 from .providers import admin_chat_provider, autonomy_status_provider
+from .service import AUTONOMY_SERVICE_TYPE, AutonomyService
+from .types import AutonomyConfig, AutonomyStatus
 
 __all__ = [
     "AutonomyConfig",
@@ -20,4 +20,3 @@ __all__ = [
     "admin_chat_provider",
     "autonomy_status_provider",
 ]
-

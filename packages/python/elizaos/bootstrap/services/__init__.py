@@ -34,4 +34,3 @@ EXTENDED_SERVICES: list[type] = [
 
 # All services list for easy registration (backwards compatibility)
 ALL_SERVICES = BASIC_SERVICES + EXTENDED_SERVICES
-

@@ -1,0 +1,92 @@
+{
+  "name": "@elizaos/plugin-groq",
+  "version": "1.0.4",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-groq.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/groq": "^3.0.4",
+    "@elizaos/core": "^1.0.0",
+    "ai": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "bun-types": "^1.2.0",
+    "prettier": "3.5.3",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist node_modules",
+    "format": "prettier --write .",
+    "test": "bun test typescript/",
+    "build:rust": "cd ../rust && cargo build --release",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy -- -D warnings",
+    "test:python": "cd ../python && PYTHONPATH=. pytest",
+    "lint:python": "cd ../python && ruff check . && ruff format --check ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GROQ_API_KEY": {
+        "type": "string",
+        "description": "Groq API key",
+        "required": true,
+        "sensitive": true
+      },
+      "GROQ_BASE_URL": {
+        "type": "string",
+        "description": "Custom API base URL",
+        "required": false,
+        "default": "https://api.groq.com/openai/v1"
+      },
+      "GROQ_SMALL_MODEL": {
+        "type": "string",
+        "description": "Small model name",
+        "required": false,
+        "default": "llama-3.1-8b-instant"
+      },
+      "GROQ_LARGE_MODEL": {
+        "type": "string",
+        "description": "Large model name",
+        "required": false,
+        "default": "llama-3.3-70b-versatile"
+      },
+      "GROQ_TTS_MODEL": {
+        "type": "string",
+        "description": "TTS model name",
+        "required": false,
+        "default": "playai-tts"
+      },
+      "GROQ_TTS_VOICE": {
+        "type": "string",
+        "description": "TTS voice name",
+        "required": false,
+        "default": "Chip-PlayAI"
+      }
+    }
+  }
+}

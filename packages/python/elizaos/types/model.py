@@ -141,9 +141,7 @@ class GenerateTextParams(BaseModel):
     min_tokens: int | None = Field(
         default=None, alias="minTokens", description="Minimum tokens to generate"
     )
-    temperature: float | None = Field(
-        default=None, description="Controls randomness (0.0-1.0)"
-    )
+    temperature: float | None = Field(default=None, description="Controls randomness (0.0-1.0)")
     top_p: float | None = Field(
         default=None, alias="topP", description="Nucleus sampling parameter (0.0-1.0)"
     )
@@ -153,9 +151,7 @@ class GenerateTextParams(BaseModel):
     min_p: float | None = Field(
         default=None, alias="minP", description="Minimum probability threshold (0.0-1.0)"
     )
-    seed: int | None = Field(
-        default=None, description="Random seed for reproducible outputs"
-    )
+    seed: int | None = Field(default=None, description="Random seed for reproducible outputs")
     repetition_penalty: float | None = Field(
         default=None, alias="repetitionPenalty", description="Repetition penalty (1.0 = no penalty)"
     )
@@ -168,15 +164,11 @@ class GenerateTextParams(BaseModel):
     stop_sequences: list[str] | None = Field(
         default=None, alias="stopSequences", description="Sequences to stop generation"
     )
-    user: str | None = Field(
-        default=None, description="User identifier for tracking/analytics"
-    )
+    user: str | None = Field(default=None, description="User identifier for tracking/analytics")
     response_format: dict[str, str] | str | None = Field(
         default=None, alias="responseFormat", description="Response format specification"
     )
-    stream: bool | None = Field(
-        default=None, description="Enable streaming mode"
-    )
+    stream: bool | None = Field(default=None, description="Enable streaming mode")
 
     model_config = {"populate_by_name": True, "extra": "allow"}
 
@@ -187,9 +179,7 @@ class GenerateTextOptions(BaseModel):
     include_character: bool | None = Field(
         default=None, alias="includeCharacter", description="Include character personality"
     )
-    model_type: str | None = Field(
-        default=None, alias="modelType", description="Model type to use"
-    )
+    model_type: str | None = Field(default=None, alias="modelType", description="Model type to use")
     max_tokens: int | None = Field(default=None, alias="maxTokens", description="Maximum tokens")
     temperature: float | None = Field(default=None, description="Temperature")
     top_p: float | None = Field(default=None, alias="topP", description="Top P setting")
@@ -335,11 +325,11 @@ class ModelHandler(BaseModel):
     """Model handler registration info."""
 
     provider: str = Field(..., description="Provider name that registered this handler")
-    priority: int | None = Field(default=None, description="Priority for selection (higher preferred)")
+    priority: int | None = Field(
+        default=None, description="Priority for selection (higher preferred)"
+    )
     registration_order: int | None = Field(
         default=None, alias="registrationOrder", description="Order of registration"
     )
 
     model_config = {"populate_by_name": True}
-
-

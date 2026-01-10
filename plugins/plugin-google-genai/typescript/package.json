@@ -1,0 +1,155 @@
+{
+  "name": "@elizaos/plugin-google-genai",
+  "version": "1.1.0",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-google-genai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "../rust/pkg/web/elizaos_plugin_google_genai.js",
+        "default": "../rust/pkg/web/elizaos_plugin_google_genai.js"
+      },
+      "node": {
+        "import": "../rust/pkg/node/elizaos_plugin_google_genai.js",
+        "default": "../rust/pkg/node/elizaos_plugin_google_genai.js"
+      },
+      "default": "../rust/pkg/node/elizaos_plugin_google_genai.js"
+    }
+  },
+  "files": [
+    "dist",
+    "../rust/pkg"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "^1.6.3",
+    "@google/genai": "^1.5.1",
+    "undici": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "prettier": "3.5.3",
+    "typescript": "5.8.3",
+    "dotenv": "^16.5.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test __tests__/unit/",
+    "test:integration": "bun test __tests__/integration/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "test:python": "cd ../python && pytest",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_google_genai"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GOOGLE_GENERATIVE_AI_API_KEY": {
+        "type": "string",
+        "description": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
+        "required": true,
+        "sensitive": true
+      },
+      "GOOGLE_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Overrides the default text embedding model used by Google Generative AI.",
+        "required": false,
+        "default": "text-embedding-004",
+        "sensitive": false
+      },
+      "GOOGLE_IMAGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default image analysis model used by Google Generative AI.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "GOOGLE_SMALL_MODEL": {
+        "type": "string",
+        "description": "Overrides the default small language model used for fast text/object generation.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "GOOGLE_LARGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default large language model used for complex text/object generation.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the small model name when GOOGLE_SMALL_MODEL is not set.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the large model name when GOOGLE_LARGE_MODEL is not set.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "IMAGE_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the image model name when GOOGLE_IMAGE_MODEL is not set.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+}

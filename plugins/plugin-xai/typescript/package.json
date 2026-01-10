@@ -1,0 +1,219 @@
+{
+  "name": "@elizaos/plugin-xai",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-xai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "../rust/pkg/web/elizaos_plugin_xai.js",
+        "default": "../rust/pkg/web/elizaos_plugin_xai.js"
+      },
+      "node": {
+        "import": "../rust/pkg/node/elizaos_plugin_xai.js",
+        "default": "../rust/pkg/node/elizaos_plugin_xai.js"
+      },
+      "default": "../rust/pkg/node/elizaos_plugin_xai.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.7.4",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:python": "cd ../python && python -m build",
+    "dev": "bun --hot build.ts",
+    "lint": "prettier --write .",
+    "lint:check": "prettier --check .",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "bun test",
+    "test:rust": "cd ../rust && cargo test",
+    "test:python": "cd ../python && pytest",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_xai"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "XAI_API_KEY": {
+        "type": "string",
+        "description": "xAI API key for Grok model access and X (Twitter) integration.",
+        "required": true,
+        "sensitive": true
+      },
+      "XAI_MODEL": {
+        "type": "string",
+        "description": "xAI Grok model for text generation (grok-3, grok-3-mini).",
+        "required": false,
+        "default": "grok-3",
+        "sensitive": false
+      },
+      "XAI_SMALL_MODEL": {
+        "type": "string",
+        "description": "xAI Grok model for faster/smaller tasks.",
+        "required": false,
+        "default": "grok-3-mini",
+        "sensitive": false
+      },
+      "XAI_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "xAI model for text embeddings.",
+        "required": false,
+        "default": "grok-embedding",
+        "sensitive": false
+      },
+      "XAI_BASE_URL": {
+        "type": "string",
+        "description": "xAI API base URL.",
+        "required": false,
+        "default": "https://api.x.ai/v1",
+        "sensitive": false
+      },
+      "X_AUTH_MODE": {
+        "type": "string",
+        "description": "X (Twitter) auth mode: 'env' (API keys), 'oauth' (OAuth2 PKCE), or 'bearer'.",
+        "required": false,
+        "default": "env",
+        "sensitive": false
+      },
+      "X_API_KEY": {
+        "type": "string",
+        "description": "X (Twitter) API key for OAuth 1.0a.",
+        "required": false,
+        "sensitive": true
+      },
+      "X_API_SECRET": {
+        "type": "string",
+        "description": "X (Twitter) API secret key for OAuth 1.0a.",
+        "required": false,
+        "sensitive": true
+      },
+      "X_ACCESS_TOKEN": {
+        "type": "string",
+        "description": "X (Twitter) access token for OAuth 1.0a.",
+        "required": false,
+        "sensitive": true
+      },
+      "X_ACCESS_TOKEN_SECRET": {
+        "type": "string",
+        "description": "X (Twitter) access token secret for OAuth 1.0a.",
+        "required": false,
+        "sensitive": true
+      },
+      "X_BEARER_TOKEN": {
+        "type": "string",
+        "description": "X (Twitter) Bearer token for app-only authentication.",
+        "required": false,
+        "sensitive": true
+      },
+      "X_CLIENT_ID": {
+        "type": "string",
+        "description": "X (Twitter) OAuth2 client ID.",
+        "required": false,
+        "sensitive": false
+      },
+      "X_REDIRECT_URI": {
+        "type": "string",
+        "description": "OAuth2 redirect URI.",
+        "required": false,
+        "sensitive": false
+      },
+      "X_DRY_RUN": {
+        "type": "boolean",
+        "description": "When true, all X actions are simulated.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "X_ENABLE_POST": {
+        "type": "boolean",
+        "description": "Enable autonomous posting.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "X_ENABLE_REPLIES": {
+        "type": "boolean",
+        "description": "Enable reply handling.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "X_ENABLE_ACTIONS": {
+        "type": "boolean",
+        "description": "Enable timeline actions (like, retweet).",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "X_MAX_POST_LENGTH": {
+        "type": "number",
+        "description": "Maximum post length (up to 4000 for premium).",
+        "required": false,
+        "default": 280,
+        "sensitive": false
+      }
+    }
+  }
+}

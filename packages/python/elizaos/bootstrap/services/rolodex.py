@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from elizaos.types import Service, ServiceType
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 class ContactCategory(str, Enum):
     """Contact categories."""
-    
+
     FRIEND = "friend"
     FAMILY = "family"
     COLLEAGUE = "colleague"
@@ -33,7 +33,7 @@ class ContactCategory(str, Enum):
 @dataclass
 class ContactPreferences:
     """Contact preferences."""
-    
+
     preferred_channel: str | None = None
     timezone: str | None = None
     language: str | None = None
@@ -45,7 +45,7 @@ class ContactPreferences:
 @dataclass
 class ContactInfo:
     """Contact information."""
-    
+
     entity_id: UUID
     categories: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -58,7 +58,7 @@ class ContactInfo:
 @dataclass
 class RelationshipAnalytics:
     """Relationship analytics data."""
-    
+
     strength: float = 0.0
     interaction_count: int = 0
     last_interaction_at: str | None = None
@@ -76,7 +76,7 @@ def calculate_relationship_strength(
     """Calculate relationship strength based on interaction patterns."""
     # Base score from interaction count (max 40 points)
     interaction_score = min(interaction_count * 2, 40)
-    
+
     # Recency score (max 30 points)
     recency_score = 0.0
     if last_interaction_at:
@@ -93,10 +93,10 @@ def calculate_relationship_strength(
                 recency_score = 5
         except Exception:
             pass
-    
+
     # Quality score (max 20 points)
     quality_score = min(message_quality * 2, 20)
-    
+
     # Relationship type bonus (max 10 points)
     relationship_bonus = {
         "family": 10,
@@ -105,36 +105,41 @@ def calculate_relationship_strength(
         "acquaintance": 4,
         "unknown": 0,
     }
-    
-    total = interaction_score + recency_score + quality_score + relationship_bonus.get(relationship_type, 0)
+
+    total = (
+        interaction_score
+        + recency_score
+        + quality_score
+        + relationship_bonus.get(relationship_type, 0)
+    )
     return max(0.0, min(100.0, round(total, 1)))
 
 
 class RolodexService(Service):
     """
     Service for managing contacts and relationships.
-    
+
     Provides capabilities for:
     - Adding and updating contacts
     - Categorizing contacts
     - Tracking relationship analytics
     - Managing contact preferences
     """
-    
+
     name = "rolodex"
     service_type = ServiceType.UNKNOWN
-    
+
     @property
     def capability_description(self) -> str:
         """Get the capability description for this service."""
         return "Comprehensive contact and relationship management service"
-    
+
     def __init__(self) -> None:
         """Initialize the rolodex service."""
         self._contacts: dict[UUID, ContactInfo] = {}
         self._analytics: dict[str, RelationshipAnalytics] = {}
         self._runtime: IAgentRuntime | None = None
-    
+
     async def start(self, runtime: IAgentRuntime) -> None:
         """Start the rolodex service."""
         self._runtime = runtime
@@ -143,7 +148,7 @@ class RolodexService(Service):
             src="service:rolodex",
             agentId=str(runtime.agent_id),
         )
-    
+
     async def stop(self) -> None:
         """Stop the rolodex service."""
         if self._runtime:
@@ -155,7 +160,7 @@ class RolodexService(Service):
         self._contacts.clear()
         self._analytics.clear()
         self._runtime = None
-    
+
     async def add_contact(
         self,
         entity_id: UUID,
@@ -173,22 +178,22 @@ class RolodexService(Service):
             privacy_level="private",
             last_modified=datetime.utcnow().isoformat(),
         )
-        
+
         self._contacts[entity_id] = contact
-        
+
         if self._runtime:
             self._runtime.logger.info(
                 f"Added contact {entity_id}",
                 src="service:rolodex",
                 categories=contact.categories,
             )
-        
+
         return contact
-    
+
     async def get_contact(self, entity_id: UUID) -> ContactInfo | None:
         """Get a contact by entity ID."""
         return self._contacts.get(entity_id)
-    
+
     async def update_contact(
         self,
         entity_id: UUID,
@@ -201,7 +206,7 @@ class RolodexService(Service):
         contact = self._contacts.get(entity_id)
         if not contact:
             return None
-        
+
         if categories is not None:
             contact.categories = categories
         if tags is not None:
@@ -210,18 +215,18 @@ class RolodexService(Service):
             contact.preferences = preferences
         if custom_fields is not None:
             contact.custom_fields = custom_fields
-        
+
         contact.last_modified = datetime.utcnow().isoformat()
-        
+
         return contact
-    
+
     async def remove_contact(self, entity_id: UUID) -> bool:
         """Remove a contact from the rolodex."""
         if entity_id in self._contacts:
             del self._contacts[entity_id]
             return True
         return False
-    
+
     async def search_contacts(
         self,
         categories: list[str] | None = None,
@@ -230,25 +235,19 @@ class RolodexService(Service):
     ) -> list[ContactInfo]:
         """Search contacts by criteria."""
         results = list(self._contacts.values())
-        
+
         if categories:
-            results = [
-                c for c in results
-                if any(cat in c.categories for cat in categories)
-            ]
-        
+            results = [c for c in results if any(cat in c.categories for cat in categories)]
+
         if tags:
-            results = [
-                c for c in results
-                if any(tag in c.tags for tag in tags)
-            ]
-        
+            results = [c for c in results if any(tag in c.tags for tag in tags)]
+
         return results
-    
+
     async def get_all_contacts(self) -> list[ContactInfo]:
         """Get all contacts."""
         return list(self._contacts.values())
-    
+
     async def get_relationship_analytics(
         self,
         entity_id: UUID,
@@ -256,7 +255,7 @@ class RolodexService(Service):
         """Get relationship analytics for an entity."""
         key = str(entity_id)
         return self._analytics.get(key)
-    
+
     async def update_relationship_analytics(
         self,
         entity_id: UUID,
@@ -266,24 +265,23 @@ class RolodexService(Service):
         """Update relationship analytics."""
         key = str(entity_id)
         analytics = self._analytics.get(key) or RelationshipAnalytics()
-        
+
         if interaction_count is not None:
             analytics.interaction_count = interaction_count
         if last_interaction_at is not None:
             analytics.last_interaction_at = last_interaction_at
-        
+
         # Recalculate strength
         contact = self._contacts.get(entity_id)
         relationship_type = "acquaintance"
         if contact and contact.categories:
             relationship_type = contact.categories[0]
-        
+
         analytics.strength = calculate_relationship_strength(
             analytics.interaction_count,
             analytics.last_interaction_at,
             relationship_type=relationship_type,
         )
-        
+
         self._analytics[key] = analytics
         return analytics
-

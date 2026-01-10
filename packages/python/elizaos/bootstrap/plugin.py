@@ -12,16 +12,16 @@ from typing import TYPE_CHECKING
 from elizaos.types import Plugin
 
 from .actions import BASIC_ACTIONS, EXTENDED_ACTIONS
+from .autonomy import (
+    AutonomyService,
+    admin_chat_provider,
+    autonomy_status_provider,
+    send_to_admin_action,
+)
 from .evaluators import BASIC_EVALUATORS, EXTENDED_EVALUATORS
 from .providers import BASIC_PROVIDERS, EXTENDED_PROVIDERS
 from .services import BASIC_SERVICES, EXTENDED_SERVICES
 from .types import CapabilityConfig
-from .autonomy import (
-    AutonomyService,
-    send_to_admin_action,
-    admin_chat_provider,
-    autonomy_status_provider,
-)
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime

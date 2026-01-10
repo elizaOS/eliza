@@ -1,0 +1,116 @@
+{
+  "name": "@elizaos/plugin-n8n",
+  "version": "1.0.0",
+  "description": "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
+  "type": "module",
+  "main": "dist/node/index.js",
+  "module": "dist/node/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.js",
+        "default": "./dist/node/index.js"
+      },
+      "default": "./dist/node/index.js"
+    },
+    "./rust": {
+      "node": {
+        "import": "../rust/pkg/node/elizaos_plugin_n8n.js",
+        "default": "../rust/pkg/node/elizaos_plugin_n8n.js"
+      },
+      "default": "../rust/pkg/node/elizaos_plugin_n8n.js"
+    }
+  },
+  "files": [
+    "dist",
+    "../rust/pkg"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "fs-extra": "^11.2.0",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.40.1",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^25.0.3",
+    "dotenv": "16.4.5",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "typescript": "5.8.2",
+    "vitest": "3.1.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "clean": "rm -rf dist .turbo node_modules rust/target",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test __tests__/unit/",
+    "test:integration": "bun test __tests__/integration/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "test:python": "cd ../python && pytest",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_n8n",
+    "build:all": "npm run build && npm run build:rust",
+    "test:all": "npm run test && npm run test:rust && npm run test:python",
+    "lint:all": "npm run format:check && npm run lint:rust && npm run lint:python"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "author": "ElizaOS",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "n8n",
+    "ai",
+    "plugin-creation",
+    "anthropic",
+    "claude"
+  ],
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/eliza/issues"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ANTHROPIC_API_KEY": {
+        "type": "string",
+        "description": "API key for Anthropic Claude models",
+        "required": true,
+        "sensitive": true
+      },
+      "PLUGIN_DATA_DIR": {
+        "type": "string",
+        "description": "Directory for plugin workspace",
+        "required": false,
+        "default": "./data"
+      },
+      "CLAUDE_MODEL": {
+        "type": "string",
+        "description": "Claude model to use",
+        "required": false,
+        "default": "claude-3-opus-20240229"
+      }
+    }
+  }
+}

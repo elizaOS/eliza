@@ -43,12 +43,12 @@ import {
 /**
  * Templates for XAI plugin interactions.
  * Auto-generated from prompts/*.txt
- * DO NOT EDIT - Generated from ../../dist/prompts/typescript/prompts.ts
+ * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
  */
 import {
   twitterMessageHandlerTemplate,
   messageHandlerTemplate,
-} from "../../dist/prompts/typescript/prompts.js";
+} from "../generated/prompts/typescript/prompts.js";
 export { twitterMessageHandlerTemplate, messageHandlerTemplate };
 
 /**

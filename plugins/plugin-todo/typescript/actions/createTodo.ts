@@ -35,7 +35,7 @@ interface ChoiceOption {
  * Template for extracting todo information from the user's message.
  * Auto-generated from prompts/extract_todo.txt
  */
-import { extractTodoTemplate as extractTodoTemplateBase } from '../../dist/prompts/typescript/prompts.js';
+import { extractTodoTemplate as extractTodoTemplateBase } from '../generated/prompts/typescript/prompts.js';
 import { composePrompt } from '@elizaos/core';
 
 const extractTodoTemplate = (text: string, messageHistory: string) => {

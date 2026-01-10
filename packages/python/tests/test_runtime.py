@@ -486,5 +486,3 @@ class TestAgentRuntimeCheckShouldRespond:
         )
         runtime = AgentRuntime(character=character)
         assert runtime.is_check_should_respond_enabled() is True
-
-

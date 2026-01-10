@@ -1,0 +1,110 @@
+{
+  "name": "@elizaos/plugin-sql",
+  "version": "2.0.0-alpha.0",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-sql"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "browser": "dist/browser/index.browser.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./types/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "../rust/pkg/web/elizaos_plugin_sql.js",
+        "default": "../rust/pkg/web/elizaos_plugin_sql.js"
+      },
+      "node": {
+        "import": "../rust/pkg/node/elizaos_plugin_sql.js",
+        "default": "../rust/pkg/node/elizaos_plugin_sql.js"
+      },
+      "default": "../rust/pkg/node/elizaos_plugin_sql.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "drizzle",
+    "types",
+    "../rust/pkg"
+  ],
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.3",
+    "@elizaos/core": "workspace:*",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.45.1",
+    "pg": "^8.16.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/pg": "^8.15.6",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json",
+    "dev": "bun run build.ts --watch",
+    "migrate:generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test __tests__/unit/",
+    "test:integration": "bash scripts/run-integration-tests.sh",
+    "test:integration:postgres": "bash scripts/run-integration-tests.sh --postgres",
+    "test:migration": "bun test __tests__/migration/",
+    "test:migration:postgres": "bun test __tests__/migration/ --serial",
+    "test:e2e:upgrade": "bash __tests__/migration/e2e/run-upgrade-test.sh",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "build:clean": "rm -rf dist",
+    "build:rust": "cd ../rust && ./build.sh",
+    "build:rust:native": "cd ../rust && cargo build --release",
+    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --features wasm",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets --features native -- -D warnings",
+    "typecheck:rust": "cd ../rust && cargo check --all-targets --all-features",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_sql || echo 'mypy not installed, skipping typecheck'"
+  },
+  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f"
+}

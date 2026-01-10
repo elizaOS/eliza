@@ -1,0 +1,269 @@
+{
+  "name": "@elizaos/plugin-knowledge",
+  "description": "Knowledge and RAG plugin for elizaOS - provides retrieval augmented generation capabilities",
+  "version": "1.6.1",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "knowledge",
+    "rag",
+    "retrieval-augmented-generation",
+    "embeddings"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-knowledge.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust"
+  ],
+  "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.17",
+    "@ai-sdk/google": "^2.0.14",
+    "@ai-sdk/openai": "^2.0.32",
+    "@elizaos/core": "^1.7.0",
+    "@openrouter/ai-sdk-provider": "^1.2.0",
+    "@tanstack/react-query": "^5.51.1",
+    "ai": "^5.0.48",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.2.0",
+    "lucide-react": "^0.525.0",
+    "mammoth": "^1.9.0",
+    "multer": "^2.0.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-force-graph-2d": "^1.27.1",
+    "tailwind-merge": "^3.3.1",
+    "unpdf": "^1.4.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/bun": "^1.2.22",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react-swc": "^3.10.0",
+    "autoprefixer": "^10.4.19",
+    "esbuild-plugin-copy": "^2.1.1",
+    "postcss": "^8.5.3",
+    "prettier": "3.6.2",
+    "tailwindcss": "^4.1.0",
+    "tailwindcss-animate": "^1.0.7",
+    "tsup": "8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:python": "cd ../python && python -m build",
+    "dev": "bun --hot build.ts",
+    "lint": "prettier --write .",
+    "lint:check": "prettier --check .",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "bun test",
+    "test:rust": "cd ../rust && cargo test",
+    "test:python": "cd ../python && pytest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "CTX_KNOWLEDGE_ENABLED": {
+        "type": "boolean",
+        "description": "Enables or disables contextual knowledge functionality; when set to 'true' additional text-generation settings are validated.",
+        "required": false,
+        "default": "false",
+        "sensitive": false
+      },
+      "EMBEDDING_PROVIDER": {
+        "type": "string",
+        "description": "Specifies which provider to use for generating embeddings (e.g., openai, google). If omitted the code assumes 'openai' through plugin-openai.",
+        "required": false,
+        "default": "openai",
+        "sensitive": false
+      },
+      "OPENAI_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to OpenAI services for embeddings or text generation.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Name of the OpenAI embedding model; also used as a fallback for TEXT_EMBEDDING_MODEL when EMBEDDING_PROVIDER defaults to openai.",
+        "required": false,
+        "sensitive": false
+      },
+      "TEXT_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Embedding model name to use with the configured EMBEDDING_PROVIDER.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "EMBEDDING_DIMENSION": {
+        "type": "number",
+        "description": "Custom embedding dimension size.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Alternative variable to supply embedding dimension when using OpenAI.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "TEXT_PROVIDER": {
+        "type": "string",
+        "description": "Provider to use for text generation when contextual knowledge is enabled (e.g., openai, anthropic, openrouter, google).",
+        "required": false,
+        "sensitive": false
+      },
+      "ANTHROPIC_API_KEY": {
+        "type": "string",
+        "description": "API key for Anthropic text generation models.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENROUTER_API_KEY": {
+        "type": "string",
+        "description": "API key for OpenRouter when using it as a text provider.",
+        "required": false,
+        "sensitive": true
+      },
+      "GOOGLE_API_KEY": {
+        "type": "string",
+        "description": "API key for Google AI services used for embeddings or text generation.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_BASE_URL": {
+        "type": "string",
+        "description": "Custom base URL for routing OpenAI API requests (useful for proxies).",
+        "required": false,
+        "sensitive": false
+      },
+      "ANTHROPIC_BASE_URL": {
+        "type": "string",
+        "description": "Custom base URL for Anthropic API requests.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENROUTER_BASE_URL": {
+        "type": "string",
+        "description": "Custom base URL for OpenRouter API requests.",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_BASE_URL": {
+        "type": "string",
+        "description": "Custom base URL for Google AI API requests.",
+        "required": false,
+        "sensitive": false
+      },
+      "TEXT_MODEL": {
+        "type": "string",
+        "description": "The specific text generation model to use with the selected TEXT_PROVIDER.",
+        "required": false,
+        "sensitive": false
+      },
+      "MAX_INPUT_TOKENS": {
+        "type": "number",
+        "description": "Maximum number of input tokens permitted per request.",
+        "required": false,
+        "default": 4000,
+        "sensitive": false
+      },
+      "MAX_OUTPUT_TOKENS": {
+        "type": "number",
+        "description": "Maximum number of output tokens that can be generated.",
+        "required": false,
+        "default": 4096,
+        "sensitive": false
+      },
+      "MAX_CONCURRENT_REQUESTS": {
+        "type": "number",
+        "description": "Upper bound on concurrent API requests for rate limiting.",
+        "required": false,
+        "default": 30,
+        "sensitive": false
+      },
+      "REQUESTS_PER_MINUTE": {
+        "type": "number",
+        "description": "Maximum number of API requests allowed per minute.",
+        "required": false,
+        "default": 60,
+        "sensitive": false
+      },
+      "TOKENS_PER_MINUTE": {
+        "type": "number",
+        "description": "Maximum number of tokens that can be processed per minute.",
+        "required": false,
+        "default": 150000,
+        "sensitive": false
+      },
+      "KNOWLEDGE_PATH": {
+        "type": "string",
+        "description": "Filesystem path where the knowledge loader searches for documents. Overrides the default ./docs directory.",
+        "required": false,
+        "default": "./docs",
+        "sensitive": false
+      },
+      "LOAD_DOCS_ON_STARTUP": {
+        "type": "boolean",
+        "description": "Controls whether the plugin should automatically load documents from the docs folder when the agent starts. Any value other than the string 'false' enables loading.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      }
+    }
+  }
+}

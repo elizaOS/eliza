@@ -117,9 +117,8 @@ async def get_relationships(
         )
 
     sender_name = message.content.sender_name if message.content else "Unknown"
-    text = (
-        f"# {runtime.character.name} has observed {sender_name} "
-        f"interacting with:\n" + "\n".join(formatted_relationships)
+    text = f"# {runtime.character.name} has observed {sender_name} interacting with:\n" + "\n".join(
+        formatted_relationships
     )
 
     return ProviderResult(
@@ -140,5 +139,3 @@ relationships_provider = Provider(
     get=get_relationships,
     dynamic=True,
 )
-
-

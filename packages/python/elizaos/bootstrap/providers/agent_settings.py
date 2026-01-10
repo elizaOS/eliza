@@ -76,4 +76,3 @@ agent_settings_provider = Provider(
     get=get_agent_settings_context,
     dynamic=True,
 )
-
