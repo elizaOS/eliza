@@ -7,11 +7,14 @@ This module defines the IDatabaseAdapter interface and related types.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from elizaos.types.primitives import UUID
+
+if TYPE_CHECKING:
+    from elizaos.types.memory import Memory
 
 
 class BaseLogBody(BaseModel):
@@ -429,8 +432,8 @@ class IDatabaseAdapter(ABC):
         ...
 
     @abstractmethod
-    async def update_memory(self, memory: dict[str, Any]) -> bool:
-        """Update a memory."""
+    async def update_memory(self, memory: "Memory | dict[str, Any]") -> bool:
+        """Update a memory (accepts Memory object or dict)."""
         ...
 
     @abstractmethod

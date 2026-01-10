@@ -1,7 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-import { listProjectsTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { listProjectsTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const listProjectsAction: Action = {
   name: 'LIST_LINEAR_PROJECTS',

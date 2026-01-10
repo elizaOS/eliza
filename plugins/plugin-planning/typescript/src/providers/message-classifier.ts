@@ -1,6 +1,6 @@
 import { Provider, ModelType, composePrompt } from '@elizaos/core';
 import type { ClassificationResult } from '../types';
-import { messageClassifierTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { messageClassifierTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const messageClassifierProvider: Provider = {
   name: 'messageClassifier',

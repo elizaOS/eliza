@@ -1,7 +1,7 @@
 //! Shared XML prompts for the elizaOS Forms Plugin.
 //!
 //! These prompts are auto-generated from prompts/*.txt files.
-//! DO NOT EDIT - Generated from ../../dist/prompts/rust/prompts.rs
+//! DO NOT EDIT - Generated from ../../typescript/generated/prompts/rust/prompts.rs
 //!
 //! To modify prompts, edit the .txt files in prompts/ and run:
 //!   npm run build:prompts

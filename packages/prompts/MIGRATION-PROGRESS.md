@@ -231,19 +231,24 @@ This document tracks the migration of plugins to use the centralized prompt syst
 
 For each plugin:
 
-1. Create `prompts/` directory
+1. Create `prompts/` directory at plugin root
 2. Extract prompts to `.txt` files (snake_case naming)
-3. Add `build:prompts` script to `package.json`
+3. Add `build:prompts` script to `package.json`:
+   - For `typescript/` structure: `./typescript/generated/prompts`
+   - For `typescript/src/` structure: `./typescript/src/generated/prompts`
+   - For `src/` structure: `./src/generated/prompts`
 4. Run `npm run build:prompts`
-5. Update imports to use generated prompts
+5. Update imports to use generated prompts (relative path from source file)
 6. Remove old inline prompt definitions
 
 ## 📝 Notes
 
 - All migrated plugins maintain backwards compatibility via re-exports
-- Generated prompts are in `dist/prompts/` (should be gitignored or committed based on preference)
+- Generated prompts are in `src/generated/prompts/` or `typescript/generated/prompts/`
 - Source `.txt` files should always be committed
+- Generated files should be committed so builds don't require pre-generation
 - Build scripts should run `build:prompts` before main build
+- Import from `../generated/prompts/typescript/prompts.js` (relative to source file)
 
 ## 🎯 Next Steps
 

@@ -1,7 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-import { getActivityTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { getActivityTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const getActivityAction: Action = {
   name: 'GET_LINEAR_ACTIVITY',
