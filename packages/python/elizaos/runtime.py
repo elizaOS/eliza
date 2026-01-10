@@ -191,7 +191,7 @@ class AgentRuntime(IAgentRuntime):
         self._action_results: dict[str, list[ActionResult]] = {}
 
         # Logger with configurable log level (defaults to ERROR)
-        self.logger = create_logger(namespace=character.name if character else "agent", level=log_level.upper())
+        self._logger = create_logger(namespace=character.name if character else "agent", level=log_level.upper())
 
         # Store initial plugins for later registration
         self._initial_plugins = plugins or []
