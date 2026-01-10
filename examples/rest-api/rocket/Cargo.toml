@@ -1,0 +1,20 @@
+[package]
+name = "elizaos-rest-api-rocket"
+version = "1.0.0"
+edition = "2021"
+description = "elizaOS REST API example using Rocket - no API keys required"
+license = "MIT"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+rocket = { version = "0.5", features = ["json"] }
+rocket_cors = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+elizaos-plugin-eliza-classic = { path = "../../../plugins/plugin-eliza-classic/rust" }
+chrono = { version = "0.4", features = ["serde"] }
+

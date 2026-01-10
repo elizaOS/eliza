@@ -1,0 +1,105 @@
+{
+  "name": "@elizaos/plugin-local-ai",
+  "version": "1.2.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-local-ai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.2.1",
+    "@huggingface/transformers": "^3.5.1",
+    "node-llama-cpp": "3.10.0",
+    "nodejs-whisper": "0.2.9",
+    "stream-browserify": "^3.0.0",
+    "tsup": "8.5.0",
+    "undici": "^7.10.0",
+    "uuid": "11.1.0",
+    "whisper-node": "^1.1.1",
+    "zod": "4.0.5"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "elizaos test",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MODELS_DIR": {
+        "type": "string",
+        "description": "Filesystem path to the directory where AI models are stored; required for initializing the LocalAI plugin during tests.",
+        "required": true,
+        "sensitive": false
+      },
+      "CACHE_DIR": {
+        "type": "string",
+        "description": "Filesystem path to the cache directory for model assets used by the LocalAI plugin during tests.",
+        "required": true,
+        "sensitive": false
+      },
+      "LOCAL_SMALL_MODEL": {
+        "type": "string",
+        "description": "Filename of the small local AI model; overrides the built-in default model if provided.",
+        "required": false,
+        "default": "DeepHermes-3-Llama-3-3B-Preview-q4.gguf",
+        "sensitive": false
+      },
+      "LOCAL_LARGE_MODEL": {
+        "type": "string",
+        "description": "Filename of the large local AI model; overrides the built-in default model if provided.",
+        "required": false,
+        "default": "DeepHermes-3-Llama-3-8B-q4.gguf",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Filename of the embedding model used for vector embeddings; overrides the default if supplied.",
+        "required": false,
+        "default": "bge-small-en-v1.5.Q4_K_M.gguf",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions the embedding model outputs; parsed as an integer.",
+        "required": false,
+        "default": 384,
+        "sensitive": false
+      },
+      "CUDA_VISIBLE_DEVICES": {
+        "type": "string",
+        "description": "Used to detect if CUDA-enabled GPUs are available and configure device and data type settings for model components accordingly.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "devDependencies": {
+    "@types/uuid": "10.0.0",
+    "prettier": "3.6.2",
+    "typescript": "^5.8.2"
+  }
+}

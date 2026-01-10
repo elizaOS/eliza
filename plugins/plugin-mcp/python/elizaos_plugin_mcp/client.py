@@ -11,6 +11,7 @@ from elizaos_plugin_mcp.types import (
     McpError,
     McpResource,
     McpResourceContent,
+    McpResourceTemplate,
     McpTool,
     McpToolResult,
     TextContent,
@@ -252,6 +253,39 @@ class McpClient:
         contents_data = result.get("contents", [])
 
         return [McpResourceContent.model_validate(content) for content in contents_data]
+
+    async def list_resource_templates(self) -> list[McpResourceTemplate]:
+        """List all available resource templates from the server.
+
+        Returns:
+            List of available resource templates.
+
+        Raises:
+            McpError: If the request fails.
+        """
+        if self._status != ConnectionStatus.CONNECTED:
+            raise McpError("Client not connected", "NOT_CONNECTED")
+
+        request = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "resources/templates/list",
+        }
+
+        await self._transport.send(request)
+        response = await self._transport.receive()
+
+        if "error" in response:
+            error = response["error"]
+            raise McpError(
+                f"Failed to list resource templates: {error.get('message', 'Unknown error')}",
+                error.get("code", "LIST_TEMPLATES_ERROR"),
+            )
+
+        result = response.get("result", {})
+        templates_data = result.get("resourceTemplates", [])
+
+        return [McpResourceTemplate.model_validate(template) for template in templates_data]
 
     async def __aenter__(self) -> McpClient:
         """Async context manager entry."""

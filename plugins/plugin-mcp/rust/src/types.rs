@@ -158,6 +158,22 @@ pub struct McpResource {
     pub mime_type: Option<String>,
 }
 
+/// An MCP resource template definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpResourceTemplate {
+    /// URI template for the resource.
+    pub uri_template: String,
+    /// Name of the resource template.
+    pub name: String,
+    /// Description of the resource template.
+    #[serde(default)]
+    pub description: String,
+    /// MIME type of resources from this template.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+}
+
 /// Text content from an MCP tool or resource.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextContent {

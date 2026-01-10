@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/interop",
+  "version": "2.0.0-alpha.0",
+  "description": "Cross-language plugin interoperability for elizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./schema": "./plugin.schema.json"
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust",
+    "plugin.schema.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "echo 'No tests yet'",
+    "lint": "eslint typescript/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

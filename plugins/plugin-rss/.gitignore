@@ -1,0 +1,44 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+*.d.ts
+.turbo
+.turbo-tsconfig.json
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.bak
+
+# IDE
+.idea
+.vscode
+.zed
+.DS_Store
+
+# Test coverage
+coverage
+.nyc_output
+
+# Logs
+*.log
+logs
+
+# Cache
+cache
+.cache
+tokencache
+
+# Temporary files
+*.tmp
+*.temp
+.tmp
+
+# Bundler artifacts
+tsup.config.bundled_*.mjs
+

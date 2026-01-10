@@ -6,7 +6,9 @@
     "declaration": true,
     "declarationMap": true,
     "composite": true,
-    "tsBuildInfoFile": "./dist/tsconfig.node.tsbuildinfo"
+    "tsBuildInfoFile": "./dist/tsconfig.node.tsbuildinfo",
+    "types": ["node"],
+    "skipLibCheck": true
   },
   "include": ["./typescript/**/*.ts"],
   "exclude": ["./typescript/__tests__/**", "./typescript/**/*.test.ts"]

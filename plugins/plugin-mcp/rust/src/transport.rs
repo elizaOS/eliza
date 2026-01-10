@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
 
 use crate::error::{McpError, McpResult};
 use crate::types::StdioServerConfig;
@@ -101,8 +100,9 @@ impl Transport for StdioTransport {
             .as_mut()
             .ok_or(McpError::NotConnected)?;
 
+        // MCP uses newline-delimited JSON (NDJSON) format
         let json_str = serde_json::to_string(message)?;
-        let content = format!("Content-Length: {}\r\n\r\n{}", json_str.len(), json_str);
+        let content = format!("{}\n", json_str);
 
         stdin
             .write_all(content.as_bytes())
@@ -123,54 +123,34 @@ impl Transport for StdioTransport {
             .as_mut()
             .ok_or(McpError::NotConnected)?;
 
-        // Read the Content-Length header
-        let mut header_line = String::new();
         let timeout = tokio::time::Duration::from_millis(self.config.timeout_ms);
 
-        let read_result = tokio::time::timeout(timeout, stdout.read_line(&mut header_line)).await;
+        // MCP uses newline-delimited JSON (NDJSON) format
+        // Read lines until we get a valid JSON response
+        loop {
+            let mut line = String::new();
+            let read_result = tokio::time::timeout(timeout, stdout.read_line(&mut line)).await;
 
-        match read_result {
-            Ok(Ok(0)) => return Err(McpError::connection("Connection closed by server")),
-            Ok(Ok(_)) => {}
-            Ok(Err(e)) => return Err(McpError::connection(e.to_string())),
-            Err(_) => return Err(McpError::timeout("receive")),
+            match read_result {
+                Ok(Ok(0)) => return Err(McpError::connection("Connection closed by server")),
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => return Err(McpError::connection(e.to_string())),
+                Err(_) => return Err(McpError::timeout("receive")),
+            }
+
+            let trimmed = line.trim();
+            
+            // Skip empty lines and non-JSON lines (like log messages)
+            if trimmed.is_empty() || !trimmed.starts_with('{') {
+                continue;
+            }
+
+            // Parse the JSON response
+            match serde_json::from_str(trimmed) {
+                Ok(value) => return Ok(value),
+                Err(_) => continue, // Skip malformed lines
+            }
         }
-
-        let header = header_line.trim();
-        if !header.starts_with("Content-Length:") {
-            return Err(McpError::protocol(format!("Invalid header: {}", header)));
-        }
-
-        let content_length: usize = header
-            .split(':')
-            .nth(1)
-            .ok_or_else(|| McpError::protocol("Missing content length value"))?
-            .trim()
-            .parse()
-            .map_err(|_| McpError::protocol("Invalid content length"))?;
-
-        // Read the empty line
-        let mut empty_line = String::new();
-        stdout
-            .read_line(&mut empty_line)
-            .await
-            .map_err(|e| McpError::connection(e.to_string()))?;
-
-        // Read the content
-        let mut content = vec![0u8; content_length];
-        let read_result =
-            tokio::time::timeout(timeout, tokio::io::AsyncReadExt::read_exact(stdout, &mut content))
-                .await;
-
-        match read_result {
-            Ok(Ok(_)) => {}
-            Ok(Err(e)) => return Err(McpError::connection(e.to_string())),
-            Err(_) => return Err(McpError::timeout("receive content")),
-        }
-
-        let json_str = String::from_utf8(content).map_err(|e| McpError::protocol(e.to_string()))?;
-
-        serde_json::from_str(&json_str).map_err(McpError::from)
     }
 
     async fn close(&mut self) -> McpResult<()> {

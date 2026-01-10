@@ -1,0 +1,9 @@
+{
+  "name": "FormsTestAgent",
+  "bio": ["I am a test agent for the Forms plugin"],
+  "system": "You are a helpful assistant testing the forms plugin.",
+  "messageExamples": [],
+  "postExamples": [],
+  "topics": ["testing", "forms", "plugin"],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-forms"]
+}

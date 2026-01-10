@@ -24,8 +24,8 @@
     "noUnusedParameters": false,
     "types": [],
     "paths": {
-      "@elizaos/core": ["../../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"],
+      "@elizaos/core": ["../../../packages/typescript/src/index.ts"],
+      "@elizaos/core/*": ["../../../packages/typescript/src/*"],
       "discord.js": ["../../../node_modules/discord.js"],
       "@discordjs/*": ["../../../node_modules/@discordjs/*"]
     }

@@ -1,23 +1,33 @@
 ---
 title: "Development"
-description: "From zero to published plugin in 30 minutes"
+description: "Build plugins for elizaOS in TypeScript, Python, or Rust"
 ---
 
 ## Your Plugin in 3 Steps
 
+<Tabs>
+  <Tab title="TypeScript">
 1. **Scaffold** - `elizaos create my-plugin --type plugin`
 2. **Build** - Add actions, providers, or services
-3. **Test** - Run locally, then publish
+3. **Test** - `elizaos test`
+  </Tab>
+  <Tab title="Python">
+1. **Create** - `mkdir plugin-my-plugin && cd plugin-my-plugin`
+2. **Build** - Define your plugin with actions and providers
+3. **Test** - `pytest`
+  </Tab>
+  <Tab title="Rust">
+1. **Create** - `cargo new plugin-my-plugin --lib`
+2. **Build** - Implement the Plugin trait
+3. **Test** - `cargo test`
+  </Tab>
+</Tabs>
 
 That's it. No complex setup, no boilerplate to maintain.
 
 <Tip>
-**30 minutes to your first plugin.** The CLI generates everything - TypeScript config, build setup, even a README. Focus on your logic, not infrastructure.
+**30 minutes to your first plugin.** Focus on your logic, not infrastructure. elizaOS plugins work identically across TypeScript, Python, and Rust.
 </Tip>
-
-<Note>
-This guide uses `bun` as the package manager, which is the preferred tool for elizaOS development. Bun provides faster installation times and built-in TypeScript support.
-</Note>
 
 ## Quick Start: Scaffolding Plugins with CLI
 
@@ -191,6 +201,8 @@ export default defineConfig({
 
 ### 5. Create Plugin Structure
 
+<Tabs>
+  <Tab title="TypeScript">
 Create `src/index.ts`:
 
 ```typescript
@@ -214,6 +226,57 @@ export const myPlugin: Plugin = {
 
 export default myPlugin;
 ```
+  </Tab>
+  <Tab title="Python">
+Create `plugin.py`:
+
+```python
+from elizaos import Plugin, Action, Provider
+
+from .actions.my_action import my_action
+from .providers.my_provider import my_provider
+
+my_plugin = Plugin(
+    name="my-custom-plugin",
+    description="A custom plugin for elizaOS",
+    actions=[my_action],
+    providers=[my_provider],
+)
+
+async def init(config, runtime):
+    print("Plugin initialized")
+
+my_plugin.init = init
+```
+  </Tab>
+  <Tab title="Rust">
+Create `src/lib.rs`:
+
+```rust
+use elizaos::{Plugin, Action, Provider, IAgentRuntime};
+use anyhow::Result;
+
+mod actions;
+mod providers;
+
+pub fn create_my_plugin() -> Result<Plugin> {
+    Ok(Plugin {
+        name: "my-custom-plugin".to_string(),
+        description: "A custom plugin for elizaOS".to_string(),
+        actions: vec![actions::my_action()],
+        providers: vec![providers::my_provider()],
+        init: Some(Box::new(|_config, _runtime| {
+            Box::pin(async {
+                println!("Plugin initialized");
+                Ok(())
+            })
+        })),
+        ..Default::default()
+    })
+}
+```
+  </Tab>
+</Tabs>
 
 ### 6. Update package.json
 

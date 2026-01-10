@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/examples-typescript",
+  "version": "1.0.0",
+  "description": "elizaOS TypeScript standalone examples",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "adventure": "bun run adventure-game.ts",
+    "adventure:watch": "LOG_LEVEL=fatal bun --watch run adventure-game.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@clack/prompts": "^0.11.0",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

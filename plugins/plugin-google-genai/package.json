@@ -1,0 +1,109 @@
+{
+  "name": "@elizaos/plugin-google-genai",
+  "version": "1.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-google-genai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.6.3",
+    "@google/genai": "^1.5.1",
+    "undici": "^7.9.0"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "typescript": "5.8.3",
+    "vitest": "3.1.3",
+    "dotenv": "^16.5.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GOOGLE_GENERATIVE_AI_API_KEY": {
+        "type": "string",
+        "description": "API key for Google Generative AI (Gemini) obtained from Google AI Studio.",
+        "required": true,
+        "sensitive": true
+      },
+      "GOOGLE_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Overrides the default text embedding model used by Google Generative AI.",
+        "required": false,
+        "default": "text-embedding-004",
+        "sensitive": false
+      },
+      "GOOGLE_IMAGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default image analysis model used by Google Generative AI.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "GOOGLE_SMALL_MODEL": {
+        "type": "string",
+        "description": "Overrides the default small language model used for fast text/object generation.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "GOOGLE_LARGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default large language model used for complex text/object generation.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the small model name when GOOGLE_SMALL_MODEL is not set.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the large model name when GOOGLE_LARGE_MODEL is not set.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "IMAGE_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the image model name when GOOGLE_IMAGE_MODEL is not set.",
+        "required": false,
+        "default": "gemini-2.0-flash-001",
+        "sensitive": false
+      }
+    }
+  }
+}

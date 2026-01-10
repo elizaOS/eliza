@@ -25,7 +25,8 @@ def memory_server_config() -> StdioServerConfig:
         type="stdio",
         command="npx",
         args=["-y", "@modelcontextprotocol/server-memory"],
-        timeout_ms=30000,
+        # 120 seconds to allow for package download on first run
+        timeout_ms=120000,
     )
 
 

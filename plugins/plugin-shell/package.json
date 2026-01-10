@@ -1,0 +1,39 @@
+{
+  "name": "@elizaos/plugin-shell",
+  "version": "1.2.0",
+  "description": "Shell command execution plugin for ElizaOS with directory restrictions and history tracking",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": ["eliza", "plugin", "shell", "terminal", "command", "history"],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.2.0",
+    "cross-spawn": "^7.0.6",
+    "joi": "^17.13.3"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^20.11.16",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+} 

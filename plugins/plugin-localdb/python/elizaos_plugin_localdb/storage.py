@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 T = TypeVar("T")
 
 
-class JsonFileStorage:
+class JSONStorage:
     """
     File-based JSON storage.
     Each item is stored as a separate JSON file in a directory hierarchy.
@@ -36,7 +36,7 @@ class JsonFileStorage:
         """Close the storage."""
         self._ready = False
 
-    async def is_ready(self) -> bool:
+    def is_ready(self) -> bool:
         """Check if storage is ready."""
         return self._ready
 

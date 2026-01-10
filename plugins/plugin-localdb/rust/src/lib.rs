@@ -1,61 +1,46 @@
-//! elizaOS Plugin SQL - Rust Implementation
+//! elizaOS Plugin LocalDB - Simple JSON-based storage for Rust
 //!
-//! This crate provides database adapters for elizaOS, supporting both PGLite (for WASM/browser)
-//! and PostgreSQL (for native server deployments).
+//! This crate provides a lightweight, file-based database adapter for elizaOS
+//! using plain JSON files for storage. No external database dependencies required.
 //!
 //! # Features
 //!
-//! - `native` (default): Enables PostgreSQL adapter with sqlx
-//! - `wasm`: Enables PGLite adapter with JavaScript interop
+//! - Zero configuration - no database setup required
+//! - JSON file-based storage using serde_json
+//! - Simple HNSW implementation for vector search
+//! - Cross-platform file system operations
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use elizaos_plugin_sql::{PostgresAdapter, DatabaseAdapter};
-//! use elizaos::UUID;
+//! use elizaos_plugin_localdb::{LocalDatabaseAdapter, JsonStorage};
 //!
 //! async fn example() -> anyhow::Result<()> {
-//!     let agent_id = UUID::new_v4();
-//!     let adapter = PostgresAdapter::new("postgres://localhost/eliza", &agent_id).await?;
+//!     let storage = JsonStorage::new("./data")?;
+//!     let adapter = LocalDatabaseAdapter::new(storage, "agent-id".to_string());
 //!     adapter.init().await?;
 //!     
-//!     let agent = adapter.get_agent(&agent_id).await?;
+//!     // Use the adapter...
+//!     
+//!     adapter.close().await?;
 //!     Ok(())
 //! }
 //! ```
 
 #![warn(missing_docs)]
 
-pub mod base;
-#[cfg(feature = "native")]
-pub mod migration;
-pub mod schema;
+pub mod storage;
+pub mod hnsw;
+pub mod adapter;
 
-#[cfg(feature = "native")]
-pub mod postgres;
-
-#[cfg(feature = "wasm")]
-pub mod pglite;
-
-#[cfg(feature = "wasm")]
-pub mod wasm;
-
-// Re-export core types
-pub use elizaos::types::*;
-
-// Re-export adapters
-pub use base::DatabaseAdapter;
-
-#[cfg(feature = "native")]
-pub use postgres::PostgresAdapter;
-
-#[cfg(feature = "wasm")]
-pub use pglite::PgLiteAdapter;
+pub use storage::JsonStorage;
+pub use hnsw::SimpleHNSW;
+pub use adapter::LocalDatabaseAdapter;
 
 /// Plugin definition for elizaOS
 pub fn plugin() -> elizaos::Plugin {
     elizaos::Plugin::new(
-        "sql",
-        "SQL database plugin with PostgreSQL and PGLite support",
+        "localdb",
+        "Simple JSON-based local database storage",
     )
 }

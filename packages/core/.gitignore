@@ -1,8 +1,0 @@
-node_modules
-dist
-src/
-elizaConfig.yaml
-custom_actions/
-cache/
-coverage/
-*.tsbuildinfo

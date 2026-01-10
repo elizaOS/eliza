@@ -44,7 +44,7 @@ TypeScript examples with optional Rust-WASM interop for cross-language type comp
 
 ```bash
 # Build WASM module (optional, for WASM features)
-cd packages/core/rust && ./build-wasm.sh && cd -
+cd packages/rust && ./build-wasm.sh && cd -
 
 # Chat example
 bun run examples/rust-wasm/chat.ts
@@ -59,7 +59,7 @@ LOG_LEVEL=fatal bun run examples/rust-wasm/adventure-game.ts
 # Setup virtual environment
 python3 -m venv examples/python/.venv --without-pip
 curl -sS https://bootstrap.pypa.io/get-pip.py | ./examples/python/.venv/bin/python
-./examples/python/.venv/bin/python -m pip install -e packages/core/python -e packages/plugin-openai/python
+./examples/python/.venv/bin/python -m pip install -e packages/python -e packages/plugin-openai/python
 
 # Chat example
 ./examples/python/.venv/bin/python examples/python/chat.py

@@ -49,6 +49,9 @@ anyhow = "1.0"
 # Base58 encoding
 bs58 = "0.5"
 
+# Hex encoding
+hex = "0.4"
+
 # BigNumber equivalent
 rust_decimal = { version = "1.36", features = ["serde"] }
 

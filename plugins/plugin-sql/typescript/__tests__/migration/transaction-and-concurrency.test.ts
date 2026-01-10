@@ -647,7 +647,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       // Test that getAdvisoryLockId returns a valid bigint
       const testPlugins = [
         "@elizaos/plugin-sql",
-        "@elizaos/plugin-bootstrap",
+        "@elizaos/plugin-openai",
         "some-very-long-plugin-name-that-should-still-work-correctly",
         "plugin-with-special-chars-!@#$%^&*()",
       ];

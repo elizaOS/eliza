@@ -15,7 +15,11 @@ from solders.system_program import transfer
 from solders.transaction import VersionedTransaction
 from spl.token.constants import TOKEN_PROGRAM_ID
 from spl.token.instructions import TransferParams as SplTransferParams
-from spl.token.instructions import create_associated_token_account, transfer as spl_transfer
+from spl.token.instructions import (
+    create_associated_token_account,
+    get_associated_token_address,
+    transfer as spl_transfer,
+)
 
 from elizaos_plugin_solana.config import WalletConfig
 from elizaos_plugin_solana.errors import (
@@ -219,6 +223,95 @@ class SolanaClient:
             )
         except Exception as e:
             raise TransactionError(f"Transfer failed: {e}") from e
+
+    async def transfer_token(
+        self, mint: Pubkey, recipient: Pubkey, amount: Decimal
+    ) -> TransferResult:
+        """Transfer SPL tokens to another address.
+
+        Args:
+            mint: Token mint address.
+            recipient: Recipient's public key.
+            amount: Amount in token units (will be multiplied by 10^decimals).
+
+        Returns:
+            Transfer result with transaction signature.
+
+        Raises:
+            ConfigError: If wallet can't sign.
+            TransactionError: If transaction fails.
+        """
+        keypair = self._config.keypair
+
+        try:
+            # Get mint info for decimals
+            mint_info = await self._rpc.get_account_info(mint)
+            if mint_info.value is None:
+                raise TransactionError(f"Mint account not found: {mint}")
+
+            # Parse decimals from mint account (offset 44 in SPL Token mint layout)
+            mint_data = mint_info.value.data
+            if hasattr(mint_data, "__len__") and len(mint_data) >= 45:
+                decimals = mint_data[44] if isinstance(mint_data, (bytes, list)) else 9
+            else:
+                decimals = 9  # Default to 9 if we can't parse
+
+            raw_amount = int(amount * Decimal(10 ** decimals))
+
+            # Get source and destination ATAs
+            source_ata = get_associated_token_address(keypair.pubkey(), mint)
+            dest_ata = get_associated_token_address(recipient, mint)
+
+            instructions = []
+
+            # Check if destination ATA exists, if not create it
+            dest_account = await self._rpc.get_account_info(dest_ata)
+            if dest_account.value is None:
+                instructions.append(
+                    create_associated_token_account(
+                        keypair.pubkey(),  # payer
+                        recipient,  # owner
+                        mint,  # mint
+                    )
+                )
+
+            # Add transfer instruction
+            instructions.append(
+                spl_transfer(
+                    SplTransferParams(
+                        program_id=TOKEN_PROGRAM_ID,
+                        source=source_ata,
+                        dest=dest_ata,
+                        owner=keypair.pubkey(),
+                        amount=raw_amount,
+                    )
+                )
+            )
+
+            # Get recent blockhash
+            blockhash_resp = await self._rpc.get_latest_blockhash()
+            blockhash = blockhash_resp.value.blockhash
+
+            # Create and sign transaction
+            msg = MessageV0.try_compile(
+                keypair.pubkey(), instructions, [], blockhash
+            )
+            tx = VersionedTransaction(msg, [keypair])
+
+            # Send transaction
+            resp = await self._rpc.send_transaction(tx)
+            signature = str(resp.value)
+
+            return TransferResult(
+                success=True,
+                signature=signature,
+                amount=str(amount),
+                recipient=str(recipient),
+            )
+        except TransactionError:
+            raise
+        except Exception as e:
+            raise TransactionError(f"Token transfer failed: {e}") from e
 
     async def get_swap_quote(self, params: SwapQuoteParams) -> SwapQuote:
         """Get a swap quote from Jupiter.

@@ -1,0 +1,21 @@
+[package]
+name = "elizaos-rest-api-actix"
+version = "1.0.0"
+edition = "2021"
+description = "elizaOS REST API example using Actix Web - no API keys required"
+license = "MIT"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+elizaos-plugin-eliza-classic = { path = "../../../plugins/plugin-eliza-classic/rust" }
+chrono = { version = "0.4", features = ["serde"] }
+

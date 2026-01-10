@@ -1,0 +1,48 @@
+[package]
+name = "elizaos-plugin-knowledge"
+version = "1.6.1"
+edition = "2021"
+description = "Knowledge plugin for elizaOS, providing Retrieval Augmented Generation (RAG) capabilities"
+license = "MIT"
+repository = "https://github.com/elizaos-plugins/plugin-knowledge"
+keywords = ["elizaos", "plugin", "knowledge", "rag", "embeddings"]
+categories = ["text-processing", "machine-learning"]
+readme = "README.md"
+
+[lib]
+name = "elizaos_plugin_knowledge"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "v5", "serde"] }
+
+# Hashing
+sha2 = "0.10"
+hex = "0.4"
+
+# HTTP client (for API calls)
+reqwest = { version = "0.11", features = ["json"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Async traits
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+

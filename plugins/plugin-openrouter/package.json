@@ -1,0 +1,176 @@
+{
+  "name": "@elizaos/plugin-openrouter",
+  "version": "1.5.17",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/node/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-openrouter.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "require": "./dist/cjs/index.node.cjs",
+      "browser": "./dist/browser/index.browser.js",
+      "node": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.32",
+    "@ai-sdk/ui-utils": "1.2.11",
+    "@elizaos/core": "^1.7.0",
+    "@openrouter/ai-sdk-provider": "^1.2.0",
+    "ai": "^5.0.47",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.22",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^24.5.2",
+    "dotenv": "^17.2.2",
+    "prettier": "3.6.2",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "OPENROUTER_API_KEY": {
+        "type": "string",
+        "description": "API key used by the OpenRouter plugin for authenticating requests.",
+        "required": true,
+        "sensitive": true
+      },
+      "OPENROUTER_IMAGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default image description model used by the OpenRouter plugin.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENROUTER_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for the OpenRouter API endpoints.",
+        "required": false,
+        "default": "https://openrouter.ai/api/v1",
+        "sensitive": false
+      },
+      "OPENROUTER_BROWSER_BASE_URL": {
+        "type": "string",
+        "description": "Browser-only proxy endpoint base URL for OpenRouter requests (no secrets in the client).",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENROUTER_SMALL_MODEL": {
+        "type": "string",
+        "description": "Overrides the default small language model used for text/object generation.",
+        "required": false,
+        "default": "google/gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "OPENROUTER_LARGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default large language model used for text/object generation.",
+        "required": false,
+        "default": "google/gemini-2.5-flash",
+        "sensitive": false
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the small model name when OPENROUTER_SMALL_MODEL is not set.",
+        "required": false,
+        "default": "google/gemini-2.0-flash-001",
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the large model name when OPENROUTER_LARGE_MODEL is not set.",
+        "required": false,
+        "default": "google/gemini-2.5-flash",
+        "sensitive": false
+      },
+      "IMAGE_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the image model name when OPENROUTER_IMAGE_MODEL is not set.",
+        "required": false,
+        "default": "x-ai/grok-2-vision-1212",
+        "sensitive": false
+      },
+      "OPENROUTER_IMAGE_GENERATION_MODEL": {
+        "type": "string",
+        "description": "Overrides the default image generation model used by the OpenRouter plugin.",
+        "required": false,
+        "default": "google/gemini-2.5-flash-image-preview",
+        "sensitive": false
+      },
+      "IMAGE_GENERATION_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the image generation model name when OPENROUTER_IMAGE_GENERATION_MODEL is not set.",
+        "required": false,
+        "default": "google/gemini-2.5-flash-image-preview",
+        "sensitive": false
+      },
+      "OPENROUTER_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Overrides the default text embedding model used by the OpenRouter plugin.",
+        "required": false,
+        "default": "openai/text-embedding-3-small",
+        "sensitive": false
+      },
+      "EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "General fallback environment variable for the embedding model name when OPENROUTER_EMBEDDING_MODEL is not set.",
+        "required": false,
+        "default": "openai/text-embedding-3-small",
+        "sensitive": false
+      },
+      "OPENROUTER_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions for embedding vectors. Supported values: 256, 384, 512, 768, 1024, 1536, 2048, 3072.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "General fallback environment variable for the embedding dimensions when OPENROUTER_EMBEDDING_DIMENSIONS is not set.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "OPENROUTER_AUTO_CLEANUP_IMAGES": {
+        "type": "boolean",
+        "description": "Whether to automatically cleanup generated images after a short delay.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "OPENROUTER_TOOL_EXECUTION_MAX_STEPS": {
+        "type": "number",
+        "description": "Maximum number of steps for multi-step tool execution. Allows the AI to generate descriptive text after calling tools in AI SDK v5.",
+        "required": false,
+        "default": 15,
+        "sensitive": false
+      }
+    }
+  }
+}

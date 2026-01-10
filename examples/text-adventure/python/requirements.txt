@@ -1,0 +1,7 @@
+# elizaOS Python packages
+elizaos>=1.0.0
+elizaos-plugin-openai>=1.0.0
+
+# For async support
+asyncio>=3.4.0
+

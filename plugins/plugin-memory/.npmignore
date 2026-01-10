@@ -1,0 +1,11 @@
+src
+__tests__
+*.test.ts
+*.spec.ts
+tsconfig.json
+tsconfig.build.json
+bunfig.toml
+.env
+.env.local
+coverage
+

@@ -1,25 +1,25 @@
 [package]
-name = "elizaos-plugin-sql"
+name = "elizaos-plugin-localdb"
 version = "2.0.0"
 edition = "2021"
 authors = ["elizaOS Team"]
-description = "SQL database plugin for elizaOS - Rust implementation with PGLite and PostgreSQL support"
+description = "Simple JSON-based local database plugin for elizaOS - no SQL required"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "database", "postgres", "wasm"]
-categories = ["database", "wasm", "web-programming"]
+keywords = ["ai", "agent", "database", "json", "local"]
+categories = ["database"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["tokio/full", "sqlx", "elizaos/native"]
+native = ["tokio/full", "elizaos/native"]
 wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "elizaos/wasm", "getrandom/js"]
 
 [dependencies]
 # Core dependency (path for local dev, version for publishing)
-elizaos = { version = "2.0.0", path = "../../core/rust" }
+elizaos = { version = "2.0.0", path = "../../../packages/rust" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -27,27 +27,18 @@ serde_json = "1.0"
 
 # Async runtime
 async-trait = "0.1"
-futures = "0.3"
 
 # UUID handling
 uuid = { version = "1.19", features = ["v4", "serde"] }
 
 # Error handling
-thiserror = "2.0"
 anyhow = "1.0"
 
-# Logging
-tracing = "0.1"
-
-# Regex for schema name derivation
-regex = "1.10"
-
-# Date/time
-chrono = { version = "0.4", features = ["serde"] }
+# Random number generation (for HNSW level selection)
+rand = "0.8"
 
 # Native-only dependencies
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "json", "chrono"], optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }
@@ -59,9 +50,8 @@ getrandom = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
-pretty_assertions = "1.0"
+tempfile = "3.10"
 
 [profile.release]
 lto = true
 opt-level = "z"
-

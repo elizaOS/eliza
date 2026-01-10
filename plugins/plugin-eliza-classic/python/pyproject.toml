@@ -41,3 +41,6 @@ packages = ["elizaos_plugin_eliza_classic"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+
+
+

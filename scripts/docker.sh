@@ -47,7 +47,7 @@ case "$1" in
         done
 
         # Add core types mount separately (special case)
-        CMD="$CMD -v \"$(pwd)/packages/core/types:/app/packages/core/types\""
+        CMD="$CMD -v \"$(pwd)/packages/typescript/types:/app/packages/typescript/types\""
 
         # Add container name and image
         CMD="$CMD --name eliza eliza"

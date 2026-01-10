@@ -25,7 +25,7 @@ Publishes Python packages to PyPI.
 - Manual dispatch
 
 **Packages:**
-- `elizaos` (packages/core/python) - Core runtime and types
+- `elizaos` (packages/python) - Core runtime and types
 - `elizaos-plugin-sql` (packages/plugin-sql/python) - SQL database adapters
 
 **Required Secrets:**
@@ -40,7 +40,7 @@ Publishes Rust crates to crates.io.
 - Manual dispatch
 
 **Crates:**
-- `elizaos-core` (packages/core/rust) - Core runtime and types
+- `elizaos-core` (packages/rust) - Core runtime and types
 - `elizaos-plugin-sql` (packages/plugin-sql/rust) - SQL database adapters
 
 **Required Secrets:**
@@ -87,7 +87,7 @@ The release will trigger:
 
 **Python:**
 ```bash
-cd packages/core/python
+cd packages/python
 pip install build twine
 python -m build
 twine upload dist/*
@@ -95,7 +95,7 @@ twine upload dist/*
 
 **Rust:**
 ```bash
-cd packages/core/rust
+cd packages/rust
 cargo publish
 ```
 

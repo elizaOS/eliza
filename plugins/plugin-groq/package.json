@@ -1,0 +1,109 @@
+{
+  "name": "@elizaos/plugin-groq",
+  "version": "1.0.4",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-groq.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/groq": "^1.2.9",
+    "@ai-sdk/ui-utils": "^1.2.11",
+    "@elizaos/core": "^1.0.0",
+    "ai": "^4.3.15",
+    "js-tiktoken": "^1.0.18",
+    "tsup": "8.4.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "npx elizaos test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GROQ_BASE_URL": {
+        "type": "string",
+        "description": "Custom base URL for Groq API endpoints.",
+        "required": false,
+        "default": "https://api.groq.com/openai/v1",
+        "sensitive": false
+      },
+      "GROQ_SMALL_MODEL": {
+        "type": "string",
+        "description": "Overrides the default model name used for small-sized text/object generation.",
+        "required": false,
+        "default": "llama-3.1-8b-instant",
+        "sensitive": false
+      },
+      "GROQ_LARGE_MODEL": {
+        "type": "string",
+        "description": "Overrides the default model name used for large-sized text/object generation.",
+        "required": false,
+        "default": "qwen-qwq-32b",
+        "sensitive": false
+      },
+      "GROQ_API_KEY": {
+        "type": "string",
+        "description": "Groq API key used to authenticate requests to Groq services.",
+        "required": true,
+        "sensitive": true
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "Alternative env var to specify the small model name if GROQ_SMALL_MODEL is not provided.",
+        "required": false,
+        "default": "llama-3.1-8b-instant",
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "Alternative env var to specify the large model name if GROQ_LARGE_MODEL is not provided.",
+        "required": false,
+        "default": "qwen-qwq-32b",
+        "sensitive": false
+      },
+      "GROQ_TTS_MODEL": {
+        "type": "string",
+        "description": "Model name used for Groq text-to-speech requests.",
+        "required": false,
+        "default": "playai-tts",
+        "sensitive": false
+      },
+      "GROQ_TTS_VOICE": {
+        "type": "string",
+        "description": "Voice selection for Groq text-to-speech.",
+        "required": false,
+        "default": "Chip-PlayAI",
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Visual Assistant",
+  "bio": ["I am a visual AI assistant"],
+  "system": "You are a helpful visual AI assistant.",
+  "messageExamples": [],
+  "postExamples": [],
+  "topics": ["vision"],
+  "plugins": ["@elizaos/plugin-vision", "@elizaos/plugin-autonomy", "plugin-openai"]
+}

@@ -6,14 +6,16 @@
 pub mod client;
 pub mod error;
 pub mod transport;
+pub mod transports;
 pub mod types;
 
 pub use client::McpClient;
 pub use error::{McpError, McpResult};
 pub use transport::{StdioTransport, Transport};
+pub use transports::HttpTransport;
 pub use types::{
-    ConnectionStatus, HttpServerConfig, McpResource, McpResourceContent, McpServerConfig,
-    McpTool, McpToolInputSchema, McpToolResult, StdioServerConfig, TextContent,
+    ConnectionStatus, HttpServerConfig, McpResource, McpResourceContent, McpResourceTemplate,
+    McpServerConfig, McpTool, McpToolInputSchema, McpToolResult, StdioServerConfig, TextContent,
 };
 
 

@@ -12,7 +12,8 @@ fn memory_server_config() -> StdioServerConfig {
         ],
         env: HashMap::new(),
         cwd: None,
-        timeout_ms: 30000,
+        // 120 seconds to allow for package download on first run
+        timeout_ms: 120000,
     }
 }
 
@@ -59,9 +60,9 @@ async fn test_list_tools() {
     let tools = client.list_tools().await.expect("Failed to list tools");
     assert!(!tools.is_empty(), "Expected at least one tool");
 
-    // Memory server should have store_memory tool
-    let has_store = tools.iter().any(|t| t.name == "store_memory");
-    assert!(has_store, "Expected store_memory tool");
+    // Memory server should have create_entities tool (knowledge graph based)
+    let has_create = tools.iter().any(|t| t.name == "create_entities");
+    assert!(has_create, "Expected create_entities tool");
 
     client.close().await.expect("Failed to close");
 }
@@ -79,13 +80,11 @@ async fn test_call_tool() {
 
     client.connect().await.expect("Failed to connect");
 
+    // Use read_graph which doesn't require any arguments
     let result = client
         .call_tool(
-            "store_memory",
-            serde_json::json!({
-                "key": "test-key",
-                "value": "test-value"
-            }),
+            "read_graph",
+            serde_json::json!({}),
         )
         .await;
 

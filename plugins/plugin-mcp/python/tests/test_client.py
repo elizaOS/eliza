@@ -19,9 +19,9 @@ class TestMcpClientIntegration:
         assert isinstance(tools, list)
         assert len(tools) > 0
 
-        # Memory server should have store_memory tool
+        # Memory server should have create_entities tool (knowledge graph based)
         tool_names = [t.name for t in tools]
-        assert "store_memory" in tool_names or len(tools) > 0
+        assert "create_entities" in tool_names or "read_graph" in tool_names
 
     @pytest.mark.asyncio
     async def test_call_tool(self, memory_server_client: McpClient) -> None:
@@ -31,14 +31,14 @@ class TestMcpClientIntegration:
         if not tools:
             pytest.skip("No tools available")
 
-        # Find store_memory tool
-        store_tool = next((t for t in tools if t.name == "store_memory"), None)
-        if store_tool is None:
-            pytest.skip("store_memory tool not found")
+        # Use read_graph which doesn't require any arguments
+        read_tool = next((t for t in tools if t.name == "read_graph"), None)
+        if read_tool is None:
+            pytest.skip("read_graph tool not found")
 
         result = await memory_server_client.call_tool(
-            name="store_memory",
-            arguments={"key": "test-key", "value": "test-value"},
+            name="read_graph",
+            arguments={},
         )
 
         assert result is not None
