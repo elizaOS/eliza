@@ -454,3 +454,4 @@ class ApiBankAdapter:
             logger.error(f"[ApiBankAdapter] Error saving report: {e}")
             raise
 
+

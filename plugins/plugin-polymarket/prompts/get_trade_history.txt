@@ -48,3 +48,4 @@ If no specific filters are mentioned that can be mapped to these parameters, you
     "info": "No specific trade history filters identified. Will attempt to fetch recent trades for the current user if identifiable, or all trades if no user context."
 }
 
+

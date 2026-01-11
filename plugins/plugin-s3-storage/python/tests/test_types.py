@@ -70,3 +70,4 @@ class TestContentType:
         """Test file with no extension."""
         assert get_content_type("README") == "application/octet-stream"
 
+

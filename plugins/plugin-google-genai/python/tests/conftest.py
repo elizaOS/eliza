@@ -45,3 +45,4 @@ async def client(config: GoogleGenAIConfig) -> AsyncGenerator[GoogleGenAIClient,
     async with GoogleGenAIClient(config) as client:
         yield client
 
+

@@ -95,3 +95,4 @@ class TodoConfig:
         if self.cache_max_size < 10:
             raise ConfigError("cache_max_size must be at least 10")
 
+

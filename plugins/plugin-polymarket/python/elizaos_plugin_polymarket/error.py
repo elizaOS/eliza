@@ -52,3 +52,4 @@ class PolymarketError(Exception):
         """Return repr representation."""
         return f"PolymarketError(code={self.code!r}, message={super().__str__()!r})"
 
+

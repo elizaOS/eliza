@@ -47,3 +47,4 @@ class JobStatus(str, Enum):
         """Check if job has reached a terminal state."""
         return self in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
 
+

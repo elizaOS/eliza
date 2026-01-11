@@ -245,3 +245,4 @@ MIT
 - [elizaOS Documentation](https://elizaos.ai/docs)
 - [Plugin Architecture Guide](.cursor/rules/elizaos/elizaos_client_plugins.mdc)
 
+

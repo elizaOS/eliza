@@ -13,3 +13,4 @@ def s3_config() -> dict[str, str]:
         "bucket": "test-bucket",
     }
 
+

@@ -37,3 +37,4 @@ pub enum FormsError {
 /// Result type for form operations.
 pub type FormsResult<T> = Result<T, FormsError>;
 
+

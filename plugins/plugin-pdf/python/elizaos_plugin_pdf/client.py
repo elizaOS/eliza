@@ -325,3 +325,4 @@ class PdfClient:
 
         return await self._loop.run_in_executor(None, _count_pages)
 
+

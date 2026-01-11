@@ -67,3 +67,4 @@ echo "   aws cloudformation describe-stacks --stack-name eliza-worker --query 'S
 
 
 
+

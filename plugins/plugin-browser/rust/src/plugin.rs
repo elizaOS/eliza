@@ -108,3 +108,4 @@ pub fn create_browser_plugin(config: Option<BrowserConfig>) -> BrowserPlugin {
     BrowserPlugin::new(config.unwrap_or_default())
 }
 
+

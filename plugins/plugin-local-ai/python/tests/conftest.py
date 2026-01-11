@@ -18,3 +18,4 @@ def config() -> LocalAIConfig:
 def plugin(config: LocalAIConfig) -> LocalAIPlugin:
     """Create a test plugin instance."""
     return LocalAIPlugin(config)
+

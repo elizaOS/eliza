@@ -221,3 +221,4 @@ class WebhookVerificationError(GitHubError):
     def __init__(self, reason: str) -> None:
         super().__init__(f"Webhook verification failed: {reason}")
 
+

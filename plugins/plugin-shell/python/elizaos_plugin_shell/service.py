@@ -376,3 +376,4 @@ class ShellService:
         """Get the allowed directory."""
         return self._config.allowed_directory
 
+

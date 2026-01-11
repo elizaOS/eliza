@@ -176,3 +176,4 @@ class TestLinearService:
             assert len(activity) == 1
             assert activity[0].action == "create_issue"
 
+

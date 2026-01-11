@@ -36,3 +36,4 @@ await proc.exited;
 
 console.log("Types generated!");
 
+

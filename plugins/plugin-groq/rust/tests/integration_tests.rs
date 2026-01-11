@@ -98,3 +98,4 @@ async fn test_client_empty_api_key() {
     assert!(client.is_err());
 }
 
+

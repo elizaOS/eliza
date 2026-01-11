@@ -46,3 +46,4 @@ async def test_streaming(api_key: str) -> None:
         result = "".join(chunks)
         assert len(result) > 0
 
+

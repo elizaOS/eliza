@@ -278,3 +278,4 @@ __all__ = [
     "MESSAGE_HANDLER_TEMPLATE",
     "BOOLEAN_FOOTER",
 ]
+

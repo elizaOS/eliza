@@ -103,3 +103,4 @@ class TestGitHubConfig:
         with pytest.raises(ValueError, match="empty"):
             config.validate()
 
+

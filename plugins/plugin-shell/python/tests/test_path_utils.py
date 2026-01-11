@@ -101,3 +101,4 @@ class TestIsForbiddenCommand:
         assert is_forbidden_command("RM -RF /", forbidden) is True
         assert is_forbidden_command("SHUTDOWN", forbidden) is True
 
+

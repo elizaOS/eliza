@@ -427,3 +427,4 @@ class FormsService:
         """Get all registered templates."""
         return list(self._templates.values())
 
+

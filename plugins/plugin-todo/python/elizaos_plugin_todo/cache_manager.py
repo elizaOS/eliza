@@ -405,3 +405,4 @@ class CacheManager:
         """Get cached service health status."""
         return await self.get(f"health:{service_name}")
 
+

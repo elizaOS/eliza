@@ -20,3 +20,4 @@ __all__ = [
     "admin_chat_provider",
     "autonomy_status_provider",
 ]
+

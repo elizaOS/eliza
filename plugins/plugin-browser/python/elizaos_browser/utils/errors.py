@@ -164,3 +164,4 @@ def handle_browser_error(
             )
             callback({"text": message, "error": True})
 
+

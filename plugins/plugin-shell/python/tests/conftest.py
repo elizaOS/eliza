@@ -20,3 +20,4 @@ def shell_service(shell_config: ShellConfig) -> ShellService:
     """Create a test shell service."""
     return ShellService(shell_config)
 
+

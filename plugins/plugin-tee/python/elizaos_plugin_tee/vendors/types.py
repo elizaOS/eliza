@@ -42,3 +42,4 @@ class TeeVendorInterface(ABC):
     def get_description(self) -> str:
         """Get the vendor description."""
 
+

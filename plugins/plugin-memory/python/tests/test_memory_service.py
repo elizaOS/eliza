@@ -106,3 +106,4 @@ class TestLongTermMemoryCategory:
         category = LongTermMemoryCategory("semantic")
         assert category == LongTermMemoryCategory.SEMANTIC
 
+

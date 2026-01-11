@@ -18,3 +18,4 @@ def real_api_key() -> str | None:
     """Return real API key from environment if available."""
     return os.environ.get("OPENROUTER_API_KEY")
 
+

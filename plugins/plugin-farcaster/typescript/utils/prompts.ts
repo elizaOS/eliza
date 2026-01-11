@@ -22,3 +22,4 @@ export const formatTimeline = (character: Character, timeline: Cast[]): string =
 ${timeline.map(formatCast).join("\n")}
 `;
 
+

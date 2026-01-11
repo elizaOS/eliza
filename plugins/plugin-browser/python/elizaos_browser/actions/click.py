@@ -95,3 +95,4 @@ async def browser_click(
             data={"actionName": "BROWSER_CLICK"},
         )
 
+

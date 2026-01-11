@@ -198,3 +198,4 @@ class ImageDescriptionResult(BaseModel):
     title: str = Field(..., description="A title for the image")
     description: str = Field(..., description="A detailed description of the image")
 
+

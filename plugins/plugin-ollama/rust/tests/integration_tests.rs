@@ -89,3 +89,4 @@ async fn test_generate_embedding() {
     assert!(!response.embedding.is_empty());
 }
 
+

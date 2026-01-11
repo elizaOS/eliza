@@ -43,3 +43,4 @@ export const longTermMemories = pgTable(
   })
 );
 
+

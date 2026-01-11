@@ -106,3 +106,4 @@ def model_supports_temperature(model: str) -> bool:
             return False
     return True
 
+

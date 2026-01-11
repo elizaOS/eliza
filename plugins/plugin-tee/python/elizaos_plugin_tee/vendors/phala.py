@@ -40,3 +40,4 @@ class PhalaVendor(TeeVendorInterface):
         """Get the vendor description."""
         return "Phala Network TEE for secure agent execution"
 
+

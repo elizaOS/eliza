@@ -87,3 +87,4 @@ def compose_prompt_from_state(*, state: State, template: TemplateType) -> str:
     return _render_template(template_str, ctx)
 
 
+

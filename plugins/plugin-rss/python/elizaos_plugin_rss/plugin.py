@@ -314,3 +314,4 @@ def get_rss_plugin() -> RssPlugin:
     """
     return RssPlugin()
 
+

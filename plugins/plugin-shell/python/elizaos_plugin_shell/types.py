@@ -123,3 +123,4 @@ class ShellConfig(BaseModel):
             forbidden_commands=all_forbidden,
         )
 
+

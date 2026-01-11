@@ -378,3 +378,4 @@ class GatewayClient:
 
         return json.loads(cleaned.strip())  # type: ignore[no-any-return]
 
+

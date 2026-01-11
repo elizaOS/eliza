@@ -48,3 +48,4 @@ pub trait GitHubProvider: Send + Sync {
     ) -> impl std::future::Future<Output = Result<ProviderResult>> + Send;
 }
 
+

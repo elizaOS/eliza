@@ -80,3 +80,4 @@ The plugin enforces several security measures:
 
 MIT
 
+

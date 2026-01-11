@@ -161,3 +161,4 @@ def validate_secure_action(url: str | None, validator: UrlValidator) -> None:
     if not valid:
         raise SecurityError(f"URL validation failed: {error}", {"url": url, "error": error})
 
+

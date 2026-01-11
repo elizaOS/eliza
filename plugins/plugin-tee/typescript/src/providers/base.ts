@@ -48,3 +48,4 @@ export abstract class RemoteAttestationProvider {
   ): Promise<RemoteAttestationQuote>;
 }
 
+

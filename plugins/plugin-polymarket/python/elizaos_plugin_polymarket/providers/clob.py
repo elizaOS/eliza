@@ -214,3 +214,4 @@ def get_authenticated_clob_client(runtime: RuntimeProtocol | None = None) -> Clo
         _default_provider = ClobClientProvider(runtime)
     return _default_provider.get_authenticated_client()
 
+

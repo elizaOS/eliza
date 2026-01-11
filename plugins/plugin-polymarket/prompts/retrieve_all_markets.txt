@@ -23,3 +23,4 @@ If no specific filters are mentioned, you MUST respond with the following JSON s
     "error": "No specific filters requested. Fetching all available markets."
 }
 
+

@@ -842,3 +842,4 @@ class LinearService:
             self._log_activity("list_workflow_states", "team", team_id, {}, False, str(e))
             raise LinearAPIError(f"Failed to fetch workflow states: {e}")
 
+

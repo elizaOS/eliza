@@ -46,3 +46,4 @@ pub async fn handle_batch_text_embedding(
     client.generate_embedding(params).await
 }
 
+

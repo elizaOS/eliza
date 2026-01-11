@@ -86,3 +86,4 @@ async def test_generate_object_with_schema(client: "GoogleGenAIClient") -> None:
     assert "name" in response.object
     assert "age" in response.object
 
+

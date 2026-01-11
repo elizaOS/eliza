@@ -707,3 +707,4 @@ export function isValidTokenId(id: string): boolean {
   return /^\d+$/.test(id) || /^0x[a-fA-F0-9]+$/.test(id);
 }
 
+

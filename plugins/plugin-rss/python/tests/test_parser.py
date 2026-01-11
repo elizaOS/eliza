@@ -149,3 +149,4 @@ class TestAtomParser:
         assert item.title == "Atom Entry"
         assert item.guid == "entry-1"
 
+

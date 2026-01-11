@@ -94,3 +94,4 @@ export const COLLECTIONS = {
 
 export type CollectionName = typeof COLLECTIONS[keyof typeof COLLECTIONS];
 
+

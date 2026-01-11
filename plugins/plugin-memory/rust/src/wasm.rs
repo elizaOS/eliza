@@ -89,3 +89,4 @@ pub fn get_plugin_info() -> JsValue {
     serde_wasm_bindgen::to_value(&info).unwrap_or(JsValue::NULL)
 }
 
+
