@@ -470,8 +470,7 @@ export class SwapAction {
       );
     }
 
-    const hash = // @ts-expect-error - viem type narrowing issue
-    await walletClient.sendTransaction({
+    const hash = await walletClient.sendTransaction({
       account: walletClient.account,
       to: bebopRoute.to,
       value: BigInt(bebopRoute.value),
