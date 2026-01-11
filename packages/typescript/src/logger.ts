@@ -4,6 +4,13 @@ export const __loggerTestHooks = {
   __noop: () => {},
 };
 
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - safeStringify: JSON.stringify with circular ref handling - KEEP (logger robustness)
+// - adzeStore.addListener: Silent fail on log processing - KEEP (logger cannot crash app)
+// - safeRedact: fast-redact error handling - KEEP (security feature robustness)
+// - invoke: Fallback to console.log on adze failure - KEEP (logging must always work)
+// NOTE: Consider consolidating duplicate safeRedact implementations
+
 import adze, {
   type ConsoleStyle,
   type LevelConfiguration,

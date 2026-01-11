@@ -1,3 +1,7 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - Lines 391-407: validateWasmPlugin - KEEP (external validation with structured error response)
+// NOTE: Consider adding try-catch around JSON.parse(manifestJson) in loadWasmPlugin for robustness
+
 /**
  * WASM Plugin Loader for elizaOS
  *

@@ -1,3 +1,6 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - resolveEntity calls: LLM-generated entity ID validation - KEEP (external data validation)
+
 import {
   type ActionResult,
   asUUID,

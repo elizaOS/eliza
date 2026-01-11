@@ -95,8 +95,7 @@ describe("TaskService", () => {
       },
     ];
 
-    // Mock setTimeout
-    // Note: Timer mocking can be added with vi.useFakeTimers() if needed
+    // Mock setTimeout (timer mocking available via vi.useFakeTimers() if needed)
 
     // Mock getTasks to return our test tasks
     mockRuntime.getTasks = vi.fn().mockResolvedValue(mockTasks);
@@ -107,7 +106,6 @@ describe("TaskService", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    // Note: Timer restoration can be added with vi.useRealTimers() if needed
   });
 
   it("should be instantiated with a runtime", () => {
@@ -264,9 +262,7 @@ describe("TaskService", () => {
     expect(mockRuntime.getTaskWorker).toHaveBeenCalledWith(testTask.name);
     expect(mockErrorExecute).toHaveBeenCalled();
 
-    // Note: The current implementation does not have error handling in executeTask
-    // Errors propagate up to the caller (checkTasks or higher)
-    // If error logging is needed, it should be added to the TaskService implementation
+    // Errors propagate to caller (checkTasks or higher) - no internal error handling
     // expect(mockRuntime.updateTasks).toHaveBeenCalledWith(
     //   expect.arrayContaining([
     //     expect.objectContaining({

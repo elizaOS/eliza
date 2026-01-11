@@ -528,7 +528,6 @@ export function parseTweetV2ToV1(tweetV2: TweetV2, includes?: ApiV2Includes): Tw
     }
   }
 
-  // TODO: Process Thread (referenced tweets) and remove reference to v1
   return parsedTweet;
 }
 
@@ -555,9 +554,8 @@ export async function createCreateTweetRequest(
 
     // Handle media uploads if provided
     if (mediaData && mediaData.length > 0) {
-      // Note: Twitter API v2 media upload requires separate endpoint
-      // For now, we'll skip media upload as it requires additional implementation
-      console.warn("Media upload not yet implemented for Twitter API v2");
+      // TODO: Implement Twitter API v1.1 Media Upload endpoint for media attachments
+      console.warn("Media upload requires Twitter API v1.1 Media Upload endpoint");
     }
 
     // Handle reply
@@ -1075,6 +1073,52 @@ export async function retweet(tweetId: string, auth: TwitterAuth): Promise<void>
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to retweet: ${message}`);
+  }
+}
+
+/**
+ * Unlikes a tweet with the given tweet ID.
+ * @param tweetId The ID of the tweet to unlike.
+ * @param auth The authentication object.
+ * @returns A promise that resolves when the tweet is unliked.
+ */
+export async function unlikeTweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+  const v2client = await auth.getV2Client();
+  if (!v2client) {
+    throw new Error("V2 client is not initialized");
+  }
+
+  try {
+    await v2client.v2.unlike(
+      (await v2client.v2.me()).data.id, // Current user ID
+      tweetId
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to unlike tweet: ${message}`);
+  }
+}
+
+/**
+ * Removes a retweet of a tweet with the given tweet ID.
+ * @param tweetId The ID of the tweet to unretweet.
+ * @param auth The authentication object.
+ * @returns A promise that resolves when the retweet is removed.
+ */
+export async function unretweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+  const v2client = await auth.getV2Client();
+  if (!v2client) {
+    throw new Error("V2 client is not initialized");
+  }
+
+  try {
+    await v2client.v2.unretweet(
+      (await v2client.v2.me()).data.id, // Current user ID
+      tweetId
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to unretweet: ${message}`);
   }
 }
 

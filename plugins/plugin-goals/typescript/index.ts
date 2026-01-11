@@ -40,19 +40,14 @@ export const GoalsPlugin: Plugin = {
   tests: [GoalsPluginE2ETestSuite],
 
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    try {
-      // Database migrations are handled by the SQL plugin
-      if (runtime.db) {
-        logger.info("Database available, GoalsPlugin ready for operation");
-      } else {
-        logger.warn("No database instance available, operations will be limited");
-      }
-
-      logger.info("GoalsPlugin initialized successfully");
-    } catch (error) {
-      logger.error("Error initializing GoalsPlugin:", error);
-      throw error;
+    // Database migrations are handled by the SQL plugin
+    if (runtime.db) {
+      logger.info("Database available, GoalsPlugin ready for operation");
+    } else {
+      logger.warn("No database instance available, operations will be limited");
     }
+
+    logger.info("GoalsPlugin initialized successfully");
   },
 };
 

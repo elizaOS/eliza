@@ -150,11 +150,6 @@ export const sendMessageAction: Action = {
     // Get source types from room components
     const availableSources = new Set(roomComponents.map((c) => c.type));
 
-    // TODO: Add ability for plugins to register their sources
-    // const getRegisteredSources = runtime.getRegisteredSources;
-    // const registeredSources = (getRegisteredSources && getRegisteredSources()) || [];
-    // availableSources.add(...registeredSources);
-
     return availableSources.size > 0;
   },
 

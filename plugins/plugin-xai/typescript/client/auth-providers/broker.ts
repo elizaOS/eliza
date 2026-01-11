@@ -26,7 +26,7 @@ export class BrokerAuthProvider implements TwitterAuthProvider {
     }
     throw new Error(
       `Twitter broker auth is not implemented yet. Configured TWITTER_BROKER_URL=${url}. ` +
-        "TODO: implement broker contract to fetch short-lived access tokens."
+        "Broker auth requires implementing a contract to fetch short-lived access tokens."
     );
   }
 }

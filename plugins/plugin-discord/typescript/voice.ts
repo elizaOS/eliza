@@ -61,7 +61,7 @@ function createOpusDecoder(options: {
     // First try to create decoder with prism-media
     return new prism.opus.Decoder(options);
   } catch (error) {
-    // Note: Using global logger here as this is a standalone function without runtime context
+    // Standalone function - no runtime context available
     logger.warn(
       {
         src: "plugin:discord:service:voice",

@@ -1,3 +1,6 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - checkHealth: Network errors expected during startup polling - KEEP
+
 /**
  * Server health check utilities for waiting for servers to be ready
  */

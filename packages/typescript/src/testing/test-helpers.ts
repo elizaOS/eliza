@@ -1,3 +1,7 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - expectRejection: Test utility for assertion - KEEP (core function purpose)
+// - retry: Exponential backoff with error capture - KEEP (explicit retry logic)
+
 /**
  * @fileoverview Test Helper Utilities
  *

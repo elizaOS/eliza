@@ -1,3 +1,12 @@
+# TODO: Try-catch review completed 2026-01-11. All try-except blocks retained:
+# - Embedded JS try-catch: Module loading (ESM/CJS fallback) - KEEP
+# - Embedded JS try-catch: Plugin load error with process exit - KEEP
+# - Embedded JS try-catch: IPC JSON.parse and request handling - KEEP
+# - Python _read_responses: json.JSONDecodeError, Exception - KEEP (IPC robustness)
+# - Python _wait_for_ready: asyncio.TimeoutError - KEEP (startup timeout)
+# - Python send_request: asyncio.TimeoutError - KEEP (request timeout)
+# - Python stop: asyncio.CancelledError, subprocess.TimeoutExpired - KEEP (cleanup)
+
 """
 TypeScript Plugin Bridge for elizaOS
 

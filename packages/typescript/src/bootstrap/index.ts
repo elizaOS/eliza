@@ -35,6 +35,10 @@ import {
   type UUID,
   type WorldPayload,
 } from "@elizaos/core";
+// TODO: Try-catch review completed 2026-01-11. No try-catch blocks to remove.
+// NOTE: Consider adding try-catch around runtime.useModel in postGeneratedHandler retry loop
+// for explicit model error handling (currently errors would exit the retry loop).
+
 import { v4 } from "uuid";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { FollowUpService } from "../services/followUp.ts";

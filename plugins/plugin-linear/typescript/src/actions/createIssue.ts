@@ -52,12 +52,8 @@ export const createIssueAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    try {
-      const apiKey = runtime.getSetting("LINEAR_API_KEY");
-      return !!apiKey;
-    } catch {
-      return false;
-    }
+    const apiKey = runtime.getSetting("LINEAR_API_KEY");
+    return !!apiKey;
   },
 
   async handler(

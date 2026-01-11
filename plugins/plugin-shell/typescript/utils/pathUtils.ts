@@ -13,25 +13,20 @@ export function validatePath(
   allowedDir: string,
   currentDir: string
 ): string | null {
-  try {
-    // Resolve the path relative to current directory
-    const resolvedPath = path.resolve(currentDir, commandPath);
-    const normalizedPath = path.normalize(resolvedPath);
-    const normalizedAllowed = path.normalize(allowedDir);
+  // Resolve the path relative to current directory
+  const resolvedPath = path.resolve(currentDir, commandPath);
+  const normalizedPath = path.normalize(resolvedPath);
+  const normalizedAllowed = path.normalize(allowedDir);
 
-    // Check if the resolved path is within the allowed directory
-    if (!normalizedPath.startsWith(normalizedAllowed)) {
-      logger.warn(
-        `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`
-      );
-      return null;
-    }
-
-    return normalizedPath;
-  } catch (error) {
-    logger.error("Error validating path:", error);
+  // Check if the resolved path is within the allowed directory
+  if (!normalizedPath.startsWith(normalizedAllowed)) {
+    logger.warn(
+      `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`
+    );
     return null;
   }
+
+  return normalizedPath;
 }
 
 /**

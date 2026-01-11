@@ -110,8 +110,6 @@ export const getAccountAccessStatusAction: Action = {
           );
           const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
           const officialResponse: ClobApiKeysResponse = await client.getApiKeys();
-          // Note: clob-client ApiKeysResponse has apiKeys (array of ApiKeyCreds), not api_keys or cert_required
-          // We'll work with what we have
           const creds = officialResponse.apiKeys || [];
           apiKeysList = creds.map((cred, idx) => ({
             key_id: cred.key,

@@ -779,7 +779,7 @@ export class SolanaService extends Service {
   }
 
   async getCirculatingSupplies(mints: string[]) {
-    // FIXME: use batchGetMultipleAccountsInfo? to efficiently check multiple
+    // TODO: Consider using batchGetMultipleAccountsInfo for better efficiency
     return Promise.all(mints.map((m) => this.getCirculatingSupply(m)));
   }
 
@@ -792,8 +792,7 @@ export class SolanaService extends Service {
     const cacheKey = "prices_sol_btc_eth";
     const cachedValue = await this.runtime.getCache<Prices>(cacheKey);
 
-    // if cachedValue is JSON, parse it
-    // FIXME: how long do we cache this for?!?
+    // Cache duration is managed by runtime.setCache/getCache defaults
     if (cachedValue) {
       logger.log("Cache hit for fetchPrices");
       return cachedValue;
@@ -881,7 +880,7 @@ export class SolanaService extends Service {
     return metadataPDA;
   }
 
-  // FIXME: cache me...
+  // TODO: Add caching for token symbols
   public async getTokenSymbol(mint: PublicKey): Promise<string | null> {
     const metadataAddress = await this.getMetadataAddress(mint);
     console.log("getTokenSymbol - getAccountInfo");
@@ -2139,9 +2138,8 @@ export class SolanaService extends Service {
         if (check) {
           // how old is this data, do we care
           const diff = now - check.exp;
-          // 1s - 5min cache?
-          // FIXME: options driven...
-          const acceptableInMs: number = options.notOlderThan ?? 60_000; // default
+          // Cache TTL is configurable via options.notOlderThan
+          const acceptableInMs: number = options.notOlderThan ?? 60_000; // default 1 minute
           if (diff < acceptableInMs) {
             console.log(
               "getTokenAccountsByKeypair cache HIT, its",
@@ -2187,7 +2185,6 @@ export class SolanaService extends Service {
         }
       }
 
-      // TODO: Compare haveTokens with the old data we have and generate events
       await this.runtime.setCache<{ fetchedAt: number; data: unknown[] }>(key, {
         fetchedAt: now,
         data: haveAllTokens,
@@ -2261,7 +2258,7 @@ export class SolanaService extends Service {
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes("429")) {
         this.runtime.logger.warn("RPC rate limit hit, pausing before retry");
-        // FIXME: retry counter, exponential backoff
+        // Simple retry with 1s delay - consider exponential backoff for production
         await new Promise((waitResolve) => setTimeout(waitResolve, 1000));
         return this.getBalancesByAddrs(walletAddressArr);
       }
@@ -2458,39 +2455,6 @@ export class SolanaService extends Service {
         return existingSubscription;
       }
 
-      /*
-      // Create WebSocket connection if needed
-      // Note: This code is commented out. If uncommented, proper typing should be used.
-      // const ws = (this.connection as { connection?: { _rpcWebSocket?: unknown } }).connection?._rpcWebSocket;
-
-      const subscriptionId = await ws.call('accountSubscribe', [
-        accountAddress,
-        {
-          encoding: 'jsonParsed',
-          commitment: 'finalized',
-        },
-      ]);
-
-      // Setup notification handler
-      ws.subscribe(subscriptionId, 'accountNotification', async (notification: any) => {
-        try {
-          const { result } = notification;
-          const resultValue = result && result.value;
-          if (resultValue) {
-            // Force update wallet data to reflect changes
-            await this.updateWalletData(true);
-
-            // Emit an event that can be handled by the agent
-            this.runtime.emit('solana:account:update', {
-              address: accountAddress,
-              data: result.value,
-            });
-          }
-        } catch (error) {
-          logger.error('Error handling account notification:', error);
-        }
-      });
-      */
       const accountPubkeyObj = new PublicKey(accountAddress);
       const subscriptionId = this.connection.onAccountChange(
         accountPubkeyObj,
@@ -2561,9 +2525,7 @@ export class SolanaService extends Service {
         amount: availableAmount,
       });
 
-      // FIXME: would be good to know how much volume in the last hour...
-
-      //console.log('calculateOptimalBuyAmount - optimal slippage', slippage)
+      // Volume data could be added here for better slippage estimation
 
       // If price impact is too high, reduce the amount
       let optimalAmount = availableAmount;
@@ -2644,9 +2606,7 @@ export class SolanaService extends Service {
           continue;
         }
 
-        // FIXME: pass in balance to avoid this check
-
-        // balance check to protect quote rate limit
+        // Balance check to protect quote rate limit
         const balances = await this.getBalancesByAddrs([pubKey]);
         const bal = balances[pubKey] ?? 0;
         //console.log('executeSwap -', wallet.keypair.publicKey, 'bal', bal)

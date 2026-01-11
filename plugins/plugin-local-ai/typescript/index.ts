@@ -848,8 +848,6 @@ class LocalAIManager {
         // Get the TTSManager instance (ensure environment is initialized for cacheDir)
         await this.initializeEnvironment();
         this.ttsManager = TTSManager.getInstance(this.cacheDir);
-        // Note: The internal pipeline initialization within TTSManager happens
-        // when generateSpeech calls its own initialize method.
         this.ttsInitialized = true;
         logger.info("TTS model initialized successfully");
       })();

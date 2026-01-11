@@ -418,11 +418,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
     const _mediaIds: string[] = [];
 
     if (mediaData && mediaData.length > 0) {
-      for (const _media of mediaData) {
-        // TODO: Media upload will need to be updated to use the new API
-        // For now, just log a warning that media upload is not supported
-        logger.warn("Media upload not currently supported with the modern Twitter API");
-      }
+      logger.warn("Media upload not currently supported with the modern Twitter API");
     }
 
     const result = await sendTweet(this.client, text, mediaData);

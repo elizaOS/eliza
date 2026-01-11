@@ -12,6 +12,11 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - reactionReceivedHandler duplicate error test - KEEP
+// - entityLeftHandler error test - KEEP
+// NOTE: entityLeftHandler in index.ts lacks internal try-catch; test assumes no throw
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBootstrapPlugin } from "../index";
 import { type MockRuntime, setupActionTest } from "./test-utils";

@@ -1,4 +1,9 @@
 import { logger } from "./logger";
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - tryInstallPlugin: Bun availability check - KEEP (external dependency check)
+// - tryInstallPlugin: Installation process errors - KEEP (optional recovery mechanism)
+// - loadAndPreparePlugin: Module import with auto-install retry - KEEP (explicit retry logic)
+
 import type { Plugin } from "./types";
 import { detectEnvironment } from "./utils/environment";
 
