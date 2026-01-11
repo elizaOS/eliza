@@ -1,8 +1,8 @@
 import type { IAgentRuntime, IDatabaseAdapter, UUID } from "@elizaos/core";
 // Import the real runtime
 import { AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_MESSAGE_LENGTH, needsSmartSplit, smartSplitMessage, splitMessage } from "../src/utils";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_MESSAGE_LENGTH, needsSmartSplit, smartSplitMessage, splitMessage } from "../utils";
 
 // We need a database adapter for tests - use PGLite
 let sqlPlugin: {

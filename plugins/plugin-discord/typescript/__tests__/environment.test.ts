@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { validateDiscordConfig } from "../src/environment";
+import { validateDiscordConfig } from "../environment";
 import {
   createTestRuntime,
   cleanupTestRuntime,

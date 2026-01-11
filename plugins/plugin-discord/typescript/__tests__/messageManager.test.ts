@@ -8,7 +8,7 @@ import {
   type User as DiscordUser,
 } from "discord.js";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import { MessageManager } from "../src/messages";
+import { MessageManager } from "../messages";
 import type { DiscordSettings, IDiscordService } from "../types";
 
 interface MockMessage extends Partial<DiscordMessage> {
