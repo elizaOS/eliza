@@ -5,15 +5,15 @@ on:
     types: [opened, synchronize, reopened]
     # Focus on code changes that could introduce vulnerabilities
     paths:
-      - '**/*.ts'
-      - '**/*.tsx'
-      - '**/*.js'
-      - '**/*.jsx'
-      - '**/*.json'
-      - '**/*.yml'
-      - '**/*.yaml'
-      - '**/Dockerfile'
-      - '**/.env.example'
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.json"
+      - "**/*.yml"
+      - "**/*.yaml"
+      - "**/Dockerfile"
+      - "**/.env.example"
 
   # Allow manual security scans
   workflow_dispatch:
@@ -54,7 +54,7 @@ jobs:
           claudecode-timeout: 30
 
           # Exclude non-critical directories
-          exclude-directories: 'node_modules,dist,coverage,.turbo,.next,docs'
+          exclude-directories: "node_modules,dist,coverage,.turbo,.next,docs"
 
           # Use Opus 4.5 for deeper security analysis
           claude-model: claude-opus-4-5-20251101

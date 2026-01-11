@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Actions for the Linear plugin.
 //!
 //! This module provides all action handlers for the Linear plugin.
@@ -423,5 +424,10 @@ pub async fn clear_activity(service: &LinearService, _params: Value) -> Result<A
     service.clear_activity_log();
     Ok(ActionResult::success("✅ Linear activity log has been cleared."))
 }
+
+
+
+
+
 
 

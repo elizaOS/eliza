@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! WASM bindings for elizaOS plugin-sql
 //!
 //! This module provides JavaScript/TypeScript and Python bindings for the elizaOS

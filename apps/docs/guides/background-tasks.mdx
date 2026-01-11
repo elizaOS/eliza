@@ -15,7 +15,9 @@ Some operations take too long for a request/response cycle:
 Blocking the main thread kills responsiveness. Polling wastes resources.
 
 <Tip>
-**Task workers handle the heavy lifting.** Register a worker, create tasks, and ElizaOS executes them in the background with built-in persistence and scheduling.
+  **Task workers handle the heavy lifting.** Register a worker, create tasks,
+  and ElizaOS executes them in the background with built-in persistence and
+  scheduling.
 </Tip>
 
 ## Quick Start
@@ -23,10 +25,10 @@ Blocking the main thread kills responsiveness. Polling wastes resources.
 ### 1. Define a Task Worker
 
 ```typescript
-import type { TaskWorker } from '@elizaos/core';
+import type { TaskWorker } from "@elizaos/core";
 
 const dataSync: TaskWorker = {
-  name: 'SYNC_EXTERNAL_DATA',
+  name: "SYNC_EXTERNAL_DATA",
 
   async execute(runtime, options, task) {
     const { sourceUrl, batchSize = 100 } = options;
@@ -46,8 +48,8 @@ const dataSync: TaskWorker = {
 
   // Optional: validate before creating task
   async validate(runtime, message, state) {
-    return message.content.text?.includes('sync');
-  }
+    return message.content.text?.includes("sync");
+  },
 };
 ```
 
@@ -56,12 +58,12 @@ const dataSync: TaskWorker = {
 ```typescript
 // In your plugin initialization
 const plugin: Plugin = {
-  name: 'my-sync-plugin',
+  name: "my-sync-plugin",
 
   async init(runtime) {
     // Register the task worker
     runtime.registerTaskWorker(dataSync);
-  }
+  },
 };
 ```
 
@@ -70,25 +72,25 @@ const plugin: Plugin = {
 ```typescript
 // One-time task
 const taskId = await runtime.createTask({
-  name: 'SYNC_EXTERNAL_DATA',
-  description: 'Sync user data from CRM',
+  name: "SYNC_EXTERNAL_DATA",
+  description: "Sync user data from CRM",
   roomId: context.roomId,
-  tags: ['sync', 'crm'],
+  tags: ["sync", "crm"],
   metadata: {
-    sourceUrl: 'https://api.crm.com/users',
-    batchSize: 50
-  }
+    sourceUrl: "https://api.crm.com/users",
+    batchSize: 50,
+  },
 });
 
 // Recurring task (runs every hour)
 await runtime.createTask({
-  name: 'SYNC_EXTERNAL_DATA',
-  description: 'Hourly CRM sync',
-  tags: ['sync', 'crm', 'scheduled'],
+  name: "SYNC_EXTERNAL_DATA",
+  description: "Hourly CRM sync",
+  tags: ["sync", "crm", "scheduled"],
   metadata: {
-    sourceUrl: 'https://api.crm.com/users',
-    updateInterval: 60 * 60 * 1000  // 1 hour in ms
-  }
+    sourceUrl: "https://api.crm.com/users",
+    updateInterval: 60 * 60 * 1000, // 1 hour in ms
+  },
 });
 ```
 
@@ -117,15 +119,15 @@ flowchart TB
 
 ```typescript
 interface Task {
-  id?: UUID;                    // Auto-generated if not provided
-  name: string;                 // Must match a registered TaskWorker.name
-  description: string;          // Human-readable purpose
-  roomId?: UUID;                // Associate with a room
-  worldId?: UUID;               // Associate with a world
-  entityId?: UUID;              // Associate with an entity
-  tags: string[];               // For filtering and organization
-  metadata?: TaskMetadata;      // Custom options and scheduling
-  updatedAt?: number;           // Last execution timestamp
+  id?: UUID; // Auto-generated if not provided
+  name: string; // Must match a registered TaskWorker.name
+  description: string; // Human-readable purpose
+  roomId?: UUID; // Associate with a room
+  worldId?: UUID; // Associate with a world
+  entityId?: UUID; // Associate with an entity
+  tags: string[]; // For filtering and organization
+  metadata?: TaskMetadata; // Custom options and scheduling
+  updatedAt?: number; // Last execution timestamp
 }
 ```
 
@@ -134,7 +136,7 @@ interface Task {
 ```typescript
 type TaskMetadata = {
   // Scheduling
-  updateInterval?: number;      // Recurring interval in ms
+  updateInterval?: number; // Recurring interval in ms
 
   // UI configuration (optional)
   options?: {
@@ -151,18 +153,19 @@ type TaskMetadata = {
 
 ```typescript
 interface TaskWorker {
-  name: string;                 // Unique identifier
+  name: string; // Unique identifier
 
   execute: (
     runtime: IAgentRuntime,
-    options: Record<string, unknown>,  // From task.metadata
-    task: Task
+    options: Record<string, unknown>, // From task.metadata
+    task: Task,
   ) => Promise<void>;
 
-  validate?: (              // Optional pre-creation check
+  validate?: (
+    // Optional pre-creation check
     runtime: IAgentRuntime,
     message: Memory,
-    state: State
+    state: State,
   ) => Promise<boolean>;
 }
 ```
@@ -174,35 +177,35 @@ interface TaskWorker {
 ```typescript
 // Get tasks by room
 const roomTasks = await runtime.getTasks({
-  roomId: 'room-uuid'
+  roomId: "room-uuid",
 });
 
 // Get tasks by tags
 const syncTasks = await runtime.getTasks({
-  tags: ['sync']
+  tags: ["sync"],
 });
 
 // Get tasks by entity
 const userTasks = await runtime.getTasks({
-  entityId: 'user-uuid'
+  entityId: "user-uuid",
 });
 
 // Get tasks by name
-const allSyncWorkers = await runtime.getTasksByName('SYNC_EXTERNAL_DATA');
+const allSyncWorkers = await runtime.getTasksByName("SYNC_EXTERNAL_DATA");
 
 // Get specific task
-const task = await runtime.getTask('task-uuid');
+const task = await runtime.getTask("task-uuid");
 ```
 
 ### Update Tasks
 
 ```typescript
 await runtime.updateTask(taskId, {
-  description: 'Updated description',
+  description: "Updated description",
   metadata: {
     ...existingMetadata,
-    sourceUrl: 'https://new-api.example.com'
-  }
+    sourceUrl: "https://new-api.example.com",
+  },
 });
 ```
 
@@ -220,23 +223,23 @@ Set `metadata.updateInterval` to create tasks that run periodically:
 ```typescript
 // Daily summary at midnight
 await runtime.createTask({
-  name: 'DAILY_SUMMARY',
-  description: 'Generate daily activity summary',
-  tags: ['scheduled', 'daily'],
+  name: "DAILY_SUMMARY",
+  description: "Generate daily activity summary",
+  tags: ["scheduled", "daily"],
   metadata: {
-    updateInterval: 24 * 60 * 60 * 1000  // 24 hours
-  }
+    updateInterval: 24 * 60 * 60 * 1000, // 24 hours
+  },
 });
 
 // Check external service every 5 minutes
 await runtime.createTask({
-  name: 'HEALTH_CHECK',
-  description: 'Ping external service',
-  tags: ['scheduled', 'monitoring'],
+  name: "HEALTH_CHECK",
+  description: "Ping external service",
+  tags: ["scheduled", "monitoring"],
   metadata: {
-    updateInterval: 5 * 60 * 1000,  // 5 minutes
-    serviceUrl: 'https://api.example.com/health'
-  }
+    updateInterval: 5 * 60 * 1000, // 5 minutes
+    serviceUrl: "https://api.example.com/health",
+  },
 });
 ```
 
@@ -246,7 +249,7 @@ Handle errors gracefully in your workers:
 
 ```typescript
 const robustWorker: TaskWorker = {
-  name: 'ROBUST_SYNC',
+  name: "ROBUST_SYNC",
 
   async execute(runtime, options, task) {
     try {
@@ -261,8 +264,8 @@ const robustWorker: TaskWorker = {
           metadata: {
             ...task.metadata,
             lastError: error.message,
-            lastErrorAt: Date.now()
-          }
+            lastErrorAt: Date.now(),
+          },
         });
       }
 
@@ -270,7 +273,7 @@ const robustWorker: TaskWorker = {
       // Or swallow to silently continue (for recurring tasks)
       throw error;
     }
-  }
+  },
 };
 ```
 
@@ -278,10 +281,12 @@ const robustWorker: TaskWorker = {
 
 <CardGroup cols={2}>
   <Card title="Keep workers idempotent" icon="rotate">
-    Tasks may be retried on failure. Design workers to handle duplicate execution safely.
+    Tasks may be retried on failure. Design workers to handle duplicate
+    execution safely.
   </Card>
   <Card title="Use meaningful tags" icon="tags">
-    Tags make querying easier. Use consistent naming like `sync:crm`, `schedule:daily`.
+    Tags make querying easier. Use consistent naming like `sync:crm`,
+    `schedule:daily`.
   </Card>
   <Card title="Set reasonable intervals" icon="clock">
     Avoid too-frequent recurring tasks. Consider rate limits and system load.
@@ -297,28 +302,28 @@ const robustWorker: TaskWorker = {
 
 ```typescript
 const scheduleAction: Action = {
-  name: 'SCHEDULE_REPORT',
-  description: 'Schedule a background report generation',
+  name: "SCHEDULE_REPORT",
+  description: "Schedule a background report generation",
 
   async handler(runtime, message, state) {
     const taskId = await runtime.createTask({
-      name: 'GENERATE_REPORT',
-      description: 'Weekly analytics report',
+      name: "GENERATE_REPORT",
+      description: "Weekly analytics report",
       roomId: message.roomId,
-      tags: ['report', 'analytics'],
+      tags: ["report", "analytics"],
       metadata: {
-        format: 'pdf',
-        recipients: ['team@example.com']
-      }
+        format: "pdf",
+        recipients: ["team@example.com"],
+      },
     });
 
     return {
       text: `Report scheduled. Task ID: ${taskId}`,
-      action: 'SCHEDULE_REPORT',
+      action: "SCHEDULE_REPORT",
       success: true,
-      data: { taskId }
+      data: { taskId },
     };
-  }
+  },
 };
 ```
 
@@ -326,7 +331,7 @@ const scheduleAction: Action = {
 
 ```typescript
 const progressWorker: TaskWorker = {
-  name: 'LONG_PROCESSING',
+  name: "LONG_PROCESSING",
 
   async execute(runtime, options, task) {
     const items = options.items as string[];
@@ -341,12 +346,12 @@ const progressWorker: TaskWorker = {
         await runtime.updateTask(task.id, {
           metadata: {
             ...task.metadata,
-            progress: Math.round((processed / items.length) * 100)
-          }
+            progress: Math.round((processed / items.length) * 100),
+          },
         });
       }
     }
-  }
+  },
 };
 ```
 
@@ -354,36 +359,44 @@ const progressWorker: TaskWorker = {
 
 ```typescript
 const step1Worker: TaskWorker = {
-  name: 'PIPELINE_STEP_1',
+  name: "PIPELINE_STEP_1",
 
   async execute(runtime, options, task) {
     const result = await doStep1();
 
     // Create next step
     await runtime.createTask({
-      name: 'PIPELINE_STEP_2',
-      description: 'Continue pipeline',
+      name: "PIPELINE_STEP_2",
+      description: "Continue pipeline",
       roomId: task.roomId,
       tags: task.tags,
       metadata: {
         previousResult: result,
-        pipelineId: options.pipelineId
-      }
+        pipelineId: options.pipelineId,
+      },
     });
-  }
+  },
 };
 ```
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Actions Reference" icon="bolt" href="/plugins/components#actions">
+  <Card
+    title="Actions Reference"
+    icon="bolt"
+    href="/plugins/components#actions"
+  >
     Trigger tasks from agent actions
   </Card>
   <Card title="Events System" icon="bell" href="/runtime/events">
     Monitor task lifecycle with events
   </Card>
-  <Card title="Jobs API" icon="briefcase" href="/rest-reference/jobs/create-job">
+  <Card
+    title="Jobs API"
+    icon="briefcase"
+    href="/rest-reference/jobs/create-job"
+  >
     External task creation via REST
   </Card>
   <Card title="Database Adapter" icon="database" href="/runtime/core#database">

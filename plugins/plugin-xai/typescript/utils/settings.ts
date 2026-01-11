@@ -10,7 +10,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 export function getSetting(
   runtime: IAgentRuntime | null | undefined,
   key: string,
-  defaultValue?: string,
+  defaultValue?: string
 ): string | undefined {
   // Try runtime.getSetting if it exists
   if (runtime && typeof runtime.getSetting === "function") {

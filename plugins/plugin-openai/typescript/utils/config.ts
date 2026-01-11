@@ -52,9 +52,7 @@ export function getRequiredSetting(
 ): string {
   const value = getSetting(runtime, key);
   if (value === undefined || value.trim() === "") {
-    throw new Error(
-      errorMessage ?? `Required setting '${key}' is not configured`
-    );
+    throw new Error(errorMessage ?? `Required setting '${key}' is not configured`);
   }
   return value;
 }
@@ -188,7 +186,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL =
     isBrowser() && browserURL
       ? browserURL
-      : getSetting(runtime, "OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
+      : (getSetting(runtime, "OPENAI_BASE_URL") ?? "https://api.openai.com/v1");
   logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;
 }
@@ -201,8 +199,8 @@ export function getBaseURL(runtime: IAgentRuntime): string {
  */
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
   const embeddingURL = isBrowser()
-    ? getSetting(runtime, "OPENAI_BROWSER_EMBEDDING_URL") ??
-      getSetting(runtime, "OPENAI_BROWSER_BASE_URL")
+    ? (getSetting(runtime, "OPENAI_BROWSER_EMBEDDING_URL") ??
+      getSetting(runtime, "OPENAI_BROWSER_BASE_URL"))
     : getSetting(runtime, "OPENAI_EMBEDDING_URL");
 
   if (embeddingURL) {
@@ -226,9 +224,7 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
  */
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "OPENAI_SMALL_MODEL") ??
-    getSetting(runtime, "SMALL_MODEL") ??
-    "gpt-5-mini"
+    getSetting(runtime, "OPENAI_SMALL_MODEL") ?? getSetting(runtime, "SMALL_MODEL") ?? "gpt-5-mini"
   );
 }
 
@@ -239,11 +235,7 @@ export function getSmallModel(runtime: IAgentRuntime): string {
  * @returns The large model name
  */
 export function getLargeModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "OPENAI_LARGE_MODEL") ??
-    getSetting(runtime, "LARGE_MODEL") ??
-    "gpt-5"
-  );
+  return getSetting(runtime, "OPENAI_LARGE_MODEL") ?? getSetting(runtime, "LARGE_MODEL") ?? "gpt-5";
 }
 
 /**
@@ -273,9 +265,7 @@ export function getImageDescriptionModel(runtime: IAgentRuntime): string {
  * @returns The transcription model name
  */
 export function getTranscriptionModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "OPENAI_TRANSCRIPTION_MODEL") ?? "gpt-5-mini-transcribe"
-  );
+  return getSetting(runtime, "OPENAI_TRANSCRIPTION_MODEL") ?? "gpt-5-mini-transcribe";
 }
 
 /**

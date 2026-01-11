@@ -4,12 +4,10 @@ Type definitions for the GitHub plugin.
 Strong types with validation - no Any types allowed.
 """
 
-from datetime import datetime
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
-
+from pydantic import BaseModel, ConfigDict
 
 # =============================================================================
 # Core Types
@@ -64,7 +62,7 @@ class GitHubLabel(BaseModel):
     id: int
     name: str
     color: str
-    description: Optional[str] = None
+    description: str | None = None
     default: bool = False
 
 
@@ -75,12 +73,12 @@ class GitHubMilestone(BaseModel):
 
     number: int
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     state: Literal["open", "closed"]
-    due_on: Optional[str] = None
+    due_on: str | None = None
     created_at: str
     updated_at: str
-    closed_at: Optional[str] = None
+    closed_at: str | None = None
     open_issues: int = 0
     closed_issues: int = 0
 
@@ -92,7 +90,7 @@ class GitHubUser(BaseModel):
 
     id: int
     login: str
-    name: Optional[str] = None
+    name: str | None = None
     avatar_url: str
     html_url: str
     type: Literal["User", "Organization", "Bot"]
@@ -105,16 +103,16 @@ class GitHubIssue(BaseModel):
 
     number: int
     title: str
-    body: Optional[str] = None
+    body: str | None = None
     state: IssueState
-    state_reason: Optional[IssueStateReason] = None
+    state_reason: IssueStateReason | None = None
     user: GitHubUser
     assignees: list[GitHubUser] = []
     labels: list[GitHubLabel] = []
-    milestone: Optional[GitHubMilestone] = None
+    milestone: GitHubMilestone | None = None
     created_at: str
     updated_at: str
-    closed_at: Optional[str] = None
+    closed_at: str | None = None
     html_url: str
     comments: int = 0
     is_pull_request: bool = False
@@ -126,10 +124,10 @@ class CreateIssueParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     title: str
-    body: Optional[str] = None
+    body: str | None = None
     assignees: list[str] = []
     labels: list[str] = []
-    milestone: Optional[int] = None
+    milestone: int | None = None
 
 
 class UpdateIssueParams(RepositoryRef):
@@ -138,13 +136,13 @@ class UpdateIssueParams(RepositoryRef):
     model_config = ConfigDict(frozen=False)
 
     issue_number: int
-    title: Optional[str] = None
-    body: Optional[str] = None
-    state: Optional[IssueState] = None
-    state_reason: Optional[IssueStateReason] = None
-    assignees: Optional[list[str]] = None
-    labels: Optional[list[str]] = None
-    milestone: Optional[int] = None
+    title: str | None = None
+    body: str | None = None
+    state: IssueState | None = None
+    state_reason: IssueStateReason | None = None
+    assignees: list[str] | None = None
+    labels: list[str] | None = None
+    milestone: int | None = None
 
 
 class ListIssuesParams(RepositoryRef):
@@ -153,12 +151,12 @@ class ListIssuesParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     state: Literal["open", "closed", "all"] = "open"
-    labels: Optional[str] = None
+    labels: str | None = None
     sort: Literal["created", "updated", "comments"] = "created"
     direction: Literal["asc", "desc"] = "desc"
-    assignee: Optional[str] = None
-    creator: Optional[str] = None
-    mentioned: Optional[str] = None
+    assignee: str | None = None
+    creator: str | None = None
+    mentioned: str | None = None
     per_page: int = 30
     page: int = 1
 
@@ -191,7 +189,7 @@ class GitHubBranchRef(BaseModel):
     ref: str
     label: str
     sha: str
-    repo: Optional[RepositoryRef] = None
+    repo: RepositoryRef | None = None
 
 
 class GitHubPullRequest(BaseModel):
@@ -201,11 +199,11 @@ class GitHubPullRequest(BaseModel):
 
     number: int
     title: str
-    body: Optional[str] = None
+    body: str | None = None
     state: PullRequestState
     draft: bool = False
     merged: bool = False
-    mergeable: Optional[bool] = None
+    mergeable: bool | None = None
     mergeable_state: MergeableState = MergeableState.UNKNOWN
     user: GitHubUser
     head: GitHubBranchRef
@@ -213,11 +211,11 @@ class GitHubPullRequest(BaseModel):
     assignees: list[GitHubUser] = []
     requested_reviewers: list[GitHubUser] = []
     labels: list[GitHubLabel] = []
-    milestone: Optional[GitHubMilestone] = None
+    milestone: GitHubMilestone | None = None
     created_at: str
     updated_at: str
-    closed_at: Optional[str] = None
-    merged_at: Optional[str] = None
+    closed_at: str | None = None
+    merged_at: str | None = None
     html_url: str
     commits: int = 0
     additions: int = 0
@@ -231,7 +229,7 @@ class CreatePullRequestParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     title: str
-    body: Optional[str] = None
+    body: str | None = None
     head: str
     base: str
     draft: bool = False
@@ -244,11 +242,11 @@ class UpdatePullRequestParams(RepositoryRef):
     model_config = ConfigDict(frozen=False)
 
     pull_number: int
-    title: Optional[str] = None
-    body: Optional[str] = None
-    state: Optional[PullRequestState] = None
-    base: Optional[str] = None
-    maintainer_can_modify: Optional[bool] = None
+    title: str | None = None
+    body: str | None = None
+    state: PullRequestState | None = None
+    base: str | None = None
+    maintainer_can_modify: bool | None = None
 
 
 class ListPullRequestsParams(RepositoryRef):
@@ -257,8 +255,8 @@ class ListPullRequestsParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     state: Literal["open", "closed", "all"] = "open"
-    head: Optional[str] = None
-    base: Optional[str] = None
+    head: str | None = None
+    base: str | None = None
     sort: Literal["created", "updated", "popularity", "long-running"] = "created"
     direction: Literal["asc", "desc"] = "desc"
     per_page: int = 30
@@ -271,10 +269,10 @@ class MergePullRequestParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     pull_number: int
-    commit_title: Optional[str] = None
-    commit_message: Optional[str] = None
+    commit_title: str | None = None
+    commit_message: str | None = None
     merge_method: Literal["merge", "squash", "rebase"] = "merge"
-    sha: Optional[str] = None
+    sha: str | None = None
 
 
 # =============================================================================
@@ -309,8 +307,8 @@ class ReviewCommentInput(BaseModel):
     line: int
     body: str
     side: Literal["LEFT", "RIGHT"] = "RIGHT"
-    start_line: Optional[int] = None
-    start_side: Optional[Literal["LEFT", "RIGHT"]] = None
+    start_line: int | None = None
+    start_side: Literal["LEFT", "RIGHT"] | None = None
 
 
 class GitHubReview(BaseModel):
@@ -320,11 +318,11 @@ class GitHubReview(BaseModel):
 
     id: int
     user: GitHubUser
-    body: Optional[str] = None
+    body: str | None = None
     state: ReviewState
     commit_id: str
     html_url: str
-    submitted_at: Optional[str] = None
+    submitted_at: str | None = None
 
 
 class CreateReviewParams(RepositoryRef):
@@ -333,9 +331,9 @@ class CreateReviewParams(RepositoryRef):
     model_config = ConfigDict(frozen=True)
 
     pull_number: int
-    body: Optional[str] = None
+    body: str | None = None
     event: ReviewEvent
-    commit_id: Optional[str] = None
+    commit_id: str | None = None
     comments: list[ReviewCommentInput] = []
 
 
@@ -427,9 +425,9 @@ class CreateCommitParams(RepositoryRef):
     message: str
     files: list[FileChange]
     branch: str
-    parent_sha: Optional[str] = None
-    author_name: Optional[str] = None
-    author_email: Optional[str] = None
+    parent_sha: str | None = None
+    author_name: str | None = None
+    author_email: str | None = None
 
 
 # =============================================================================
@@ -450,7 +448,7 @@ class GitHubFileContent(BaseModel):
     type: Literal["file", "dir", "symlink", "submodule"]
     encoding: str
     html_url: str
-    download_url: Optional[str] = None
+    download_url: str | None = None
 
 
 class GitHubDirectoryEntry(BaseModel):
@@ -464,7 +462,7 @@ class GitHubDirectoryEntry(BaseModel):
     size: int
     type: Literal["file", "dir", "symlink", "submodule"]
     html_url: str
-    download_url: Optional[str] = None
+    download_url: str | None = None
 
 
 # =============================================================================
@@ -479,8 +477,8 @@ class GitHubLicense(BaseModel):
 
     key: str
     name: str
-    spdx_id: Optional[str] = None
-    url: Optional[str] = None
+    spdx_id: str | None = None
+    url: str | None = None
 
 
 class GitHubRepository(BaseModel):
@@ -492,11 +490,11 @@ class GitHubRepository(BaseModel):
     name: str
     full_name: str
     owner: GitHubUser
-    description: Optional[str] = None
+    description: str | None = None
     private: bool = False
     fork: bool = False
     default_branch: str
-    language: Optional[str] = None
+    language: str | None = None
     stargazers_count: int = 0
     forks_count: int = 0
     open_issues_count: int = 0
@@ -508,7 +506,7 @@ class GitHubRepository(BaseModel):
     updated_at: str
     pushed_at: str
     topics: list[str] = []
-    license: Optional[GitHubLicense] = None
+    license: GitHubLicense | None = None
 
 
 # =============================================================================
@@ -535,5 +533,8 @@ class GitHubEventType(str, Enum):
     CHECK_RUN = "check_run"
     CHECK_SUITE = "check_suite"
     STATUS = "status"
+
+
+
 
 

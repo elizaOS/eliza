@@ -48,9 +48,9 @@ packages = ["elizaos_plugin_memory"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/elizaos_plugin_memory",
-    "/tests",
-    "/README.md",
+    "elizaos_plugin_memory",
+    "tests",
+    "README.md",
 ]
 
 [tool.pytest.ini_options]
@@ -96,5 +96,8 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_memory"]
+
+
+
 
 

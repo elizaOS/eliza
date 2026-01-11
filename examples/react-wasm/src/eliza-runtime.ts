@@ -13,10 +13,7 @@ import {
   generateElizaResponse,
   getElizaGreeting,
 } from "@elizaos/plugin-eliza-classic";
-import {
-  BrowserStorage,
-  LocalDatabaseAdapter,
-} from "@elizaos/plugin-localdb";
+import { BrowserStorage, LocalDatabaseAdapter } from "@elizaos/plugin-localdb";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
@@ -50,7 +47,10 @@ interface WasmAgentRuntimeClass {
 
 interface WasmAgentRuntime {
   initialize(): void;
-  registerModelHandler(modelType: string, handler: (paramsJson: string) => Promise<string>): void;
+  registerModelHandler(
+    modelType: string,
+    handler: (paramsJson: string) => Promise<string>,
+  ): void;
   handleMessage(messageJson: string): Promise<string>;
   stop(): void;
   readonly agentId: string;
@@ -85,7 +85,7 @@ async function loadWasmModule(): Promise<WasmExports> {
     const wasmResponse = await fetch("/wasm/elizaos_bg.wasm");
     if (!wasmResponse.ok) {
       throw new Error(
-        `Failed to load elizaos_bg.wasm: ${wasmResponse.status} ${wasmResponse.statusText}`
+        `Failed to load elizaos_bg.wasm: ${wasmResponse.status} ${wasmResponse.statusText}`,
       );
     }
 
@@ -98,7 +98,10 @@ async function loadWasmModule(): Promise<WasmExports> {
 
     // Text encoder/decoder for string handling
     const textEncoder = new TextEncoder();
-    const textDecoder = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true });
+    const textDecoder = new TextDecoder("utf-8", {
+      ignoreBOM: true,
+      fatal: true,
+    });
 
     let wasmMemory: WebAssembly.Memory;
     let WASM_VECTOR_LEN = 0;
@@ -114,7 +117,10 @@ async function loadWasmModule(): Promise<WasmExports> {
     }
 
     function getDataViewMemory(): DataView {
-      if (cachedDataView === null || cachedDataView.buffer !== wasmMemory.buffer) {
+      if (
+        cachedDataView === null ||
+        cachedDataView.buffer !== wasmMemory.buffer
+      ) {
         cachedDataView = new DataView(wasmMemory.buffer);
       }
       return cachedDataView;
@@ -123,12 +129,19 @@ async function loadWasmModule(): Promise<WasmExports> {
     function passStringToWasm(
       arg: string,
       malloc: (size: number, align: number) => number,
-      realloc?: (ptr: number, oldSize: number, newSize: number, align: number) => number
+      realloc?: (
+        ptr: number,
+        oldSize: number,
+        newSize: number,
+        align: number,
+      ) => number,
     ): number {
       if (realloc === undefined) {
         const buf = textEncoder.encode(arg);
         const ptr = malloc(buf.length, 1) >>> 0;
-        getUint8Memory().subarray(ptr, ptr + buf.length).set(buf);
+        getUint8Memory()
+          .subarray(ptr, ptr + buf.length)
+          .set(buf);
         WASM_VECTOR_LEN = buf.length;
         return ptr;
       }
@@ -180,7 +193,10 @@ async function loadWasmModule(): Promise<WasmExports> {
       return x === undefined || x === null;
     }
 
-    function handleError(f: (...args: unknown[]) => unknown, args: unknown[]): unknown {
+    function handleError(
+      f: (...args: unknown[]) => unknown,
+      args: unknown[],
+    ): unknown {
       try {
         return f.apply(null, args);
       } catch (e) {
@@ -199,7 +215,9 @@ async function loadWasmModule(): Promise<WasmExports> {
       }
       if (type === "function") {
         const name = (val as { name?: string }).name;
-        return typeof name === "string" && name.length > 0 ? `Function(${name})` : "Function";
+        return typeof name === "string" && name.length > 0
+          ? `Function(${name})`
+          : "Function";
       }
       if (Array.isArray(val)) {
         return `[${val.map(debugString).join(", ")}]`;
@@ -207,25 +225,25 @@ async function loadWasmModule(): Promise<WasmExports> {
       if (val instanceof Error) {
         return `${val.name}: ${val.message}\n${val.stack}`;
       }
-      try {
-        return "Object(" + JSON.stringify(val) + ")";
-      } catch {
-        return "Object";
-      }
+      return `Object(${JSON.stringify(val)})`;
     }
 
     // Closure handling
     const CLOSURE_DTORS = new FinalizationRegistry(
-      (state: { dtor: (a: number, b: number) => void; a: number; b: number }) => {
+      (state: {
+        dtor: (a: number, b: number) => void;
+        a: number;
+        b: number;
+      }) => {
         state.dtor(state.a, state.b);
-      }
+      },
     );
 
     function makeMutClosure<T extends unknown[]>(
       arg0: number,
       arg1: number,
       dtor: (a: number, b: number) => void,
-      f: (a: number, b: number, ...args: T) => unknown
+      f: (a: number, b: number, ...args: T) => unknown,
     ): ((...args: T) => unknown) & { _wbg_cb_unref: () => void } {
       const state = { a: arg0, b: arg1, cnt: 1, dtor };
       const real = ((...args: T) => {
@@ -254,83 +272,129 @@ async function loadWasmModule(): Promise<WasmExports> {
     let wasm: WebAssembly.Exports;
 
     // Set up imports
-    const placeholder = imports["__wbindgen_placeholder__"];
+    const placeholder = imports.__wbindgen_placeholder__;
 
-    placeholder.__wbg___wbindgen_debug_string_adfb662ae34724b6 = function (arg0: number, arg1: unknown) {
+    placeholder.__wbg___wbindgen_debug_string_adfb662ae34724b6 = (
+      arg0: number,
+      arg1: unknown,
+    ) => {
       const ret = debugString(arg1);
-      const ptr1 = passStringToWasm(ret, wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+      const ptr1 = passStringToWasm(
+        ret,
+        wasm.__wbindgen_malloc as (a: number, b: number) => number,
+        wasm.__wbindgen_realloc as (
+          a: number,
+          b: number,
+          c: number,
+          d: number,
+        ) => number,
+      );
       const len1 = WASM_VECTOR_LEN;
       getDataViewMemory().setInt32(arg0 + 4, len1, true);
       getDataViewMemory().setInt32(arg0, ptr1, true);
     };
 
-    placeholder.__wbg___wbindgen_is_function_8d400b8b1af978cd = function (arg0: unknown) {
-      return typeof arg0 === "function";
-    };
+    placeholder.__wbg___wbindgen_is_function_8d400b8b1af978cd = (
+      arg0: unknown,
+    ) => typeof arg0 === "function";
 
-    placeholder.__wbg___wbindgen_is_undefined_f6b95eab589e0269 = function (arg0: unknown) {
-      return arg0 === undefined;
-    };
+    placeholder.__wbg___wbindgen_is_undefined_f6b95eab589e0269 = (
+      arg0: unknown,
+    ) => arg0 === undefined;
 
-    placeholder.__wbg___wbindgen_string_get_a2a31e16edf96e42 = function (arg0: number, arg1: unknown) {
+    placeholder.__wbg___wbindgen_string_get_a2a31e16edf96e42 = (
+      arg0: number,
+      arg1: unknown,
+    ) => {
       const obj = arg1;
       const ret = typeof obj === "string" ? obj : undefined;
-      const ptr1 = isLikeNone(ret) ? 0 : passStringToWasm(ret, wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+      const ptr1 = isLikeNone(ret)
+        ? 0
+        : passStringToWasm(
+            ret,
+            wasm.__wbindgen_malloc as (a: number, b: number) => number,
+            wasm.__wbindgen_realloc as (
+              a: number,
+              b: number,
+              c: number,
+              d: number,
+            ) => number,
+          );
       const len1 = WASM_VECTOR_LEN;
       getDataViewMemory().setInt32(arg0 + 4, len1, true);
       getDataViewMemory().setInt32(arg0, ptr1, true);
     };
 
-    placeholder.__wbg___wbindgen_throw_dd24417ed36fc46e = function (arg0: number, arg1: number) {
+    placeholder.__wbg___wbindgen_throw_dd24417ed36fc46e = (
+      arg0: number,
+      arg1: number,
+    ) => {
       throw new Error(getStringFromWasm(arg0, arg1));
     };
 
-    placeholder.__wbg__wbg_cb_unref_87dfb5aaa0cbcea7 = function (arg0: { _wbg_cb_unref: () => void }) {
+    placeholder.__wbg__wbg_cb_unref_87dfb5aaa0cbcea7 = (arg0: {
+      _wbg_cb_unref: () => void;
+    }) => {
       arg0._wbg_cb_unref();
     };
 
-    placeholder.__wbg_call_3020136f7a2d6e44 = function (...args: unknown[]) {
-      return handleError((arg0: (this: unknown, arg: unknown) => unknown, arg1: unknown, arg2: unknown) => {
-        return arg0.call(arg1, arg2);
-      }, args);
-    };
+    placeholder.__wbg_call_3020136f7a2d6e44 = (...args: unknown[]) =>
+      handleError(
+        (
+          arg0: (this: unknown, arg: unknown) => unknown,
+          arg1: unknown,
+          arg2: unknown,
+        ) => {
+          return arg0.call(arg1, arg2);
+        },
+        args,
+      );
 
-    placeholder.__wbg_call_abb4ff46ce38be40 = function (...args: unknown[]) {
-      return handleError((arg0: (this: unknown) => unknown, arg1: unknown) => {
+    placeholder.__wbg_call_abb4ff46ce38be40 = (...args: unknown[]) =>
+      handleError((arg0: (this: unknown) => unknown, arg1: unknown) => {
         return arg0.call(arg1);
       }, args);
-    };
 
-    placeholder.__wbg_error_7534b8e9a36f1ab4 = function (arg0: number, arg1: number) {
+    placeholder.__wbg_error_7534b8e9a36f1ab4 = (arg0: number, arg1: number) => {
       console.error(getStringFromWasm(arg0, arg1));
-      (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(arg0, arg1, 1);
+      (
+        wasm.__wbindgen_free as (
+          ptr: number,
+          len: number,
+          align: number,
+        ) => void
+      )(arg0, arg1, 1);
     };
 
-    placeholder.__wbg_getRandomValues_9b655bdd369112f2 = function (...args: unknown[]) {
-      return handleError((arg0: number, arg1: number) => {
-        globalThis.crypto.getRandomValues(getUint8Memory().subarray(arg0, arg0 + arg1));
+    placeholder.__wbg_getRandomValues_9b655bdd369112f2 = (...args: unknown[]) =>
+      handleError((arg0: number, arg1: number) => {
+        globalThis.crypto.getRandomValues(
+          getUint8Memory().subarray(arg0, arg0 + arg1),
+        );
       }, args);
-    };
 
-    placeholder.__wbg_instanceof_Promise_eca6c43a2610558d = function (arg0: unknown) {
-      try {
-        return arg0 instanceof Promise;
-      } catch {
-        return false;
-      }
-    };
+    placeholder.__wbg_instanceof_Promise_eca6c43a2610558d = (arg0: unknown) =>
+      arg0 instanceof Promise;
 
-    placeholder.__wbg_new_8a6f238a6ece86ea = function () {
-      return new Error();
-    };
+    placeholder.__wbg_new_8a6f238a6ece86ea = () => new Error();
 
-    placeholder.__wbg_new_ff12d2b041fb48f1 = function (arg0: number, arg1: number) {
+    placeholder.__wbg_new_ff12d2b041fb48f1 = (arg0: number, arg1: number) => {
       const state = { a: arg0, b: arg1 };
-      const cb = (resolve: (value: unknown) => void, reject: (reason: unknown) => void) => {
+      const cb = (
+        resolve: (value: unknown) => void,
+        reject: (reason: unknown) => void,
+      ) => {
         const a = state.a;
         state.a = 0;
         try {
-          (wasm.wasm_bindgen__convert__closures_____invoke__h519f681884664509 as (a: number, b: number, c: unknown, d: unknown) => void)(a, state.b, resolve, reject);
+          (
+            wasm.wasm_bindgen__convert__closures_____invoke__h519f681884664509 as (
+              a: number,
+              b: number,
+              c: unknown,
+              d: unknown,
+            ) => void
+          )(a, state.b, resolve, reject);
         } finally {
           state.a = a;
         }
@@ -342,76 +406,99 @@ async function loadWasmModule(): Promise<WasmExports> {
       }
     };
 
-    placeholder.__wbg_new_no_args_cb138f77cf6151ee = function (arg0: number, arg1: number) {
-      return new Function(getStringFromWasm(arg0, arg1));
-    };
+    placeholder.__wbg_new_no_args_cb138f77cf6151ee = (
+      arg0: number,
+      arg1: number,
+    ) => new Function(getStringFromWasm(arg0, arg1));
 
-    placeholder.__wbg_now_69d776cd24f5215b = function () {
-      return Date.now();
-    };
+    placeholder.__wbg_now_69d776cd24f5215b = () => Date.now();
 
-    placeholder.__wbg_queueMicrotask_9b549dfce8865860 = function (arg0: { queueMicrotask: unknown }) {
-      return arg0.queueMicrotask;
-    };
+    placeholder.__wbg_queueMicrotask_9b549dfce8865860 = (arg0: {
+      queueMicrotask: unknown;
+    }) => arg0.queueMicrotask;
 
-    placeholder.__wbg_queueMicrotask_fca69f5bfad613a5 = function (arg0: () => void) {
+    placeholder.__wbg_queueMicrotask_fca69f5bfad613a5 = (arg0: () => void) => {
       queueMicrotask(arg0);
     };
 
-    placeholder.__wbg_resolve_fd5bfbaa4ce36e1e = function (arg0: unknown) {
-      return Promise.resolve(arg0);
-    };
+    placeholder.__wbg_resolve_fd5bfbaa4ce36e1e = (arg0: unknown) =>
+      Promise.resolve(arg0);
 
-    placeholder.__wbg_stack_0ed75d68575b0f3c = function (arg0: number, arg1: Error) {
+    placeholder.__wbg_stack_0ed75d68575b0f3c = (arg0: number, arg1: Error) => {
       const ret = arg1.stack;
-      const ptr1 = passStringToWasm(ret ?? "", wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+      const ptr1 = passStringToWasm(
+        ret ?? "",
+        wasm.__wbindgen_malloc as (a: number, b: number) => number,
+        wasm.__wbindgen_realloc as (
+          a: number,
+          b: number,
+          c: number,
+          d: number,
+        ) => number,
+      );
       const len1 = WASM_VECTOR_LEN;
       getDataViewMemory().setInt32(arg0 + 4, len1, true);
       getDataViewMemory().setInt32(arg0, ptr1, true);
     };
 
-    placeholder.__wbg_static_accessor_GLOBAL_769e6b65d6557335 = function () {
+    placeholder.__wbg_static_accessor_GLOBAL_769e6b65d6557335 = () => {
       const ret = typeof global === "undefined" ? null : global;
       return isLikeNone(ret) ? 0 : addToExternrefTable(ret);
     };
 
-    placeholder.__wbg_static_accessor_GLOBAL_THIS_60cf02db4de8e1c1 = function () {
+    placeholder.__wbg_static_accessor_GLOBAL_THIS_60cf02db4de8e1c1 = () => {
       const ret = typeof globalThis === "undefined" ? null : globalThis;
       return isLikeNone(ret) ? 0 : addToExternrefTable(ret);
     };
 
-    placeholder.__wbg_static_accessor_SELF_08f5a74c69739274 = function () {
+    placeholder.__wbg_static_accessor_SELF_08f5a74c69739274 = () => {
       const ret = typeof self === "undefined" ? null : self;
       return isLikeNone(ret) ? 0 : addToExternrefTable(ret);
     };
 
-    placeholder.__wbg_static_accessor_WINDOW_a8924b26aa92d024 = function () {
+    placeholder.__wbg_static_accessor_WINDOW_a8924b26aa92d024 = () => {
       const ret = typeof window === "undefined" ? null : window;
       return isLikeNone(ret) ? 0 : addToExternrefTable(ret);
     };
 
-    placeholder.__wbg_then_429f7caf1026411d = function (arg0: Promise<unknown>, arg1: (v: unknown) => unknown, arg2: (v: unknown) => unknown) {
-      return arg0.then(arg1, arg2);
-    };
+    placeholder.__wbg_then_429f7caf1026411d = (
+      arg0: Promise<unknown>,
+      arg1: (v: unknown) => unknown,
+      arg2: (v: unknown) => unknown,
+    ) => arg0.then(arg1, arg2);
 
-    placeholder.__wbg_then_4f95312d68691235 = function (arg0: Promise<unknown>, arg1: (v: unknown) => unknown) {
-      return arg0.then(arg1);
-    };
+    placeholder.__wbg_then_4f95312d68691235 = (
+      arg0: Promise<unknown>,
+      arg1: (v: unknown) => unknown,
+    ) => arg0.then(arg1);
 
-    placeholder.__wbindgen_cast_2241b6af4c4b2941 = function (arg0: number, arg1: number) {
-      return getStringFromWasm(arg0, arg1);
-    };
+    placeholder.__wbindgen_cast_2241b6af4c4b2941 = (
+      arg0: number,
+      arg1: number,
+    ) => getStringFromWasm(arg0, arg1);
 
-    placeholder.__wbindgen_cast_3f4d5247b4ce7d6e = function (arg0: number, arg1: number) {
-      return makeMutClosure(
+    placeholder.__wbindgen_cast_3f4d5247b4ce7d6e = (
+      arg0: number,
+      arg1: number,
+    ) =>
+      makeMutClosure(
         arg0,
         arg1,
-        wasm.wasm_bindgen__closure__destroy__h8c2572569b7537f4 as (a: number, b: number) => void,
-        (a, b, c) => (wasm.wasm_bindgen__convert__closures_____invoke__h7fe492829fe9dd04 as (a: number, b: number, c: unknown) => void)(a, b, c)
+        wasm.wasm_bindgen__closure__destroy__h8c2572569b7537f4 as (
+          a: number,
+          b: number,
+        ) => void,
+        (a, b, c) =>
+          (
+            wasm.wasm_bindgen__convert__closures_____invoke__h7fe492829fe9dd04 as (
+              a: number,
+              b: number,
+              c: unknown,
+            ) => void
+          )(a, b, c),
       );
-    };
 
-    placeholder.__wbindgen_init_externref_table = function () {
+    placeholder.__wbindgen_init_externref_table = () => {
       externrefTable = wasm.__wbindgen_externrefs as WebAssembly.Table;
       const offset = externrefTable.grow(4);
       externrefTable.set(0, undefined);
@@ -438,9 +525,23 @@ async function loadWasmModule(): Promise<WasmExports> {
     const api: WasmExports = {
       WasmAgentRuntime: {
         create(characterJson: string): WasmAgentRuntime {
-          const ptr0 = passStringToWasm(characterJson, wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+          const ptr0 = passStringToWasm(
+            characterJson,
+            wasm.__wbindgen_malloc as (a: number, b: number) => number,
+            wasm.__wbindgen_realloc as (
+              a: number,
+              b: number,
+              c: number,
+              d: number,
+            ) => number,
+          );
           const len0 = WASM_VECTOR_LEN;
-          const ret = (wasm.wasmagentruntime_create as (ptr: number, len: number) => [number, number, number])(ptr0, len0);
+          const ret = (
+            wasm.wasmagentruntime_create as (
+              ptr: number,
+              len: number,
+            ) => [number, number, number]
+          )(ptr0, len0);
           if (ret[2]) {
             throw takeFromExternrefTable(ret[1]);
           }
@@ -448,13 +549,30 @@ async function loadWasmModule(): Promise<WasmExports> {
         },
       },
       stringToUuid(input: string): string {
-        const ptr0 = passStringToWasm(input, wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+        const ptr0 = passStringToWasm(
+          input,
+          wasm.__wbindgen_malloc as (a: number, b: number) => number,
+          wasm.__wbindgen_realloc as (
+            a: number,
+            b: number,
+            c: number,
+            d: number,
+          ) => number,
+        );
         const len0 = WASM_VECTOR_LEN;
-        const ret = (wasm.stringToUuid as (ptr: number, len: number) => [number, number])(ptr0, len0);
+        const ret = (
+          wasm.stringToUuid as (ptr: number, len: number) => [number, number]
+        )(ptr0, len0);
         try {
           return getStringFromWasm(ret[0], ret[1]);
         } finally {
-          (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(ret[0], ret[1], 1);
+          (
+            wasm.__wbindgen_free as (
+              ptr: number,
+              len: number,
+              align: number,
+            ) => void
+          )(ret[0], ret[1], 1);
         }
       },
       generateUUID(): string {
@@ -462,7 +580,13 @@ async function loadWasmModule(): Promise<WasmExports> {
         try {
           return getStringFromWasm(ret[0], ret[1]);
         } finally {
-          (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(ret[0], ret[1], 1);
+          (
+            wasm.__wbindgen_free as (
+              ptr: number,
+              len: number,
+              align: number,
+            ) => void
+          )(ret[0], ret[1], 1);
         }
       },
       getVersion(): string {
@@ -470,7 +594,13 @@ async function loadWasmModule(): Promise<WasmExports> {
         try {
           return getStringFromWasm(ret[0], ret[1]);
         } finally {
-          (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(ret[0], ret[1], 1);
+          (
+            wasm.__wbindgen_free as (
+              ptr: number,
+              len: number,
+              align: number,
+            ) => void
+          )(ret[0], ret[1], 1);
         }
       },
       init_wasm(): void {
@@ -481,53 +611,121 @@ async function loadWasmModule(): Promise<WasmExports> {
     function createRuntimeWrapper(ptr: number): WasmAgentRuntime {
       return {
         initialize() {
-          const ret = (wasm.wasmagentruntime_initialize as (ptr: number) => [number, number])(ptr);
+          const ret = (
+            wasm.wasmagentruntime_initialize as (
+              ptr: number,
+            ) => [number, number]
+          )(ptr);
           if (ret[1]) {
             throw takeFromExternrefTable(ret[0]);
           }
         },
-        registerModelHandler(modelType: string, handler: (paramsJson: string) => Promise<string>) {
-          const ptr0 = passStringToWasm(modelType, wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+        registerModelHandler(
+          modelType: string,
+          handler: (paramsJson: string) => Promise<string>,
+        ) {
+          const ptr0 = passStringToWasm(
+            modelType,
+            wasm.__wbindgen_malloc as (a: number, b: number) => number,
+            wasm.__wbindgen_realloc as (
+              a: number,
+              b: number,
+              c: number,
+              d: number,
+            ) => number,
+          );
           const len0 = WASM_VECTOR_LEN;
-          (wasm.wasmagentruntime_registerModelHandler as (ptr: number, mptr: number, mlen: number, handler: unknown) => void)(ptr, ptr0, len0, handler);
+          (
+            wasm.wasmagentruntime_registerModelHandler as (
+              ptr: number,
+              mptr: number,
+              mlen: number,
+              handler: unknown,
+            ) => void
+          )(ptr, ptr0, len0, handler);
         },
         handleMessage(messageJson: string): Promise<string> {
-          const ptr0 = passStringToWasm(messageJson, wasm.__wbindgen_malloc as (a: number, b: number) => number, wasm.__wbindgen_realloc as (a: number, b: number, c: number, d: number) => number);
+          const ptr0 = passStringToWasm(
+            messageJson,
+            wasm.__wbindgen_malloc as (a: number, b: number) => number,
+            wasm.__wbindgen_realloc as (
+              a: number,
+              b: number,
+              c: number,
+              d: number,
+            ) => number,
+          );
           const len0 = WASM_VECTOR_LEN;
-          return (wasm.wasmagentruntime_handleMessage as (ptr: number, mptr: number, mlen: number) => Promise<string>)(ptr, ptr0, len0);
+          return (
+            wasm.wasmagentruntime_handleMessage as (
+              ptr: number,
+              mptr: number,
+              mlen: number,
+            ) => Promise<string>
+          )(ptr, ptr0, len0);
         },
         stop() {
           (wasm.wasmagentruntime_stop as (ptr: number) => void)(ptr);
         },
         get agentId(): string {
-          const ret = (wasm.wasmagentruntime_agentId as (ptr: number) => [number, number])(ptr);
+          const ret = (
+            wasm.wasmagentruntime_agentId as (ptr: number) => [number, number]
+          )(ptr);
           try {
             return getStringFromWasm(ret[0], ret[1]);
           } finally {
-            (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(ret[0], ret[1], 1);
+            (
+              wasm.__wbindgen_free as (
+                ptr: number,
+                len: number,
+                align: number,
+              ) => void
+            )(ret[0], ret[1], 1);
           }
         },
         get characterName(): string {
-          const ret = (wasm.wasmagentruntime_characterName as (ptr: number) => [number, number])(ptr);
+          const ret = (
+            wasm.wasmagentruntime_characterName as (
+              ptr: number,
+            ) => [number, number]
+          )(ptr);
           try {
             return getStringFromWasm(ret[0], ret[1]);
           } finally {
-            (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(ret[0], ret[1], 1);
+            (
+              wasm.__wbindgen_free as (
+                ptr: number,
+                len: number,
+                align: number,
+              ) => void
+            )(ret[0], ret[1], 1);
           }
         },
         get character(): string {
-          const ret = (wasm.wasmagentruntime_character as (ptr: number) => [number, number, number, number])(ptr);
+          const ret = (
+            wasm.wasmagentruntime_character as (
+              ptr: number,
+            ) => [number, number, number, number]
+          )(ptr);
           if (ret[3]) {
             throw takeFromExternrefTable(ret[2]);
           }
           try {
             return getStringFromWasm(ret[0], ret[1]);
           } finally {
-            (wasm.__wbindgen_free as (ptr: number, len: number, align: number) => void)(ret[0], ret[1], 1);
+            (
+              wasm.__wbindgen_free as (
+                ptr: number,
+                len: number,
+                align: number,
+              ) => void
+            )(ret[0], ret[1], 1);
           }
         },
         free() {
-          (wasm.__wbg_wasmagentruntime_free as (ptr: number, v: number) => void)(ptr, 0);
+          (
+            wasm.__wbg_wasmagentruntime_free as (ptr: number, v: number) => void
+          )(ptr, 0);
         },
       };
     }
@@ -586,13 +784,9 @@ export async function getRuntime(): Promise<WasmAgentRuntime> {
 
   // Start initialization
   initializationPromise = initializeRuntime();
-
-  try {
-    runtimeInstance = await initializationPromise;
-    return runtimeInstance;
-  } finally {
-    initializationPromise = null;
-  }
+  runtimeInstance = await initializationPromise;
+  initializationPromise = null;
+  return runtimeInstance;
 }
 
 /**
@@ -611,7 +805,10 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
   await storageInstance.init();
 
   const agentId = wasm.stringToUuid(elizaCharacter.name);
-  dbAdapter = new LocalDatabaseAdapter(storageInstance, agentId as `${string}-${string}-${string}-${string}-${string}`);
+  dbAdapter = new LocalDatabaseAdapter(
+    storageInstance,
+    agentId as `${string}-${string}-${string}-${string}-${string}`,
+  );
   await dbAdapter.init();
 
   console.log("[elizaOS] LocalDB storage initialized");
@@ -620,15 +817,18 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
   const runtime = wasm.WasmAgentRuntime.create(JSON.stringify(elizaCharacter));
 
   // Register the ELIZA classic pattern matching as the TEXT_LARGE model handler
-  runtime.registerModelHandler("TEXT_LARGE", async (paramsJson: string): Promise<string> => {
-    const params = JSON.parse(paramsJson) as { prompt: string };
-    // Extract user input from the prompt
-    const userMatch = params.prompt.match(/User:\s*(.+?)(?:\n|$)/i);
-    const userInput = userMatch ? userMatch[1].trim() : params.prompt;
+  runtime.registerModelHandler(
+    "TEXT_LARGE",
+    async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson) as { prompt: string };
+      // Extract user input from the prompt
+      const userMatch = params.prompt.match(/User:\s*(.+?)(?:\n|$)/i);
+      const userInput = userMatch ? userMatch[1].trim() : params.prompt;
 
-    // Use the classic ELIZA pattern matching
-    return generateElizaResponse(userInput);
-  });
+      // Use the classic ELIZA pattern matching
+      return generateElizaResponse(userInput);
+    },
+  );
 
   // Initialize the runtime
   runtime.initialize();
@@ -665,21 +865,18 @@ export async function sendMessage(text: string): Promise<string> {
 
   // Store the user message in LocalDB
   if (dbAdapter) {
-    try {
-      await dbAdapter.createMemory(
-        {
-          id: messageId as `${string}-${string}-${string}-${string}-${string}`,
-          entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
-          roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
-          agentId: runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
-          content: { text },
-          createdAt: Date.now(),
-        },
-        "messages"
-      );
-    } catch (error) {
-      console.warn("[elizaOS] Could not store user message:", error);
-    }
+    await dbAdapter.createMemory(
+      {
+        id: messageId as `${string}-${string}-${string}-${string}-${string}`,
+        entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
+        roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
+        agentId:
+          runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
+        content: { text },
+        createdAt: Date.now(),
+      },
+      "messages",
+    );
   }
 
   // Send to the Rust runtime
@@ -689,26 +886,25 @@ export async function sendMessage(text: string): Promise<string> {
     responseContent?: { text?: string };
   };
 
-  const responseText = response.responseContent?.text ?? "I'm not sure how to respond to that.";
+  const responseText =
+    response.responseContent?.text ?? "I'm not sure how to respond to that.";
 
   // Store the ELIZA response in LocalDB
   if (dbAdapter) {
-    try {
-      const responseId = wasm.generateUUID();
-      await dbAdapter.createMemory(
-        {
-          id: responseId as `${string}-${string}-${string}-${string}-${string}`,
-          entityId: runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
-          roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
-          agentId: runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
-          content: { text: responseText },
-          createdAt: Date.now(),
-        },
-        "messages"
-      );
-    } catch (error) {
-      console.warn("[elizaOS] Could not store ELIZA response:", error);
-    }
+    const responseId = wasm.generateUUID();
+    await dbAdapter.createMemory(
+      {
+        id: responseId as `${string}-${string}-${string}-${string}-${string}`,
+        entityId:
+          runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
+        roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
+        agentId:
+          runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
+        content: { text: responseText },
+        createdAt: Date.now(),
+      },
+      "messages",
+    );
   }
 
   return responseText;

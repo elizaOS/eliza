@@ -46,11 +46,11 @@ await service.stop()
 
 ## Configuration
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `TEE_MODE` | Operation mode: `LOCAL`, `DOCKER`, `PRODUCTION` | Yes |
-| `WALLET_SECRET_SALT` | Secret for key derivation | Yes |
-| `TEE_VENDOR` | Vendor name (default: `phala`) | No |
+| Variable             | Description                                     | Required |
+| -------------------- | ----------------------------------------------- | -------- |
+| `TEE_MODE`           | Operation mode: `LOCAL`, `DOCKER`, `PRODUCTION` | Yes      |
+| `WALLET_SECRET_SALT` | Secret for key derivation                       | Yes      |
+| `TEE_VENDOR`         | Vendor name (default: `phala`)                  | No       |
 
 ## API Reference
 
@@ -126,5 +126,6 @@ ruff format .
 ## License
 
 MIT
+
 
 

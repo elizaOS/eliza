@@ -1,3 +1,1 @@
 export { FarcasterClient } from "./FarcasterClient";
-
-

@@ -72,32 +72,24 @@ const helloWorldAction: Action = {
     callback?: HandlerCallback,
     _responses?: Memory[],
   ): Promise<ActionResult> => {
-    try {
-      const response = "Hello world!";
+    const response = "Hello world!";
 
-      if (callback) {
-        await callback({
-          text: response,
-          actions: ["HELLO_WORLD"],
-          source: message.content.source,
-        });
-      }
-
-      return {
+    if (callback) {
+      await callback({
         text: response,
-        success: true,
-        data: {
-          actions: ["HELLO_WORLD"],
-          source: message.content.source,
-        },
-      };
-    } catch (error) {
-      logger.error({ error }, "Error in HelloWorld action:");
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
+        actions: ["HELLO_WORLD"],
+        source: message.content.source,
+      });
     }
+
+    return {
+      text: response,
+      success: true,
+      data: {
+        actions: ["HELLO_WORLD"],
+        source: message.content.source,
+      },
+    };
   },
 
   examples: [
@@ -189,7 +181,7 @@ export const starterPlugin: Plugin = {
       if (error instanceof z.ZodError) {
         const errorIssues = error.issues;
         const errorMessages =
-          (errorIssues && errorIssues.map((e) => e.message).join(", ")) ||
+          errorIssues?.map((e) => e.message).join(", ") ||
           "Unknown validation error";
         throw new Error(`Invalid plugin configuration: ${errorMessages}`);
       }

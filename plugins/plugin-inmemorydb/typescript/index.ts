@@ -1,6 +1,6 @@
 /**
  * Main entry point for plugin-inmemorydb
- * 
+ *
  * Pure in-memory, ephemeral storage - all data is lost on restart.
  * Works identically in both Node.js and browser environments.
  */
@@ -31,7 +31,7 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 /**
  * Creates an in-memory database adapter
- * 
+ *
  * @param agentId The agent ID
  * @returns The database adapter
  */
@@ -46,10 +46,10 @@ export function createDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
 
 /**
  * Plugin definition for elizaOS
- * 
+ *
  * This plugin provides a pure in-memory database that is completely ephemeral.
  * All data is lost when the process restarts or when close() is called.
- * 
+ *
  * Perfect for:
  * - Testing and CI/CD
  * - Stateless deployments
@@ -59,7 +59,7 @@ export function createDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
 export const plugin: Plugin = {
   name: "@elizaos/plugin-inmemorydb",
   description: "Pure in-memory, ephemeral database storage for elizaOS - no persistence",
-  
+
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:inmemorydb" }, "Initializing in-memory database plugin (ephemeral)");
 
@@ -71,8 +71,8 @@ export const plugin: Plugin = {
       databaseAdapter?: IDatabaseAdapter;
     }
     const runtimeWithAdapter = runtime as RuntimeWithAdapter;
-    
-    const hasAdapter = 
+
+    const hasAdapter =
       runtimeWithAdapter.adapter !== undefined ||
       runtimeWithAdapter.databaseAdapter !== undefined ||
       (runtimeWithAdapter.hasDatabaseAdapter?.() ?? false);
@@ -99,10 +99,8 @@ export const plugin: Plugin = {
 };
 
 export { InMemoryDatabaseAdapter } from "./adapter";
-export { MemoryStorage } from "./storage-memory";
 export { EphemeralHNSW } from "./hnsw";
+export { MemoryStorage } from "./storage-memory";
 export * from "./types";
 
 export default plugin;
-
-

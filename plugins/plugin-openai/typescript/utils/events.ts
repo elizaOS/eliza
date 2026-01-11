@@ -89,9 +89,7 @@ function normalizeUsage(usage: ModelUsage): TokenUsage {
     return {
       promptTokens: usage.promptTokens ?? 0,
       completionTokens: usage.completionTokens ?? 0,
-      totalTokens:
-        usage.totalTokens ??
-        (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
+      totalTokens: usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0),
     };
   }
 

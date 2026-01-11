@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! PGLite adapter implementation for elizaOS WASM environments
 
 #![cfg(feature = "wasm")]

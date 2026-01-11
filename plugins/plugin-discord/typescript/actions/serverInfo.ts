@@ -38,9 +38,7 @@ const formatServerInfo = (guild: Guild, detailed: boolean = false): string => {
     const voiceChannels = guild.channels.cache
       .filter((ch) => ch.isVoiceBased())
       .size.toLocaleString();
-    const categories = guild.channels.cache
-      .filter((ch) => ch.type === 4)
-      .size.toLocaleString(); // CategoryChannel type
+    const categories = guild.channels.cache.filter((ch) => ch.type === 4).size.toLocaleString(); // CategoryChannel type
     const activeThreads = guild.channels.cache
       .filter((ch) => ch.isThread() && !ch.archived)
       .size.toLocaleString();
@@ -48,9 +46,7 @@ const formatServerInfo = (guild: Guild, detailed: boolean = false): string => {
 
     const features =
       guild.features.length > 0
-        ? guild.features
-            .map((f) => f.toLowerCase().replace(/_/g, " "))
-            .join(", ")
+        ? guild.features.map((f) => f.toLowerCase().replace(/_/g, " ")).join(", ")
         : "None";
 
     const detailedInfo = [
@@ -104,12 +100,10 @@ export const serverInfo = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -121,8 +115,8 @@ export const serverInfo = {
 
     try {
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
-      const serverId = room && room.messageServerId;
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
+      const serverId = room?.messageServerId;
       if (!serverId) {
         await callback({
           text: "I couldn't determine the current server.",
@@ -135,7 +129,7 @@ export const serverInfo = {
 
       // Check if the request is for detailed info
       const messageContentText = message.content.text;
-      const messageText = (messageContentText && messageContentText.toLowerCase()) || "";
+      const messageText = messageContentText?.toLowerCase() || "";
       const isDetailed =
         messageText.includes("detailed") ||
         messageText.includes("full") ||
@@ -157,7 +151,7 @@ export const serverInfo = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error getting server info",
+        "Error getting server info"
       );
       await callback({
         text: "I encountered an error while getting server information. Please try again.",

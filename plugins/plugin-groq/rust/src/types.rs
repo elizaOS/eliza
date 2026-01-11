@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Groq plugin.
 
 use serde::{Deserialize, Serialize};
@@ -164,6 +165,7 @@ pub struct GroqConfig {
     /// Transcription model
     pub transcription_model: String,
 }
+
 
 impl Default for GroqConfig {
     fn default() -> Self {

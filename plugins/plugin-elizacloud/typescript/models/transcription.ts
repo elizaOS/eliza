@@ -1,8 +1,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { getSetting, getBaseURL, getAuthHeader } from "../utils/config";
-import { detectAudioMimeType } from "../utils/helpers";
 import type { OpenAITranscriptionParams } from "../types";
+import { getAuthHeader, getBaseURL, getSetting } from "../utils/config";
+import { detectAudioMimeType } from "../utils/helpers";
 
 /**
  * TRANSCRIPTION model handler

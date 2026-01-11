@@ -17,10 +17,13 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": "../../../",
+    "paths": {
+      "@elizaos/core": ["packages/typescript/src"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__"]
 }
-
-

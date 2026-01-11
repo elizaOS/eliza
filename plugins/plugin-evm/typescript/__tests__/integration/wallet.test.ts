@@ -1,19 +1,12 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WalletProvider } from "../../providers/wallet";
+import type { SupportedChain } from "../../types";
 import {
-  anvil,
-  ANVIL_PRIVATE_KEY,
   ANVIL_ADDRESS,
+  ANVIL_PRIVATE_KEY,
   baseSepolia,
   getAnvilChain,
   getTestChains,
@@ -23,20 +16,31 @@ import {
 // Test environment variables - in real tests you'd use a funded testnet wallet
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
 const TEST_RPC_URLS = {
-  sepolia:
-    process.env.SEPOLIA_RPC_URL ||
-    "https://ethereum-sepolia-rpc.publicnode.com",
+  sepolia: process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
   baseSepolia: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
-  optimismSepolia:
-    process.env.OP_SEPOLIA_RPC_URL || "https://sepolia.optimism.io",
+  optimismSepolia: process.env.OP_SEPOLIA_RPC_URL || "https://sepolia.optimism.io",
   anvil: "http://127.0.0.1:8545",
 };
 
-// Mock the ICacheManager
-const mockCacheManager = {
-  getCache: vi.fn().mockResolvedValue(null),
-  setCache: vi.fn().mockResolvedValue(undefined),
-};
+// Create a mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-id" as IAgentRuntime["agentId"],
+    getCache: vi.fn().mockResolvedValue(null),
+    setCache: vi.fn().mockResolvedValue(undefined),
+    getSetting: vi.fn().mockReturnValue(null),
+    setSetting: vi.fn(),
+    getService: vi.fn().mockReturnValue(null),
+    registerService: vi.fn(),
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+    },
+  } as IAgentRuntime;
+}
 
 describe("Wallet Provider", () => {
   let walletProvider: WalletProvider;
@@ -53,28 +57,29 @@ describe("Wallet Provider", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCacheManager.getCache.mockResolvedValue(null);
   });
 
   describe("Constructor", () => {
     it("should set wallet address correctly", () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
+      const mockRuntime = createMockRuntime();
 
-      walletProvider = new WalletProvider(pk, mockCacheManager as any);
+      walletProvider = new WalletProvider(pk, mockRuntime);
 
       expect(walletProvider.getAddress()).toBe(expectedAddress);
     });
 
     it("should initialize with empty chains when no chains provided", () => {
-      walletProvider = new WalletProvider(pk, mockCacheManager as any);
+      const mockRuntime = createMockRuntime();
+      walletProvider = new WalletProvider(pk, mockRuntime);
 
       // WalletProvider constructor with no chains should result in empty chains
       const supportedChains = walletProvider.getSupportedChains();
       expect(supportedChains.length).toBe(0);
 
       // This is expected behavior - no chains configured means no chains
-      expect(supportedChains.includes("mainnet" as any)).toBe(false);
+      expect(supportedChains.includes("mainnet" as SupportedChain)).toBe(false);
     });
 
     it("should initialize with custom testnet chains", () => {
@@ -82,12 +87,9 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
+      const mockRuntime = createMockRuntime();
 
-      walletProvider = new WalletProvider(
-        pk,
-        mockCacheManager as any,
-        customChains,
-      );
+      walletProvider = new WalletProvider(pk, mockRuntime, customChains);
 
       expect(walletProvider.chains.sepolia.id).toEqual(sepolia.id);
       expect(walletProvider.chains.baseSepolia.id).toEqual(baseSepolia.id);
@@ -100,11 +102,7 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
-      walletProvider = new WalletProvider(
-        pk,
-        mockCacheManager as any,
-        customChains,
-      );
+      walletProvider = new WalletProvider(pk, createMockRuntime(), customChains);
     });
 
     it("should generate public client for Sepolia", () => {
@@ -114,11 +112,8 @@ describe("Wallet Provider", () => {
     });
 
     it("should generate public client with custom RPC URL", () => {
-      const chain = WalletProvider.genChainFromName(
-        "sepolia",
-        TEST_RPC_URLS.sepolia,
-      );
-      const wp = new WalletProvider(pk, mockCacheManager as any, {
+      const chain = WalletProvider.genChainFromName("sepolia", TEST_RPC_URLS.sepolia);
+      const wp = new WalletProvider(pk, createMockRuntime(), {
         sepolia: chain,
       });
 
@@ -135,18 +130,15 @@ describe("Wallet Provider", () => {
 
       expect(client.account).toBeDefined();
       expect(client.chain).toBeDefined();
-      expect(client.account && client.account.address).toEqual(expectedAddress);
-      expect(client.chain && client.chain.id).toEqual(sepolia.id);
+      expect(client.account?.address).toEqual(expectedAddress);
+      expect(client.chain?.id).toEqual(sepolia.id);
     });
 
     it("should generate wallet client with custom RPC URL", () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
-      const chain = WalletProvider.genChainFromName(
-        "sepolia",
-        TEST_RPC_URLS.sepolia,
-      );
-      const wp = new WalletProvider(pk, mockCacheManager as any, {
+      const chain = WalletProvider.genChainFromName("sepolia", TEST_RPC_URLS.sepolia);
+      const wp = new WalletProvider(pk, createMockRuntime(), {
         sepolia: chain,
       });
 
@@ -154,8 +146,8 @@ describe("Wallet Provider", () => {
 
       expect(client.account).toBeDefined();
       expect(client.chain).toBeDefined();
-      expect(client.account && client.account.address).toEqual(expectedAddress);
-      expect(client.chain && client.chain.id).toEqual(sepolia.id);
+      expect(client.account?.address).toEqual(expectedAddress);
+      expect(client.chain?.id).toEqual(sepolia.id);
       expect(client.transport.url).toEqual(TEST_RPC_URLS.sepolia);
     });
   });
@@ -166,11 +158,7 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
-      walletProvider = new WalletProvider(
-        pk,
-        mockCacheManager as any,
-        customChains,
-      );
+      walletProvider = new WalletProvider(pk, createMockRuntime(), customChains);
     });
 
     it("should fetch balance for Sepolia testnet", async () => {
@@ -182,8 +170,7 @@ describe("Wallet Provider", () => {
     });
 
     it("should fetch balance for Base Sepolia testnet", async () => {
-      const balance =
-        await walletProvider.getWalletBalanceForChain("baseSepolia");
+      const balance = await walletProvider.getWalletBalanceForChain("baseSepolia");
 
       expect(typeof balance).toBe("string");
       expect(balance).toMatch(/^\d+(\.\d+)?$/);
@@ -191,7 +178,7 @@ describe("Wallet Provider", () => {
 
     it("should return null for unconfigured chain", async () => {
       const balance = await walletProvider.getWalletBalanceForChain(
-        "unconfiguredChain" as any,
+        "unconfiguredChain" as SupportedChain
       );
       expect(balance).toBe(null);
     });
@@ -209,7 +196,7 @@ describe("Wallet Provider", () => {
 
   describe("Chain Management", () => {
     beforeEach(() => {
-      walletProvider = new WalletProvider(pk, mockCacheManager as any);
+      walletProvider = new WalletProvider(pk, createMockRuntime());
     });
 
     it("should generate chain from name - Sepolia", () => {
@@ -258,15 +245,11 @@ describe("Wallet Provider", () => {
     });
 
     it("should throw error for unsupported chain name", () => {
-      expect(() =>
-        WalletProvider.genChainFromName("invalidchain" as any),
-      ).toThrow();
+      expect(() => WalletProvider.genChainFromName("invalidchain" as SupportedChain)).toThrow();
     });
 
     it("should throw error for invalid chain name format", () => {
-      expect(() =>
-        WalletProvider.genChainFromName("123invalid" as any),
-      ).toThrow();
+      expect(() => WalletProvider.genChainFromName("123invalid" as SupportedChain)).toThrow();
     });
   });
 
@@ -275,11 +258,7 @@ describe("Wallet Provider", () => {
       const customChains = {
         sepolia: testChains.sepolia,
       };
-      walletProvider = new WalletProvider(
-        pk,
-        mockCacheManager as any,
-        customChains,
-      );
+      walletProvider = new WalletProvider(pk, createMockRuntime(), customChains);
     });
 
     it("should be able to connect to Sepolia network", async () => {
@@ -311,15 +290,11 @@ describe("Wallet Provider", () => {
     let anvilProvider: WalletProvider;
 
     beforeEach(() => {
-      anvilProvider = new WalletProvider(
-        ANVIL_PRIVATE_KEY,
-        mockCacheManager as any,
-        getAnvilChain(),
-      );
+      anvilProvider = new WalletProvider(ANVIL_PRIVATE_KEY, createMockRuntime(), getAnvilChain());
     });
 
     it("should connect to local Anvil node", async () => {
-      const publicClient = anvilProvider.getPublicClient("anvil" as any);
+      const publicClient = anvilProvider.getPublicClient("anvil" as SupportedChain);
       const blockNumber = await publicClient.getBlockNumber();
       expect(typeof blockNumber).toBe("bigint");
     });
@@ -329,14 +304,16 @@ describe("Wallet Provider", () => {
     });
 
     it("should have funded balance on Anvil", async () => {
-      const balance = await anvilProvider.getWalletBalanceForChain("anvil" as any);
+      const balance = await anvilProvider.getWalletBalanceForChain("anvil" as SupportedChain);
       expect(balance).not.toBeNull();
-      expect(parseFloat(balance!)).toBeGreaterThan(0);
+      if (balance !== null) {
+        expect(parseFloat(balance)).toBeGreaterThan(0);
+      }
       console.log(`Anvil balance: ${balance} ETH`);
     });
 
     it("should get chain ID from Anvil", async () => {
-      const publicClient = anvilProvider.getPublicClient("anvil" as any);
+      const publicClient = anvilProvider.getPublicClient("anvil" as SupportedChain);
       const chainId = await publicClient.getChainId();
       expect(chainId).toBe(31337);
     });

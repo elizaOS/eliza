@@ -33,12 +33,7 @@ class ReviewPullRequestAction:
         if isinstance(content, dict):
             text = str(content.get("text", "")).lower()
 
-        return (
-            "review" in text
-            or "approve" in text
-            or "request changes" in text
-            or "lgtm" in text
-        )
+        return "review" in text or "approve" in text or "request changes" in text or "lgtm" in text
 
     async def handler(
         self,
@@ -94,5 +89,8 @@ class ReviewPullRequestAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create review: {e}")
+
+
+
 
 

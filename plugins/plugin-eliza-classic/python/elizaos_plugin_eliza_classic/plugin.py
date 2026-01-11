@@ -171,7 +171,9 @@ ELIZA_PATTERNS: list[ElizaPattern] = [
                 ],
             ),
             ElizaRule(
-                pattern=re.compile(r"i am (?:sad|depressed|unhappy|sick)", re.IGNORECASE),
+                pattern=re.compile(
+                    r"i am (?:sad|depressed|unhappy|sick)", re.IGNORECASE
+                ),
                 responses=[
                     "I am sorry to hear that you are feeling that way.",
                     "Do you think coming here will help you?",
@@ -619,18 +621,14 @@ def create_eliza_classic_elizaos_plugin() -> Any:
 
     plugin_instance = ElizaClassicPlugin()
 
-    async def text_large_handler(
-        runtime: IAgentRuntime, params: dict[str, Any]
-    ) -> str:
+    async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         prompt = params.get("prompt", "")
         # Extract user message if formatted
         match = re.search(r"(?:User|Human|You):\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
         input_text = match.group(1) if match else prompt
         return plugin_instance.generate_response(input_text)
 
-    async def text_small_handler(
-        runtime: IAgentRuntime, params: dict[str, Any]
-    ) -> str:
+    async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         return await text_large_handler(runtime, params)
 
     return Plugin(

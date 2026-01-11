@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { PgDatabaseAdapter } from "../../../pg/adapter";
 import type { PostgresConnectionManager } from "../../../pg/manager";
 
@@ -50,10 +50,7 @@ describe("PgDatabaseAdapter", () => {
       })),
     };
 
-    adapter = new PgDatabaseAdapter(
-      agentId,
-      mockManager as PostgresConnectionManager,
-    );
+    adapter = new PgDatabaseAdapter(agentId, mockManager as PostgresConnectionManager);
   });
 
   describe("constructor", () => {
@@ -75,7 +72,7 @@ describe("PgDatabaseAdapter", () => {
       await adapter.init();
       expect(logger.debug).toHaveBeenCalledWith(
         { src: "plugin:sql" },
-        "PgDatabaseAdapter initialized",
+        "PgDatabaseAdapter initialized"
       );
     });
   });
@@ -195,10 +192,7 @@ describe("PgDatabaseAdapter", () => {
         withEntityContext: vi.fn(),
       } as PostgresConnectionManager;
 
-      const concurrentAdapter = new PgDatabaseAdapter(
-        agentId,
-        concurrentManager,
-      );
+      const concurrentAdapter = new PgDatabaseAdapter(agentId, concurrentManager);
 
       // Run multiple concurrent operations
       const operations = [

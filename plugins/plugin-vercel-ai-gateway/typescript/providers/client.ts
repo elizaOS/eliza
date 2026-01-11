@@ -40,15 +40,9 @@ export class GatewayClient {
   /**
    * Make an HTTP request to the gateway.
    */
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit): Promise<T> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      this.config.timeoutMs
-    );
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
     try {
       const response = await fetch(this.url(endpoint), {
@@ -64,7 +58,9 @@ export class GatewayClient {
       if (!response.ok) {
         let message: string;
         try {
-          const errorData = (await response.json()) as { error?: { message?: string } };
+          const errorData = (await response.json()) as {
+            error?: { message?: string };
+          };
           message = errorData?.error?.message || response.statusText;
         } catch {
           message = response.statusText;
@@ -134,13 +130,10 @@ export class GatewayClient {
       }
     }
 
-    const response = await this.request<ChatCompletionResponse>(
-      "/chat/completions",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      }
-    );
+    const response = await this.request<ChatCompletionResponse>("/chat/completions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
 
     if (!response.choices || response.choices.length === 0) {
       throw new GatewayError("API returned no choices");
@@ -157,9 +150,7 @@ export class GatewayClient {
   /**
    * Stream text generation using the chat completions API.
    */
-  async *streamText(
-    params: TextGenerationParams
-  ): AsyncGenerator<string, void, unknown> {
+  async *streamText(params: TextGenerationParams): AsyncGenerator<string, void, unknown> {
     const model = params.model || this.config.largeModel;
 
     const messages: Array<{ role: string; content: string }> = [];
@@ -189,10 +180,7 @@ export class GatewayClient {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      this.config.timeoutMs
-    );
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
     try {
       const response = await fetch(this.url("/chat/completions"), {
@@ -290,9 +278,7 @@ export class GatewayClient {
   /**
    * Generate images.
    */
-  async generateImage(
-    params: ImageGenerationParams
-  ): Promise<ImageGenerationResult[]> {
+  async generateImage(params: ImageGenerationParams): Promise<ImageGenerationResult[]> {
     const model = params.model || this.config.imageModel;
 
     const body: Record<string, unknown> = {
@@ -305,13 +291,10 @@ export class GatewayClient {
     if (params.quality !== undefined) body.quality = params.quality;
     if (params.style !== undefined) body.style = params.style;
 
-    const response = await this.request<ImageGenerationResponse>(
-      "/images/generations",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      }
-    );
+    const response = await this.request<ImageGenerationResponse>("/images/generations", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
 
     return response.data.map((item) => ({
       url: item.url,
@@ -326,13 +309,10 @@ export class GatewayClient {
   /**
    * Describe/analyze an image using vision capabilities.
    */
-  async describeImage(
-    params: ImageDescriptionParams
-  ): Promise<ImageDescriptionResult> {
+  async describeImage(params: ImageDescriptionParams): Promise<ImageDescriptionResult> {
     const model = params.model || "gpt-5-mini";
     const prompt =
-      params.prompt ||
-      "Please analyze this image and provide a title and detailed description.";
+      params.prompt || "Please analyze this image and provide a title and detailed description.";
     const maxTokens = params.maxTokens || 8192;
 
     const body = {
@@ -349,13 +329,10 @@ export class GatewayClient {
       max_tokens: maxTokens,
     };
 
-    const response = await this.request<ChatCompletionResponse>(
-      "/chat/completions",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-      }
-    );
+    const response = await this.request<ChatCompletionResponse>("/chat/completions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
 
     if (!response.choices || response.choices.length === 0) {
       throw new GatewayError("API returned no choices for image description");
@@ -386,9 +363,11 @@ export class GatewayClient {
   /**
    * Generate a structured JSON object.
    */
-  async generateObject(
-    params: { prompt: string; model?: string; temperature?: number }
-  ): Promise<Record<string, unknown>> {
+  async generateObject(params: {
+    prompt: string;
+    model?: string;
+    temperature?: number;
+  }): Promise<Record<string, unknown>> {
     const model = params.model || this.config.smallModel;
     const prompt = `Respond with only valid JSON. ${params.prompt}`;
 
@@ -417,5 +396,3 @@ export class GatewayClient {
     }
   }
 }
-
-

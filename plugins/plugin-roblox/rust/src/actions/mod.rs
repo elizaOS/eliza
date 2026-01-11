@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Actions for the Roblox plugin.
 //!
 //! This module provides action definitions that can be used by elizaOS agents
@@ -56,5 +57,10 @@ pub struct PlayerInfoResult {
     /// Whether the account is banned
     pub is_banned: bool,
 }
+
+
+
+
+
 
 

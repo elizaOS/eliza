@@ -2,7 +2,7 @@
  * Tests for SimpleHNSW
  */
 
-import {  describe, it, expect, beforeEach  } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { SimpleHNSW } from "../hnsw";
 
 describe("SimpleHNSW", () => {
@@ -66,10 +66,10 @@ describe("SimpleHNSW", () => {
     it("should handle normalized vectors", async () => {
       // Normalized vectors
       const sqrt2 = Math.sqrt(2);
-      await hnsw.add("v1", [1/sqrt2, 1/sqrt2, 0.0]);
+      await hnsw.add("v1", [1 / sqrt2, 1 / sqrt2, 0.0]);
       await hnsw.add("v2", [1.0, 0.0, 0.0]);
 
-      const results = await hnsw.search([1/sqrt2, 1/sqrt2, 0.0], 1, 0.9);
+      const results = await hnsw.search([1 / sqrt2, 1 / sqrt2, 0.0], 1, 0.9);
       expect(results[0].id).toBe("v1");
     });
   });
@@ -84,7 +84,7 @@ describe("SimpleHNSW", () => {
       expect(hnsw.size()).toBe(1);
 
       const results = await hnsw.search([1.0, 0.0, 0.0], 2, 0.0);
-      expect(results.every(r => r.id !== "v1")).toBe(true);
+      expect(results.every((r) => r.id !== "v1")).toBe(true);
     });
   });
 
@@ -147,8 +147,11 @@ describe("SimpleHNSW", () => {
       for (let i = 0; i < 100; i++) {
         const vec = [Math.random(), Math.random(), Math.random()];
         // Normalize
-        const norm = Math.sqrt(vec[0]**2 + vec[1]**2 + vec[2]**2);
-        await hnsw.add(`v${i}`, vec.map(v => v / norm));
+        const norm = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2);
+        await hnsw.add(
+          `v${i}`,
+          vec.map((v) => v / norm)
+        );
       }
 
       expect(hnsw.size()).toBe(100);
@@ -159,8 +162,3 @@ describe("SimpleHNSW", () => {
     });
   });
 });
-
-
-
-
-

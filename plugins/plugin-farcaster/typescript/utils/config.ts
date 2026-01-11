@@ -2,15 +2,15 @@
  * Configuration utilities for the Farcaster plugin.
  */
 
-import { parseBooleanFromText, type IAgentRuntime } from "@elizaos/core";
-import { ZodError } from "zod";
+import { type IAgentRuntime, parseBooleanFromText } from "@elizaos/core";
+import { z } from "zod";
 import {
-  DEFAULT_MAX_CAST_LENGTH,
-  DEFAULT_POLL_INTERVAL,
   DEFAULT_CAST_INTERVAL_MAX,
   DEFAULT_CAST_INTERVAL_MIN,
-  FarcasterConfigSchema,
+  DEFAULT_MAX_CAST_LENGTH,
+  DEFAULT_POLL_INTERVAL,
   type FarcasterConfig,
+  FarcasterConfigSchema,
 } from "../types";
 
 /**
@@ -132,7 +132,9 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
       runtime.logger.info(
         `- Cast Interval: ${config.CAST_INTERVAL_MIN}-${config.CAST_INTERVAL_MAX} minutes`
       );
-      runtime.logger.info(`- Cast Immediately: ${config.CAST_IMMEDIATELY ? "enabled" : "disabled"}`);
+      runtime.logger.info(
+        `- Cast Immediately: ${config.CAST_IMMEDIATELY ? "enabled" : "disabled"}`
+      );
     }
     runtime.logger.info(
       `- Action Processing: ${config.ENABLE_ACTION_PROCESSING ? "enabled" : "disabled"}`
@@ -147,12 +149,12 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
 
     return config;
   } catch (error) {
-    if (error instanceof ZodError) {
-      const errorMessages = error.issues.map((err) => `${err.path.join(".")}: ${err.message}`).join("\n");
+    if (error instanceof z.ZodError) {
+      const errorMessages = error.issues
+        .map((err) => `${err.path.join(".")}: ${err.message}`)
+        .join("\n");
       throw new Error(`Farcaster configuration validation failed:\n${errorMessages}`);
     }
     throw error;
   }
 }
-
-

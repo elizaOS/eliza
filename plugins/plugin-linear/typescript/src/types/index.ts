@@ -7,9 +7,9 @@ export interface LinearActivityItem {
   id: string;
   timestamp: string;
   action: string;
-  resource_type: 'issue' | 'project' | 'comment' | 'label' | 'user' | 'team';
+  resource_type: "issue" | "project" | "comment" | "label" | "user" | "team";
   resource_id: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   success: boolean;
   error?: string;
 }
@@ -43,22 +43,28 @@ export interface LinearSearchFilters {
   limit?: number;
 }
 
+/** Error response structure from Linear API */
+export interface LinearErrorResponse {
+  message?: string;
+  errors?: Array<{ message: string; path?: string[] }>;
+}
+
 // Error classes specific to Linear
 export class LinearAPIError extends Error {
   constructor(
     message: string,
     public status?: number,
-    public response?: any
+    public response?: LinearErrorResponse
   ) {
     super(message);
-    this.name = 'LinearAPIError';
+    this.name = "LinearAPIError";
   }
 }
 
 export class LinearAuthenticationError extends LinearAPIError {
   constructor(message: string) {
     super(message, 401);
-    this.name = 'LinearAuthenticationError';
+    this.name = "LinearAuthenticationError";
   }
 }
 
@@ -68,6 +74,6 @@ export class LinearRateLimitError extends LinearAPIError {
     public resetTime: number
   ) {
     super(message, 429);
-    this.name = 'LinearRateLimitError';
+    this.name = "LinearRateLimitError";
   }
-} 
+}

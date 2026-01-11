@@ -3,5 +3,3 @@
  */
 
 export { remoteAttestationAction } from "./remoteAttestation";
-
-

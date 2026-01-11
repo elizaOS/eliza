@@ -5,7 +5,7 @@ on:
     branches:
       - 1.x
     paths:
-      - 'python/**'
+      - "python/**"
   workflow_dispatch:
 
 jobs:
@@ -66,7 +66,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -106,7 +106,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install build dependencies
         run: |
@@ -122,5 +122,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: python/dist/
+
 
 

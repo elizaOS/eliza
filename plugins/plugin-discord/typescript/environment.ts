@@ -7,7 +7,7 @@ import type { DiscordSettings } from "./types";
  * Helper functions to get environment variables with proper defaults
  */
 function getEnvBoolean(name: string, fallback: boolean): boolean {
-  const value = process.env && process.env[name];
+  const value = process.env?.[name];
   if (!value) {
     return fallback;
   }
@@ -15,7 +15,7 @@ function getEnvBoolean(name: string, fallback: boolean): boolean {
 }
 
 function getEnvArray(name: string, fallback: string[]): string[] {
-  const value = process.env && process.env[name];
+  const value = process.env?.[name];
   if (!value || value.trim() === "") {
     return fallback;
   }
@@ -29,18 +29,9 @@ function getEnvArray(name: string, fallback: string[]): string[] {
  * Default values that can be overridden by environment variables
  */
 export const DISCORD_DEFAULTS = {
-  SHOULD_IGNORE_BOT_MESSAGES: getEnvBoolean(
-    "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
-    false,
-  ),
-  SHOULD_IGNORE_DIRECT_MESSAGES: getEnvBoolean(
-    "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
-    false,
-  ),
-  SHOULD_RESPOND_ONLY_TO_MENTIONS: getEnvBoolean(
-    "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
-    false,
-  ),
+  SHOULD_IGNORE_BOT_MESSAGES: getEnvBoolean("DISCORD_SHOULD_IGNORE_BOT_MESSAGES", false),
+  SHOULD_IGNORE_DIRECT_MESSAGES: getEnvBoolean("DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES", false),
+  SHOULD_RESPOND_ONLY_TO_MENTIONS: getEnvBoolean("DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS", false),
   ALLOWED_CHANNEL_IDS: getEnvArray("CHANNEL_IDS", []),
 } as const;
 
@@ -61,7 +52,7 @@ export const discordEnvSchema = z.object({
             .split(",")
             .map((s) => s.trim())
             .filter((s) => s.length > 0)
-        : undefined,
+        : undefined
     ),
   DISCORD_SHOULD_IGNORE_BOT_MESSAGES: z
     .string()
@@ -93,21 +84,20 @@ export type DiscordConfig = z.infer<typeof discordEnvSchema>;
  */
 export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
   const characterSettings =
-    (runtime.character.settings && runtime.character.settings.discord as DiscordSettings) || {};
+    (runtime.character.settings && (runtime.character.settings.discord as DiscordSettings)) || {};
 
   // Helper to resolve setting value with priority: runtime > character > default
   const resolveSetting = <T>(
     envKey: string,
     characterValue: T | undefined,
     defaultValue: T,
-    transform?: (value: string) => T,
+    transform?: (value: string) => T
   ): T => {
     const runtimeValue = runtime.getSetting(envKey);
     // Treat null the same as undefined (some runtimes return null for missing settings)
     if (runtimeValue !== undefined && runtimeValue !== null) {
       // Coerce to string before transforming to handle non-string runtime values
-      const normalized =
-        typeof runtimeValue === "string" ? runtimeValue : String(runtimeValue);
+      const normalized = typeof runtimeValue === "string" ? runtimeValue : String(runtimeValue);
       return transform ? transform(normalized) : (runtimeValue as T);
     }
     return characterValue ?? defaultValue;
@@ -122,7 +112,7 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
       value
         .split(",")
         .map((s) => s.trim())
-        .filter((s) => s.length > 0),
+        .filter((s) => s.length > 0)
   );
 
   return {
@@ -131,28 +121,25 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
       "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
       characterSettings.shouldIgnoreBotMessages,
       DISCORD_DEFAULTS.SHOULD_IGNORE_BOT_MESSAGES,
-      parseBooleanFromText,
+      parseBooleanFromText
     ),
 
     shouldIgnoreDirectMessages: resolveSetting(
       "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
       characterSettings.shouldIgnoreDirectMessages,
       DISCORD_DEFAULTS.SHOULD_IGNORE_DIRECT_MESSAGES,
-      parseBooleanFromText,
+      parseBooleanFromText
     ),
 
     shouldRespondOnlyToMentions: resolveSetting(
       "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
       characterSettings.shouldRespondOnlyToMentions,
       DISCORD_DEFAULTS.SHOULD_RESPOND_ONLY_TO_MENTIONS,
-      parseBooleanFromText,
+      parseBooleanFromText
     ),
 
     // Collapse empty allow-lists back to undefined to keep default open behavior
-    allowedChannelIds:
-      resolvedAllowedChannelIds.length > 0
-        ? resolvedAllowedChannelIds
-        : undefined,
+    allowedChannelIds: resolvedAllowedChannelIds.length > 0 ? resolvedAllowedChannelIds : undefined,
   };
 }
 
@@ -164,21 +151,17 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
  * @returns {Promise<DiscordConfig>} A promise that resolves with the validated Discord configuration.
  * @throws {Error} If the Discord configuration validation fails, an error with detailed error messages is thrown.
  */
-export async function validateDiscordConfig(
-  runtime: IAgentRuntime,
-): Promise<DiscordConfig> {
+export async function validateDiscordConfig(runtime: IAgentRuntime): Promise<DiscordConfig> {
   try {
     const config = {
       DISCORD_API_TOKEN: runtime.getSetting("DISCORD_API_TOKEN"),
       CHANNEL_IDS: runtime.getSetting("CHANNEL_IDS"),
-      DISCORD_SHOULD_IGNORE_BOT_MESSAGES: runtime.getSetting(
-        "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
-      ),
+      DISCORD_SHOULD_IGNORE_BOT_MESSAGES: runtime.getSetting("DISCORD_SHOULD_IGNORE_BOT_MESSAGES"),
       DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES: runtime.getSetting(
-        "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
+        "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES"
       ),
       DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS: runtime.getSetting(
-        "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
+        "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS"
       ),
     };
 
@@ -188,9 +171,7 @@ export async function validateDiscordConfig(
       const errorMessages = error.issues
         .map((err) => `${err.path.join(".")}: ${err.message}`)
         .join("\n");
-      throw new Error(
-        `Discord configuration validation failed:\n${errorMessages}`,
-      );
+      throw new Error(`Discord configuration validation failed:\n${errorMessages}`);
     }
     throw error;
   }

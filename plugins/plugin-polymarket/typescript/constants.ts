@@ -110,5 +110,3 @@ export const MAX_PAGE_LIMIT = 500;
 
 /** End of pagination marker */
 export const END_CURSOR = "LTE=";
-
-

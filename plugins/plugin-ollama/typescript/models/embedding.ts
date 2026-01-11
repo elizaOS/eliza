@@ -2,13 +2,13 @@
  * Embedding model handlers for Ollama.
  */
 
-import type { TextEmbeddingParams, IAgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { embed } from 'ai';
-import { createOllama } from 'ollama-ai-provider';
+import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { embed } from "ai";
+import { createOllama } from "ollama-ai-provider";
 
-import { getBaseURL, getEmbeddingModel } from '../utils/config';
-import { ensureModelAvailable } from './availability';
+import { getBaseURL, getEmbeddingModel } from "../utils/config";
+import { ensureModelAvailable } from "./availability";
 
 /**
  * Handle TEXT_EMBEDDING model generation.
@@ -34,17 +34,17 @@ export async function handleTextEmbedding(
     await ensureModelAvailable(modelName, baseURL, customFetch);
 
     const text =
-      typeof params === 'string'
+      typeof params === "string"
         ? params
         : params
-          ? (params as TextEmbeddingParams).text || ''
-          : '';
+          ? (params as TextEmbeddingParams).text || ""
+          : "";
 
     // If no text is provided (e.g., for dimension detection), use a default text
-    const embeddingText = text || 'test';
+    const embeddingText = text || "test";
 
     if (!text) {
-      logger.debug('No text provided for embedding, using default text for dimension detection');
+      logger.debug("No text provided for embedding, using default text for dimension detection");
     }
 
     try {
@@ -56,11 +56,11 @@ export async function handleTextEmbedding(
       const { embedding } = await embed(embedParams as unknown as Parameters<typeof embed>[0]);
       return embedding;
     } catch (embeddingError) {
-      logger.error({ error: embeddingError }, 'Error generating embedding');
+      logger.error({ error: embeddingError }, "Error generating embedding");
       return Array(1536).fill(0);
     }
   } catch (error) {
-    logger.error({ error }, 'Error in TEXT_EMBEDDING model');
+    logger.error({ error }, "Error in TEXT_EMBEDDING model");
     // Return a fallback vector rather than crashing
     return Array(1536).fill(0);
   }

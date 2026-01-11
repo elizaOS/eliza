@@ -1,4 +1,4 @@
-import {  describe, expect, test  } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   isValidCharacter,
   parseAndValidateCharacter,
@@ -44,8 +44,8 @@ describe("Character Schema Validation", () => {
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Character validation failed");
-      expect(resultError && resultError.issues).toBeDefined();
+      expect(resultError?.message).toContain("Character validation failed");
+      expect(resultError?.issues).toBeDefined();
     });
 
     test("should reject character with empty name", () => {
@@ -53,7 +53,7 @@ describe("Character Schema Validation", () => {
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Character validation failed");
+      expect(resultError?.message).toContain("Character validation failed");
     });
 
     test("should reject character without bio", () => {
@@ -61,7 +61,7 @@ describe("Character Schema Validation", () => {
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Character validation failed");
+      expect(resultError?.message).toContain("Character validation failed");
     });
 
     test("should accept bio as string array", () => {
@@ -82,7 +82,7 @@ describe("Character Schema Validation", () => {
       const result = validateCharacter(characterWithExtra);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Unrecognized key");
+      expect(resultError?.message).toContain("Unrecognized key");
     });
 
     test("should validate optional fields correctly", () => {
@@ -148,7 +148,7 @@ describe("Character Schema Validation", () => {
       const result = validateCharacter(characterWithInvalidUuid);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Invalid UUID format");
+      expect(resultError?.message).toContain("Invalid UUID format");
     });
   });
 
@@ -165,7 +165,7 @@ describe("Character Schema Validation", () => {
       const result = parseAndValidateCharacter(malformedJson);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Invalid JSON");
+      expect(resultError?.message).toContain("Invalid JSON");
     });
 
     test("should handle JSON with invalid character data", () => {
@@ -173,7 +173,7 @@ describe("Character Schema Validation", () => {
       const result = parseAndValidateCharacter(invalidCharacterJson);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Character validation failed");
+      expect(resultError?.message).toContain("Character validation failed");
     });
 
     test("should handle empty JSON object", () => {
@@ -181,7 +181,7 @@ describe("Character Schema Validation", () => {
       const result = parseAndValidateCharacter(emptyJson);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      expect(resultError && resultError.message).toContain("Character validation failed");
+      expect(resultError?.message).toContain("Character validation failed");
     });
   });
 
@@ -318,9 +318,9 @@ describe("Character Schema Validation", () => {
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
       const resultError = result.error;
-      const resultErrorIssues = resultError && resultError.issues;
+      const resultErrorIssues = resultError?.issues;
       expect(resultErrorIssues).toBeDefined();
-      expect(resultErrorIssues && resultErrorIssues.length).toBeGreaterThan(0);
+      expect(resultErrorIssues?.length).toBeGreaterThan(0);
     });
   });
 });

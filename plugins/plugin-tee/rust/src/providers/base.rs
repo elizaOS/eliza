@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Abstract base traits for TEE providers.
 
 use async_trait::async_trait;
@@ -44,5 +45,10 @@ pub trait RemoteAttestationProvider: Send + Sync {
         hash_algorithm: Option<TdxQuoteHashAlgorithm>,
     ) -> Result<RemoteAttestationQuote>;
 }
+
+
+
+
+
 
 

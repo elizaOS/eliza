@@ -1,4 +1,4 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import { BM25 } from "../search";
 
 describe("BM25 search", () => {

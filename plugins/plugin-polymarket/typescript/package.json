@@ -1,0 +1,110 @@
+{
+  "name": "@elizaos/plugin-polymarket",
+  "version": "2.0.0-alpha.0",
+  "description": "Multi-language Polymarket prediction markets plugin for elizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-polymarket"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "polymarket",
+    "prediction-markets",
+    "elizaos",
+    "plugin",
+    "web3",
+    "polygon"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo node_modules",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit || true",
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-evm": "workspace:*",
+    "@polymarket/clob-client": "^4.16.0",
+    "viem": "^2.21.0",
+    "ws": "^8.17.0",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0",
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "POLYMARKET_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Hex-encoded private key for Polymarket trading on Polygon.",
+        "required": true,
+        "sensitive": true
+      },
+      "CLOB_API_URL": {
+        "type": "string",
+        "description": "Polymarket CLOB API URL.",
+        "required": false,
+        "default": "https://clob.polymarket.com",
+        "sensitive": false
+      },
+      "CLOB_WS_URL": {
+        "type": "string",
+        "description": "Polymarket CLOB WebSocket URL for real-time updates.",
+        "required": false,
+        "default": "wss://ws-subscriptions-clob.polymarket.com/ws/",
+        "sensitive": false
+      },
+      "CLOB_API_KEY": {
+        "type": "string",
+        "description": "API key for authenticated CLOB operations.",
+        "required": false,
+        "sensitive": true
+      },
+      "CLOB_API_SECRET": {
+        "type": "string",
+        "description": "API secret for authenticated CLOB operations.",
+        "required": false,
+        "sensitive": true
+      },
+      "CLOB_API_PASSPHRASE": {
+        "type": "string",
+        "description": "API passphrase for authenticated CLOB operations.",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  }
+}

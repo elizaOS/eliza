@@ -1,4 +1,3 @@
-import { vi } from "vitest";
 import {
   asUUID,
   type Character,
@@ -12,6 +11,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { vi } from "vitest";
 
 /**
  * Creates a UUID for testing
@@ -153,9 +153,9 @@ export function createMockRuntime(
     getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
     searchMemories: vi.fn().mockResolvedValue([]),
 
-    addEmbeddingToMemory: vi.fn().mockImplementation(
-      async (memory: Memory) => memory,
-    ),
+    addEmbeddingToMemory: vi
+      .fn()
+      .mockImplementation(async (memory: Memory) => memory),
     queueEmbeddingGeneration: vi.fn().mockResolvedValue(undefined),
     getAllMemories: vi.fn().mockResolvedValue([]),
     clearAllAgentMemories: vi.fn().mockResolvedValue(undefined),

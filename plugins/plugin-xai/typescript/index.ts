@@ -6,26 +6,20 @@
  * - X (Twitter) API v2 for social interactions
  */
 
-import {
-  type IAgentRuntime,
-  type Plugin,
-  logger,
-  ModelType,
-} from "@elizaos/core";
-
-import { XService } from "./services/x.service";
+import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
 import { postAction } from "./actions/post";
-import { getSetting } from "./utils/settings";
 import {
-  handleTextSmall,
-  handleTextLarge,
   handleTextEmbedding,
+  handleTextLarge,
+  handleTextSmall,
   isGrokConfigured,
 } from "./models/grok";
+import { XService } from "./services/x.service";
+import { getSetting } from "./utils/settings";
 
+export { XService } from "./services/x.service";
 // Re-export types and utilities
 export * from "./types";
-export { XService } from "./services/x.service";
 export { getSetting } from "./utils/settings";
 
 export const XAIPlugin: Plugin = {

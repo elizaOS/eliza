@@ -4,9 +4,9 @@
  * Connects to the MCP server and tests the chat and get_agent_info tools.
  */
 
+import { spawn } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { spawn } from "node:child_process";
 
 async function main(): Promise<void> {
   console.log("🧪 Testing elizaOS MCP Server\n");
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
 
   const client = new Client(
     { name: "test-client", version: "1.0.0" },
-    { capabilities: {} }
+    { capabilities: {} },
   );
 
   try {
@@ -86,4 +86,3 @@ async function main(): Promise<void> {
 }
 
 main();
-

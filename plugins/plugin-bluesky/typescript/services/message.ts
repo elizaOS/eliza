@@ -2,10 +2,10 @@
  * BlueSky message service for DMs.
  */
 
-import { logger, type IAgentRuntime, type UUID, ModelType, composePrompt } from "@elizaos/core";
-import { BlueSkyClient } from "../client";
-import type { BlueSkyConversation, BlueSkyMessage } from "../types";
+import { composePrompt, type IAgentRuntime, ModelType } from "@elizaos/core";
+import type { BlueSkyClient } from "../client";
 import { generateDmTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { BlueSkyConversation, BlueSkyMessage } from "../types";
 
 export class BlueSkyMessageService {
   static serviceType = "IMessageService";
@@ -21,7 +21,7 @@ export class BlueSkyMessageService {
   }
 
   async sendMessage(convoId: string, text: string): Promise<BlueSkyMessage> {
-    const messageText = text.trim() || await this.generateReply();
+    const messageText = text.trim() || (await this.generateReply());
     return this.client.sendMessage({ convoId, message: { text: messageText } });
   }
 

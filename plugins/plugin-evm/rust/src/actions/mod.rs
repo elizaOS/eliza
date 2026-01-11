@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Action implementations for EVM plugin
 
 pub mod transfer;

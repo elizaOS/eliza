@@ -2,6 +2,8 @@
 //!
 //! This crate provides a BlueSky AT Protocol API client for elizaOS,
 //! supporting posting, direct messaging, notifications, and profile management.
+
+#![allow(missing_docs)]
 //!
 //! # Features
 //!
@@ -47,7 +49,7 @@ pub use config::BlueSkyConfig;
 pub use error::{BlueSkyError, Result};
 pub use types::{
     BlueSkyConversation, BlueSkyMessage, BlueSkyNotification, BlueSkyPost, BlueSkyProfile,
-    BlueSkySession, CreatePostRequest, NotificationReason, SendMessageRequest, TimelineRequest,
+    BlueSkySession, CreatePostRequest, NotificationReason, PostReference, SendMessageRequest, TimelineRequest,
     TimelineResponse,
 };
 

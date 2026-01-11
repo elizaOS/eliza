@@ -1,5 +1,5 @@
-import {  describe, it, expect  } from "vitest";
-import { visionPlugin } from './index';
+import { describe, expect, it } from "vitest";
+import { visionPlugin } from "./index";
 
 // Simplified TestSuite implementation for local use
 class TestSuite {
@@ -23,15 +23,15 @@ class TestSuite {
 const createUnitTest = (config: { name: string; fn: (context?: any) => Promise<void> | void }) =>
   config;
 
-describe('Vision Plugin', () => {
-  const visionPluginSuite = new TestSuite('Vision Plugin', {});
+describe("Vision Plugin", () => {
+  const visionPluginSuite = new TestSuite("Vision Plugin", {});
 
   visionPluginSuite.addTest(
     createUnitTest({
-      name: 'should export a valid plugin',
+      name: "should export a valid plugin",
       fn: () => {
         expect(visionPlugin).toBeDefined();
-        expect(visionPlugin.name).toBe('vision');
+        expect(visionPlugin.name).toBe("vision");
         expect(visionPlugin.description).toBeDefined();
       },
     })
@@ -39,7 +39,7 @@ describe('Vision Plugin', () => {
 
   visionPluginSuite.addTest(
     createUnitTest({
-      name: 'should have actions',
+      name: "should have actions",
       fn: () => {
         expect(visionPlugin.actions).toBeDefined();
         expect(Array.isArray(visionPlugin.actions)).toBe(true);
@@ -49,7 +49,7 @@ describe('Vision Plugin', () => {
 
   visionPluginSuite.addTest(
     createUnitTest({
-      name: 'should have providers',
+      name: "should have providers",
       fn: () => {
         expect(visionPlugin.providers).toBeDefined();
         expect(Array.isArray(visionPlugin.providers)).toBe(true);

@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ============================================================================
 # Enums
 # ============================================================================
@@ -122,9 +121,7 @@ class TokenUsage(BaseModel):
     """Token usage statistics."""
 
     prompt_tokens: int = Field(..., ge=0, description="Number of prompt tokens")
-    completion_tokens: int = Field(
-        default=0, ge=0, description="Number of completion tokens"
-    )
+    completion_tokens: int = Field(default=0, ge=0, description="Number of completion tokens")
     total_tokens: int = Field(..., ge=0, description="Total tokens used")
 
 
@@ -197,5 +194,8 @@ class ImageDescriptionResult(BaseModel):
 
     title: str = Field(..., description="A title for the image")
     description: str = Field(..., description="A detailed description of the image")
+
+
+
 
 

@@ -53,10 +53,7 @@ function getCharacter(env: Env) {
   };
 }
 
-async function callOpenAI(
-  messages: ChatMessage[],
-  env: Env
-): Promise<string> {
+async function callOpenAI(messages: ChatMessage[], env: Env): Promise<string> {
   const baseUrl = env.OPENAI_BASE_URL || "https://api.openai.com/v1";
   const model = env.OPENAI_MODEL || "gpt-5-mini";
 
@@ -103,17 +100,14 @@ function getOrCreateConversation(conversationId: string | undefined): {
   return { id, state };
 }
 
-async function handleChat(
-  request: Request,
-  env: Env
-): Promise<Response> {
+async function handleChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as ChatRequest;
   const { message, conversationId } = body;
 
   if (!message || typeof message !== "string") {
     return Response.json(
       { error: "Message is required and must be a string" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -146,7 +140,7 @@ async function handleChat(
   // Prune old conversations (keep last 100)
   if (conversations.size > 100) {
     const sortedConvos = [...conversations.entries()].sort(
-      (a, b) => a[1].createdAt - b[1].createdAt
+      (a, b) => a[1].createdAt - b[1].createdAt,
     );
     for (let i = 0; i < sortedConvos.length - 100; i++) {
       conversations.delete(sortedConvos[i][0]);
@@ -162,17 +156,14 @@ async function handleChat(
   return Response.json(response);
 }
 
-async function handleStreamChat(
-  request: Request,
-  env: Env
-): Promise<Response> {
+async function handleStreamChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as ChatRequest;
   const { message, conversationId } = body;
 
   if (!message || typeof message !== "string") {
     return Response.json(
       { error: "Message is required and must be a string" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -230,53 +221,48 @@ async function handleStreamChat(
       // Send initial metadata
       controller.enqueue(
         encoder.encode(
-          `data: ${JSON.stringify({ conversationId: id, character: character.name })}\n\n`
-        )
+          `data: ${JSON.stringify({ conversationId: id, character: character.name })}\n\n`,
+        ),
       );
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") {
-                continue;
-              }
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              continue;
+            }
 
-              try {
-                const parsed = JSON.parse(data) as {
-                  choices: Array<{ delta: { content?: string } }>;
-                };
-                const content = parsed.choices[0]?.delta?.content;
-                if (content) {
-                  fullResponse += content;
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`)
-                  );
-                }
-              } catch {
-                // Skip malformed JSON
-              }
+            const parsed = JSON.parse(data) as {
+              choices: Array<{ delta: { content?: string } }>;
+            };
+            const content = parsed.choices[0]?.delta?.content;
+            if (content) {
+              fullResponse += content;
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ text: content })}\n\n`,
+                ),
+              );
             }
           }
         }
-
-        // Store the complete response
-        state.messages.push({
-          role: "assistant",
-          content: fullResponse,
-        });
-
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      } finally {
-        controller.close();
       }
+
+      // Store the complete response
+      state.messages.push({
+        role: "assistant",
+        content: fullResponse,
+      });
+
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
     },
   });
 
@@ -332,42 +318,31 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    try {
-      // Validate API key is configured
-      if (!env.OPENAI_API_KEY) {
-        return Response.json(
-          { error: "OPENAI_API_KEY is not configured" },
-          { status: 500 }
-        );
-      }
-
-      // Route handling
-      if (path === "/" && request.method === "GET") {
-        return handleInfo(env);
-      }
-
-      if (path === "/health" && request.method === "GET") {
-        return handleHealth(env);
-      }
-
-      if (path === "/chat" && request.method === "POST") {
-        return await handleChat(request, env);
-      }
-
-      if (path === "/chat/stream" && request.method === "POST") {
-        return await handleStreamChat(request, env);
-      }
-
-      return Response.json({ error: "Not found" }, { status: 404 });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      console.error("Worker error:", message);
-      return Response.json({ error: message }, { status: 500 });
+    // Validate API key is configured
+    if (!env.OPENAI_API_KEY) {
+      return Response.json(
+        { error: "OPENAI_API_KEY is not configured" },
+        { status: 500 },
+      );
     }
+
+    // Route handling
+    if (path === "/" && request.method === "GET") {
+      return handleInfo(env);
+    }
+
+    if (path === "/health" && request.method === "GET") {
+      return handleHealth(env);
+    }
+
+    if (path === "/chat" && request.method === "POST") {
+      return await handleChat(request, env);
+    }
+
+    if (path === "/chat/stream" && request.method === "POST") {
+      return await handleStreamChat(request, env);
+    }
+
+    return Response.json({ error: "Not found" }, { status: 404 });
   },
 };
-
-
-
-
-

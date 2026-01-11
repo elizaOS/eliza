@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Issue Context Provider
 
 use serde_json::json;
@@ -83,5 +84,10 @@ impl GitHubProvider for IssueContextProvider {
         })
     }
 }
+
+
+
+
+
 
 

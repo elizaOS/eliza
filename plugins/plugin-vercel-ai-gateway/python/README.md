@@ -27,7 +27,7 @@ async def main():
         # Text generation
         response = await plugin.generate_text_large("What is quantum computing?")
         print(response)
-        
+
         # Embeddings
         embedding = await plugin.create_embedding("Hello, world!")
         print(f"Embedding dimensions: {len(embedding)}")
@@ -115,5 +115,6 @@ ruff format .
 ## License
 
 MIT
+
 
 

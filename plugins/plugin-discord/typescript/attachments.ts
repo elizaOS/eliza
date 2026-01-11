@@ -5,6 +5,7 @@ import {
   type IAgentRuntime,
   type Media,
   ModelType,
+  type Service,
   ServiceType,
 } from "@elizaos/core";
 import { type Attachment, Collection } from "discord.js";
@@ -33,7 +34,7 @@ export class AttachmentManager {
    * @returns {Promise<Media[]>} - An array of processed Media objects
    */
   async processAttachments(
-    attachments: Collection<string, Attachment> | Attachment[],
+    attachments: Collection<string, Attachment> | Attachment[]
   ): Promise<Media[]> {
     const processedAttachments: Media[] = [];
     const attachmentCollection =
@@ -61,31 +62,34 @@ export class AttachmentManager {
    * @returns A promise that resolves to a Media object representing the attachment, or null if the attachment could not be processed
    */
   async processAttachment(attachment: Attachment): Promise<Media | null> {
-    if (this.attachmentCache.has(attachment.url)) {
-      return this.attachmentCache.get(attachment.url)!;
+    const cached = this.attachmentCache.get(attachment.url);
+    if (cached) {
+      return cached;
     }
 
     let media: Media | null = null;
-    if (attachment.contentType && attachment.contentType.startsWith("application/pdf")) {
+    if (attachment.contentType?.startsWith("application/pdf")) {
       media = await this.processPdfAttachment(attachment);
-    } else if (attachment.contentType && attachment.contentType.startsWith("text/plain")) {
+    } else if (attachment.contentType?.startsWith("text/plain")) {
       media = await this.processPlaintextAttachment(attachment);
     } else if (
-      (attachment.contentType && attachment.contentType.startsWith("audio/")) ||
-      (attachment.contentType && attachment.contentType.startsWith("video/mp4"))
+      attachment.contentType?.startsWith("audio/") ||
+      attachment.contentType?.startsWith("video/mp4")
     ) {
       media = await this.processAudioVideoAttachment(attachment);
-    } else if (attachment.contentType && attachment.contentType.startsWith("image/")) {
+    } else if (attachment.contentType?.startsWith("image/")) {
       media = await this.processImageAttachment(attachment);
-    } else if (
-      (attachment.contentType && attachment.contentType.startsWith("video/")) ||
-      ((this.runtime.getService(ServiceType.VIDEO) as any) && (this.runtime.getService(ServiceType.VIDEO) as any).isVideoUrl(
-        attachment.url,
-      ))
-    ) {
+    } else if (attachment.contentType?.startsWith("video/")) {
       media = await this.processVideoAttachment(attachment);
     } else {
-      media = await this.processGenericAttachment(attachment);
+      const videoService = this.runtime.getService(ServiceType.VIDEO) as
+        | ({ isVideoUrl?: (url: string) => boolean } & Service)
+        | null;
+      if (videoService?.isVideoUrl?.(attachment.url)) {
+        media = await this.processVideoAttachment(attachment);
+      } else {
+        media = await this.processGenericAttachment(attachment);
+      }
     }
 
     if (media) {
@@ -99,9 +103,7 @@ export class AttachmentManager {
    * @param {Attachment} attachment - The attachment object containing information about the audio/video file.
    * @returns {Promise<Media>} A Promise that resolves to a Media object representing the processed audio/video attachment.
    */
-  private async processAudioVideoAttachment(
-    attachment: Attachment,
-  ): Promise<Media> {
+  private async processAudioVideoAttachment(attachment: Attachment): Promise<Media> {
     try {
       const response = await fetch(attachment.url);
       const audioVideoArrayBuffer = await response.arrayBuffer();
@@ -110,11 +112,11 @@ export class AttachmentManager {
       let audioFileName: string;
       let audioMimeType: string;
 
-      if (attachment.contentType && attachment.contentType.startsWith("audio/")) {
+      if (attachment.contentType?.startsWith("audio/")) {
         audioBuffer = Buffer.from(audioVideoArrayBuffer);
         audioFileName = attachment.name || "audio.mp3";
         audioMimeType = attachment.contentType;
-      } else if (attachment.contentType && attachment.contentType.startsWith("video/mp4")) {
+      } else if (attachment.contentType?.startsWith("video/mp4")) {
         audioBuffer = await this.extractAudioFromMP4(audioVideoArrayBuffer);
         audioFileName = "extracted_audio.mp3";
         audioMimeType = "audio/mpeg";
@@ -134,11 +136,11 @@ export class AttachmentManager {
       const transcriptionBuffer = Buffer.from(await audioFile.arrayBuffer());
       const transcription = await this.runtime.useModel(
         ModelType.TRANSCRIPTION,
-        transcriptionBuffer,
+        transcriptionBuffer
       );
 
       // Assess transcription length before summarizing
-      const transcriptionLength = (transcription && transcription.length) || 0;
+      const transcriptionLength = transcription?.length || 0;
       this.runtime.logger.debug(
         {
           src: "plugin:discord",
@@ -147,7 +149,7 @@ export class AttachmentManager {
           contentType: attachment.contentType,
           transcriptionLength,
         },
-        "Assessing transcription length before summarization",
+        "Assessing transcription length before summarization"
       );
 
       // Only summarize if transcription is meaningful (not empty and long enough)
@@ -161,11 +163,10 @@ export class AttachmentManager {
             agentId: this.runtime.agentId,
             attachmentId: attachment.id,
           },
-          "Transcription is empty, skipping summarization",
+          "Transcription is empty, skipping summarization"
         );
         title = undefined;
-        description =
-          "User-uploaded audio/video attachment (no transcription available)";
+        description = "User-uploaded audio/video attachment (no transcription available)";
       } else if (transcriptionLength < 1000) {
         // Short transcriptions don't benefit from summarization
         this.runtime.logger.debug(
@@ -175,7 +176,7 @@ export class AttachmentManager {
             attachmentId: attachment.id,
             transcriptionLength,
           },
-          "Transcription is short, skipping summarization",
+          "Transcription is short, skipping summarization"
         );
         title = undefined;
         description = transcription;
@@ -188,7 +189,7 @@ export class AttachmentManager {
             attachmentId: attachment.id,
             transcriptionLength,
           },
-          "Summarizing transcription",
+          "Summarizing transcription"
         );
         const summary = await generateSummary(this.runtime, transcription);
         title = summary.title;
@@ -199,12 +200,9 @@ export class AttachmentManager {
         id: attachment.id,
         url: attachment.url,
         title: title || "Audio/Video Attachment",
-        source: (attachment.contentType && attachment.contentType.startsWith("audio/"))
-          ? "Audio"
-          : "Video",
+        source: attachment.contentType?.startsWith("audio/") ? "Audio" : "Video",
         description:
-          description ||
-          "User-uploaded audio/video attachment which has been transcribed",
+          description || "User-uploaded audio/video attachment which has been transcribed",
         text: transcription || "Audio/video content not available",
       };
     } catch (error) {
@@ -216,16 +214,14 @@ export class AttachmentManager {
           contentType: attachment.contentType,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error processing audio/video attachment",
+        "Error processing audio/video attachment"
       );
 
       return {
         id: attachment.id,
         url: attachment.url,
         title: "Audio/Video Attachment",
-        source: (attachment.contentType && attachment.contentType.startsWith("audio/"))
-          ? "Audio"
-          : "Video",
+        source: attachment.contentType?.startsWith("audio/") ? "Audio" : "Video",
         description: "An audio/video attachment (transcription failed)",
         text: `This is an audio/video attachment. File name: ${attachment.name}, Size: ${attachment.size} bytes, Content type: ${attachment.contentType}`,
       };
@@ -259,17 +255,11 @@ export class AttachmentManager {
           }
 
           if (!metadata.streams || !Array.isArray(metadata.streams)) {
-            reject(
-              new Error(
-                "File metadata does not contain valid streams information",
-              ),
-            );
+            reject(new Error("File metadata does not contain valid streams information"));
             return;
           }
 
-          const hasAudio = metadata.streams.some(
-            (stream) => stream.codec_type === "audio",
-          );
+          const hasAudio = metadata.streams.some((stream) => stream.codec_type === "audio");
           if (!hasAudio) {
             reject(new Error("File does not contain any audio streams"));
             return;
@@ -285,7 +275,7 @@ export class AttachmentManager {
           tempMP4File,
           tempAudioFile,
         },
-        "Extracting audio from MP4",
+        "Extracting audio from MP4"
       );
 
       // Extract the audio stream and convert it to MP3
@@ -313,7 +303,7 @@ export class AttachmentManager {
           agentId: this.runtime.agentId,
           audioDataSize: audioData.length,
         },
-        "Successfully extracted audio from MP4",
+        "Successfully extracted audio from MP4"
       );
 
       return audioData;
@@ -331,12 +321,9 @@ export class AttachmentManager {
           {
             src: "plugin:discord",
             agentId: this.runtime.agentId,
-            error:
-              cleanupError instanceof Error
-                ? cleanupError.message
-                : String(cleanupError),
+            error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
           },
-          "Failed to cleanup temp files",
+          "Failed to cleanup temp files"
         );
       }
     }
@@ -357,7 +344,9 @@ export class AttachmentManager {
     try {
       const response = await fetch(attachment.url);
       const pdfBuffer = await response.arrayBuffer();
-      const pdfService = this.runtime.getService(ServiceType.PDF) as any;
+      const pdfService = this.runtime.getService(ServiceType.PDF) as
+        | ({ convertPdfToText: (buffer: Buffer) => Promise<string> } & Service)
+        | null;
       if (!pdfService) {
         throw new Error("PDF service not found");
       }
@@ -367,9 +356,9 @@ export class AttachmentManager {
           src: "plugin:discord",
           agentId: this.runtime.agentId,
           attachmentId: attachment.id,
-          textLength: (text && text.length),
+          textLength: text?.length,
         },
-        "Summarizing PDF content",
+        "Summarizing PDF content"
       );
       const { title, description } = await generateSummary(this.runtime, text);
 
@@ -390,7 +379,7 @@ export class AttachmentManager {
           contentType: attachment.contentType,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error processing PDF attachment",
+        "Error processing PDF attachment"
       );
 
       return {
@@ -409,9 +398,7 @@ export class AttachmentManager {
    * @param {Attachment} attachment - The attachment object to process.
    * @returns {Promise<Media>} A promise that resolves to a Media object representing the processed plaintext attachment.
    */
-  private async processPlaintextAttachment(
-    attachment: Attachment,
-  ): Promise<Media> {
+  private async processPlaintextAttachment(attachment: Attachment): Promise<Media> {
     try {
       const response = await fetch(attachment.url);
       const text = await response.text();
@@ -420,9 +407,9 @@ export class AttachmentManager {
           src: "plugin:discord",
           agentId: this.runtime.agentId,
           attachmentId: attachment.id,
-          textLength: (text && text.length),
+          textLength: text?.length,
         },
-        "Summarizing plaintext content",
+        "Summarizing plaintext content"
       );
       const { title, description } = await generateSummary(this.runtime, text);
 
@@ -443,7 +430,7 @@ export class AttachmentManager {
           contentType: attachment.contentType,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error processing plaintext attachment",
+        "Error processing plaintext attachment"
       );
 
       return {
@@ -469,7 +456,7 @@ export class AttachmentManager {
     try {
       const { description, title } = await this.runtime.useModel(
         ModelType.IMAGE_DESCRIPTION,
-        attachment.url,
+        attachment.url
       );
       return {
         id: attachment.id,
@@ -488,7 +475,7 @@ export class AttachmentManager {
           contentType: attachment.contentType,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error processing image attachment",
+        "Error processing image attachment"
       );
 
       return this.createFallbackImageMedia(attachment);
@@ -520,7 +507,19 @@ export class AttachmentManager {
    * @throws {Error} If video service is not available.
    */
   private async processVideoAttachment(attachment: Attachment): Promise<Media> {
-    const videoService = this.runtime.getService(ServiceType.VIDEO) as any;
+    const videoService = this.runtime.getService(ServiceType.VIDEO) as
+      | ({
+          isVideoUrl?: (url: string) => boolean;
+          processVideo?: (
+            url: string,
+            runtime: IAgentRuntime
+          ) => Promise<{
+            title: string;
+            description: string;
+            text: string;
+          }>;
+        } & Service)
+      | null;
 
     if (!videoService) {
       return {
@@ -534,14 +533,8 @@ export class AttachmentManager {
       };
     }
 
-    if (
-      typeof videoService.isVideoUrl === "function" &&
-      videoService.isVideoUrl(attachment.url)
-    ) {
-      const videoInfo = await videoService.processVideo(
-        attachment.url,
-        this.runtime,
-      );
+    if (typeof videoService.isVideoUrl === "function" && videoService.isVideoUrl(attachment.url)) {
+      const videoInfo = await videoService.processVideo(attachment.url, this.runtime);
       return {
         id: attachment.id,
         url: attachment.url,
@@ -566,9 +559,7 @@ export class AttachmentManager {
    * @param {Attachment} attachment - The attachment object to process.
    * @returns {Promise<Media>} A Promise that resolves to a Media object with specified properties.
    */
-  private async processGenericAttachment(
-    attachment: Attachment,
-  ): Promise<Media> {
+  private async processGenericAttachment(attachment: Attachment): Promise<Media> {
     return {
       id: attachment.id,
       url: attachment.url,

@@ -36,6 +36,7 @@ Generated output:
 ### Prerequisites
 
 Install Buf CLI:
+
 ```bash
 # macOS
 brew install bufbuild/buf/buf
@@ -74,15 +75,20 @@ npm run generate:types
 ## Schema Design Principles
 
 ### 1. Versioning
+
 All schemas are under `eliza/v1/`. When breaking changes are needed, create `eliza/v2/` and maintain both during migration.
 
 ### 2. JSON Compatibility
+
 Proto3 has first-class JSON mapping. All messages can be serialized to JSON for debugging or legacy compatibility:
+
 - `snake_case` in proto → `camelCase` in JSON (automatic)
 - Use `google.protobuf.Struct` for dynamic/unknown fields
 
 ### 3. Optional Fields
+
 Use `optional` keyword for fields that may not be present:
+
 ```protobuf
 message Memory {
   optional string id = 1;      // Optional on creation
@@ -91,7 +97,9 @@ message Memory {
 ```
 
 ### 4. Enums
+
 Always include `UNSPECIFIED = 0` as the first enum value:
+
 ```protobuf
 enum MemoryType {
   MEMORY_TYPE_UNSPECIFIED = 0;
@@ -101,7 +109,9 @@ enum MemoryType {
 ```
 
 ### 5. Dynamic Properties
+
 Use `google.protobuf.Struct` for JSON-like dynamic data:
+
 ```protobuf
 import "google/protobuf/struct.proto";
 
@@ -114,16 +124,19 @@ message Content {
 ## Language-Specific Notes
 
 ### TypeScript
+
 - Generated with `@bufbuild/protobuf`
 - Import from `@elizaos/core/types/generated`
 - Full TypeScript types with proper inference
 
 ### Python
+
 - Generated with `betterproto` for clean, Pythonic code
 - Dataclass-style types with type hints
 - Import from `elizaos.types.generated`
 
 ### Rust
+
 - Generated with `prost` (WASM-compatible)
 - Includes `serde` support for JSON serialization
 - Import from `elizaos::types::generated`
@@ -143,6 +156,7 @@ message Content {
 ## Migration from Manual Types
 
 The generated types replace the manual type definitions in:
+
 - `packages/typescript/src/types/*.ts`
 - `packages/python/elizaos/types/*.py`
 - `packages/rust/src/types/*.rs`
@@ -153,8 +167,8 @@ During migration, a compatibility layer re-exports generated types with the orig
 
 ```typescript
 // packages/typescript/src/types/index.ts
-export * from './generated';
-export { Memory as MemoryType } from './generated/eliza/v1/memory_pb';
+export * from "./generated";
+export { Memory as MemoryType } from "./generated/eliza/v1/memory_pb";
 ```
 
 ## Buf Commands Reference
@@ -183,4 +197,3 @@ buf format -w
 - [bufbuild/protobuf-es](https://github.com/bufbuild/protobuf-es) (TypeScript)
 - [danielgtaylor/python-betterproto](https://github.com/danielgtaylor/python-betterproto) (Python)
 - [tokio-rs/prost](https://github.com/tokio-rs/prost) (Rust)
-

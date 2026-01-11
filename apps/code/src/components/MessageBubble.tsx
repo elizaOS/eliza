@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
 import { Box, Text } from "ink";
+import { useMemo } from "react";
 import type { Message } from "../types.js";
 
 interface MessageBubbleProps {
@@ -27,7 +27,7 @@ function formatTime(timestamp: Date | number | string | undefined): string {
     }
 
     // Validate the date is valid
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return "";
     }
 
@@ -97,7 +97,7 @@ export function MessageBubble({ message, maxWidth = 60 }: MessageBubbleProps) {
     // Truncate very long messages for display
     const content =
       message.content.length > 500
-        ? message.content.substring(0, 500) + "..."
+        ? `${message.content.substring(0, 500)}...`
         : message.content;
 
     return {
@@ -109,7 +109,7 @@ export function MessageBubble({ message, maxWidth = 60 }: MessageBubbleProps) {
   // Wrap content for proper display
   const wrappedLines = useMemo(
     () => wrapText(displayContent, maxWidth),
-    [displayContent, maxWidth]
+    [displayContent, maxWidth],
   );
 
   if (isSystem) {

@@ -1,14 +1,14 @@
 import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
 
-config({ path: "../../../.env" });
+config({ path: "../../.env" });
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./schema/index.ts",
-  out: "../drizzle/migrations",
+  schema: "./typescript/schema/index.ts",
+  out: "./drizzle/migrations",
   dbCredentials: {
-    url: process.env.POSTGRES_URL || "file:../../../.eliza/.elizadb",
+    url: process.env.POSTGRES_URL || "file:../../.eliza/.elizadb",
   },
   breakpoints: true,
 });

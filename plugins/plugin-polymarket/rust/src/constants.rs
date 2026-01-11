@@ -1,4 +1,8 @@
+#![allow(missing_docs)]
 //! Constants for the Polymarket plugin
+//!
+//! These constants are shared across the Rust implementation and match
+//! the TypeScript and Python implementations for consistency.
 
 // =============================================================================
 // Chain Configuration
@@ -52,6 +56,12 @@ pub const DEFAULT_FEE_RATE_BPS: u32 = 0;
 /// Minimum order size for most markets
 pub const DEFAULT_MIN_ORDER_SIZE: &str = "5";
 
+/// Maximum price value (1.0 = 100%)
+pub const MAX_PRICE: f64 = 1.0;
+
+/// Minimum price value
+pub const MIN_PRICE: f64 = 0.0;
+
 // =============================================================================
 // USDC Configuration
 // =============================================================================
@@ -63,7 +73,7 @@ pub const USDC_ADDRESS: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 pub const USDC_DECIMALS: u8 = 6;
 
 // =============================================================================
-// CTF Configuration
+// CTF (Conditional Tokens Framework) Configuration
 // =============================================================================
 
 /// CTF Exchange contract address on Polygon
@@ -100,5 +110,3 @@ pub const MAX_PAGE_LIMIT: u32 = 500;
 
 /// End of pagination marker
 pub const END_CURSOR: &str = "LTE=";
-
-

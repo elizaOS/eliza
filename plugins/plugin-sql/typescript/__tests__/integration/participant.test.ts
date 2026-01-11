@@ -1,19 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
-import {
-  type AgentRuntime,
-  ChannelType,
-  type Entity,
-  type Room,
-  type UUID,
-} from "@elizaos/core";
+import { type AgentRuntime, ChannelType, type Entity, type Room, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { participantTable } from "../../schema";
@@ -88,15 +75,8 @@ describe("Participant Integration Tests", () => {
 
     it("should manage participant state", async () => {
       await adapter.addParticipant(testEntityId, testRoomId);
-      await adapter.setParticipantUserState(
-        testRoomId,
-        testEntityId,
-        "FOLLOWED",
-      );
-      let state = await adapter.getParticipantUserState(
-        testRoomId,
-        testEntityId,
-      );
+      await adapter.setParticipantUserState(testRoomId, testEntityId, "FOLLOWED");
+      let state = await adapter.getParticipantUserState(testRoomId, testEntityId);
       expect(state).toBe("FOLLOWED");
 
       await adapter.setParticipantUserState(testRoomId, testEntityId, null);
@@ -106,10 +86,7 @@ describe("Participant Integration Tests", () => {
 
     it("should check if entity is room participant", async () => {
       // Initially not a participant
-      let isParticipant = await adapter.isRoomParticipant(
-        testRoomId,
-        testEntityId,
-      );
+      let isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
       expect(isParticipant).toBe(false);
 
       // Add as participant
@@ -126,10 +103,7 @@ describe("Participant Integration Tests", () => {
     it("should return false for non-existent room participant check", async () => {
       const nonExistentRoomId = uuidv4() as UUID;
       const nonExistentEntityId = uuidv4() as UUID;
-      const isParticipant = await adapter.isRoomParticipant(
-        nonExistentRoomId,
-        nonExistentEntityId,
-      );
+      const isParticipant = await adapter.isRoomParticipant(nonExistentRoomId, nonExistentEntityId);
       expect(isParticipant).toBe(false);
     });
   });

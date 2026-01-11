@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ActionEventPayload,
   ChannelType,
@@ -13,6 +12,7 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootstrapPlugin } from "../index";
 import { type MockRuntime, setupActionTest } from "./test-utils";
 
@@ -29,8 +29,12 @@ describe("Message Handler Logic", () => {
       runtimeOverrides: {
         // Override default runtime methods for testing message handlers
         useModel: vi.fn().mockImplementation((modelType, params) => {
-          const paramsPrompt = params && params.prompt;
-          if (paramsPrompt && typeof paramsPrompt === "string" && paramsPrompt.includes("should respond template")) {
+          const paramsPrompt = params?.prompt;
+          if (
+            paramsPrompt &&
+            typeof paramsPrompt === "string" &&
+            paramsPrompt.includes("should respond template")
+          ) {
             return Promise.resolve(
               JSON.stringify({
                 action: "RESPOND",
@@ -123,9 +127,9 @@ describe("Message Handler Logic", () => {
 
     requiredEvents.forEach((eventType) => {
       const bootstrapPluginEvents = bootstrapPlugin.events;
-      const bootstrapPluginEventsForType = bootstrapPluginEvents && bootstrapPluginEvents[eventType];
+      const bootstrapPluginEventsForType = bootstrapPluginEvents?.[eventType];
       expect(bootstrapPluginEventsForType).toBeDefined();
-      expect(bootstrapPluginEventsForType && bootstrapPluginEventsForType.length).toBeGreaterThan(0);
+      expect(bootstrapPluginEventsForType?.length).toBeGreaterThan(0);
     });
   });
 
@@ -161,8 +165,9 @@ describe("Reaction Events", () => {
   it("should store reaction messages correctly", async () => {
     // Get the REACTION_RECEIVED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsReaction = bootstrapPluginEvents && bootstrapPluginEvents[EventType.REACTION_RECEIVED];
-    const reactionHandler = bootstrapPluginEventsReaction && bootstrapPluginEventsReaction[0];
+    const bootstrapPluginEventsReaction =
+      bootstrapPluginEvents?.[EventType.REACTION_RECEIVED];
+    const reactionHandler = bootstrapPluginEventsReaction?.[0];
     expect(reactionHandler).toBeDefined();
 
     if (reactionHandler) {
@@ -184,8 +189,9 @@ describe("Reaction Events", () => {
   it("should handle duplicate reaction errors", async () => {
     // Get the REACTION_RECEIVED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsReaction = bootstrapPluginEvents && bootstrapPluginEvents[EventType.REACTION_RECEIVED];
-    const reactionHandler = bootstrapPluginEventsReaction && bootstrapPluginEventsReaction[0];
+    const bootstrapPluginEventsReaction =
+      bootstrapPluginEvents?.[EventType.REACTION_RECEIVED];
+    const reactionHandler = bootstrapPluginEventsReaction?.[0];
     expect(reactionHandler).toBeDefined();
 
     // Simulate a duplicate key error
@@ -247,8 +253,9 @@ describe("World and Entity Events", () => {
   it("should handle ENTITY_JOINED events", async () => {
     // Get the ENTITY_JOINED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsEntityJoined = bootstrapPluginEvents && bootstrapPluginEvents[EventType.ENTITY_JOINED];
-    const entityJoinedHandler = bootstrapPluginEventsEntityJoined && bootstrapPluginEventsEntityJoined[0];
+    const bootstrapPluginEventsEntityJoined =
+      bootstrapPluginEvents?.[EventType.ENTITY_JOINED];
+    const entityJoinedHandler = bootstrapPluginEventsEntityJoined?.[0];
     expect(entityJoinedHandler).toBeDefined();
 
     if (entityJoinedHandler) {
@@ -276,8 +283,9 @@ describe("World and Entity Events", () => {
   it("should handle ENTITY_LEFT events", async () => {
     // Get the ENTITY_LEFT handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsEntityLeft = bootstrapPluginEvents && bootstrapPluginEvents[EventType.ENTITY_LEFT];
-    const entityLeftHandler = bootstrapPluginEventsEntityLeft && bootstrapPluginEventsEntityLeft[0];
+    const bootstrapPluginEventsEntityLeft =
+      bootstrapPluginEvents?.[EventType.ENTITY_LEFT];
+    const entityLeftHandler = bootstrapPluginEventsEntityLeft?.[0];
     expect(entityLeftHandler).toBeDefined();
 
     if (entityLeftHandler) {
@@ -305,14 +313,15 @@ describe("World and Entity Events", () => {
   it("should handle errors in ENTITY_LEFT events", async () => {
     // Get the ENTITY_LEFT handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsEntityLeft = bootstrapPluginEvents && bootstrapPluginEvents[EventType.ENTITY_LEFT];
-    const entityLeftHandler = bootstrapPluginEventsEntityLeft && bootstrapPluginEventsEntityLeft[0];
+    const bootstrapPluginEventsEntityLeft =
+      bootstrapPluginEvents?.[EventType.ENTITY_LEFT];
+    const entityLeftHandler = bootstrapPluginEventsEntityLeft?.[0];
     expect(entityLeftHandler).toBeDefined();
 
     // Simulate error in getEntityById
-    mockRuntime.getEntityById = vi.fn().mockRejectedValue(
-      new Error("Entity not found"),
-    );
+    mockRuntime.getEntityById = vi
+      .fn()
+      .mockRejectedValue(new Error("Entity not found"));
 
     if (entityLeftHandler) {
       // Should not throw when handling error
@@ -351,8 +360,9 @@ describe("Event Lifecycle Events", () => {
   it("should handle ACTION_STARTED events", async () => {
     // Get the ACTION_STARTED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsActionStarted = bootstrapPluginEvents && bootstrapPluginEvents[EventType.ACTION_STARTED];
-    const actionStartedHandler = bootstrapPluginEventsActionStarted && bootstrapPluginEventsActionStarted[0];
+    const bootstrapPluginEventsActionStarted =
+      bootstrapPluginEvents?.[EventType.ACTION_STARTED];
+    const actionStartedHandler = bootstrapPluginEventsActionStarted?.[0];
     expect(actionStartedHandler).toBeDefined();
 
     if (actionStartedHandler) {
@@ -376,8 +386,9 @@ describe("Event Lifecycle Events", () => {
   it("should handle ACTION_COMPLETED events", async () => {
     // Get the ACTION_COMPLETED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsActionCompleted = bootstrapPluginEvents && bootstrapPluginEvents[EventType.ACTION_COMPLETED];
-    const actionCompletedHandler = bootstrapPluginEventsActionCompleted && bootstrapPluginEventsActionCompleted[0];
+    const bootstrapPluginEventsActionCompleted =
+      bootstrapPluginEvents?.[EventType.ACTION_COMPLETED];
+    const actionCompletedHandler = bootstrapPluginEventsActionCompleted?.[0];
     expect(actionCompletedHandler).toBeDefined();
 
     if (actionCompletedHandler) {
@@ -401,8 +412,9 @@ describe("Event Lifecycle Events", () => {
   it("should handle ACTION_COMPLETED events with errors", async () => {
     // Get the ACTION_COMPLETED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsActionCompleted = bootstrapPluginEvents && bootstrapPluginEvents[EventType.ACTION_COMPLETED];
-    const actionCompletedHandler = bootstrapPluginEventsActionCompleted && bootstrapPluginEventsActionCompleted[0];
+    const bootstrapPluginEventsActionCompleted =
+      bootstrapPluginEvents?.[EventType.ACTION_COMPLETED];
+    const actionCompletedHandler = bootstrapPluginEventsActionCompleted?.[0];
     expect(actionCompletedHandler).toBeDefined();
 
     if (actionCompletedHandler) {
@@ -427,8 +439,9 @@ describe("Event Lifecycle Events", () => {
   it("should handle EVALUATOR_STARTED events", async () => {
     // Get the EVALUATOR_STARTED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsEvaluatorStarted = bootstrapPluginEvents && bootstrapPluginEvents[EventType.EVALUATOR_STARTED];
-    const evaluatorStartedHandler = bootstrapPluginEventsEvaluatorStarted && bootstrapPluginEventsEvaluatorStarted[0];
+    const bootstrapPluginEventsEvaluatorStarted =
+      bootstrapPluginEvents?.[EventType.EVALUATOR_STARTED];
+    const evaluatorStartedHandler = bootstrapPluginEventsEvaluatorStarted?.[0];
     expect(evaluatorStartedHandler).toBeDefined();
 
     if (evaluatorStartedHandler) {
@@ -449,8 +462,10 @@ describe("Event Lifecycle Events", () => {
   it("should handle EVALUATOR_COMPLETED events", async () => {
     // Get the EVALUATOR_COMPLETED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
-    const bootstrapPluginEventsEvaluatorCompleted = bootstrapPluginEvents && bootstrapPluginEvents[EventType.EVALUATOR_COMPLETED];
-    const evaluatorCompletedHandler = bootstrapPluginEventsEvaluatorCompleted && bootstrapPluginEventsEvaluatorCompleted[0];
+    const bootstrapPluginEventsEvaluatorCompleted =
+      bootstrapPluginEvents?.[EventType.EVALUATOR_COMPLETED];
+    const evaluatorCompletedHandler =
+      bootstrapPluginEventsEvaluatorCompleted?.[0];
     expect(evaluatorCompletedHandler).toBeDefined();
 
     if (evaluatorCompletedHandler) {

@@ -5,5 +5,3 @@
  */
 
 export { polymarketProvider } from "./polymarket";
-
-

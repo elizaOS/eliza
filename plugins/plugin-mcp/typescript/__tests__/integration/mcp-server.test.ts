@@ -1,15 +1,15 @@
-import {  describe, expect, it, beforeAll, afterAll  } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
  * Integration tests for MCP server connectivity.
  * These tests require real MCP servers to be available.
- * 
+ *
  * To run these tests, you need:
  * 1. Node.js installed
  * 2. npx available in PATH
- * 
+ *
  * The tests use the official MCP filesystem server as a test target.
  */
 
@@ -42,10 +42,7 @@ describe("MCP Server Integration", () => {
         stderr: "pipe",
       });
 
-      client = new Client(
-        { name: "test-client", version: "1.0.0" },
-        { capabilities: {} }
-      );
+      client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
 
       // Connect should succeed
       await client.connect(transport);
@@ -70,16 +67,13 @@ describe("MCP Server Integration", () => {
         stderr: "pipe",
       });
 
-      const badClient = new Client(
-        { name: "test-client", version: "1.0.0" },
-        { capabilities: {} }
-      );
+      const badClient = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
 
       // Connection should fail
       let errorThrown = false;
       try {
         await badClient.connect(badTransport);
-      } catch (error) {
+      } catch (_error) {
         errorThrown = true;
       }
 
@@ -106,10 +100,7 @@ describe("MCP Server Integration", () => {
         stderr: "pipe",
       });
 
-      client = new Client(
-        { name: "test-client", version: "1.0.0" },
-        { capabilities: {} }
-      );
+      client = new Client({ name: "test-client", version: "1.0.0" }, { capabilities: {} });
 
       await client.connect(transport);
     }, 30000);
@@ -147,7 +138,7 @@ describe("MCP Server Integration", () => {
       }
 
       // Try to call the store_memory tool if available
-      const storeTool = tools.tools.find(t => t.name === "store_memory");
+      const storeTool = tools.tools.find((t) => t.name === "store_memory");
       if (storeTool) {
         const result = await client.callTool({
           name: "store_memory",
@@ -162,4 +153,3 @@ describe("MCP Server Integration", () => {
     });
   });
 });
-

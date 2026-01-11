@@ -4,11 +4,9 @@ Type definitions for the Discord plugin.
 Strong types with validation - no Any types allowed.
 """
 
-from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class Snowflake(str):
@@ -89,9 +87,9 @@ class DiscordAttachment(BaseModel):
     size: int
     url: str
     proxy_url: str
-    content_type: Optional[str] = None
-    height: Optional[int] = None
-    width: Optional[int] = None
+    content_type: str | None = None
+    height: int | None = None
+    width: int | None = None
 
     @field_validator("id")
     @classmethod
@@ -106,7 +104,7 @@ class DiscordEmbedFooter(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     text: str
-    icon_url: Optional[str] = None
+    icon_url: str | None = None
 
 
 class DiscordEmbedMedia(BaseModel):
@@ -115,9 +113,9 @@ class DiscordEmbedMedia(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     url: str
-    proxy_url: Optional[str] = None
-    height: Optional[int] = None
-    width: Optional[int] = None
+    proxy_url: str | None = None
+    height: int | None = None
+    width: int | None = None
 
 
 class DiscordEmbedAuthor(BaseModel):
@@ -126,8 +124,8 @@ class DiscordEmbedAuthor(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
-    url: Optional[str] = None
-    icon_url: Optional[str] = None
+    url: str | None = None
+    icon_url: str | None = None
 
 
 class DiscordEmbedField(BaseModel):
@@ -145,15 +143,15 @@ class DiscordEmbed(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    title: Optional[str] = None
-    description: Optional[str] = None
-    url: Optional[str] = None
-    timestamp: Optional[str] = None
-    color: Optional[int] = None
-    footer: Optional[DiscordEmbedFooter] = None
-    image: Optional[DiscordEmbedMedia] = None
-    thumbnail: Optional[DiscordEmbedMedia] = None
-    author: Optional[DiscordEmbedAuthor] = None
+    title: str | None = None
+    description: str | None = None
+    url: str | None = None
+    timestamp: str | None = None
+    color: int | None = None
+    footer: DiscordEmbedFooter | None = None
+    image: DiscordEmbedMedia | None = None
+    thumbnail: DiscordEmbedMedia | None = None
+    author: DiscordEmbedAuthor | None = None
     fields: list[DiscordEmbedField] = []
 
 
@@ -164,7 +162,7 @@ class DiscordMessagePayload(BaseModel):
 
     message_id: str
     channel_id: str
-    guild_id: Optional[str] = None
+    guild_id: str | None = None
     author_id: str
     author_name: str
     content: str
@@ -182,7 +180,7 @@ class DiscordMessagePayload(BaseModel):
 
     @field_validator("guild_id")
     @classmethod
-    def validate_optional_snowflake(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_snowflake(cls, v: str | None) -> str | None:
         if v is not None:
             Snowflake(v)  # Validate as snowflake
         return v
@@ -196,10 +194,10 @@ class DiscordReactionPayload(BaseModel):
     user_id: str
     channel_id: str
     message_id: str
-    guild_id: Optional[str] = None
+    guild_id: str | None = None
     emoji: str
     is_custom_emoji: bool
-    emoji_id: Optional[str] = None
+    emoji_id: str | None = None
 
     @field_validator("user_id", "channel_id", "message_id")
     @classmethod
@@ -215,7 +213,7 @@ class DiscordVoiceStatePayload(BaseModel):
 
     user_id: str
     guild_id: str
-    channel_id: Optional[str] = None
+    channel_id: str | None = None
     session_id: str
     is_muted: bool
     is_deafened: bool
@@ -272,10 +270,10 @@ class DiscordMemberPayload(BaseModel):
 
     user_id: str
     username: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     guild_id: str
     roles: list[str] = []
-    joined_at: Optional[str] = None
+    joined_at: str | None = None
 
     @field_validator("user_id", "guild_id")
     @classmethod

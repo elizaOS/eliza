@@ -1,9 +1,10 @@
+#![allow(missing_docs)]
 //! Remote Attestation Action for TEE.
 
 use tracing::{debug, error, info};
 
 use crate::client::upload_attestation_quote;
-use crate::error::{Result, TeeError};
+use crate::providers::base::RemoteAttestationProvider;
 use crate::providers::PhalaRemoteAttestationProvider;
 use crate::types::{RemoteAttestationMessage, RemoteAttestationMessageContent};
 use crate::utils::{current_timestamp_ms, hex_to_bytes};
@@ -168,5 +169,7 @@ pub const REMOTE_ATTESTATION_EXAMPLES: &[&[(&str, &str)]] = &[
         ("{{agentName}}", "I'll generate a remote attestation to prove I'm running in a TEE."),
     ],
 ];
+
+
 
 

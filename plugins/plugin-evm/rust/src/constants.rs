@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Constants for the EVM plugin
 
 use alloy::primitives::Address;

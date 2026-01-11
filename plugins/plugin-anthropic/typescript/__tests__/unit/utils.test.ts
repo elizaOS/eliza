@@ -7,9 +7,7 @@ vi.spyOn(core.logger, "debug").mockImplementation(() => {});
 // We'll swap jsonrepair mock per test
 let jsonrepairImpl = (x: string) => x;
 const jsonrepairModule = await import("jsonrepair");
-vi.spyOn(jsonrepairModule, "jsonrepair").mockImplementation((x: string) =>
-  jsonrepairImpl(x),
-);
+vi.spyOn(jsonrepairModule, "jsonrepair").mockImplementation((x: string) => jsonrepairImpl(x));
 
 import { ensureReflectionProperties, extractAndParseJSON } from "../../utils";
 

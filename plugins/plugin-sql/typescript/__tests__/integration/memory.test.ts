@@ -1,12 +1,3 @@
-import { 
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import {
   ChannelType,
   type Content,
@@ -19,6 +10,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { v4 } from "uuid";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
@@ -98,7 +90,7 @@ describe("Memory Integration Tests", () => {
 
   const createTestMemory = (
     content: Record<string, any>,
-    embedding?: number[],
+    embedding?: number[]
   ): Memory & { metadata: MemoryMetadata } => ({
     id: v4() as UUID,
     agentId: testAgentId,
@@ -117,7 +109,7 @@ describe("Memory Integration Tests", () => {
   it("should create and retrieve a memory with an embedding", async () => {
     const memory = createTestMemory(
       { text: "test" },
-      Array.from({ length: 384 }, () => Math.random()),
+      Array.from({ length: 384 }, () => Math.random())
     );
     const memoryId = await adapter.createMemory(memory, "test");
     const retrieved = await adapter.getMemoryById(memoryId);
@@ -222,9 +214,7 @@ describe("Memory Integration Tests", () => {
       if (!afterContentUpdate) throw new Error("Memory should exist");
       const content = afterContentUpdate.content as Record<string, unknown>;
       expect(content.text).toBe("This is updated content only");
-      expect(afterContentUpdate.embedding).toEqual(
-        memory.embedding as number[],
-      );
+      expect(afterContentUpdate.embedding).toEqual(memory.embedding as number[]);
       expect(afterContentUpdate.metadata).toEqual(memory.metadata);
 
       // Update only one field in metadata
@@ -297,9 +287,7 @@ describe("Memory Integration Tests", () => {
       const contentAfterText = afterContentTextUpdate.content as Record<string, unknown>;
       expect(contentAfterText.text).toBe("Updated text only");
       expect(contentAfterText.type).toBe("text");
-      expect(contentAfterText.additionalInfo).toBe(
-        "This should be preserved",
-      );
+      expect(contentAfterText.additionalInfo).toBe("This should be preserved");
       expect(afterContentTextUpdate.metadata).toEqual(originalMemory.metadata);
 
       // Update only source field in metadata, but must include all metadata fields
@@ -320,9 +308,7 @@ describe("Memory Integration Tests", () => {
       const afterSourceUpdate = await adapter.getMemoryById(memoryId);
       expect(afterSourceUpdate).not.toBeNull();
       if (!afterSourceUpdate || !afterContentTextUpdate) throw new Error("Memory should exist");
-      expect(afterSourceUpdate.content).toEqual(
-        afterContentTextUpdate.content as Content,
-      );
+      expect(afterSourceUpdate.content).toEqual(afterContentTextUpdate.content as Content);
       const metadataAfterSource = afterSourceUpdate.metadata as Record<string, unknown>;
       if (!metadataAfterSource) throw new Error("Metadata should exist");
       expect(metadataAfterSource.type).toBe("test-original");
@@ -334,14 +320,8 @@ describe("Memory Integration Tests", () => {
 
   describe("Memory Retrieval Operations", () => {
     it("should retrieve memories by room ID", async () => {
-      await adapter.createMemory(
-        createTestMemory({ text: "mem1" }),
-        "messages",
-      );
-      await adapter.createMemory(
-        createTestMemory({ text: "mem2" }),
-        "messages",
-      );
+      await adapter.createMemory(createTestMemory({ text: "mem1" }), "messages");
+      await adapter.createMemory(createTestMemory({ text: "mem2" }), "messages");
       const memories = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "messages",
@@ -350,14 +330,8 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should count memories in a room", async () => {
-      await adapter.createMemory(
-        createTestMemory({ text: "mem1" }),
-        "memories",
-      );
-      await adapter.createMemory(
-        createTestMemory({ text: "mem2" }),
-        "memories",
-      );
+      await adapter.createMemory(createTestMemory({ text: "mem1" }), "memories");
+      await adapter.createMemory(createTestMemory({ text: "mem2" }), "memories");
       const count = await adapter.countMemories(testRoomId, false, "memories");
       expect(count).toBe(2);
     });
@@ -382,9 +356,7 @@ describe("Memory Integration Tests", () => {
       const memories = await adapter.getMemoriesByIds(memoryIds, "memories");
 
       expect(memories).toHaveLength(2);
-      expect(memories.map((m) => m.id)).toEqual(
-        expect.arrayContaining(memoryIds),
-      );
+      expect(memories.map((m) => m.id)).toEqual(expect.arrayContaining(memoryIds));
     });
 
     it("should retrieve memories with pagination", async () => {
@@ -416,19 +388,14 @@ describe("Memory Integration Tests", () => {
       });
 
       // There should be at least 3 memories total
-      expect(secondPage.length).toBeGreaterThanOrEqual(
-        memoryTestMemories.length,
-      );
+      expect(secondPage.length).toBeGreaterThanOrEqual(memoryTestMemories.length);
     });
 
     it("should retrieve memories with offset for pagination", async () => {
       // Create 5 test memories with known content
       const memoryContents = ["mem1", "mem2", "mem3", "mem4", "mem5"];
       for (const content of memoryContents) {
-        await adapter.createMemory(
-          createTestMemory({ text: content }),
-          "memories",
-        );
+        await adapter.createMemory(createTestMemory({ text: content }), "memories");
       }
 
       // First page: get first 2 memories
@@ -459,9 +426,7 @@ describe("Memory Integration Tests", () => {
       expect(thirdPage).toHaveLength(1);
 
       // Verify no overlap between pages
-      const allIds = [...firstPage, ...secondPage, ...thirdPage].map(
-        (m) => m.id,
-      );
+      const allIds = [...firstPage, ...secondPage, ...thirdPage].map((m) => m.id);
       const uniqueIds = new Set(allIds);
       expect(allIds.length).toBe(uniqueIds.size);
     });
@@ -469,10 +434,7 @@ describe("Memory Integration Tests", () => {
     it("should handle offset without count parameter", async () => {
       // Create 5 test memories
       for (let i = 0; i < 5; i++) {
-        await adapter.createMemory(
-          createTestMemory({ text: `mem${i}` }),
-          "memories",
-        );
+        await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");
       }
 
       // Get all memories
@@ -499,10 +461,7 @@ describe("Memory Integration Tests", () => {
     it("should handle edge cases for offset pagination", async () => {
       // Create 3 test memories
       for (let i = 0; i < 3; i++) {
-        await adapter.createMemory(
-          createTestMemory({ text: `mem${i}` }),
-          "memories",
-        );
+        await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");
       }
 
       // Offset beyond available memories
@@ -535,10 +494,7 @@ describe("Memory Integration Tests", () => {
 
     it("should reject negative offset values", async () => {
       // Create a test memory
-      await adapter.createMemory(
-        createTestMemory({ text: "test" }),
-        "memories",
-      );
+      await adapter.createMemory(createTestMemory({ text: "test" }), "memories");
 
       // Attempt to use negative offset
       await expect(async () => {
@@ -564,18 +520,11 @@ describe("Memory Integration Tests", () => {
       // Create 10 test memories
       const totalMemories = 10;
       for (let i = 0; i < totalMemories; i++) {
-        await adapter.createMemory(
-          createTestMemory({ text: `mem${i}` }),
-          "memories",
-        );
+        await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");
       }
 
       // Get total count
-      const totalCount = await adapter.countMemories(
-        testRoomId,
-        false,
-        "memories",
-      );
+      const totalCount = await adapter.countMemories(testRoomId, false, "memories");
       expect(totalCount).toBe(totalMemories);
 
       // Paginate through all memories
@@ -711,9 +660,7 @@ describe("Memory Integration Tests", () => {
       await adapter.createMemory(testMemory, "memories");
 
       // Retrieve it from database
-      const retrievedMemory = await adapter.getMemoryById(
-        testMemory.id as UUID,
-      );
+      const retrievedMemory = await adapter.getMemoryById(testMemory.id as UUID);
       expect(retrievedMemory).not.toBeNull();
       if (!retrievedMemory) throw new Error("Memory should exist");
 
@@ -723,14 +670,10 @@ describe("Memory Integration Tests", () => {
       expect(retrievedMemory.roomId).toBe(testMemory.roomId);
       expect(retrievedMemory.agentId).toBe(testMemory.agentId);
       const content = retrievedMemory.content as Record<string, unknown>;
-      expect(content.text).toBe(
-        testMemory.content.text as string,
-      );
+      expect(content.text).toBe(testMemory.content.text as string);
       const metadata = retrievedMemory.metadata as Record<string, unknown>;
       if (testMemory.metadata && metadata) {
-        expect(metadata.type).toBe(
-          testMemory.metadata.type as string,
-        );
+        expect(metadata.type).toBe(testMemory.metadata.type as string);
       }
     });
 
@@ -760,12 +703,10 @@ describe("Memory Integration Tests", () => {
       };
 
       // Create the memory
-      await adapter.createMemory(partialMemory as any, "memories");
+      await adapter.createMemory(partialMemory as Partial<Memory>, "memories");
 
       // Retrieve it from database
-      const retrievedMemory = await adapter.getMemoryById(
-        partialMemory.id as UUID,
-      );
+      const retrievedMemory = await adapter.getMemoryById(partialMemory.id as UUID);
       expect(retrievedMemory).not.toBeNull();
       if (!retrievedMemory) throw new Error("Memory should exist");
 
@@ -775,7 +716,7 @@ describe("Memory Integration Tests", () => {
       expect(retrievedMemory.roomId).toBe(partialMemory.roomId);
       const content = retrievedMemory.content as Record<string, unknown>;
       const partialContent = partialMemory.content as Record<string, unknown> | undefined;
-      expect(content.text).toBe(partialContent && partialContent.text);
+      expect(content.text).toBe(partialContent?.text);
       expect(retrievedMemory.unique).toBe(true); // Default value
       expect(retrievedMemory.metadata).toBeDefined(); // Default empty object
     });
@@ -807,22 +748,14 @@ describe("Memory Integration Tests", () => {
       }
 
       // Verify memories exist
-      const countBefore = await adapter.countMemories(
-        testRoomId,
-        true,
-        "memories",
-      );
+      const countBefore = await adapter.countMemories(testRoomId, true, "memories");
       expect(countBefore).toBeGreaterThan(0);
 
       // Delete all memories
       await adapter.deleteAllMemories(testRoomId, "memories");
 
       // Verify memories were deleted
-      const countAfter = await adapter.countMemories(
-        testRoomId,
-        true,
-        "memories",
-      );
+      const countAfter = await adapter.countMemories(testRoomId, true, "memories");
       expect(countAfter).toBe(0);
     });
 
@@ -840,19 +773,13 @@ describe("Memory Integration Tests", () => {
       ]);
 
       // Create memories in the first room
-      await adapter.createMemory(
-        createTestMemory({ text: "mem1-room1" }),
-        "memories",
-      );
-      await adapter.createMemory(
-        createTestMemory({ text: "mem2-room1" }),
-        "memories",
-      );
+      await adapter.createMemory(createTestMemory({ text: "mem1-room1" }), "memories");
+      await adapter.createMemory(createTestMemory({ text: "mem2-room1" }), "memories");
 
       // Create memories in the second room
       await adapter.createMemory(
         { ...createTestMemory({ text: "mem3-room2" }), roomId: secondRoomId },
-        "memories",
+        "memories"
       );
 
       // Retrieve memories from both rooms

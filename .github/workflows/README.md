@@ -9,11 +9,13 @@ This directory contains GitHub Actions workflows for the elizaOS project.
 Publishes TypeScript/JavaScript packages to NPM.
 
 **Triggers:**
+
 - Push to `develop` → Alpha release
 - Push to `main` → Beta release
 - GitHub Release created → Production release
 
 **Packages:**
+
 - All `@elizaos/*` packages in the monorepo
 
 ### Python Packages (`release-python.yaml`)
@@ -21,14 +23,17 @@ Publishes TypeScript/JavaScript packages to NPM.
 Publishes Python packages to PyPI.
 
 **Triggers:**
+
 - GitHub Release created
 - Manual dispatch
 
 **Packages:**
+
 - `elizaos` (packages/python) - Core runtime and types
 - `elizaos-plugin-sql` (packages/plugin-sql/python) - SQL database adapters
 
 **Required Secrets:**
+
 - `PYPI_TOKEN` - PyPI API token with upload permissions
 
 ### Rust Crates (`release-rust.yaml`)
@@ -36,14 +41,17 @@ Publishes Python packages to PyPI.
 Publishes Rust crates to crates.io.
 
 **Triggers:**
+
 - GitHub Release created
 - Manual dispatch
 
 **Crates:**
+
 - `elizaos-core` (packages/rust) - Core runtime and types
 - `elizaos-plugin-sql` (packages/plugin-sql/rust) - SQL database adapters
 
 **Required Secrets:**
+
 - `CRATES_IO_TOKEN` - crates.io API token
 
 ## Test Workflows
@@ -51,6 +59,7 @@ Publishes Rust crates to crates.io.
 ### Main CI (`ci.yaml`)
 
 Runs on PRs and pushes to main:
+
 - TypeScript tests
 - Linting and formatting
 - Build verification
@@ -58,6 +67,7 @@ Runs on PRs and pushes to main:
 ### Multi-Language Tests (`multi-lang-tests.yaml`)
 
 Tests Rust and Python packages:
+
 - Rust: formatting, clippy, tests, release build
 - Python: ruff, mypy, pytest
 - WASM: build verification
@@ -79,6 +89,7 @@ Specific tests for the SQL plugin package.
 ### 2. Automated Publishing
 
 The release will trigger:
+
 - `release.yaml` → NPM packages
 - `release-python.yaml` → PyPI packages
 - `release-rust.yaml` → crates.io crates
@@ -86,6 +97,7 @@ The release will trigger:
 ### 3. Manual Publishing (if needed)
 
 **Python:**
+
 ```bash
 cd packages/python
 pip install build twine
@@ -94,6 +106,7 @@ twine upload dist/*
 ```
 
 **Rust:**
+
 ```bash
 cd packages/rust
 cargo publish

@@ -7,6 +7,17 @@
  * Uses real elizaOS runtime with OpenAI and SQL plugins.
  */
 
+import {
+  AgentRuntime,
+  bootstrapPlugin,
+  ChannelType,
+  type Character,
+  createMessageMemory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -14,17 +25,6 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import {
-  AgentRuntime,
-  ChannelType,
-  createMessageMemory,
-  stringToUuid,
-  bootstrapPlugin,
-  type Character,
-  type UUID,
-} from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
@@ -34,7 +34,8 @@ import { v4 as uuidv4 } from "uuid";
 const CHARACTER: Character = {
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS, accessible via MCP.",
-  system: "You are a helpful, friendly AI assistant. Be concise and informative.",
+  system:
+    "You are a helpful, friendly AI assistant. Be concise and informative.",
 };
 
 // ============================================================================
@@ -122,16 +123,12 @@ async function handleChat(message: string, userId?: string): Promise<string> {
   // Process message and collect response
   let response = "";
 
-  await rt.messageService.handleMessage(
-    rt,
-    messageMemory,
-    async (content) => {
-      if (content?.text) {
-        response += content.text;
-      }
-      return [];
+  await rt.messageService.handleMessage(rt, messageMemory, async (content) => {
+    if (content?.text) {
+      response += content.text;
     }
-  );
+    return [];
+  });
 
   return response || "I didn't generate a response. Please try again.";
 }
@@ -162,7 +159,7 @@ async function main(): Promise<void> {
       capabilities: {
         tools: {},
       },
-    }
+    },
   );
 
   // Handle tool listing
@@ -177,7 +174,8 @@ async function main(): Promise<void> {
     try {
       switch (name) {
         case "chat": {
-          const message = (args as { message: string; userId?: string }).message;
+          const message = (args as { message: string; userId?: string })
+            .message;
           const userId = (args as { message: string; userId?: string }).userId;
 
           if (!message || typeof message !== "string") {
@@ -207,7 +205,8 @@ async function main(): Promise<void> {
           };
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         content: [{ type: "text", text: `Error: ${errorMessage}` }],
         isError: true,
@@ -236,4 +235,3 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
-

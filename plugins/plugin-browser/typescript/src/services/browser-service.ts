@@ -3,10 +3,10 @@
  * Manages browser sessions and provides browser automation capabilities
  */
 
-import { Service, ServiceType, logger, type IAgentRuntime } from '@elizaos/core';
-import { BrowserProcessManager } from './process-manager.js';
-import { BrowserWebSocketClient } from './websocket-client.js';
-import type { BrowserSession } from '../types.js';
+import { type IAgentRuntime, logger, Service, ServiceType } from "@elizaos/core";
+import type { BrowserSession } from "../types.js";
+import { BrowserProcessManager } from "./process-manager.js";
+import { BrowserWebSocketClient } from "./websocket-client.js";
 
 /**
  * Browser session wrapper
@@ -23,7 +23,7 @@ export class Session implements BrowserSession {
  */
 export class BrowserService extends Service {
   static serviceType = ServiceType.BROWSER;
-  capabilityDescription = 'Browser automation service for web interactions';
+  capabilityDescription = "Browser automation service for web interactions";
 
   private sessions = new Map<string, Session>();
   private currentSessionId: string | null = null;
@@ -33,8 +33,8 @@ export class BrowserService extends Service {
 
   constructor(protected runtime: IAgentRuntime) {
     super(runtime);
-    const portSetting = runtime.getSetting('BROWSER_SERVER_PORT');
-    const port = typeof portSetting === 'string' ? parseInt(portSetting, 10) : 3456;
+    const portSetting = runtime.getSetting("BROWSER_SERVER_PORT");
+    const port = typeof portSetting === "string" ? parseInt(portSetting, 10) : 3456;
     this.processManager = new BrowserProcessManager(port);
     this.client = new BrowserWebSocketClient(`ws://localhost:${port}`);
   }
@@ -43,22 +43,22 @@ export class BrowserService extends Service {
    * Start the browser service
    */
   static async start(runtime: IAgentRuntime): Promise<BrowserService> {
-    logger.info('Starting browser automation service');
+    logger.info("Starting browser automation service");
     try {
       const service = new BrowserService(runtime);
 
-      logger.info('Starting browser server process...');
+      logger.info("Starting browser server process...");
       try {
         await service.processManager.start();
-        logger.info('Browser server started successfully');
+        logger.info("Browser server started successfully");
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to start browser server: ${errorMessage}`);
-        logger.warn('Browser plugin will be available but automation will not work');
-        logger.warn('To fix this, run: cd packages/plugin-browser && npm run build');
+        logger.warn("Browser plugin will be available but automation will not work");
+        logger.warn("To fix this, run: cd packages/plugin-browser && npm run build");
       }
 
-      logger.info('Initializing WebSocket client...');
+      logger.info("Initializing WebSocket client...");
       await service.initialize();
 
       return service;
@@ -73,12 +73,27 @@ export class BrowserService extends Service {
    * Stop the browser service
    */
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    logger.info('Stopping browser automation service');
+    logger.info("Stopping browser automation service");
     const service = runtime.getService<BrowserService>(BrowserService.serviceType);
     if (!service) {
-      throw new Error('Browser service not found');
+      throw new Error("Browser service not found");
     }
     await service.stop();
+  }
+
+  /**
+   * Stop the service
+   */
+  async stop(): Promise<void> {
+    logger.info("Cleaning up browser sessions");
+
+    for (const sessionId of this.sessions.keys()) {
+      await this.destroySession(sessionId);
+    }
+
+    this.client.disconnect();
+    await this.processManager.stop();
+    this.isInitialized = false;
   }
 
   /**
@@ -91,18 +106,18 @@ export class BrowserService extends Service {
 
     try {
       if (!this.processManager.isServerRunning()) {
-        logger.warn('Browser server is not running, attempting to start...');
+        logger.warn("Browser server is not running, attempting to start...");
         await this.processManager.start();
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      logger.info('Connecting to browser server...');
+      logger.info("Connecting to browser server...");
       await this.client.connect();
 
       await this.waitForReady();
 
       this.isInitialized = true;
-      logger.info('Browser service initialized successfully');
+      logger.info("Browser service initialized successfully");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to initialize browser service: ${errorMessage}`);
@@ -111,32 +126,17 @@ export class BrowserService extends Service {
   }
 
   /**
-   * Stop the service
-   */
-  async stop(): Promise<void> {
-    logger.info('Cleaning up browser sessions');
-
-    for (const sessionId of this.sessions.keys()) {
-      await this.destroySession(sessionId);
-    }
-
-    this.client.disconnect();
-    await this.processManager.stop();
-    this.isInitialized = false;
-  }
-
-  /**
    * Create a new browser session
    */
   async createSession(sessionId: string): Promise<Session> {
     if (!this.isInitialized) {
-      throw new Error('Browser service not initialized');
+      throw new Error("Browser service not initialized");
     }
 
-    const response = await this.client.sendMessage('createSession', {});
+    const response = await this.client.sendMessage("createSession", {});
     const serverSessionId = (response.data as { sessionId?: string })?.sessionId;
     if (!serverSessionId) {
-      throw new Error('Failed to create session on server');
+      throw new Error("Failed to create session on server");
     }
 
     const session = new Session(serverSessionId);
@@ -182,7 +182,7 @@ export class BrowserService extends Service {
   async destroySession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (session) {
-      await this.client.sendMessage('destroySession', { sessionId: session.id });
+      await this.client.sendMessage("destroySession", { sessionId: session.id });
       this.sessions.delete(sessionId);
       if (this.currentSessionId === sessionId) {
         this.currentSessionId = null;
@@ -195,19 +195,19 @@ export class BrowserService extends Service {
    */
   getClient(): BrowserWebSocketClient {
     if (!this.isInitialized) {
-      throw new Error('Browser service not initialized');
+      throw new Error("Browser service not initialized");
     }
     return this.client;
   }
 
   private async waitForReady(maxAttempts = 60, delayMs = 3000): Promise<void> {
-    logger.info('Waiting for browser server to be ready...');
+    logger.info("Waiting for browser server to be ready...");
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const isHealthy = await this.client.health();
         if (isHealthy) {
-          logger.info('Browser server is ready');
+          logger.info("Browser server is ready");
           return;
         }
       } catch (error) {
@@ -226,4 +226,3 @@ export class BrowserService extends Service {
     throw new Error(`Browser server did not become ready after ${maxAttempts} attempts`);
   }
 }
-

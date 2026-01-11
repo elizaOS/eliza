@@ -6,6 +6,7 @@ description: "Build AI agents that actually work in TypeScript, Python, or Rust"
 ## The Problem
 
 Building production AI agents is hard. You're juggling:
+
 - **Plugin management** across multiple providers and capabilities
 - **State persistence** that doesn't break between restarts
 - **Multi-agent orchestration** without race conditions
@@ -14,7 +15,8 @@ Building production AI agents is hard. You're juggling:
 Most frameworks give you primitives. You still wire everything together yourself.
 
 <Tip>
-**5 minutes to your first agent.** No infrastructure setup, no config files to manage. Just code in your preferred language.
+  **5 minutes to your first agent.** No infrastructure setup, no config files to
+  manage. Just code in your preferred language.
 </Tip>
 
 ## Quick Start
@@ -30,12 +32,12 @@ import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
 // Create runtime with character and plugins
 const runtime = new AgentRuntime({
-  character: {
-    name: 'Assistant',
-    bio: 'A helpful AI assistant',
-    system: 'You are a helpful assistant.',
-  },
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+character: {
+name: 'Assistant',
+bio: 'A helpful AI assistant',
+system: 'You are a helpful assistant.',
+},
+plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
 });
 
 // Initialize
@@ -43,14 +45,15 @@ await runtime.initialize();
 
 // Handle messages
 const result = await runtime.messageService!.handleMessage(
-  runtime,
-  message,
-  async (content) => {
-    console.log(content.text);
-    return [];
-  }
+runtime,
+message,
+async (content) => {
+console.log(content.text);
+return [];
+}
 );
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -73,7 +76,8 @@ await runtime.initialize()
 # Handle messages
 result = await runtime.message_service.handle_message(runtime, message)
 print(result.response_content.text)
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -82,15 +86,15 @@ use elizaos_plugin_openai::create_openai_plugin;
 
 // Create runtime with character and plugins
 let character = parse_character(r#"{
-    "name": "Assistant",
-    "bio": "A helpful AI assistant",
-    "system": "You are a helpful assistant."
+"name": "Assistant",
+"bio": "A helpful AI assistant",
+"system": "You are a helpful assistant."
 }"#)?;
 
 let runtime = AgentRuntime::new(RuntimeOptions {
-    character: Some(character),
-    plugins: vec![create_openai_plugin()?],
-    ..Default::default()
+character: Some(character),
+plugins: vec![create_openai_plugin()?],
+..Default::default()
 }).await?;
 
 // Initialize
@@ -98,9 +102,10 @@ runtime.initialize().await?;
 
 // Handle messages
 let result = runtime.message_service()
-    .handle_message(&runtime, &mut message, None, None)
-    .await?;
-```
+.handle_message(&runtime, &mut message, None, None)
+.await?;
+
+````
   </Tab>
 </Tabs>
 
@@ -156,7 +161,7 @@ const result = await elizaOS.handleMessage(runtime, {
   roomId: roomId,
   content: { text: 'Hello!', source: 'lambda' }
 });
-```
+````
 
 ### Async Mode with Callbacks
 
@@ -165,17 +170,17 @@ For WebSocket or streaming scenarios:
 ```typescript
 await elizaOS.handleMessage(agentId, message, {
   onResponse: async (content) => {
-    await socket.emit('message', content.text);
+    await socket.emit("message", content.text);
   },
   onStreamChunk: async (chunk, messageId) => {
-    await socket.emit('chunk', { chunk, messageId });
+    await socket.emit("chunk", { chunk, messageId });
   },
   onError: async (error) => {
-    console.error('Agent error:', error);
+    console.error("Agent error:", error);
   },
   onComplete: async () => {
-    console.log('Processing complete');
-  }
+    console.log("Processing complete");
+  },
 });
 ```
 
@@ -187,12 +192,20 @@ Send messages to multiple agents in parallel:
 const results = await elizaOS.handleMessages([
   {
     agentId: researchAgent,
-    message: { entityId, roomId, content: { text: 'Research topic X', source: 'internal' } }
+    message: {
+      entityId,
+      roomId,
+      content: { text: "Research topic X", source: "internal" },
+    },
   },
   {
     agentId: writerAgent,
-    message: { entityId, roomId, content: { text: 'Prepare outline', source: 'internal' } }
-  }
+    message: {
+      entityId,
+      roomId,
+      content: { text: "Prepare outline", source: "internal" },
+    },
+  },
 ]);
 ```
 
@@ -203,7 +216,7 @@ const results = await elizaOS.handleMessages([
 const agent = elizaOS.getAgent(agentId);
 
 // By name
-const assistant = elizaOS.getAgentByName('Assistant');
+const assistant = elizaOS.getAgentByName("Assistant");
 
 // All agents
 const allAgents = elizaOS.getAgents();
@@ -212,7 +225,7 @@ const allAgents = elizaOS.getAgents();
 const selected = elizaOS.getAgentsByIds([id1, id2]);
 
 // Multiple by names
-const team = elizaOS.getAgentsByNames(['Researcher', 'Writer']);
+const team = elizaOS.getAgentsByNames(["Researcher", "Writer"]);
 ```
 
 ### Events
@@ -220,11 +233,11 @@ const team = elizaOS.getAgentsByNames(['Researcher', 'Writer']);
 ElizaOS extends `EventTarget` for lifecycle events:
 
 ```typescript
-elizaOS.addEventListener('agent:started', (e) => {
+elizaOS.addEventListener("agent:started", (e) => {
   console.log(`Agent ${e.detail.agentId} started`);
 });
 
-elizaOS.addEventListener('message:sent', (e) => {
+elizaOS.addEventListener("message:sent", (e) => {
   console.log(`Message ${e.detail.messageId} sent in ${e.detail.mode} mode`);
 });
 
@@ -252,14 +265,14 @@ const keyStatus = await elizaOS.validateApiKeys();
 
 ## What You Get
 
-| Feature | Without ElizaOS | With ElizaOS |
-|---------|-----------------|--------------|
-| **Plugin resolution** | Manual imports, version conflicts | Auto-discovery, dependency ordering |
-| **Database setup** | 50+ lines boilerplate | Zero-config SQLite or Postgres |
-| **Multi-agent** | Build coordination from scratch | `handleMessages([...])` |
-| **Streaming** | Implement SSE/WebSocket yourself | Built-in with callbacks |
-| **State management** | Manual context threading | Automatic composition |
-| **Platform integration** | Custom adapters per platform | Plugin ecosystem |
+| Feature                  | Without ElizaOS                   | With ElizaOS                        |
+| ------------------------ | --------------------------------- | ----------------------------------- |
+| **Plugin resolution**    | Manual imports, version conflicts | Auto-discovery, dependency ordering |
+| **Database setup**       | 50+ lines boilerplate             | Zero-config SQLite or Postgres      |
+| **Multi-agent**          | Build coordination from scratch   | `handleMessages([...])`             |
+| **Streaming**            | Implement SSE/WebSocket yourself  | Built-in with callbacks             |
+| **State management**     | Manual context threading          | Automatic composition               |
+| **Platform integration** | Custom adapters per platform      | Plugin ecosystem                    |
 
 ---
 
@@ -277,16 +290,16 @@ flowchart TD
     Handler --> Response[Response]
     Response --> Evaluators[Evaluators]
     Evaluators --> User
-    
+
     Runtime -.-> Services[Background Services]
     Runtime -.-> Events[Event System]
     Runtime -.-> Memory[(Memory Store)]
-    
+
     classDef user fill:#2196f3,color:#fff
     classDef runtime fill:#4caf50,color:#fff
     classDef processing fill:#9c27b0,color:#fff
     classDef support fill:#ff9800,color:#fff
-    
+
     class User user
     class Runtime runtime
     class State,Providers,Actions,Handler,Response,Evaluators processing
@@ -300,7 +313,7 @@ The runtime orchestrates these essential components:
 - **AgentRuntime**: Central orchestrator managing agent lifecycle
 - **Plugin System**: Extends functionality through modular components
 - **Memory System**: Hierarchical storage for conversations and knowledge
-- **State Management**: Aggregates context from multiple sources 
+- **State Management**: Aggregates context from multiple sources
 - **Service Layer**: Background processes and integrations
 
 For related documentation, see [Plugin Architecture](/plugins/architecture), [Memory](/runtime/memory), and [Services](/runtime/services).
@@ -393,27 +406,29 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    // Action processing
-    pub async fn process_actions(&self, message: &Memory, responses: &[Memory], state: Option<&State>) -> Result<()>;
-    pub async fn compose_state(&self, message: &Memory, state: Option<&State>) -> Result<State>;
-    pub async fn evaluate(&self, message: &Memory, state: Option<&State>) -> Result<()>;
-    
+// Action processing
+pub async fn process_actions(&self, message: &Memory, responses: &[Memory], state: Option<&State>) -> Result<()>;
+pub async fn compose_state(&self, message: &Memory, state: Option<&State>) -> Result<State>;
+pub async fn evaluate(&self, message: &Memory, state: Option<&State>) -> Result<()>;
+
     // Component registration
     pub fn register_action(&mut self, action: Action);
     pub fn register_provider(&mut self, provider: Provider);
     pub fn register_evaluator(&mut self, evaluator: Evaluator);
     pub fn register_service(&mut self, service: Service);
-    
+
     // Service management
     pub fn get_service<T>(&self, name: &str) -> Option<&T>;
     pub async fn stop(&self) -> Result<()>;
-    
+
     // Model management
     pub async fn use_model<T>(&self, model_type: &str, params: ModelParams) -> Result<T>;
     pub fn register_model(&mut self, model_type: &str, handler: ModelHandler);
     pub fn get_model(&self, model_type: &str) -> Option<&ModelHandler>;
+
 }
-```
+
+````
   </Tab>
 </Tabs>
 
@@ -427,15 +442,15 @@ The runtime orchestrates action selection and execution:
 async processActions(message: Memory, responses: Memory[], state?: State): Promise<void> {
   // Select and execute actions based on context
   const actions = await this.selectActions(message, state);
-  
+
   for (const action of actions) {
     await action.handler(this, message, state);
   }
-  
+
   // Run evaluators on results
   await this.evaluate(message, state);
 }
-```
+````
 
 #### 2. State Composition
 
@@ -444,12 +459,12 @@ Builds comprehensive context by aggregating data from providers:
 ```typescript
 async composeState(message: Memory): Promise<State> {
   const state = {};
-  
+
   for (const provider of this.providers) {
     const data = await provider.get(this, message, state);
     Object.assign(state, data);
   }
-  
+
   return state;
 }
 ```
@@ -465,7 +480,7 @@ async registerPlugin(plugin: Plugin) {
   plugin.providers?.forEach(p => this.registerProvider(p));
   plugin.evaluators?.forEach(e => this.registerEvaluator(e));
   plugin.services?.forEach(s => this.registerService(s));
-  
+
   // Initialize plugin
   await plugin.init?.(this.config, this);
 }
@@ -484,11 +499,11 @@ flowchart TD
     Process --> Ready
     Ready --> Stop[Stop Services]
     Stop --> Cleanup[Cleanup]
-    
+
     classDef setup fill:#2196f3,color:#fff
     classDef active fill:#4caf50,color:#fff
     classDef shutdown fill:#ff9800,color:#fff
-    
+
     class Create,Init,LoadChar,LoadPlugins,StartServices setup
     class Ready,Process active
     class Stop,Cleanup shutdown
@@ -507,11 +522,11 @@ flowchart TD
 ```typescript
 // Plugin priority determines load order
 const pluginLoadOrder = [
-  databases,      // Priority: -100
+  databases, // Priority: -100
   modelProviders, // Priority: -50
-  corePlugins,    // Priority: 0
-  features,       // Priority: 50
-  platforms       // Priority: 100
+  corePlugins, // Priority: 0
+  features, // Priority: 50
+  platforms, // Priority: 100
 ];
 ```
 
@@ -566,16 +581,16 @@ interface IDatabaseAdapter {
   createMemory(memory: Memory): Promise<void>;
   searchMemories(query: string, limit?: number): Promise<Memory[]>;
   getMemoryById(id: UUID): Promise<Memory | null>;
-  
+
   // Entity management
   createEntity(entity: Entity): Promise<void>;
   updateEntity(entity: Entity): Promise<void>;
   getEntity(id: UUID): Promise<Entity | null>;
-  
+
   // Relationships
   createRelationship(rel: Relationship): Promise<void>;
   getRelationships(entityId: UUID): Promise<Relationship[]>;
-  
+
   // Facts and knowledge
   createFact(fact: Fact): Promise<void>;
   searchFacts(query: string): Promise<Fact[]>;
@@ -590,13 +605,13 @@ await runtime.createMemory({
   type: MemoryType.MESSAGE,
   content: { text: "User message" },
   roomId: message.roomId,
-  userId: message.userId
+  userId: message.userId,
 });
 
 // Search memories
 const memories = await runtime.searchMemories(
   "previous conversation",
-  10 // limit
+  10, // limit
 );
 
 // Get specific memory
@@ -615,12 +630,12 @@ flowchart TD
     Actions --> Execute[Execute Actions]
     Execute --> Evaluate[Run Evaluators]
     Evaluate --> Response[Generate Response]
-    
+
     classDef input fill:#2196f3,color:#fff
     classDef storage fill:#4caf50,color:#fff
     classDef processing fill:#9c27b0,color:#fff
     classDef output fill:#ff9800,color:#fff
-    
+
     class Message input
     class Memory storage
     class State,Actions,Execute,Evaluate processing
@@ -753,7 +768,6 @@ try {
 
   // Get results from actions executed in this run
   const results = runtime.getActionResults(message.id);
-
 } finally {
   // Always end the run
   runtime.endRun();
@@ -776,7 +790,7 @@ getActionResults(messageId: UUID): ActionResult[];
 const results = runtime.getActionResults(message.id);
 
 // Second action uses results from first
-const previousData = results.find(r => r.action === 'SEARCH_WEB');
+const previousData = results.find((r) => r.action === "SEARCH_WEB");
 if (previousData?.success) {
   // Use previousData.data in next action
 }
@@ -798,16 +812,17 @@ addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 ```
 
 **Priority levels:**
+
 - `high` - Immediate processing (user queries)
 - `normal` - Default priority (conversations)
 - `low` - Background processing (bulk imports)
 
 ```typescript
 // Queue high-priority embedding for user query
-await runtime.queueEmbeddingGeneration(userMessage, 'high');
+await runtime.queueEmbeddingGeneration(userMessage, "high");
 
 // Queue low-priority for background knowledge
-await runtime.queueEmbeddingGeneration(knowledgeDoc, 'low');
+await runtime.queueEmbeddingGeneration(knowledgeDoc, "low");
 ```
 
 ### Conversation Length
@@ -876,7 +891,7 @@ if (runtime.hasElizaOS()) {
   await elizaOS.handleMessage(otherAgentId, {
     entityId: message.entityId,
     roomId: message.roomId,
-    content: { text: 'Forwarded message', source: 'internal' }
+    content: { text: "Forwarded message", source: "internal" },
   });
 }
 ```
@@ -918,12 +933,12 @@ ensureConnection({
 await runtime.ensureConnection({
   entityId: discordUserId,
   roomId: channelRoomId,
-  userName: 'user#1234',
-  source: 'discord',
+  userName: "user#1234",
+  source: "discord",
   channelId: discordChannelId,
   type: ChannelType.GROUP,
   worldId: serverWorldId,
-  metadata: { roles: ['member', 'admin'] }
+  metadata: { roles: ["member", "admin"] },
 });
 ```
 
@@ -939,11 +954,11 @@ updateWorld(world: World): Promise<void>;
 // Update world settings
 await runtime.updateWorld({
   id: worldId,
-  name: 'Updated Server Name',
+  name: "Updated Server Name",
   metadata: {
     settings: { allowBots: true },
-    features: ['voice', 'threads']
-  }
+    features: ["voice", "threads"],
+  },
 });
 ```
 
@@ -962,15 +977,15 @@ sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
 ```typescript
 // Register Discord message handler
 // Handler signature: (runtime, target, content) => Promise<void>
-runtime.registerSendHandler('discord', async (runtime, target, content) => {
+runtime.registerSendHandler("discord", async (runtime, target, content) => {
   const channel = await discordClient.channels.fetch(target.channelId);
   await channel.send(content.text);
 });
 
 // Send message to target
 await runtime.sendMessageToTarget(
-  { source: 'discord', channelId: '123456', roomId },
-  { text: 'Hello from agent!' }
+  { source: "discord", channelId: "123456", roomId },
+  { text: "Hello from agent!" },
 );
 ```
 
@@ -981,29 +996,33 @@ await runtime.sendMessageToTarget(
     Learn about the fundamental storage layer
   </Card>
 
-  <Card title="Events" icon="bolt" href="/runtime/events">
-    Understand the communication backbone
-  </Card>
+<Card title="Events" icon="bolt" href="/runtime/events">
+  Understand the communication backbone
+</Card>
 
-  <Card title="Providers" icon="database" href="/runtime/providers">
-    Explore how to supply data to the runtime
-  </Card>
+<Card title="Providers" icon="database" href="/runtime/providers">
+  Explore how to supply data to the runtime
+</Card>
 
-  <Card title="Models" icon="robot" href="/runtime/models">
-    Discover AI model management
-  </Card>
+<Card title="Models" icon="robot" href="/runtime/models">
+  Discover AI model management
+</Card>
 
-  <Card title="Streaming Responses" icon="wave-pulse" href="/guides/streaming-responses">
-    Implement real-time streaming with SSE/WebSocket
-  </Card>
+<Card
+  title="Streaming Responses"
+  icon="wave-pulse"
+  href="/guides/streaming-responses"
+>
+  Implement real-time streaming with SSE/WebSocket
+</Card>
 
-  <Card title="Action Planning" icon="list-check" href="/guides/action-planning">
-    Build multi-step action workflows
-  </Card>
+<Card title="Action Planning" icon="list-check" href="/guides/action-planning">
+  Build multi-step action workflows
+</Card>
 
-  <Card title="Background Tasks" icon="clock" href="/guides/background-tasks">
-    Run async operations with task workers
-  </Card>
+<Card title="Background Tasks" icon="clock" href="/guides/background-tasks">
+  Run async operations with task workers
+</Card>
 
   <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
     Ship your agent to production in minutes

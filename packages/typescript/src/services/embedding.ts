@@ -1,8 +1,8 @@
-import { EventType } from "../types/events";
 import type { EmbeddingGenerationPayload } from "../types/events";
-import type { IAgentRuntime } from "../types/runtime";
+import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
+import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 
 interface EmbeddingQueueItem {

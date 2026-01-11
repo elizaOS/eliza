@@ -1,5 +1,4 @@
 import type { Logger } from "../logger";
-import type { IMessageService } from "./message-service";
 import type { Character } from "./agent";
 import type {
   Action,
@@ -9,9 +8,10 @@ import type {
   Provider,
 } from "./components";
 import type { DbConnection, IDatabaseAdapter } from "./database";
-import type { ChannelType, Entity, Room, World } from "./environment";
+import type { Entity, Room, World } from "./environment";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
+import type { IMessageService } from "./message-service";
 import type { SendHandlerFunction, TargetInfo } from "./messaging";
 import type {
   GenerateTextOptions,
@@ -23,7 +23,7 @@ import type {
   TextGenerationModelType,
 } from "./model";
 import type { Plugin, Route, RuntimeEventStorage } from "./plugin";
-import type { Content, Metadata, UUID } from "./primitives";
+import type { ChannelType, Content, UUID } from "./primitives";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { TaskWorker } from "./task";
@@ -88,34 +88,34 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   /**
    * Check if action planning mode is enabled.
-   * 
+   *
    * When enabled (default), the agent can plan and execute multiple actions per response.
    * When disabled, the agent executes only a single action per response - a performance
    * optimization useful for game situations where state updates with every action.
-   * 
+   *
    * Priority: constructor option > character setting ACTION_PLANNING > default (true)
    */
   isActionPlanningEnabled(): boolean;
 
   /**
    * Get the LLM mode for model selection override.
-   * 
+   *
    * - `DEFAULT`: Use the model type specified in the useModel call (no override)
-   * - `SMALL`: Override all text generation model calls to use TEXT_SMALL  
+   * - `SMALL`: Override all text generation model calls to use TEXT_SMALL
    * - `LARGE`: Override all text generation model calls to use TEXT_LARGE
-   * 
+   *
    * This is useful for cost optimization (force SMALL) or quality (force LARGE).
-   * 
+   *
    * Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
    */
   getLLMMode(): import("./model").LLMModeType;
 
   /**
    * Check if the shouldRespond evaluation is enabled.
-   * 
+   *
    * When enabled (default: true), the agent evaluates whether to respond to each message.
    * When disabled, the agent always responds (ChatGPT mode) - useful for direct chat interfaces.
-   * 
+   *
    * Priority: constructor option > character setting CHECK_SHOULD_RESPOND > default (true)
    */
   isCheckShouldRespondEnabled(): boolean;

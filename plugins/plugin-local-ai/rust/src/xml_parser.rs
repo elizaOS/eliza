@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Robust XML parser utilities for handling model responses.
 //!
 //! Handles edge cases like:

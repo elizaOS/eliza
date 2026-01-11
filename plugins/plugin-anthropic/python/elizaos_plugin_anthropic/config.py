@@ -63,7 +63,7 @@ class AnthropicConfig:
         self._timeout_seconds = timeout_seconds
 
     @classmethod
-    def from_env(cls) -> "AnthropicConfig":
+    def from_env(cls) -> AnthropicConfig:
         """
         Load configuration from environment variables.
 
@@ -143,7 +143,7 @@ class AnthropicConfig:
         """Get the full messages endpoint URL."""
         return f"{self._base_url}/v1/messages"
 
-    def with_base_url(self, base_url: str) -> "AnthropicConfig":
+    def with_base_url(self, base_url: str) -> AnthropicConfig:
         """Create a new config with a different base URL."""
         return AnthropicConfig(
             api_key=self._api_key,
@@ -154,7 +154,7 @@ class AnthropicConfig:
             timeout_seconds=self._timeout_seconds,
         )
 
-    def with_timeout(self, seconds: int) -> "AnthropicConfig":
+    def with_timeout(self, seconds: int) -> AnthropicConfig:
         """Create a new config with a different timeout."""
         return AnthropicConfig(
             api_key=self._api_key,
@@ -164,5 +164,3 @@ class AnthropicConfig:
             large_model=self._large_model,
             timeout_seconds=seconds,
         )
-
-

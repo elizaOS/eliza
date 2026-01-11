@@ -21,11 +21,11 @@ Advanced memory management plugin for elizaOS with conversation summarization an
 
 This plugin is implemented in three languages with full parity:
 
-| Language | Location | Build Command |
-|----------|----------|---------------|
-| TypeScript | `typescript/` | `bun run build:ts` |
-| Python | `python/` | `pip install -e ./python` |
-| Rust | `rust/` | `cargo build --release` |
+| Language   | Location      | Build Command             |
+| ---------- | ------------- | ------------------------- |
+| TypeScript | `typescript/` | `bun run build:ts`        |
+| Python     | `python/`     | `pip install -e ./python` |
+| Rust       | `rust/`       | `cargo build --release`   |
 
 ## Installation
 
@@ -45,7 +45,7 @@ cargo add elizaos-plugin-memory
 ### TypeScript
 
 ```typescript
-import { memoryPlugin } from '@elizaos/plugin-memory';
+import { memoryPlugin } from "@elizaos/plugin-memory";
 
 const agent = createAgent({
   plugins: [memoryPlugin],
@@ -71,16 +71,16 @@ let service = MemoryService::new(config);
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MEMORY_SUMMARIZATION_THRESHOLD` | 16 | Messages before summarization |
-| `MEMORY_RETAIN_RECENT` | 6 | Recent messages to keep |
-| `MEMORY_SUMMARIZATION_INTERVAL` | 10 | Update interval after threshold |
-| `MEMORY_MAX_NEW_MESSAGES` | 20 | Max new messages per update |
-| `MEMORY_LONG_TERM_ENABLED` | true | Enable long-term extraction |
-| `MEMORY_CONFIDENCE_THRESHOLD` | 0.85 | Minimum confidence to store |
-| `MEMORY_EXTRACTION_THRESHOLD` | 30 | Messages before extraction |
-| `MEMORY_EXTRACTION_INTERVAL` | 10 | Run extraction every N messages |
+| Setting                          | Default | Description                     |
+| -------------------------------- | ------- | ------------------------------- |
+| `MEMORY_SUMMARIZATION_THRESHOLD` | 16      | Messages before summarization   |
+| `MEMORY_RETAIN_RECENT`           | 6       | Recent messages to keep         |
+| `MEMORY_SUMMARIZATION_INTERVAL`  | 10      | Update interval after threshold |
+| `MEMORY_MAX_NEW_MESSAGES`        | 20      | Max new messages per update     |
+| `MEMORY_LONG_TERM_ENABLED`       | true    | Enable long-term extraction     |
+| `MEMORY_CONFIDENCE_THRESHOLD`    | 0.85    | Minimum confidence to store     |
+| `MEMORY_EXTRACTION_THRESHOLD`    | 30      | Messages before extraction      |
+| `MEMORY_EXTRACTION_INTERVAL`     | 10      | Run extraction every N messages |
 
 ## Development
 
@@ -107,12 +107,12 @@ graph TD
     B -->|>= Threshold| D[Trigger Summarization]
     D --> E[Generate Summary]
     E --> F[Store in DB]
-    
+
     A --> G{Long-term Check}
     G -->|Interval Match| H[Extract Facts]
     H --> I[Categorize]
     I --> J[Store Facts]
-    
+
     K[Provider Request] --> L[Retrieve Memories]
     L --> M[Format for Context]
 ```

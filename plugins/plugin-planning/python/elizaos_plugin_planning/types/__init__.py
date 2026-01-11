@@ -8,6 +8,7 @@ from uuid import UUID
 
 class MessageClassification(Enum):
     """Classification of incoming messages."""
+
     SIMPLE = "simple"
     STRATEGIC = "strategic"
     CAPABILITY_REQUEST = "capability_request"
@@ -17,6 +18,7 @@ class MessageClassification(Enum):
 @dataclass
 class StrategySpec:
     """Strategy specification for planning."""
+
     goal: str
     requirements: list[str]
     constraints: dict[str, Any]
@@ -26,6 +28,7 @@ class StrategySpec:
 @dataclass
 class ExecutionStep:
     """Execution step in a plan."""
+
     id: str
     action: str
     inputs: dict[str, Any]
@@ -36,6 +39,7 @@ class ExecutionStep:
 @dataclass
 class ExecutionDAG:
     """Directed Acyclic Graph representation for plan execution."""
+
     steps: list[ExecutionStep]
     edges: list[tuple[str, str]]
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -44,6 +48,7 @@ class ExecutionDAG:
 @dataclass
 class ExecutionResult:
     """Execution result from a plan run."""
+
     dag_id: str
     status: str  # 'pending' | 'running' | 'completed' | 'failed' | 'aborted'
     completed_steps: list[str]
@@ -55,6 +60,7 @@ class ExecutionResult:
 @dataclass
 class RequiredCapability:
     """Required capability for a plan."""
+
     type: str  # 'action' | 'provider' | 'service' | 'model'
     name: str
     description: Optional[str] = None
@@ -64,6 +70,7 @@ class RequiredCapability:
 @dataclass
 class CapabilityGap:
     """Gap in capabilities identified during planning."""
+
     capability: RequiredCapability
     suggestions: list[str]
     can_generate: bool
@@ -72,6 +79,7 @@ class CapabilityGap:
 @dataclass
 class GenerationMethod:
     """Method for generating missing capabilities."""
+
     type: str  # 'plugin' | 'mcp' | 'n8n' | 'custom'
     confidence: float
     estimated_time: float
@@ -80,6 +88,7 @@ class GenerationMethod:
 @dataclass
 class RetryPolicy:
     """Retry policy for action steps."""
+
     max_retries: int = 2
     backoff_ms: int = 1000
     backoff_multiplier: float = 2.0
@@ -89,6 +98,7 @@ class RetryPolicy:
 @dataclass
 class PlanningConfig:
     """Configuration for the planning service."""
+
     max_steps: int = 10
     default_timeout_ms: int = 60000
     execution_model: str = "sequential"  # 'sequential' | 'parallel' | 'dag'
@@ -99,6 +109,7 @@ class PlanningConfig:
 @dataclass
 class ClassificationResult:
     """Result from message classification."""
+
     classification: str
     confidence: float
     complexity: str
@@ -113,6 +124,7 @@ class ClassificationResult:
 @dataclass
 class ActionStep:
     """Step in an action plan."""
+
     id: UUID
     action_name: str
     parameters: dict[str, Any]
@@ -124,6 +136,7 @@ class ActionStep:
 @dataclass
 class ActionPlan:
     """Complete action plan."""
+
     id: UUID
     goal: str
     steps: list[ActionStep]
@@ -135,6 +148,7 @@ class ActionPlan:
 @dataclass
 class PlanExecutionResult:
     """Result from plan execution."""
+
     plan_id: UUID
     success: bool
     completed_steps: int
@@ -143,5 +157,8 @@ class PlanExecutionResult:
     errors: Optional[list[Exception]] = None
     duration: float = 0.0
     adaptations: Optional[list[str]] = None
+
+
+
 
 

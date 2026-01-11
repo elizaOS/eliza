@@ -7,7 +7,7 @@ import dotenv from "dotenv";
  */
 
 export function expandTildePath(filepath: string): string {
-  if (filepath && filepath.startsWith("~")) {
+  if (filepath?.startsWith("~")) {
     return path.join(process.cwd(), filepath.slice(1));
   }
   return filepath;
@@ -38,7 +38,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     dotenv.config({ path: envPath });
   }
 
-  let monoPath;
+  let monoPath: string | undefined;
   if (existsSync(path.join(process.cwd(), "packages", "core"))) {
     monoPath = process.cwd();
   } else {

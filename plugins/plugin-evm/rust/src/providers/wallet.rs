@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Wallet provider implementation using alloy-rs
 //!
 //! Provides wallet functionality for EVM chains including:

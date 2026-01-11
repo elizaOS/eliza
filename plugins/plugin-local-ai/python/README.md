@@ -40,6 +40,7 @@ print(result.text)
 ## Configuration
 
 Environment variables:
+
 - `MODELS_DIR`: Directory containing model files
 - `CACHE_DIR`: Directory for caching
 - `LOCAL_SMALL_MODEL`: Filename of small model
@@ -50,5 +51,6 @@ Environment variables:
 ## License
 
 MIT
+
 
 

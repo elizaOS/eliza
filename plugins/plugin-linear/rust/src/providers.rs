@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Providers for the Linear plugin.
 //!
 //! Providers supply contextual information to the agent.
@@ -180,5 +181,10 @@ pub async fn get_activity_context(service: &LinearService) -> Result<ProviderRes
         }),
     ))
 }
+
+
+
+
+
 
 

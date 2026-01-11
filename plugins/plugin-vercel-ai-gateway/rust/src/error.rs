@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Vercel AI Gateway plugin.
 
 use thiserror::Error;
@@ -37,5 +38,10 @@ pub enum GatewayError {
 
 /// Result type alias for Gateway operations.
 pub type Result<T> = std::result::Result<T, GatewayError>;
+
+
+
+
+
 
 

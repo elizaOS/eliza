@@ -1,5 +1,3 @@
-import type { LanguageModelUsage } from "ai";
-
 export interface OpenAITranscriptionParams {
   audio: Blob | File | Buffer;
   model?: string;

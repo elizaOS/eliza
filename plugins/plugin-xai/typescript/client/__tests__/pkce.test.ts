@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { createCodeChallenge, base64UrlEncode } from "../auth-providers/pkce";
+import { describe, expect, it } from "vitest";
+import { base64UrlEncode, createCodeChallenge } from "../auth-providers/pkce";
 
 describe("pkce helpers", () => {
   it("base64UrlEncode should be url-safe and unpadded", () => {
@@ -16,4 +16,3 @@ describe("pkce helpers", () => {
     expect(createCodeChallenge(verifier)).toBe(expected);
   });
 });
-

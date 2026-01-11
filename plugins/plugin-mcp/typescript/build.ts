@@ -9,12 +9,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const externalDeps = [
-  "@elizaos/core",
-  "@modelcontextprotocol/sdk",
-  "ajv",
-  "json5",
-];
+const externalDeps = ["@elizaos/core", "@modelcontextprotocol/sdk", "ajv", "json5"];
 
 async function build(): Promise<boolean> {
   const totalStart = Date.now();
@@ -94,5 +89,3 @@ build()
     console.error("Build failed:", err);
     process.exit(1);
   });
-
-

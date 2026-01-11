@@ -1,27 +1,32 @@
 ---
-title: 'Test a Project'
-description: 'Write tests for your multi-agent elizaOS project'
+title: "Test a Project"
+description: "Write tests for your multi-agent elizaOS project"
 ---
 
 <Tip>
-  **Video Tutorial**: [**Testing Projects and Plugins with elizaOS**](https://www.youtube.com/watch?v=HHbY9a27b6A&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=5)
+  **Video Tutorial**: [**Testing Projects and Plugins with
+  elizaOS**](https://www.youtube.com/watch?v=HHbY9a27b6A&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=5)
 </Tip>
 
 <Note>
-This guide builds on concepts from [Add Multiple Agents](/guides/add-multiple-agents)
+  This guide builds on concepts from [Add Multiple
+  Agents](/guides/add-multiple-agents)
 </Note>
 
 ## Step 1: Test multi-agent configuration
 
 We added a bunch of new features to our project. In addition to the default tests that projects ship with, let's write some new tests to cover our new feature scope:
 
-| Feature | Test Type | What We're Validating |
-|---------|-----------|-------------------|
+| Feature                       | Test Type | What We're Validating                                         |
+| ----------------------------- | --------- | ------------------------------------------------------------- |
 | **Multi-agent configuration** | Component | Two agents with unique Discord tokens, voice IDs, and plugins |
-| **Multi-agent runtime** | E2E | Both agents initialize and run simultaneously |
+| **Multi-agent runtime**       | E2E       | Both agents initialize and run simultaneously                 |
 
 <Note>
-ElizaOS projects ship with comprehensive built-in tests for core functionality (character config, plugin loading, runtime behavior). For details on the default test structure, see [Testing Projects](/projects/overview#testing-projects).
+  ElizaOS projects ship with comprehensive built-in tests for core functionality
+  (character config, plugin loading, runtime behavior). For details on the
+  default test structure, see [Testing
+  Projects](/projects/overview#testing-projects).
 </Note>
 
 ### Create component tests
@@ -29,44 +34,49 @@ ElizaOS projects ship with comprehensive built-in tests for core functionality (
 Let's create a new component test file to test the specific multi-agent features we built:
 
 ```typescript src/__tests__/multi-agent-features.test.ts
-import { describe, it, expect } from 'bun:test';
-import { character as shakespeare } from '../character';
-import hemingway from '../../hemingway.json';
+import { describe, it, expect } from "bun:test";
+import { character as shakespeare } from "../character";
+import hemingway from "../../hemingway.json";
 
-describe('multi-agent configuration', () => {
-  it('loads second agent (hemingway.json)', () => {
+describe("multi-agent configuration", () => {
+  it("loads second agent (hemingway.json)", () => {
     expect(hemingway).toBeDefined();
-    expect(hemingway.name).toBe('Hemingway');
+    expect(hemingway.name).toBe("Hemingway");
   });
 
-  it('agents have unique Discord credentials', () => {
+  it("agents have unique Discord credentials", () => {
     expect(shakespeare.settings?.secrets?.DISCORD_API_TOKEN).toBeDefined();
     expect(hemingway.settings?.secrets?.DISCORD_API_TOKEN).toBeDefined();
-    
+
     // Each agent must have different bot token
-    expect(shakespeare.settings?.secrets?.DISCORD_API_TOKEN)
-      .not.toBe(hemingway.settings?.secrets?.DISCORD_API_TOKEN);
+    expect(shakespeare.settings?.secrets?.DISCORD_API_TOKEN).not.toBe(
+      hemingway.settings?.secrets?.DISCORD_API_TOKEN,
+    );
   });
 
-  it('includes ElevenLabs plugin in both agents', () => {
-    expect(shakespeare.plugins).toContain('@elizaos/plugin-elevenlabs');
-    expect(hemingway.plugins).toContain('@elizaos/plugin-elevenlabs');
+  it("includes ElevenLabs plugin in both agents", () => {
+    expect(shakespeare.plugins).toContain("@elizaos/plugin-elevenlabs");
+    expect(hemingway.plugins).toContain("@elizaos/plugin-elevenlabs");
   });
 
-  it('voice is enabled for Discord', () => {
-    expect(shakespeare.settings?.secrets?.DISCORD_VOICE_ENABLED).toBe('true');
-    expect(hemingway.settings?.secrets?.DISCORD_VOICE_ENABLED).toBe('true');
+  it("voice is enabled for Discord", () => {
+    expect(shakespeare.settings?.secrets?.DISCORD_VOICE_ENABLED).toBe("true");
+    expect(hemingway.settings?.secrets?.DISCORD_VOICE_ENABLED).toBe("true");
   });
 
-  it('each agent has unique ElevenLabs voice ID', () => {
+  it("each agent has unique ElevenLabs voice ID", () => {
     // Valid ElevenLabs voice IDs from packages/client/src/config/voice-models.ts
-    expect(shakespeare.settings?.secrets?.ELEVENLABS_VOICE_ID).toBe('21m00Tcm4TlvDq8ikWAM'); // Adam
-    expect(hemingway.settings?.secrets?.ELEVENLABS_VOICE_ID).toBe('TxGEqnHWrfWFTfGW9XjX'); // Josh
+    expect(shakespeare.settings?.secrets?.ELEVENLABS_VOICE_ID).toBe(
+      "21m00Tcm4TlvDq8ikWAM",
+    ); // Adam
+    expect(hemingway.settings?.secrets?.ELEVENLABS_VOICE_ID).toBe(
+      "TxGEqnHWrfWFTfGW9XjX",
+    ); // Josh
   });
 });
 ```
 
-## Step 2: Test runtime functionality 
+## Step 2: Test runtime functionality
 
 ### Create e2e tests
 
@@ -127,7 +137,7 @@ elizaos test
 # Run only component tests
 elizaos test --type component
 
-# Run only E2E tests  
+# Run only E2E tests
 elizaos test --type e2e
 
 # Run specific test suite (case sensitive)
@@ -144,13 +154,21 @@ For complete test runner options, see the [CLI Test Reference](/cli-reference/te
   <Card title="Deploy a Project" icon="rocket" href="/guides/deploy-a-project">
     Deploy your thoroughly tested agents to production environments
   </Card>
-  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
     Build custom plugins with comprehensive test coverage
   </Card>
   <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
     Learn how to publish your plugins to the elizaOS registry
   </Card>
-  <Card title="Contribute to Core" icon="heart" href="/guides/contribute-to-core">
+  <Card
+    title="Contribute to Core"
+    icon="heart"
+    href="/guides/contribute-to-core"
+  >
     Help improve elizaOS by contributing to the core framework
   </Card>
 </CardGroup>

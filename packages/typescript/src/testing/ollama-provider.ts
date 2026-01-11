@@ -76,12 +76,17 @@ export async function listOllamaModels(): Promise<string[]> {
   const parseResult = ollamaTagsResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
-    throw new Error(`Invalid Ollama response: ${zodError.issues?.[0]?.message || zodError.toString() || "Validation failed"}`);
+    const zodError = parseResult.error as {
+      issues?: Array<{ message: string }>;
+      toString: () => string;
+    };
+    throw new Error(
+      `Invalid Ollama response: ${zodError.issues?.[0]?.message || zodError.toString() || "Validation failed"}`,
+    );
   }
 
   const parseResultDataModels = parseResult.data.models;
-  return (parseResultDataModels && parseResultDataModels.map((m: { name: string }) => m.name)) ?? [];
+  return parseResultDataModels?.map((m: { name: string }) => m.name) ?? [];
 }
 
 /**
@@ -127,8 +132,13 @@ async function generateTextWithOllama(
   const parseResult = ollamaGenerateResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
-    throw new Error(`Invalid Ollama response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`);
+    const zodError = parseResult.error as {
+      issues?: Array<{ message: string }>;
+      toString: () => string;
+    };
+    throw new Error(
+      `Invalid Ollama response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`,
+    );
   }
 
   return parseResult.data.response;
@@ -161,13 +171,18 @@ async function generateEmbeddingWithOllama(
   const parseResult = ollamaEmbedResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
-    throw new Error(`Invalid Ollama embedding response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`);
+    const zodError = parseResult.error as {
+      issues?: Array<{ message: string }>;
+      toString: () => string;
+    };
+    throw new Error(
+      `Invalid Ollama embedding response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`,
+    );
   }
 
   const parseResultDataEmbeddings = parseResult.data.embeddings;
   const parseResultDataEmbedding = parseResult.data.embedding;
-  const embeddings = (parseResultDataEmbeddings && parseResultDataEmbeddings[0]) ?? parseResultDataEmbedding;
+  const embeddings = parseResultDataEmbeddings?.[0] ?? parseResultDataEmbedding;
   if (!embeddings) {
     throw new Error("No embeddings returned from Ollama");
   }
@@ -185,13 +200,20 @@ function extractJsonFromResponse(response: string): Record<string, unknown> {
 
   try {
     const parsed: unknown = JSON.parse(textToParse);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       throw new Error(`Expected JSON object but got: ${typeof parsed}`);
     }
     return parsed as Record<string, unknown>;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown parse error";
-    throw new Error(`Failed to parse JSON from Ollama response: ${message}\nResponse was: ${response.slice(0, 200)}`);
+    const message =
+      error instanceof Error ? error.message : "Unknown parse error";
+    throw new Error(
+      `Failed to parse JSON from Ollama response: ${message}\nResponse was: ${response.slice(0, 200)}`,
+    );
   }
 }
 

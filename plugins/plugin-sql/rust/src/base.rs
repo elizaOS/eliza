@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Base database adapter trait for elizaOS
 //!
 //! This module defines the DatabaseAdapter trait that all database implementations must follow.
@@ -5,8 +6,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use elizaos::{
-    Agent, Component, Entity, GetMemoriesParams, Log, Memory, MemoryMetadata, Metadata,
-    Relationship, Room, SearchMemoriesParams, Task, World, UUID,
+    Agent, Component, Entity, GetMemoriesParams, Log, Memory, Metadata, Relationship, Room,
+    SearchMemoriesParams, Task, World, UUID,
 };
 
 /// Result type for embedding similarity searches
@@ -139,7 +140,7 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn init(&self) -> Result<()>;
 
     /// Initialize the adapter (alias for init)
-    async fn initialize(&self, config: Option<serde_json::Value>) -> Result<()> {
+    async fn initialize(&self, _config: Option<serde_json::Value>) -> Result<()> {
         self.init().await
     }
 

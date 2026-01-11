@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Linear plugin.
 
 use thiserror::Error;
@@ -44,5 +45,10 @@ pub enum LinearError {
     #[error("Linear service not available")]
     ServiceUnavailable,
 }
+
+
+
+
+
 
 

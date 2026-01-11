@@ -7,7 +7,11 @@
     "inlineSources": true,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "noEmit": false
+    "noEmit": false,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]

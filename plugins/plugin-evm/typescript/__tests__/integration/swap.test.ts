@@ -1,8 +1,10 @@
-import type { Account, Chain } from "viem";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Account, Address, Chain } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SwapAction } from "../actions/swap";
 import { WalletProvider } from "../providers/wallet";
+import type { SupportedChain } from "../types";
 import { getTestChains } from "./custom-chain";
 
 // Test environment - use funded wallet for integration tests
@@ -17,11 +19,25 @@ const SEPOLIA_TOKENS = {
   ETH: "0x0000000000000000000000000000000000000000" as `0x${string}`, // Native ETH
 };
 
-// Mock the ICacheManager
-const mockCacheManager = {
-  get: vi.fn().mockResolvedValue(null),
-  set: vi.fn(),
-};
+// Create a mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-id" as IAgentRuntime["agentId"],
+    getCache: vi.fn().mockResolvedValue(null),
+    setCache: vi.fn().mockResolvedValue(undefined),
+    getSetting: vi.fn().mockReturnValue(null),
+    setSetting: vi.fn(),
+    getService: vi.fn().mockReturnValue(null),
+    registerService: vi.fn(),
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+    },
+  } as IAgentRuntime;
+}
 
 describe("Swap Action", () => {
   let wp: WalletProvider;
@@ -29,10 +45,10 @@ describe("Swap Action", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockCacheManager.get.mockResolvedValue(null);
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
+    const mockRuntime = createMockRuntime();
 
     // Initialize with Sepolia and Base Sepolia for testing
     const customChains = {
@@ -40,7 +56,7 @@ describe("Swap Action", () => {
       baseSepolia: testChains.baseSepolia,
     };
 
-    wp = new WalletProvider(pk, mockCacheManager as any, customChains);
+    wp = new WalletProvider(pk, mockRuntime, customChains);
   });
 
   afterEach(() => {
@@ -65,7 +81,7 @@ describe("Swap Action", () => {
 
     it("should validate swap parameters", () => {
       const swapParams = {
-        chain: "sepolia" as any,
+        chain: "sepolia" as SupportedChain,
         fromToken: SEPOLIA_TOKENS.ETH,
         toToken: SEPOLIA_TOKENS.WETH,
         amount: "0.01",
@@ -80,22 +96,22 @@ describe("Swap Action", () => {
     it("should handle invalid token addresses", async () => {
       await expect(
         swapAction.swap({
-          chain: "sepolia" as any,
-          fromToken: "invalid-address" as any, // Intentionally invalid for testing
+          chain: "sepolia" as SupportedChain,
+          fromToken: "invalid-address" as Address, // Intentionally invalid for testing
           toToken: SEPOLIA_TOKENS.WETH,
           amount: "0.01",
-        }),
+        })
       ).rejects.toThrow();
     });
 
     it("should handle zero amount swaps", async () => {
       await expect(
         swapAction.swap({
-          chain: "sepolia" as any,
+          chain: "sepolia" as SupportedChain,
           fromToken: SEPOLIA_TOKENS.ETH,
           toToken: SEPOLIA_TOKENS.WETH,
           amount: "0",
-        }),
+        })
       ).rejects.toThrow();
     });
 
@@ -107,11 +123,11 @@ describe("Swap Action", () => {
         // Test insufficient balance scenario
         await expect(
           swapAction.swap({
-            chain: "sepolia" as any,
+            chain: "sepolia" as SupportedChain,
             fromToken: SEPOLIA_TOKENS.ETH,
             toToken: SEPOLIA_TOKENS.WETH,
             amount: "0.01",
-          }),
+          })
         ).rejects.toThrow();
       } else {
         console.warn("Skipping insufficient balance test - wallet has funds");
@@ -133,11 +149,11 @@ describe("Swap Action", () => {
       // Try to swap more than available balance
       await expect(
         swapAction.swap({
-          chain: "sepolia" as any,
+          chain: "sepolia" as SupportedChain,
           fromToken: SEPOLIA_TOKENS.ETH,
           toToken: SEPOLIA_TOKENS.WETH,
           amount: "1000", // 1000 ETH - definitely more than test wallet has
-        }),
+        })
       ).rejects.toThrow();
     });
 
@@ -148,7 +164,7 @@ describe("Swap Action", () => {
       if (balance && parseFloat(balance) > 0.01) {
         try {
           const result = await swapAction.swap({
-            chain: "sepolia" as any,
+            chain: "sepolia" as SupportedChain,
             fromToken: SEPOLIA_TOKENS.ETH,
             toToken: SEPOLIA_TOKENS.WETH,
             amount: "0.001", // Very small amount
@@ -168,11 +184,11 @@ describe("Swap Action", () => {
         // Test the error case instead
         await expect(
           swapAction.swap({
-            chain: "sepolia" as any,
+            chain: "sepolia" as SupportedChain,
             fromToken: SEPOLIA_TOKENS.ETH,
             toToken: SEPOLIA_TOKENS.WETH,
             amount: "0.001",
-          }),
+          })
         ).rejects.toThrow();
       }
     });
@@ -184,21 +200,16 @@ describe("Swap Action", () => {
       if (balance && parseFloat(balance) > 0.01) {
         try {
           const result = await swapAction.swap({
-            chain: "baseSepolia" as any,
-            fromToken:
-              "0x0000000000000000000000000000000000000000" as `0x${string}`, // Native ETH
-            toToken:
-              "0x4200000000000000000000000000000000000006" as `0x${string}`, // WETH on Base
+            chain: "baseSepolia" as SupportedChain,
+            fromToken: "0x0000000000000000000000000000000000000000" as `0x${string}`, // Native ETH
+            toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`, // WETH on Base
             amount: "0.001",
           });
 
           expect(result.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
           console.log(`Base Sepolia swap successful: ${result.hash}`);
         } catch (error) {
-          console.warn(
-            "Base Sepolia swap failed (expected in test environment):",
-            error,
-          );
+          console.warn("Base Sepolia swap failed (expected in test environment):", error);
           expect(error).toBeInstanceOf(Error);
         }
       } else {
@@ -217,8 +228,8 @@ describe("Swap Action", () => {
       // Create wallet provider with funded wallet
       const fundedWp = new WalletProvider(
         FUNDED_TEST_WALLET as `0x${string}`,
-        mockCacheManager as any,
-        { sepolia: testChains.sepolia },
+        createMockRuntime(),
+        { sepolia: testChains.sepolia }
       );
       const fundedSwapAction = new SwapAction(fundedWp);
 
@@ -228,7 +239,7 @@ describe("Swap Action", () => {
       if (balance && parseFloat(balance) > 0.02) {
         try {
           const result = await fundedSwapAction.swap({
-            chain: "sepolia" as any,
+            chain: "sepolia" as SupportedChain,
             fromToken: SEPOLIA_TOKENS.ETH,
             toToken: SEPOLIA_TOKENS.WETH,
             amount: "0.01", // 0.01 ETH
@@ -271,7 +282,7 @@ describe("Swap Action", () => {
         // Test with normal swap parameters - slippage is handled internally
         try {
           const result = await swapAction.swap({
-            chain: "sepolia" as any,
+            chain: "sepolia" as SupportedChain,
             fromToken: SEPOLIA_TOKENS.ETH,
             toToken: SEPOLIA_TOKENS.WETH,
             amount: "0.001",
@@ -282,9 +293,7 @@ describe("Swap Action", () => {
         } catch (error) {
           // Expected to fail due to slippage or other issues
           expect(error).toBeInstanceOf(Error);
-          console.log(
-            "Swap failed as expected due to slippage or liquidity issues",
-          );
+          console.log("Swap failed as expected due to slippage or liquidity issues");
         }
       } else {
         console.warn("Skipping slippage test - insufficient balance");
@@ -313,7 +322,7 @@ describe("Swap Action", () => {
       // This test would normally compare LiFi vs Bebop quotes
       // In test environment, we just verify the structure
       const swapParams = {
-        chain: "sepolia" as any,
+        chain: "sepolia" as SupportedChain,
         fromToken: SEPOLIA_TOKENS.ETH,
         toToken: SEPOLIA_TOKENS.WETH,
         amount: "0.01",
@@ -332,7 +341,7 @@ const _prepareChains = () => {
 
   chainNames.forEach((chain) => {
     try {
-      customChains[chain] = WalletProvider.genChainFromName(chain as any);
+      customChains[chain] = WalletProvider.genChainFromName(chain as SupportedChain);
     } catch (error) {
       console.warn(`Failed to add chain ${chain}:`, error);
     }

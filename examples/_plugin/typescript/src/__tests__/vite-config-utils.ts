@@ -19,7 +19,7 @@ export async function getViteOutDir(packageRoot: string): Promise<string> {
       ? configModule.default({ command: "build", mode: "production" })
       : configModule.default;
 
-  let outDir = (config.build && config.build.outDir) || "dist";
+  let outDir = config.build?.outDir || "dist";
   const viteRoot = config.root || ".";
 
   // If outDir is relative, resolve it relative to the vite root

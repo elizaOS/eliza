@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the MCP plugin.
 
 use serde::{Deserialize, Serialize};

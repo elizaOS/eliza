@@ -8,9 +8,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
+import { createTestCharacter } from "../testing/test-helpers";
 import type { IDatabaseAdapter } from "../types";
 import { LLMMode, ModelType } from "../types";
-import { createTestCharacter } from "../testing/test-helpers";
 
 /**
  * Minimal mock adapter for testing AgentRuntime.
@@ -264,4 +264,3 @@ describe("LLMMode enum values", () => {
     expect(LLMMode.LARGE).toBe("LARGE");
   });
 });
-

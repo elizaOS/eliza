@@ -1,6 +1,6 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import type { Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -163,11 +163,27 @@ describe("Entity Methods Integration Tests", () => {
       expect(retrieved.length).toBe(3);
 
       // Find each entity by metadata type
-      const setEntity = retrieved.find((e) => e.metadata && typeof e.metadata === "object" && "type" in e.metadata && e.metadata.type === "set");
-      const stringEntity = retrieved.find(
-        (e) => e.metadata && typeof e.metadata === "object" && "type" in e.metadata && e.metadata.type === "string",
+      const setEntity = retrieved.find(
+        (e) =>
+          e.metadata &&
+          typeof e.metadata === "object" &&
+          "type" in e.metadata &&
+          e.metadata.type === "set"
       );
-      const arrayEntity = retrieved.find((e) => e.metadata && typeof e.metadata === "object" && "type" in e.metadata && e.metadata.type === "array");
+      const stringEntity = retrieved.find(
+        (e) =>
+          e.metadata &&
+          typeof e.metadata === "object" &&
+          "type" in e.metadata &&
+          e.metadata.type === "string"
+      );
+      const arrayEntity = retrieved.find(
+        (e) =>
+          e.metadata &&
+          typeof e.metadata === "object" &&
+          "type" in e.metadata &&
+          e.metadata.type === "array"
+      );
 
       // Set should be converted to array
       if (!setEntity) throw new Error("Set entity should exist");
@@ -681,9 +697,7 @@ describe("Entity Methods Integration Tests", () => {
 
       expect(searchResults).toHaveLength(2);
       expect(
-        searchResults.every((e) =>
-          e.names.some((name) => name.toLowerCase().includes("alice")),
-        ),
+        searchResults.every((e) => e.names.some((name) => name.toLowerCase().includes("alice")))
       ).toBe(true);
     });
 

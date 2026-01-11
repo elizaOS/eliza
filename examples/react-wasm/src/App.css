@@ -5,10 +5,15 @@
   max-width: 900px;
   height: 90vh;
   max-height: 720px;
-  background: linear-gradient(145deg, var(--bezel-light) 0%, var(--bezel-dark) 50%, #0f0f0f 100%);
+  background: linear-gradient(
+    145deg,
+    var(--bezel-light) 0%,
+    var(--bezel-dark) 50%,
+    #0f0f0f 100%
+  );
   border-radius: 30px;
   padding: 20px;
-  box-shadow: 
+  box-shadow:
     0 0 0 4px #333,
     0 0 0 8px #222,
     0 0 60px rgba(0, 0, 0, 0.8),
@@ -23,7 +28,7 @@
   background: var(--crt-bg);
   border-radius: 20px;
   overflow: hidden;
-  box-shadow: 
+  box-shadow:
     inset 0 0 100px rgba(0, 0, 0, 0.5),
     inset 0 0 10px rgba(57, 255, 20, 0.1);
   opacity: 0;
@@ -89,7 +94,7 @@
 .terminal-header .title {
   font-size: 2.8rem;
   color: var(--phosphor-green);
-  text-shadow: 
+  text-shadow:
     0 0 10px var(--phosphor-glow),
     0 0 20px var(--phosphor-glow),
     0 0 30px var(--phosphor-glow);
@@ -398,4 +403,3 @@
     padding: 12px;
   }
 }
-

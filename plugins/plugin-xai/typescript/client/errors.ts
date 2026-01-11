@@ -12,8 +12,8 @@ export class ApiError extends Error {
    */
   private constructor(
     readonly response: Response,
-    readonly data: any,
-    message: string,
+    readonly data: unknown,
+    message: string
   ) {
     super(message);
   }
@@ -26,7 +26,7 @@ export class ApiError extends Error {
    */
   static async fromResponse(response: Response) {
     // Try our best to parse the result, but don't bother if we can't
-    let data: string | object | undefined = undefined;
+    let data: string | object | undefined;
     try {
       data = await response.json();
     } catch {

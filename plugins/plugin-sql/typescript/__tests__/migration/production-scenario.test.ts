@@ -1,4 +1,3 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -13,6 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/database-introspector";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
@@ -142,15 +142,11 @@ describe("Production Migration Scenarios", () => {
         }
       } catch (error) {
         // Expected: Destructive migration should be blocked
-        expect((error as Error).message).toContain(
-          "Destructive migration blocked",
-        );
+        expect((error as Error).message).toContain("Destructive migration blocked");
       }
 
       // Verify data is preserved (migration was blocked, not executed)
-      const agents = await db.execute(
-        sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`,
-      );
+      const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
       expect(agents.rows[0]).toBeDefined();
       expect(agents.rows[0].name).toBe("Production Agent");
     });
@@ -239,16 +235,12 @@ describe("Production Migration Scenarios", () => {
       });
 
       // Verify data is preserved
-      const agents = await db.execute(
-        sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`,
-      );
+      const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
       expect(agents.rows[0]).toBeDefined();
       expect(agents.rows[0].name).toBe("Production Agent");
 
       // Verify memories data is preserved
-      const memories = await db.execute(
-        sql`SELECT COUNT(*) as count FROM memories`,
-      );
+      const memories = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
       expect(Number(memories.rows[0].count)).toBe(3);
 
       // Check that columns are snake_case
@@ -308,9 +300,7 @@ describe("Production Migration Scenarios", () => {
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
       // Verify data is preserved
-      const result = await db.execute(
-        sql`SELECT * FROM participants ORDER BY user_name`,
-      );
+      const result = await db.execute(sql`SELECT * FROM participants ORDER BY user_name`);
       expect(result.rows).toHaveLength(2);
       expect(result.rows[0].user_name).toBe("Alice");
       expect(result.rows[1].user_name).toBe("Bob");
@@ -373,8 +363,7 @@ describe("Production Migration Scenarios", () => {
       `);
 
       // Check if tables exist
-      const hasExisting =
-        await introspector.hasExistingTables("@elizaos/analytics");
+      const hasExisting = await introspector.hasExistingTables("@elizaos/analytics");
       expect(hasExisting).toBe(true);
 
       // Introspect to verify structure
@@ -435,9 +424,7 @@ describe("Production Migration Scenarios", () => {
         expect(columns.rows).toBeDefined();
       } catch (error) {
         // Expected: Destructive migration should be blocked
-        expect((error as Error).message).toContain(
-          "Destructive migration blocked",
-        );
+        expect((error as Error).message).toContain("Destructive migration blocked");
       }
     });
   });
@@ -581,14 +568,14 @@ describe("Production Migration Scenarios", () => {
             data TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT NOW()
           )
-        `),
+        `)
         );
 
         // Add some data
         await db.execute(
           sql.raw(`
           INSERT INTO table_${i} (data) VALUES ('Data for table ${i}')
-        `),
+        `)
         );
       }
 
@@ -597,7 +584,7 @@ describe("Production Migration Scenarios", () => {
         await db.execute(
           sql.raw(`
           CREATE INDEX idx_table_${i}_created_at ON table_${i}(created_at)
-        `),
+        `)
         );
       }
 
@@ -609,9 +596,7 @@ describe("Production Migration Scenarios", () => {
 
       // Verify data exists
       for (let i = 0; i < tableCount; i++) {
-        const result = await db.execute(
-          sql.raw(`SELECT COUNT(*) as count FROM table_${i}`),
-        );
+        const result = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM table_${i}`));
         expect(Number(result.rows[0].count)).toBe(1);
       }
     });

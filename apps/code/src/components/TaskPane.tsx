@@ -1,9 +1,9 @@
-import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
+import React, { useState } from "react";
 import { useStore } from "../lib/store.js";
-import type { TaskStatus, TaskTraceEvent, TaskUserStatus } from "../types.js";
 import type { CodeTaskService } from "../plugin/services/code-task.js";
+import type { TaskStatus, TaskTraceEvent, TaskUserStatus } from "../types.js";
 
 interface TaskPaneProps {
   isFocused: boolean;
@@ -50,18 +50,28 @@ function getStatusColor(status: TaskStatus): string {
   }
 }
 
-function getTaskUserStatus(userStatus: TaskUserStatus | undefined): TaskUserStatus {
+function getTaskUserStatus(
+  userStatus: TaskUserStatus | undefined,
+): TaskUserStatus {
   return userStatus ?? "open";
 }
 
-export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: TaskPaneProps) {
+export function TaskPane({
+  isFocused,
+  paneHeight,
+  paneWidth,
+  taskService,
+}: TaskPaneProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailView, setDetailView] = useState<"output" | "trace">("output");
   const [detailScrollOffset, setDetailScrollOffset] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
-  const [confirm, setConfirm] = useState<{ type: "cancel" | "delete"; taskId: string } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    type: "cancel" | "delete";
+    taskId: string;
+  } | null>(null);
 
   const maxOutputLines = Math.max(6, paneHeight - 12);
   const maxOutputChars = Math.max(12, paneWidth - 4);
@@ -70,14 +80,18 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
   const currentTaskId = useStore((state) => state.currentTaskId);
   const setCurrentTaskId = useStore((state) => state.setCurrentTaskId);
   const showFinishedTasks = useStore((state) => state.showFinishedTasks);
-  const toggleShowFinishedTasks = useStore((state) => state.toggleShowFinishedTasks);
+  const toggleShowFinishedTasks = useStore(
+    (state) => state.toggleShowFinishedTasks,
+  );
 
   // View filtering should not implicitly change selection. If the current task is finished,
   // keep it visible even when "finished tasks" are hidden so the UI stays stable.
   const visibleTasks = showFinishedTasks
     ? tasks
     : tasks.filter(
-        (t) => getTaskUserStatus(t.metadata?.userStatus) !== "done" || t.id === currentTaskId
+        (t) =>
+          getTaskUserStatus(t.metadata?.userStatus) !== "done" ||
+          t.id === currentTaskId,
       );
 
   const currentTask = tasks.find((t) => t.id === currentTaskId);
@@ -87,11 +101,7 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
     if (currentTask?.metadata?.status === "running") {
       setDetailScrollOffset(0);
     }
-  }, [
-    currentTask?.metadata?.output?.length,
-    currentTask?.metadata?.trace?.length,
-    currentTask?.metadata?.status,
-  ]);
+  }, [currentTask?.metadata?.status]);
 
   const outputLines = currentTask?.metadata?.output ?? [];
   const traceLines = formatTraceLines(currentTask?.metadata?.trace ?? []);
@@ -159,7 +169,7 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
       if (key.return && visibleTasks.length > 0) {
         const safeIndex = Math.min(
           Math.max(0, selectedIndex),
-          Math.max(0, visibleTasks.length - 1)
+          Math.max(0, visibleTasks.length - 1),
         );
         const id = visibleTasks[safeIndex]?.id ?? null;
         if (!id) return;
@@ -171,7 +181,9 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
       // Scroll detail view
       if (key.upArrow && key.ctrl) {
         const totalLen = detailLines.length;
-        setDetailScrollOffset((prev) => Math.min(prev + 1, Math.max(0, totalLen - maxOutputLines)));
+        setDetailScrollOffset((prev) =>
+          Math.min(prev + 1, Math.max(0, totalLen - maxOutputLines)),
+        );
       }
       if (key.downArrow && key.ctrl) {
         setDetailScrollOffset((prev) => Math.max(0, prev - 1));
@@ -194,9 +206,18 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
       }
 
       // Mark/unmark current task as finished (user-controlled)
-      if (char === "d" && !key.ctrl && !key.meta && currentTask?.id && taskService) {
-        const currentUserStatus = getTaskUserStatus(currentTask.metadata?.userStatus);
-        const nextStatus: TaskUserStatus = currentUserStatus === "done" ? "open" : "done";
+      if (
+        char === "d" &&
+        !key.ctrl &&
+        !key.meta &&
+        currentTask?.id &&
+        taskService
+      ) {
+        const currentUserStatus = getTaskUserStatus(
+          currentTask.metadata?.userStatus,
+        );
+        const nextStatus: TaskUserStatus =
+          currentUserStatus === "done" ? "open" : "done";
         taskService.setUserStatus(currentTask.id, nextStatus).catch(() => {});
       }
 
@@ -231,21 +252,26 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
         } else if (status === "paused" || status === "pending") {
           taskService
             .resumeTask(currentTask.id)
-            .then(() => taskService.startTaskExecution(currentTask.id).catch(() => {}))
+            .then(() =>
+              taskService.startTaskExecution(currentTask.id).catch(() => {}),
+            )
             .catch(() => {});
         }
         return;
       }
     },
-    { isActive: isFocused }
+    { isActive: isFocused },
   );
 
   const validSelectedIndex = Math.max(
     0,
-    Math.min(selectedIndex, Math.max(0, visibleTasks.length - 1))
+    Math.min(selectedIndex, Math.max(0, visibleTasks.length - 1)),
   );
 
-  const detailStart = Math.max(0, detailLines.length - maxOutputLines - detailScrollOffset);
+  const detailStart = Math.max(
+    0,
+    detailLines.length - maxOutputLines - detailScrollOffset,
+  );
   const detailEnd = detailLines.length - detailScrollOffset;
   const visibleDetail = detailLines.slice(detailStart, detailEnd);
 
@@ -255,22 +281,34 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
   const innerWidth = Math.max(1, paneWidth - 2);
 
   return (
-    <Box flexDirection="column" height={paneHeight} width={paneWidth} paddingX={1} overflow="hidden">
+    <Box
+      flexDirection="column"
+      height={paneHeight}
+      width={paneWidth}
+      paddingX={1}
+      overflow="hidden"
+    >
       {/* Header */}
       <Box marginBottom={0} overflow="hidden">
         <Text bold color={isFocused ? "cyan" : "white"} wrap="truncate">
-          Tasks{editMode ? " [edit]" : ""} <Text dimColor>({visibleTasks.length}/{tasks.length})</Text>
+          Tasks{editMode ? " [edit]" : ""}{" "}
+          <Text dimColor>
+            ({visibleTasks.length}/{tasks.length})
+          </Text>
           {showFinishedTasks ? <Text dimColor> (all)</Text> : null}
         </Text>
       </Box>
 
       {/* Task List */}
-      <Box flexDirection="column" height={taskListHeight} width={innerWidth} overflow="hidden">
+      <Box
+        flexDirection="column"
+        height={taskListHeight}
+        width={innerWidth}
+        overflow="hidden"
+      >
         {visibleTasks.length === 0 ? (
           <Text dimColor italic wrap="truncate">
-            {tasks.length === 0
-              ? "No tasks."
-              : "No open tasks."}
+            {tasks.length === 0 ? "No tasks." : "No open tasks."}
           </Text>
         ) : (
           visibleTasks.map((task, index) => {
@@ -322,14 +360,18 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
               color={getStatusColor(currentTask.metadata?.status ?? "pending")}
               wrap="truncate"
             >
-              {getStatusIcon(currentTask.metadata?.status ?? "pending")} {currentTask.name}
+              {getStatusIcon(currentTask.metadata?.status ?? "pending")}{" "}
+              {currentTask.name}
             </Text>
           </Box>
 
           {/* Progress Bar */}
           <Box marginY={0}>
             <Text dimColor>Progress: </Text>
-            <ProgressBar progress={currentTask.metadata?.progress ?? 0} width={progressBarWidth} />
+            <ProgressBar
+              progress={currentTask.metadata?.progress ?? 0}
+              width={progressBarWidth}
+            />
             <Text> {currentTask.metadata?.progress ?? 0}%</Text>
           </Box>
 
@@ -343,7 +385,12 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
           )}
 
           {/* Output / Trace */}
-          <Box flexDirection="column" marginTop={1} flexGrow={1} overflow="hidden">
+          <Box
+            flexDirection="column"
+            marginTop={1}
+            flexGrow={1}
+            overflow="hidden"
+          >
             <Text dimColor bold wrap="truncate">
               {detailView === "output" ? "Output" : "Trace"}
               {currentTask.metadata?.status === "running" ? " (live)" : ""}
@@ -359,13 +406,19 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
                   line.startsWith("⚠️") ||
                   line.startsWith("Error:") ||
                   line.startsWith("ERROR:");
-                const isSuccess = line.startsWith("🎉") || line.startsWith("✅") || line.startsWith("Done:");
+                const isSuccess =
+                  line.startsWith("🎉") ||
+                  line.startsWith("✅") ||
+                  line.startsWith("Done:");
                 const isTool =
                   line.startsWith("🔧") ||
                   line.startsWith("Tools:") ||
                   line.startsWith("TOOL:") ||
                   line.startsWith("[");
-                const isAgent = line.startsWith("🤖") || line.startsWith("🧠") || line.startsWith("#");
+                const isAgent =
+                  line.startsWith("🤖") ||
+                  line.startsWith("🧠") ||
+                  line.startsWith("#");
 
                 let color: string | undefined;
                 if (isError) color = "red";
@@ -385,7 +438,9 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
                 );
               })
             )}
-            {detailScrollOffset > 0 && <Text dimColor>[↓ {detailScrollOffset} newer lines]</Text>}
+            {detailScrollOffset > 0 && (
+              <Text dimColor>[↓ {detailScrollOffset} newer lines]</Text>
+            )}
           </Box>
 
           {/* Result / Files */}
@@ -402,14 +457,24 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
                 <Box flexDirection="column" marginTop={0}>
                   {currentTask.metadata.result.filesCreated.length > 0 && (
                     <Text dimColor wrap="truncate">
-                      + {currentTask.metadata.result.filesCreated.slice(0, 5).join(", ")}
-                      {currentTask.metadata.result.filesCreated.length > 5 ? "..." : ""}
+                      +{" "}
+                      {currentTask.metadata.result.filesCreated
+                        .slice(0, 5)
+                        .join(", ")}
+                      {currentTask.metadata.result.filesCreated.length > 5
+                        ? "..."
+                        : ""}
                     </Text>
                   )}
                   {currentTask.metadata.result.filesModified.length > 0 && (
                     <Text dimColor wrap="truncate">
-                      ~ {currentTask.metadata.result.filesModified.slice(0, 5).join(", ")}
-                      {currentTask.metadata.result.filesModified.length > 5 ? "..." : ""}
+                      ~{" "}
+                      {currentTask.metadata.result.filesModified
+                        .slice(0, 5)
+                        .join(", ")}
+                      {currentTask.metadata.result.filesModified.length > 5
+                        ? "..."
+                        : ""}
                     </Text>
                   )}
                 </Box>
@@ -444,7 +509,11 @@ export function TaskPane({ isFocused, paneHeight, paneWidth, taskService }: Task
           <Text dimColor wrap="truncate">
             Rename:
           </Text>
-          <TextInput value={renameDraft} onChange={setRenameDraft} focus={true} />
+          <TextInput
+            value={renameDraft}
+            onChange={setRenameDraft}
+            focus={true}
+          />
         </Box>
       )}
 
@@ -489,12 +558,19 @@ function formatTraceLines(events: TaskTraceEvent[]): string[] {
         break;
       }
       case "note": {
-        const icon = event.level === "error" ? "❌" : event.level === "warning" ? "⚠️" : "ℹ️";
+        const icon =
+          event.level === "error"
+            ? "❌"
+            : event.level === "warning"
+              ? "⚠️"
+              : "ℹ️";
         lines.push(`${head} ${icon} ${event.message}`);
         break;
       }
       case "llm": {
-        lines.push(`${head} 🤖 LLM iter ${event.iteration} (${event.modelType})`);
+        lines.push(
+          `${head} 🤖 LLM iter ${event.iteration} (${event.modelType})`,
+        );
         lines.push(`  ${event.responsePreview}`);
         if (event.prompt) {
           lines.push(`  🧪 prompt:`);
@@ -505,7 +581,9 @@ function formatTraceLines(events: TaskTraceEvent[]): string[] {
         break;
       }
       case "tool_call": {
-        lines.push(`${head} 🔧 TOOL: ${formatToolCallArgs(event.name, event.args)}`);
+        lines.push(
+          `${head} 🔧 TOOL: ${formatToolCallArgs(event.name, event.args)}`,
+        );
         break;
       }
       case "tool_result": {
@@ -529,10 +607,12 @@ function indentLines(input: string[], prefix: string): string[] {
   return input.map((line) => `${prefix}${line}`);
 }
 
-function formatToolCallArgs(name: string, args: Record<string, string>): string {
+function formatToolCallArgs(
+  name: string,
+  args: Record<string, string>,
+): string {
   const argsText = Object.entries(args)
     .map(([k, v]) => `${k}="${v.replace(/\s+/g, " ").trim()}"`)
     .join(", ");
   return `${name}(${argsText})`;
 }
-

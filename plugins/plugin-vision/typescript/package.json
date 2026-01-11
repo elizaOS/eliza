@@ -43,8 +43,7 @@
     "build.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.2.0",
-    "@elizaos/plugin-bootstrap": "^1.2.0",
+    "@elizaos/core": "workspace:*",
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow-models/pose-detection": "^2.1.0",
     "@tensorflow-models/posenet": "^2.2.2",
@@ -55,29 +54,31 @@
     "face-api.js": "^0.22.2",
     "sharp": "^0.34.3",
     "tesseract.js": "^6.0.1",
-    "zod": "^4.0.5"
+    "zod": "^4.3.5"
   },
   "peerDependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "@types/bun": "^1.2.18",
-    "@types/node": "^24.0.13",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.3",
     "@types/tesseract.js": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "dotenv": "^17.2.0",
+    "dotenv": "^17.2.3",
     "eslint": "^9.0.0",
-    "prettier": "3.6.2",
     "tsx": "^4.7.0",
-    "typescript": "5.8.3"
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
     "clean": "rm -rf dist && rm -rf .turbo",
-    "lint": "eslint src --fix && prettier --write ./src",
+    "lint": "bunx @biomejs/biome lint .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
   },
   "publishConfig": {
     "access": "public"

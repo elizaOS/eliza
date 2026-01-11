@@ -16,22 +16,22 @@ env:
 on:
   push:
     branches:
-      - 'main'
-      - 'develop'
+      - "main"
+      - "develop"
     paths:
-      - 'packages/client/**'
-      - 'packages/typescript/**'
-      - 'packages/server/**'
-      - '.github/workflows/client-cypress-tests.yml'
+      - "packages/client/**"
+      - "packages/typescript/**"
+      - "packages/server/**"
+      - ".github/workflows/client-cypress-tests.yml"
   pull_request:
     branches:
-      - 'main'
-      - 'develop'
+      - "main"
+      - "develop"
     paths:
-      - 'packages/client/**'
-      - 'packages/typescript/**'
-      - 'packages/server/**'
-      - '.github/workflows/client-cypress-tests.yml'
+      - "packages/client/**"
+      - "packages/typescript/**"
+      - "packages/server/**"
+      - ".github/workflows/client-cypress-tests.yml"
 
 jobs:
   # Component tests (no server needed)

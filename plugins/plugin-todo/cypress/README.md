@@ -23,11 +23,13 @@ The Cypress E2E tests are set up but require an Eliza server to be running with 
 ### Manual Testing
 
 1. Start the Eliza server in a separate terminal:
+
    ```bash
    npm run dev
    ```
 
 2. Once the server is running, run the Cypress tests:
+
    ```bash
    # Run all tests in headless mode
    npm run test:e2e:headless
@@ -67,4 +69,4 @@ npm run test:e2e:ci
 1. Add mock data setup/teardown endpoints for testing
 2. Create dedicated test pages for UI component testing
 3. Add more integration tests for the actual Todo functionality
-4. Implement proper test isolation and data cleanup 
+4. Implement proper test isolation and data cleanup

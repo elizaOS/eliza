@@ -1,18 +1,10 @@
-import {  beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { v4 as uuidv4 } from "uuid";
+import { beforeEach, describe, expect, it } from "vitest";
 
 /**
  * Test suite for agent table schema migration:
@@ -32,12 +24,8 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     {
       id: uuid("id").primaryKey().defaultRandom(),
       enabled: boolean("enabled").default(true).notNull(),
-      createdAt: timestamp("created_at", { withTimezone: true })
-        .default(sql`now()`)
-        .notNull(),
-      updatedAt: timestamp("updated_at", { withTimezone: true })
-        .default(sql`now()`)
-        .notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
       name: text("name").notNull(),
       username: text("username"),
       system: text("system").default(""),
@@ -46,26 +34,14 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
         .$type<MessageExample[][]>()
         .default(sql`'[]'::jsonb`)
         .notNull(),
-      postExamples: jsonb("post_examples")
-        .$type<string[]>()
-        .default(sql`'[]'::jsonb`)
-        .notNull(),
-      topics: jsonb("topics")
-        .$type<string[]>()
-        .default(sql`'[]'::jsonb`)
-        .notNull(),
-      adjectives: jsonb("adjectives")
-        .$type<string[]>()
-        .default(sql`'[]'::jsonb`)
-        .notNull(),
+      postExamples: jsonb("post_examples").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+      topics: jsonb("topics").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+      adjectives: jsonb("adjectives").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
       knowledge: jsonb("knowledge")
         .$type<(string | { path: string; shared?: boolean })[]>()
         .default(sql`'[]'::jsonb`)
         .notNull(),
-      plugins: jsonb("plugins")
-        .$type<string[]>()
-        .default(sql`'[]'::jsonb`)
-        .notNull(),
+      plugins: jsonb("plugins").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
       settings: jsonb("settings")
         .$type<{
           secrets?: { [key: string]: string | boolean | number };
@@ -86,19 +62,15 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       return {
         nameUnique: unique("name_unique_old").on(table.name),
       };
-    },
+    }
   );
 
   // Define the NEW schema without unique name constraint
   const _newAgentTable = pgTable("agents_new_schema", {
     id: uuid("id").primaryKey().defaultRandom(),
     enabled: boolean("enabled").default(true).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
     name: text("name").notNull(),
     username: text("username"),
     system: text("system").default(""),
@@ -107,26 +79,14 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       .$type<MessageExample[][]>()
       .default(sql`'[]'::jsonb`)
       .notNull(),
-    postExamples: jsonb("post_examples")
-      .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
-      .notNull(),
-    topics: jsonb("topics")
-      .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
-      .notNull(),
-    adjectives: jsonb("adjectives")
-      .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
-      .notNull(),
+    postExamples: jsonb("post_examples").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    topics: jsonb("topics").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    adjectives: jsonb("adjectives").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
     knowledge: jsonb("knowledge")
       .$type<(string | { path: string; shared?: boolean })[]>()
       .default(sql`'[]'::jsonb`)
       .notNull(),
-    plugins: jsonb("plugins")
-      .$type<string[]>()
-      .default(sql`'[]'::jsonb`)
-      .notNull(),
+    plugins: jsonb("plugins").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
     settings: jsonb("settings")
       .$type<{
         secrets?: { [key: string]: string | boolean | number };
@@ -208,9 +168,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     expect(hasUniqueError).toBe(true);
 
     // Step 3: Perform migration - Drop the unique constraint
-    await db.execute(
-      sql`ALTER TABLE agents_old_schema DROP CONSTRAINT name_unique_old`,
-    );
+    await db.execute(sql`ALTER TABLE agents_old_schema DROP CONSTRAINT name_unique_old`);
 
     // Step 4: Verify constraint was removed - should now allow duplicate names
     const duplicateId1 = uuidv4();
@@ -233,27 +191,17 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       name: string;
       username: string;
       bio: any;
-    }>(
-      sql`SELECT id, name, username, bio FROM agents_old_schema ORDER BY created_at`,
-    );
+    }>(sql`SELECT id, name, username, bio FROM agents_old_schema ORDER BY created_at`);
 
     expect(allAgents.rows.length).toBeGreaterThanOrEqual(5);
 
     // Verify the original unique-name agents
-    expect(
-      allAgents.rows.some((a) => a.id === agent1Id && a.name === "Agent One"),
-    ).toBe(true);
-    expect(
-      allAgents.rows.some((a) => a.id === agent2Id && a.name === "Agent Two"),
-    ).toBe(true);
-    expect(
-      allAgents.rows.some((a) => a.id === agent3Id && a.name === "Agent Three"),
-    ).toBe(true);
+    expect(allAgents.rows.some((a) => a.id === agent1Id && a.name === "Agent One")).toBe(true);
+    expect(allAgents.rows.some((a) => a.id === agent2Id && a.name === "Agent Two")).toBe(true);
+    expect(allAgents.rows.some((a) => a.id === agent3Id && a.name === "Agent Three")).toBe(true);
 
     // Verify the duplicate-name agents
-    const duplicates = allAgents.rows.filter(
-      (a) => a.name === "Duplicate Name",
-    );
+    const duplicates = allAgents.rows.filter((a) => a.name === "Duplicate Name");
     expect(duplicates.length).toBe(2);
     expect(duplicates[0].id).not.toBe(duplicates[1].id);
     expect(duplicates[0].username).not.toBe(duplicates[1].username);
@@ -336,7 +284,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
 
     // Verify old constraint is active
     const countBefore = await db.execute<{ count: number }>(
-      sql`SELECT COUNT(*) as count FROM agents`,
+      sql`SELECT COUNT(*) as count FROM agents`
     );
     expect(Number(countBefore.rows[0].count)).toBe(4);
 
@@ -354,9 +302,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
 
     // Step 2: MIGRATION - Drop the unique constraint
     console.log("🔄 [MIGRATION] Dropping unique name constraint...");
-    await db.execute(
-      sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`,
-    );
+    await db.execute(sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`);
     console.log("✅ [MIGRATION] Constraint dropped successfully");
 
     // Step 3: Verify constraint is gone by checking pg_constraint
@@ -378,9 +324,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
 
     expect(allAgentsAfterMigration.rows.length).toBe(4);
     for (const prodAgent of productionAgents) {
-      const found = allAgentsAfterMigration.rows.find(
-        (a) => a.id === prodAgent.id,
-      );
+      const found = allAgentsAfterMigration.rows.find((a) => a.id === prodAgent.id);
       expect(found).toBeTruthy();
       expect(found?.name).toBe(prodAgent.name);
       expect(found?.username).toBe(prodAgent.username);
@@ -412,9 +356,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       name: string;
       username: string;
       bio: any;
-    }>(
-      sql`SELECT id, name, username, bio FROM agents WHERE name = 'Eliza' ORDER BY created_at`,
-    );
+    }>(sql`SELECT id, name, username, bio FROM agents WHERE name = 'Eliza' ORDER BY created_at`);
 
     expect(elizas.rows.length).toBe(4); // 1 original + 3 clones
     const elizaIds = elizas.rows.map((e) => e.id);
@@ -536,12 +478,8 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     `);
 
     // Perform migration
-    console.log(
-      "🔄 [MIGRATION] Dropping unique constraint from complex setup...",
-    );
-    await db.execute(
-      sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`,
-    );
+    console.log("🔄 [MIGRATION] Dropping unique constraint from complex setup...");
+    await db.execute(sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`);
 
     // Verify complex data is preserved
     const retrievedAgent = await db.execute<{
@@ -595,12 +533,8 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     `);
 
     expect(complexAgents.rows.length).toBe(2);
-    expect(complexAgents.rows.some((a) => a.username === "complex1")).toBe(
-      true,
-    );
-    expect(complexAgents.rows.some((a) => a.username === "complex2")).toBe(
-      true,
-    );
+    expect(complexAgents.rows.some((a) => a.username === "complex1")).toBe(true);
+    expect(complexAgents.rows.some((a) => a.username === "complex2")).toBe(true);
 
     await client.close();
   });
@@ -770,15 +704,9 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     // This test serves as documentation for how users should migrate their databases
 
     console.log("\n📚 [MIGRATION GUIDE] Agent Name Constraint Removal");
-    console.log(
-      "================================================================",
-    );
-    console.log(
-      "If you have an existing elizaOS database with the old schema,",
-    );
-    console.log(
-      "the migration will automatically run when you restart your agents.",
-    );
+    console.log("================================================================");
+    console.log("If you have an existing elizaOS database with the old schema,");
+    console.log("the migration will automatically run when you restart your agents.");
     console.log("");
     console.log("What happens:");
     console.log("1. OLD SCHEMA: UNIQUE constraint on agent.name");
@@ -795,9 +723,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     console.log("✅ Existing agents preserved");
     console.log("✅ All data remains intact");
     console.log("✅ No manual intervention needed");
-    console.log(
-      "================================================================\n",
-    );
+    console.log("================================================================\n");
 
     // Simulate the scenario
     await db.execute(sql`
@@ -829,9 +755,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     `);
 
     // Migration happens automatically
-    await db.execute(
-      sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`,
-    );
+    await db.execute(sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`);
 
     // User can now create agents with duplicate names
     await db.execute(sql`
@@ -846,9 +770,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     `);
 
     expect(Number(result.rows[0].count)).toBe(3);
-    console.log(
-      `✅ Migration test passed: ${result.rows[0].count} agents with name "MyBot"`,
-    );
+    console.log(`✅ Migration test passed: ${result.rows[0].count} agents with name "MyBot"`);
 
     await client.close();
   });

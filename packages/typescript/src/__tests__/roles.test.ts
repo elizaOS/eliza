@@ -1,10 +1,4 @@
-import { afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";
@@ -254,11 +248,11 @@ describe("roles utilities", () => {
       const ownerWorlds = await findWorldsForOwner(mockRuntime, "user-123");
 
       expect(ownerWorlds).toBeDefined();
-      expect(ownerWorlds && ownerWorlds.length).toBe(2);
-      const ownerWorlds0 = ownerWorlds && ownerWorlds[0];
-      const ownerWorlds1 = ownerWorlds && ownerWorlds[1];
-      expect(ownerWorlds0 && ownerWorlds0.id).toBe("world-1" as UUID);
-      expect(ownerWorlds1 && ownerWorlds1.id).toBe("world-3" as UUID);
+      expect(ownerWorlds?.length).toBe(2);
+      const ownerWorlds0 = ownerWorlds?.[0];
+      const ownerWorlds1 = ownerWorlds?.[1];
+      expect(ownerWorlds0?.id).toBe("world-1" as UUID);
+      expect(ownerWorlds1?.id).toBe("world-3" as UUID);
     });
 
     it("should return null when entityId is empty", async () => {

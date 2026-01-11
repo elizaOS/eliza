@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! SAM Speech Synthesis Engine
 //!
 //! Formant-based synthesis for that distinctive retro robotic sound.
@@ -114,8 +115,13 @@ impl SamEngine {
         // Apply formant
         if f1 > 0 {
             for (i, sample) in wave.iter_mut().enumerate() {
-                let formant = 0.5 * (2.0 * PI * f1 as f32 * i as f32 / sample_rate_f).sin();
-                *sample *= 1.0 + 0.3 * formant;
+                let formant1 = 0.5 * (2.0 * PI * f1 as f32 * i as f32 / sample_rate_f).sin();
+                let formant2 = if f2 > 0 {
+                    0.3 * (2.0 * PI * f2 as f32 * i as f32 / sample_rate_f).sin()
+                } else {
+                    0.0
+                };
+                *sample *= 1.0 + 0.3 * formant1 + formant2;
             }
         }
 
@@ -168,6 +174,7 @@ impl SamEngine {
         self.synthesize(text)
     }
 }
+
 
 impl Default for SamEngine {
     fn default() -> Self {

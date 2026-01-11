@@ -1,17 +1,17 @@
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { getCwd } from "../providers/cwd.js";
 import { createCommandError, formatErrorForDisplay } from "../../lib/errors.js";
+import { getCwd } from "../providers/cwd.js";
 
 const execAsync = promisify(exec);
 
@@ -61,7 +61,10 @@ SUPPORTED PATTERNS:
 - Shell prefix: "$ ls -la"
 - Code blocks with bash/sh/shell language tags`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("run") ||
@@ -78,7 +81,7 @@ SUPPORTED PATTERNS:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const command = extractCommand(message.content.text ?? "");
 
@@ -102,7 +105,10 @@ SUPPORTED PATTERNS:
       if (stdout) output += stdout;
       if (stderr) output += `\nstderr:\n${stderr}`;
 
-      const truncated = output.length > 5000 ? output.substring(0, 5000) + "\n...(truncated)" : output;
+      const truncated =
+        output.length > 5000
+          ? `${output.substring(0, 5000)}\n...(truncated)`
+          : output;
       const result = `\`\`\`\n${truncated}\n\`\`\``;
 
       await callback?.({ text: result });
@@ -112,8 +118,17 @@ SUPPORTED PATTERNS:
         data: { command, exitCode: 0, stdout, stderr },
       };
     } catch (err) {
-      const error = err as Error & { code?: number; stderr?: string; stdout?: string };
-      const cmdError = createCommandError(command, error.code ?? 1, error.stdout ?? "", error.stderr ?? error.message);
+      const error = err as Error & {
+        code?: number;
+        stderr?: string;
+        stdout?: string;
+      };
+      const cmdError = createCommandError(
+        command,
+        error.code ?? 1,
+        error.stdout ?? "",
+        error.stderr ?? error.message,
+      );
       const errorMsg = formatErrorForDisplay(cmdError);
 
       logger.error(`EXECUTE_SHELL error: ${error.message}`);
@@ -130,11 +145,17 @@ SUPPORTED PATTERNS:
   examples: [
     [
       { name: "{{user1}}", content: { text: "run 'npm test'" } },
-      { name: "{{agent}}", content: { text: "Running npm test...", actions: ["EXECUTE_SHELL"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Running npm test...", actions: ["EXECUTE_SHELL"] },
+      },
     ],
     [
       { name: "{{user1}}", content: { text: "$ ls -la" } },
-      { name: "{{agent}}", content: { text: "Executing...", actions: ["EXECUTE_SHELL"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Executing...", actions: ["EXECUTE_SHELL"] },
+      },
     ],
   ],
 };

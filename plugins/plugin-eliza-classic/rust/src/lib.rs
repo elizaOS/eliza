@@ -1,9 +1,10 @@
+#![allow(missing_docs)]
 //! Classic ELIZA Pattern Matching Plugin for elizaOS
 //!
 //! This crate provides a pattern matching chatbot based on Joseph Weizenbaum's
 //! original 1966 ELIZA program. No LLM required.
 //!
-//! # Example
+//! # Native Usage
 //!
 //! ```rust
 //! use elizaos_plugin_eliza_classic::ElizaClassicPlugin;
@@ -12,9 +13,37 @@
 //! let response = plugin.generate_response("I feel sad today");
 //! println!("{}", response);
 //! ```
+//!
+//! # Cross-Language Interop
+//!
+//! This plugin supports loading from multiple runtimes:
+//!
+//! ## From TypeScript (via WASM)
+//! ```typescript
+//! import { loadWasmPlugin } from '@elizaos/interop';
+//! const plugin = await loadWasmPlugin('./eliza_classic.wasm');
+//! ```
+//!
+//! ## From Python (via FFI)
+//! ```python
+//! from elizaos.interop import load_rust_plugin
+//! plugin = load_rust_plugin('./libelizaos_plugin_eliza_classic.so')
+//! ```
+//!
+//! ## From Any Language (via IPC)
+//! ```bash
+//! ./eliza-classic-ipc  # Reads JSON-RPC from stdin, writes to stdout
+//! ```
+//!
+//! # Feature Flags
+//!
+//! - `wasm`: Enable WASM bindings (for TypeScript runtime)
+//! - `ffi`: Enable FFI exports (for Python/C runtime)
+//! - `ipc`: Enable IPC server binary (for subprocess communication)
 
 #![warn(missing_docs)]
 
+pub mod interop;
 pub mod patterns;
 pub mod types;
 
@@ -98,6 +127,7 @@ pub struct ElizaClassicPlugin {
     response_history: Mutex<Vec<String>>,
     max_history: usize,
 }
+
 
 impl Default for ElizaClassicPlugin {
     fn default() -> Self {

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the shell plugin.
 
 use thiserror::Error;
@@ -44,5 +45,10 @@ pub enum ShellError {
 
 /// Result type alias
 pub type Result<T> = std::result::Result<T, ShellError>;
+
+
+
+
+
 
 

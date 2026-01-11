@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin Ollama - Rust Implementation
 //!
 //! This crate provides an Ollama API client for elizaOS,
@@ -63,5 +64,7 @@ pub const PLUGIN_DESCRIPTION: &str =
     "Ollama API client with text generation, object generation, and embedding support";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
 
 

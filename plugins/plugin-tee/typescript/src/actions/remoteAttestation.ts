@@ -79,9 +79,7 @@ export const remoteAttestationAction: Action = {
 
       // Generate attestation
       const provider = new PhalaRemoteAttestationProvider(String(teeMode));
-      const attestation = await provider.generateAttestation(
-        JSON.stringify(attestationMessage)
-      );
+      const attestation = await provider.generateAttestation(JSON.stringify(attestationMessage));
 
       // Upload to proof service
       const attestationData = hexToUint8Array(attestation.quote);
@@ -158,4 +156,3 @@ export const remoteAttestationAction: Action = {
     ],
   ],
 };
-

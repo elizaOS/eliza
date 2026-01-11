@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from elizaos_plugin_memory.types import SummaryResult
@@ -87,9 +87,7 @@ def parse_summary_xml(xml: str) -> SummaryResult:
 
     summary = summary_match.group(1).strip() if summary_match else "Summary not available"
     topics = (
-        [t.strip() for t in topics_match.group(1).split(",") if t.strip()]
-        if topics_match
-        else []
+        [t.strip() for t in topics_match.group(1).split(",") if t.strip()] if topics_match else []
     )
     key_points = [p.strip() for p in key_points_matches]
 
@@ -110,8 +108,8 @@ class Message:
 
     entity_id: UUID
     content_text: str
-    content_type: Optional[str] = None
-    metadata_type: Optional[str] = None
+    content_type: str | None = None
+    metadata_type: str | None = None
     created_at: int = 0
 
 
@@ -144,7 +142,7 @@ class SummarizationEvaluator:
     async def validate(
         self,
         room_id: UUID,
-        message_text: Optional[str],
+        message_text: str | None,
         dialogue_messages: list[Message],
     ) -> bool:
         """Check if summarization should run."""
@@ -180,7 +178,9 @@ class SummarizationEvaluator:
             filtered_messages = [
                 msg
                 for msg in dialogue_messages
-                if not (msg.content_type == "action_result" and msg.metadata_type == "action_result")
+                if not (
+                    msg.content_type == "action_result" and msg.metadata_type == "action_result"
+                )
                 and msg.metadata_type in ("agent_response_message", "user_message")
             ]
 
@@ -217,7 +217,9 @@ class SummarizationEvaluator:
             if existing_summary:
                 prompt = UPDATE_SUMMARIZATION_TEMPLATE.format(
                     existing_summary=existing_summary.summary,
-                    existing_topics=", ".join(existing_summary.topics) if existing_summary.topics else "None",
+                    existing_topics=", ".join(existing_summary.topics)
+                    if existing_summary.topics
+                    else "None",
                     new_messages=formatted_messages,
                 )
             else:
@@ -226,13 +228,9 @@ class SummarizationEvaluator:
                     f"{msg.content_text or '[non-text message]'}"
                     for msg in sorted_messages
                 )
-                prompt = INITIAL_SUMMARIZATION_TEMPLATE.format(
-                    recent_messages=initial_messages
-                )
+                prompt = INITIAL_SUMMARIZATION_TEMPLATE.format(recent_messages=initial_messages)
 
-            response = await self._model_handler.generate(
-                prompt, config.summary_max_tokens
-            )
+            response = await self._model_handler.generate(prompt, config.summary_max_tokens)
 
             summary_result = parse_summary_xml(response)
 
@@ -300,5 +298,8 @@ class SummarizationEvaluator:
 
         except Exception as e:
             logger.error("Error during summarization: %s", e)
+
+
+
 
 

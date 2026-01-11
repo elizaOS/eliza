@@ -1,9 +1,11 @@
-import type { Account, Chain } from "viem";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Account, Address, Chain } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BridgeAction } from "../actions/bridge";
 import { WalletProvider } from "../providers/wallet";
+import type { SupportedChain } from "../types";
 import { getTestChains } from "./custom-chain";
 
 // Test environment - use funded wallet for integration tests
@@ -28,11 +30,25 @@ const TESTNET_TOKENS = {
   OP_USDC: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7" as `0x${string}`,
 };
 
-// Mock the ICacheManager
-const mockCacheManager = {
-  get: vi.fn().mockResolvedValue(null),
-  set: vi.fn(),
-};
+// Create a mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-id" as IAgentRuntime["agentId"],
+    getCache: vi.fn().mockResolvedValue(null),
+    setCache: vi.fn().mockResolvedValue(undefined),
+    getSetting: vi.fn().mockReturnValue(null),
+    setSetting: vi.fn(),
+    getService: vi.fn().mockReturnValue(null),
+    registerService: vi.fn(),
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+    },
+  } as IAgentRuntime;
+}
 
 describe("Bridge Action", () => {
   let wp: WalletProvider;
@@ -40,10 +56,10 @@ describe("Bridge Action", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockCacheManager.get.mockResolvedValue(null);
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
+    const mockRuntime = createMockRuntime();
 
     // Initialize with multiple testnets for bridging
     const customChains = {
@@ -52,7 +68,7 @@ describe("Bridge Action", () => {
       optimismSepolia: testChains.optimismSepolia,
     };
 
-    wp = new WalletProvider(pk, mockCacheManager as any, customChains);
+    wp = new WalletProvider(pk, mockRuntime, customChains);
   });
 
   afterEach(() => {
@@ -77,8 +93,8 @@ describe("Bridge Action", () => {
 
     it("should validate bridge parameters", () => {
       const bridgeParams = {
-        fromChain: "sepolia" as any,
-        toChain: "baseSepolia" as any,
+        fromChain: "sepolia" as SupportedChain,
+        toChain: "baseSepolia" as SupportedChain,
         fromToken: TESTNET_TOKENS.ETH,
         toToken: TESTNET_TOKENS.ETH,
         amount: "0.01",
@@ -95,39 +111,39 @@ describe("Bridge Action", () => {
     it("should handle same chain bridge attempts", async () => {
       await expect(
         bridgeAction.bridge({
-          fromChain: "sepolia" as any,
-          toChain: "sepolia" as any, // Same chain
+          fromChain: "sepolia" as SupportedChain,
+          toChain: "sepolia" as SupportedChain, // Same chain
           fromToken: TESTNET_TOKENS.ETH,
           toToken: TESTNET_TOKENS.ETH,
           amount: "0.01",
           toAddress: testAccount.address,
-        }),
+        })
       ).rejects.toThrow();
     });
 
     it("should handle zero amount bridges", async () => {
       await expect(
         bridgeAction.bridge({
-          fromChain: "sepolia" as any,
-          toChain: "baseSepolia" as any,
+          fromChain: "sepolia" as SupportedChain,
+          toChain: "baseSepolia" as SupportedChain,
           fromToken: TESTNET_TOKENS.ETH,
           toToken: TESTNET_TOKENS.ETH,
           amount: "0",
           toAddress: testAccount.address,
-        }),
+        })
       ).rejects.toThrow();
     });
 
     it("should handle invalid recipient addresses", async () => {
       await expect(
         bridgeAction.bridge({
-          fromChain: "sepolia" as any,
-          toChain: "baseSepolia" as any,
+          fromChain: "sepolia" as SupportedChain,
+          toChain: "baseSepolia" as SupportedChain,
           fromToken: TESTNET_TOKENS.ETH,
           toToken: TESTNET_TOKENS.ETH,
           amount: "0.01",
-          toAddress: "invalid-address" as any,
-        }),
+          toAddress: "invalid-address" as Address,
+        })
       ).rejects.toThrow();
     });
   });
@@ -146,12 +162,12 @@ describe("Bridge Action", () => {
       // Try to bridge more than available balance
       await expect(
         bridgeAction.bridge({
-          fromChain: "sepolia" as any,
-          toChain: "baseSepolia" as any,
+          fromChain: "sepolia" as SupportedChain,
+          toChain: "baseSepolia" as SupportedChain,
           fromToken: TESTNET_TOKENS.ETH,
           toToken: TESTNET_TOKENS.ETH,
           amount: "1000", // 1000 ETH - definitely more than test wallet has
-        }),
+        })
       ).rejects.toThrow();
     });
 
@@ -163,8 +179,8 @@ describe("Bridge Action", () => {
         if (balance && parseFloat(balance) > 0.01) {
           try {
             const result = await bridgeAction.bridge({
-              fromChain: "sepolia" as any,
-              toChain: "baseSepolia" as any,
+              fromChain: "sepolia" as SupportedChain,
+              toChain: "baseSepolia" as SupportedChain,
               fromToken: TESTNET_TOKENS.ETH,
               toToken: TESTNET_TOKENS.ETH,
               amount: "0.001", // Very small amount
@@ -175,10 +191,7 @@ describe("Bridge Action", () => {
             console.log(`Bridge transaction initiated: ${result.hash}`);
           } catch (error) {
             // Bridge might fail due to route availability, liquidity, or other factors
-            console.warn(
-              "Bridge failed (expected in test environment):",
-              error,
-            );
+            console.warn("Bridge failed (expected in test environment):", error);
             expect(error).toBeInstanceOf(Error);
           }
         } else {
@@ -187,12 +200,12 @@ describe("Bridge Action", () => {
           // Test the error case instead
           await expect(
             bridgeAction.bridge({
-              fromChain: "sepolia" as any,
-              toChain: "baseSepolia" as any,
+              fromChain: "sepolia" as SupportedChain,
+              toChain: "baseSepolia" as SupportedChain,
               fromToken: TESTNET_TOKENS.ETH,
               toToken: TESTNET_TOKENS.ETH,
               amount: "0.001",
-            }),
+            })
           ).rejects.toThrow();
         }
       });
@@ -206,8 +219,8 @@ describe("Bridge Action", () => {
         if (balance && parseFloat(balance) > 0.01) {
           try {
             const result = await bridgeAction.bridge({
-              fromChain: "sepolia" as any,
-              toChain: "optimismSepolia" as any,
+              fromChain: "sepolia" as SupportedChain,
+              toChain: "optimismSepolia" as SupportedChain,
               fromToken: TESTNET_TOKENS.ETH,
               toToken: TESTNET_TOKENS.ETH,
               amount: "0.001",
@@ -220,9 +233,7 @@ describe("Bridge Action", () => {
             expect(error).toBeInstanceOf(Error);
           }
         } else {
-          console.warn(
-            "Skipping OP Sepolia bridge test - insufficient balance",
-          );
+          console.warn("Skipping OP Sepolia bridge test - insufficient balance");
         }
       });
     });
@@ -234,8 +245,8 @@ describe("Bridge Action", () => {
         if (balance && parseFloat(balance) > 0.01) {
           try {
             const result = await bridgeAction.bridge({
-              fromChain: "sepolia" as any,
-              toChain: "baseSepolia" as any,
+              fromChain: "sepolia" as SupportedChain,
+              toChain: "baseSepolia" as SupportedChain,
               fromToken: TESTNET_TOKENS.SEPOLIA_WETH,
               toToken: TESTNET_TOKENS.BASE_WETH,
               amount: "0.001",
@@ -245,10 +256,7 @@ describe("Bridge Action", () => {
             console.log(`WETH bridge initiated: ${result.hash}`);
           } catch (error) {
             // Expected to fail if no WETH balance or no route
-            console.warn(
-              "WETH bridge failed (expected if no WETH balance):",
-              error,
-            );
+            console.warn("WETH bridge failed (expected if no WETH balance):", error);
             expect(error).toBeInstanceOf(Error);
           }
         } else {
@@ -268,14 +276,16 @@ describe("Bridge Action", () => {
     it("should handle bridge progress monitoring", async () => {
       // Test the progress callback functionality
       let progressCallbackCalled = false;
-      const progressCallback = (status: any) => {
+      interface BridgeProgressStatus {
+        currentStep: number;
+        totalSteps: number;
+      }
+      const progressCallback = (status: BridgeProgressStatus) => {
         progressCallbackCalled = true;
         expect(status).toBeDefined();
         expect(typeof status.currentStep).toBe("number");
         expect(typeof status.totalSteps).toBe("number");
-        console.log(
-          `Bridge progress: ${status.currentStep}/${status.totalSteps}`,
-        );
+        console.log(`Bridge progress: ${status.currentStep}/${status.totalSteps}`);
       };
 
       const balance = await wp.getWalletBalanceForChain("sepolia");
@@ -284,13 +294,13 @@ describe("Bridge Action", () => {
         try {
           await bridgeAction.bridge(
             {
-              fromChain: "sepolia" as any,
-              toChain: "baseSepolia" as any,
+              fromChain: "sepolia" as SupportedChain,
+              toChain: "baseSepolia" as SupportedChain,
               fromToken: TESTNET_TOKENS.ETH,
               toToken: TESTNET_TOKENS.ETH,
               amount: "0.0001",
             },
-            progressCallback,
+            progressCallback
           );
 
           // If bridge succeeds, progress callback should have been called
@@ -315,11 +325,11 @@ describe("Bridge Action", () => {
       // Create wallet provider with funded wallet
       const fundedWp = new WalletProvider(
         FUNDED_TEST_WALLET as `0x${string}`,
-        mockCacheManager as any,
+        createMockRuntime(),
         {
           sepolia: testChains.sepolia,
           baseSepolia: testChains.baseSepolia,
-        },
+        }
       );
       const fundedBridgeAction = new BridgeAction(fundedWp);
 
@@ -329,8 +339,8 @@ describe("Bridge Action", () => {
       if (balance && parseFloat(balance) > 0.02) {
         try {
           const result = await fundedBridgeAction.bridge({
-            fromChain: "sepolia" as any,
-            toChain: "baseSepolia" as any,
+            fromChain: "sepolia" as SupportedChain,
+            toChain: "baseSepolia" as SupportedChain,
             fromToken: TESTNET_TOKENS.ETH,
             toToken: TESTNET_TOKENS.ETH,
             amount: "0.005", // 0.005 ETH
@@ -343,9 +353,7 @@ describe("Bridge Action", () => {
 
           // Note: Cross-chain bridges take time to complete
           // In a real test, you might want to wait and check the destination chain
-          console.log(
-            "Bridge initiated - check destination chain for completion",
-          );
+          console.log("Bridge initiated - check destination chain for completion");
         } catch (error) {
           console.warn("Funded bridge failed:", error);
           // Don't fail the test - bridge might fail due to route availability
@@ -373,21 +381,19 @@ describe("Bridge Action", () => {
       expect(supportedChains).toContain("baseSepolia");
       expect(supportedChains).toContain("optimismSepolia");
 
-      console.log(
-        `Supported chains for bridging: ${supportedChains.join(", ")}`,
-      );
+      console.log(`Supported chains for bridging: ${supportedChains.join(", ")}`);
     });
 
     it("should handle unsupported chain combinations", async () => {
       // Test with a hypothetical unsupported destination
       await expect(
         bridgeAction.bridge({
-          fromChain: "sepolia" as any,
-          toChain: "unsupportedChain" as any,
+          fromChain: "sepolia" as SupportedChain,
+          toChain: "unsupportedChain" as SupportedChain,
           fromToken: TESTNET_TOKENS.ETH,
           toToken: TESTNET_TOKENS.ETH,
           amount: "0.01",
-        }),
+        })
       ).rejects.toThrow();
     });
   });
@@ -407,8 +413,8 @@ describe("Bridge Action", () => {
         try {
           // This would normally get route quotes to estimate costs
           const bridgeParams = {
-            fromChain: "sepolia" as any,
-            toChain: "baseSepolia" as any,
+            fromChain: "sepolia" as SupportedChain,
+            toChain: "baseSepolia" as SupportedChain,
             fromToken: TESTNET_TOKENS.ETH,
             toToken: TESTNET_TOKENS.ETH,
             amount: "0.001",

@@ -1,7 +1,7 @@
-declare module 'canvas' {
+declare module "canvas" {
   export class Canvas {
     constructor(width: number, height: number);
-    getContext(contextType: '2d'): CanvasRenderingContext2D;
+    getContext(contextType: "2d"): CanvasRenderingContext2D;
     width: number;
     height: number;
   }

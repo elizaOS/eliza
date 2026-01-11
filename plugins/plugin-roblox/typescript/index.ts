@@ -27,16 +27,16 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { RobloxService } from "./services/RobloxService";
+import { RobloxTestSuite } from "./__tests__/suite";
 import { robloxActions } from "./actions";
 import { robloxProviders } from "./providers";
-import { RobloxTestSuite } from "./__tests__/suite";
+import { RobloxService } from "./services/RobloxService";
 
+export { RobloxApiError, RobloxClient } from "./client/RobloxClient";
+export { RobloxService } from "./services/RobloxService";
 // Re-export types and utilities for external use
 export * from "./types";
-export { RobloxClient, RobloxApiError } from "./client/RobloxClient";
-export { RobloxService } from "./services/RobloxService";
-export { validateRobloxConfig, hasRobloxEnabled } from "./utils/config";
+export { hasRobloxEnabled, validateRobloxConfig } from "./utils/config";
 
 /**
  * Roblox plugin for elizaOS.
@@ -77,13 +77,8 @@ export const robloxPlugin: Plugin = {
       return;
     }
 
-    runtime.logger.info(
-      { universeId },
-      "Roblox plugin initialized"
-    );
+    runtime.logger.info({ universeId }, "Roblox plugin initialized");
   },
 };
 
 export default robloxPlugin;
-
-

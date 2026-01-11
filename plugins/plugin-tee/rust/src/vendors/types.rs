@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! TEE Vendor types and interfaces.
 
 /// Supported TEE vendor names.
@@ -25,5 +26,10 @@ pub trait TeeVendorInterface: Send + Sync {
     /// Get provider names provided by this vendor.
     fn provider_names(&self) -> Vec<&'static str>;
 }
+
+
+
+
+
 
 

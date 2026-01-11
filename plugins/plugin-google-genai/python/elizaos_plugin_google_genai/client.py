@@ -72,7 +72,7 @@ class GoogleGenAIClient:
         """Close the HTTP client."""
         await self._http_client.aclose()
 
-    async def __aenter__(self) -> "GoogleGenAIClient":
+    async def __aenter__(self) -> GoogleGenAIClient:
         """Context manager entry."""
         return self
 
@@ -149,9 +149,7 @@ class GoogleGenAIClient:
 
         return TextGenerationResponse(text=text, usage=usage, model=model.id)
 
-    async def generate_embedding(
-        self, params: EmbeddingParams | str
-    ) -> EmbeddingResponse:
+    async def generate_embedding(self, params: EmbeddingParams | str) -> EmbeddingResponse:
         """
         Generate text embeddings.
 
@@ -305,8 +303,9 @@ class GoogleGenAIClient:
 
         # System instruction for JSON output
         system = (
-            params.system or ""
-        ) + "\nYou must respond with valid JSON only. No markdown, no code blocks, no explanation text."
+            (params.system or "")
+            + "\nYou must respond with valid JSON only. No markdown, no code blocks, no explanation text."
+        )
 
         request_body: dict[str, Any] = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -451,5 +450,8 @@ class GoogleGenAIClient:
                         best = candidate
 
         return best
+
+
+
 
 

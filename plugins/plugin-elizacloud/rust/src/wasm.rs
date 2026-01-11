@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! WebAssembly bindings for ElizaOS Cloud Plugin.
 //!
 //! This module provides JavaScript-friendly bindings for use in browser environments.
@@ -21,5 +22,10 @@ pub fn plugin_name() -> String {
 pub fn plugin_version() -> String {
     crate::PLUGIN_VERSION.to_string()
 }
+
+
+
+
+
 
 

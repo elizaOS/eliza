@@ -34,7 +34,7 @@ export const elizaClassicPlugin: Plugin = {
     },
   },
 
-  async init(_config, runtime) {
+  async init(_config, _runtime) {
     logger.info(
       { src: "plugin:eliza-classic" },
       "Classic ELIZA pattern matching engine initialized"
@@ -122,8 +122,3 @@ export const elizaClassicPlugin: Plugin = {
 };
 
 export default elizaClassicPlugin;
-
-
-
-
-

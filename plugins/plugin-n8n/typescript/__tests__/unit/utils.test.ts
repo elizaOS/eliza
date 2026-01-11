@@ -2,9 +2,9 @@
  * Unit tests for utility functions.
  */
 
-import { describe, it, expect } from "vitest";
 import type { Memory } from "@elizaos/core";
-import { validatePrompt, isValidJsonSpecification } from "../../utils/validation";
+import { describe, expect, it } from "vitest";
+import { isValidJsonSpecification, validatePrompt } from "../../utils/validation";
 
 const createMockMemory = (text: string): Memory =>
   ({
@@ -68,5 +68,3 @@ describe("isValidJsonSpecification", () => {
     expect(isValidJsonSpecification('{"name": "test"')).toBe(false);
   });
 });
-
-

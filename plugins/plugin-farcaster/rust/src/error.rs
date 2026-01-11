@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Farcaster plugin.
 
 use thiserror::Error;

@@ -43,14 +43,7 @@ export interface CommandHistoryEntry {
 /**
  * Type of file operation detected
  */
-export type FileOperationType =
-  | "create"
-  | "write"
-  | "read"
-  | "delete"
-  | "mkdir"
-  | "move"
-  | "copy";
+export type FileOperationType = "create" | "write" | "read" | "delete" | "mkdir" | "move" | "copy";
 
 /**
  * File operation performed by a command
@@ -77,5 +70,3 @@ export interface ShellConfig {
   /** List of forbidden commands/patterns */
   forbiddenCommands: string[];
 }
-
-

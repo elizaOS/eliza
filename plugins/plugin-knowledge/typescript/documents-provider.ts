@@ -1,6 +1,7 @@
-import type { IAgentRuntime, Memory, Provider } from '@elizaos/core';
-import { addHeader, logger, MemoryType } from '@elizaos/core';
-import { KnowledgeService } from './service.ts';
+import type { IAgentRuntime, Provider } from "@elizaos/core";
+import { addHeader, logger, MemoryType } from "@elizaos/core";
+import type { KnowledgeService } from "./service.ts";
+import type { KnowledgeDocumentMetadata } from "./types.ts";
 
 /**
  * Represents a static provider that lists available documents in the knowledge base.
@@ -14,30 +15,30 @@ import { KnowledgeService } from './service.ts';
  * @returns {Object} An object containing the available documents list.
  */
 export const documentsProvider: Provider = {
-  name: 'AVAILABLE_DOCUMENTS',
+  name: "AVAILABLE_DOCUMENTS",
   description:
-    'List of documents available in the knowledge base. Shows which documents the agent can reference and retrieve information from.',
+    "List of documents available in the knowledge base. Shows which documents the agent can reference and retrieve information from.",
   dynamic: false, // Static provider - doesn't change based on the message
   get: async (runtime: IAgentRuntime) => {
     try {
-      const knowledgeService = runtime.getService('knowledge') as KnowledgeService;
+      const knowledgeService = runtime.getService("knowledge") as KnowledgeService;
 
       if (!knowledgeService) {
-        logger.warn('Knowledge service not available for documents provider');
+        logger.warn("Knowledge service not available for documents provider");
         return {
           data: { documents: [] },
           values: {
             documentsCount: 0,
-            documents: '',
-            availableDocuments: '',
+            documents: "",
+            availableDocuments: "",
           },
-          text: '',
+          text: "",
         };
       }
 
       // Retrieve all documents for the agent
       const allMemories = await knowledgeService.getMemories({
-        tableName: 'documents',
+        tableName: "documents",
         roomId: runtime.agentId,
         count: 100, // Limit to 100 documents to avoid context overflow
       });
@@ -52,27 +53,27 @@ export const documentsProvider: Provider = {
           data: { documents: [] },
           values: {
             documentsCount: 0,
-            documents: '',
-            availableDocuments: '',
+            documents: "",
+            availableDocuments: "",
           },
-          text: '',
+          text: "",
         };
       }
 
       // Format documents concisely
       const documentsList = documents
         .map((doc, index) => {
-          const metadata = doc.metadata as any;
+          const metadata = doc.metadata as KnowledgeDocumentMetadata | undefined;
           const filename = metadata?.filename || metadata?.title || `Document ${index + 1}`;
-          const fileType = metadata?.fileExt || metadata?.fileType || 'unknown';
-          const source = metadata?.source || 'upload';
+          const fileType = metadata?.fileExt || metadata?.fileType || "unknown";
+          const source = metadata?.source || "upload";
           const fileSize = metadata?.fileSize;
 
           // Build description from metadata
           const parts = [filename];
 
           // Add file type info
-          if (fileType && fileType !== 'unknown') {
+          if (fileType && fileType !== "unknown") {
             parts.push(fileType);
           }
 
@@ -87,17 +88,17 @@ export const documentsProvider: Provider = {
           }
 
           // Add source if meaningful
-          if (source && source !== 'upload') {
+          if (source && source !== "upload") {
             parts.push(`from ${source}`);
           }
 
           // Format: "filename (type, size, source)"
-          return parts.join(' - ');
+          return parts.join(" - ");
         })
-        .join('\n');
+        .join("\n");
 
       const documentsText = addHeader(
-        '# Available Documents',
+        "# Available Documents",
         `${documents.length} document(s) in knowledge base:\n${documentsList}`
       );
 
@@ -105,9 +106,13 @@ export const documentsProvider: Provider = {
         data: {
           documents: documents.map((doc) => ({
             id: doc.id,
-            filename: (doc.metadata as any)?.filename || (doc.metadata as any)?.title,
-            fileType: (doc.metadata as any)?.fileType || (doc.metadata as any)?.fileExt,
-            source: (doc.metadata as any)?.source,
+            filename:
+              (doc.metadata as KnowledgeDocumentMetadata | undefined)?.filename ||
+              (doc.metadata as KnowledgeDocumentMetadata | undefined)?.title,
+            fileType:
+              (doc.metadata as KnowledgeDocumentMetadata | undefined)?.fileType ||
+              (doc.metadata as KnowledgeDocumentMetadata | undefined)?.fileExt,
+            source: (doc.metadata as KnowledgeDocumentMetadata | undefined)?.source,
           })),
           count: documents.length,
         },
@@ -118,16 +123,19 @@ export const documentsProvider: Provider = {
         },
         text: documentsText,
       };
-    } catch (error: any) {
-      logger.error('Error in documents provider:', error.message);
+    } catch (error) {
+      logger.error(
+        "Error in documents provider:",
+        error instanceof Error ? error.message : String(error)
+      );
       return {
         data: { documents: [], error: error.message },
         values: {
           documentsCount: 0,
-          documents: '',
-          availableDocuments: '',
+          documents: "",
+          availableDocuments: "",
         },
-        text: '',
+        text: "",
       };
     }
   },

@@ -1,4 +1,4 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // Mock the types and runtime for testing
 type Content = {

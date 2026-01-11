@@ -8,7 +8,8 @@ from __future__ import annotations
 import base64
 import logging
 import time
-from typing import Any, Callable, Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
 from .service import VisionService
 from .types import VisionMode
@@ -21,11 +22,9 @@ class RuntimeProtocol(Protocol):
 
     agent_id: str
 
-    def get_service(self, name: str) -> Any:
-        ...
+    def get_service(self, name: str) -> Any: ...
 
-    async def create_memory(self, memory: dict, table: str) -> None:
-        ...
+    async def create_memory(self, memory: dict, table: str) -> None: ...
 
 
 class MemoryProtocol(Protocol):
@@ -36,9 +35,7 @@ class MemoryProtocol(Protocol):
     content: dict[str, Any]
 
 
-ActionHandler = Callable[
-    [RuntimeProtocol, MemoryProtocol, Any, Any, Callable | None], Any
-]
+ActionHandler = Callable[[RuntimeProtocol, MemoryProtocol, Any, Any, Callable | None], Any]
 
 
 async def _save_execution_record(
@@ -79,9 +76,7 @@ class DescribeSceneAction:
 
     name = "DESCRIBE_SCENE"
     similes = ["ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND"]
-    description = (
-        "Analyzes the current visual scene and provides a detailed description."
-    )
+    description = "Analyzes the current visual scene and provides a detailed description."
     enabled = True
 
     @staticmethod
@@ -124,7 +119,9 @@ class DescribeSceneAction:
                 text = f'Camera "{camera_info.name if camera_info else "unknown"}" connected, but no scenes analyzed.'
                 await _save_execution_record(runtime, message, thought, text, ["DESCRIBE_SCENE"])
                 if callback:
-                    await callback({"thought": thought, "text": text, "actions": ["DESCRIBE_SCENE"]})
+                    await callback(
+                        {"thought": thought, "text": text, "actions": ["DESCRIBE_SCENE"]}
+                    )
                 return {
                     "text": "Camera connected but no scene analyzed",
                     "values": {"success": False, "vision_available": True, "scene_analyzed": False},
@@ -137,7 +134,9 @@ class DescribeSceneAction:
             description = f"Looking through {camera_info.name if camera_info else 'the camera'}, {scene.description}"
 
             if people_count > 0:
-                description += f"\n\nI can see {people_count} {'person' if people_count == 1 else 'people'}."
+                description += (
+                    f"\n\nI can see {people_count} {'person' if people_count == 1 else 'people'}."
+                )
 
             if object_count > 0:
                 from collections import Counter
@@ -146,10 +145,12 @@ class DescribeSceneAction:
                 obj_descs = [f"{c} {t}{'s' if c > 1 else ''}" for t, c in type_counts.items()]
                 description += f"\n\nObjects detected: {', '.join(obj_descs)}."
 
-            thought = f"Analyzed the visual scene."
+            thought = "Analyzed the visual scene."
             await _save_execution_record(runtime, message, thought, description, ["DESCRIBE_SCENE"])
             if callback:
-                await callback({"thought": thought, "text": description, "actions": ["DESCRIBE_SCENE"]})
+                await callback(
+                    {"thought": thought, "text": description, "actions": ["DESCRIBE_SCENE"]}
+                )
 
             return {
                 "text": description,
@@ -160,7 +161,11 @@ class DescribeSceneAction:
                     "people_count": people_count,
                     "object_count": object_count,
                 },
-                "data": {"action_name": "DESCRIBE_SCENE", "scene": scene, "camera_info": camera_info},
+                "data": {
+                    "action_name": "DESCRIBE_SCENE",
+                    "scene": scene,
+                    "camera_info": camera_info,
+                },
             }
 
         except Exception as e:
@@ -233,7 +238,11 @@ class CaptureImageAction:
                     await callback({"thought": thought, "text": text, "actions": ["CAPTURE_IMAGE"]})
                 return {
                     "text": "Failed to capture image",
-                    "values": {"success": False, "vision_available": True, "capture_success": False},
+                    "values": {
+                        "success": False,
+                        "vision_available": True,
+                        "capture_success": False,
+                    },
                     "data": {"action_name": "CAPTURE_IMAGE", "error": "Camera capture failed"},
                 }
 
@@ -251,19 +260,23 @@ class CaptureImageAction:
                 "url": f"data:image/jpeg;base64,{base64.b64encode(image_buffer).decode()}",
             }
 
-            thought = f'Captured an image from camera "{camera_info.name if camera_info else "unknown"}".'
+            thought = (
+                f'Captured an image from camera "{camera_info.name if camera_info else "unknown"}".'
+            )
             text = f"I've captured an image from the camera at {timestamp}."
 
             await _save_execution_record(
                 runtime, message, thought, text, ["CAPTURE_IMAGE"], [image_attachment]
             )
             if callback:
-                await callback({
-                    "thought": thought,
-                    "text": text,
-                    "actions": ["CAPTURE_IMAGE"],
-                    "attachments": [image_attachment],
-                })
+                await callback(
+                    {
+                        "thought": thought,
+                        "text": text,
+                        "actions": ["CAPTURE_IMAGE"],
+                        "attachments": [image_attachment],
+                    }
+                )
 
             return {
                 "text": text,
@@ -352,7 +365,9 @@ class SetVisionModeAction:
                 text = "Please specify the vision mode: OFF, CAMERA, SCREEN, or BOTH."
                 await _save_execution_record(runtime, message, thought, text, ["SET_VISION_MODE"])
                 if callback:
-                    await callback({"thought": thought, "text": text, "actions": ["SET_VISION_MODE"]})
+                    await callback(
+                        {"thought": thought, "text": text, "actions": ["SET_VISION_MODE"]}
+                    )
                 return
 
             current_mode = vision_service.get_vision_mode()
@@ -435,7 +450,9 @@ class NameEntityAction:
             import re
 
             message_text = message.content.get("text", "")
-            name_match = re.search(r"(?:named?|call(?:ed)?|is)\s+(\w+)", message_text, re.IGNORECASE)
+            name_match = re.search(
+                r"(?:named?|call(?:ed)?|is)\s+(\w+)", message_text, re.IGNORECASE
+            )
 
             if not name_match:
                 thought = "Could not extract name from message."
@@ -470,12 +487,14 @@ class NameEntityAction:
                 text = f"I've identified the person as {name}."
                 await _save_execution_record(runtime, message, thought, text, ["NAME_ENTITY"])
                 if callback:
-                    await callback({
-                        "thought": thought,
-                        "text": text,
-                        "actions": ["NAME_ENTITY"],
-                        "data": {"entity_id": target_person.id, "name": name},
-                    })
+                    await callback(
+                        {
+                            "thought": thought,
+                            "text": text,
+                            "actions": ["NAME_ENTITY"],
+                            "data": {"entity_id": target_person.id, "name": name},
+                        }
+                    )
             else:
                 thought = "Failed to assign name."
                 text = "There was an error assigning the name."
@@ -540,7 +559,9 @@ class IdentifyPersonAction:
                 text = "I don't see any people in the current scene."
                 await _save_execution_record(runtime, message, thought, text, ["IDENTIFY_PERSON"])
                 if callback:
-                    await callback({"thought": thought, "text": text, "actions": ["IDENTIFY_PERSON"]})
+                    await callback(
+                        {"thought": thought, "text": text, "actions": ["IDENTIFY_PERSON"]}
+                    )
                 return
 
             entity_tracker = vision_service.get_entity_tracker()
@@ -553,7 +574,9 @@ class IdentifyPersonAction:
                 text = "I can see someone but I'm still processing their identity."
                 await _save_execution_record(runtime, message, thought, text, ["IDENTIFY_PERSON"])
                 if callback:
-                    await callback({"thought": thought, "text": text, "actions": ["IDENTIFY_PERSON"]})
+                    await callback(
+                        {"thought": thought, "text": text, "actions": ["IDENTIFY_PERSON"]}
+                    )
                 return
 
             identifications = []
@@ -571,7 +594,9 @@ class IdentifyPersonAction:
 
                 if name:
                     recognized_count += 1
-                    identifications.append(f"I can see {name}. They've been here for {duration_str}.")
+                    identifications.append(
+                        f"I can see {name}. They've been here for {duration_str}."
+                    )
                 else:
                     unknown_count += 1
                     identifications.append(
@@ -583,12 +608,14 @@ class IdentifyPersonAction:
 
             await _save_execution_record(runtime, message, thought, text, ["IDENTIFY_PERSON"])
             if callback:
-                await callback({
-                    "thought": thought,
-                    "text": text,
-                    "actions": ["IDENTIFY_PERSON"],
-                    "data": {"identifications": people},
-                })
+                await callback(
+                    {
+                        "thought": thought,
+                        "text": text,
+                        "actions": ["IDENTIFY_PERSON"],
+                        "data": {"identifications": people},
+                    }
+                )
 
         except Exception as e:
             logger.error(f"[identifyPersonAction] Error: {e}")
@@ -662,12 +689,14 @@ class TrackEntityAction:
 
             await _save_execution_record(runtime, message, thought, text, ["TRACK_ENTITY"])
             if callback:
-                await callback({
-                    "thought": thought,
-                    "text": text,
-                    "actions": ["TRACK_ENTITY"],
-                    "data": {"entities": stats["active_entities"]},
-                })
+                await callback(
+                    {
+                        "thought": thought,
+                        "text": text,
+                        "actions": ["TRACK_ENTITY"],
+                        "data": {"entities": stats["active_entities"]},
+                    }
+                )
 
         except Exception as e:
             logger.error(f"[trackEntityAction] Error: {e}")
@@ -737,4 +766,3 @@ name_entity_action = NameEntityAction()
 identify_person_action = IdentifyPersonAction()
 track_entity_action = TrackEntityAction()
 kill_autonomous_action = KillAutonomousAction()
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! xAI Grok Client
 //!
 //! Async HTTP client for xAI's Grok API.

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Model handlers for ElizaOS Cloud Plugin.
 //!
 //! These handlers are designed to be called from the elizaOS runtime

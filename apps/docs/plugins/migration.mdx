@@ -8,6 +8,7 @@ description: "Complete guide for migrating elizaOS plugins from version 0.x to 1
 ## Migration Overview
 
 The 1.x architecture brings:
+
 - **Better modularity** - Cleaner separation of concerns
 - **Improved testing** - Easier to test individual components
 - **Enhanced flexibility** - More customization options
@@ -17,6 +18,7 @@ The 1.x architecture brings:
 ## Pre-Migration Checklist
 
 Before starting your migration:
+
 - [ ] Backup your existing plugin code
 - [ ] Review all breaking changes
 - [ ] Identify custom components that need migration
@@ -38,6 +40,7 @@ git checkout -b 1.x
 Clean up deprecated tooling and configuration files:
 
 ### Files to Remove:
+
 - **`biome.json`** - Deprecated linter configuration
 - **`vitest.config.ts`** - Replaced by Bun test runner
 - **Lock files** - Any `lock.json` or `yml.lock` files
@@ -51,6 +54,7 @@ rm -f *.lock.json *.yml.lock
 ```
 
 > **Why?** The elizaOS ecosystem has standardized on:
+>
 > - **Bun's built-in test runner** (replacing Vitest)
 > - **Prettier** for code formatting (replacing Biome)
 
@@ -61,7 +65,7 @@ rm -f *.lock.json *.yml.lock
 ```json
 {
   "version": "1.0.0",
-  "name": "@elizaos/plugin-yourname"  // Note: @elizaos, not @elizaos-plugins
+  "name": "@elizaos/plugin-yourname" // Note: @elizaos, not @elizaos-plugins
 }
 ```
 
@@ -73,10 +77,9 @@ rm -f *.lock.json *.yml.lock
     "@elizaos/core": "1.0.0"
   },
   "devDependencies": {
-    "tsup": "8.3.5",
     "prettier": "^3.0.0",
-    "bun": "^1.2.15",          // REQUIRED
-    "@types/bun": "latest",     // REQUIRED
+    "bun": "^1.2.15", // REQUIRED
+    "@types/bun": "latest", // REQUIRED
     "typescript": "^5.0.0"
   }
 }
@@ -86,8 +89,8 @@ rm -f *.lock.json *.yml.lock
 
 ```json
 "scripts": {
-  "build": "tsup",
-  "dev": "tsup --watch",
+  "build": "bun run build.ts",
+  "dev": "bun --hot build.ts",
   "lint": "prettier --write ./src",
   "clean": "rm -rf dist .turbo node_modules",
   "test": "bun test",
@@ -124,10 +127,10 @@ Update `tsconfig.json`:
 
 ```typescript
 // OLD (0.x)
-import { Action, Memory, State } from '@ai16z/eliza';
+import { Action, Memory, State } from "@ai16z/eliza";
 
 // NEW (1.x)
-import { Action, Memory, State, ActionResult } from '@elizaos/core';
+import { Action, Memory, State, ActionResult } from "@elizaos/core";
 ```
 
 ## Step 6: Update Actions
@@ -141,7 +144,7 @@ Actions in 1.x must return `ActionResult` and include callbacks:
 const myAction = {
   handler: async (runtime, message, state) => {
     return { text: "Response" };
-  }
+  },
 };
 
 // NEW (1.x)
@@ -149,15 +152,19 @@ const myAction = {
   handler: async (runtime, message, state, options, callback) => {
     // Use callback for intermediate responses
     await callback?.({ text: "Processing..." });
-    
+
     // Must return ActionResult
     return {
-      success: true,  // REQUIRED field
+      success: true, // REQUIRED field
       text: "Response completed",
-      values: { /* state updates */ },
-      data: { /* raw data */ }
+      values: {
+        /* state updates */
+      },
+      data: {
+        /* raw data */
+      },
     };
-  }
+  },
 };
 ```
 
@@ -171,32 +178,32 @@ handler: async (runtime, message, state, options, callback) => {
     return {
       success: true,
       text: `Action completed: ${result}`,
-      data: result
+      data: result,
     };
   } catch (error) {
     return {
       success: false,
       text: "Action failed",
-      error: error instanceof Error ? error : new Error(String(error))
+      error: error instanceof Error ? error : new Error(String(error)),
     };
   }
-}
+};
 
 // Using previous results (action chaining)
 handler: async (runtime, message, state, options, callback) => {
   const context = options?.context;
-  const previousResult = context?.getPreviousResult?.('PREVIOUS_ACTION');
-  
+  const previousResult = context?.getPreviousResult?.("PREVIOUS_ACTION");
+
   if (previousResult?.data) {
     // Use data from previous action
     const continuedResult = await continueWork(previousResult.data);
     return {
       success: true,
       text: "Continued from previous action",
-      data: continuedResult
+      data: continuedResult,
     };
   }
-}
+};
 ```
 
 ## Step 7: State Management
@@ -212,20 +219,21 @@ const state = await runtime.composeState(message);
 // v1: With filtering
 const state = await runtime.composeState(
   message,
-  ['agentName', 'bio', 'recentMessages'], // Include only these
-  true // onlyInclude = true
+  ["agentName", "bio", "recentMessages"], // Include only these
+  true, // onlyInclude = true
 );
 
 // v1: Update specific parts
 const updatedState = await runtime.composeState(
   message,
-  ['RECENT_MESSAGES', 'GOALS'] // Update only these
+  ["RECENT_MESSAGES", "GOALS"], // Update only these
 );
 ```
 
 ### Available State Keys
 
 Core state keys you can filter:
+
 - Agent info: `agentId`, `agentName`, `bio`, `lore`, `adjective`
 - Conversation: `recentMessages`, `recentMessagesData`
 - Providers: Any registered provider name (e.g., `TIME`, `FACTS`)
@@ -240,18 +248,18 @@ const data = await runtime.databaseAdapter.getData();
 
 // v1: Provider pattern
 const provider: Provider = {
-  name: 'MY_DATA',
-  description: 'Provides custom data',
+  name: "MY_DATA",
+  description: "Provides custom data",
   dynamic: true, // Re-fetch on each use
-  
+
   get: async (runtime, message, state) => {
     const data = await runtime.databaseAdapter.getData();
     return {
       text: formatDataForPrompt(data),
       values: data,
-      data: { raw: data }
+      data: { raw: data },
     };
-  }
+  },
 };
 ```
 
@@ -261,9 +269,9 @@ const provider: Provider = {
 interface Provider {
   name: string;
   description?: string;
-  dynamic?: boolean;     // Default: false
-  position?: number;     // Execution order (-100 to 100)
-  private?: boolean;     // Hidden from provider list
+  dynamic?: boolean; // Default: false
+  position?: number; // Execution order (-100 to 100)
+  private?: boolean; // Hidden from provider list
   get: (runtime, message, state) => Promise<ProviderResult>;
 }
 ```
@@ -274,49 +282,49 @@ interface Provider {
 
 ```typescript
 // OLD (Vitest)
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from "vitest";
 
 const mockRuntime = {
-  getSetting: vi.fn(() => 'test-value')
+  getSetting: vi.fn(() => "test-value"),
 };
 
 // NEW (Bun)
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, mock } from "bun:test";
 
 const mockRuntime = {
-  getSetting: mock(() => 'test-value')
+  getSetting: mock(() => "test-value"),
 };
 ```
 
 ### Test Structure
 
 ```typescript
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
-import { myAction } from '../src/actions/myAction';
+import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { myAction } from "../src/actions/myAction";
 
-describe('MyAction', () => {
+describe("MyAction", () => {
   let mockRuntime: any;
-  
+
   beforeEach(() => {
     mockRuntime = {
-      agentId: 'test-agent',
-      getSetting: mock((key: string) => 'test-value'),
-      useModel: mock(async () => ({ content: 'response' })),
-      composeState: mock(async () => ({ values: {}, text: '' }))
+      agentId: "test-agent",
+      getSetting: mock((key: string) => "test-value"),
+      useModel: mock(async () => ({ content: "response" })),
+      composeState: mock(async () => ({ values: {}, text: "" })),
     };
   });
-  
-  it('should validate correctly', async () => {
-    const message = { content: { text: 'test' } };
+
+  it("should validate correctly", async () => {
+    const message = { content: { text: "test" } };
     const isValid = await myAction.validate(mockRuntime, message);
     expect(isValid).toBe(true);
   });
-  
-  it('should return ActionResult', async () => {
-    const message = { content: { text: 'test' } };
+
+  it("should return ActionResult", async () => {
+    const message = { content: { text: "test" } };
     const result = await myAction.handler(mockRuntime, message);
-    
-    expect(result).toHaveProperty('success');
+
+    expect(result).toHaveProperty("success");
     expect(result.success).toBe(true);
   });
 });
@@ -343,19 +351,19 @@ Current goals: {{goals}}
 ### Using composePromptFromState
 
 ```typescript
-import { composePromptFromState } from '@elizaos/core';
+import { composePromptFromState } from "@elizaos/core";
 
 const prompt = composePromptFromState({
   state,
   template: myTemplate,
   additionalContext: {
-    customField: 'value'
-  }
+    customField: "value",
+  },
 });
 
 const response = await runtime.useModel(ModelType.TEXT_LARGE, {
   prompt,
-  runtime
+  runtime,
 });
 ```
 
@@ -366,15 +374,15 @@ const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 ```typescript
 // v1: Service pattern
 export class MyService extends Service {
-  static serviceType = 'my-service';
-  capabilityDescription = 'My service capabilities';
-  
+  static serviceType = "my-service";
+  capabilityDescription = "My service capabilities";
+
   static async start(runtime: IAgentRuntime): Promise<MyService> {
     const service = new MyService(runtime);
     await service.initialize();
     return service;
   }
-  
+
   async stop(): Promise<void> {
     // Cleanup
   }
@@ -386,19 +394,19 @@ export class MyService extends Service {
 ```typescript
 // v1: Event system
 export const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   events: {
     MESSAGE_RECEIVED: [
       async (params) => {
         // Handle message received event
-      }
+      },
     ],
     RUN_COMPLETED: [
       async (params) => {
         // Handle run completed event
-      }
-    ]
-  }
+      },
+    ],
+  },
 };
 ```
 
@@ -421,7 +429,7 @@ node_modules
 !dist/**
 !package.json
 !readme.md
-!tsup.config.ts
+!build.ts
 ```
 
 ### Add MIT License
@@ -431,6 +439,7 @@ Create a `LICENSE` file with MIT license text.
 ### Verify package.json Fields
 
 Ensure all required fields are present:
+
 - [ ] `name`, `version`, `description`
 - [ ] `main`, `types`, `module`
 - [ ] `author`, `license`, `repository`
@@ -446,10 +455,10 @@ Ensure all required fields are present:
 
 ```typescript
 return {
-  success: true,  // REQUIRED
+  success: true, // REQUIRED
   text: "Response",
   values: {},
-  data: {}
+  data: {},
 };
 ```
 
@@ -458,7 +467,7 @@ return {
 **Solution**: Update imports to use `bun:test`:
 
 ```typescript
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, mock } from "bun:test";
 ```
 
 ### Issue: State composition performance
@@ -468,8 +477,8 @@ import { describe, it, expect, mock } from 'bun:test';
 ```typescript
 const state = await runtime.composeState(
   message,
-  ['RECENT_MESSAGES', 'CHARACTER'],
-  true  // onlyInclude
+  ["RECENT_MESSAGES", "CHARACTER"],
+  true, // onlyInclude
 );
 ```
 
@@ -479,10 +488,12 @@ const state = await runtime.composeState(
 
 ```typescript
 const provider = {
-  name: 'MY_PROVIDER',
-  private: false,  // Make sure it's not private
-  dynamic: false,  // Static providers are included by default
-  get: async () => { /* ... */ }
+  name: "MY_PROVIDER",
+  private: false, // Make sure it's not private
+  dynamic: false, // Static providers are included by default
+  get: async () => {
+    /* ... */
+  },
 };
 ```
 
@@ -505,11 +516,11 @@ bun test
 Create a test agent using your migrated plugin:
 
 ```typescript
-import { myPlugin } from './dist/index.js';
+import { myPlugin } from "./dist/index.js";
 
 const agent = {
-  name: 'TestAgent',
-  plugins: [myPlugin]
+  name: "TestAgent",
+  plugins: [myPlugin],
 };
 
 // Test your plugin functionality
@@ -642,7 +653,7 @@ v1 introduces the concept of "worlds" (servers/environments):
 await runtime.ensureWorldExists({
   id: worldId,
   name: serverName,
-  type: 'discord', // or other platform
+  type: "discord", // or other platform
 });
 
 // Get all rooms in a world
@@ -742,6 +753,7 @@ class MyClient extends Service {
 ## Summary
 
 The migration from 0.x to 1.x involves:
+
 1. Updating package structure and dependencies
 2. Migrating action signatures to return `ActionResult`
 3. Implementing callbacks for user feedback
@@ -758,15 +770,15 @@ Take your time, test thoroughly, and don't hesitate to ask for help in the commu
   <Card title="Plugin Architecture" icon="sitemap" href="/plugins/architecture">
     Understand the new plugin system architecture
   </Card>
-  
-  <Card title="Development Guide" icon="code" href="/plugins/development">
-    Build new plugins with modern patterns
-  </Card>
-  
-  <Card title="Plugin Components" icon="cube" href="/plugins/components">
-    Learn about Actions, Providers, Evaluators, and Services
-  </Card>
-  
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build new plugins with modern patterns
+</Card>
+
+<Card title="Plugin Components" icon="cube" href="/plugins/components">
+  Learn about Actions, Providers, Evaluators, and Services
+</Card>
+
   <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
     Master proven plugin development patterns
   </Card>

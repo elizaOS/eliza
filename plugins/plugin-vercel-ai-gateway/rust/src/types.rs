@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Vercel AI Gateway Plugin Types
 //!
 //! Strong types with Serde validation for all API interactions.
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 /// Image sizes for generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ImageSize {
     /// 256x256 pixels
     #[serde(rename = "256x256")]
@@ -19,6 +20,7 @@ pub enum ImageSize {
     Size512,
     /// 1024x1024 pixels (default)
     #[serde(rename = "1024x1024")]
+    #[default]
     Size1024,
     /// 1792x1024 pixels (landscape)
     #[serde(rename = "1792x1024")]
@@ -28,42 +30,26 @@ pub enum ImageSize {
     Size1024x1792,
 }
 
-impl Default for ImageSize {
-    fn default() -> Self {
-        Self::Size1024
-    }
-}
-
 /// Image quality options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageQuality {
     /// Standard quality (default)
+    #[default]
     Standard,
     /// HD quality
     Hd,
 }
 
-impl Default for ImageQuality {
-    fn default() -> Self {
-        Self::Standard
-    }
-}
-
 /// Image style options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageStyle {
     /// Vivid style (default)
+    #[default]
     Vivid,
     /// Natural style
     Natural,
-}
-
-impl Default for ImageStyle {
-    fn default() -> Self {
-        Self::Vivid
-    }
 }
 
 // ============================================================================

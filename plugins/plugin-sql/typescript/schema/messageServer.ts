@@ -7,10 +7,6 @@ export const messageServerTable = pgTable("message_servers", {
   sourceType: text("source_type").notNull(),
   sourceId: text("source_id"),
   metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at", { mode: "date" })
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
-  updatedAt: timestamp("updated_at", { mode: "date" })
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

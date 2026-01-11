@@ -7,10 +7,10 @@
  * 3. Service can load the wallet on-demand after reloadKeys()
  */
 
-import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
+import { describe, expect, it, vi } from "vitest";
 import { SolanaService } from "../../service";
 
 describe("SolanaService Lazy Loading - Core Scenario", () => {
@@ -35,7 +35,7 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
     const mockRuntime: IAgentRuntime = {
       agentId: "test-agent",
       serverUrl: "http://localhost:3000",
-      databaseAdapter: {} as any,
+      databaseAdapter: {} as unknown as IAgentRuntime["databaseAdapter"],
       token: "test-token",
       character: {
         name: "Test Agent",
@@ -43,38 +43,40 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
           secrets: {}, // NO WALLET HERE!
           voice: { model: "en_US-male-medium" },
         },
-      } as any,
+      } as unknown as IAgentRuntime["character"],
       providers: [],
       actions: [],
       evaluators: [],
       plugins: [],
-      messageManager: {} as any,
-      descriptionManager: {} as any,
-      documentsManager: {} as any,
-      knowledgeManager: {} as any,
-      loreManager: {} as any,
-      cacheManager: {} as any,
+      messageManager: {} as unknown as IAgentRuntime["messageManager"],
+      descriptionManager: {} as unknown as IAgentRuntime["descriptionManager"],
+      documentsManager: {} as unknown as IAgentRuntime["documentsManager"],
+      knowledgeManager: {} as unknown as IAgentRuntime["knowledgeManager"],
+      loreManager: {} as unknown as IAgentRuntime["loreManager"],
+      cacheManager: {} as unknown as IAgentRuntime["cacheManager"],
       services: new Map(),
       getSetting: vi.fn((key: string) => {
         // Support both SOLANA_* and WALLET_* prefixes
         const character = mockRuntime.character;
-        const characterSettings = character && character.settings;
-        const characterSettingsSecrets = characterSettings && characterSettings.secrets;
+        const characterSettings = character?.settings;
+        const characterSettingsSecrets = characterSettings?.secrets;
         if (key === "WALLET_PRIVATE_KEY" || key === "SOLANA_PRIVATE_KEY") {
-          return characterSettingsSecrets && characterSettingsSecrets[key];
+          return characterSettingsSecrets?.[key];
         }
         if (key === "WALLET_PUBLIC_KEY" || key === "SOLANA_PUBLIC_KEY") {
-          return characterSettingsSecrets && characterSettingsSecrets[key];
+          return characterSettingsSecrets?.[key];
         }
         return undefined;
       }),
       setSetting: vi.fn((key: string, value: string) => {
         const character = mockRuntime.character;
-        const characterSettings = character && character.settings;
+        const characterSettings = character?.settings;
         if (!characterSettings || !characterSettings.secrets) {
-          mockRuntime.character.settings!.secrets = {};
+          if (mockRuntime.character.settings) {
+            mockRuntime.character.settings.secrets = {};
+          }
         }
-        const characterSettingsSecrets = mockRuntime.character.settings && mockRuntime.character.settings.secrets;
+        const characterSettingsSecrets = mockRuntime.character.settings?.secrets;
         if (characterSettingsSecrets) {
           characterSettingsSecrets[key] = value;
         }
@@ -91,7 +93,7 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
         error: vi.fn(() => {}),
         success: vi.fn(() => {}),
       },
-    } as any;
+    } as unknown as IAgentRuntime;
 
     // Step 1: Create service WITHOUT wallet
     console.log("📝 Step 1: Creating SolanaService without wallet...");
@@ -105,15 +107,18 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
 
     // Step 3: Add wallet via setSetting (simulating wallet creation)
     console.log("📝 Step 3: Adding wallet via runtime.setSetting...");
-    mockRuntime.character.settings!.secrets = {
-      WALLET_PRIVATE_KEY: testPrivateKey, // Note: must use WALLET_PRIVATE_KEY or SOLANA_PRIVATE_KEY
-      WALLET_PUBLIC_KEY: testPublicKey.toBase58(),
-    };
+    if (mockRuntime.character.settings) {
+      mockRuntime.character.settings.secrets = {
+        WALLET_PRIVATE_KEY: testPrivateKey, // Note: must use WALLET_PRIVATE_KEY or SOLANA_PRIVATE_KEY
+        WALLET_PUBLIC_KEY: testPublicKey.toBase58(),
+      };
+    }
     console.log(`✅ Wallet added: ${testPublicKey.toBase58()}`);
 
     // Step 4: Reload keys to pick up new settings
     console.log("📝 Step 4: Calling reloadKeys()...");
-    await (service as any).reloadKeys();
+    // Cast to access private method for testing
+    await (service as unknown as { reloadKeys(): Promise<void> }).reloadKeys();
     console.log("✅ Keys reloaded");
 
     // Step 5: Verify wallet is now available
@@ -121,8 +126,8 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
     const newPublicKey = await service.getPublicKey();
 
     expect(newPublicKey).not.toBeNull();
-    expect(newPublicKey!.toBase58()).toBe(testPublicKey.toBase58());
-    console.log(`✅ Wallet loaded successfully: ${newPublicKey!.toBase58()}`);
+    expect(newPublicKey?.toBase58()).toBe(testPublicKey.toBase58());
+    console.log(`✅ Wallet loaded successfully: ${newPublicKey?.toBase58()}`);
 
     // Step 6: Verify keypair also works
     console.log("📝 Step 6: Verifying keypair is accessible...");

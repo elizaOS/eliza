@@ -23,13 +23,6 @@
     "allowSyntheticDefaultImports": true,
     "noImplicitAny": false
   },
-  "include": [
-    "./**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "__tests__"
-  ]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__"]
 }
-

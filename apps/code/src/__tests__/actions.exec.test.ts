@@ -1,12 +1,12 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
-import { execSync } from "child_process";
+import { execSync } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { getCwd, setCwd } from "../plugin/providers/cwd.js";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { executeShellAction } from "../plugin/actions/execute-shell.js";
 import { gitAction } from "../plugin/actions/git.js";
+import { getCwd, setCwd } from "../plugin/providers/cwd.js";
 
 function createMemory(text: string): Memory {
   return {
@@ -42,7 +42,10 @@ describe("plugin actions: exec + git", () => {
   });
 
   test("EXECUTE_SHELL runs a simple command and captures stdout", async () => {
-    const result = await executeShellAction.handler(runtime, createMemory("$ echo hello"));
+    const result = await executeShellAction.handler(
+      runtime,
+      createMemory("$ echo hello"),
+    );
     expect(result.success).toBe(true);
     expect(result.text).toContain("$ echo hello");
     expect(result.text).toContain("hello");
@@ -51,7 +54,7 @@ describe("plugin actions: exec + git", () => {
   test("EXECUTE_SHELL returns a formatted error when command fails", async () => {
     const result = await executeShellAction.handler(
       runtime,
-      createMemory("run `this_command_does_not_exist_12345`")
+      createMemory("run `this_command_does_not_exist_12345`"),
     );
     expect(result.success).toBe(false);
     expect(result.text.length).toBeGreaterThan(0);
@@ -60,14 +63,17 @@ describe("plugin actions: exec + git", () => {
   test("GIT runs git status inside a repo", async () => {
     execSync("git init", { cwd: tempDir, stdio: "ignore" });
     // Ensure git doesn't complain about missing identity during other operations.
-    execSync("git config user.email \"test@example.com\"", { cwd: tempDir, stdio: "ignore" });
-    execSync("git config user.name \"Test User\"", { cwd: tempDir, stdio: "ignore" });
+    execSync('git config user.email "test@example.com"', {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    execSync('git config user.name "Test User"', {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
 
     const result = await gitAction.handler(runtime, createMemory("git status"));
     expect(result.success).toBe(true);
     expect(result.text).toContain("$ git status");
   });
 });
-
-
-

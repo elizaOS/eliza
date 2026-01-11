@@ -17,11 +17,10 @@
     "@clack/prompts": "^0.11.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.8.0"
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"
   }
 }
-

@@ -1,17 +1,17 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  logger,
-  parseKeyValueXml,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   ModelType,
-  type ActionResult,
+  parseKeyValueXml,
+  type State,
 } from "@elizaos/core";
-import { RolodexService } from "../../services/rolodex.ts";
+import type { RolodexService } from "../../services/rolodex.ts";
 
 interface SearchContactsXmlResult {
   categories?: string;
@@ -139,187 +139,153 @@ export const searchContactsAction: Action = {
       throw new Error("RolodexService not available");
     }
 
-    try {
-      // Build proper state for prompt composition
-      if (!state) {
-        state = {
-          values: {},
-          data: {},
-          text: "",
-        };
-      }
-
-      // Add our values to the state
-      state.values = {
-        ...state.values,
-        message: message.content.text,
-        senderId: message.entityId,
-        senderName: state.values?.senderName || "User",
+    // Build proper state for prompt composition
+    if (!state) {
+      state = {
+        values: {},
+        data: {},
+        text: "",
       };
+    }
 
-      // Compose prompt to extract search criteria
-      const prompt = composePromptFromState({
-        state,
-        template: searchContactsTemplate,
-      });
+    // Add our values to the state
+    state.values = {
+      ...state.values,
+      message: message.content.text,
+      senderId: message.entityId,
+      senderName: state.values?.senderName || "User",
+    };
 
-      // Use LLM to extract search criteria
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt,
-      });
+    // Compose prompt to extract search criteria
+    const prompt = composePromptFromState({
+      state,
+      template: searchContactsTemplate,
+    });
 
-      const parsedResponse =
-        parseKeyValueXml<SearchContactsXmlResult>(response);
+    // Use LLM to extract search criteria
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
 
-      // Build search criteria
-      const criteria: {
-        categories?: string[];
-        tags?: string[];
-        searchTerm?: string;
-      } = {};
+    const parsedResponse = parseKeyValueXml<SearchContactsXmlResult>(response);
 
-      if (parsedResponse?.categories) {
-        criteria.categories = parsedResponse.categories
-          .split(",")
-          .map((c: string) => c.trim())
-          .filter(Boolean);
-      }
+    // Build search criteria
+    const criteria: {
+      categories?: string[];
+      tags?: string[];
+      searchTerm?: string;
+    } = {};
 
-      if (parsedResponse?.searchTerm) {
-        criteria.searchTerm = parsedResponse.searchTerm;
-      }
+    if (parsedResponse?.categories) {
+      criteria.categories = parsedResponse.categories
+        .split(",")
+        .map((c: string) => c.trim())
+        .filter(Boolean);
+    }
 
-      if (parsedResponse?.tags) {
-        criteria.tags = parsedResponse.tags
-          .split(",")
-          .map((t: string) => t.trim())
-          .filter(Boolean);
-      }
+    if (parsedResponse?.searchTerm) {
+      criteria.searchTerm = parsedResponse.searchTerm;
+    }
 
-      // Search contacts
-      const contacts = await rolodexService.searchContacts(criteria);
+    if (parsedResponse?.tags) {
+      criteria.tags = parsedResponse.tags
+        .split(",")
+        .map((t: string) => t.trim())
+        .filter(Boolean);
+    }
 
-      // Get entity names for each contact
-      const contactDetails = await Promise.all(
-        contacts.map(async (contact) => {
-          const entity = await runtime.getEntityById(contact.entityId);
-          return {
-            contact,
-            entity,
-            name: entity?.names[0] || "Unknown",
-          };
-        }),
-      );
+    // Search contacts
+    const contacts = await rolodexService.searchContacts(criteria);
 
-      // Format response
-      let responseText = "";
+    // Get entity names for each contact
+    const contactDetails = await Promise.all(
+      contacts.map(async (contact) => {
+        const entity = await runtime.getEntityById(contact.entityId);
+        return {
+          contact,
+          entity,
+          name: entity?.names[0] || "Unknown",
+        };
+      }),
+    );
 
-      if (contactDetails.length === 0) {
-        responseText = "No contacts found matching your criteria.";
-      } else if (parsedResponse?.intent === "count") {
-        responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""} matching your criteria.`;
-      } else {
-        // Group by category if searching all
-        if (!criteria.categories || criteria.categories.length === 0) {
-          const grouped = contactDetails.reduce(
-            (acc, item) => {
-              item.contact.categories.forEach((cat) => {
-                if (!acc[cat]) acc[cat] = [];
-                acc[cat].push(item);
-              });
-              return acc;
-            },
-            {} as Record<string, typeof contactDetails>,
-          );
+    // Format response
+    let responseText = "";
 
-          responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""}:\n\n`;
-
-          for (const [category, items] of Object.entries(grouped)) {
-            responseText += `**${category.charAt(0).toUpperCase() + category.slice(1)}s:**\n`;
-            items.forEach((item) => {
-              responseText += `- ${item.name}`;
-              if (item.contact.tags.length > 0) {
-                responseText += ` [${item.contact.tags.join(", ")}]`;
-              }
-              responseText += "\n";
+    if (contactDetails.length === 0) {
+      responseText = "No contacts found matching your criteria.";
+    } else if (parsedResponse?.intent === "count") {
+      responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""} matching your criteria.`;
+    } else {
+      // Group by category if searching all
+      if (!criteria.categories || criteria.categories.length === 0) {
+        const grouped = contactDetails.reduce(
+          (acc, item) => {
+            item.contact.categories.forEach((cat) => {
+              if (!acc[cat]) acc[cat] = [];
+              acc[cat].push(item);
             });
-            responseText += "\n";
-          }
-        } else {
-          // Simple list for specific category
-          const categoryName = criteria.categories[0];
-          responseText = `Your ${categoryName}s:\n`;
-          contactDetails.forEach((item) => {
+            return acc;
+          },
+          {} as Record<string, typeof contactDetails>,
+        );
+
+        responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""}:\n\n`;
+
+        for (const [category, items] of Object.entries(grouped)) {
+          responseText += `**${category.charAt(0).toUpperCase() + category.slice(1)}s:**\n`;
+          items.forEach((item) => {
             responseText += `- ${item.name}`;
             if (item.contact.tags.length > 0) {
               responseText += ` [${item.contact.tags.join(", ")}]`;
             }
             responseText += "\n";
           });
+          responseText += "\n";
         }
-      }
-
-      if (callback) {
-        await callback({
-          text: responseText,
-          action: "SEARCH_CONTACTS",
-          metadata: {
-            count: contactDetails.length,
-            criteria,
-            success: true,
-          },
+      } else {
+        // Simple list for specific category
+        const categoryName = criteria.categories[0];
+        responseText = `Your ${categoryName}s:\n`;
+        contactDetails.forEach((item) => {
+          responseText += `- ${item.name}`;
+          if (item.contact.tags.length > 0) {
+            responseText += ` [${item.contact.tags.join(", ")}]`;
+          }
+          responseText += "\n";
         });
       }
-
-      return {
-        success: true,
-        values: {
-          count: contactDetails.length,
-          criteria,
-        },
-        data: {
-          count: contactDetails.length,
-          criteria,
-          contacts: contactDetails.map((d) => ({
-            id: d.contact.entityId,
-            name: d.name,
-            categories: d.contact.categories,
-            tags: d.contact.tags,
-          })),
-        },
-        text: responseText,
-      };
-    } catch (error) {
-      logger.error(
-        "[SearchContacts] Error searching contacts:",
-        error instanceof Error ? error.message : String(error),
-      );
-
-      const errorText = `I couldn't search contacts. ${
-        error instanceof Error ? error.message : "Please try again."
-      }`;
-
-      if (callback) {
-        await callback({
-          text: errorText,
-          action: "SEARCH_CONTACTS",
-          metadata: { error: true },
-        });
-      }
-
-      return {
-        success: false,
-        values: {
-          count: 0,
-          criteria: {},
-        },
-        data: {
-          count: 0,
-          criteria: {},
-        },
-        text: errorText,
-      };
     }
+
+    if (callback) {
+      await callback({
+        text: responseText,
+        action: "SEARCH_CONTACTS",
+        metadata: {
+          count: contactDetails.length,
+          criteria,
+          success: true,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      values: {
+        count: contactDetails.length,
+        criteria,
+      },
+      data: {
+        count: contactDetails.length,
+        criteria,
+        contacts: contactDetails.map((d) => ({
+          id: d.contact.entityId,
+          name: d.name,
+          categories: d.contact.categories,
+          tags: d.contact.tags,
+        })),
+      },
+      text: responseText,
+    };
   },
 };
-

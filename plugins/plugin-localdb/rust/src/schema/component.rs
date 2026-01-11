@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Component schema for elizaOS database
 
 /// SQL for creating the components table

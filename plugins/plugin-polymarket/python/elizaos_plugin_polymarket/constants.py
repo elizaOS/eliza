@@ -1,5 +1,8 @@
 """
 Constants for the Polymarket plugin.
+
+These constants are shared across the Python implementation and match
+the TypeScript and Rust implementations for consistency.
 """
 
 # =============================================================================
@@ -45,7 +48,7 @@ USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
 USDC_DECIMALS = 6
 
 # =============================================================================
-# CTF Configuration
+# CTF (Conditional Tokens Framework) Configuration
 # =============================================================================
 
 CTF_EXCHANGE_ADDRESS = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
@@ -67,5 +70,3 @@ WS_MAX_RECONNECT_ATTEMPTS = 5
 DEFAULT_PAGE_LIMIT = 100
 MAX_PAGE_LIMIT = 500
 END_CURSOR = "LTE="
-
-

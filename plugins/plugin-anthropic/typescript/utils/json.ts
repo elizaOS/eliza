@@ -23,7 +23,7 @@ import type {
  */
 export function ensureReflectionProperties(
   obj: ExtractedJSON,
-  isReflection: boolean,
+  isReflection: boolean
 ): ExtractedJSON {
   if (!isReflection) {
     return obj;
@@ -34,10 +34,13 @@ export function ensureReflectionProperties(
     const jsonObj = obj as JsonObject;
     return {
       ...jsonObj,
-      thought: "thought" in jsonObj && typeof jsonObj["thought"] === "string" ? jsonObj["thought"] : "",
+      thought:
+        "thought" in jsonObj && typeof jsonObj["thought"] === "string" ? jsonObj["thought"] : "",
       facts: "facts" in jsonObj && Array.isArray(jsonObj["facts"]) ? jsonObj["facts"] : [],
       relationships:
-        "relationships" in jsonObj && Array.isArray(jsonObj["relationships"]) ? jsonObj["relationships"] : [],
+        "relationships" in jsonObj && Array.isArray(jsonObj["relationships"])
+          ? jsonObj["relationships"]
+          : [],
     };
   }
 
@@ -49,7 +52,7 @@ export function ensureReflectionProperties(
  */
 function restoreCodeBlocks(
   obj: JsonValue,
-  placeholders: readonly CodeBlockPlaceholder[],
+  placeholders: readonly CodeBlockPlaceholder[]
 ): JsonValue {
   if (typeof obj === "string") {
     let result = obj;
@@ -117,12 +120,13 @@ function extractFromCodeBlocks(text: string): string | null {
 
   // Second priority: any code block with JSON-like content
   const anyBlockRegex = /```(?:\w*)\s*([\s\S]*?)\s*```/g;
-  let match;
-  while ((match = anyBlockRegex.exec(text)) !== null) {
+  let match: RegExpExecArray | null = anyBlockRegex.exec(text);
+  while (match !== null) {
     const blockContent = match[1]?.trim();
     if (blockContent?.startsWith("{") && blockContent.endsWith("}")) {
       return blockContent;
     }
+    match = anyBlockRegex.exec(text);
   }
 
   return null;
@@ -178,13 +182,14 @@ function extractThoughtMessage(text: string): ReconstructedResponse | Reflection
       let remainingContent = text.replace(thoughtPattern, "");
       const codeBlocks: Array<{ language: string; code: string }> = [];
       const codeBlockRegex = /```([\w]*)\n([\s\S]*?)```/g;
-      let codeMatch;
+      let codeMatch: RegExpExecArray | null = codeBlockRegex.exec(remainingContent);
 
-      while ((codeMatch = codeBlockRegex.exec(remainingContent)) !== null) {
+      while (codeMatch !== null) {
         codeBlocks.push({
           language: codeMatch[1] || "text",
           code: codeMatch[2]?.trim() ?? "",
         });
+        codeMatch = codeBlockRegex.exec(remainingContent);
       }
 
       if (codeBlocks.length > 0) {
@@ -241,7 +246,7 @@ function handleJsonWithCodeBlocks(text: string): JsonObject | null {
           content: `\`\`\`${language}\n${code}\`\`\``,
         });
         return placeholder;
-      },
+      }
     );
 
     let parsed = tryRepairParse(textWithPlaceholders);

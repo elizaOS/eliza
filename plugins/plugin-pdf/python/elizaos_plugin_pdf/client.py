@@ -255,7 +255,7 @@ class PdfClient:
                 "%Y-%m-%dT%H:%M:%S",
             ]:
                 try:
-                    return datetime.strptime(date_str[:len(fmt.replace("%", ""))], fmt)
+                    return datetime.strptime(date_str[: len(fmt.replace("%", ""))], fmt)
                 except ValueError:
                     continue
 
@@ -283,9 +283,7 @@ class PdfClient:
         except Exception as e:
             raise PdfError(f"Failed to get document info: {e}", cause=e) from e
 
-    async def get_document_info_from_file(
-        self, file_path: str | Path
-    ) -> PdfDocumentInfo:
+    async def get_document_info_from_file(self, file_path: str | Path) -> PdfDocumentInfo:
         """
         Get document information from a PDF file.
 
@@ -324,5 +322,8 @@ class PdfClient:
             return len(reader.pages)
 
         return await self._loop.run_in_executor(None, _count_pages)
+
+
+
 
 

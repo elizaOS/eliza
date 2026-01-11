@@ -15,7 +15,7 @@ import { getApiKeyOptional, getBaseURL, isBrowser } from "../utils/config";
  * @returns Configured Anthropic client factory
  */
 export function createAnthropicClient(runtime: IAgentRuntime) {
-  const apiKey = isBrowser() ? undefined : getApiKeyOptional(runtime) ?? undefined;
+  const apiKey = isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
   const baseURL = getBaseURL(runtime);
 
   return createAnthropic({
@@ -35,7 +35,7 @@ export function createAnthropicClient(runtime: IAgentRuntime) {
  * @returns Configured Anthropic client factory with topP handling
  */
 export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
-  const apiKey = isBrowser() ? undefined : getApiKeyOptional(runtime) ?? undefined;
+  const apiKey = isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
   const baseURL = getBaseURL(runtime);
 
   const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {

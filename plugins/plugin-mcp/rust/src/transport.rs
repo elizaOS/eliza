@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Transport implementations for MCP connections.
 
 use async_trait::async_trait;

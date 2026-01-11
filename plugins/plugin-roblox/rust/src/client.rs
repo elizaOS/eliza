@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Roblox Open Cloud API Client.
 
 use crate::config::RobloxConfig;
@@ -9,7 +10,7 @@ use crate::types::{
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 const ROBLOX_API_BASE: &str = "https://apis.roblox.com";
 const USERS_API_BASE: &str = "https://users.roblox.com";
@@ -359,7 +360,6 @@ impl RobloxClient {
 
         #[derive(Deserialize)]
         struct GameData {
-            id: u64,
             name: String,
             description: Option<String>,
             creator: CreatorData,
@@ -423,5 +423,7 @@ impl RobloxClient {
         self.config.dry_run
     }
 }
+
+
 
 

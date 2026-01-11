@@ -12,7 +12,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
-import BigNumber from "bignumber.js";
+import BigNumber, { type BigNumber as BigNumberType } from "../bn";
 import { SOLANA_SERVICE_NAME } from "../constants";
 import { getWalletKey } from "../keypairUtils";
 import type { SolanaService } from "../service";
@@ -27,10 +27,7 @@ import type { Item } from "../types";
  * @returns {Promise<number>} - Number of decimals for the token.
  * @throws {Error} - If unable to fetch token decimals.
  */
-async function getTokenDecimals(
-  connection: Connection,
-  mintAddress: string,
-): Promise<number> {
+async function getTokenDecimals(connection: Connection, mintAddress: string): Promise<number> {
   const mintPublicKey = new PublicKey(mintAddress);
   const tokenAccountInfo = await connection.getParsedAccountInfo(mintPublicKey);
 
@@ -64,25 +61,21 @@ async function swapToken(
   walletPublicKey: PublicKey,
   inputTokenCA: string,
   outputTokenCA: string,
-  amount: number,
+  amount: number
 ): Promise<unknown> {
   try {
     // Validate SOL_ADDRESS if we're comparing against it
-    let decimals: BigNumber;
+    let decimals: BigNumberType;
     if (process.env.SOL_ADDRESS && inputTokenCA === process.env.SOL_ADDRESS) {
       decimals = new BigNumber(9);
     } else {
-      decimals = new BigNumber(
-        await getTokenDecimals(connection, inputTokenCA),
-      );
+      decimals = new BigNumber(await getTokenDecimals(connection, inputTokenCA));
     }
 
     logger.log("Decimals:", decimals.toString());
 
     const amountBN = new BigNumber(amount);
-    const adjustedAmount = amountBN.multipliedBy(
-      new BigNumber(10).pow(decimals),
-    );
+    const adjustedAmount = amountBN.multipliedBy(new BigNumber(10).pow(decimals));
 
     logger.log(
       {
@@ -90,11 +83,11 @@ async function swapToken(
         outputMint: outputTokenCA,
         amount: adjustedAmount,
       },
-      "Fetching quote with params:",
+      "Fetching quote with params:"
     );
 
     const quoteResponse = await fetch(
-      `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`,
+      `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`
     );
     const quoteData = (await quoteResponse.json()) as {
       error?: string;
@@ -102,9 +95,7 @@ async function swapToken(
 
     if (!quoteData || quoteData.error) {
       logger.error({ quoteData }, "Quote error");
-      throw new Error(
-        `Failed to get quote: ${quoteData?.error || "Unknown error"}`,
-      );
+      throw new Error(`Failed to get quote: ${quoteData?.error || "Unknown error"}`);
     }
 
     const swapRequestBody = {
@@ -132,7 +123,7 @@ async function swapToken(
     if (!swapData || !swapData.swapTransaction) {
       logger.error({ swapData }, "Swap error");
       throw new Error(
-        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`,
+        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`
       );
     }
 
@@ -153,12 +144,10 @@ async function swapToken(
  */
 async function getTokenFromWallet(
   runtime: IAgentRuntime,
-  tokenSymbol: string,
+  tokenSymbol: string
 ): Promise<string | null> {
   try {
-    const solanaService = runtime.getService(
-      SOLANA_SERVICE_NAME,
-    ) as SolanaService;
+    const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService;
     if (!solanaService) {
       throw new Error("SolanaService not initialized");
     }
@@ -169,7 +158,7 @@ async function getTokenFromWallet(
     }
 
     const token = walletData.items.find(
-      (item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase(),
+      (item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase()
     );
 
     return token ? token.address : null;
@@ -242,14 +231,12 @@ export const executeSwap: Action = {
     message: Memory,
     state: State | undefined,
     _options: { [key: string]: unknown } | undefined,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<undefined | ActionResult | undefined> => {
     state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
 
     try {
-      const solanaService = runtime.getService(
-        SOLANA_SERVICE_NAME,
-      ) as SolanaService;
+      const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService;
       if (!solanaService) {
         throw new Error("SolanaService not initialized");
       }
@@ -278,7 +265,7 @@ export const executeSwap: Action = {
       if (response.inputTokenSymbol?.toUpperCase() === "SOL") {
         if (!process.env.SOL_ADDRESS) {
           throw new Error(
-            "SOL_ADDRESS is not configured. Please set SOL_ADDRESS in your environment variables to swap SOL tokens.",
+            "SOL_ADDRESS is not configured. Please set SOL_ADDRESS in your environment variables to swap SOL tokens."
           );
         }
         response.inputTokenCA = process.env.SOL_ADDRESS;
@@ -286,7 +273,7 @@ export const executeSwap: Action = {
       if (response.outputTokenSymbol?.toUpperCase() === "SOL") {
         if (!process.env.SOL_ADDRESS) {
           throw new Error(
-            "SOL_ADDRESS is not configured. Please set SOL_ADDRESS in your environment variables to swap SOL tokens.",
+            "SOL_ADDRESS is not configured. Please set SOL_ADDRESS in your environment variables to swap SOL tokens."
           );
         }
         response.outputTokenCA = process.env.SOL_ADDRESS;
@@ -328,7 +315,7 @@ export const executeSwap: Action = {
         walletPublicKey as PublicKey,
         response.inputTokenCA as string,
         response.outputTokenCA as string,
-        response.amount as number,
+        response.amount as number
       )) as { swapTransaction: string };
 
       const transactionBuf = Buffer.from(swapResult.swapTransaction, "base64");
@@ -336,9 +323,7 @@ export const executeSwap: Action = {
 
       const { keypair } = await getWalletKey(runtime, true);
       if (keypair?.publicKey.toBase58() !== walletPublicKey?.toBase58()) {
-        throw new Error(
-          "Generated public key doesn't match expected public key",
-        );
+        throw new Error("Generated public key doesn't match expected public key");
       }
 
       if (keypair) {
@@ -360,7 +345,7 @@ export const executeSwap: Action = {
           blockhash: latestBlockhash.blockhash,
           lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
         },
-        "confirmed",
+        "confirmed"
       );
 
       if (confirmation.value.err) {

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from elizaos_plugin_rss.parser import create_empty_feed, parse_rss_to_json
+from elizaos_plugin_rss.parser import parse_rss_to_json
 from elizaos_plugin_rss.types import RssConfig, RssFeed
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ class RssClient:
         """Close the HTTP client."""
         await self._client.aclose()
 
-    async def __aenter__(self) -> "RssClient":
+    async def __aenter__(self) -> RssClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -76,17 +76,17 @@ class RssClient:
         try:
             response = await self._client.get(url)
             response.raise_for_status()
-            
+
             content = response.text
             if not content:
                 raise RssClientError(f"Empty response from {url}")
-            
+
             try:
                 feed = parse_rss_to_json(content)
                 return feed
             except ValueError as e:
                 raise RssClientError(f"Failed to parse feed: {e}") from e
-                
+
         except httpx.HTTPStatusError as e:
             raise RssClientError(
                 f"HTTP error fetching {url}: {e.response.status_code}",
@@ -153,7 +153,7 @@ def extract_urls(text: str) -> list[str]:
 
     for raw in candidates:
         # Trim leading wrappers
-        candidate = re.sub(r'^[(\[{<\'"]+', '', raw)
+        candidate = re.sub(r'^[(\[{<\'"]+', "", raw)
 
         # Add scheme if missing
         with_scheme = f"http://{candidate}" if candidate.startswith("www.") else candidate
@@ -168,12 +168,13 @@ def extract_urls(text: str) -> list[str]:
         # Normalize
         try:
             from urllib.parse import urlparse, urlunparse
+
             parsed = urlparse(with_scheme)
             normalized = urlunparse(parsed)
             if normalized not in seen:
                 seen.add(normalized)
                 results.append(normalized)
-        except Exception:  # noqa: S110
+        except Exception:  # noqa: S110, S112
             continue
 
     return results
@@ -183,6 +184,7 @@ def _is_valid_url(url: str) -> bool:
     """Check if a string is a valid URL."""
     try:
         from urllib.parse import urlparse
+
         result = urlparse(url)
         return all([result.scheme, result.netloc])
     except Exception:  # noqa: S110
@@ -200,7 +202,7 @@ def format_relative_time(timestamp_ms: int) -> str:
         Human-readable relative time string.
     """
     import time
-    
+
     now_ms = int(time.time() * 1000)
     time_since = now_ms - timestamp_ms
     minutes_since = time_since // 60000
@@ -215,4 +217,3 @@ def format_relative_time(timestamp_ms: int) -> str:
         return f"{minutes_since} minute{'s' if minutes_since > 1 else ''} ago"
     else:
         return "just now"
-

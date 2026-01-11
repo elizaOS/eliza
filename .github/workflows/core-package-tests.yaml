@@ -8,16 +8,16 @@ concurrency:
 on:
   push:
     branches:
-      - '*'
+      - "*"
     paths:
-      - 'packages/**'
-      - '.github/workflows/core-package-tests.yaml'
+      - "packages/**"
+      - ".github/workflows/core-package-tests.yaml"
   pull_request:
     branches:
-      - '*'
+      - "*"
     paths:
-      - 'packages/**'
-      - '.github/workflows/core-package-tests.yaml'
+      - "packages/**"
+      - ".github/workflows/core-package-tests.yaml"
 
 env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -40,14 +40,14 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         env:
-          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+          SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
         run: bun install
 
       - name: Build packages
@@ -58,7 +58,7 @@ jobs:
 
       - name: Install cli now that it's built
         env:
-          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+          SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
         run: bun install
 
       - name: Check for API key
@@ -97,14 +97,14 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         env:
-          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+          SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
         run: bun install
 
       - name: Build packages
@@ -121,7 +121,7 @@ jobs:
 
       - name: Install cli now that it's built
         env:
-          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+          SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
         run: bun install
 
       - name: Run core package tests
@@ -134,7 +134,7 @@ jobs:
           # Prevent interactive prompts
           ELIZA_NONINTERACTIVE: true
           # Set memory limits for CI
-          NODE_OPTIONS: '--max-old-space-size=2048'
+          NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
           # Set test timeout for CI (60 seconds per test)
           export BUN_TEST_TIMEOUT=60000

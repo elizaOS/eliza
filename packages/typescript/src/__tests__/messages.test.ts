@@ -1,4 +1,4 @@
-import {  beforeAll, describe, expect, it, test  } from "vitest";
+import { beforeAll, describe, expect, it, test } from "vitest";
 import { formatEntities } from "../entities";
 import type { Content, Entity, Memory, UUID } from "../types";
 import { formatMessages, formatTimestamp } from "../utils";

@@ -5,13 +5,14 @@
     "rootDir": ".",
     "types": ["node"],
     "noEmit": false,
+    "allowImportingTsExtensions": false,
     "declaration": true,
     "skipLibCheck": true,
     "paths": {
       "@elizaos/core": ["../typescript/src/index.ts"]
-    }
+    },
+    "baseUrl": "../.."
   },
   "include": ["typescript/**/*.ts"],
   "exclude": ["typescript/**/*.test.ts", "node_modules", "dist"]
 }
-

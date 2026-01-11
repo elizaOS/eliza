@@ -1,8 +1,8 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  isToolSelectionName,
-  isToolSelectionArgument,
   isResourceSelection,
+  isToolSelectionArgument,
+  isToolSelectionName,
 } from "../../src/utils/schemas";
 
 describe("Schema Type Guards", () => {
@@ -114,5 +114,3 @@ describe("Schema Type Guards", () => {
     });
   });
 });
-
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Text-to-speech model handler.
 
 use crate::error::Result;
@@ -21,5 +22,10 @@ pub async fn handle_text_to_speech(
     let client = ElizaCloudClient::new(config)?;
     client.generate_speech(params).await
 }
+
+
+
+
+
 
 

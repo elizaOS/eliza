@@ -40,7 +40,7 @@ interface ResolvedTextParams {
 function resolveTextParams(
   params: GenerateTextParams,
   modelName: ModelName,
-  cotBudget: number,
+  cotBudget: number
 ): ResolvedTextParams {
   const prompt = params.prompt;
   const stopSequences = params.stopSequences ?? [];
@@ -56,7 +56,7 @@ function resolveTextParams(
   if (topPExplicit && temperatureExplicit) {
     throw new Error(
       "Cannot use both temperature and topP parameters simultaneously. " +
-        "Anthropic's API only supports one at a time. Please provide only one.",
+        "Anthropic's API only supports one at a time. Please provide only one."
     );
   }
 
@@ -111,7 +111,7 @@ async function generateTextWithModel(
   params: GenerateTextParams,
   modelName: ModelName,
   modelSize: ModelSize,
-  modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
+  modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE
 ): Promise<string> {
   const anthropic = createAnthropicClientWithTopPSupport(runtime);
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
@@ -162,7 +162,7 @@ async function generateTextWithModel(
  */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
-  params: GenerateTextParams,
+  params: GenerateTextParams
 ): Promise<string> {
   const modelName = getSmallModel(runtime);
   return generateTextWithModel(runtime, params, modelName, "small", ModelType.TEXT_SMALL);
@@ -177,7 +177,7 @@ export async function handleTextSmall(
  */
 export async function handleTextLarge(
   runtime: IAgentRuntime,
-  params: GenerateTextParams,
+  params: GenerateTextParams
 ): Promise<string> {
   const modelName = getLargeModel(runtime);
   return generateTextWithModel(runtime, params, modelName, "large", ModelType.TEXT_LARGE);

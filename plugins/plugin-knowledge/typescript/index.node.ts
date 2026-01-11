@@ -6,6 +6,3 @@
  */
 
 export * from "./index";
-
-
-

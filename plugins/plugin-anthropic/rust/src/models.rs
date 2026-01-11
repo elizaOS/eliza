@@ -131,6 +131,7 @@ impl std::fmt::Display for Model {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for Model {
     fn default() -> Self {
         Self::large()

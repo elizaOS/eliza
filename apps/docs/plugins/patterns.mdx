@@ -45,7 +45,10 @@ For interface definitions, see [Plugin Reference](/plugins/reference#action-inte
 The `HandlerCallback` provides a mechanism for actions to send immediate feedback to users before the action completes:
 
 ```typescript
-export type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
+export type HandlerCallback = (
+  response: Content,
+  files?: any,
+) => Promise<Memory[]>;
 ```
 
 Example usage:
@@ -64,16 +67,16 @@ async handler(
       text: `Starting to process your request...`,
       source: message.content.source
     });
-    
+
     // Perform action logic
     const result = await performComplexOperation();
-    
+
     // Send success message to user via callback
     await callback?.({
       text: `Created issue: ${result.title} (${result.identifier})\n\nView it at: ${result.url}`,
       source: message.content.source
     });
-    
+
     // Return structured result for potential chaining
     return {
       success: true,
@@ -90,7 +93,7 @@ async handler(
       text: `Failed to create issue: ${error.message}`,
       source: message.content.source
     });
-    
+
     return {
       success: false,
       text: `Failed to create issue: ${error.message}`,
@@ -108,7 +111,7 @@ When multiple actions are executed in sequence, each action receives an `ActionC
 export interface ActionContext {
   /** Results from previously executed actions in this run */
   previousResults: ActionResult[];
-  
+
   /** Get a specific previous result by action name */
   getPreviousResult?: (actionName: string) => ActionResult | undefined;
 }
@@ -126,10 +129,10 @@ async handler(
 ): Promise<ActionResult> {
   // Access the action context
   const context = options?.context as ActionContext;
-  
+
   // Get results from a specific previous action
   const previousResult = context?.getPreviousResult?.('CREATE_LINEAR_ISSUE');
-  
+
   if (previousResult?.data?.issueId) {
     // Use data from previous action
     const issueId = previousResult.data.issueId;
@@ -157,7 +160,7 @@ The runtime maintains a working memory that stores recent action results:
 const memoryEntry: WorkingMemoryEntry = {
   actionName: action.name,
   result: actionResult,
-  timestamp: Date.now()
+  timestamp: Date.now(),
 };
 ```
 
@@ -171,14 +174,17 @@ Actions can use the LLM to make intelligent decisions based on context:
 
 ```typescript
 export const muteRoomAction: Action = {
-  name: 'MUTE_ROOM',
-  similes: ['SHUT_UP', 'BE_QUIET', 'STOP_TALKING', 'SILENCE'],
-  description: 'Mutes a room if asked to or if the agent is being annoying',
+  name: "MUTE_ROOM",
+  similes: ["SHUT_UP", "BE_QUIET", "STOP_TALKING", "SILENCE"],
+  description: "Mutes a room if asked to or if the agent is being annoying",
 
   validate: async (runtime, message) => {
     // Check if already muted
-    const roomState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
-    return roomState !== 'MUTED';
+    const roomState = await runtime.getParticipantUserState(
+      message.roomId,
+      runtime.agentId,
+    );
+    return roomState !== "MUTED";
   },
 
   handler: async (runtime, message, state) => {
@@ -196,27 +202,34 @@ Respond YES if:
 
 Otherwise NO.`;
 
-    const prompt = composePromptFromState({ state, template: shouldMuteTemplate });
+    const prompt = composePromptFromState({
+      state,
+      template: shouldMuteTemplate,
+    });
     const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       runtime,
     });
 
-    if (decision.toLowerCase().includes('yes')) {
-      await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'MUTED');
+    if (decision.toLowerCase().includes("yes")) {
+      await runtime.setParticipantUserState(
+        message.roomId,
+        runtime.agentId,
+        "MUTED",
+      );
 
       return {
         success: true,
-        text: 'Going silent in this room',
+        text: "Going silent in this room",
         values: { roomMuted: true },
       };
     }
 
     return {
       success: false,
-      text: 'Continuing to participate'
+      text: "Continuing to participate",
     };
-  }
+  },
 };
 ```
 
@@ -226,36 +239,36 @@ Actions that need to perform multiple steps with intermediate feedback:
 
 ```typescript
 export const deployContractAction: Action = {
-  name: 'DEPLOY_CONTRACT',
-  description: 'Deploy a smart contract with multiple steps',
+  name: "DEPLOY_CONTRACT",
+  description: "Deploy a smart contract with multiple steps",
 
   handler: async (runtime, message, state, options, callback) => {
     try {
       // Step 1: Compile
       await callback?.({
-        text: '📝 Compiling contract...',
-        actions: ['DEPLOY_CONTRACT']
+        text: "📝 Compiling contract...",
+        actions: ["DEPLOY_CONTRACT"],
       });
       const compiled = await compileContract(state.contractCode);
 
       // Step 2: Estimate gas
       await callback?.({
-        text: '⛽ Estimating gas costs...',
-        actions: ['DEPLOY_CONTRACT']
+        text: "⛽ Estimating gas costs...",
+        actions: ["DEPLOY_CONTRACT"],
       });
       const gasEstimate = await estimateGas(compiled);
 
       // Step 3: Deploy
       await callback?.({
         text: `🚀 Deploying with gas: ${gasEstimate}...`,
-        actions: ['DEPLOY_CONTRACT']
+        actions: ["DEPLOY_CONTRACT"],
       });
       const deployed = await deploy(compiled, gasEstimate);
 
       // Step 4: Verify
       await callback?.({
-        text: '✅ Verifying deployment...',
-        actions: ['DEPLOY_CONTRACT']
+        text: "✅ Verifying deployment...",
+        actions: ["DEPLOY_CONTRACT"],
       });
       await verifyContract(deployed.address);
 
@@ -265,21 +278,21 @@ export const deployContractAction: Action = {
         values: {
           contractAddress: deployed.address,
           transactionHash: deployed.txHash,
-          gasUsed: deployed.gasUsed
+          gasUsed: deployed.gasUsed,
         },
         data: {
           deployment: deployed,
-          verification: true
-        }
+          verification: true,
+        },
       };
     } catch (error) {
       return {
         success: false,
         text: `Deployment failed: ${error.message}`,
-        error
+        error,
       };
     }
-  }
+  },
 };
 ```
 
@@ -289,47 +302,47 @@ Pattern for external API calls with retries and error handling:
 
 ```typescript
 export const apiAction: Action = {
-  name: 'API_CALL',
-  
+  name: "API_CALL",
+
   handler: async (runtime, message, state, options, callback) => {
     const maxRetries = 3;
     let lastError: Error | null = null;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await callback?.({
-          text: `Attempt ${attempt}/${maxRetries}...`
+          text: `Attempt ${attempt}/${maxRetries}...`,
         });
-        
+
         const result = await callExternalAPI({
           endpoint: state.endpoint,
           data: state.data,
-          timeout: 5000
+          timeout: 5000,
         });
-        
+
         return {
           success: true,
-          text: 'API call successful',
-          data: result
+          text: "API call successful",
+          data: result,
         };
       } catch (error) {
         lastError = error as Error;
-        
+
         if (attempt < maxRetries) {
           await callback?.({
-            text: `Attempt ${attempt} failed, retrying...`
+            text: `Attempt ${attempt} failed, retrying...`,
           });
-          await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
+          await new Promise((r) => setTimeout(r, 1000 * attempt)); // Exponential backoff
         }
       }
     }
-    
+
     return {
       success: false,
       text: `API call failed after ${maxRetries} attempts`,
-      error: lastError
+      error: lastError,
     };
-  }
+  },
 };
 ```
 
@@ -339,38 +352,34 @@ Actions that adapt based on conversation context:
 
 ```typescript
 export const contextAwareAction: Action = {
-  name: 'CONTEXT_RESPONSE',
-  
+  name: "CONTEXT_RESPONSE",
+
   handler: async (runtime, message, state, options, callback) => {
     // Analyze conversation sentiment
     const sentiment = await analyzeSentiment(state.recentMessages);
-    
+
     // Adjust response based on context
     let responseStrategy: string;
     if (sentiment.score < -0.5) {
-      responseStrategy = 'empathetic';
+      responseStrategy = "empathetic";
     } else if (sentiment.score > 0.5) {
-      responseStrategy = 'enthusiastic';
+      responseStrategy = "enthusiastic";
     } else {
-      responseStrategy = 'neutral';
+      responseStrategy = "neutral";
     }
-    
+
     // Generate context-appropriate response
-    const response = await generateResponse(
-      state,
-      responseStrategy,
-      runtime
-    );
-    
+    const response = await generateResponse(state, responseStrategy, runtime);
+
     return {
       success: true,
       text: response.text,
       values: {
         sentiment: sentiment.score,
-        strategy: responseStrategy
-      }
+        strategy: responseStrategy,
+      },
     };
-  }
+  },
 };
 ```
 
@@ -381,17 +390,17 @@ export const contextAwareAction: Action = {
 ```typescript
 // Compose multiple actions into higher-level operations
 export const compositeAction: Action = {
-  name: 'SEND_AND_TRACK',
-  description: 'Send a message and track its delivery',
+  name: "SEND_AND_TRACK",
+  description: "Send a message and track its delivery",
 
   handler: async (runtime, message, state, options, callback) => {
     // Execute sub-actions
     const sendResult = await sendMessageAction.handler(
-      runtime, 
-      message, 
-      state, 
-      options, 
-      callback
+      runtime,
+      message,
+      state,
+      options,
+      callback,
     );
 
     if (!sendResult.success) {
@@ -400,17 +409,20 @@ export const compositeAction: Action = {
 
     // Track the sent message
     const trackingId = generateTrackingId();
-    await runtime.createMemory({
-      id: trackingId,
-      entityId: message.entityId,
-      roomId: message.roomId,
-      content: {
-        type: 'message_tracking',
-        sentTo: sendResult.data.targetId,
-        sentAt: Date.now(),
-        messageContent: sendResult.data.messageContent,
-      }
-    }, 'tracking');
+    await runtime.createMemory(
+      {
+        id: trackingId,
+        entityId: message.entityId,
+        roomId: message.roomId,
+        content: {
+          type: "message_tracking",
+          sentTo: sendResult.data.targetId,
+          sentAt: Date.now(),
+          messageContent: sendResult.data.messageContent,
+        },
+      },
+      "tracking",
+    );
 
     return {
       success: true,
@@ -423,9 +435,9 @@ export const compositeAction: Action = {
       data: {
         sendResult,
         trackingId,
-      }
+      },
     };
-  }
+  },
 };
 ```
 
@@ -433,65 +445,65 @@ export const compositeAction: Action = {
 
 ```typescript
 export const workflowAction: Action = {
-  name: 'COMPLEX_WORKFLOW',
-  
+  name: "COMPLEX_WORKFLOW",
+
   handler: async (runtime, message, state, options, callback) => {
     const workflow = [
-      { action: 'VALIDATE_INPUT', required: true },
-      { action: 'FETCH_DATA', required: true },
-      { action: 'PROCESS_DATA', required: false },
-      { action: 'STORE_RESULTS', required: true },
-      { action: 'NOTIFY_USER', required: false }
+      { action: "VALIDATE_INPUT", required: true },
+      { action: "FETCH_DATA", required: true },
+      { action: "PROCESS_DATA", required: false },
+      { action: "STORE_RESULTS", required: true },
+      { action: "NOTIFY_USER", required: false },
     ];
-    
+
     const results: ActionResult[] = [];
-    
+
     for (const step of workflow) {
       const action = runtime.getAction(step.action);
       if (!action) {
         if (step.required) {
           return {
             success: false,
-            text: `Required action ${step.action} not found`
+            text: `Required action ${step.action} not found`,
           };
         }
         continue;
       }
-      
+
       const result = await action.handler(
         runtime,
         message,
         state,
         { context: { previousResults: results } },
-        callback
+        callback,
       );
-      
+
       results.push(result);
-      
+
       if (!result.success && step.required) {
         return {
           success: false,
           text: `Workflow failed at ${step.action}`,
-          data: { failedStep: step.action, results }
+          data: { failedStep: step.action, results },
         };
       }
-      
+
       // Merge values into state for next action
       state = {
         ...state,
         values: {
           ...state.values,
-          ...result.values
-        }
+          ...result.values,
+        },
       };
     }
-    
+
     return {
       success: true,
-      text: 'Workflow completed successfully',
-      data: { workflowResults: results }
+      text: "Workflow completed successfully",
+      data: { workflowResults: results },
     };
-  }
+  },
 };
 ```
 
@@ -501,12 +513,12 @@ Actions that learn and adapt their behavior:
 
 ```typescript
 export const learningAction: Action = {
-  name: 'ADAPTIVE_RESPONSE',
+  name: "ADAPTIVE_RESPONSE",
 
   handler: async (runtime, message, state) => {
     // Retrieve past performance
     const history = await runtime.getMemories({
-      tableName: 'action_feedback',
+      tableName: "action_feedback",
       roomId: message.roomId,
       count: 100,
     });
@@ -523,15 +535,18 @@ What response strategies were most effective?`,
     const response = await generateResponse(state, strategy);
 
     // Store for future learning
-    await runtime.createMemory({
-      id: generateId(),
-      content: {
-        type: 'action_feedback',
-        strategy: strategy.name,
-        context: state.text,
-        response: response.text,
-      }
-    }, 'action_feedback');
+    await runtime.createMemory(
+      {
+        id: generateId(),
+        content: {
+          type: "action_feedback",
+          strategy: strategy.name,
+          context: state.text,
+          response: response.text,
+        },
+      },
+      "action_feedback",
+    );
 
     return {
       success: true,
@@ -539,9 +554,9 @@ What response strategies were most effective?`,
       values: {
         strategyUsed: strategy.name,
         confidence: strategy.confidence,
-      }
+      },
     };
-  }
+  },
 };
 ```
 
@@ -553,30 +568,30 @@ Providers that only provide data under certain conditions:
 
 ```typescript
 export const conditionalProvider: Provider = {
-  name: 'PREMIUM_DATA',
+  name: "PREMIUM_DATA",
   private: true,
-  
+
   get: async (runtime, message, state) => {
     // Check if user has premium access
     const user = await runtime.getUser(message.entityId);
-    
+
     if (!user.isPremium) {
       return {
-        text: '',
+        text: "",
         values: {},
-        data: { available: false }
+        data: { available: false },
       };
     }
-    
+
     // Provide premium data
     const premiumData = await fetchPremiumData(user);
-    
+
     return {
       text: formatPremiumData(premiumData),
       values: premiumData,
-      data: { available: true, ...premiumData }
+      data: { available: true, ...premiumData },
     };
-  }
+  },
 };
 ```
 
@@ -586,73 +601,79 @@ Providers that combine data from multiple sources:
 
 ```typescript
 export const aggregateProvider: Provider = {
-  name: 'MARKET_OVERVIEW',
+  name: "MARKET_OVERVIEW",
   position: 50, // Run after individual data providers
-  
+
   get: async (runtime, message, state) => {
     // Aggregate from multiple sources
     const [stocks, crypto, forex] = await Promise.all([
       fetchStockData(),
       fetchCryptoData(),
-      fetchForexData()
+      fetchForexData(),
     ]);
-    
+
     const overview = {
-      stocksUp: stocks.filter(s => s.change > 0).length,
-      stocksDown: stocks.filter(s => s.change < 0).length,
+      stocksUp: stocks.filter((s) => s.change > 0).length,
+      stocksDown: stocks.filter((s) => s.change < 0).length,
       cryptoMarketCap: crypto.reduce((sum, c) => sum + c.marketCap, 0),
-      forexVolatility: calculateVolatility(forex)
+      forexVolatility: calculateVolatility(forex),
     };
-    
+
     return {
       text: `Market Overview:
 - Stocks: ${overview.stocksUp} up, ${overview.stocksDown} down
 - Crypto Market Cap: $${overview.cryptoMarketCap.toLocaleString()}
 - Forex Volatility: ${overview.forexVolatility}`,
       values: overview,
-      data: { stocks, crypto, forex }
+      data: { stocks, crypto, forex },
     };
-  }
+  },
 };
 ```
 
 ## Best Practices for Action Chaining
 
 1. **Always Return ActionResult**: Even for simple actions, return a proper `ActionResult` object:
+
    ```typescript
    return {
      success: true,
      text: "Action completed",
-     data: { /* any data for next actions */ }
+     data: {
+       /* any data for next actions */
+     },
    };
    ```
 
 2. **Use Callbacks for User Feedback**: Send immediate feedback via callbacks rather than waiting for the action to complete:
+
    ```typescript
    await callback?.({
      text: "Processing your request...",
-     source: message.content.source
+     source: message.content.source,
    });
    ```
 
 3. **Store Identifiers in Data**: When creating resources, store identifiers that subsequent actions might need:
+
    ```typescript
    return {
      success: true,
      data: {
        resourceId: created.id,
-       resourceUrl: created.url
-     }
+       resourceUrl: created.url,
+     },
    };
    ```
 
 4. **Handle Missing Dependencies**: Check if required previous results exist:
+
    ```typescript
-   const previousResult = context?.getPreviousResult?.('REQUIRED_ACTION');
+   const previousResult = context?.getPreviousResult?.("REQUIRED_ACTION");
    if (!previousResult?.success) {
      return {
        success: false,
-       text: "Required previous action did not complete successfully"
+       text: "Required previous action did not complete successfully",
      };
    }
    ```
@@ -680,11 +701,11 @@ Here's an example of a multi-step workflow using action chaining:
 async handler(runtime, message, state, options, callback) {
   const context = options?.context as ActionContext;
   const createResult = context?.getPreviousResult?.('CREATE_LINEAR_ISSUE');
-  
+
   if (createResult?.data?.issueId) {
     // Use the issue ID from previous action
     await updateIssue(createResult.data.issueId, { assignee: "John" });
-    
+
     return {
       success: true,
       text: "Issue assigned to John"
@@ -711,24 +732,24 @@ This section documents actual patterns and structures used in production elizaOS
 Every plugin follows this core structure pattern (from `plugin-starter`):
 
 ```typescript
-import type { Plugin } from '@elizaos/core';
+import type { Plugin } from "@elizaos/core";
 
 export const myPlugin: Plugin = {
-  name: 'plugin-name',
-  description: 'Plugin description',
-  
+  name: "plugin-name",
+  description: "Plugin description",
+
   // Core components
-  actions: [],      // Actions the plugin provides
-  providers: [],    // Data providers
-  services: [],     // Background services
-  evaluators: [],   // Response evaluators
-  
+  actions: [], // Actions the plugin provides
+  providers: [], // Data providers
+  services: [], // Background services
+  evaluators: [], // Response evaluators
+
   // Optional components
-  init: async (config) => {},  // Initialization logic
-  models: {},       // Custom model implementations
-  routes: [],       // HTTP routes
-  events: {},       // Event handlers
-  tests: [],        // Test suites
+  init: async (config) => {}, // Initialization logic
+  models: {}, // Custom model implementations
+  routes: [], // HTTP routes
+  events: {}, // Event handlers
+  tests: [], // Test suites
   dependencies: [], // Other required plugins
 };
 ```
@@ -739,8 +760,8 @@ The most complex and comprehensive plugin that provides core functionality:
 
 ```typescript
 export const bootstrapPlugin: Plugin = {
-  name: 'bootstrap',
-  description: 'Agent bootstrap with basic actions and evaluators',
+  name: "bootstrap",
+  description: "Agent bootstrap with basic actions and evaluators",
   actions: [
     actions.replyAction,
     actions.followRoomAction,
@@ -762,7 +783,7 @@ export const bootstrapPlugin: Plugin = {
     [EventType.MESSAGE_RECEIVED]: [messageReceivedHandler],
     [EventType.POST_GENERATED]: [postGeneratedHandler],
     // ... more event handlers
-  }
+  },
 };
 ```
 
@@ -798,7 +819,7 @@ const discordPlugin: Plugin = {
 // Telegram Plugin (minimal)
 const telegramPlugin: Plugin = {
   name: TELEGRAM_SERVICE_NAME,
-  description: 'Telegram client plugin',
+  description: "Telegram client plugin",
   services: [TelegramService],
   tests: [new TelegramTestSuite()],
 };
@@ -810,49 +831,49 @@ Actions follow a consistent structure with validation and execution:
 
 ```typescript
 const helloWorldAction: Action = {
-  name: 'HELLO_WORLD',
-  similes: ['GREET', 'SAY_HELLO'],  // Alternative names
-  description: 'Responds with a simple hello world message',
-  
+  name: "HELLO_WORLD",
+  similes: ["GREET", "SAY_HELLO"], // Alternative names
+  description: "Responds with a simple hello world message",
+
   validate: async (runtime, message, state) => {
     // Return true if action can be executed
     return true;
   },
-  
+
   handler: async (runtime, message, state, options, callback, responses) => {
     try {
       const responseContent: Content = {
-        text: 'hello world!',
-        actions: ['HELLO_WORLD'],
+        text: "hello world!",
+        actions: ["HELLO_WORLD"],
         source: message.content.source,
       };
-      
+
       if (callback) {
         await callback(responseContent);
       }
-      
+
       return responseContent;
     } catch (error) {
-      logger.error('Error in HELLO_WORLD action:', error);
+      logger.error("Error in HELLO_WORLD action:", error);
       throw error;
     }
   },
-  
+
   examples: [
     [
       {
-        name: '{{name1}}',
-        content: { text: 'Can you say hello?' }
+        name: "{{name1}}",
+        content: { text: "Can you say hello?" },
       },
       {
-        name: '{{name2}}',
-        content: { 
-          text: 'hello world!',
-          actions: ['HELLO_WORLD']
-        }
-      }
-    ]
-  ]
+        name: "{{name2}}",
+        content: {
+          text: "hello world!",
+          actions: ["HELLO_WORLD"],
+        },
+      },
+    ],
+  ],
 };
 ```
 
@@ -860,29 +881,29 @@ const helloWorldAction: Action = {
 
 ```typescript
 export const replyAction = {
-  name: 'REPLY',
-  similes: ['GREET', 'REPLY_TO_MESSAGE', 'SEND_REPLY', 'RESPOND'],
-  description: 'Replies to the current conversation',
-  
+  name: "REPLY",
+  similes: ["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND"],
+  description: "Replies to the current conversation",
+
   validate: async (runtime) => true,
-  
+
   handler: async (runtime, message, state, options, callback, responses) => {
     // Compose state with providers
-    state = await runtime.composeState(message, ['RECENT_MESSAGES']);
-    
+    state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
+
     // Generate response using LLM
     const prompt = composePromptFromState({ state, template: replyTemplate });
     const response = await runtime.useModel(ModelType.OBJECT_LARGE, { prompt });
-    
+
     const responseContent = {
       thought: response.thought,
-      text: response.message || '',
-      actions: ['REPLY'],
+      text: response.message || "",
+      actions: ["REPLY"],
     };
-    
+
     await callback(responseContent);
     return true;
-  }
+  },
 };
 ```
 
@@ -892,16 +913,18 @@ Providers supply contextual data to the agent:
 
 ```typescript
 export const timeProvider: Provider = {
-  name: 'TIME',
+  name: "TIME",
   get: async (runtime, message) => {
     const currentDate = new Date();
     const options = {
-      timeZone: 'UTC',
-      dateStyle: 'full' as const,
-      timeStyle: 'long' as const,
+      timeZone: "UTC",
+      dateStyle: "full" as const,
+      timeStyle: "long" as const,
     };
-    const humanReadable = new Intl.DateTimeFormat('en-US', options).format(currentDate);
-    
+    const humanReadable = new Intl.DateTimeFormat("en-US", options).format(
+      currentDate,
+    );
+
     return {
       data: { time: currentDate },
       values: { time: humanReadable },
@@ -917,14 +940,14 @@ Plugins can have initialization logic:
 
 ```typescript
 const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   config: {
     EXAMPLE_VARIABLE: process.env.EXAMPLE_VARIABLE,
   },
   async init(config: Record<string, string>) {
     // Validate configuration
     const validatedConfig = await configSchema.parseAsync(config);
-    
+
     // Set environment variables
     for (const [key, value] of Object.entries(validatedConfig)) {
       if (value) process.env[key] = value;
@@ -934,7 +957,8 @@ const myPlugin: Plugin = {
 ```
 
 <Tip>
-  **Guides**: [Create a Plugin](/guides/create-a-plugin) | [Publish a Plugin](/guides/publish-a-plugin)
+  **Guides**: [Create a Plugin](/guides/create-a-plugin) | [Publish a
+  Plugin](/guides/publish-a-plugin)
 </Tip>
 
 ## See Also
@@ -943,15 +967,15 @@ const myPlugin: Plugin = {
   <Card title="Plugin Architecture" icon="sitemap" href="/plugins/architecture">
     Understand the overall plugin system design
   </Card>
-  
-  <Card title="Development Guide" icon="code" href="/plugins/development">
-    Build your first plugin with step-by-step guidance
-  </Card>
-  
-  <Card title="Plugin Schemas" icon="list" href="/plugins/schemas">
-    Learn about configuration and validation schemas
-  </Card>
-  
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build your first plugin with step-by-step guidance
+</Card>
+
+<Card title="Plugin Schemas" icon="list" href="/plugins/schemas">
+  Learn about configuration and validation schemas
+</Card>
+
   <Card title="Plugin Migration" icon="arrow-right" href="/plugins/migration">
     Migrate existing plugins to new patterns
   </Card>

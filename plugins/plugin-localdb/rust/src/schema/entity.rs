@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Entity schema for elizaOS database
 
 /// SQL for creating the entities table

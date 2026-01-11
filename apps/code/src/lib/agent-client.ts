@@ -1,7 +1,7 @@
 import {
   ChannelType,
-  createMessageMemory,
   type Content,
+  createMessageMemory,
   type IAgentRuntime,
   type Memory,
   type UUID,
@@ -75,7 +75,11 @@ export class AgentClient {
       throw new Error("Runtime message service not available");
     }
 
-    await runtime.messageService.handleMessage(runtime, messageMemory, callback);
+    await runtime.messageService.handleMessage(
+      runtime,
+      messageMemory,
+      callback,
+    );
 
     return response;
   }
@@ -84,7 +88,11 @@ export class AgentClient {
     if (!this.runtime) return;
     const runtime = this.runtime;
     if (!runtime.messageService) return;
-    await runtime.messageService.clearChannel(runtime, room.elizaRoomId, room.id);
+    await runtime.messageService.clearChannel(
+      runtime,
+      room.elizaRoomId,
+      room.id,
+    );
   }
 }
 
@@ -100,5 +108,3 @@ export function getAgentClient(): AgentClient {
 export function resetAgentClient(): void {
   agentClientInstance = null;
 }
-
-

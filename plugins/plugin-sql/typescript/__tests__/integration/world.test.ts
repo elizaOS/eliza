@@ -1,13 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import type { UUID, World } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { worldTable } from "../../schema";
@@ -50,7 +43,7 @@ describe("World Integration Tests", () => {
 
       const retrieved = await adapter.getWorld(worldId);
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.id).toBe(worldId);
+      expect(retrieved?.id).toBe(worldId);
     });
 
     it("should not create a world with a duplicate id", async () => {
@@ -85,7 +78,7 @@ describe("World Integration Tests", () => {
       await adapter.updateWorld(updatedWorld);
 
       const retrieved = await adapter.getWorld(worldId);
-      expect(retrieved!.name).toBe("Updated World Name");
+      expect(retrieved?.name).toBe("Updated World Name");
     });
 
     it("should only update the specified world", async () => {
@@ -109,8 +102,8 @@ describe("World Integration Tests", () => {
 
       const retrieved1 = await adapter.getWorld(world1.id);
       const retrieved2 = await adapter.getWorld(world2.id);
-      expect(retrieved1!.name).toBe("Updated World One");
-      expect(retrieved2!.name).toBe("World Two");
+      expect(retrieved1?.name).toBe("Updated World One");
+      expect(retrieved2?.name).toBe("World Two");
     });
 
     it("should delete a world", async () => {

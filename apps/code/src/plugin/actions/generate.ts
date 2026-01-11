@@ -4,10 +4,10 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,
-  logger,
 } from "@elizaos/core";
 import { CODE_GENERATION_SYSTEM_PROMPT } from "../../lib/prompts.js";
 
@@ -36,10 +36,15 @@ BEHAVIOR:
 
 OUTPUT: Generated code displayed to user. Use WRITE_FILE if the code should be saved to a file.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     const hasGenerateIntent =
-      text.includes("generate") || text.includes("write") || text.includes("create code");
+      text.includes("generate") ||
+      text.includes("write") ||
+      text.includes("create code");
 
     // If the user provided an explicit file path (e.g., "index.html"), prefer WRITE_FILE / EDIT_FILE.
     const hasFileExtension = /\.[a-z0-9]{1,8}\b/i.test(text);
@@ -53,20 +58,22 @@ OUTPUT: Generated code displayed to user. Use WRITE_FILE if the code should be s
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const request = message.content.text ?? "";
 
     const prompt = `${CODE_GENERATION_SYSTEM_PROMPT}\n\nUser request:\n${request}\n\nGenerate the requested code.`;
 
     try {
+      // biome-ignore lint/correctness/useHookAtTopLevel: useModel is a runtime method, not a React hook
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
         maxTokens: 2000,
         temperature: 0.3,
       });
 
-      const text = typeof result === "string" ? result.trim() : String(result).trim();
+      const text =
+        typeof result === "string" ? result.trim() : String(result).trim();
       await callback?.({ text });
       return { success: true, text };
     } catch (err) {
@@ -79,8 +86,14 @@ OUTPUT: Generated code displayed to user. Use WRITE_FILE if the code should be s
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "Generate a quicksort function in TypeScript." } },
-      { name: "{{agent}}", content: { text: "Generating...", actions: ["GENERATE"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "Generate a quicksort function in TypeScript." },
+      },
+      {
+        name: "{{agent}}",
+        content: { text: "Generating...", actions: ["GENERATE"] },
+      },
     ],
   ],
 };

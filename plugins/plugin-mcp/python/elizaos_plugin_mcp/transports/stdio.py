@@ -94,7 +94,7 @@ class StdioTransport(Transport):
             self._process.terminate()
             try:
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._process.kill()
                 await self._process.wait()
             self._process = None
@@ -103,5 +103,3 @@ class StdioTransport(Transport):
         """Generate the next request ID."""
         self._request_id += 1
         return self._request_id
-
-

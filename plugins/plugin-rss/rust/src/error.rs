@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the RSS plugin.
 
 use thiserror::Error;
@@ -44,5 +45,10 @@ pub enum RssError {
     #[error("Not subscribed to: {0}")]
     NotSubscribed(String),
 }
+
+
+
+
+
 
 

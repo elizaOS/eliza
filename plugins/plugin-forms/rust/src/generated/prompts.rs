@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Auto-generated prompt templates
 //! DO NOT EDIT - Generated from ../../../prompts/*.txt
 //!

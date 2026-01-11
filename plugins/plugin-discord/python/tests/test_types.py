@@ -2,13 +2,13 @@
 
 import pytest
 
-from elizaos_plugin_discord.types import (
-    Snowflake,
-    DiscordEventType,
-    DiscordChannelType,
-    DiscordMessagePayload,
-)
 from elizaos_plugin_discord.error import InvalidSnowflakeError
+from elizaos_plugin_discord.types import (
+    DiscordChannelType,
+    DiscordEventType,
+    DiscordMessagePayload,
+    Snowflake,
+)
 
 
 class TestSnowflake:

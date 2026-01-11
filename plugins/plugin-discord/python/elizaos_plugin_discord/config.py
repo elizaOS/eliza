@@ -5,9 +5,8 @@ Configuration can be loaded from environment variables or constructed programmat
 """
 
 import os
-from typing import Optional
 
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from elizaos_plugin_discord.error import (
     ConfigError,
@@ -32,8 +31,8 @@ class DiscordConfig(BaseModel):
 
     # Optional fields with defaults
     channel_ids: list[str] = []
-    test_channel_id: Optional[str] = None
-    voice_channel_id: Optional[str] = None
+    test_channel_id: str | None = None
+    voice_channel_id: str | None = None
     should_ignore_bot_messages: bool = True
     should_ignore_direct_messages: bool = False
     should_respond_only_to_mentions: bool = False
@@ -60,17 +59,17 @@ class DiscordConfig(BaseModel):
             try:
                 Snowflake(channel_id)
             except InvalidSnowflakeError as e:
-                raise ConfigError(f"Invalid channel ID '{channel_id}': {e.message}")
+                raise ConfigError(f"Invalid channel ID '{channel_id}': {e.message}") from e
         return v
 
     @field_validator("test_channel_id", "voice_channel_id")
     @classmethod
-    def validate_optional_channel_id(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_channel_id(cls, v: str | None) -> str | None:
         if v is not None:
             try:
                 Snowflake(v)
             except InvalidSnowflakeError as e:
-                raise ConfigError(f"Invalid channel ID '{v}': {e.message}")
+                raise ConfigError(f"Invalid channel ID '{v}': {e.message}") from e
         return v
 
     @classmethod
@@ -103,12 +102,12 @@ class DiscordConfig(BaseModel):
         if not application_id:
             raise MissingSettingError("DISCORD_APPLICATION_ID")
 
-        def parse_bool(value: Optional[str], default: bool) -> bool:
+        def parse_bool(value: str | None, default: bool) -> bool:
             if value is None:
                 return default
             return value.lower() == "true"
 
-        def parse_list(value: Optional[str]) -> list[str]:
+        def parse_list(value: str | None) -> list[str]:
             if not value:
                 return []
             return [s.strip() for s in value.split(",") if s.strip()]

@@ -1,6 +1,6 @@
 /**
  * Simple HNSW (Hierarchical Navigable Small World) implementation
- * 
+ *
  * Pure in-memory, ephemeral vector index.
  * All data is lost on restart - no persistence.
  */
@@ -15,10 +15,10 @@ interface HNSWNode {
 }
 
 interface HNSWConfig {
-  M: number;           // Max connections per layer
+  M: number; // Max connections per layer
   efConstruction: number; // Size of dynamic candidate list during construction
-  efSearch: number;    // Size of dynamic candidate list during search
-  mL: number;          // Level multiplier (1/ln(M))
+  efSearch: number; // Size of dynamic candidate list during search
+  mL: number; // Level multiplier (1/ln(M))
 }
 
 /**
@@ -28,28 +28,28 @@ function cosineDistance(a: number[], b: number[]): number {
   if (a.length !== b.length) {
     throw new Error(`Vector dimension mismatch: ${a.length} vs ${b.length}`);
   }
-  
+
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
-  
+
   for (let i = 0; i < a.length; i++) {
     dotProduct += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  
+
   const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
   if (magnitude === 0) return 1;
-  
+
   // Cosine similarity: dot(a,b) / (|a| * |b|)
   // Cosine distance: 1 - similarity
-  return 1 - (dotProduct / magnitude);
+  return 1 - dotProduct / magnitude;
 }
 
 /**
  * Simple HNSW implementation for vector similarity search
- * 
+ *
  * Completely ephemeral - no persistence, all data lost on close/restart
  */
 export class EphemeralHNSW implements IVectorStorage {
@@ -83,13 +83,15 @@ export class EphemeralHNSW implements IVectorStorage {
 
   async add(id: string, vector: number[]): Promise<void> {
     if (vector.length !== this.dimension) {
-      throw new Error(`Vector dimension mismatch: expected ${this.dimension}, got ${vector.length}`);
+      throw new Error(
+        `Vector dimension mismatch: expected ${this.dimension}, got ${vector.length}`
+      );
     }
 
     // Check if already exists
-    if (this.nodes.has(id)) {
+    const existing = this.nodes.get(id);
+    if (existing) {
       // Update existing node's vector
-      const existing = this.nodes.get(id)!;
       existing.vector = vector;
       return;
     }
@@ -116,7 +118,7 @@ export class EphemeralHNSW implements IVectorStorage {
     }
 
     let currentNode = this.entryPoint;
-    
+
     // Search from top level down to level+1, just finding the closest node
     for (let l = this.maxLevel; l > level; l--) {
       currentNode = this.searchLayer(vector, currentNode, 1, l)[0]?.id ?? currentNode;
@@ -125,14 +127,17 @@ export class EphemeralHNSW implements IVectorStorage {
     // Insert at each level from level down to 0
     for (let l = Math.min(level, this.maxLevel); l >= 0; l--) {
       const neighbors = this.searchLayer(vector, currentNode, this.config.efConstruction, l);
-      
+
       // Connect to M closest neighbors
       const M = this.config.M;
       const selectedNeighbors = neighbors.slice(0, M);
-      
+
       for (const neighbor of selectedNeighbors) {
-        newNode.neighbors.get(l)!.add(neighbor.id);
-        
+        const neighborSet = newNode.neighbors.get(l);
+        if (neighborSet) {
+          neighborSet.add(neighbor.id);
+        }
+
         const neighborNode = this.nodes.get(neighbor.id);
         if (neighborNode) {
           let neighborSet = neighborNode.neighbors.get(l);
@@ -141,15 +146,15 @@ export class EphemeralHNSW implements IVectorStorage {
             neighborNode.neighbors.set(l, neighborSet);
           }
           neighborSet.add(id);
-          
+
           // Prune if over limit
           if (neighborSet.size > M) {
             const toKeep = this.selectBestNeighbors(neighborNode.vector, neighborSet, M);
-            neighborNode.neighbors.set(l, new Set(toKeep.map(n => n.id)));
+            neighborNode.neighbors.set(l, new Set(toKeep.map((n) => n.id)));
           }
         }
       }
-      
+
       if (neighbors.length > 0) {
         currentNode = neighbors[0].id;
       }
@@ -175,17 +180,20 @@ export class EphemeralHNSW implements IVectorStorage {
     if (!entryNode) return [];
 
     const entryDist = cosineDistance(query, entryNode.vector);
-    
+
     // candidates: min-heap by distance (closest first)
-    const candidates: Array<{ id: string; distance: number }> = [{ id: entryId, distance: entryDist }];
-    
+    const candidates: Array<{ id: string; distance: number }> = [
+      { id: entryId, distance: entryDist },
+    ];
+
     // results: max-heap by distance (furthest first for pruning)
     const results: Array<{ id: string; distance: number }> = [{ id: entryId, distance: entryDist }];
 
     while (candidates.length > 0) {
       // Get closest candidate
       candidates.sort((a, b) => a.distance - b.distance);
-      const current = candidates.shift()!;
+      const current = candidates.shift();
+      if (!current) break;
 
       // Get furthest result
       results.sort((a, b) => b.distance - a.distance);
@@ -232,14 +240,17 @@ export class EphemeralHNSW implements IVectorStorage {
     M: number
   ): Array<{ id: string; distance: number }> {
     const neighbors: Array<{ id: string; distance: number }> = [];
-    
+
     for (const id of neighborIds) {
       const node = this.nodes.get(id);
       if (node) {
-        neighbors.push({ id, distance: cosineDistance(nodeVector, node.vector) });
+        neighbors.push({
+          id,
+          distance: cosineDistance(nodeVector, node.vector),
+        });
       }
     }
-    
+
     neighbors.sort((a, b) => a.distance - b.distance);
     return neighbors.slice(0, M);
   }
@@ -305,8 +316,8 @@ export class EphemeralHNSW implements IVectorStorage {
 
     return results
       .slice(0, k)
-      .filter(r => (1 - r.distance) >= threshold)
-      .map(r => ({
+      .filter((r) => 1 - r.distance >= threshold)
+      .map((r) => ({
         id: r.id,
         distance: r.distance,
         similarity: 1 - r.distance,
@@ -324,5 +335,3 @@ export class EphemeralHNSW implements IVectorStorage {
     return this.nodes.size;
   }
 }
-
-

@@ -12,17 +12,17 @@ import subprocess
 import time
 from typing import TYPE_CHECKING
 
+from elizaos_plugin_shell.path_utils import (
+    is_forbidden_command,
+    is_safe_command,
+    validate_path,
+)
 from elizaos_plugin_shell.types import (
-    CommandResult,
     CommandHistoryEntry,
+    CommandResult,
     FileOperation,
     FileOperationType,
     ShellConfig,
-)
-from elizaos_plugin_shell.path_utils import (
-    validate_path,
-    is_safe_command,
-    is_forbidden_command,
 )
 
 if TYPE_CHECKING:
@@ -129,9 +129,7 @@ class ShellService:
 
         # Track file operations if successful
         if result.success:
-            file_ops = self._detect_file_operations(
-                trimmed_command, self._current_directory
-            )
+            file_ops = self._detect_file_operations(trimmed_command, self._current_directory)
             self._add_to_history(conversation_id, trimmed_command, result, file_ops)
         else:
             self._add_to_history(conversation_id, trimmed_command, result)
@@ -188,7 +186,9 @@ class ShellService:
             if use_shell:
                 # Use shell for commands with redirects/pipes
                 cmd_args = ["sh", "-c", command]
-                logger.info(f'Executing shell command: sh -c "{command}" in {self._current_directory}')
+                logger.info(
+                    f'Executing shell command: sh -c "{command}" in {self._current_directory}'
+                )
             else:
                 # Split command for direct execution
                 cmd_args = shlex.split(command)
@@ -224,7 +224,7 @@ class ShellService:
                     executed_in=self._current_directory,
                 )
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return CommandResult(
                     success=False,
                     stdout="",
@@ -375,5 +375,8 @@ class ShellService:
     def get_allowed_directory(self) -> str:
         """Get the allowed directory."""
         return self._config.allowed_directory
+
+
+
 
 

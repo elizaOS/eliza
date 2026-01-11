@@ -104,7 +104,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install build dependencies
         run: |
@@ -155,13 +155,13 @@ jobs:
           release_name: "v${{ needs.verify_version.outputs.version }}"
           body: |
             Release v${{ needs.verify_version.outputs.version }}
-            
+
             ## Installation
-            
+
             **npm:** `npm install @elizaos/plugin-google-genai@${{ needs.verify_version.outputs.version }}`
-            
+
             **PyPI:** `pip install elizaos-plugin-google-genai==${{ needs.verify_version.outputs.version }}`
-            
+
             **crates.io:** Add `elizaos-plugin-google-genai = "${{ needs.verify_version.outputs.version }}"` to your Cargo.toml
           draft: false
           prerelease: false

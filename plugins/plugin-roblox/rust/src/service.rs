@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Roblox service implementation for elizaOS.
 
 use crate::client::RobloxClient;
@@ -160,5 +161,10 @@ mod tests {
         assert!(!service.is_running().await);
     }
 }
+
+
+
+
+
 
 

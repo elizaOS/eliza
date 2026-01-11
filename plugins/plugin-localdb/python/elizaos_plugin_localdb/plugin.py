@@ -3,7 +3,7 @@ elizaOS LocalDB Plugin definition.
 """
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 from elizaos.types.plugin import Plugin
 
@@ -46,4 +46,3 @@ localdb_plugin: Plugin = {
     "description": "Simple JSON-based local database storage for elizaOS",
     "init": init_localdb,
 }
-

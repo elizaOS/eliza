@@ -1,13 +1,13 @@
-import { parentPort } from 'worker_threads';
+import { parentPort } from "node:worker_threads";
 
 /**
  * Worker-safe logger that sends log messages to the main thread
  */
 export const logger = {
-  info: (message: string, ...args: any[]) => {
+  info: (message: string, ...args: unknown[]) => {
     const logMessage = {
-      type: 'log',
-      level: 'info',
+      type: "log",
+      level: "info",
       message,
       args,
       timestamp: new Date().toISOString(),
@@ -20,10 +20,10 @@ export const logger = {
     }
   },
 
-  warn: (message: string, ...args: any[]) => {
+  warn: (message: string, ...args: unknown[]) => {
     const logMessage = {
-      type: 'log',
-      level: 'warn',
+      type: "log",
+      level: "warn",
       message,
       args,
       timestamp: new Date().toISOString(),
@@ -36,10 +36,10 @@ export const logger = {
     }
   },
 
-  error: (message: string, ...args: any[]) => {
+  error: (message: string, ...args: unknown[]) => {
     const logMessage = {
-      type: 'log',
-      level: 'error',
+      type: "log",
+      level: "error",
       message,
       args,
       timestamp: new Date().toISOString(),
@@ -52,10 +52,10 @@ export const logger = {
     }
   },
 
-  debug: (message: string, ...args: any[]) => {
+  debug: (message: string, ...args: unknown[]) => {
     const logMessage = {
-      type: 'log',
-      level: 'debug',
+      type: "log",
+      level: "debug",
       message,
       args,
       timestamp: new Date().toISOString(),

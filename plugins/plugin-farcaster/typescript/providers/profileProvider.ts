@@ -2,26 +2,16 @@
  * Profile provider for Farcaster.
  */
 
-import {
-  type Provider,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  type ProviderResult,
-} from "@elizaos/core";
-import { getFarcasterFid } from "../utils/config";
-import { FARCASTER_SERVICE_NAME } from "../types";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
+import { FARCASTER_SERVICE_NAME } from "../types";
+import { getFarcasterFid } from "../utils/config";
 
 export const farcasterProfileProvider: Provider = {
   name: "farcasterProfile",
   description: "Provides information about the agent's Farcaster profile",
 
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const managers = service?.getActiveManagers();
@@ -91,5 +81,3 @@ export const farcasterProfileProvider: Provider = {
     }
   },
 };
-
-

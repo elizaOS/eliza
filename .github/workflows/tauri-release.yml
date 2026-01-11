@@ -5,19 +5,19 @@ on:
     types: [created, edited, published, prereleased]
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version number (e.g., 1.0.0)'
+        description: "Version number (e.g., 1.0.0)"
         required: false
-        default: ''
+        default: ""
       draft:
-        description: 'Create as draft release'
+        description: "Create as draft release"
         type: boolean
         default: true
       prerelease:
-        description: 'Mark as prerelease'
+        description: "Mark as prerelease"
         type: boolean
         default: false
 
@@ -60,7 +60,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -129,7 +129,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -195,7 +195,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -266,7 +266,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -274,8 +274,8 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Setup Android SDK/NDK
         uses: android-actions/setup-android@v3.0.0
@@ -360,7 +360,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

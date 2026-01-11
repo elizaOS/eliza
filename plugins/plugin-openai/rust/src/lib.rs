@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! OpenAI Plugin for elizaOS
 //!
 //! This crate provides OpenAI API integration for elizaOS agents.

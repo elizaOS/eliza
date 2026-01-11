@@ -63,10 +63,10 @@ Proto enums use `ENUM_NAME_VALUE` format:
 
 ```typescript
 // Legacy
-MemoryType.MESSAGE
+MemoryType.MESSAGE;
 
 // Proto
-MemoryType.MEMORY_TYPE_MESSAGE
+MemoryType.MEMORY_TYPE_MESSAGE;
 // or use the numeric value
 ```
 
@@ -77,12 +77,12 @@ Proto types explicitly mark optional fields:
 ```typescript
 // Legacy
 interface Memory {
-  id?: string;  // Optional but any string
+  id?: string; // Optional but any string
 }
 
-// Proto  
+// Proto
 interface Memory {
-  id: string | undefined;  // Explicitly undefined when not set
+  id: string | undefined; // Explicitly undefined when not set
 }
 ```
 
@@ -93,12 +93,12 @@ Use `google.protobuf.Struct` (represented as `JsonObject`) for dynamic data:
 ```typescript
 // Legacy
 interface Content {
-  [key: string]: unknown;  // Any extra properties
+  [key: string]: unknown; // Any extra properties
 }
 
 // Proto
 interface Content {
-  data: JsonObject;  // Dynamic properties go in data field
+  data: JsonObject; // Dynamic properties go in data field
 }
 ```
 
@@ -125,22 +125,22 @@ buf generate
 
 ## Schema Files
 
-| File | Contents |
-|------|----------|
-| `primitives.proto` | UUID, Content, Media, Metadata |
-| `memory.proto` | Memory, MemoryMetadata types |
-| `state.proto` | State, ActionPlan, WorkingMemory |
+| File                | Contents                          |
+| ------------------- | --------------------------------- |
+| `primitives.proto`  | UUID, Content, Media, Metadata    |
+| `memory.proto`      | Memory, MemoryMetadata types      |
+| `state.proto`       | State, ActionPlan, WorkingMemory  |
 | `environment.proto` | Entity, Room, World, Relationship |
-| `components.proto` | Action, Provider, Evaluator |
-| `agent.proto` | Character, Agent |
-| `service.proto` | Service types |
-| `model.proto` | Model types, generation params |
-| `events.proto` | Event types and payloads |
-| `plugin.proto` | Plugin, Route definitions |
-| `task.proto` | Task types |
-| `database.proto` | Database, logging types |
-| `messaging.proto` | WebSocket, streaming types |
-| `ipc.proto` | Cross-language IPC messages |
+| `components.proto`  | Action, Provider, Evaluator       |
+| `agent.proto`       | Character, Agent                  |
+| `service.proto`     | Service types                     |
+| `model.proto`       | Model types, generation params    |
+| `events.proto`      | Event types and payloads          |
+| `plugin.proto`      | Plugin, Route definitions         |
+| `task.proto`        | Task types                        |
+| `database.proto`    | Database, logging types           |
+| `messaging.proto`   | WebSocket, streaming types        |
+| `ipc.proto`         | Cross-language IPC messages       |
 
 ## Troubleshooting
 
@@ -155,7 +155,7 @@ Check the [Buf Style Guide](https://buf.build/docs/best-practices/style-guide) f
 ### Missing `@bufbuild/protobuf` module
 
 Install the dependency:
+
 ```bash
 npm install @bufbuild/protobuf
 ```
-

@@ -1,10 +1,6 @@
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
 import { migrateToEntityRLS } from "./migrations";
-import {
-  applyEntityRLSToAllTables,
-  applyRLSToNewTables,
-  installRLSFunctions,
-} from "./rls";
+import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
 import { RuntimeMigrator } from "./runtime-migrator";
 import type { DrizzleDatabase } from "./types";
 
@@ -56,7 +52,7 @@ export class DatabaseMigrationService {
         schemasDiscovered: this.registeredSchemas.size,
         totalPlugins: plugins.length,
       },
-      "Plugin schemas discovered",
+      "Plugin schemas discovered"
     );
   }
 
@@ -84,18 +80,16 @@ export class DatabaseMigrationService {
     dryRun?: boolean;
   }): Promise<void> {
     if (!this.db || !this.migrator) {
-      throw new Error(
-        "Database or migrator not initialized in DatabaseMigrationService",
-      );
+      throw new Error("Database or migrator not initialized in DatabaseMigrationService");
     }
 
     const isProduction = process.env.NODE_ENV === "production";
 
     // Build migration options with sensible defaults
     const migrationOptions = {
-      verbose: (options && options.verbose) ?? !isProduction,
-      force: (options && options.force) ?? false,
-      dryRun: (options && options.dryRun) ?? false,
+      verbose: options?.verbose ?? !isProduction,
+      force: options?.force ?? false,
+      dryRun: options?.dryRun ?? false,
     };
 
     // Log migration start
@@ -106,7 +100,7 @@ export class DatabaseMigrationService {
         pluginCount: this.registeredSchemas.size,
         dryRun: migrationOptions.dryRun,
       },
-      "Starting migrations",
+      "Starting migrations"
     );
 
     let successCount = 0;
@@ -129,24 +123,18 @@ export class DatabaseMigrationService {
           // Destructive migration was blocked - this is expected behavior
           logger.error(
             { src: "plugin:sql", pluginName },
-            "Migration blocked - destructive changes detected. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true or use force option",
+            "Migration blocked - destructive changes detected. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true or use force option"
           );
         } else {
           // Unexpected error
-          logger.error(
-            { src: "plugin:sql", pluginName, error: errorMessage },
-            "Migration failed",
-          );
+          logger.error({ src: "plugin:sql", pluginName, error: errorMessage }, "Migration failed");
         }
       }
     }
 
     // Final summary
     if (failureCount === 0) {
-      logger.info(
-        { src: "plugin:sql", successCount },
-        "All migrations completed successfully",
-      );
+      logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
 
       // Re-apply RLS after all migrations are complete
       // This ensures RLS is active on all tables with proper server_id columns
@@ -155,10 +143,7 @@ export class DatabaseMigrationService {
 
       if (dataIsolationEnabled) {
         try {
-          logger.info(
-            { src: "plugin:sql" },
-            "Re-applying Row Level Security...",
-          );
+          logger.info({ src: "plugin:sql" }, "Re-applying Row Level Security...");
           // RLS functions expect IDatabaseAdapter, create wrapper
           interface AdapterWrapper extends IDatabaseAdapter {
             db: DrizzleDatabase;
@@ -171,32 +156,24 @@ export class DatabaseMigrationService {
           await applyEntityRLSToAllTables(adapterWrapper);
           logger.info({ src: "plugin:sql" }, "RLS re-applied successfully");
         } catch (rlsError) {
-          const errorMsg =
-            rlsError instanceof Error ? rlsError.message : String(rlsError);
+          const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
           logger.warn(
             { src: "plugin:sql", error: errorMsg },
-            "Failed to re-apply RLS (this is OK if server_id columns are not yet in schemas)",
+            "Failed to re-apply RLS (this is OK if server_id columns are not yet in schemas)"
           );
         }
       } else {
         logger.info(
           { src: "plugin:sql" },
-          "Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)",
+          "Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)"
         );
       }
     } else {
-      logger.error(
-        { src: "plugin:sql", failureCount, successCount },
-        "Some migrations failed",
-      );
+      logger.error({ src: "plugin:sql", failureCount, successCount }, "Some migrations failed");
 
       // Throw a consolidated error with details about all failures
-      const errorSummary = errors
-        .map((e) => `${e.pluginName}: ${e.error.message}`)
-        .join("\n  ");
-      throw new Error(
-        `${failureCount} migration(s) failed:\n  ${errorSummary}`,
-      );
+      const errorSummary = errors.map((e) => `${e.pluginName}: ${e.error.message}`).join("\n  ");
+      throw new Error(`${failureCount} migration(s) failed:\n  ${errorSummary}`);
     }
   }
 

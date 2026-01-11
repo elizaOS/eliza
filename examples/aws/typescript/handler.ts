@@ -3,17 +3,17 @@
  *
  * This Lambda function processes chat messages and returns AI responses
  * using the full elizaOS runtime with OpenAI as the LLM provider.
- * 
+ *
  * This is identical to the chat demo pattern but exposed as an HTTP API.
  */
 
 import {
   AgentRuntime,
+  bootstrapPlugin,
   ChannelType,
+  type Character,
   createMessageMemory,
   stringToUuid,
-  bootstrapPlugin,
-  type Character,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
@@ -123,7 +123,7 @@ function parseRequestBody(body: string | undefined): ChatRequest {
  */
 function jsonResponse<T extends Record<string, unknown>>(
   statusCode: number,
-  body: T
+  body: T,
 ): APIGatewayProxyResultV2 {
   return {
     statusCode,
@@ -142,7 +142,7 @@ function jsonResponse<T extends Record<string, unknown>>(
  */
 async function handleChat(
   request: ChatRequest,
-  _context: Context
+  _context: Context,
 ): Promise<ChatResponse> {
   const rt = await initializeRuntime();
 
@@ -177,7 +177,7 @@ async function handleChat(
   // Process message and collect response (same as chat demo)
   let responseText = "";
 
-  await rt.messageService!.handleMessage(rt, message, async (content) => {
+  await rt.messageService?.handleMessage(rt, message, async (content) => {
     if (content?.text) {
       responseText += content.text;
     }
@@ -197,7 +197,7 @@ async function handleChat(
  */
 export async function handler(
   event: APIGatewayProxyEventV2,
-  context: Context
+  context: Context,
 ): Promise<APIGatewayProxyResultV2> {
   const path = event.rawPath ?? event.requestContext?.http?.path ?? "/";
   const method = event.requestContext?.http?.method ?? "GET";

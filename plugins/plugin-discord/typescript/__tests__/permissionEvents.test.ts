@@ -1,4 +1,4 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   diffOverwrites,
   diffRolePermissions,
@@ -24,7 +24,7 @@ interface MockRole {
 function createMockOverwrite(
   allow: string[] = [],
   deny: string[] = [],
-  type: number = 0,
+  type: number = 0
 ): MockPermissionOverwrites {
   return {
     allow: { toArray: () => allow },
@@ -68,9 +68,7 @@ describe("hasElevatedPermissions", () => {
   });
 
   it("returns true when mixed with non-elevated permissions", () => {
-    expect(
-      hasElevatedPermissions(["SendMessages", "BanMembers", "ViewChannel"]),
-    ).toBe(true);
+    expect(hasElevatedPermissions(["SendMessages", "BanMembers", "ViewChannel"])).toBe(true);
   });
 
   it("returns false for non-elevated permissions only", () => {
@@ -85,24 +83,27 @@ describe("hasElevatedPermissions", () => {
 describe("isElevatedRole", () => {
   it("returns true for role with Administrator", () => {
     const role = createMockRole(["Administrator"]);
-    expect(isElevatedRole(role as any)).toBe(true);
+    expect(isElevatedRole(role as unknown as import("discord.js").Role)).toBe(true);
   });
 
   it("returns true for role with ManageMessages", () => {
     const role = createMockRole(["ManageMessages"]);
-    expect(isElevatedRole(role as any)).toBe(true);
+    expect(isElevatedRole(role as unknown as import("discord.js").Role)).toBe(true);
   });
 
   it("returns false for role without elevated permissions", () => {
     const role = createMockRole(["SendMessages", "ViewChannel"]);
-    expect(isElevatedRole(role as any)).toBe(false);
+    expect(isElevatedRole(role as unknown as import("discord.js").Role)).toBe(false);
   });
 });
 
 describe("diffOverwrites", () => {
   it("returns CREATE action when old is null", () => {
     const newOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
-    const result = diffOverwrites(null, newOw as any);
+    const result = diffOverwrites(
+      null,
+      newOw as unknown as import("discord.js").PermissionOverwrites
+    );
 
     expect(result.action).toBe("CREATE");
     expect(result.changes).toHaveLength(2);
@@ -120,7 +121,10 @@ describe("diffOverwrites", () => {
 
   it("returns DELETE action when new is null", () => {
     const oldOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
-    const result = diffOverwrites(oldOw as any, null);
+    const result = diffOverwrites(
+      oldOw as unknown as import("discord.js").PermissionOverwrites,
+      null
+    );
 
     expect(result.action).toBe("DELETE");
     expect(result.changes).toHaveLength(2);
@@ -139,7 +143,10 @@ describe("diffOverwrites", () => {
   it("detects ALLOW → DENY changes", () => {
     const oldOw = createMockOverwrite(["ManageMessages"], []);
     const newOw = createMockOverwrite([], ["ManageMessages"]);
-    const result = diffOverwrites(oldOw as any, newOw as any);
+    const result = diffOverwrites(
+      oldOw as unknown as import("discord.js").PermissionOverwrites,
+      newOw as unknown as import("discord.js").PermissionOverwrites
+    );
 
     expect(result.action).toBe("UPDATE");
     expect(result.changes).toHaveLength(1);
@@ -153,7 +160,10 @@ describe("diffOverwrites", () => {
   it("detects DENY → NEUTRAL changes", () => {
     const oldOw = createMockOverwrite([], ["ManageMessages"]);
     const newOw = createMockOverwrite([], []);
-    const result = diffOverwrites(oldOw as any, newOw as any);
+    const result = diffOverwrites(
+      oldOw as unknown as import("discord.js").PermissionOverwrites,
+      newOw as unknown as import("discord.js").PermissionOverwrites
+    );
 
     expect(result.action).toBe("UPDATE");
     expect(result.changes).toHaveLength(1);
@@ -167,7 +177,10 @@ describe("diffOverwrites", () => {
   it("returns empty changes for identical overwrites", () => {
     const oldOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
     const newOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
-    const result = diffOverwrites(oldOw as any, newOw as any);
+    const result = diffOverwrites(
+      oldOw as unknown as import("discord.js").PermissionOverwrites,
+      newOw as unknown as import("discord.js").PermissionOverwrites
+    );
 
     expect(result.action).toBe("UPDATE");
     expect(result.changes).toHaveLength(0);
@@ -185,7 +198,10 @@ describe("diffRolePermissions", () => {
   it("detects added permissions", () => {
     const oldRole = createMockRole(["SendMessages"]);
     const newRole = createMockRole(["SendMessages", "ManageMessages"]);
-    const result = diffRolePermissions(oldRole as any, newRole as any);
+    const result = diffRolePermissions(
+      oldRole as unknown as import("discord.js").Role,
+      newRole as unknown as import("discord.js").Role
+    );
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -198,7 +214,10 @@ describe("diffRolePermissions", () => {
   it("detects removed permissions", () => {
     const oldRole = createMockRole(["SendMessages", "ManageMessages"]);
     const newRole = createMockRole(["SendMessages"]);
-    const result = diffRolePermissions(oldRole as any, newRole as any);
+    const result = diffRolePermissions(
+      oldRole as unknown as import("discord.js").Role,
+      newRole as unknown as import("discord.js").Role
+    );
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -211,7 +230,10 @@ describe("diffRolePermissions", () => {
   it("detects both added and removed permissions", () => {
     const oldRole = createMockRole(["SendMessages", "ManageMessages"]);
     const newRole = createMockRole(["SendMessages", "KickMembers"]);
-    const result = diffRolePermissions(oldRole as any, newRole as any);
+    const result = diffRolePermissions(
+      oldRole as unknown as import("discord.js").Role,
+      newRole as unknown as import("discord.js").Role
+    );
 
     expect(result).toHaveLength(2);
     expect(result).toContainEqual({
@@ -229,7 +251,10 @@ describe("diffRolePermissions", () => {
   it("returns empty for identical permissions", () => {
     const oldRole = createMockRole(["SendMessages", "ManageMessages"]);
     const newRole = createMockRole(["SendMessages", "ManageMessages"]);
-    const result = diffRolePermissions(oldRole as any, newRole as any);
+    const result = diffRolePermissions(
+      oldRole as unknown as import("discord.js").Role,
+      newRole as unknown as import("discord.js").Role
+    );
 
     expect(result).toHaveLength(0);
   });

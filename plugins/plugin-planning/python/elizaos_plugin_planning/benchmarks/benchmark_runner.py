@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import os
 import time
 import tracemalloc
 from dataclasses import asdict
@@ -76,7 +75,7 @@ class MemoryTracker:
 class BenchmarkRunner:
     """
     Production-Ready Benchmark Runner.
-    
+
     Orchestrates REALM-Bench and API-Bank testing with real runtime context.
     """
 
@@ -382,11 +381,11 @@ class BenchmarkRunner:
         md = f"""# ElizaOS Planning Benchmark Results
 
 ## Summary
-- **Status**: {summary['status'].upper()}
-- **Performance Score**: {summary['performance_score']}/100
-- **Overall Success Rate**: {metrics['overall_success_rate'] * 100:.1f}%
-- **Total Tests**: {metrics['total_tests']} ({metrics['total_passed']} passed)
-- **Duration**: {metadata['duration']:.1f}s
+- **Status**: {summary["status"].upper()}
+- **Performance Score**: {summary["performance_score"]}/100
+- **Overall Success Rate**: {metrics["overall_success_rate"] * 100:.1f}%
+- **Total Tests**: {metrics["total_tests"]} ({metrics["total_passed"]} passed)
+- **Duration**: {metadata["duration"]:.1f}s
 
 ## Key Findings
 """
@@ -395,10 +394,10 @@ class BenchmarkRunner:
 
         md += f"""
 ## Performance Metrics
-- **Average Planning Time**: {metrics['average_planning_time']:.0f}ms
-- **Average Execution Time**: {metrics['average_execution_time']:.0f}ms
-- **Peak Memory Usage**: {metrics['memory_usage']['peak'] / 1024 / 1024:.1f}MB
-- **Average Memory Usage**: {metrics['memory_usage']['average'] / 1024 / 1024:.1f}MB
+- **Average Planning Time**: {metrics["average_planning_time"]:.0f}ms
+- **Average Execution Time**: {metrics["average_execution_time"]:.0f}ms
+- **Peak Memory Usage**: {metrics["memory_usage"]["peak"] / 1024 / 1024:.1f}MB
+- **Average Memory Usage**: {metrics["memory_usage"]["average"] / 1024 / 1024:.1f}MB
 
 ## Strengths
 """
@@ -428,7 +427,7 @@ class BenchmarkRunner:
 ## API-Bank Results
 - **Tests**: {ab.total_tests} ({ab.passed_tests} passed)
 - **Success Rate**: {ab.passed_tests / ab.total_tests * 100:.1f}%
-- **API Call Accuracy**: {ab.overall_metrics.get('average_api_call_accuracy', 0) * 100:.1f}%
+- **API Call Accuracy**: {ab.overall_metrics.get("average_api_call_accuracy", 0) * 100:.1f}%
 """
 
         md += f"\n---\n*Generated on {metadata['timestamp']}*\n"
@@ -439,5 +438,8 @@ class BenchmarkRunner:
         if self.planning_service:
             await self.planning_service.stop()
             logger.info("[BenchmarkRunner] Runtime cleanup completed")
+
+
+
 
 

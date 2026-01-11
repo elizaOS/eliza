@@ -4,22 +4,17 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { ShellService } from "../services/shellService";
+import type { ShellService } from "../services/shellService";
 
 export const clearHistory: Action = {
   name: "CLEAR_SHELL_HISTORY",
   similes: ["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"],
-  description:
-    "Clears the recorded history of shell commands for the current conversation",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State
-  ): Promise<boolean> => {
+  description: "Clears the recorded history of shell commands for the current conversation",
+  validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     // Check if shell service is available
     const shellService = runtime.getService<ShellService>("shell");
     if (!shellService) {
@@ -32,12 +27,8 @@ export const clearHistory: Action = {
     const historyKeywords = ["history", "terminal", "shell", "command"];
 
     // Must have at least one clear keyword and one history keyword
-    const hasClearKeyword = clearKeywords.some((keyword) =>
-      text.includes(keyword)
-    );
-    const hasHistoryKeyword = historyKeywords.some((keyword) =>
-      text.includes(keyword)
-    );
+    const hasClearKeyword = clearKeywords.some((keyword) => text.includes(keyword));
+    const hasHistoryKeyword = historyKeywords.some((keyword) => text.includes(keyword));
 
     return hasClearKeyword && hasHistoryKeyword;
   },
@@ -134,4 +125,3 @@ export const clearHistory: Action = {
 };
 
 export default clearHistory;
-

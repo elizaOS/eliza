@@ -50,18 +50,18 @@ elizaos-plugin-farcaster = "1.0"
 
 The plugin requires the following environment variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `FARCASTER_FID` | Yes | Your Farcaster ID (FID) |
-| `FARCASTER_SIGNER_UUID` | Yes | Neynar signer UUID for signing casts |
-| `FARCASTER_NEYNAR_API_KEY` | Yes | Neynar API key for API access |
-| `FARCASTER_DRY_RUN` | No | Enable dry run mode (default: false) |
-| `FARCASTER_MODE` | No | Operation mode: 'polling' or 'webhook' (default: polling) |
-| `MAX_CAST_LENGTH` | No | Maximum cast length (default: 320) |
-| `FARCASTER_POLL_INTERVAL` | No | Polling interval in seconds (default: 120) |
-| `ENABLE_CAST` | No | Enable auto-casting (default: true) |
-| `CAST_INTERVAL_MIN` | No | Min cast interval in minutes (default: 90) |
-| `CAST_INTERVAL_MAX` | No | Max cast interval in minutes (default: 180) |
+| Variable                   | Required | Description                                               |
+| -------------------------- | -------- | --------------------------------------------------------- |
+| `FARCASTER_FID`            | Yes      | Your Farcaster ID (FID)                                   |
+| `FARCASTER_SIGNER_UUID`    | Yes      | Neynar signer UUID for signing casts                      |
+| `FARCASTER_NEYNAR_API_KEY` | Yes      | Neynar API key for API access                             |
+| `FARCASTER_DRY_RUN`        | No       | Enable dry run mode (default: false)                      |
+| `FARCASTER_MODE`           | No       | Operation mode: 'polling' or 'webhook' (default: polling) |
+| `MAX_CAST_LENGTH`          | No       | Maximum cast length (default: 320)                        |
+| `FARCASTER_POLL_INTERVAL`  | No       | Polling interval in seconds (default: 120)                |
+| `ENABLE_CAST`              | No       | Enable auto-casting (default: true)                       |
+| `CAST_INTERVAL_MIN`        | No       | Min cast interval in minutes (default: 90)                |
+| `CAST_INTERVAL_MAX`        | No       | Max cast interval in minutes (default: 180)               |
 
 ## Usage
 
@@ -117,7 +117,7 @@ Posts a new cast to Farcaster.
 
 ```typescript
 // Triggered by messages containing: post, cast, share, announce, farcaster, tweet
-"Please post about the new ElizaOS features on Farcaster"
+"Please post about the new ElizaOS features on Farcaster";
 ```
 
 ### REPLY_TO_CAST
@@ -126,7 +126,7 @@ Replies to an existing cast.
 
 ```typescript
 // Triggered by messages containing: reply, respond, answer, comment
-"Reply to that cast and thank them for the feedback"
+"Reply to that cast and thank them for the feedback";
 ```
 
 ## Providers

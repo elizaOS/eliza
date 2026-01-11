@@ -13,7 +13,6 @@ from elizaos_plugin_elizacloud.types import (
     TranscriptionParams,
 )
 
-
 # Map sizes to aspect ratios for ElizaOS Cloud API
 SIZE_TO_ASPECT_RATIO: dict[str, str] = {
     "1024x1024": "1:1",
@@ -27,7 +26,7 @@ class ElizaCloudClient:
 
     def __init__(self, config: ElizaCloudConfig) -> None:
         """Initialize the ElizaOS Cloud client.
-        
+
         Args:
             config: Configuration for the client.
         """
@@ -59,16 +58,16 @@ class ElizaCloudClient:
         model_size: str = "small",
     ) -> str:
         """Generate text using the specified model.
-        
+
         Args:
             params: Text generation parameters.
             model_size: Either "small" or "large".
-            
+
         Returns:
             Generated text string.
         """
         model = self.config.small_model if model_size == "small" else self.config.large_model
-        
+
         response = await self._client.post(
             "/chat/completions",
             json={
@@ -84,7 +83,7 @@ class ElizaCloudClient:
         )
         response.raise_for_status()
         data = response.json()
-        
+
         return str(data["choices"][0]["message"]["content"])
 
     async def generate_embedding(
@@ -92,16 +91,16 @@ class ElizaCloudClient:
         params: TextEmbeddingParams,
     ) -> list[float] | list[list[float]]:
         """Generate text embeddings.
-        
+
         Args:
             params: Embedding parameters with single text or batch.
-            
+
         Returns:
             Embedding vector(s).
         """
         embedding_url = self.config.embedding_url or self.config.base_url
         embedding_key = self.config.embedding_api_key or self.config.api_key
-        
+
         # Determine input
         if params.texts:
             input_texts = params.texts
@@ -109,7 +108,7 @@ class ElizaCloudClient:
             input_texts = [params.text]
         else:
             raise ValueError("Either text or texts must be provided")
-        
+
         async with httpx.AsyncClient(
             base_url=embedding_url,
             headers={
@@ -127,9 +126,9 @@ class ElizaCloudClient:
             )
             response.raise_for_status()
             data = response.json()
-        
+
         embeddings = [item["embedding"] for item in data["data"]]
-        
+
         # Return single embedding or batch
         if params.text and not params.texts:
             return embeddings[0]
@@ -140,18 +139,18 @@ class ElizaCloudClient:
         params: ImageGenerationParams,
     ) -> list[dict[str, str]]:
         """Generate images from a prompt.
-        
+
         Uses ElizaOS Cloud's custom /generate-image endpoint.
-        
+
         Args:
             params: Image generation parameters.
-            
+
         Returns:
             List of image data with URLs.
         """
         # Convert size to aspect ratio for ElizaOS Cloud API
         aspect_ratio = SIZE_TO_ASPECT_RATIO.get(params.size, "1:1")
-        
+
         response = await self._client.post(
             "/generate-image",
             json={
@@ -163,7 +162,7 @@ class ElizaCloudClient:
         )
         response.raise_for_status()
         data = response.json()
-        
+
         # Map response to expected format (url field)
         images = data.get("images", [])
         return [{"url": img.get("url") or img.get("image", "")} for img in images]
@@ -173,10 +172,10 @@ class ElizaCloudClient:
         params: ImageDescriptionParams | str,
     ) -> ImageDescriptionResult:
         """Describe an image.
-        
+
         Args:
             params: Image URL string or ImageDescriptionParams.
-            
+
         Returns:
             Image description result.
         """
@@ -186,8 +185,11 @@ class ElizaCloudClient:
             prompt_text = "Please analyze this image and provide a title and detailed description."
         else:
             image_url = params.image_url
-            prompt_text = params.prompt or "Please analyze this image and provide a title and detailed description."
-        
+            prompt_text = (
+                params.prompt
+                or "Please analyze this image and provide a title and detailed description."
+            )
+
         response = await self._client.post(
             "/chat/completions",
             json={
@@ -206,14 +208,14 @@ class ElizaCloudClient:
         )
         response.raise_for_status()
         data = response.json()
-        
+
         content = data["choices"][0]["message"]["content"]
-        
+
         # Parse title and description from response
         lines = content.strip().split("\n", 1)
         title = lines[0].replace("Title:", "").strip() if lines else "Untitled"
         description = lines[1].strip() if len(lines) > 1 else content
-        
+
         return ImageDescriptionResult(title=title, description=description)
 
     async def generate_speech(
@@ -221,17 +223,17 @@ class ElizaCloudClient:
         params: TextToSpeechParams,
     ) -> bytes:
         """Generate speech from text.
-        
+
         Args:
             params: Text-to-speech parameters.
-            
+
         Returns:
             Audio data as bytes.
         """
         model = params.model or self.config.tts_model
         voice = params.voice or self.config.tts_voice
         instructions = params.instructions or self.config.tts_instructions
-        
+
         request_body: dict[str, str | None] = {
             "model": model,
             "input": params.text,
@@ -240,10 +242,10 @@ class ElizaCloudClient:
         }
         if instructions:
             request_body["instructions"] = instructions
-        
+
         response = await self._client.post("/audio/speech", json=request_body)
         response.raise_for_status()
-        
+
         return response.content
 
     async def transcribe_audio(
@@ -251,16 +253,16 @@ class ElizaCloudClient:
         params: TranscriptionParams,
     ) -> str:
         """Transcribe audio to text.
-        
+
         Args:
             params: Transcription parameters.
-            
+
         Returns:
             Transcribed text.
         """
         # Use config default if model not specified
         model = params.model or self.config.transcription_model
-        
+
         files = {
             "file": ("audio.wav", params.audio, params.mime_type),
         }
@@ -274,7 +276,7 @@ class ElizaCloudClient:
             data["prompt"] = params.prompt
         if params.temperature is not None:
             data["temperature"] = str(params.temperature)
-        
+
         # Use a separate client without JSON content-type for multipart
         async with httpx.AsyncClient(
             base_url=self.config.base_url,
@@ -287,7 +289,7 @@ class ElizaCloudClient:
                 data=data,
             )
             response.raise_for_status()
-        
+
         # Handle both JSON and plain text responses
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:

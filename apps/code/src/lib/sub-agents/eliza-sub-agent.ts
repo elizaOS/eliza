@@ -1,7 +1,17 @@
-import { ModelType, type IAgentRuntime } from "@elizaos/core";
-import type { CodeTask, JsonValue, TaskResult, TaskTraceEvent } from "../../types.js";
-import type { SubAgent, SubAgentContext, SubAgentTool, ToolResult } from "./types.js";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import type {
+  CodeTask,
+  JsonValue,
+  TaskResult,
+  TaskTraceEvent,
+} from "../../types.js";
 import { parseToolCalls, type ToolCall } from "./tools.js";
+import type {
+  SubAgent,
+  SubAgentContext,
+  SubAgentTool,
+  ToolResult,
+} from "./types.js";
 
 const SYSTEM_PROMPT = `You are a coding assistant. Execute tasks using these tools:
 
@@ -34,7 +44,10 @@ export class ElizaSubAgent implements SubAgent {
   readonly type = "eliza" as const;
 
   private cancelled = false;
-  private readonly maxIterations = getEnvInt("ELIZA_CODE_SUBAGENT_MAX_ITERATIONS", 25);
+  private readonly maxIterations = getEnvInt(
+    "ELIZA_CODE_SUBAGENT_MAX_ITERATIONS",
+    25,
+  );
 
   cancel(): void {
     this.cancelled = true;
@@ -42,23 +55,39 @@ export class ElizaSubAgent implements SubAgent {
 
   async execute(task: CodeTask, context: SubAgentContext): Promise<TaskResult> {
     this.cancelled = false;
-    const { runtime, workingDirectory, onProgress, onMessage, onTrace } = context;
+    const { runtime, workingDirectory, onProgress, onMessage, onTrace } =
+      context;
     const tools = context.tools;
 
     const filesCreated: string[] = [];
     const filesModified: string[] = [];
 
     const debug = process.env.ELIZA_CODE_DEBUG === "1";
-    const maxTraceResponseChars = getEnvInt("ELIZA_CODE_TRACE_MAX_RESPONSE_CHARS", debug ? 20000 : 4000);
-    const maxTracePromptChars = getEnvInt("ELIZA_CODE_TRACE_MAX_PROMPT_CHARS", 20000);
-    const maxTraceToolOutputChars = getEnvInt("ELIZA_CODE_TRACE_MAX_TOOL_OUTPUT_CHARS", 8000);
-    const maxUiPreviewChars = getEnvInt("ELIZA_CODE_TRACE_UI_PREVIEW_CHARS", 180);
+    const maxTraceResponseChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_RESPONSE_CHARS",
+      debug ? 20000 : 4000,
+    );
+    const maxTracePromptChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_PROMPT_CHARS",
+      20000,
+    );
+    const maxTraceToolOutputChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_TOOL_OUTPUT_CHARS",
+      8000,
+    );
+    const maxUiPreviewChars = getEnvInt(
+      "ELIZA_CODE_TRACE_UI_PREVIEW_CHARS",
+      180,
+    );
 
     let traceSeq = 0;
-    const base = (): Pick<TaskTraceEvent, "ts" | "seq"> => ({
-      ts: Date.now(),
-      seq: (traceSeq += 1),
-    });
+    const base = (): Pick<TaskTraceEvent, "ts" | "seq"> => {
+      traceSeq += 1;
+      return {
+        ts: Date.now(),
+        seq: traceSeq,
+      };
+    };
 
     onProgress({ taskId: task.id ?? "", progress: 0 });
 
@@ -124,14 +153,20 @@ export class ElizaSubAgent implements SubAgent {
         const response = llm.response;
         onProgress({
           taskId: task.id ?? "",
-          progress: Math.min(90, Math.round((iteration / this.maxIterations) * 80)),
+          progress: Math.min(
+            90,
+            Math.round((iteration / this.maxIterations) * 80),
+          ),
         });
 
         const responseRedacted = redactSensitiveText(response);
-        const responseStored = truncateText(responseRedacted, maxTraceResponseChars);
+        const responseStored = truncateText(
+          responseRedacted,
+          maxTraceResponseChars,
+        );
         const responsePreview = truncateText(
           collapseWhitespace(firstNonEmptyLine(responseStored)),
-          maxUiPreviewChars
+          maxUiPreviewChars,
         );
 
         const llmBase = base();
@@ -142,7 +177,10 @@ export class ElizaSubAgent implements SubAgent {
               modelType: String(llm.modelType),
               response: responseStored,
               responsePreview,
-              prompt: truncateText(redactSensitiveText(llm.prompt), maxTracePromptChars),
+              prompt: truncateText(
+                redactSensitiveText(llm.prompt),
+                maxTracePromptChars,
+              ),
               ...llmBase,
             }
           : {
@@ -161,7 +199,9 @@ export class ElizaSubAgent implements SubAgent {
 
         // Check if done
         if (response.includes("DONE:")) {
-          const summary = response.split("DONE:")[1]?.trim().split("\n")[0] ?? "Task completed";
+          const summary =
+            response.split("DONE:")[1]?.trim().split("\n")[0] ??
+            "Task completed";
           onMessage(`Done: ${summary}`, "info");
           onTrace?.({
             kind: "note",
@@ -185,7 +225,8 @@ export class ElizaSubAgent implements SubAgent {
           messages.push({ role: "assistant", content: response });
           messages.push({
             role: "user",
-            content: "Continue with the task. Use TOOL: to call tools, or say DONE: when finished.",
+            content:
+              "Continue with the task. Use TOOL: to call tools, or say DONE: when finished.",
           });
           continue;
         }
@@ -193,21 +234,35 @@ export class ElizaSubAgent implements SubAgent {
         // Execute tools
         const toolCallLines = toolCalls
           .map((call) => {
-            onTrace?.({ kind: "tool_call", iteration, name: call.name, args: call.args, ...base() });
+            onTrace?.({
+              kind: "tool_call",
+              iteration,
+              name: call.name,
+              args: call.args,
+              ...base(),
+            });
             return `TOOL: ${formatToolCall(call)}`;
           })
           .join("\n");
         if (debug && toolCallLines) onMessage(toolCallLines, "info");
 
-        const results = await this.executeTools(toolCalls, tools, filesCreated, filesModified);
+        const results = await this.executeTools(
+          toolCalls,
+          tools,
+          filesCreated,
+          filesModified,
+        );
 
         const toolResultLines = results.executed
           .map(({ call, result }) => {
             const outputRedacted = redactSensitiveText(result.output);
-            const outputStored = truncateText(outputRedacted, maxTraceToolOutputChars);
+            const outputStored = truncateText(
+              outputRedacted,
+              maxTraceToolOutputChars,
+            );
             const outputPreview = truncateText(
               collapseWhitespace(firstNonEmptyLine(outputStored)),
-              maxUiPreviewChars
+              maxUiPreviewChars,
             );
 
             onTrace?.({
@@ -233,13 +288,21 @@ export class ElizaSubAgent implements SubAgent {
         }
 
         messages.push({ role: "assistant", content: response });
-        messages.push({ role: "user", content: `Tool results:\n${results.output}\n\nContinue.` });
+        messages.push({
+          role: "user",
+          content: `Tool results:\n${results.output}\n\nContinue.`,
+        });
       }
 
       // Max iterations reached
       const summary = `Completed after ${iteration} iterations`;
       onMessage(`Warning: ${summary}`, "warning");
-      onTrace?.({ kind: "note", level: "warning", message: summary, ...base() });
+      onTrace?.({
+        kind: "note",
+        level: "warning",
+        message: summary,
+        ...base(),
+      });
       return {
         success: true,
         summary,
@@ -247,15 +310,20 @@ export class ElizaSubAgent implements SubAgent {
         filesModified,
       };
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      onMessage(`Error: ${err.message}`, "error");
-      onTrace?.({ kind: "note", level: "error", message: err.message, ...base() });
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      onMessage(`Error: ${errorMessage}`, "error");
+      onTrace?.({
+        kind: "error",
+        message: errorMessage,
+        ...base(),
+      });
       return {
         success: false,
-        summary: `Failed: ${err.message}`,
+        summary: `Failed: ${errorMessage}`,
         filesCreated,
         filesModified,
-        error: err.message,
+        error: errorMessage,
       };
     }
   }
@@ -263,12 +331,14 @@ export class ElizaSubAgent implements SubAgent {
   private async callLLM(
     runtime: IAgentRuntime,
     messages: ConversationMessage[],
-    cwd: string
+    cwd: string,
   ): Promise<{ prompt: string; response: string; modelType: ModelType }> {
     const systemPrompt = SYSTEM_PROMPT.replace("{cwd}", cwd);
 
     const history = messages
-      .map((m) => (m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`))
+      .map((m) =>
+        m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`,
+      )
       .join("\n\n");
 
     const prompt = `${systemPrompt}\n\n${history}\n\nAssistant:`;
@@ -287,7 +357,7 @@ export class ElizaSubAgent implements SubAgent {
     calls: ToolCall[],
     tools: SubAgentTool[],
     filesCreated: string[],
-    filesModified: string[]
+    filesModified: string[],
   ): Promise<{
     output: string;
     summary: string;
@@ -298,7 +368,9 @@ export class ElizaSubAgent implements SubAgent {
     const executed: Array<{ call: ToolCall; result: ToolResult }> = [];
 
     for (const call of calls) {
-      const tool = tools.find((t) => t.name === call.name || t.name === call.name.toLowerCase());
+      const tool = tools.find(
+        (t) => t.name === call.name || t.name === call.name.toLowerCase(),
+      );
       if (!tool) {
         const missing: ToolResult = { success: false, output: "Unknown tool" };
         outputs.push(`[${call.name}] ${missing.output}`);
@@ -375,14 +447,20 @@ function redactSensitiveText(text: string): string {
 
   out = out.replace(
     /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-    "[REDACTED:PRIVATE_KEY]"
+    "[REDACTED:PRIVATE_KEY]",
   );
   out = out.replace(/\bsk-[A-Za-z0-9]{16,}\b/g, "[REDACTED:API_KEY]");
   out = out.replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bghp_[A-Za-z0-9]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED:SLACK_TOKEN]");
+  out = out.replace(
+    /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    "[REDACTED:GITHUB_TOKEN]",
+  );
+  out = out.replace(
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+    "[REDACTED:SLACK_TOKEN]",
+  );
   out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]");
   out = out.replace(/\bBasic\s+[A-Za-z0-9+/=]{10,}\b/g, "Basic [REDACTED]");
   out = out.replace(/(password\s*[:=]\s*)(\S+)/gi, "$1[REDACTED]");
@@ -410,7 +488,9 @@ function shouldRedactEnvKey(key: string): boolean {
 
 function formatToolCall(call: ToolCall): string {
   const argsText = Object.entries(call.args)
-    .map(([k, v]) => `${k}="${truncateText(v.replace(/\s+/g, " ").trim(), 80)}"`)
+    .map(
+      ([k, v]) => `${k}="${truncateText(v.replace(/\s+/g, " ").trim(), 80)}"`,
+    )
     .join(", ");
   return `${call.name}(${argsText})`;
 }
@@ -421,4 +501,3 @@ function formatToolCall(call: ToolCall): string {
 export function createElizaSubAgent(): SubAgent {
   return new ElizaSubAgent();
 }
-

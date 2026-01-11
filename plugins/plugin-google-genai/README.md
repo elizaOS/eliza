@@ -12,14 +12,14 @@ Google Generative AI (Gemini) plugin for elizaOS with native support for TypeScr
 
 ## Available Models
 
-| Model Type | Default Model | Description |
-|------------|---------------|-------------|
-| TEXT_SMALL | gemini-2.0-flash-001 | Fast, efficient for everyday tasks |
-| TEXT_LARGE | gemini-2.5-pro-preview-03-25 | Most capable for complex tasks |
-| TEXT_EMBEDDING | text-embedding-004 | Text embeddings (768 dimensions) |
-| IMAGE_DESCRIPTION | gemini-2.5-pro-preview-03-25 | Multimodal image analysis |
-| OBJECT_SMALL | gemini-2.0-flash-001 | Fast JSON generation |
-| OBJECT_LARGE | gemini-2.5-pro-preview-03-25 | Complex JSON generation |
+| Model Type        | Default Model                | Description                        |
+| ----------------- | ---------------------------- | ---------------------------------- |
+| TEXT_SMALL        | gemini-2.0-flash-001         | Fast, efficient for everyday tasks |
+| TEXT_LARGE        | gemini-2.5-pro-preview-03-25 | Most capable for complex tasks     |
+| TEXT_EMBEDDING    | text-embedding-004           | Text embeddings (768 dimensions)   |
+| IMAGE_DESCRIPTION | gemini-2.5-pro-preview-03-25 | Multimodal image analysis          |
+| OBJECT_SMALL      | gemini-2.0-flash-001         | Fast JSON generation               |
+| OBJECT_LARGE      | gemini-2.5-pro-preview-03-25 | Complex JSON generation            |
 
 ## Installation
 
@@ -48,21 +48,21 @@ elizaos-plugin-google-genai = "1.0"
 
 Set the following environment variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | Your Google AI API key from [Google AI Studio](https://aistudio.google.com/) |
-| `GOOGLE_SMALL_MODEL` | No | Override small model (default: gemini-2.0-flash-001) |
-| `GOOGLE_LARGE_MODEL` | No | Override large model (default: gemini-2.5-pro-preview-03-25) |
-| `GOOGLE_EMBEDDING_MODEL` | No | Override embedding model (default: text-embedding-004) |
-| `GOOGLE_IMAGE_MODEL` | No | Override image analysis model |
-| `GOOGLE_TIMEOUT_SECONDS` | No | Request timeout (default: 60) |
+| Variable                       | Required | Description                                                                  |
+| ------------------------------ | -------- | ---------------------------------------------------------------------------- |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes      | Your Google AI API key from [Google AI Studio](https://aistudio.google.com/) |
+| `GOOGLE_SMALL_MODEL`           | No       | Override small model (default: gemini-2.0-flash-001)                         |
+| `GOOGLE_LARGE_MODEL`           | No       | Override large model (default: gemini-2.5-pro-preview-03-25)                 |
+| `GOOGLE_EMBEDDING_MODEL`       | No       | Override embedding model (default: text-embedding-004)                       |
+| `GOOGLE_IMAGE_MODEL`           | No       | Override image analysis model                                                |
+| `GOOGLE_TIMEOUT_SECONDS`       | No       | Request timeout (default: 60)                                                |
 
 ## Usage
 
 ### TypeScript (elizaOS Plugin)
 
 ```typescript
-import { googleGenAIPlugin } from '@elizaos/plugin-google-genai';
+import { googleGenAIPlugin } from "@elizaos/plugin-google-genai";
 
 // Register the plugin with your elizaOS agent
 const agent = new Agent({
@@ -71,20 +71,20 @@ const agent = new Agent({
 
 // Use via runtime
 const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-  prompt: 'Explain quantum mechanics in simple terms.',
+  prompt: "Explain quantum mechanics in simple terms.",
 });
 
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-  text: 'Hello, world!',
+  text: "Hello, world!",
 });
 
 const object = await runtime.useModel(ModelType.OBJECT_SMALL, {
-  prompt: 'Generate a person profile with name and age.',
+  prompt: "Generate a person profile with name and age.",
   schema: {
-    type: 'object',
+    type: "object",
     properties: {
-      name: { type: 'string' },
-      age: { type: 'number' },
+      name: { type: "string" },
+      age: { type: "number" },
     },
   },
 });
@@ -99,19 +99,19 @@ from elizaos_plugin_google_genai import GoogleGenAIClient, GoogleGenAIConfig
 async def main():
     # Load config from environment
     config = GoogleGenAIConfig.from_env()
-    
+
     async with GoogleGenAIClient(config) as client:
         # Generate text
         response = await client.generate_text_large("What is the meaning of life?")
         print(response.text)
-        
+
         # Generate embeddings
         embedding = await client.generate_embedding("Hello, world!")
         print(f"Embedding dimension: {len(embedding.embedding)}")
-        
+
         # Generate structured JSON
         from elizaos_plugin_google_genai import ObjectGenerationParams
-        
+
         result = await client.generate_object_small(ObjectGenerationParams(
             prompt="Generate a person profile with name and age",
             json_schema={

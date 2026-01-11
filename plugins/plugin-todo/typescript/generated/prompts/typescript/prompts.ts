@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../../prompts/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -228,4 +228,3 @@ Do not write code. Just return the XML object.
 </response>`;
 
 export const EXTRACT_TODO_TEMPLATE = extractTodoTemplate;
-

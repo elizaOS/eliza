@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type EventPayload,
   EventType,
   type IAgentRuntime,
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmbeddingGenerationService } from "../../services/embedding";
 
 // Test interface for accessing private properties
@@ -27,8 +28,9 @@ interface TestableEmbeddingService {
 describe("EmbeddingGenerationService - Queue Management", () => {
   let service: EmbeddingGenerationService;
   let mockRuntime: IAgentRuntime;
-  let registeredHandlers: Map<string, Function> = new Map();
-  let emittedEvents: Array<{ event: string; payload: any }> = [];
+  let registeredHandlers: Map<string, (params: EventPayload) => Promise<void>> =
+    new Map();
+  let emittedEvents: Array<{ event: string; payload: EventPayload }> = [];
 
   beforeEach(() => {
     emittedEvents = [];
@@ -37,16 +39,18 @@ describe("EmbeddingGenerationService - Queue Management", () => {
     // Create mock runtime
     mockRuntime = {
       agentId: "test-agent" as UUID,
-      registerEvent: vi.fn((event: string, handler: Function) => {
-        registeredHandlers.set(event, handler);
-      }),
-      emitEvent: vi.fn(async (event: string, payload: any) => {
+      registerEvent: vi.fn(
+        (event: string, handler: (params: EventPayload) => Promise<void>) => {
+          registeredHandlers.set(event, handler);
+        },
+      ),
+      emitEvent: vi.fn(async (event: string, payload: EventPayload) => {
         emittedEvents.push({ event, payload });
       }),
       useModel: vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
-      getModel: vi.fn().mockReturnValue(
-        vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
-      ),
+      getModel: vi
+        .fn()
+        .mockReturnValue(vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5])),
       updateMemory: vi.fn().mockResolvedValue(undefined),
       logger: {
         debug: vi.fn(),
@@ -129,7 +133,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      (service as any).maxQueueSize = 5;
+      (service as unknown as TestableEmbeddingService).maxQueueSize = 5;
 
       // Add items with timestamps
       const timestamps: number[] = [];
@@ -180,7 +184,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      (service as any).maxQueueSize = 100;
+      (service as unknown as TestableEmbeddingService).maxQueueSize = 100;
 
       // Fill the queue
       for (let i = 0; i < 100; i++) {
@@ -368,8 +372,8 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       );
 
       expect(retriedItem).toBeDefined();
-      expect(retriedItem && retriedItem.retryCount).toBe(1);
-      expect(retriedItem && retriedItem.priority).toBe("high"); // Should maintain priority
+      expect(retriedItem?.retryCount).toBe(1);
+      expect(retriedItem?.priority).toBe("high"); // Should maintain priority
     });
 
     it("should respect maxRetries limit", async () => {
@@ -388,9 +392,9 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       }
 
       // Mock useModel to always fail
-      mockRuntime.useModel = vi.fn().mockRejectedValue(
-        new Error("Persistent failure"),
-      );
+      mockRuntime.useModel = vi
+        .fn()
+        .mockRejectedValue(new Error("Persistent failure"));
 
       // Add item with low retry limit
       if (handler) {
@@ -406,7 +410,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
       // Manually process queue multiple times to trigger retries
       for (let i = 0; i <= 3; i++) {
-        await (service as any).processQueue();
+        await (service as unknown as TestableEmbeddingService).processQueue();
       }
 
       // Check that failure event was emitted
@@ -414,7 +418,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         (e) => e.event === EventType.EMBEDDING_GENERATION_FAILED,
       );
       expect(failureEvent).toBeDefined();
-      expect(failureEvent && failureEvent.payload && failureEvent.payload.memory.id).toBe("fail-memory");
+      expect(failureEvent?.payload?.memory.id).toBe("fail-memory");
     });
   });
 
@@ -553,7 +557,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      (service as any).maxQueueSize = 10000;
+      (service as unknown as TestableEmbeddingService).maxQueueSize = 10000;
 
       const startTime = Date.now();
 

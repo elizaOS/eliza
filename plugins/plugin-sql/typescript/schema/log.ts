@@ -1,12 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  foreignKey,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { foreignKey, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
 
@@ -20,9 +13,7 @@ export const logTable = pgTable(
   "logs",
   {
     id: uuid("id").defaultRandom().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
     entityId: uuid("entity_id")
       .notNull()
       .references(() => entityTable.id, { onDelete: "cascade" }),
@@ -43,5 +34,5 @@ export const logTable = pgTable(
       columns: [table.entityId],
       foreignColumns: [entityTable.id],
     }).onDelete("cascade"),
-  ],
+  ]
 );

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket
  *
@@ -14,59 +13,69 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { z } from "zod";
 import { logger } from "@elizaos/core";
-
-// Re-export all types
-export * from "./types";
-
-// Re-export constants
-export * from "./constants";
-
-// Re-export templates
-export * from "./templates";
+import { z } from "zod";
 
 // Re-export actions
 export {
-  retrieveAllMarketsAction,
-  getSimplifiedMarketsAction,
-  getMarketDetailsAction,
-  getSamplingMarketsAction,
-  getOrderBookSummaryAction,
-  getOrderBookDepthAction,
   getBestPriceAction,
+  getMarketDetailsAction,
   getMidpointPriceAction,
+  getOrderBookDepthAction,
+  getOrderBookSummaryAction,
+  getSamplingMarketsAction,
+  getSimplifiedMarketsAction,
   getSpreadAction,
   placeOrderAction,
+  retrieveAllMarketsAction,
 } from "./actions";
 
+// Re-export constants
+export * from "./constants";
 // Re-export providers
 export { polymarketProvider } from "./providers";
-
 // Re-export services
 export { PolymarketService, type PolymarketWalletData } from "./services";
+// Re-export templates
+export * from "./templates";
+// Re-export all types
+export * from "./types";
 
 // Re-export utilities
 export {
+  callLLMWithTimeout,
+  getWalletAddress,
   initializeClobClient,
   initializeClobClientWithCreds,
-  getWalletAddress,
-  callLLMWithTimeout,
   isLLMError,
 } from "./utils";
 
 // Import for plugin definition
 import {
-  retrieveAllMarketsAction,
-  getSimplifiedMarketsAction,
-  getMarketDetailsAction,
-  getSamplingMarketsAction,
-  getOrderBookSummaryAction,
-  getOrderBookDepthAction,
+  checkOrderScoringAction,
+  createApiKeyAction,
+  getAccountAccessStatusAction,
+  getActiveOrdersAction,
+  getAllApiKeysAction,
   getBestPriceAction,
+  getClobMarketsAction,
+  getMarketDetailsAction,
   getMidpointPriceAction,
+  getOpenMarketsAction,
+  getOrderBookDepthAction,
+  getOrderBookSummaryAction,
+  getOrderDetailsAction,
+  getPriceHistoryAction,
+  getSamplingMarketsAction,
+  getSimplifiedMarketsAction,
   getSpreadAction,
+  getTradeHistoryAction,
+  handleAuthenticationAction,
+  handleRealtimeUpdatesAction,
   placeOrderAction,
+  retrieveAllMarketsAction,
+  revokeApiKeyAction,
+  setupWebsocketAction,
 } from "./actions";
 import { polymarketProvider } from "./providers";
 import { PolymarketService } from "./services";
@@ -80,26 +89,11 @@ const configSchema = z.object({
     .url("CLOB API URL must be a valid URL")
     .optional()
     .default("https://clob.polymarket.com"),
-  POLYMARKET_PRIVATE_KEY: z
-    .string()
-    .min(1, "Private key cannot be empty")
-    .optional(),
-  EVM_PRIVATE_KEY: z
-    .string()
-    .min(1, "Private key cannot be empty")
-    .optional(),
-  CLOB_API_KEY: z
-    .string()
-    .min(1, "CLOB API key cannot be empty")
-    .optional(),
-  CLOB_API_SECRET: z
-    .string()
-    .min(1, "CLOB API secret cannot be empty")
-    .optional(),
-  CLOB_API_PASSPHRASE: z
-    .string()
-    .min(1, "CLOB API passphrase cannot be empty")
-    .optional(),
+  POLYMARKET_PRIVATE_KEY: z.string().min(1, "Private key cannot be empty").optional(),
+  EVM_PRIVATE_KEY: z.string().min(1, "Private key cannot be empty").optional(),
+  CLOB_API_KEY: z.string().min(1, "CLOB API key cannot be empty").optional(),
+  CLOB_API_SECRET: z.string().min(1, "CLOB API secret cannot be empty").optional(),
+  CLOB_API_PASSPHRASE: z.string().min(1, "CLOB API passphrase cannot be empty").optional(),
 });
 
 /**
@@ -137,7 +131,7 @@ export const polymarketPlugin: Plugin = {
 
       // Set environment variables
       for (const [key, value] of Object.entries(validatedConfig)) {
-        if (value) process.env[key] = value;
+        if (value && typeof value === "string") process.env[key] = value;
       }
 
       logger.info("Polymarket plugin initialized successfully");
@@ -158,6 +152,10 @@ export const polymarketPlugin: Plugin = {
     getSimplifiedMarketsAction,
     getMarketDetailsAction,
     getSamplingMarketsAction,
+    getClobMarketsAction,
+    getOpenMarketsAction,
+    getPriceHistoryAction,
+    getTradeHistoryAction,
     // Order book actions
     getOrderBookSummaryAction,
     getOrderBookDepthAction,
@@ -166,6 +164,18 @@ export const polymarketPlugin: Plugin = {
     getSpreadAction,
     // Trading actions
     placeOrderAction,
+    getOrderDetailsAction,
+    getActiveOrdersAction,
+    checkOrderScoringAction,
+    // API key management
+    createApiKeyAction,
+    revokeApiKeyAction,
+    getAllApiKeysAction,
+    getAccountAccessStatusAction,
+    // WebSocket and real-time
+    setupWebsocketAction,
+    handleRealtimeUpdatesAction,
+    handleAuthenticationAction,
   ],
   evaluators: [],
 };

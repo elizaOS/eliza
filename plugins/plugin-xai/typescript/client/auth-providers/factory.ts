@@ -1,9 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
-import type { TwitterAuthMode, TwitterAuthProvider } from "./types";
+import { BrokerAuthProvider } from "./broker";
 import { EnvAuthProvider } from "./env";
 import { OAuth2PKCEAuthProvider } from "./oauth2-pkce";
-import { BrokerAuthProvider } from "./broker";
+import type { TwitterAuthMode, TwitterAuthProvider } from "./types";
 
 function normalizeMode(v: string | undefined | null): TwitterAuthMode {
   const mode = (v ?? "env").toLowerCase();
@@ -11,15 +11,18 @@ function normalizeMode(v: string | undefined | null): TwitterAuthMode {
   throw new Error(`Invalid TWITTER_AUTH_MODE=${v}. Expected env|oauth|broker.`);
 }
 
-export function getTwitterAuthMode(runtime?: IAgentRuntime, state?: any): TwitterAuthMode {
-  return normalizeMode(
-    state?.TWITTER_AUTH_MODE ?? getSetting(runtime ?? null, "TWITTER_AUTH_MODE") ?? "env",
-  );
+export function getTwitterAuthMode(
+  runtime?: IAgentRuntime,
+  state?: Record<string, unknown>
+): TwitterAuthMode {
+  const modeRaw = state?.TWITTER_AUTH_MODE ?? getSetting(runtime ?? null, "TWITTER_AUTH_MODE");
+  const mode = typeof modeRaw === "string" ? modeRaw : undefined;
+  return normalizeMode(mode ?? "env");
 }
 
 export function createTwitterAuthProvider(
   runtime: IAgentRuntime,
-  state?: any,
+  state?: Record<string, unknown>
 ): TwitterAuthProvider {
   const mode = getTwitterAuthMode(runtime, state);
   switch (mode) {
@@ -31,4 +34,3 @@ export function createTwitterAuthProvider(
       return new BrokerAuthProvider(runtime);
   }
 }
-

@@ -1,11 +1,10 @@
 // Vision models for object detection and pose estimation
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-import * as poseDetection from '@tensorflow-models/pose-detection';
-import * as tf from '@tensorflow/tfjs-node';
 
-import { logger, IAgentRuntime } from '@elizaos/core';
-import { DetectedObject, PersonInfo } from './types';
-import { Florence2Model } from './florence2-model';
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import * as tf from "@tensorflow/tfjs-node";
+import * as cocoSsd from "@tensorflow-models/coco-ssd";
+import * as poseDetection from "@tensorflow-models/pose-detection";
+import type { DetectedObject, PersonInfo } from "./types";
 
 // Define types that are missing from types.ts
 export interface VisionModelConfig {
@@ -22,7 +21,7 @@ export interface VisionModelConfig {
   };
 }
 
-export type Pose = 'sitting' | 'standing' | 'lying' | 'walking' | 'unknown';
+export type Pose = "sitting" | "standing" | "lying" | "walking" | "unknown";
 
 export interface PoseLandmark {
   name: string;
@@ -32,24 +31,21 @@ export interface PoseLandmark {
 }
 
 export class VisionModels {
-  private runtime: IAgentRuntime;
-  private config: VisionModelConfig;
   private objectDetectionModel: cocoSsd.ObjectDetection | null = null;
   private poseDetector: poseDetection.PoseDetector | null = null;
   private initialized = false;
-  private florence2Model: Florence2Model | null = null;
-  private cocoSsdModel: any = null;
-  private posenetModel: any = null;
+  private runtime: IAgentRuntime;
+  private config: VisionModelConfig;
 
   constructor(runtime: IAgentRuntime, config?: VisionModelConfig) {
     this.runtime = runtime;
     this.config = config || {
       florence2: {
-        baseUrl: 'http://localhost:8000',
+        baseUrl: "http://localhost:8000",
         apiKey: undefined,
       },
       vlm: {
-        model: 'gpt-4o',
+        model: "gpt-4o",
         temperature: 0.7,
         maxTokens: 500,
       },
@@ -62,32 +58,32 @@ export class VisionModels {
     }
 
     this.config = config;
-    logger.info('[VisionModels] Initializing vision models...');
+    logger.info("[VisionModels] Initializing vision models...");
 
     try {
       // Initialize TensorFlow.js backend
       await tf.ready();
-      logger.info('[VisionModels] TensorFlow.js backend ready');
+      logger.info("[VisionModels] TensorFlow.js backend ready");
 
       // Load object detection model
       if (config.enableObjectDetection) {
         try {
-          logger.info('[VisionModels] Loading COCO-SSD model...');
+          logger.info("[VisionModels] Loading COCO-SSD model...");
           this.objectDetectionModel = await cocoSsd.load({
-            base: 'mobilenet_v2',
+            base: "mobilenet_v2",
           });
-          logger.info('[VisionModels] COCO-SSD model loaded');
+          logger.info("[VisionModels] COCO-SSD model loaded");
         } catch (error) {
-          logger.error('[VisionModels] Failed to load COCO-SSD model:', error);
+          logger.error("[VisionModels] Failed to load COCO-SSD model:", error);
         }
       }
 
       // Load pose detection model
       if (config.enablePoseDetection) {
         try {
-          logger.info('[VisionModels] Loading PoseNet model...');
+          logger.info("[VisionModels] Loading PoseNet model...");
           const detectorConfig: poseDetection.PosenetModelConfig = {
-            architecture: 'MobileNetV1',
+            architecture: "MobileNetV1",
             outputStride: 16,
             inputResolution: { width: 640, height: 480 },
             multiplier: 0.75,
@@ -97,16 +93,16 @@ export class VisionModels {
             poseDetection.SupportedModels.PoseNet,
             detectorConfig
           );
-          logger.info('[VisionModels] PoseNet model loaded');
+          logger.info("[VisionModels] PoseNet model loaded");
         } catch (error) {
-          logger.error('[VisionModels] Failed to load PoseNet model:', error);
+          logger.error("[VisionModels] Failed to load PoseNet model:", error);
         }
       }
 
       this.initialized = true;
-      logger.info('[VisionModels] Vision models initialized');
+      logger.info("[VisionModels] Vision models initialized");
     } catch (error) {
-      logger.error('[VisionModels] Initialization failed:', error);
+      logger.error("[VisionModels] Initialization failed:", error);
       throw error;
     }
   }
@@ -121,12 +117,12 @@ export class VisionModels {
 
   async detectObjects(
     imageData: Buffer,
-    width: number,
-    height: number,
+    _width: number,
+    _height: number,
     description?: string
   ): Promise<DetectedObject[]> {
     if (!this.objectDetectionModel) {
-      logger.warn('[VisionModels] Object detection model not loaded');
+      logger.warn("[VisionModels] Object detection model not loaded");
       return this.enhancedObjectDetection(description);
     }
 
@@ -137,8 +133,11 @@ export class VisionModels {
       // Ensure the tensor has the right shape [1, height, width, 3]
       const batched = imageTensor.expandDims(0);
 
-      // Run detection
-      const predictions = await this.objectDetectionModel.detect(batched as any);
+      // Run detection - cocoSsd.detect expects specific input types
+      // We squeeze the batch dimension back for detection
+      const squeezed = batched.squeeze([0]) as tf.Tensor3D;
+      const predictions = await this.objectDetectionModel.detect(squeezed);
+      squeezed.dispose();
 
       // Clean up tensors
       imageTensor.dispose();
@@ -160,7 +159,7 @@ export class VisionModels {
       logger.debug(`[VisionModels] Detected ${objects.length} objects`);
       return objects;
     } catch (error) {
-      logger.error('[VisionModels] Object detection failed:', error);
+      logger.error("[VisionModels] Object detection failed:", error);
       return this.enhancedObjectDetection(description);
     }
   }
@@ -175,16 +174,16 @@ export class VisionModels {
 
     // Extract objects from description using patterns
     const objectPatterns = [
-      { pattern: /(\d+)?\s*(person|people|man|men|woman|women|child|children)/gi, type: 'person' },
-      { pattern: /(\d+)?\s*(laptop|computer|monitor|screen|display)/gi, type: 'laptop' },
-      { pattern: /(\d+)?\s*(phone|smartphone|mobile)/gi, type: 'cell phone' },
-      { pattern: /(\d+)?\s*(book|notebook|journal)/gi, type: 'book' },
-      { pattern: /(\d+)?\s*(cup|mug|glass|bottle)/gi, type: 'cup' },
-      { pattern: /(\d+)?\s*(chair|seat|sofa|couch)/gi, type: 'chair' },
-      { pattern: /(\d+)?\s*(table|desk)/gi, type: 'dining table' },
-      { pattern: /(\d+)?\s*(car|vehicle|truck|bus)/gi, type: 'car' },
-      { pattern: /(\d+)?\s*(dog|cat|pet|animal)/gi, type: 'animal' },
-      { pattern: /(\d+)?\s*(plant|tree|flower)/gi, type: 'potted plant' },
+      { pattern: /(\d+)?\s*(person|people|man|men|woman|women|child|children)/gi, type: "person" },
+      { pattern: /(\d+)?\s*(laptop|computer|monitor|screen|display)/gi, type: "laptop" },
+      { pattern: /(\d+)?\s*(phone|smartphone|mobile)/gi, type: "cell phone" },
+      { pattern: /(\d+)?\s*(book|notebook|journal)/gi, type: "book" },
+      { pattern: /(\d+)?\s*(cup|mug|glass|bottle)/gi, type: "cup" },
+      { pattern: /(\d+)?\s*(chair|seat|sofa|couch)/gi, type: "chair" },
+      { pattern: /(\d+)?\s*(table|desk)/gi, type: "dining table" },
+      { pattern: /(\d+)?\s*(car|vehicle|truck|bus)/gi, type: "car" },
+      { pattern: /(\d+)?\s*(dog|cat|pet|animal)/gi, type: "animal" },
+      { pattern: /(\d+)?\s*(plant|tree|flower)/gi, type: "potted plant" },
     ];
 
     for (const { pattern, type } of objectPatterns) {
@@ -219,14 +218,14 @@ export class VisionModels {
     const basePositions: Record<string, { width: number; height: number; y: number }> = {
       person: { width: 150, height: 300, y: 100 },
       laptop: { width: 200, height: 150, y: 250 },
-      'cell phone': { width: 50, height: 100, y: 300 },
+      "cell phone": { width: 50, height: 100, y: 300 },
       book: { width: 100, height: 150, y: 280 },
       cup: { width: 60, height: 80, y: 300 },
       chair: { width: 180, height: 200, y: 200 },
-      'dining table': { width: 400, height: 200, y: 250 },
+      "dining table": { width: 400, height: 200, y: 250 },
       car: { width: 300, height: 200, y: 150 },
       animal: { width: 120, height: 100, y: 300 },
-      'potted plant': { width: 100, height: 150, y: 200 },
+      "potted plant": { width: 100, height: 150, y: 200 },
     };
 
     const base = basePositions[type] || { width: 100, height: 100, y: 200 };
@@ -247,7 +246,7 @@ export class VisionModels {
     description?: string
   ): Promise<PersonInfo[]> {
     if (!this.poseDetector) {
-      logger.warn('[VisionModels] Pose detection model not loaded');
+      logger.warn("[VisionModels] Pose detection model not loaded");
       return this.enhancedPoseDetection(description);
     }
 
@@ -255,12 +254,12 @@ export class VisionModels {
       // Convert image data to tensor
       const imageTensor = tf.node.decodeImage(imageData, 3);
 
-      // Run pose detection
+      // Run pose detection - estimatePoses expects ImageData-like object
       const poses = await this.poseDetector.estimatePoses({
         data: new Uint8ClampedArray(imageTensor.dataSync()),
         width,
         height,
-      } as any);
+      } as ImageData);
 
       // Clean up tensor
       imageTensor.dispose();
@@ -268,7 +267,7 @@ export class VisionModels {
       // Convert poses to PersonInfo
       return this.convertPosesToPersonInfo(poses);
     } catch (error) {
-      logger.error('[VisionModels] Pose detection failed:', error);
+      logger.error("[VisionModels] Pose detection failed:", error);
       return this.enhancedPoseDetection(description);
     }
   }
@@ -291,26 +290,26 @@ export class VisionModels {
     }
 
     const count = peopleMatch[0].match(/\d+/)?.[0]
-      ? parseInt(peopleMatch[0].match(/\d+/)![0], 10)
+      ? parseInt(peopleMatch[0].match(/\d+/)?.[0], 10)
       : 1;
 
     // Analyze description for pose and facing information
     const poseKeywords = {
-      standing: ['standing', 'stand', 'upright'],
-      sitting: ['sitting', 'seated', 'sit', 'chair'],
-      walking: ['walking', 'walk', 'moving'],
-      lying: ['lying', 'laying', 'reclined'],
+      standing: ["standing", "stand", "upright"],
+      sitting: ["sitting", "seated", "sit", "chair"],
+      walking: ["walking", "walk", "moving"],
+      lying: ["lying", "laying", "reclined"],
     };
 
     const facingKeywords = {
-      camera: ['facing camera', 'looking at camera', 'facing forward', 'front view'],
-      away: ['back to camera', 'facing away', 'back view'],
-      left: ['facing left', 'profile left', 'left side'],
-      right: ['facing right', 'profile right', 'right side'],
+      camera: ["facing camera", "looking at camera", "facing forward", "front view"],
+      away: ["back to camera", "facing away", "back view"],
+      left: ["facing left", "profile left", "left side"],
+      right: ["facing right", "profile right", "right side"],
     };
 
-    let detectedPose = 'standing';
-    let detectedFacing = 'camera';
+    let detectedPose = "standing";
+    let detectedFacing = "camera";
 
     // Detect pose
     for (const [pose, keywords] of Object.entries(poseKeywords)) {
@@ -330,13 +329,13 @@ export class VisionModels {
 
     // Create PersonInfo for each detected person
     for (let i = 0; i < count; i++) {
-      const boundingBox = this.generatePlausibleBoundingBox('person', i, count);
+      const boundingBox = this.generatePlausibleBoundingBox("person", i, count);
 
       people.push({
         id: `person-${Date.now()}-${i}`,
         boundingBox,
-        pose: detectedPose as 'sitting' | 'standing' | 'lying' | 'unknown',
-        facing: detectedFacing as 'camera' | 'away' | 'left' | 'right',
+        pose: detectedPose as "sitting" | "standing" | "lying" | "unknown",
+        facing: detectedFacing as "camera" | "away" | "left" | "right",
         confidence: 0.85,
         keypoints: this.generatePlausibleKeypoints(
           boundingBox,
@@ -386,7 +385,7 @@ export class VisionModels {
     };
 
     // Adjust positions based on pose
-    if (pose === 'sitting') {
+    if (pose === "sitting") {
       // Lower hips and knees for sitting pose
       positions.leftHip.y += height * 0.1;
       positions.rightHip.y += height * 0.1;
@@ -397,7 +396,7 @@ export class VisionModels {
     // Convert to PoseLandmark format
     Object.entries(positions).forEach(([name, pos]) => {
       keypoints.push({
-        name: name as any,
+        name: name as string,
         x: pos.x,
         y: pos.y,
         score: 0.85,
@@ -434,7 +433,7 @@ export class VisionModels {
 
       // Convert keypoints to our format
       const convertedKeypoints = keypoints.map((kp: poseDetection.Keypoint) => ({
-        part: kp.name || 'unknown',
+        part: kp.name || "unknown",
         position: { x: kp.x, y: kp.y },
         score: kp.score || 0,
       }));
@@ -442,7 +441,7 @@ export class VisionModels {
       return {
         id: `person-${Date.now()}-${index}`,
         boundingBox,
-        pose: detectedPose as 'sitting' | 'standing' | 'lying' | 'unknown',
+        pose: detectedPose as "sitting" | "standing" | "lying" | "unknown",
         facing,
         confidence: pose.score || 0.5,
         keypoints: convertedKeypoints,
@@ -452,15 +451,15 @@ export class VisionModels {
 
   private determinePoseFromKeypoints(keypoints: poseDetection.Keypoint[]): Pose {
     // Simple heuristic to determine pose
-    const leftHip = keypoints.find((kp) => kp.name === 'left_hip');
-    const rightHip = keypoints.find((kp) => kp.name === 'right_hip');
-    const leftKnee = keypoints.find((kp) => kp.name === 'left_knee');
-    const rightKnee = keypoints.find((kp) => kp.name === 'right_knee');
-    const leftShoulder = keypoints.find((kp) => kp.name === 'left_shoulder');
-    const rightShoulder = keypoints.find((kp) => kp.name === 'right_shoulder');
+    const leftHip = keypoints.find((kp) => kp.name === "left_hip");
+    const rightHip = keypoints.find((kp) => kp.name === "right_hip");
+    const leftKnee = keypoints.find((kp) => kp.name === "left_knee");
+    const rightKnee = keypoints.find((kp) => kp.name === "right_knee");
+    const leftShoulder = keypoints.find((kp) => kp.name === "left_shoulder");
+    const rightShoulder = keypoints.find((kp) => kp.name === "right_shoulder");
 
     if (!leftHip || !rightHip || !leftKnee || !rightKnee) {
-      return 'unknown';
+      return "unknown";
     }
 
     const hipY = (leftHip.y + rightHip.y) / 2;
@@ -470,27 +469,27 @@ export class VisionModels {
 
     // Check if person is lying down (shoulders and hips at similar height)
     if (Math.abs(shoulderY - hipY) < 50) {
-      return 'lying';
+      return "lying";
     }
 
     // Check if person is sitting (knees close to hips)
     if (Math.abs(hipY - kneeY) < 100) {
-      return 'sitting';
+      return "sitting";
     }
 
     // Otherwise assume standing
-    return 'standing';
+    return "standing";
   }
 
   private determineFacingDirection(
     keypoints: poseDetection.Keypoint[]
-  ): 'camera' | 'away' | 'left' | 'right' {
-    const leftShoulder = keypoints.find((kp) => kp.name === 'left_shoulder');
-    const rightShoulder = keypoints.find((kp) => kp.name === 'right_shoulder');
-    const nose = keypoints.find((kp) => kp.name === 'nose');
+  ): "camera" | "away" | "left" | "right" {
+    const leftShoulder = keypoints.find((kp) => kp.name === "left_shoulder");
+    const rightShoulder = keypoints.find((kp) => kp.name === "right_shoulder");
+    const nose = keypoints.find((kp) => kp.name === "nose");
 
     if (!leftShoulder || !rightShoulder || !nose) {
-      return 'camera'; // Default
+      return "camera"; // Default
     }
 
     const shoulderWidth = Math.abs(rightShoulder.x - leftShoulder.x);
@@ -499,25 +498,25 @@ export class VisionModels {
 
     // If shoulders are narrow, person is likely in profile
     if (shoulderWidth < 50) {
-      return noseOffset > 0 ? 'right' : 'left';
+      return noseOffset > 0 ? "right" : "left";
     }
 
     // If nose is significantly offset from shoulder midpoint, person is turning
     if (Math.abs(noseOffset) > shoulderWidth * 0.3) {
-      return noseOffset > 0 ? 'right' : 'left';
+      return noseOffset > 0 ? "right" : "left";
     }
 
     // Check if both ears are visible (facing camera) or not (facing away)
-    const leftEar = keypoints.find((kp) => kp.name === 'left_ear');
-    const rightEar = keypoints.find((kp) => kp.name === 'right_ear');
+    const leftEar = keypoints.find((kp) => kp.name === "left_ear");
+    const rightEar = keypoints.find((kp) => kp.name === "right_ear");
 
     if (leftEar && rightEar && leftEar.score && rightEar.score) {
       if (leftEar.score > 0.5 && rightEar.score > 0.5) {
-        return 'camera';
+        return "camera";
       }
     }
 
-    return 'camera'; // Default
+    return "camera"; // Default
   }
 
   async dispose(): Promise<void> {
@@ -532,6 +531,6 @@ export class VisionModels {
     }
 
     this.initialized = false;
-    logger.info('[VisionModels] Models disposed');
+    logger.info("[VisionModels] Models disposed");
   }
 }

@@ -2,9 +2,9 @@
  * Test suite for Farcaster plugin.
  */
 
-import type { IAgentRuntime, TestSuite, Test } from "@elizaos/core";
-import { FARCASTER_SERVICE_NAME } from "../types";
+import type { IAgentRuntime, Test, TestSuite } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
+import { FARCASTER_SERVICE_NAME } from "../types";
 import { getFarcasterFid, hasFarcasterEnabled } from "../utils/config";
 
 const farcasterTests: Test[] = [
@@ -93,5 +93,3 @@ export class FarcasterTestSuite implements TestSuite {
   name = "farcaster_plugin_tests";
   tests = farcasterTests;
 }
-
-

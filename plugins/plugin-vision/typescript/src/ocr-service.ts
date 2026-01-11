@@ -1,6 +1,6 @@
-import { logger } from '@elizaos/core';
-import type { OCRResult, ScreenTile, BoundingBox } from './types';
-import { RealOCRService } from './ocr-service-real';
+import { logger } from "@elizaos/core";
+import { RealOCRService } from "./ocr-service-real";
+import type { BoundingBox, OCRResult, ScreenTile } from "./types";
 
 export class OCRService {
   private realOCR: RealOCRService | null = null;
@@ -13,7 +13,7 @@ export class OCRService {
     }
 
     try {
-      logger.info('[OCR] Initializing OCR service...');
+      logger.info("[OCR] Initializing OCR service...");
 
       // Try to use real OCR first
       this.realOCR = new RealOCRService();
@@ -21,12 +21,12 @@ export class OCRService {
 
       this.initialized = true;
       this.useFallback = false;
-      logger.info('[OCR] Real OCR service initialized successfully');
+      logger.info("[OCR] Real OCR service initialized successfully");
     } catch (error) {
-      logger.error('[OCR] Failed to initialize real OCR:', error);
+      logger.error("[OCR] Failed to initialize real OCR:", error);
 
       // Fallback to basic OCR simulation
-      logger.warn('[OCR] Using fallback OCR implementation');
+      logger.warn("[OCR] Using fallback OCR implementation");
       this.useFallback = true;
       this.initialized = true;
     }
@@ -42,7 +42,7 @@ export class OCRService {
       try {
         return await this.realOCR.extractText(imageBuffer);
       } catch (error) {
-        logger.error('[OCR] Real OCR failed, falling back:', error);
+        logger.error("[OCR] Real OCR failed, falling back:", error);
         this.useFallback = true;
       }
     }
@@ -54,9 +54,9 @@ export class OCRService {
   async extractFromTile(tile: ScreenTile): Promise<OCRResult> {
     if (!tile.data) {
       return {
-        text: '',
+        text: "",
         blocks: [],
-        fullText: '',
+        fullText: "",
       };
     }
 
@@ -69,7 +69,7 @@ export class OCRService {
 
   private async fallbackOCR(_imageBuffer: Buffer): Promise<OCRResult> {
     // Fallback implementation for when Tesseract is not available
-    logger.debug('[OCR] Using fallback OCR implementation');
+    logger.debug("[OCR] Using fallback OCR implementation");
 
     const blocks: Array<{
       text: string;
@@ -84,9 +84,9 @@ export class OCRService {
 
     // Simulate finding common UI text
     const mockTexts = [
-      { text: 'File Edit View Window Help', x: 10, y: 5, width: 300, height: 20 },
-      { text: 'Welcome to the application', x: 100, y: 100, width: 400, height: 40 },
-      { text: 'Click here to continue', x: 200, y: 300, width: 200, height: 30 },
+      { text: "File Edit View Window Help", x: 10, y: 5, width: 300, height: 20 },
+      { text: "Welcome to the application", x: 100, y: 100, width: 400, height: 40 },
+      { text: "Click here to continue", x: 200, y: 300, width: 200, height: 30 },
     ];
 
     for (const mock of mockTexts) {
@@ -97,7 +97,7 @@ export class OCRService {
       });
     }
 
-    const fullText = blocks.map((b) => b.text).join('\n');
+    const fullText = blocks.map((b) => b.text).join("\n");
 
     return {
       text: fullText,
@@ -115,7 +115,7 @@ export class OCRService {
       try {
         return await this.realOCR.extractStructuredData(imageBuffer);
       } catch (error) {
-        logger.error('[OCR] Structured data extraction failed:', error);
+        logger.error("[OCR] Structured data extraction failed:", error);
       }
     }
 
@@ -138,6 +138,6 @@ export class OCRService {
     }
     this.initialized = false;
     this.useFallback = false;
-    logger.info('[OCR] Service disposed');
+    logger.info("[OCR] Service disposed");
   }
 }

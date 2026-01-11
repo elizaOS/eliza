@@ -44,7 +44,7 @@ export function validateToolSelectionName(
     };
   }
 
-  const toolInfo = (server.tools && server.tools[data.toolName]);
+  const toolInfo = server.tools?.[data.toolName];
   if (!toolInfo) {
     return {
       success: false,
@@ -83,9 +83,7 @@ export function validateToolSelectionArgument(
   return { success: true, data };
 }
 
-export function validateResourceSelection(
-  selection: unknown
-): ValidationResult<ResourceSelection> {
+export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
   return validateJsonSchema<ResourceSelection>(selection, ResourceSelectionSchema);
 }
 

@@ -62,20 +62,20 @@ elizaos create my-chat --language python --example chat --yes
 
 ## Available Examples
 
-| Example | Description | Languages |
-|---------|-------------|-----------|
-| chat | Interactive CLI chat with AI agent | TypeScript, Python, Rust |
-| text-adventure | Text adventure game with AI | TypeScript, Python, Rust |
-| tic-tac-toe | Tic-tac-toe game demo | TypeScript, Python |
-| rest-api | REST API implementations | TypeScript, Python, Rust |
-| a2a | Agent-to-Agent communication | TypeScript, Python, Rust |
-| mcp | Model Context Protocol | TypeScript, Python, Rust |
-| react | React web application | TypeScript |
-| next | Next.js application | TypeScript |
-| aws | AWS Lambda deployment | TypeScript, Python, Rust |
-| gcp | Google Cloud Platform | TypeScript, Python, Rust |
-| cloudflare | Cloudflare Workers | TypeScript, Python, Rust |
-| vercel | Vercel Edge Functions | TypeScript, Python, Rust |
+| Example        | Description                        | Languages                |
+| -------------- | ---------------------------------- | ------------------------ |
+| chat           | Interactive CLI chat with AI agent | TypeScript, Python, Rust |
+| text-adventure | Text adventure game with AI        | TypeScript, Python, Rust |
+| tic-tac-toe    | Tic-tac-toe game demo              | TypeScript, Python       |
+| rest-api       | REST API implementations           | TypeScript, Python, Rust |
+| a2a            | Agent-to-Agent communication       | TypeScript, Python, Rust |
+| mcp            | Model Context Protocol             | TypeScript, Python, Rust |
+| react          | React web application              | TypeScript               |
+| next           | Next.js application                | TypeScript               |
+| aws            | AWS Lambda deployment              | TypeScript, Python, Rust |
+| gcp            | Google Cloud Platform              | TypeScript, Python, Rust |
+| cloudflare     | Cloudflare Workers                 | TypeScript, Python, Rust |
+| vercel         | Vercel Edge Functions              | TypeScript, Python, Rust |
 
 ## Development
 
@@ -92,4 +92,3 @@ bun run src/cli.ts create
 ## License
 
 MIT
-

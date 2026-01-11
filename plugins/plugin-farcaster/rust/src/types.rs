@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Core types for the Farcaster plugin.
 
 use chrono::{DateTime, Utc};
@@ -27,6 +28,7 @@ pub enum EmbedType {
     Unknown,
 }
 
+
 impl Default for EmbedType {
     fn default() -> Self {
         Self::Unknown
@@ -43,6 +45,7 @@ pub enum FarcasterMessageType {
     #[serde(rename = "REPLY")]
     Reply,
 }
+
 
 impl Default for FarcasterMessageType {
     fn default() -> Self {

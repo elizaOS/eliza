@@ -12,9 +12,8 @@ import {
 } from "@elizaos/core";
 import type { Collection, Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
-
 import { searchMessagesTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 // Re-export for backwards compatibility
 export { searchMessagesTemplate };
@@ -22,7 +21,7 @@ export { searchMessagesTemplate };
 const getSearchParams = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{
   query: string;
   channelIdentifier: string;
@@ -41,7 +40,7 @@ const getSearchParams = async (
     });
 
     const parsedResponse = parseJSONObjectFromText(response);
-    if (parsedResponse && parsedResponse.query) {
+    if (parsedResponse?.query) {
       // Remove quotes from query if present
       const cleanQuery = String(parsedResponse.query).replace(/^["']|["']$/g, "");
 
@@ -60,11 +59,10 @@ const getSearchParams = async (
 const searchInMessages = (
   messages: Collection<string, Message>,
   query: string,
-  author?: string | null,
+  author?: string | null
 ): Message[] => {
   const queryLower = query.toLowerCase().trim();
-  const isLinkSearch =
-    queryLower.includes("link") || queryLower.includes("url");
+  const isLinkSearch = queryLower.includes("link") || queryLower.includes("url");
 
   return Array.from(messages.values()).filter((msg) => {
     // Skip system messages
@@ -75,11 +73,9 @@ const searchInMessages = (
     // Filter by author if specified
     if (author && author !== "null" && author !== "undefined") {
       const authorLower = author.toLowerCase();
-      const matchesUsername = msg.author.username
-        .toLowerCase()
-        .includes(authorLower);
+      const matchesUsername = msg.author.username.toLowerCase().includes(authorLower);
       const matchesDisplayName =
-        (msg.member && msg.member.displayName && msg.member.displayName.toLowerCase().includes(authorLower)) || false;
+        msg.member?.displayName?.toLowerCase().includes(authorLower) || false;
       if (!matchesUsername && !matchesDisplayName) {
         return false;
       }
@@ -97,21 +93,21 @@ const searchInMessages = (
     // Search in embeds
     const embedMatch = msg.embeds.some(
       (embed) =>
-        (embed.title && embed.title.toLowerCase().includes(queryLower)) ||
-        (embed.description && embed.description.toLowerCase().includes(queryLower)) ||
-        (embed.author && embed.author.name && embed.author.name.toLowerCase().includes(queryLower)) ||
-        (embed.fields && embed.fields.some(
+        embed.title?.toLowerCase().includes(queryLower) ||
+        embed.description?.toLowerCase().includes(queryLower) ||
+        embed.author?.name?.toLowerCase().includes(queryLower) ||
+        embed.fields?.some(
           (field) =>
-            (field.name && field.name.toLowerCase().includes(queryLower)) ||
-            (field.value && field.value.toLowerCase().includes(queryLower)),
-        )),
+            field.name?.toLowerCase().includes(queryLower) ||
+            field.value?.toLowerCase().includes(queryLower)
+        )
     );
 
     // Search in attachments
     const attachmentMatch = msg.attachments.some(
       (att) =>
-        (att.name && att.name.toLowerCase().includes(queryLower)) ||
-        (att.description && att.description.toLowerCase().includes(queryLower)),
+        att.name?.toLowerCase().includes(queryLower) ||
+        att.description?.toLowerCase().includes(queryLower)
     );
 
     return contentMatch || embedMatch || attachmentMatch;
@@ -129,8 +125,7 @@ export const searchMessages = {
     "SEARCH_CHANNEL",
     "SEARCH_DISCORD",
   ],
-  description:
-    "Search for messages in Discord channels based on keywords, author, or time range.",
+  description: "Search for messages in Discord channels based on keywords, author, or time range.",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     return message.content.source === "discord";
   },
@@ -138,12 +133,10 @@ export const searchMessages = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -165,22 +158,22 @@ export const searchMessages = {
     try {
       let targetChannel: TextChannel | null = null;
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
 
       // Determine the target channel
       if (searchParams.channelIdentifier === "current") {
-        if (room && room.channelId) {
+        if (room?.channelId) {
           targetChannel = (await discordService.client.channels.fetch(
-            room.channelId,
+            room.channelId
           )) as TextChannel;
         }
       } else if (searchParams.channelIdentifier.match(/^\d+$/)) {
         targetChannel = (await discordService.client.channels.fetch(
-          searchParams.channelIdentifier,
+          searchParams.channelIdentifier
         )) as TextChannel;
       } else {
         // It's a channel name - search in the current server
-        const serverId = room && room.messageServerId;
+        const serverId = room?.messageServerId;
         if (!serverId) {
           await callback({
             text: "I couldn't determine which server to search for that channel.",
@@ -193,8 +186,8 @@ export const searchMessages = {
         targetChannel =
           (channels.find(
             (channel) =>
-              (channel && channel.name && channel.name.toLowerCase().includes(searchParams.channelIdentifier.toLowerCase())) &&
-              channel.isTextBased(),
+              channel?.name?.toLowerCase().includes(searchParams.channelIdentifier.toLowerCase()) &&
+              channel.isTextBased()
           ) as TextChannel | undefined) || null;
       }
 
@@ -224,15 +217,11 @@ export const searchMessages = {
       // Fetch messages - Discord API limit is 100 per request
       const messages = await targetChannel.messages.fetch({
         limit: 100, // Discord API max limit
-        before: (before && before.toString()),
+        before: before?.toString(),
       });
 
       // Search through messages
-      const results = searchInMessages(
-        messages,
-        searchParams.query,
-        searchParams.author,
-      );
+      const results = searchInMessages(messages, searchParams.query, searchParams.author);
       runtime.logger.debug(
         {
           src: "plugin:discord:action:search-messages",
@@ -241,13 +230,11 @@ export const searchMessages = {
           resultsCount: results.length,
           channelName: targetChannel.name,
         },
-        "Search completed",
+        "Search completed"
       );
 
       // Sort by timestamp (newest first) and limit
-      const sortedResults = results.sort(
-        (a, b) => b.createdTimestamp - a.createdTimestamp,
-      );
+      const sortedResults = results.sort((a, b) => b.createdTimestamp - a.createdTimestamp);
       const limitedResults = sortedResults.slice(0, searchParams.limit);
 
       if (limitedResults.length === 0) {
@@ -263,13 +250,9 @@ export const searchMessages = {
         .map((msg, index) => {
           const timestamp = new Date(msg.createdTimestamp).toLocaleString();
           const preview =
-            msg.content.length > 100
-              ? `${msg.content.substring(0, 100)}...`
-              : msg.content;
+            msg.content.length > 100 ? `${msg.content.substring(0, 100)}...` : msg.content;
           const attachments =
-            msg.attachments.size > 0
-              ? `\n📎 ${msg.attachments.size} attachment(s)`
-              : "";
+            msg.attachments.size > 0 ? `\n📎 ${msg.attachments.size} attachment(s)` : "";
 
           return `**${index + 1}.** ${msg.author.username} (${timestamp})\n${preview}${attachments}\n[Jump to message](${msg.url})`;
         })
@@ -288,7 +271,7 @@ export const searchMessages = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error searching messages",
+        "Error searching messages"
       );
       await callback({
         text: "I encountered an error while searching for messages. Please try again.",

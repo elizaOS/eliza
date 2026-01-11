@@ -4,13 +4,7 @@
  * Providers for plugin creation status and capabilities.
  */
 
-import {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 
 /**
@@ -19,11 +13,7 @@ import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 export const pluginCreationStatusProvider: Provider = {
   name: "plugin_creation_status",
   description: "Provides status of active plugin creation jobs",
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
       return {
@@ -32,9 +22,7 @@ export const pluginCreationStatusProvider: Provider = {
     }
 
     const jobs = service.getAllJobs();
-    const activeJobs = jobs.filter(
-      (job) => job.status === "running" || job.status === "pending"
-    );
+    const activeJobs = jobs.filter((job) => job.status === "running" || job.status === "pending");
 
     if (activeJobs.length === 0) {
       return {
@@ -62,11 +50,7 @@ export const pluginCreationStatusProvider: Provider = {
 export const pluginCreationCapabilitiesProvider: Provider = {
   name: "plugin_creation_capabilities",
   description: "Provides information about plugin creation capabilities",
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const service = getPluginCreationService(runtime);
     const hasService = !!service;
     const hasApiKey = !!runtime.getSetting("ANTHROPIC_API_KEY");
@@ -98,5 +82,3 @@ export const pluginCreationCapabilitiesProvider: Provider = {
     };
   },
 };
-
-

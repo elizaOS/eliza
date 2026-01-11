@@ -89,5 +89,3 @@ class TestMcpClientErrors:
             await memory_server_client.read_resource("")
 
         assert exc_info.value.code == "INVALID_ARGUMENT"
-
-

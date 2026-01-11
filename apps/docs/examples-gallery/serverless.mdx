@@ -1,19 +1,19 @@
 ---
-title: 'Serverless Examples'
-description: 'Deploy elizaOS to AWS, GCP, Vercel, Cloudflare, and Supabase'
+title: "Serverless Examples"
+description: "Deploy elizaOS to AWS, GCP, Vercel, Cloudflare, and Supabase"
 ---
 
 Deploy elizaOS agents as serverless functions with automatic scaling.
 
 ## Platforms
 
-| Platform | Languages | Cold Start | Free Tier |
-|----------|-----------|------------|-----------|
-| [AWS Lambda](#aws-lambda) | TS, Python, Rust | 2-5s | 1M requests |
-| [GCP Cloud Functions](#gcp) | TS, Python, Rust | 2-5s | 2M invocations |
-| [Vercel Edge](#vercel) | TS, Python | <50ms | 100K requests |
-| [Cloudflare Workers](#cloudflare) | TS, Python, Rust | <10ms | 100K requests |
-| [Supabase Edge](#supabase) | TS (Deno), Rust WASM | <100ms | 500K invocations |
+| Platform                          | Languages            | Cold Start | Free Tier        |
+| --------------------------------- | -------------------- | ---------- | ---------------- |
+| [AWS Lambda](#aws-lambda)         | TS, Python, Rust     | 2-5s       | 1M requests      |
+| [GCP Cloud Functions](#gcp)       | TS, Python, Rust     | 2-5s       | 2M invocations   |
+| [Vercel Edge](#vercel)            | TS, Python           | <50ms      | 100K requests    |
+| [Cloudflare Workers](#cloudflare) | TS, Python, Rust     | <10ms      | 100K requests    |
+| [Supabase Edge](#supabase)        | TS (Deno), Rust WASM | <100ms     | 500K invocations |
 
 ---
 
@@ -237,12 +237,12 @@ serve(async (req) => {
 
 ## Comparison
 
-| Feature | AWS | GCP | Vercel | Cloudflare | Supabase |
-|---------|-----|-----|--------|------------|----------|
-| Cold Start | 2-5s | 2-5s | <50ms | <10ms | <100ms |
-| Max Timeout | 15min | 9min | 30s | 30s | 60s |
-| Languages | All | All | TS, Py | TS, Py, Rust | TS, Rust |
-| Free Tier | 1M | 2M | 100K | 100K | 500K |
+| Feature     | AWS   | GCP  | Vercel | Cloudflare   | Supabase |
+| ----------- | ----- | ---- | ------ | ------------ | -------- |
+| Cold Start  | 2-5s  | 2-5s | <50ms  | <10ms        | <100ms   |
+| Max Timeout | 15min | 9min | 30s    | 30s          | 60s      |
+| Languages   | All   | All  | TS, Py | TS, Py, Rust | TS, Rust |
+| Free Tier   | 1M    | 2M   | 100K   | 100K         | 500K     |
 
 ---
 
@@ -256,5 +256,6 @@ serve(async (req) => {
     Full deployment documentation
   </Card>
 </CardGroup>
+
 
 

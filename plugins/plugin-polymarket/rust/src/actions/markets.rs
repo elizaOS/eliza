@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Market retrieval actions for Polymarket
 
 use crate::client::ClobClient;
@@ -98,5 +99,10 @@ mod tests {
         assert!(filters.limit.is_none());
     }
 }
+
+
+
+
+
 
 

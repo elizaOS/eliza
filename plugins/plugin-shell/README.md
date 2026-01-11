@@ -3,6 +3,7 @@
 A secure shell command execution plugin for ElizaOS that allows agents to run terminal commands within a restricted directory with command history tracking.
 
 **Available in three languages with full feature parity:**
+
 - 🟦 **TypeScript** - Primary implementation for Node.js
 - 🐍 **Python** - Native Python implementation
 - 🦀 **Rust** - High-performance Rust implementation
@@ -12,22 +13,25 @@ A secure shell command execution plugin for ElizaOS that allows agents to run te
 **Just want your agent to execute commands? Here's the fastest path:**
 
 1. **Install the plugin**:
+
    ```bash
    cd your-eliza-project
    bun add @elizaos/plugin-shell
    ```
 
 2. **Create/update your `.env`**:
+
    ```bash
    SHELL_ENABLED=true
    SHELL_ALLOWED_DIRECTORY=/path/to/safe/directory
    ```
 
 3. **Add to your character**:
+
    ```typescript
    const character = {
-       // ... other config
-       plugins: ["@elizaos/plugin-shell"],
+     // ... other config
+     plugins: ["@elizaos/plugin-shell"],
    };
    ```
 
@@ -99,6 +103,7 @@ pip install elizaos-plugin-shell
 ### Rust
 
 Add to your `Cargo.toml`:
+
 ```toml
 [dependencies]
 elizaos-plugin-shell = "1.2.0"
@@ -131,7 +136,7 @@ import { shellPlugin, ShellService } from "@elizaos/plugin-shell";
 
 // Use as a plugin
 const character = {
-    plugins: [shellPlugin],
+  plugins: [shellPlugin],
 };
 
 // Or use the service directly
@@ -173,6 +178,7 @@ if result.success {
 Executes ANY shell command within the allowed directory, including file operations.
 
 **Examples:**
+
 - `run ls -la` - List files with details
 - `execute npm test` - Run tests
 - `create a file called hello.txt` - Creates a new file
@@ -183,6 +189,7 @@ Executes ANY shell command within the allowed directory, including file operatio
 Clears the command history for the current conversation.
 
 **Examples:**
+
 - `clear my shell history`
 - `reset the terminal history`
 
@@ -198,13 +205,17 @@ The plugin includes a `SHELL_HISTORY` provider that makes the following informat
 ## 🔒 Security Considerations
 
 ### Directory Restriction
+
 All commands execute within `SHELL_ALLOWED_DIRECTORY`:
+
 - Attempts to navigate outside are blocked
 - Absolute paths outside the boundary are rejected
 - `cd ..` stops at the allowed directory root
 
 ### Forbidden Commands
+
 By default, these potentially dangerous commands are blocked:
+
 - **Destructive**: `rm -rf /`, `rmdir`
 - **Permission changes**: `chmod 777`, `chown`, `chgrp`
 - **System operations**: `shutdown`, `reboot`, `halt`, `poweroff`
@@ -213,6 +224,7 @@ By default, these potentially dangerous commands are blocked:
 - **Disk operations**: `format`, `fdisk`, `mkfs`, `dd if=/dev/zero`, `shred`
 
 ### Additional Safety Features
+
 - **No Shell Expansion**: Commands execute without dangerous shell interpretation
 - **Timeout Protection**: Commands auto-terminate after timeout
 - **Command History**: All executed commands are logged for audit
@@ -261,35 +273,36 @@ bun run test:rust      # Test Rust
 
 ### CommandResult
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `success` | boolean | Whether the command executed successfully |
-| `stdout` | string | Standard output from the command |
-| `stderr` | string | Standard error output |
-| `exitCode` | number \| null | Exit code of the command |
-| `error` | string \| undefined | Error message if command failed |
-| `executedIn` | string | Directory where command was executed |
+| Field        | Type                | Description                               |
+| ------------ | ------------------- | ----------------------------------------- |
+| `success`    | boolean             | Whether the command executed successfully |
+| `stdout`     | string              | Standard output from the command          |
+| `stderr`     | string              | Standard error output                     |
+| `exitCode`   | number \| null      | Exit code of the command                  |
+| `error`      | string \| undefined | Error message if command failed           |
+| `executedIn` | string              | Directory where command was executed      |
 
 ### FileOperation
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | FileOperationType | Type of operation (create, write, read, delete, mkdir, move, copy) |
-| `target` | string | Target file/directory path |
-| `secondaryTarget` | string \| undefined | Secondary target for move/copy |
+| Field             | Type                | Description                                                        |
+| ----------------- | ------------------- | ------------------------------------------------------------------ |
+| `type`            | FileOperationType   | Type of operation (create, write, read, delete, mkdir, move, copy) |
+| `target`          | string              | Target file/directory path                                         |
+| `secondaryTarget` | string \| undefined | Secondary target for move/copy                                     |
 
 ### ShellConfig
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | boolean | false | Whether shell is enabled |
-| `allowedDirectory` | string | cwd | Directory to restrict commands to |
-| `timeout` | number | 30000 | Timeout in milliseconds |
-| `forbiddenCommands` | string[] | [...] | List of forbidden commands |
+| Field               | Type     | Default | Description                       |
+| ------------------- | -------- | ------- | --------------------------------- |
+| `enabled`           | boolean  | false   | Whether shell is enabled          |
+| `allowedDirectory`  | string   | cwd     | Directory to restrict commands to |
+| `timeout`           | number   | 30000   | Timeout in milliseconds           |
+| `forbiddenCommands` | string[] | [...]   | List of forbidden commands        |
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please ensure:
+
 1. All three language implementations stay in feature parity
 2. Tests pass for all languages
 3. Follow the code style of each language

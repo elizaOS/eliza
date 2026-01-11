@@ -34,6 +34,7 @@ from elizaos_plugin_github.error import (
     TimeoutError,
     ValidationError,
 )
+from elizaos_plugin_github.service import GitHubService
 from elizaos_plugin_github.types import (
     CreateBranchParams,
     CreateCommentParams,
@@ -65,7 +66,6 @@ from elizaos_plugin_github.types import (
     UpdateIssueParams,
     UpdatePullRequestParams,
 )
-from elizaos_plugin_github.service import GitHubService
 
 __all__ = [
     # Config
@@ -126,5 +126,8 @@ __all__ = [
 __version__ = "1.0.0"
 PLUGIN_NAME = "github"
 PLUGIN_DESCRIPTION = "GitHub integration for elizaOS agents"
+
+
+
 
 

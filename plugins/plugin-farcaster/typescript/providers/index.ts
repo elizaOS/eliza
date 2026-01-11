@@ -1,15 +1,13 @@
 export { farcasterProfileProvider } from "./profileProvider";
-export { farcasterTimelineProvider } from "./timelineProvider";
 export { farcasterThreadProvider } from "./threadProvider";
+export { farcasterTimelineProvider } from "./timelineProvider";
 
 import { farcasterProfileProvider } from "./profileProvider";
-import { farcasterTimelineProvider } from "./timelineProvider";
 import { farcasterThreadProvider } from "./threadProvider";
+import { farcasterTimelineProvider } from "./timelineProvider";
 
 export const farcasterProviders = [
   farcasterProfileProvider,
   farcasterTimelineProvider,
   farcasterThreadProvider,
 ];
-
-

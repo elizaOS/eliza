@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Farcaster actions for elizaOS agents.
 
 use crate::error::Result;
@@ -12,6 +13,7 @@ pub struct SendCastAction {
     /// Action description
     pub description: &'static str,
 }
+
 
 impl Default for SendCastAction {
     fn default() -> Self {
@@ -56,6 +58,7 @@ pub struct ReplyCastAction {
     /// Action description
     pub description: &'static str,
 }
+
 
 impl Default for ReplyCastAction {
     fn default() -> Self {

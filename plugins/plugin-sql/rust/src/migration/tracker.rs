@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Migration tracker for recording migration history.
 
 use anyhow::{Context, Result};

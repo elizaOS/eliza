@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Knowledge Plugin
 //!
 //! Provides Retrieval Augmented Generation (RAG) capabilities including:
@@ -36,6 +37,11 @@ mod tests {
         assert_eq!(PLUGIN_NAME, "knowledge");
     }
 }
+
+
+
+
+
 
 
 

@@ -1,9 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createRoot } from 'react-dom/client';
-import './index.css';
-import React from 'react';
-import { KnowledgeTab } from './ui/knowledge-tab.tsx';
-import type { UUID } from '@elizaos/core';
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import type { UUID } from "@elizaos/core";
+import React from "react";
+import { KnowledgeTab } from "./ui/knowledge-tab.tsx";
 
 const queryClient = new QueryClient();
 
@@ -29,7 +29,7 @@ function KnowledgeRoute() {
 
   // Apply dark mode to the root element
   React.useEffect(() => {
-    document.documentElement.classList.add('dark');
+    document.documentElement.classList.add("dark");
   }, []);
 
   if (!agentId) {
@@ -58,7 +58,7 @@ function KnowledgeProvider({ agentId }: { agentId: UUID }) {
 }
 
 // Initialize the application - no router needed for iframe
-const rootElement = document.getElementById('root');
+const rootElement = document.getElementById("root");
 if (rootElement) {
   createRoot(rootElement).render(<KnowledgeRoute />);
 }
@@ -67,7 +67,7 @@ if (rootElement) {
 export interface AgentPanel {
   name: string;
   path: string;
-  component: React.ComponentType<any>;
+  component: React.ComponentType<Record<string, unknown>>;
   icon?: string;
   public?: boolean;
   shortLabel?: string; // Optional short label for mobile
@@ -87,13 +87,13 @@ const KnowledgePanelComponent: React.FC<KnowledgePanelProps> = ({ agentId }) => 
 // Export the panel configuration for integration with the agent UI
 export const panels: AgentPanel[] = [
   {
-    name: 'Knowledge',
-    path: 'knowledge',
-    component: KnowledgePanelComponent,
-    icon: 'Book',
+    name: "Knowledge",
+    path: "knowledge",
+    component: KnowledgePanelComponent as unknown as React.ComponentType<Record<string, unknown>>,
+    icon: "Book",
     public: false,
-    shortLabel: 'Know',
+    shortLabel: "Know",
   },
 ];
 
-export * from './utils';
+export * from "./utils";

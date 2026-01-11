@@ -49,9 +49,7 @@ async def get_lifi_quote(
 
     # Validate slippage
     if slippage > MAX_SLIPPAGE_PERCENT:
-        raise EVMError.invalid_params(
-            f"Slippage {slippage} exceeds maximum {MAX_SLIPPAGE_PERCENT}"
-        )
+        raise EVMError.invalid_params(f"Slippage {slippage} exceeds maximum {MAX_SLIPPAGE_PERCENT}")
 
     # Build request
     url = f"{LIFI_API_URL}/quote"
@@ -173,5 +171,3 @@ swap_action = {
     ],
     "handler": execute_swap,
 }
-
-

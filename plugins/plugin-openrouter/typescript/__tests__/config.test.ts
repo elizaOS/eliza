@@ -1,7 +1,7 @@
-import {  describe, test, expect, jest, beforeEach, afterEach  } from "vitest";
-import { openrouterPlugin } from '../src/index';
-import { logger } from '@elizaos/core';
-import * as undici from 'undici';
+import { logger } from "@elizaos/core";
+import * as undici from "undici";
+import { afterEach, beforeEach, describe, expect, jest, test } from "vitest";
+import { openrouterPlugin } from "../src/index";
 
 // Create a minimal mock runtime
 const createMockRuntime = (env: Record<string, string>) => {
@@ -9,21 +9,25 @@ const createMockRuntime = (env: Record<string, string>) => {
     getSetting: (key: string) => env[key],
     emitEvent: () => {},
     character: {
-      system: 'You are a helpful assistant.',
+      system: "You are a helpful assistant.",
     },
-  } as unknown as any;
+  } as unknown as {
+    getSetting: (key: string) => string | undefined;
+    emitEvent: () => void;
+    character: { system: string };
+  };
 };
 
-describe('OpenRouter Plugin Configuration', () => {
+describe("OpenRouter Plugin Configuration", () => {
   beforeEach(() => {
     // Stub undici fetch to prevent network calls
-    jest.spyOn(undici, 'fetch').mockImplementation(() =>
+    jest.spyOn(undici, "fetch").mockImplementation(() =>
       Promise.resolve({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ data: [] }),
         headers: new Headers(),
-      } as any)
+      } as Response)
     );
   });
 
@@ -31,7 +35,7 @@ describe('OpenRouter Plugin Configuration', () => {
     // Clear all mocks
     jest.restoreAllMocks();
   });
-  test('should warn when API key is missing', async () => {
+  test("should warn when API key is missing", async () => {
     // Save original env value
     const originalApiKey = process.env.OPENROUTER_API_KEY;
 
@@ -42,7 +46,7 @@ describe('OpenRouter Plugin Configuration', () => {
     const mockRuntime = createMockRuntime({});
 
     // Spy on logger warnings
-    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const warnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
 
     // Initialize plugin
     if (openrouterPlugin.init) {
@@ -64,10 +68,10 @@ describe('OpenRouter Plugin Configuration', () => {
     }
   });
 
-  test('should initialize properly with valid API key', async () => {
+  test("should initialize properly with valid API key", async () => {
     // Skip if no API key available for testing
     if (!process.env.OPENROUTER_API_KEY) {
-      console.warn('Skipping test: OPENROUTER_API_KEY not set');
+      console.warn("Skipping test: OPENROUTER_API_KEY not set");
       return;
     }
 
@@ -87,66 +91,66 @@ describe('OpenRouter Plugin Configuration', () => {
     // Check that fetch was called to validate API key
     expect(undici.fetch).toHaveBeenCalled();
     expect(undici.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/models'),
+      expect.stringContaining("/models"),
       expect.objectContaining({
         headers: expect.objectContaining({
-          Authorization: expect.stringContaining('Bearer'),
+          Authorization: expect.stringContaining("Bearer"),
         }),
       })
     );
   });
 
-  test('should use custom image model when configured', () => {
+  test("should use custom image model when configured", () => {
     // Create a mock runtime with custom model settings
-    const customImageModel = 'anthropic/claude-3-opus-vision';
+    const customImageModel = "anthropic/claude-3-opus-vision";
     const mockRuntime = createMockRuntime({
       OPENROUTER_IMAGE_MODEL: customImageModel,
-      OPENROUTER_API_KEY: 'test-api-key',
+      OPENROUTER_API_KEY: "test-api-key",
     });
 
     // Create spy to access private function
-    const getSpy = jest.spyOn(mockRuntime, 'getSetting');
+    const getSpy = jest.spyOn(mockRuntime, "getSetting");
 
     // Check if our model is used
-    if (openrouterPlugin.models && openrouterPlugin.models['IMAGE_DESCRIPTION']) {
-      const imageDescHandler = openrouterPlugin.models['IMAGE_DESCRIPTION'];
+    if (openrouterPlugin.models?.IMAGE_DESCRIPTION) {
+      const imageDescHandler = openrouterPlugin.models.IMAGE_DESCRIPTION;
 
       // Just initiating the handler should call getSetting with OPENROUTER_IMAGE_MODEL
       try {
-        imageDescHandler(mockRuntime, 'https://example.com/image.jpg');
-      } catch (err) {
+        imageDescHandler(mockRuntime, "https://example.com/image.jpg");
+      } catch (_err) {
         // We expect an error since we're not making a real API call
         // We just want to verify getSetting was called
       }
 
       // Verify getSetting was called with OPENROUTER_IMAGE_MODEL
-      expect(getSpy).toHaveBeenCalledWith('OPENROUTER_IMAGE_MODEL');
+      expect(getSpy).toHaveBeenCalledWith("OPENROUTER_IMAGE_MODEL");
     }
   });
 
-  test('should have TEXT_EMBEDDING model registered', () => {
+  test("should have TEXT_EMBEDDING model registered", () => {
     const { models } = openrouterPlugin;
     expect(models).toBeDefined();
     if (!models) return;
-    expect(models).toHaveProperty('TEXT_EMBEDDING');
-    expect(typeof models['TEXT_EMBEDDING']).toBe('function');
+    expect(models).toHaveProperty("TEXT_EMBEDDING");
+    expect(typeof models.TEXT_EMBEDDING).toBe("function");
   });
 
-  test('should use default embedding model', () => {
+  test("should use default embedding model", () => {
     const mockRuntime = createMockRuntime({
-      OPENROUTER_API_KEY: 'test-api-key',
+      OPENROUTER_API_KEY: "test-api-key",
     });
 
     // Create spy to access getSetting calls
-    const getSpy = jest.spyOn(mockRuntime, 'getSetting');
+    const getSpy = jest.spyOn(mockRuntime, "getSetting");
 
-    if (openrouterPlugin.models && openrouterPlugin.models['TEXT_EMBEDDING']) {
-      const embeddingHandler = openrouterPlugin.models['TEXT_EMBEDDING'];
+    if (openrouterPlugin.models?.TEXT_EMBEDDING) {
+      const embeddingHandler = openrouterPlugin.models.TEXT_EMBEDDING;
 
       // Call with null to trigger the test embedding path (no API call)
       try {
         embeddingHandler(mockRuntime, null);
-      } catch (err) {
+      } catch (_err) {
         // Ignore errors, we just want to verify config access
       }
 
@@ -155,10 +159,10 @@ describe('OpenRouter Plugin Configuration', () => {
       expect(
         calls.some(
           (call) =>
-            call === 'OPENROUTER_EMBEDDING_MODEL' ||
-            call === 'EMBEDDING_MODEL' ||
-            call === 'OPENROUTER_EMBEDDING_DIMENSIONS' ||
-            call === 'EMBEDDING_DIMENSIONS'
+            call === "OPENROUTER_EMBEDDING_MODEL" ||
+            call === "EMBEDDING_MODEL" ||
+            call === "OPENROUTER_EMBEDDING_DIMENSIONS" ||
+            call === "EMBEDDING_DIMENSIONS"
         )
       ).toBe(true);
     }

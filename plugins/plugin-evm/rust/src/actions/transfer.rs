@@ -1,12 +1,12 @@
+#![allow(missing_docs)]
 //! Token transfer action implementation
 //!
 //! Handles native token and ERC20 token transfers on EVM chains.
 
 use alloy::{
-    hex,
     network::TransactionBuilder,
     primitives::{Address, Bytes, U256},
-    providers::{Provider, SendableTx},
+    providers::Provider,
     rpc::types::TransactionRequest,
 };
 use serde::{Deserialize, Serialize};

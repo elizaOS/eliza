@@ -115,4 +115,3 @@ contacts_provider = Provider(
     get=get_contacts_context,
     dynamic=True,
 )
-

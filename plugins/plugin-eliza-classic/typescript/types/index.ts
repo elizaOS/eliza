@@ -47,8 +47,3 @@ export interface ElizaMatchResult {
   /** Captured groups from the regex */
   captures: string[];
 }
-
-
-
-
-

@@ -29,14 +29,14 @@ use elizaos_plugin_github::{GitHubConfig, GitHubService};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load config from environment
     let config = GitHubConfig::from_env()?;
-    
+
     // Create and start service
     let mut service = GitHubService::new(config);
     service.start().await?;
-    
+
     // Create an issue
     use elizaos_plugin_github::CreateIssueParams;
-    
+
     let issue = service.create_issue(CreateIssueParams {
         owner: "my-org".to_string(),
         repo: "my-repo".to_string(),
@@ -46,39 +46,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         labels: vec!["bug".to_string()],
         milestone: None,
     }).await?;
-    
+
     println!("Created issue #{}: {}", issue.number, issue.html_url);
-    
+
     Ok(())
 }
 ```
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITHUB_API_TOKEN` | Yes | GitHub personal access token |
-| `GITHUB_OWNER` | No | Default repository owner |
-| `GITHUB_REPO` | No | Default repository name |
-| `GITHUB_BRANCH` | No | Default branch (default: main) |
-| `GITHUB_WEBHOOK_SECRET` | No | Webhook verification secret |
+| Variable                | Required | Description                    |
+| ----------------------- | -------- | ------------------------------ |
+| `GITHUB_API_TOKEN`      | Yes      | GitHub personal access token   |
+| `GITHUB_OWNER`          | No       | Default repository owner       |
+| `GITHUB_REPO`           | No       | Default repository name        |
+| `GITHUB_BRANCH`         | No       | Default branch (default: main) |
+| `GITHUB_WEBHOOK_SECRET` | No       | Webhook verification secret    |
 
 ## Actions
 
-| Action | Description |
-|--------|-------------|
-| `CreateIssueAction` | Create new issues |
-| `CreatePullRequestAction` | Create pull requests |
-| `CreateCommentAction` | Add comments to issues/PRs |
-| `CreateBranchAction` | Create branches |
-| `MergePullRequestAction` | Merge pull requests |
+| Action                    | Description                |
+| ------------------------- | -------------------------- |
+| `CreateIssueAction`       | Create new issues          |
+| `CreatePullRequestAction` | Create pull requests       |
+| `CreateCommentAction`     | Add comments to issues/PRs |
+| `CreateBranchAction`      | Create branches            |
+| `MergePullRequestAction`  | Merge pull requests        |
 
 ## Providers
 
-| Provider | Description |
-|----------|-------------|
+| Provider                  | Description                    |
+| ------------------------- | ------------------------------ |
 | `RepositoryStateProvider` | Current repository information |
-| `IssueContextProvider` | Recent issues context |
+| `IssueContextProvider`    | Recent issues context          |
 
 ## Building
 
@@ -105,5 +105,6 @@ elizaos-plugin-github = { version = "1.0.0", default-features = false, features 
 ## License
 
 MIT
+
 
 

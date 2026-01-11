@@ -3,10 +3,11 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  ProviderValue,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import BigNumber from "bignumber.js";
+import BigNumber from "../bn";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 import { getWalletKey } from "../keypairUtils";
 import type { WalletPortfolio } from "../types";
@@ -24,15 +25,9 @@ export const walletProvider: Provider = {
   // it's not slow we always have this data
   // but we don't always need this data, let's free up the context
   dynamic: true,
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    state: State,
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, _message: Memory, state: State): Promise<ProviderResult> => {
     try {
-      const portfolioCache = await runtime.getCache<WalletPortfolio>(
-        SOLANA_WALLET_DATA_CACHE_KEY,
-      );
+      const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
       if (!portfolioCache) {
         logger.info("solana::wallet provider - portfolioCache is not ready");
         return { data: {}, values: {}, text: "" };
@@ -62,9 +57,7 @@ export const walletProvider: Provider = {
         if (new BigNumber(item.uiAmount).isGreaterThan(0)) {
           values[`token_${index}_name`] = item.name;
           values[`token_${index}_symbol`] = item.symbol;
-          values[`token_${index}_amount`] = new BigNumber(
-            item.uiAmount,
-          ).toFixed(6);
+          values[`token_${index}_amount`] = new BigNumber(item.uiAmount).toFixed(6);
           values[`token_${index}_usd`] = new BigNumber(item.valueUsd).toFixed(2);
           values[`token_${index}_sol`] = item.valueSol ?? "0";
         }
@@ -84,7 +77,7 @@ export const walletProvider: Provider = {
       // Token Balances
       text += "Token Balances:\n";
       const nonZeroItems = portfolio.items.filter((item) =>
-        new BigNumber(item.uiAmount).isGreaterThan(0),
+        new BigNumber(item.uiAmount).isGreaterThan(0)
       );
 
       if (nonZeroItems.length === 0) {
@@ -93,9 +86,9 @@ export const walletProvider: Provider = {
         for (const item of nonZeroItems) {
           const valueUsd = new BigNumber(item.valueUsd).toFixed(2);
           const valueSol = item.valueSol ?? "0";
-          text += `${item.name} (${item.symbol}): ${new BigNumber(
-            item.uiAmount,
-          ).toFixed(6)} ($${valueUsd} | ${valueSol} SOL)\n`;
+          text += `${item.name} (${item.symbol}): ${new BigNumber(item.uiAmount).toFixed(
+            6
+          )} ($${valueUsd} | ${valueSol} SOL)\n`;
         }
       }
 
@@ -107,14 +100,14 @@ export const walletProvider: Provider = {
         text += `ETH: $${values.eth_price}\n`;
       }
 
-      // Convert portfolio to Record<string, unknown> for the ProviderResult
-      const data: Record<string, unknown> = {
+      // Convert portfolio to Record<string, ProviderValue> for the ProviderResult
+      const data = {
         totalUsd: portfolio.totalUsd,
         totalSol: portfolio.totalSol,
         items: portfolio.items,
         prices: portfolio.prices,
         lastUpdated: portfolio.lastUpdated,
-      };
+      } as unknown as Record<string, ProviderValue>;
 
       return {
         data,
@@ -123,7 +116,7 @@ export const walletProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        `Error in Solana wallet provider: ${error instanceof Error ? error.message : String(error)}`,
+        `Error in Solana wallet provider: ${error instanceof Error ? error.message : String(error)}`
       );
       return { data: {}, values: {}, text: "" };
     }

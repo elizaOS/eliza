@@ -14,7 +14,6 @@ from elizaos_plugin_mcp.types import (
     McpResourceTemplate,
     McpTool,
     McpToolResult,
-    TextContent,
 )
 
 
@@ -300,4 +299,3 @@ class McpClient:
     ) -> None:
         """Async context manager exit."""
         await self.close()
-

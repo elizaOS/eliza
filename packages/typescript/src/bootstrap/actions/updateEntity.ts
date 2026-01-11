@@ -20,8 +20,8 @@ import {
   type Memory,
   type Metadata,
   ModelType,
-  parseKeyValueXml,
   type ProviderValue,
+  parseKeyValueXml,
   type State,
   type UUID,
 } from "@elizaos/core";
@@ -165,311 +165,294 @@ export const updateEntityAction: Action = {
     callback?: HandlerCallback,
     responses?: Memory[],
   ): Promise<ActionResult> => {
-    try {
-      if (!state) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_entity",
-            agentId: runtime.agentId,
-          },
-          "State is required for the updateEntity action",
-        );
-        return {
-          text: "State is required for updateEntity action",
-          values: {
-            success: false,
-            error: "STATE_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "State is required",
-          },
-          success: false,
-          error: new Error("State is required for the updateEntity action"),
-        };
-      }
-
-      if (!callback) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_entity",
-            agentId: runtime.agentId,
-          },
-          "Callback is required for the updateEntity action",
-        );
-        return {
-          text: "Callback is required for updateEntity action",
-          values: {
-            success: false,
-            error: "CALLBACK_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "Callback is required",
-          },
-          success: false,
-          error: new Error("Callback is required for the updateEntity action"),
-        };
-      }
-
-      if (!responses) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_entity",
-            agentId: runtime.agentId,
-          },
-          "Responses are required for the updateEntity action",
-        );
-        return {
-          text: "Responses are required for updateEntity action",
-          values: {
-            success: false,
-            error: "RESPONSES_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "Responses are required",
-          },
-          success: false,
-          error: new Error(
-            "Responses are required for the updateEntity action",
-          ),
-        };
-      }
-
-      if (!message) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_entity",
-            agentId: runtime.agentId,
-          },
-          "Message is required for the updateEntity action",
-        );
-        return {
-          text: "Message is required for updateEntity action",
-          values: {
-            success: false,
-            error: "MESSAGE_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "Message is required",
-          },
-          success: false,
-          error: new Error("Message is required for the updateEntity action"),
-        };
-      }
-
-      // Handle initial responses
-      for (const response of responses) {
-        await callback(response.content);
-      }
-
-      const sourceEntityId = message.entityId;
-      const agentId = runtime.agentId;
-      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-
-      if (!room || !room.worldId) {
-        return {
-          text: "Could not find room or world",
-          values: { success: false, error: "ROOM_NOT_FOUND" },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "Room or world not found",
-          },
-          success: false,
-        };
-      }
-
-      const worldId = room.worldId;
-
-      // First, find the entity being referenced
-      const entity = await findEntityByName(runtime, message, state);
-
-      if (!entity) {
-        await callback({
-          text: "I'm not sure which entity you're trying to update. Could you please specify who you're talking about?",
-          actions: ["UPDATE_ENTITY_ERROR"],
-          source: message.content.source,
-        });
-        return {
-          text: "Entity not found",
-          values: {
-            success: false,
-            error: "ENTITY_NOT_FOUND",
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "Could not find entity to update",
-          },
-          success: false,
-        };
-      }
-
-      // Get existing component if it exists - we'll get this after the LLM identifies the source
-      let existingComponent: Component | null = null;
-
-      // Generate component data using the combined template
-      const prompt = composePromptFromState({
-        state,
-        template: componentTemplate,
-      });
-
-      const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-        stopSequences: [],
-      });
-
-      // Parse the generated data
-      const parsedResult = parseKeyValueXml<ComponentExtractionResult>(result);
-
-      if (!parsedResult || !parsedResult.source || !parsedResult.data) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:update_entity",
-            agentId: runtime.agentId,
-          },
-          "Failed to parse component data - missing source or data",
-        );
-        await callback({
-          text: "I couldn't properly understand the component information. Please try again with more specific information.",
-          actions: ["UPDATE_ENTITY_ERROR"],
-          source: message.content.source,
-        });
-        return {
-          text: "Failed to parse component data",
-          values: {
-            success: false,
-            error: "PARSE_ERROR",
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            error: "Invalid response format - missing source or data",
-          },
-          success: false,
-        };
-      }
-
-      const componentType = parsedResult.source.toLowerCase();
-      const componentData = parsedResult.data as Metadata;
-
-      // Now that we know the component type, get the existing component if it exists
-      existingComponent = await runtime.getComponent(
-        entity.id!,
-        componentType,
-        worldId,
-        sourceEntityId,
-      );
-
-      // Create or update the component
-      if (existingComponent) {
-        await runtime.updateComponent({
-          id: existingComponent.id,
-          entityId: entity.id!,
-          worldId,
-          type: componentType,
-          data: componentData,
-          agentId,
-          roomId: message.roomId,
-          sourceEntityId,
-          createdAt: existingComponent.createdAt,
-        });
-
-        await callback({
-          text: `I've updated the ${componentType} information for ${entity.names[0]}.`,
-          actions: ["UPDATE_ENTITY"],
-          source: message.content.source,
-        });
-
-        return {
-          text: `Updated ${componentType} information`,
-          values: {
-            success: true,
-            entityId: entity.id ?? null,
-            entityName: entity.names[0] ?? null,
-            componentType,
-            componentUpdated: true,
-            isNewComponent: false,
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            entityId: entity.id ?? null,
-            entityName: entity.names[0] ?? null,
-            componentType,
-            componentData: componentData as ProviderValue,
-            existingComponentId: existingComponent.id ?? null,
-          },
-          success: true,
-        };
-      } else {
-        const newComponentId = uuidv4() as UUID;
-        await runtime.createComponent({
-          id: newComponentId,
-          entityId: entity.id!,
-          worldId,
-          type: componentType,
-          data: componentData,
-          agentId,
-          roomId: message.roomId,
-          sourceEntityId,
-          createdAt: Date.now(),
-        });
-
-        await callback({
-          text: `I've added new ${componentType} information for ${entity.names[0]}.`,
-          actions: ["UPDATE_ENTITY"],
-          source: message.content.source,
-        });
-
-        return {
-          text: `Added new ${componentType} information`,
-          values: {
-            success: true,
-            entityId: entity.id ?? null,
-            entityName: entity.names[0] ?? null,
-            componentType,
-            componentCreated: true,
-            isNewComponent: true,
-          },
-          data: {
-            actionName: "UPDATE_CONTACT",
-            entityId: entity.id ?? null,
-            entityName: entity.names[0] ?? null,
-            componentType,
-            componentData: componentData as ProviderValue,
-            newComponentId: newComponentId ?? null,
-          },
-          success: true,
-        };
-      }
-    } catch (error) {
+    if (!state) {
       logger.error(
         {
           src: "plugin:bootstrap:action:update_entity",
           agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
         },
-        "Error in updateEntity handler",
+        "State is required for the updateEntity action",
       );
-      if (callback) {
-        await callback({
-          text: "There was an error processing the entity information.",
-          actions: ["UPDATE_ENTITY_ERROR"],
-          source: message.content.source,
-        });
-      }
       return {
-        text: "Error processing entity information",
+        text: "State is required for updateEntity action",
         values: {
           success: false,
-          error: "HANDLER_ERROR",
+          error: "STATE_REQUIRED",
         },
         data: {
           actionName: "UPDATE_CONTACT",
-          error: error instanceof Error ? error.message : String(error),
+          error: "State is required",
         },
         success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: new Error("State is required for the updateEntity action"),
+      };
+    }
+
+    if (!callback) {
+      logger.error(
+        {
+          src: "plugin:bootstrap:action:update_entity",
+          agentId: runtime.agentId,
+        },
+        "Callback is required for the updateEntity action",
+      );
+      return {
+        text: "Callback is required for updateEntity action",
+        values: {
+          success: false,
+          error: "CALLBACK_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Callback is required",
+        },
+        success: false,
+        error: new Error("Callback is required for the updateEntity action"),
+      };
+    }
+
+    if (!responses) {
+      logger.error(
+        {
+          src: "plugin:bootstrap:action:update_entity",
+          agentId: runtime.agentId,
+        },
+        "Responses are required for the updateEntity action",
+      );
+      return {
+        text: "Responses are required for updateEntity action",
+        values: {
+          success: false,
+          error: "RESPONSES_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Responses are required",
+        },
+        success: false,
+        error: new Error("Responses are required for the updateEntity action"),
+      };
+    }
+
+    if (!message) {
+      logger.error(
+        {
+          src: "plugin:bootstrap:action:update_entity",
+          agentId: runtime.agentId,
+        },
+        "Message is required for the updateEntity action",
+      );
+      return {
+        text: "Message is required for updateEntity action",
+        values: {
+          success: false,
+          error: "MESSAGE_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Message is required",
+        },
+        success: false,
+        error: new Error("Message is required for the updateEntity action"),
+      };
+    }
+
+    // Handle initial responses
+    for (const response of responses) {
+      await callback(response.content);
+    }
+
+    const sourceEntityId = message.entityId;
+    const agentId = runtime.agentId;
+    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+    if (!room || !room.worldId) {
+      return {
+        text: "Could not find room or world",
+        values: { success: false, error: "ROOM_NOT_FOUND" },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Room or world not found",
+        },
+        success: false,
+      };
+    }
+
+    const worldId = room.worldId;
+
+    // First, find the entity being referenced
+    const entity = await findEntityByName(runtime, message, state);
+
+    if (!entity) {
+      await callback({
+        text: "I'm not sure which entity you're trying to update. Could you please specify who you're talking about?",
+        actions: ["UPDATE_ENTITY_ERROR"],
+        source: message.content.source,
+      });
+      return {
+        text: "Entity not found",
+        values: {
+          success: false,
+          error: "ENTITY_NOT_FOUND",
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Could not find entity to update",
+        },
+        success: false,
+      };
+    }
+
+    // Get existing component if it exists - we'll get this after the LLM identifies the source
+    let existingComponent: Component | null = null;
+
+    // Generate component data using the combined template
+    const prompt = composePromptFromState({
+      state,
+      template: componentTemplate,
+    });
+
+    const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+      stopSequences: [],
+    });
+
+    // Parse the generated data
+    const parsedResult = parseKeyValueXml<ComponentExtractionResult>(result);
+
+    if (!parsedResult || !parsedResult.source || !parsedResult.data) {
+      logger.error(
+        {
+          src: "plugin:bootstrap:action:update_entity",
+          agentId: runtime.agentId,
+        },
+        "Failed to parse component data - missing source or data",
+      );
+      await callback({
+        text: "I couldn't properly understand the component information. Please try again with more specific information.",
+        actions: ["UPDATE_ENTITY_ERROR"],
+        source: message.content.source,
+      });
+      return {
+        text: "Failed to parse component data",
+        values: {
+          success: false,
+          error: "PARSE_ERROR",
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Invalid response format - missing source or data",
+        },
+        success: false,
+      };
+    }
+
+    const componentType = parsedResult.source.toLowerCase();
+    const componentData = parsedResult.data as Metadata;
+
+    // Now that we know the component type, get the existing component if it exists
+    const entityId = entity.id;
+    if (!entityId) {
+      return {
+        text: "Entity ID is required",
+        values: {
+          success: false,
+          error: "ENTITY_ID_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          error: "Entity ID is required",
+        },
+        success: false,
+      };
+    }
+
+    existingComponent = await runtime.getComponent(
+      entityId,
+      componentType,
+      worldId,
+      sourceEntityId,
+    );
+
+    // Create or update the component
+    if (existingComponent) {
+      await runtime.updateComponent({
+        id: existingComponent.id,
+        entityId,
+        worldId,
+        type: componentType,
+        data: componentData,
+        agentId,
+        roomId: message.roomId,
+        sourceEntityId,
+        createdAt: existingComponent.createdAt,
+      });
+
+      await callback({
+        text: `I've updated the ${componentType} information for ${entity.names[0]}.`,
+        actions: ["UPDATE_ENTITY"],
+        source: message.content.source,
+      });
+
+      return {
+        text: `Updated ${componentType} information`,
+        values: {
+          success: true,
+          entityId: entity.id ?? null,
+          entityName: entity.names[0] ?? null,
+          componentType,
+          componentUpdated: true,
+          isNewComponent: false,
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          entityId: entity.id ?? null,
+          entityName: entity.names[0] ?? null,
+          componentType,
+          componentData: componentData as ProviderValue,
+          existingComponentId: existingComponent.id ?? null,
+        },
+        success: true,
+      };
+    } else {
+      const newComponentId = uuidv4() as UUID;
+      await runtime.createComponent({
+        id: newComponentId,
+        entityId,
+        worldId,
+        type: componentType,
+        data: componentData,
+        agentId,
+        roomId: message.roomId,
+        sourceEntityId,
+        createdAt: Date.now(),
+      });
+
+      await callback({
+        text: `I've added new ${componentType} information for ${entity.names[0]}.`,
+        actions: ["UPDATE_ENTITY"],
+        source: message.content.source,
+      });
+
+      return {
+        text: `Added new ${componentType} information`,
+        values: {
+          success: true,
+          entityId: entity.id ?? null,
+          entityName: entity.names[0] ?? null,
+          componentType,
+          componentCreated: true,
+          isNewComponent: true,
+        },
+        data: {
+          actionName: "UPDATE_CONTACT",
+          entityId: entity.id ?? null,
+          entityName: entity.names[0] ?? null,
+          componentType,
+          componentData: componentData as ProviderValue,
+          newComponentId: newComponentId ?? null,
+        },
+        success: true,
       };
     }
   },

@@ -1,9 +1,9 @@
-import * as fs from "fs/promises";
-import * as path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
-import type { SubAgentTool, ToolResult, ToolParameter } from "./types.js";
+import { exec } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import type { JsonValue } from "../../types.js";
+import type { SubAgentTool, ToolResult } from "./types.js";
 
 const execAsync = promisify(exec);
 
@@ -15,7 +15,9 @@ export function createTools(cwd: string): SubAgentTool[] {
     {
       name: "read_file",
       description: "Read the contents of a file",
-      parameters: [{ name: "filepath", description: "Path to file", required: true }],
+      parameters: [
+        { name: "filepath", description: "Path to file", required: true },
+      ],
       execute: async (args) => readFile(cwd, args.filepath ?? ""),
     },
     {
@@ -25,7 +27,8 @@ export function createTools(cwd: string): SubAgentTool[] {
         { name: "filepath", description: "Path to file", required: true },
         { name: "content", description: "File content", required: true },
       ],
-      execute: async (args) => writeFile(cwd, args.filepath ?? "", args.content ?? ""),
+      execute: async (args) =>
+        writeFile(cwd, args.filepath ?? "", args.content ?? ""),
     },
     {
       name: "edit_file",
@@ -33,14 +36,26 @@ export function createTools(cwd: string): SubAgentTool[] {
       parameters: [
         { name: "filepath", description: "Path to file", required: true },
         { name: "old_str", description: "Text to find", required: true },
-        { name: "new_str", description: "Text to replace with", required: true },
+        {
+          name: "new_str",
+          description: "Text to replace with",
+          required: true,
+        },
       ],
-      execute: async (args) => editFile(cwd, args.filepath ?? "", args.old_str ?? "", args.new_str ?? ""),
+      execute: async (args) =>
+        editFile(
+          cwd,
+          args.filepath ?? "",
+          args.old_str ?? "",
+          args.new_str ?? "",
+        ),
     },
     {
       name: "list_files",
       description: "List files in a directory",
-      parameters: [{ name: "path", description: "Directory path", required: false }],
+      parameters: [
+        { name: "path", description: "Directory path", required: false },
+      ],
       execute: async (args) => listFiles(cwd, args.path ?? "."),
     },
     {
@@ -48,21 +63,31 @@ export function createTools(cwd: string): SubAgentTool[] {
       description: "Search for a string across files (case-insensitive)",
       parameters: [
         { name: "pattern", description: "Text to search for", required: true },
-        { name: "path", description: "Directory to search (default: .)", required: false },
-        { name: "max_matches", description: "Max matches (default: 50)", required: false },
+        {
+          name: "path",
+          description: "Directory to search (default: .)",
+          required: false,
+        },
+        {
+          name: "max_matches",
+          description: "Max matches (default: 50)",
+          required: false,
+        },
       ],
       execute: async (args) =>
         searchFiles(
           cwd,
           args.pattern ?? "",
           args.path ?? ".",
-          args.max_matches ?? ""
+          args.max_matches ?? "",
         ),
     },
     {
       name: "shell",
       description: "Execute a shell command",
-      parameters: [{ name: "command", description: "Command to run", required: true }],
+      parameters: [
+        { name: "command", description: "Command to run", required: true },
+      ],
       execute: async (args) => executeShell(cwd, args.command ?? ""),
     },
   ];
@@ -72,7 +97,10 @@ async function readFile(cwd: string, filepath: string): Promise<ToolResult> {
   try {
     const fullPath = path.resolve(cwd, filepath);
     const content = await fs.readFile(fullPath, "utf-8");
-    const truncated = content.length > 5000 ? content.substring(0, 5000) + "\n...(truncated)" : content;
+    const truncated =
+      content.length > 5000
+        ? `${content.substring(0, 5000)}\n...(truncated)`
+        : content;
     return {
       success: true,
       output: `File ${filepath} (${content.length} chars):\n${truncated}`,
@@ -87,7 +115,11 @@ async function readFile(cwd: string, filepath: string): Promise<ToolResult> {
   }
 }
 
-async function writeFile(cwd: string, filepath: string, content: string): Promise<ToolResult> {
+async function writeFile(
+  cwd: string,
+  filepath: string,
+  content: string,
+): Promise<ToolResult> {
   try {
     const fullPath = path.resolve(cwd, filepath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
@@ -98,19 +130,30 @@ async function writeFile(cwd: string, filepath: string, content: string): Promis
       data: { filepath, size: content.length },
     };
   } catch (err) {
-    return { success: false, output: `Error writing ${filepath}: ${(err as Error).message}` };
+    return {
+      success: false,
+      output: `Error writing ${filepath}: ${(err as Error).message}`,
+    };
   }
 }
 
-async function editFile(cwd: string, filepath: string, oldStr: string, newStr: string): Promise<ToolResult> {
+async function editFile(
+  cwd: string,
+  filepath: string,
+  oldStr: string,
+  newStr: string,
+): Promise<ToolResult> {
   try {
     const fullPath = path.resolve(cwd, filepath);
     const content = await fs.readFile(fullPath, "utf-8");
-    
+
     if (!content.includes(oldStr)) {
-      return { success: false, output: `Could not find the specified text in ${filepath}` };
+      return {
+        success: false,
+        output: `Could not find the specified text in ${filepath}`,
+      };
     }
-    
+
     const newContent = content.replace(oldStr, newStr);
     await fs.writeFile(fullPath, newContent, "utf-8");
     return {
@@ -132,8 +175,8 @@ async function listFiles(cwd: string, dirPath: string): Promise<ToolResult> {
     const fullPath = path.resolve(cwd, dirPath);
     const entries = await fs.readdir(fullPath, { withFileTypes: true });
     const items = entries
-      .filter(e => !e.name.startsWith("."))
-      .map(e => `${e.name}${e.isDirectory() ? "/" : ""}`)
+      .filter((e) => !e.name.startsWith("."))
+      .map((e) => `${e.name}${e.isDirectory() ? "/" : ""}`)
       .join("\n");
     return {
       success: true,
@@ -195,7 +238,7 @@ async function searchFiles(
   cwd: string,
   pattern: string,
   dirPath: string,
-  maxMatchesRaw: string
+  maxMatchesRaw: string,
 ): Promise<ToolResult> {
   const needle = pattern.trim();
   if (!needle) {
@@ -203,7 +246,8 @@ async function searchFiles(
   }
 
   const parsedMax = Number.parseInt(maxMatchesRaw, 10);
-  const maxMatches = Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 50;
+  const maxMatches =
+    Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : 50;
 
   const fullPath = path.resolve(cwd, dirPath);
   const matches: SearchMatch[] = [];
@@ -226,7 +270,9 @@ async function searchFiles(
   }
 
   const lines: string[] = [];
-  lines.push(`Search "${needle}" (${matches.length} match(es) in ${byFile.size} file(s))`);
+  lines.push(
+    `Search "${needle}" (${matches.length} match(es) in ${byFile.size} file(s))`,
+  );
   for (const [file, fileMatches] of byFile) {
     lines.push(file);
     for (const m of fileMatches.slice(0, 8)) {
@@ -242,7 +288,11 @@ async function searchFiles(
     output: lines.join("\n"),
     data: {
       pattern: needle,
-      matches: matches.map((m) => ({ file: m.file, line: m.line, content: m.content })) as JsonValue,
+      matches: matches.map((m) => ({
+        file: m.file,
+        line: m.line,
+        content: m.content,
+      })) as JsonValue,
       count: matches.length,
       path: dirPath,
     },
@@ -254,7 +304,7 @@ async function searchInDirectory(
   needle: string,
   matches: SearchMatch[],
   maxMatches: number,
-  cwd: string
+  cwd: string,
 ): Promise<void> {
   if (matches.length >= maxMatches) return;
 
@@ -295,7 +345,7 @@ async function searchInDirectory(
 async function executeShell(cwd: string, command: string): Promise<ToolResult> {
   // Block dangerous commands
   const blocked = ["rm -rf /", "rm -rf ~", "sudo rm", "mkfs", "dd if=/dev"];
-  if (blocked.some(b => command.toLowerCase().includes(b))) {
+  if (blocked.some((b) => command.toLowerCase().includes(b))) {
     return { success: false, output: `Blocked dangerous command: ${command}` };
   }
 
@@ -316,7 +366,11 @@ async function executeShell(cwd: string, command: string): Promise<ToolResult> {
     const exitCode = typeof error.code === "number" ? error.code : null;
     return {
       success: false,
-      output: `Command failed: ${command}\n${error.stderr || error.message}`.substring(0, 1000),
+      output:
+        `Command failed: ${command}\n${error.stderr || error.message}`.substring(
+          0,
+          1000,
+        ),
       data: { command, exitCode },
     };
   }
@@ -334,30 +388,31 @@ export interface ToolCall {
 export function parseToolCalls(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
   const pattern = /TOOL:\s*(\w+)\s*\(/g;
-  
+
   let match;
   while ((match = pattern.exec(text)) !== null) {
     const name = match[1];
     const start = match.index + match[0].length;
     const end = findMatchingParen(text, start);
     if (end === -1) continue;
-    
+
     const argsStr = text.substring(start, end);
     const args = parseArgs(argsStr);
-    
+
     // Handle write_file content from code blocks
     if (name === "write_file" || name === "writefile") {
       const afterTool = text.substring(match.index);
-      const contentMatch = afterTool.match(/CONTENT_START\n?([\s\S]*?)\n?CONTENT_END/) ||
-                          afterTool.match(/```[\w]*\n?([\s\S]*?)```/);
+      const contentMatch =
+        afterTool.match(/CONTENT_START\n?([\s\S]*?)\n?CONTENT_END/) ||
+        afterTool.match(/```[\w]*\n?([\s\S]*?)```/);
       if (contentMatch && contentMatch[1].length > 10) {
         args.content = contentMatch[1];
       }
     }
-    
+
     calls.push({ name, args });
   }
-  
+
   return calls;
 }
 
@@ -365,11 +420,11 @@ function findMatchingParen(text: string, start: number): number {
   let depth = 1;
   let inString = false;
   let stringChar = "";
-  
+
   for (let i = start; i < text.length && depth > 0; i++) {
     const char = text[i];
     const prev = i > 0 ? text[i - 1] : "";
-    
+
     if (inString) {
       if (char === stringChar && prev !== "\\") inString = false;
     } else {
@@ -390,12 +445,11 @@ function findMatchingParen(text: string, start: number): number {
 function parseArgs(argsStr: string): Record<string, string> {
   const args: Record<string, string> = {};
   const pattern = /(\w+)\s*=\s*["'`]([^"'`]*)["'`]/g;
-  
+
   let match;
   while ((match = pattern.exec(argsStr)) !== null) {
     args[match[1]] = match[2].replace(/\\n/g, "\n").replace(/\\"/g, '"');
   }
-  
+
   return args;
 }
-

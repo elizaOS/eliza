@@ -5,19 +5,8 @@ All types are designed for fail-fast validation using Pydantic.
 """
 
 from enum import Enum
-from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-POLYGON_CHAIN_ID = 137
-DEFAULT_CLOB_API_URL = "https://clob.polymarket.com"
-DEFAULT_CLOB_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/"
-
 
 # =============================================================================
 # Token Types
@@ -412,39 +401,3 @@ class PriceHistoryEntry(BaseModel):
     timestamp: str
     price: str
     volume: str | None = None
-
-
-# =============================================================================
-# Error Types
-# =============================================================================
-
-
-class PolymarketErrorCode(str, Enum):
-    """Polymarket-specific error codes."""
-
-    INVALID_MARKET = "INVALID_MARKET"
-    INVALID_TOKEN = "INVALID_TOKEN"
-    INVALID_ORDER = "INVALID_ORDER"
-    INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS"
-    MARKET_CLOSED = "MARKET_CLOSED"
-    API_ERROR = "API_ERROR"
-    WEBSOCKET_ERROR = "WEBSOCKET_ERROR"
-    AUTH_ERROR = "AUTH_ERROR"
-    CONFIG_ERROR = "CONFIG_ERROR"
-
-
-class PolymarketError(Exception):
-    """Polymarket-specific error."""
-
-    def __init__(
-        self,
-        code: PolymarketErrorCode,
-        message: str,
-        cause: Exception | None = None,
-    ) -> None:
-        """Initialize error."""
-        super().__init__(message)
-        self.code = code
-        self.cause = cause
-
-

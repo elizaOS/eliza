@@ -137,9 +137,9 @@ class TestConfig:
 
     def test_config_builder_pattern(self) -> None:
         """Should support builder pattern."""
-        config = GoogleGenAIConfig("test-key").with_base_url(
-            "https://custom.api.com"
-        ).with_timeout(120)
+        config = (
+            GoogleGenAIConfig("test-key").with_base_url("https://custom.api.com").with_timeout(120)
+        )
 
         assert config.base_url == "https://custom.api.com"
         assert config.timeout_seconds == 120
@@ -148,7 +148,7 @@ class TestConfig:
         """Should generate correct content URL."""
         config = GoogleGenAIConfig("test-key")
         url = config.generate_content_url(Model.small())
-        
+
         assert "generateContent" in url
         assert "test-key" in url
         assert Model.GEMINI_2_0_FLASH in url
@@ -157,7 +157,7 @@ class TestConfig:
         """Should generate correct embed URL."""
         config = GoogleGenAIConfig("test-key")
         url = config.embed_content_url(Model.embedding())
-        
+
         assert "embedContent" in url
         assert "test-key" in url
         assert Model.TEXT_EMBEDDING_004 in url
@@ -278,6 +278,8 @@ class TestErrors:
         error = InvalidParameterError("model", "cannot be empty")
         assert "model" in str(error)
         assert error.parameter == "model"
+
+
 
 
 

@@ -11,6 +11,7 @@ The browser plugin provides AI-powered browser automation capabilities through a
 The `schema.json` file defines:
 
 ### Data Types
+
 - **SessionId**: Unique identifier format for browser sessions
 - **BrowserSession**: Session object with ID, timestamps, and page info
 - **NavigationResult**: Result of navigation operations
@@ -20,11 +21,13 @@ The `schema.json` file defines:
 - **CaptchaResult**: CAPTCHA detection and solving results
 
 ### Configuration
+
 - **SecurityConfig**: URL validation and domain filtering settings
 - **RetryConfig**: Retry behavior with exponential backoff
 - **BrowserConfig**: Browser and service configuration
 
 ### Communication
+
 - **WebSocketMessage**: Client-to-server message format
 - **WebSocketResponse**: Server-to-client response format
 - **BrowserError**: Standardized error format
@@ -33,36 +36,36 @@ The `schema.json` file defines:
 
 All implementations must support these actions:
 
-| Action | Description |
-|--------|-------------|
-| `BROWSER_NAVIGATE` | Navigate to a URL |
-| `BROWSER_BACK` | Go back in history |
-| `BROWSER_FORWARD` | Go forward in history |
-| `BROWSER_REFRESH` | Refresh current page |
-| `BROWSER_CLICK` | Click on element |
-| `BROWSER_TYPE` | Type text into field |
-| `BROWSER_SELECT` | Select dropdown option |
-| `BROWSER_EXTRACT` | Extract page data |
-| `BROWSER_SCREENSHOT` | Capture screenshot |
-| `BROWSER_SOLVE_CAPTCHA` | Solve CAPTCHA |
+| Action                  | Description            |
+| ----------------------- | ---------------------- |
+| `BROWSER_NAVIGATE`      | Navigate to a URL      |
+| `BROWSER_BACK`          | Go back in history     |
+| `BROWSER_FORWARD`       | Go forward in history  |
+| `BROWSER_REFRESH`       | Refresh current page   |
+| `BROWSER_CLICK`         | Click on element       |
+| `BROWSER_TYPE`          | Type text into field   |
+| `BROWSER_SELECT`        | Select dropdown option |
+| `BROWSER_EXTRACT`       | Extract page data      |
+| `BROWSER_SCREENSHOT`    | Capture screenshot     |
+| `BROWSER_SOLVE_CAPTCHA` | Solve CAPTCHA          |
 
 ## Providers
 
-| Provider | Description |
-|----------|-------------|
+| Provider        | Description                   |
+| --------------- | ----------------------------- |
 | `BROWSER_STATE` | Current browser session state |
 
 ## Error Codes
 
-| Code | Description |
-|------|-------------|
+| Code                    | Description                 |
+| ----------------------- | --------------------------- |
 | `SERVICE_NOT_AVAILABLE` | Browser service not running |
-| `SESSION_ERROR` | Session management error |
-| `NAVIGATION_ERROR` | Page navigation failed |
-| `ACTION_ERROR` | Browser action failed |
-| `SECURITY_ERROR` | Security validation failed |
-| `CAPTCHA_ERROR` | CAPTCHA solving failed |
-| `TIMEOUT_ERROR` | Operation timed out |
+| `SESSION_ERROR`         | Session management error    |
+| `NAVIGATION_ERROR`      | Page navigation failed      |
+| `ACTION_ERROR`          | Browser action failed       |
+| `SECURITY_ERROR`        | Security validation failed  |
+| `CAPTCHA_ERROR`         | CAPTCHA solving failed      |
+| `TIMEOUT_ERROR`         | Operation timed out         |
 
 ## Implementation Requirements
 
@@ -75,5 +78,6 @@ Each language implementation must:
 5. Handle CAPTCHA detection (solving optional based on API key)
 6. Emit appropriate events for action tracking
 7. Provide proper error handling with user-friendly messages
+
 
 

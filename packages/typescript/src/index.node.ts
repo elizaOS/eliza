@@ -25,11 +25,11 @@ export * from "./search";
 export * from "./secrets";
 export * from "./services";
 export * from "./services/message";
-export * from "./types/message-service";
 export * from "./settings";
 export * from "./streaming-context";
 // Export everything from types
 export * from "./types";
+export * from "./types/message-service";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export * from "./utils/buffer";

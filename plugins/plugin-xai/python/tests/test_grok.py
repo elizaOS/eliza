@@ -1,6 +1,7 @@
 """Tests for Grok client."""
 
 import pytest
+
 from elizaos_plugin_xai.grok import GrokClient, GrokConfig, TextGenerationParams
 
 

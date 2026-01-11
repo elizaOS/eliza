@@ -1,4 +1,4 @@
-declare module 'bun:test' {
+declare module "bun:test" {
   export interface TestAPI {
     test: TestFn;
     describe: DescribeFn;
@@ -26,9 +26,7 @@ declare module 'bun:test' {
     todo: DescribeFn;
   }
 
-  export interface BeforeAfterFn {
-    (fn: () => void | Promise<void>): void;
-  }
+  export type BeforeAfterFn = (fn: () => void | Promise<void>) => void;
 
   export interface MockFn {
     <T extends (...args: any[]) => any>(fn?: T): MockedFunction<T>;
@@ -57,7 +55,7 @@ declare module 'bun:test' {
       calls: Parameters<T>[];
       instances: any[];
       contexts: any[];
-      results: Array<{ type: 'return' | 'throw'; value: any }>;
+      results: Array<{ type: "return" | "throw"; value: any }>;
       lastCall?: Parameters<T>;
     };
   }
@@ -66,7 +64,7 @@ declare module 'bun:test' {
     <T>(actual: T): Matchers<T>;
     extend: (matchers: Record<string, any>) => void;
     anything: () => any;
-    any: (constructor: any) => any;
+    any: (ctor: any) => any;
     arrayContaining: (array: any[]) => any;
     objectContaining: (object: Record<string, any>) => any;
     stringContaining: (string: string) => any;

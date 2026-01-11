@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Solana client for RPC operations.
 
 use crate::{

@@ -1,6 +1,6 @@
 /**
  * Autonomy Actions for elizaOS
- * 
+ *
  * Actions that enable autonomous agent communication.
  */
 
@@ -16,17 +16,18 @@ import type {
   UUID,
 } from "../../types";
 import { stringToUuid } from "../../utils";
-import { AutonomyService, AUTONOMY_SERVICE_TYPE } from "./service";
+import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
 /**
  * Send to Admin Action
- * 
+ *
  * Allows agent to send messages to admin from autonomous context.
  * Only available in autonomous room to prevent misuse.
  */
 export const sendToAdminAction: Action = {
   name: "SEND_TO_ADMIN",
-  description: "Send a message directly to the admin user from autonomous context",
+  description:
+    "Send a message directly to the admin user from autonomous context",
 
   examples: [
     [
@@ -61,9 +62,14 @@ export const sendToAdminAction: Action = {
     ],
   ],
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     // Only allow this action in autonomous context
-    const autonomyService = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE);
+    const autonomyService = runtime.getService<AutonomyService>(
+      AUTONOMY_SERVICE_TYPE,
+    );
     if (!autonomyService) {
       return false;
     }
@@ -103,10 +109,12 @@ export const sendToAdminAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // Double-check we're in autonomous context
-    const autonomyService = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE);
+    const autonomyService = runtime.getService<AutonomyService>(
+      AUTONOMY_SERVICE_TYPE,
+    );
     if (!autonomyService) {
       return {
         success: false,
@@ -143,7 +151,8 @@ export const sendToAdminAction: Action = {
 
     let targetRoomId: UUID;
     if (adminMessages && adminMessages.length > 0) {
-      targetRoomId = adminMessages[adminMessages.length - 1].roomId!;
+      const lastMessage = adminMessages[adminMessages.length - 1];
+      targetRoomId = lastMessage.roomId ?? runtime.agentId;
     } else {
       targetRoomId = runtime.agentId;
     }
@@ -153,7 +162,10 @@ export const sendToAdminAction: Action = {
 
     // Generate message to admin
     let messageToAdmin: string;
-    if (autonomousThought.includes("completed") || autonomousThought.includes("finished")) {
+    if (
+      autonomousThought.includes("completed") ||
+      autonomousThought.includes("finished")
+    ) {
       messageToAdmin = `I've completed a task and wanted to update you. My thoughts: ${autonomousThought}`;
     } else if (
       autonomousThought.includes("problem") ||
@@ -161,7 +173,10 @@ export const sendToAdminAction: Action = {
       autonomousThought.includes("error")
     ) {
       messageToAdmin = `I encountered something that might need your attention: ${autonomousThought}`;
-    } else if (autonomousThought.includes("question") || autonomousThought.includes("unsure")) {
+    } else if (
+      autonomousThought.includes("question") ||
+      autonomousThought.includes("unsure")
+    ) {
       messageToAdmin = `I have a question and would appreciate your guidance: ${autonomousThought}`;
     } else {
       messageToAdmin = `Autonomous update: ${autonomousThought}`;
@@ -211,4 +226,3 @@ export const sendToAdminAction: Action = {
     };
   },
 };
-

@@ -2,8 +2,8 @@
  * Retry utility with exponential backoff
  */
 
-import { logger } from '@elizaos/core';
-import type { RetryConfig } from '../types.js';
+import { logger } from "@elizaos/core";
+import type { RetryConfig } from "../types.js";
 
 export const DEFAULT_RETRY_CONFIGS = {
   navigation: {
@@ -80,4 +80,3 @@ export async function retryWithBackoff<T>(
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-

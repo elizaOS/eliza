@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-linear-ts",
+  "name": "@elizaos/plugin-linear",
   "version": "1.0.0",
   "description": "Linear integration plugin for ElizaOS (TypeScript)",
   "main": "dist/index.js",
@@ -22,15 +22,17 @@
     "access": "public"
   },
   "scripts": {
-    "build:prompts": "node ../../../packages/prompts/scripts/generate-plugin-prompts.js ../prompts ./src/generated/prompts --target all",
-    "build": "npm run build:prompts && tsup",
-    "dev": "tsup --watch",
+    "dev": "bun --hot build.ts",
     "test": "vitest",
     "test:watch": "vitest --watch",
-    "lint": "eslint . --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+    "lint": "bunx @biomejs/biome check --write .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
@@ -52,17 +54,16 @@
   "homepage": "https://github.com/elizaos/eliza#readme",
   "dependencies": {
     "@linear/sdk": "^51.0.0",
-    "@elizaos/core": "file:../../../packages/typescript"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.12.7",
+    "@types/node": "^25.0.3",
     "@typescript-eslint/eslint-plugin": "^7.7.1",
     "@typescript-eslint/parser": "^7.7.1",
     "eslint": "^8.57.0",
-    "prettier": "^3.2.5",
-    "tsup": "^8.0.2",
-    "typescript": "^5.4.5",
-    "vitest": "^1.5.0"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0",
+    "@biomejs/biome": "^2.3.11"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

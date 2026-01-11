@@ -5,8 +5,8 @@
  * NO external infrastructure required - all tests run with in-memory mocks.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import type {
   Character,
@@ -64,8 +64,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
       return result;
     }),
     getMemoryById: vi.fn(async (id: UUID) => memories.get(id) || null),
-    getMemoriesByIds: vi.fn(async (ids: UUID[]) =>
-      ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
+    getMemoriesByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
     ),
     getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
     getCachedEmbeddings: vi.fn().mockResolvedValue([]),
@@ -89,8 +90,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
 
     // Entity methods
-    getEntitiesByIds: vi.fn(async (ids: UUID[]) =>
-      ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
+    getEntitiesByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
@@ -111,8 +113,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     deleteComponent: vi.fn().mockResolvedValue(undefined),
 
     // Room methods
-    getRoomsByIds: vi.fn(async (ids: UUID[]) =>
-      ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
+    getRoomsByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
     ),
     createRooms: vi.fn(async (newRooms: Room[]) => {
       const ids: UUID[] = [];
@@ -287,8 +290,8 @@ describe("Integration Tests with Mocked Infrastructure", () => {
       expect(memories.length).toBeGreaterThan(0);
       const found = memories.find((m) => m.id === memory.id);
       expect(found).toBeDefined();
-      const foundContent = found && found.content;
-      expect(foundContent && foundContent.text).toBe("Hello, this is a test message");
+      const foundContent = found?.content;
+      expect(foundContent?.text).toBe("Hello, this is a test message");
     });
 
     it("should create a room and add participants", async () => {
@@ -354,7 +357,7 @@ describe("Integration Tests with Mocked Infrastructure", () => {
 
       const entity = await runtime.getEntityById(entityId);
       expect(entity).toBeDefined();
-      expect(entity && entity.names).toContain("Test Entity");
+      expect(entity?.names).toContain("Test Entity");
     });
   });
 
@@ -367,7 +370,7 @@ describe("Integration Tests with Mocked Infrastructure", () => {
 
       const retrieved = await runtime.getCache<typeof cacheValue>(cacheKey);
       expect(retrieved).toBeDefined();
-      expect(retrieved && retrieved.data).toBe("test data");
+      expect(retrieved?.data).toBe("test data");
     });
   });
 
@@ -387,7 +390,7 @@ describe("Integration Tests with Mocked Infrastructure", () => {
 
       const task = await runtime.getTask(taskId);
       expect(task).toBeDefined();
-      expect(task && task.name).toBe("Test Task");
+      expect(task?.name).toBe("Test Task");
     });
   });
 });
@@ -443,4 +446,3 @@ describe("Inference Tests with Mock Handlers", () => {
     expect(response).toBe("Mock response to: Say hello");
   });
 });
-

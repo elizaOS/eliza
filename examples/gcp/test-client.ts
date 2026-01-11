@@ -12,7 +12,7 @@
  *   bun run test-client.ts --url https://eliza-worker-abc123.run.app
  */
 
-import * as readline from "readline";
+import * as readline from "node:readline";
 
 interface ChatResponse {
   response: string;
@@ -79,31 +79,23 @@ Environment:
 }
 
 async function getWorkerInfo(baseUrl: string): Promise<InfoResponse | null> {
-  try {
-    const response = await fetch(baseUrl, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (response.ok) {
-      return (await response.json()) as InfoResponse;
-    }
-  } catch (err) {
-    // Worker not available
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`\n⚠️  Connection failed: ${message}`);
+  const response = await fetch(baseUrl, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (response.ok) {
+    return (await response.json()) as InfoResponse;
   }
   return null;
 }
 
-async function getHealthStatus(baseUrl: string): Promise<HealthResponse | null> {
-  try {
-    const response = await fetch(`${baseUrl}/health`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (response.ok) {
-      return (await response.json()) as HealthResponse;
-    }
-  } catch {
-    // Health check failed
+async function getHealthStatus(
+  baseUrl: string,
+): Promise<HealthResponse | null> {
+  const response = await fetch(`${baseUrl}/health`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (response.ok) {
+    return (await response.json()) as HealthResponse;
   }
   return null;
 }
@@ -111,7 +103,7 @@ async function getHealthStatus(baseUrl: string): Promise<HealthResponse | null> 
 async function sendMessage(
   baseUrl: string,
   message: string,
-  conversationId: string | null
+  conversationId: string | null,
 ): Promise<ChatResponse> {
   const response = await fetch(`${baseUrl}/chat`, {
     method: "POST",
@@ -141,7 +133,9 @@ async function main(): Promise<void> {
   // Check health status
   const health = await getHealthStatus(url);
   if (health) {
-    console.log(`✅ Health: ${health.status} (${health.runtime} v${health.version})`);
+    console.log(
+      `✅ Health: ${health.status} (${health.runtime} v${health.version})`,
+    );
   }
 
   // Check if worker is available
@@ -160,7 +154,9 @@ async function main(): Promise<void> {
     console.error("    cd examples/gcp/rust");
     console.error("    cargo run");
     console.error("\n  Or deploy to Cloud Run:");
-    console.error("    gcloud run deploy eliza-worker --source . --region us-central1");
+    console.error(
+      "    gcloud run deploy eliza-worker --source . --region us-central1",
+    );
     console.error("");
     process.exit(1);
   }
@@ -214,20 +210,15 @@ Commands:
         return;
       }
 
-      try {
-        console.log("\n⏳ Thinking...");
+      console.log("\n⏳ Thinking...");
 
-        const response = await sendMessage(url, text, conversationId);
-        conversationId = response.conversationId;
+      const response = await sendMessage(url, text, conversationId);
+      conversationId = response.conversationId;
 
-        // Clear the "Thinking..." line
-        process.stdout.write("\x1b[1A\x1b[2K");
+      // Clear the "Thinking..." line
+      process.stdout.write("\x1b[1A\x1b[2K");
 
-        console.log(`${info.name}: ${response.response}\n`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.error(`\n❌ Error: ${message}\n`);
-      }
+      console.log(`${info.name}: ${response.response}\n`);
 
       prompt();
     });

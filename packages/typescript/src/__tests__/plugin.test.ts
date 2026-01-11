@@ -1,4 +1,4 @@
-import {  afterEach, beforeEach, describe, expect, test  } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   isValidPluginShape,
   loadPlugin,
@@ -91,7 +91,7 @@ describe("Plugin Functions", () => {
       const result = await loadPlugin(plugin);
 
       expect(result).toBe(plugin);
-      expect(result && result.name).toBe("test-plugin");
+      expect(result?.name).toBe("test-plugin");
     });
 
     test("should return null for invalid plugin object", async () => {
@@ -125,7 +125,7 @@ describe("Plugin Functions", () => {
       const result = await loadPlugin(mockBootstrapPlugin);
 
       expect(result).toBeDefined();
-      expect(result && result.name).toBe("bootstrap");
+      expect(result?.name).toBe("bootstrap");
     });
   });
 
@@ -213,7 +213,10 @@ describe("Plugin Functions", () => {
         description: "Invalid plugin",
       };
 
-      const resolved = await resolvePlugins([validPlugin, invalidPlugin as Plugin]);
+      const resolved = await resolvePlugins([
+        validPlugin,
+        invalidPlugin as Plugin,
+      ]);
 
       expect(resolved).toHaveLength(1);
       expect(resolved[0].name).toBe("valid-plugin");

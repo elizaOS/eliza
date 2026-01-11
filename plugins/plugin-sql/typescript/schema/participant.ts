@@ -1,12 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  foreignKey,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { foreignKey, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
@@ -20,9 +13,7 @@ export const participantTable = pgTable(
   "participants",
   {
     id: uuid("id").notNull().primaryKey().default(sql`gen_random_uuid()`),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
     entityId: uuid("entity_id").references(() => entityTable.id, {
       onDelete: "cascade",
     }),
@@ -48,5 +39,5 @@ export const participantTable = pgTable(
       columns: [table.entityId],
       foreignColumns: [entityTable.id],
     }).onDelete("cascade"),
-  ],
+  ]
 );

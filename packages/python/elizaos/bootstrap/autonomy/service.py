@@ -129,7 +129,10 @@ class AutonomyService(Service):
             # Add agent as participant
             await self._runtime.add_participant(self._runtime.agent_id, self._autonomous_room_id)
 
-            self._log("debug", f"Ensured autonomous room exists with world ID: {self._autonomous_world_id}")
+            self._log(
+                "debug",
+                f"Ensured autonomous room exists with world ID: {self._autonomous_world_id}",
+            )
         except Exception as e:
             self._log("error", f"Failed to ensure autonomous context: {e}")
             raise  # Re-throw to prevent service from starting in broken state
@@ -190,7 +193,9 @@ class AutonomyService(Service):
         while self._is_running and not self._is_stopped:
             # Guard: Skip if previous iteration is still running
             if self._is_thinking:
-                self._log("debug", "Previous autonomous think still in progress, skipping this iteration")
+                self._log(
+                    "debug", "Previous autonomous think still in progress, skipping this iteration"
+                )
                 await asyncio.sleep(self._interval_ms / 1000)
                 continue
 
@@ -229,11 +234,13 @@ class AutonomyService(Service):
         last_thought: str | None = None
         is_first_thought = False
 
-        recent_memories = await self._runtime.get_memories({
-            "roomId": self._autonomous_room_id,
-            "count": 3,
-            "tableName": "memories",
-        })
+        recent_memories = await self._runtime.get_memories(
+            {
+                "roomId": self._autonomous_room_id,
+                "count": 3,
+                "tableName": "memories",
+            }
+        )
 
         last_agent_thought = None
         for m in sorted(recent_memories, key=lambda x: x.created_at or 0, reverse=True):

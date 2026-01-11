@@ -2,6 +2,4 @@
  * Provider exports for the OpenRouter plugin.
  */
 
-export { createOpenRouterProvider } from './openrouter';
-
-
+export { createOpenRouterProvider } from "./openrouter";

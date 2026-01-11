@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS MCP Plugin - Model Context Protocol client for elizaOS agents.
 //!
 //! This crate provides a Rust implementation of the MCP client, allowing

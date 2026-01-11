@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Phala Network TEE Vendor implementation.
 
 use crate::vendors::types::{TeeVendorInterface, TeeVendorNames};
@@ -13,6 +14,7 @@ impl PhalaVendor {
         Self
     }
 }
+
 
 impl Default for PhalaVendor {
     fn default() -> Self {
@@ -41,5 +43,7 @@ impl TeeVendorInterface for PhalaVendor {
         vec!["phala-derive-key", "phala-remote-attestation"]
     }
 }
+
+
 
 

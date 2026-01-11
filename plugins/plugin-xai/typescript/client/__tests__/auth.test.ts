@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TwitterAuth } from "../auth";
 import { TwitterApi } from "twitter-api-v2";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TwitterAuth } from "../auth";
 
 // Mock twitter-api-v2
 vi.mock("twitter-api-v2", () => ({
@@ -13,7 +13,11 @@ vi.mock("twitter-api-v2", () => ({
 
 describe("TwitterAuth", () => {
   let auth: TwitterAuth;
-  let mockTwitterApi: any;
+  let mockTwitterApi: {
+    v2: {
+      me: ReturnType<typeof vi.fn>;
+    };
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -24,7 +28,7 @@ describe("TwitterAuth", () => {
       },
     };
 
-    (TwitterApi as any).mockImplementation(() => mockTwitterApi);
+    vi.mocked(TwitterApi).mockImplementation(() => mockTwitterApi as unknown as TwitterApi);
 
     auth = new TwitterAuth({
       mode: "env",
@@ -35,7 +39,7 @@ describe("TwitterAuth", () => {
         accessToken: "test-access-token",
         accessSecret: "test-access-secret",
       }),
-    } as any);
+    });
   });
 
   describe("constructor", () => {
@@ -204,9 +208,7 @@ describe("TwitterAuth", () => {
       await auth.logout();
 
       // Try to get client after logout
-      await expect(auth.getV2Client()).rejects.toThrow(
-        "Twitter API client not initialized",
-      );
+      await expect(auth.getV2Client()).rejects.toThrow("Twitter API client not initialized");
 
       // isLoggedIn should return false
       const isLoggedIn = await auth.isLoggedIn();

@@ -1,7 +1,20 @@
-import { GoogleGenAI } from '@google/genai';
-import { logger, type IAgentRuntime } from '@elizaos/core';
-import { getApiKey } from './utils/config';
-import type { PluginConfig } from './index';
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { GoogleGenAI } from "@google/genai";
+import { getApiKey } from "./utils/config";
+
+/**
+ * Plugin configuration object structure
+ */
+export interface PluginConfig {
+  readonly GOOGLE_GENERATIVE_AI_API_KEY?: string;
+  readonly GOOGLE_SMALL_MODEL?: string;
+  readonly GOOGLE_LARGE_MODEL?: string;
+  readonly GOOGLE_IMAGE_MODEL?: string;
+  readonly GOOGLE_EMBEDDING_MODEL?: string;
+  readonly SMALL_MODEL?: string;
+  readonly LARGE_MODEL?: string;
+  readonly IMAGE_MODEL?: string;
+}
 
 /**
  * Initialize and validate Google Generative AI configuration
@@ -13,7 +26,7 @@ export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRunt
       const apiKey = getApiKey(runtime);
       if (!apiKey) {
         logger.warn(
-          'GOOGLE_GENERATIVE_AI_API_KEY is not set in environment - Google AI functionality will be limited'
+          "GOOGLE_GENERATIVE_AI_API_KEY is not set in environment - Google AI functionality will be limited"
         );
         return;
       }
@@ -30,7 +43,7 @@ export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRunt
       } catch (fetchError: unknown) {
         const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
         logger.warn(`Error validating Google AI API key: ${message}`);
-        logger.warn('Google AI functionality will be limited until a valid API key is provided');
+        logger.warn("Google AI functionality will be limited until a valid API key is provided");
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -40,5 +53,3 @@ export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRunt
     }
   })();
 }
-
-

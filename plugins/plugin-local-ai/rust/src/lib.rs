@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Local AI Plugin for elizaOS
 //!
 //! This crate provides local LLM inference for elizaOS agents.
@@ -47,6 +48,7 @@ pub struct LocalAIConfig {
     /// Context size
     pub context_size: usize,
 }
+
 
 impl Default for LocalAIConfig {
     fn default() -> Self {

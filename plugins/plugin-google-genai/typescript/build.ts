@@ -32,9 +32,7 @@ async function build() {
     console.error("Node build failed:", nodeResult.logs);
     throw new Error("Node build failed");
   }
-  console.log(
-    `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
   // Browser build
   const browserStart = Date.now();
@@ -52,9 +50,7 @@ async function build() {
     console.error("Browser build failed:", browserResult.logs);
     throw new Error("Browser build failed");
   }
-  console.log(
-    `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
 
   // Node CJS build
   const cjsStart = Date.now();
@@ -74,16 +70,11 @@ async function build() {
   }
   try {
     const { rename } = await import("node:fs/promises");
-    await rename(
-      join(distDir, "cjs", "index.node.js"),
-      join(distDir, "cjs", "index.node.cjs"),
-    );
+    await rename(join(distDir, "cjs", "index.node.js"), join(distDir, "cjs", "index.node.cjs"));
   } catch (e) {
     console.warn("CJS rename step warning:", e);
   }
-  console.log(
-    `✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
   // TypeScript declarations
   const dtsStart = Date.now();
@@ -91,8 +82,10 @@ async function build() {
   const { $ } = await import("bun");
   try {
     await $`tsc --project tsconfig.build.json`;
-  } catch (e) {
-    console.warn("⚠️  TypeScript declaration generation had errors (this is often due to core package type issues)");
+  } catch (_e) {
+    console.warn(
+      "⚠️  TypeScript declaration generation had errors (this is often due to core package type issues)"
+    );
     console.warn("   Continuing with build - runtime bundle was successful");
   }
 
@@ -133,19 +126,12 @@ export { default } from "./index.node";
 `;
   await writeFile(cjsIndexDtsPath, cjsAlias, "utf8");
 
-  console.log(
-    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
 
-  console.log(
-    `🎉 All builds completed in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`🎉 All builds completed in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
 }
 
 build().catch((err) => {
   console.error("Build failed:", err);
   process.exit(1);
 });
-
-export {};
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Google GenAI API client implementation.
 //!
 //! The client handles HTTP communication with the Google Generative AI API,

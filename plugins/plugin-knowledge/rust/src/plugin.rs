@@ -1,7 +1,8 @@
+#![allow(missing_docs)]
 //! Knowledge Plugin for elizaOS.
 
 use crate::service::KnowledgeService;
-use crate::types::*;
+use crate::types::{self, *};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -46,7 +47,7 @@ impl KnowledgePlugin {
     }
 
     /// Initialize the plugin.
-    pub async fn init(&mut self) -> Result<()> {
+    pub async fn init(&mut self) -> types::Result<()> {
         if self.initialized {
             return Ok(());
         }
@@ -66,7 +67,7 @@ impl KnowledgePlugin {
     }
 
     /// Load documents from the configured knowledge path.
-    async fn load_startup_documents(&self) -> Result<()> {
+    async fn load_startup_documents(&self) -> types::Result<()> {
         use std::fs;
         use std::path::Path;
 
@@ -160,7 +161,7 @@ impl KnowledgePlugin {
     }
 
     /// Add knowledge to the system.
-    pub async fn add_knowledge(&self, options: AddKnowledgeOptions) -> Result<ProcessingResult> {
+    pub async fn add_knowledge(&self, options: AddKnowledgeOptions) -> types::Result<ProcessingResult> {
         let mut service = self.service.write().await;
         service.add_knowledge(options).await
     }
@@ -171,13 +172,13 @@ impl KnowledgePlugin {
         query: &str,
         count: usize,
         threshold: f64,
-    ) -> Result<Vec<SearchResult>> {
+    ) -> types::Result<Vec<SearchResult>> {
         let service = self.service.read().await;
         service.search(query, count, threshold).await
     }
 
     /// Get knowledge items relevant to a query.
-    pub async fn get_knowledge(&self, query: &str, count: usize) -> Result<Vec<KnowledgeItem>> {
+    pub async fn get_knowledge(&self, query: &str, count: usize) -> types::Result<Vec<KnowledgeItem>> {
         let service = self.service.read().await;
         service.get_knowledge(query, count).await
     }
@@ -228,10 +229,6 @@ impl KnowledgePlugin {
     }
 }
 
-/// Create a new Knowledge plugin instance.
-pub fn create_knowledge_plugin(config: Option<KnowledgeConfig>) -> KnowledgePlugin {
-    KnowledgePlugin::new(config.unwrap_or_default())
-}
 
 #[cfg(test)]
 mod tests {
@@ -333,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_create_knowledge_plugin() {
-        let plugin = create_knowledge_plugin(None);
+        let _plugin = create_knowledge_plugin(None);
         assert_eq!(KnowledgePlugin::NAME, "knowledge");
 
         let config = KnowledgeConfig {
@@ -344,6 +341,8 @@ mod tests {
         assert!(!plugin2.initialized);
     }
 }
+
+
 
 
 

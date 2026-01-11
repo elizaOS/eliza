@@ -153,6 +153,3 @@ def decrypt_object_values(obj: Mapping[str, object], salt: str) -> dict[str, obj
 
 # TS exports decryptStringValue as decryptSecret; mirror that convenience alias.
 decrypt_secret = decrypt_string_value
-
-
-

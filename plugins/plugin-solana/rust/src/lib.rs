@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin Solana - Rust Implementation
 //!
 //! This crate provides Solana blockchain operations for elizaOS, including:

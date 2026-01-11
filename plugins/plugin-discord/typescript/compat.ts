@@ -15,14 +15,7 @@
  *
  * REMOVAL: Delete this file and remove createCompatRuntime() call in service.ts
  */
-import type {
-  ChannelType,
-  Entity,
-  IAgentRuntime,
-  Room,
-  UUID,
-  World,
-} from "@elizaos/core";
+import type { ChannelType, Entity, IAgentRuntime, Room, UUID, World } from "@elizaos/core";
 
 /**
  * Extended types that support messageServerId for cross-core compatibility.
@@ -60,10 +53,7 @@ export interface EnsureConnectionParams {
 export interface ICompatRuntime
   extends Omit<
     IAgentRuntime,
-    | "ensureWorldExists"
-    | "ensureRoomExists"
-    | "ensureConnection"
-    | "ensureConnections"
+    "ensureWorldExists" | "ensureRoomExists" | "ensureConnection" | "ensureConnections"
   > {
   ensureWorldExists(world: WorldCompat): Promise<void>;
   ensureRoomExists(room: RoomCompat): Promise<void>;
@@ -72,7 +62,7 @@ export interface ICompatRuntime
     entities: Entity[],
     rooms: RoomCompat[],
     source: string,
-    world: WorldCompat,
+    world: WorldCompat
   ): Promise<void>;
 }
 
@@ -96,26 +86,20 @@ export function createCompatRuntime(runtime: IAgentRuntime): ICompatRuntime {
           value.call(target, addServerId(world as Record<string, unknown>));
       }
       if (prop === "ensureRoomExists") {
-        return (room: unknown) =>
-          value.call(target, addServerId(room as Record<string, unknown>));
+        return (room: unknown) => value.call(target, addServerId(room as Record<string, unknown>));
       }
       if (prop === "ensureConnection") {
         return (params: unknown) =>
           value.call(target, addServerId(params as Record<string, unknown>));
       }
       if (prop === "ensureConnections") {
-        return (
-          entities: unknown[],
-          rooms: unknown[],
-          source: string,
-          world: unknown,
-        ) =>
+        return (entities: unknown[], rooms: unknown[], source: string, world: unknown) =>
           value.call(
             target,
             entities,
             rooms.map((r) => addServerId(r as Record<string, unknown>)),
             source,
-            addServerId(world as Record<string, unknown>),
+            addServerId(world as Record<string, unknown>)
           );
       }
 

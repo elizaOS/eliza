@@ -2,7 +2,8 @@
  * Tests for Python Plugin Bridge
  */
 
-import {  describe, expect, test  } from "vitest";
+import type { Memory, State, UUID } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import type {
   ActionInvokeRequest,
   ActionResultResponse,
@@ -16,17 +17,23 @@ import type {
 describe("Python Bridge", () => {
   describe("IPC Protocol", () => {
     test("should format action.invoke request correctly", () => {
+      const memory: Memory = {
+        id: "123" as UUID,
+        entityId: "entity-123" as UUID,
+        roomId: "room-123" as UUID,
+        content: { text: "Hello" },
+      };
+      const state: State = {
+        values: { key: "value" },
+        data: {},
+        text: "",
+      };
       const request: ActionInvokeRequest = {
         type: "action.invoke",
         id: "req-001",
         action: "HELLO_PYTHON",
-        memory: {
-          id: "123",
-          content: { text: "Hello" },
-        } as any,
-        state: {
-          values: { key: "value" },
-        } as any,
+        memory,
+        state,
         options: { timeout: 5000 },
       };
 
@@ -39,11 +46,16 @@ describe("Python Bridge", () => {
     });
 
     test("should format action.validate request correctly", () => {
+      const memory: Memory = {
+        entityId: "entity-123" as UUID,
+        roomId: "room-123" as UUID,
+        content: { text: "Test" },
+      };
       const request: IPCRequest = {
         type: "action.validate",
         id: "req-002",
         action: "VALIDATE_ACTION",
-        memory: { content: { text: "Test" } } as any,
+        memory,
         state: null,
       };
 
@@ -55,12 +67,22 @@ describe("Python Bridge", () => {
     });
 
     test("should format provider.get request correctly", () => {
+      const memory: Memory = {
+        entityId: "entity-123" as UUID,
+        roomId: "room-123" as UUID,
+        content: {},
+      };
+      const state: State = {
+        values: {},
+        data: {},
+        text: "",
+      };
       const request: ProviderGetRequest = {
         type: "provider.get",
         id: "req-003",
         provider: "PYTHON_INFO",
-        memory: { content: {} } as any,
-        state: { values: {}, text: "" } as any,
+        memory,
+        state,
       };
 
       const json = JSON.stringify(request);
@@ -135,7 +157,7 @@ describe("Python Bridge", () => {
 
       expect(response.type).toBe("provider.result");
       expect(response.result.text).toBe("Python environment info");
-      expect(response.result.values && response.result.values.version).toBe("3.11");
+      expect(response.result.values?.version).toBe("3.11");
     });
 
     test("should parse error response", () => {
@@ -236,20 +258,22 @@ describe("Python Bridge", () => {
       };
 
       // Simulate adapter creation
-      const actions = manifest.actions ? manifest.actions.map((actionDef) => ({
-        name: actionDef.name,
-        description: actionDef.description,
-        similes: actionDef.similes,
-        examples: actionDef.examples,
-        validate: async () => {
-          // Would send IPC request
-          return true;
-        },
-        handler: async () => {
-          // Would send IPC request
-          return { success: true, text: "Result from Python" };
-        },
-      })) : [];
+      const actions = manifest.actions
+        ? manifest.actions.map((actionDef) => ({
+            name: actionDef.name,
+            description: actionDef.description,
+            similes: actionDef.similes,
+            examples: actionDef.examples,
+            validate: async () => {
+              // Would send IPC request
+              return true;
+            },
+            handler: async () => {
+              // Would send IPC request
+              return { success: true, text: "Result from Python" };
+            },
+          }))
+        : [];
 
       expect(actions).toHaveLength(2);
       expect(actions[0].name).toBe("PY_ACTION_1");
@@ -271,17 +295,19 @@ describe("Python Bridge", () => {
         ],
       };
 
-      const providers = manifest.providers ? manifest.providers.map((providerDef) => ({
-        name: providerDef.name,
-        description: providerDef.description,
-        dynamic: providerDef.dynamic,
-        position: providerDef.position,
-        private: providerDef.private,
-        get: async () => {
-          // Would send IPC request
-          return { text: "Provider data" };
-        },
-      })) : [];
+      const providers = manifest.providers
+        ? manifest.providers.map((providerDef) => ({
+            name: providerDef.name,
+            description: providerDef.description,
+            dynamic: providerDef.dynamic,
+            position: providerDef.position,
+            private: providerDef.private,
+            get: async () => {
+              // Would send IPC request
+              return { text: "Provider data" };
+            },
+          }))
+        : [];
 
       expect(providers).toHaveLength(1);
       expect(providers[0].name).toBe("PYTHON_INFO");
@@ -340,11 +366,13 @@ describe("Python Bridge", () => {
     });
 
     test("should handle missing required fields", () => {
-      const incompleteResponse = { type: "action.result" };
+      const incompleteResponse: Partial<ActionResultResponse> = {
+        type: "action.result",
+      };
       // Missing id and result - should be validated at runtime
 
       expect(incompleteResponse.type).toBe("action.result");
-      expect((incompleteResponse as any).result).toBeUndefined();
+      expect(incompleteResponse.result).toBeUndefined();
     });
 
     test("should format error responses correctly", () => {
@@ -369,8 +397,10 @@ describe("Python Bridge", () => {
 
   describe("Complex Data Types", () => {
     test("should handle nested objects in memory", () => {
-      const memory = {
-        id: "mem-complex",
+      const memory: Memory = {
+        id: "mem-complex" as UUID,
+        entityId: "entity-123" as UUID,
+        roomId: "room-123" as UUID,
         content: {
           text: "Complex message",
           data: {
@@ -388,7 +418,7 @@ describe("Python Bridge", () => {
         type: "action.invoke",
         id: "complex-req",
         action: "PROCESS",
-        memory: memory as any,
+        memory,
         state: null,
         options: null,
       };

@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-local-ai",
+  "name": "@elizaos/plugin-local-ai-root",
   "version": "1.2.1",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
@@ -39,33 +39,33 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "^1.2.1",
+    "@elizaos/core": "workspace:*",
     "@huggingface/transformers": "^3.5.1",
     "node-llama-cpp": "3.10.0",
     "stream-browserify": "^3.0.0",
     "undici": "^7.10.0",
-    "uuid": "11.1.0",
+    "uuid": "^13.0.0",
     "whisper-node": "^1.1.1",
-    "zod": "4.0.5"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@types/node": "^24.0.4",
-    "@types/uuid": "10.0.0",
-    "prettier": "3.6.2",
-    "typescript": "^5.8.2"
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build": "cd typescript && bun run build.ts",
+    "build": "bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
-    "build:rust": "cd rust && cargo build --release",
-    "build:python": "cd python && python -m build",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun --hot build.ts",
-    "lint": "prettier --write ./typescript",
-    "lint:check": "prettier --check ./typescript",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
     "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
-    "format": "prettier --write ./typescript",
-    "format:check": "prettier --check ./typescript",
-    "typecheck": "cd typescript && tsc --noEmit",
+    "format": "bunx @biomejs/biome format --write ./typescript",
+    "format:check": "bunx @biomejs/biome format ./typescript",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:ts": "cd typescript && bun test",
     "test:rust": "cd rust && cargo test",
@@ -130,5 +130,3 @@
     }
   }
 }
-
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Polymarket plugin
 //!
 //! This module provides strongly typed definitions for all Polymarket operations.
@@ -139,6 +140,7 @@ pub enum OrderType {
     #[serde(rename = "FAK")]
     Fak,
 }
+
 
 impl Default for OrderType {
     fn default() -> Self {
@@ -534,5 +536,7 @@ pub struct PriceHistoryEntry {
     /// Volume
     pub volume: Option<String>,
 }
+
+
 
 

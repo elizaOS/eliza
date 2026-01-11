@@ -1,12 +1,5 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
-import {
-  boolean,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
@@ -25,7 +18,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
   beforeEach(async () => {
     const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
-      "schema_evolution_type_changes_test",
+      "schema_evolution_type_changes_test"
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
@@ -105,12 +98,10 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     const beforeData = await db.select().from(memoryTableV1);
     console.log("Data before type change:");
-    console.log(
-      `  - ${beforeData.length} records with complex JSON structures`,
-    );
+    console.log(`  - ${beforeData.length} records with complex JSON structures`);
     console.log(`  - Sample content type: ${typeof beforeData[0].content}`);
     console.log(
-      `  - Content keys: ${Object.keys(beforeData[0].content as ContentObject).join(", ")}`,
+      `  - Content keys: ${Object.keys(beforeData[0].content as ContentObject).join(", ")}`
     );
 
     // V2: Change JSONB to text (lossy conversion!)
@@ -126,14 +117,14 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     // Check migration warnings
     const check = await migrator.checkMigration(
       "@elizaos/schema-evolution-test-types-v1",
-      schemaV2,
+      schemaV2
     );
 
     expect(check).toBeDefined();
-    expect(check && check.warnings.length).toBeGreaterThan(0);
+    expect(check?.warnings.length).toBeGreaterThan(0);
 
     console.log("\n⚠️  Type Conversion Warnings:");
-    check && check.warnings.forEach((warning) => {
+    check?.warnings.forEach((warning) => {
       console.log(`  • ${warning}`);
     });
 
@@ -145,9 +136,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     console.log("\n📊 After type conversion:");
     console.log(`  - Content is now: ${typeof afterData[0].content}`);
-    console.log(
-      `  - First 100 chars: ${(afterData[0].content as string).substring(0, 100)}...`,
-    );
+    console.log(`  - First 100 chars: ${(afterData[0].content as string).substring(0, 100)}...`);
 
     // Verify JSON was converted to string representation
     expect(typeof afterData[0].content).toBe("string");
@@ -174,10 +163,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     const schemaV1 = { users: userTableV1 };
 
-    await migrator.migrate(
-      "@elizaos/schema-evolution-test-text-to-int-v1",
-      schemaV1,
-    );
+    await migrator.migrate("@elizaos/schema-evolution-test-text-to-int-v1", schemaV1);
 
     // Insert mixed data - some valid, some invalid for integer conversion
     await db.insert(userTableV1).values([
@@ -222,32 +208,26 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     // This should warn about potential conversion issues
     const check = await migrator.checkMigration(
       "@elizaos/schema-evolution-test-text-to-int-v1",
-      schemaV2,
+      schemaV2
     );
 
     expect(check).toBeDefined();
-    expect(check && check.warnings.length).toBeGreaterThan(0);
+    expect(check?.warnings.length).toBeGreaterThan(0);
     expect(
-      check && check.warnings.some(
-        (w) =>
-          w.includes("Type change") ||
-          w.includes("type") ||
-          w.includes("column"),
-      ),
+      check?.warnings.some(
+        (w) => w.includes("Type change") || w.includes("type") || w.includes("column")
+      )
     ).toBe(true);
 
     console.log("\n⚠️  Conversion Risk Detection:");
-    check && check.warnings.forEach((warning) => {
+    check?.warnings.forEach((warning) => {
       console.log(`  • ${warning}`);
     });
 
     // Attempting migration should fail due to invalid data
     let migrationError: Error | null = null;
     try {
-      await migrator.migrate(
-        "@elizaos/schema-evolution-test-text-to-int-v1",
-        schemaV2,
-      );
+      await migrator.migrate("@elizaos/schema-evolution-test-text-to-int-v1", schemaV2);
     } catch (error) {
       migrationError = error as Error;
     }
@@ -257,9 +237,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
       console.log("\n❌ Migration failed as expected:");
       console.log(`  Error: ${migrationError.message}`);
       // The actual error is about decimal "30.5" not being valid integer
-      expect(migrationError.message.toLowerCase()).toMatch(
-        /failed query|invalid|error/,
-      );
+      expect(migrationError.message.toLowerCase()).toMatch(/failed query|invalid|error/);
     } else {
       console.log("\n⚠️  Migration succeeded with USING clause for conversion");
       // If migration succeeded, check what happened to the data
@@ -296,7 +274,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     const beforeData = await db.select().from(settingsTableV1);
     beforeData.forEach((row) => {
       console.log(
-        `  - ${row.name}: enabled=${row.enabled}, verified=${row.verified}, active=${row.active}`,
+        `  - ${row.name}: enabled=${row.enabled}, verified=${row.verified}, active=${row.active}`
       );
     });
 
@@ -317,7 +295,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     console.log("\n📊 After boolean → text conversion:");
     afterTextData.forEach((row) => {
       console.log(
-        `  - ${row.name}: enabled="${row.enabled}", verified="${row.verified}", active="${row.active}"`,
+        `  - ${row.name}: enabled="${row.enabled}", verified="${row.verified}", active="${row.active}"`
       );
     });
 

@@ -1,5 +1,5 @@
-import type { IAgentRuntime, ModelTypeName } from '@elizaos/core';
-import { EventType } from '@elizaos/core';
+import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
+import { EventType } from "@elizaos/core";
 
 /**
  * Emits a model usage event
@@ -12,10 +12,16 @@ export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
   prompt: string,
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number }
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  }
 ): void {
   runtime.emitEvent(EventType.MODEL_USED, {
-    provider: 'google',
+    runtime,
+    source: "plugin-google-genai",
+    provider: "google",
     type,
     prompt,
     tokens: {
@@ -25,5 +31,3 @@ export function emitModelUsageEvent(
     },
   });
 }
-
-

@@ -82,9 +82,7 @@ export function getTeeEndpoint(mode: string): string | undefined {
     case "PRODUCTION":
       return undefined;
     default:
-      throw new Error(
-        `Invalid TEE_MODE: ${mode}. Must be one of: LOCAL, DOCKER, PRODUCTION`
-      );
+      throw new Error(`Invalid TEE_MODE: ${mode}. Must be one of: LOCAL, DOCKER, PRODUCTION`);
   }
 }
 
@@ -94,10 +92,10 @@ export function getTeeEndpoint(mode: string): string | undefined {
  * @param data - The attestation quote data.
  * @returns The response from the upload service.
  */
-export async function uploadAttestationQuote(
-  data: Uint8Array
-): Promise<{ checksum: string }> {
-  const blob = new Blob([data], { type: "application/octet-stream" });
+export async function uploadAttestationQuote(data: Uint8Array): Promise<{ checksum: string }> {
+  const blob = new Blob([data as BlobPart], {
+    type: "application/octet-stream",
+  });
   const formData = new FormData();
   formData.append("file", blob, "quote.bin");
 
@@ -112,5 +110,3 @@ export async function uploadAttestationQuote(
 
   return response.json() as Promise<{ checksum: string }>;
 }
-
-

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
 from elizaos_plugin_n8n import (
     N8nConfig,
     PluginCreationClient,
     PluginSpecification,
 )
-from elizaos_plugin_n8n.errors import InvalidPluginNameError, PluginExistsError
 
 
 class TestPluginCreationClient:
@@ -104,5 +101,8 @@ class TestPluginSpecification:
         assert spec.providers is None
         assert spec.services is None
         assert spec.evaluators is None
+
+
+
 
 

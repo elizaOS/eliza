@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration for the Todo Plugin.
 
 use crate::error::{Result, TodoError};
@@ -39,6 +40,7 @@ pub struct TodoConfig {
     /// Enable rolodex integration
     pub enable_rolodex_integration: bool,
 }
+
 
 impl Default for TodoConfig {
     fn default() -> Self {
@@ -179,5 +181,10 @@ impl TodoConfig {
         self
     }
 }
+
+
+
+
+
 
 

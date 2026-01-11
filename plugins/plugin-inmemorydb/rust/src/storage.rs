@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 
-use crate::types::{IStorage, StorageError, StorageResult};
+use crate::types::{IStorage, PredicateFn, StorageResult};
 
 /// In-memory storage using HashMap data structures.
 ///
@@ -22,15 +22,6 @@ impl MemoryStorage {
             collections: RwLock::new(HashMap::new()),
             ready: RwLock::new(false),
         }
-    }
-
-    fn get_or_create_collection(
-        collections: &mut HashMap<String, HashMap<String, serde_json::Value>>,
-        name: &str,
-    ) -> &mut HashMap<String, serde_json::Value> {
-        collections
-            .entry(name.to_string())
-            .or_insert_with(HashMap::new)
     }
 }
 
@@ -75,18 +66,24 @@ impl IStorage for MemoryStorage {
     async fn get_where(
         &self,
         collection: &str,
-        predicate: Box<dyn Fn(&serde_json::Value) -> bool + Send>,
+        predicate: PredicateFn,
     ) -> StorageResult<Vec<serde_json::Value>> {
-        let collections = self.collections.read();
-        Ok(collections
-            .get(collection)
-            .map(|col| col.values().filter(|v| predicate(v)).cloned().collect())
-            .unwrap_or_default())
+        // Clone the data to avoid lifetime issues with the predicate
+        let items: Vec<serde_json::Value> = {
+            let collections = self.collections.read();
+            collections
+                .get(collection)
+                .map(|col| col.values().cloned().collect())
+                .unwrap_or_default()
+        };
+        Ok(items.into_iter().filter(|v| predicate(v)).collect())
     }
 
     async fn set(&self, collection: &str, id: &str, data: serde_json::Value) -> StorageResult<()> {
         let mut collections = self.collections.write();
-        let col = Self::get_or_create_collection(&mut collections, collection);
+        let col = collections
+            .entry(collection.to_string())
+            .or_default();
         col.insert(id.to_string(), data);
         Ok(())
     }
@@ -112,17 +109,29 @@ impl IStorage for MemoryStorage {
     async fn delete_where(
         &self,
         collection: &str,
-        predicate: Box<dyn Fn(&serde_json::Value) -> bool + Send>,
+        predicate: PredicateFn,
     ) -> StorageResult<()> {
-        let mut collections = self.collections.write();
-        if let Some(col) = collections.get_mut(collection) {
-            let to_delete: Vec<_> = col
-                .iter()
-                .filter(|(_, v)| predicate(v))
-                .map(|(k, _)| k.clone())
-                .collect();
-            for key in to_delete {
-                col.remove(&key);
+        // Find keys to delete first
+        let to_delete: Vec<String> = {
+            let collections = self.collections.read();
+            collections
+                .get(collection)
+                .map(|col| {
+                    col.iter()
+                        .filter(|(_, v)| predicate(v))
+                        .map(|(k, _)| k.clone())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        
+        // Then delete them
+        if !to_delete.is_empty() {
+            let mut collections = self.collections.write();
+            if let Some(col) = collections.get_mut(collection) {
+                for key in to_delete {
+                    col.remove(&key);
+                }
             }
         }
         Ok(())
@@ -131,17 +140,22 @@ impl IStorage for MemoryStorage {
     async fn count(
         &self,
         collection: &str,
-        predicate: Option<Box<dyn Fn(&serde_json::Value) -> bool + Send>>,
+        predicate: Option<PredicateFn>,
     ) -> StorageResult<usize> {
-        let collections = self.collections.read();
-        if let Some(col) = collections.get(collection) {
-            match predicate {
-                Some(pred) => Ok(col.values().filter(|v| pred(v)).count()),
-                None => Ok(col.len()),
-            }
-        } else {
-            Ok(0)
-        }
+        // Clone the data to avoid lifetime issues
+        let items: Vec<serde_json::Value> = {
+            let collections = self.collections.read();
+            collections
+                .get(collection)
+                .map(|col| col.values().cloned().collect())
+                .unwrap_or_default()
+        };
+        
+        let count = match predicate {
+            Some(pred) => items.iter().filter(|v| pred(v)).count(),
+            None => items.len(),
+        };
+        Ok(count)
     }
 
     async fn clear(&self) -> StorageResult<()> {

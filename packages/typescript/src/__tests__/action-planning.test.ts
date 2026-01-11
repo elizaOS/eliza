@@ -1,12 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import type {
-  Character,
-  IDatabaseAdapter,
-  Memory,
-  UUID,
-} from "../types";
+import type { Character, IDatabaseAdapter, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
 
 const stringToUuid = (id: string): UUID => id as UUID;
@@ -479,5 +474,3 @@ describe("ACTION_PLANNING Feature", () => {
     });
   });
 });
-
-

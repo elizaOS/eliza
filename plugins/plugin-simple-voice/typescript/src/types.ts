@@ -27,9 +27,9 @@ export const DEFAULT_SAM_OPTIONS: SamTTSOptions = {
 /**
  * Service type registry extension for SAM TTS
  */
-declare module '@elizaos/core' {
+declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
-    SAM_TTS: 'SAM_TTS';
+    SAM_TTS: "SAM_TTS";
   }
 }
 
@@ -37,8 +37,8 @@ declare module '@elizaos/core' {
  * SAM service type constant
  */
 export const SAMServiceType = {
-  SAM_TTS: 'SAM_TTS' as const,
-} satisfies Partial<import('@elizaos/core').ServiceTypeRegistry>;
+  SAM_TTS: "SAM_TTS" as const,
+} satisfies Partial<import("@elizaos/core").ServiceTypeRegistry>;
 
 /**
  * Hardware bridge service interface for audio output
@@ -51,33 +51,33 @@ export interface HardwareBridgeService {
  * Speech trigger phrases that activate the SAY_ALOUD action
  */
 export const SPEECH_TRIGGERS = [
-  'say aloud',
-  'speak',
-  'read aloud',
-  'say out loud',
-  'voice',
-  'speak this',
-  'say this',
-  'read this',
-  'announce',
-  'proclaim',
-  'tell everyone',
-  'speak up',
-  'use your voice',
-  'talk to me',
-  'higher voice',
-  'lower voice',
-  'change voice',
-  'robotic voice',
-  'retro voice',
+  "say aloud",
+  "speak",
+  "read aloud",
+  "say out loud",
+  "voice",
+  "speak this",
+  "say this",
+  "read this",
+  "announce",
+  "proclaim",
+  "tell everyone",
+  "speak up",
+  "use your voice",
+  "talk to me",
+  "higher voice",
+  "lower voice",
+  "change voice",
+  "robotic voice",
+  "retro voice",
 ] as const;
 
 /**
  * Vocalization intent patterns
  */
 export const VOCALIZATION_PATTERNS = [
-  'can you say',
-  'please say',
-  'i want to hear',
-  'let me hear',
+  "can you say",
+  "please say",
+  "i want to hear",
+  "let me hear",
 ] as const;

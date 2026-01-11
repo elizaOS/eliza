@@ -3,13 +3,12 @@
 process.env.LOG_LEVEL = "fatal";
 
 import "dotenv/config";
-import React from "react";
 import { render } from "ink";
 import { App } from "./App.js";
+import { main as cliMain } from "./cli.js";
 import { initializeAgent, shutdownAgent } from "./lib/agent.js";
 import { resetAgentClient } from "./lib/agent-client.js";
 import { useStore } from "./lib/store.js";
-import { main as cliMain } from "./cli.js";
 
 // ============================================================================
 // Environment Detection
@@ -55,7 +54,9 @@ function shouldRunInteractive(): boolean {
 let isShuttingDown = false;
 
 async function cleanup(
-  runtime: ReturnType<typeof initializeAgent> extends Promise<infer T> ? T : never
+  runtime: ReturnType<typeof initializeAgent> extends Promise<infer T>
+    ? T
+    : never,
 ) {
   if (isShuttingDown) return;
   isShuttingDown = true;
@@ -79,49 +80,42 @@ async function runInteractive(): Promise<void> {
   // Validate TTY
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.error("❌ Interactive mode requires a terminal.");
-    console.error("   Use CLI mode for non-interactive usage: eliza-code --help");
+    console.error(
+      "   Use CLI mode for non-interactive usage: eliza-code --help",
+    );
     process.exit(1);
   }
 
   let runtime: Awaited<ReturnType<typeof initializeAgent>> | undefined;
   let inkInstance: ReturnType<typeof render> | undefined;
 
-  try {
-    // Initialize the agent
-    runtime = await initializeAgent();
+  // Initialize the agent
+  runtime = await initializeAgent();
 
-    // Handle SIGINT (Ctrl+C) and SIGTERM
-    const handleSignal = () => {
-      if (inkInstance) {
-        inkInstance.unmount();
-      }
-      cleanup(runtime!);
-    };
-
-    process.on("SIGINT", handleSignal);
-    process.on("SIGTERM", handleSignal);
-
-    // Clear the screen before rendering TUI
-    console.clear();
-
-    // Render the app
-    inkInstance = render(<App runtime={runtime} />, {
-      exitOnCtrlC: false, // We handle it ourselves
-    });
-
-    // Wait for the app to exit
-    await inkInstance.waitUntilExit();
-
-    // App exited normally (e.g., Ctrl+Q)
-    await cleanup(runtime);
-  } catch (error) {
-    console.error("❌ Failed to start Eliza Code:");
-    console.error(error instanceof Error ? error.message : error);
-    if (runtime) {
-      await cleanup(runtime);
+  // Handle SIGINT (Ctrl+C) and SIGTERM
+  const handleSignal = () => {
+    if (inkInstance) {
+      inkInstance.unmount();
     }
-    process.exit(1);
-  }
+    cleanup(runtime!);
+  };
+
+  process.on("SIGINT", handleSignal);
+  process.on("SIGTERM", handleSignal);
+
+  // Clear the screen before rendering TUI
+  console.clear();
+
+  // Render the app
+  inkInstance = render(<App runtime={runtime} />, {
+    exitOnCtrlC: false, // We handle it ourselves
+  });
+
+  // Wait for the app to exit
+  await inkInstance.waitUntilExit();
+
+  // App exited normally (e.g., Ctrl+Q)
+  await cleanup(runtime);
 }
 
 // ============================================================================

@@ -1,10 +1,4 @@
-import { afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import {
@@ -152,7 +146,7 @@ describe("settings utilities", () => {
         onSetAction: onSetActionFn,
         visibleIf: (settings) => {
           const otherSetting = settings.OTHER_SETTING;
-          return (otherSetting && otherSetting.value) === "enabled";
+          return otherSetting?.value === "enabled";
         },
       };
 
@@ -228,26 +222,28 @@ describe("settings utilities", () => {
 
     it("should return undefined/null values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(encryptStringValue(undefined as any, salt)).toBeUndefined();
-      expect(encryptStringValue(null as any, salt)).toBeNull();
+      expect(
+        encryptStringValue(undefined as unknown as string, salt),
+      ).toBeUndefined();
+      expect(encryptStringValue(null as unknown as string, salt)).toBeNull();
     });
 
     it("should return boolean values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(encryptStringValue(true as any, salt)).toBe(true);
-      expect(encryptStringValue(false as any, salt)).toBe(false);
+      expect(encryptStringValue(true as unknown as string, salt)).toBe(true);
+      expect(encryptStringValue(false as unknown as string, salt)).toBe(false);
     });
 
     it("should return number values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(encryptStringValue(123 as any, salt)).toBe(123);
-      expect(encryptStringValue(0 as any, salt)).toBe(0);
+      expect(encryptStringValue(123 as unknown as string, salt)).toBe(123);
+      expect(encryptStringValue(0 as unknown as string, salt)).toBe(0);
     });
 
     it("should return non-string objects as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
       const obj = { key: "value" };
-      expect(encryptStringValue(obj as any, salt)).toBe(obj);
+      expect(encryptStringValue(obj as unknown as string, salt)).toBe(obj);
     });
 
     it("should not re-encrypt already encrypted values", () => {
@@ -304,25 +300,27 @@ describe("settings utilities", () => {
 
     it("should return undefined/null values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(decryptStringValue(undefined as any, salt)).toBeUndefined();
-      expect(decryptStringValue(null as any, salt)).toBeNull();
+      expect(
+        decryptStringValue(undefined as unknown as string, salt),
+      ).toBeUndefined();
+      expect(decryptStringValue(null as unknown as string, salt)).toBeNull();
     });
 
     it("should return boolean values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(decryptStringValue(true as any, salt)).toBe(true);
-      expect(decryptStringValue(false as any, salt)).toBe(false);
+      expect(decryptStringValue(true as unknown as string, salt)).toBe(true);
+      expect(decryptStringValue(false as unknown as string, salt)).toBe(false);
     });
 
     it("should return number values as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
-      expect(decryptStringValue(123 as any, salt)).toBe(123);
+      expect(decryptStringValue(123 as unknown as string, salt)).toBe(123);
     });
 
     it("should return non-string objects as is", () => {
       // Intentionally testing with invalid types to verify runtime handling
       const obj = { key: "value" };
-      expect(decryptStringValue(obj as any, salt)).toBe(obj);
+      expect(decryptStringValue(obj as unknown as string, salt)).toBe(obj);
     });
 
     it("should return original value if not in encrypted format", () => {
@@ -604,8 +602,8 @@ describe("settings utilities", () => {
       const result = await getWorldSettings(mockRuntime, "server-123");
 
       expect(result).not.toBeNull();
-      const resultApiKey = result && result.API_KEY;
-      expect(resultApiKey && resultApiKey.value).toBe("secret-value");
+      const resultApiKey = result?.API_KEY;
+      expect(resultApiKey?.value).toBe("secret-value");
     });
 
     it("should return null when world not found", async () => {
@@ -651,13 +649,13 @@ describe("settings utilities", () => {
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
 
       expect(result).not.toBeNull();
-      const resultApiKey = result && result.API_KEY;
+      const resultApiKey = result?.API_KEY;
       expect(resultApiKey).toBeDefined();
-      expect(resultApiKey && resultApiKey.value).toBeNull();
-      expect(resultApiKey && resultApiKey.secret).toBe(true);
-      const resultPublicUrl = result && result.PUBLIC_URL;
+      expect(resultApiKey?.value).toBeNull();
+      expect(resultApiKey?.secret).toBe(true);
+      const resultPublicUrl = result?.PUBLIC_URL;
       expect(resultPublicUrl).toBeDefined();
-      expect(resultPublicUrl && resultPublicUrl.secret).toBe(false);
+      expect(resultPublicUrl?.secret).toBe(false);
     });
 
     it("should return existing settings if already initialized", async () => {
@@ -691,10 +689,10 @@ describe("settings utilities", () => {
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
 
       expect(result).not.toBeNull();
-      const resultApiKey = result && result.API_KEY;
+      const resultApiKey = result?.API_KEY;
       expect(resultApiKey).toBeDefined();
-      expect(resultApiKey && resultApiKey.value).toBe("existing-secret");
-      expect(result && result.NEW_KEY).toBeUndefined(); // Should not add new settings
+      expect(resultApiKey?.value).toBe("existing-secret");
+      expect(result?.NEW_KEY).toBeUndefined(); // Should not add new settings
     });
 
     it("should handle config without settings", async () => {
@@ -726,11 +724,11 @@ describe("settings utilities", () => {
       const encrypted = encryptedCharacter(character);
 
       const encryptedSettings = encrypted.settings;
-      const encryptedSettingsSecrets = encryptedSettings && encryptedSettings.secrets;
-      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.API_KEY).not.toBe("secret-api-key");
-      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.API_KEY).toContain(":");
-      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.PASSWORD).not.toBe("secret-password");
-      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.PASSWORD).toContain(":");
+      const encryptedSettingsSecrets = encryptedSettings?.secrets;
+      expect(encryptedSettingsSecrets?.API_KEY).not.toBe("secret-api-key");
+      expect(encryptedSettingsSecrets?.API_KEY).toContain(":");
+      expect(encryptedSettingsSecrets?.PASSWORD).not.toBe("secret-password");
+      expect(encryptedSettingsSecrets?.PASSWORD).toContain(":");
     });
 
     it("should encrypt character.secrets", () => {
@@ -747,10 +745,10 @@ describe("settings utilities", () => {
       const encrypted = encryptedCharacter(character);
 
       const encryptedSecrets = encrypted.secrets;
-      expect(encryptedSecrets && encryptedSecrets.TOKEN).not.toBe("secret-token");
-      expect(encryptedSecrets && encryptedSecrets.TOKEN).toContain(":");
-      expect(encryptedSecrets && encryptedSecrets.KEY).not.toBe("secret-key");
-      expect(encryptedSecrets && encryptedSecrets.KEY).toContain(":");
+      expect(encryptedSecrets?.TOKEN).not.toBe("secret-token");
+      expect(encryptedSecrets?.TOKEN).toContain(":");
+      expect(encryptedSecrets?.KEY).not.toBe("secret-key");
+      expect(encryptedSecrets?.KEY).toContain(":");
     });
 
     it("should handle character without secrets", () => {
@@ -778,9 +776,9 @@ describe("settings utilities", () => {
       const encrypted = encryptedCharacter(character);
 
       const characterSecrets = character.secrets;
-      expect(characterSecrets && characterSecrets.TOKEN).toBe("secret-token");
+      expect(characterSecrets?.TOKEN).toBe("secret-token");
       const encryptedSecrets = encrypted.secrets;
-      expect(encryptedSecrets && encryptedSecrets.TOKEN).not.toBe("secret-token");
+      expect(encryptedSecrets?.TOKEN).not.toBe("secret-token");
     });
   });
 
@@ -802,9 +800,9 @@ describe("settings utilities", () => {
       const decrypted = decryptedCharacter(character, mockRuntime);
 
       const decryptedSettings = decrypted.settings;
-      const decryptedSettingsSecrets = decryptedSettings && decryptedSettings.secrets;
-      expect(decryptedSettingsSecrets && decryptedSettingsSecrets.API_KEY).toBe("secret-api-key");
-      expect(decryptedSettingsSecrets && decryptedSettingsSecrets.PASSWORD).toBe("secret-password");
+      const decryptedSettingsSecrets = decryptedSettings?.secrets;
+      expect(decryptedSettingsSecrets?.API_KEY).toBe("secret-api-key");
+      expect(decryptedSettingsSecrets?.PASSWORD).toBe("secret-password");
     });
 
     it("should decrypt character.secrets", () => {
@@ -822,8 +820,8 @@ describe("settings utilities", () => {
       const decrypted = decryptedCharacter(character, mockRuntime);
 
       const decryptedSecrets = decrypted.secrets;
-      expect(decryptedSecrets && decryptedSecrets.TOKEN).toBe("secret-token");
-      expect(decryptedSecrets && decryptedSecrets.KEY).toBe("secret-key");
+      expect(decryptedSecrets?.TOKEN).toBe("secret-token");
+      expect(decryptedSecrets?.KEY).toBe("secret-key");
     });
 
     it("should handle character without secrets", () => {
@@ -938,28 +936,26 @@ ANOTHER_KEY=another-value`;
 
         // Verify complex objects are preserved
         const characterSettings = character.settings;
-        expect(characterSettings && characterSettings.discord).toEqual({
+        expect(characterSettings?.discord).toEqual({
           shouldIgnoreBotMessages: true,
           allowedChannelIds: ["123", "456"],
         });
-        expect(characterSettings && characterSettings.telegram).toEqual({
+        expect(characterSettings?.telegram).toEqual({
           botToken: "bot-token",
         });
 
         // Verify existing settings root values are preserved
-        expect(characterSettings && characterSettings.SIMPLE_KEY).toBe("character-override");
+        expect(characterSettings?.SIMPLE_KEY).toBe("character-override");
 
         // Verify .env values are NOT merged into settings root (no duplication)
-        expect(characterSettings && characterSettings.ANOTHER_KEY).toBeUndefined();
+        expect(characterSettings?.ANOTHER_KEY).toBeUndefined();
 
         // Verify .env values are merged into settings.secrets
-        const characterSettingsSecrets = characterSettings && characterSettings.secrets as Record<string, string>;
-        expect(
-          characterSettingsSecrets && characterSettingsSecrets.SIMPLE_KEY,
-        ).toBe("simple-value");
-        expect(
-          characterSettingsSecrets && characterSettingsSecrets.ANOTHER_KEY,
-        ).toBe("another-value");
+        const characterSettingsSecrets =
+          characterSettings &&
+          (characterSettings.secrets as Record<string, string>);
+        expect(characterSettingsSecrets?.SIMPLE_KEY).toBe("simple-value");
+        expect(characterSettingsSecrets?.ANOTHER_KEY).toBe("another-value");
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });

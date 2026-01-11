@@ -1,3 +1,4 @@
+import type { Metadata } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
@@ -30,7 +31,7 @@ export const roomTable = pgTable("rooms", {
   //   onDelete: 'cascade',
   // }),
   name: text("name"),
-  metadata: jsonb("metadata"),
+  metadata: jsonb("metadata").$type<Metadata>(),
   channelId: text("channel_id"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });

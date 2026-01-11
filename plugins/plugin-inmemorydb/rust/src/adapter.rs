@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! In-memory database adapter for elizaOS
 //!
 //! A simple, ephemeral in-memory implementation for testing and development.
@@ -10,7 +11,7 @@ use uuid::Uuid;
 
 use crate::hnsw::EphemeralHNSW;
 use crate::storage::MemoryStorage;
-use crate::types::{IStorage, IVectorStorage, StorageResult, VectorSearchResult, COLLECTIONS};
+use crate::types::{IStorage, IVectorStorage, StorageResult, COLLECTIONS};
 
 /// In-memory database adapter
 ///
@@ -72,10 +73,10 @@ impl InMemoryDatabaseAdapter {
     }
 
     pub async fn create_agent(&self, agent: serde_json::Value) -> StorageResult<bool> {
-        let id = agent.get("id").and_then(|v| v.as_str());
+        let id = agent.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
         match id {
             Some(id) => {
-                self.storage.set(COLLECTIONS::AGENTS, id, agent).await?;
+                self.storage.set(COLLECTIONS::AGENTS, &id, agent).await?;
                 Ok(true)
             }
             None => Ok(false),

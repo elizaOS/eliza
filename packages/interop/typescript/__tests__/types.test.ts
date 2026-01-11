@@ -2,7 +2,8 @@
  * Tests for interop types
  */
 
-import {  describe, expect, test  } from "vitest";
+import type { Memory, State, UUID } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import type {
   ActionInvokeRequest,
   ActionManifest,
@@ -77,9 +78,9 @@ describe("Interop Types", () => {
       // Type validation - if this compiles, types are correct
       expect(manifest.name).toBe("test-plugin");
       expect(manifest.language).toBe("rust");
-      expect(manifest.interop && manifest.interop.protocol).toBe("wasm");
-      expect(manifest.actions && manifest.actions.length).toBe(1);
-      expect(manifest.providers && manifest.providers.length).toBe(1);
+      expect(manifest.interop?.protocol).toBe("wasm");
+      expect(manifest.actions?.length).toBe(1);
+      expect(manifest.providers?.length).toBe(1);
     });
 
     test("should allow minimal manifest", () => {
@@ -120,18 +121,23 @@ describe("Interop Types", () => {
 
   describe("IPC Messages", () => {
     test("should create valid ActionInvokeRequest", () => {
+      const memory: Memory = {
+        id: "mem-1" as UUID,
+        entityId: "entity-123" as UUID,
+        roomId: "room-123" as UUID,
+        content: { text: "Hello" },
+      };
+      const state: State = {
+        text: "Current state",
+        values: {},
+        data: {},
+      };
       const request: ActionInvokeRequest = {
         type: "action.invoke",
         id: "req-123",
         action: "TEST_ACTION",
-        memory: {
-          id: "mem-1",
-          content: { text: "Hello" },
-        } as any,
-        state: {
-          text: "Current state",
-          values: {},
-        } as any,
+        memory,
+        state,
         options: { timeout: 5000 },
       };
 
@@ -158,18 +164,23 @@ describe("Interop Types", () => {
     });
 
     test("should create valid ProviderGetRequest", () => {
+      const memory: Memory = {
+        id: "mem-2" as UUID,
+        entityId: "entity-456" as UUID,
+        roomId: "room-456" as UUID,
+        content: { text: "Query" },
+      };
+      const state: State = {
+        text: "State",
+        values: {},
+        data: {},
+      };
       const request: ProviderGetRequest = {
         type: "provider.get",
         id: "req-456",
         provider: "TEST_PROVIDER",
-        memory: {
-          id: "mem-2",
-          content: { text: "Query" },
-        } as any,
-        state: {
-          text: "State",
-          values: {},
-        } as any,
+        memory,
+        state,
       };
 
       expect(request.type).toBe("provider.get");
@@ -192,11 +203,16 @@ describe("Interop Types", () => {
     });
 
     test("should serialize IPC messages to JSON", () => {
+      const memory: Memory = {
+        entityId: "entity-789" as UUID,
+        roomId: "room-789" as UUID,
+        content: { text: "test" },
+      };
       const request: ActionInvokeRequest = {
         type: "action.invoke",
         id: "req-789",
         action: "SERIALIZE_TEST",
-        memory: { content: { text: "test" } } as any,
+        memory,
         state: null,
         options: null,
       };
@@ -236,8 +252,8 @@ describe("Interop Types", () => {
       };
 
       expect(action.name).toBe("EXAMPLE_ACTION");
-      expect(action.examples && action.examples.length).toBe(1);
-      expect(action.examples && action.examples[0] && action.examples[0].length).toBe(2);
+      expect(action.examples?.length).toBe(1);
+      expect(action.examples?.[0]?.length).toBe(2);
     });
   });
 

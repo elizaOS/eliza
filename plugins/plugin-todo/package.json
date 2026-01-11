@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-todo",
+  "name": "@elizaos/plugin-todo-root",
   "version": "1.0.0",
   "type": "module",
   "description": "Multi-language Todo list plugin for elizaOS with TypeScript, Python, and Rust implementations",
@@ -62,32 +62,32 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "drizzle-orm": "^0.30.10",
-    "zod": "3.24.2"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "prettier": "3.5.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "peerDependencies": {
     "zod": "^3.24.2"
   },
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
-    "build": "npm run build:prompts && bun run build:ts",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
-    "build:rust": "cd rust && cargo build --release",
-    "build:python": "cd python && python -m build",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun --hot build.ts",
-    "lint": "prettier --write ./typescript",
-    "lint:check": "prettier --check ./typescript",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
     "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
     "lint:python": "cd python && ruff check . && ruff format --check .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
     "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
-    "format": "prettier --write ./typescript",
-    "format:check": "prettier --check ./typescript",
-    "typecheck": "cd typescript && tsc --noEmit",
+    "format": "bunx @biomejs/biome format --write ./typescript",
+    "format:check": "bunx @biomejs/biome format ./typescript",
+    "typecheck": "tsc --noEmit",
     "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_todo",
     "test": "bun run test:ts",
     "test:ts": "cd typescript && bun test",

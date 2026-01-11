@@ -3,14 +3,14 @@
   "title": "Browser Plugin Protocol",
   "version": "1.0.0",
   "description": "Shared protocol definitions for browser automation across TypeScript, Python, and Rust",
-  
+
   "definitions": {
     "SessionId": {
       "type": "string",
       "pattern": "^session-[0-9]+-[a-z0-9]+$",
       "description": "Unique identifier for a browser session"
     },
-    
+
     "BrowserSession": {
       "type": "object",
       "required": ["id", "createdAt"],
@@ -21,7 +21,7 @@
         "title": { "type": "string" }
       }
     },
-    
+
     "NavigationResult": {
       "type": "object",
       "required": ["success", "url", "title"],
@@ -32,7 +32,7 @@
         "error": { "type": "string" }
       }
     },
-    
+
     "ActionResult": {
       "type": "object",
       "required": ["success"],
@@ -42,7 +42,7 @@
         "error": { "type": "string" }
       }
     },
-    
+
     "ExtractResult": {
       "type": "object",
       "required": ["success", "found"],
@@ -53,7 +53,7 @@
         "error": { "type": "string" }
       }
     },
-    
+
     "ScreenshotResult": {
       "type": "object",
       "required": ["success"],
@@ -66,12 +66,12 @@
         "error": { "type": "string" }
       }
     },
-    
+
     "CaptchaType": {
       "type": "string",
       "enum": ["turnstile", "recaptcha-v2", "recaptcha-v3", "hcaptcha", "none"]
     },
-    
+
     "CaptchaResult": {
       "type": "object",
       "required": ["detected", "type"],
@@ -84,7 +84,7 @@
         "error": { "type": "string" }
       }
     },
-    
+
     "SecurityConfig": {
       "type": "object",
       "properties": {
@@ -101,7 +101,7 @@
         "allowFileProtocol": { "type": "boolean", "default": false }
       }
     },
-    
+
     "RetryConfig": {
       "type": "object",
       "properties": {
@@ -111,7 +111,7 @@
         "backoffMultiplier": { "type": "number", "default": 2.0 }
       }
     },
-    
+
     "BrowserConfig": {
       "type": "object",
       "properties": {
@@ -126,18 +126,28 @@
         "serverPort": { "type": "integer", "default": 3456 }
       }
     },
-    
+
     "WebSocketMessage": {
       "type": "object",
       "required": ["type", "requestId"],
       "properties": {
-        "type": { 
+        "type": {
           "type": "string",
           "enum": [
-            "health", "createSession", "destroySession",
-            "navigate", "goBack", "goForward", "refresh",
-            "click", "type", "select", "extract", "screenshot",
-            "getState", "solveCaptcha"
+            "health",
+            "createSession",
+            "destroySession",
+            "navigate",
+            "goBack",
+            "goForward",
+            "refresh",
+            "click",
+            "type",
+            "select",
+            "extract",
+            "screenshot",
+            "getState",
+            "solveCaptcha"
           ]
         },
         "requestId": { "type": "string" },
@@ -145,7 +155,7 @@
         "data": { "type": "object" }
       }
     },
-    
+
     "WebSocketResponse": {
       "type": "object",
       "required": ["type", "requestId", "success"],
@@ -157,7 +167,7 @@
         "error": { "type": "string" }
       }
     },
-    
+
     "BrowserError": {
       "type": "object",
       "required": ["code", "message", "userMessage", "recoverable"],
@@ -165,8 +175,13 @@
         "code": {
           "type": "string",
           "enum": [
-            "SERVICE_NOT_AVAILABLE", "SESSION_ERROR", "NAVIGATION_ERROR",
-            "ACTION_ERROR", "SECURITY_ERROR", "CAPTCHA_ERROR", "TIMEOUT_ERROR"
+            "SERVICE_NOT_AVAILABLE",
+            "SESSION_ERROR",
+            "NAVIGATION_ERROR",
+            "ACTION_ERROR",
+            "SECURITY_ERROR",
+            "CAPTCHA_ERROR",
+            "TIMEOUT_ERROR"
           ]
         },
         "message": { "type": "string" },
@@ -176,7 +191,7 @@
       }
     }
   },
-  
+
   "actions": {
     "BROWSER_NAVIGATE": {
       "description": "Navigate the browser to a specified URL",
@@ -266,7 +281,7 @@
       "output": { "$ref": "#/definitions/CaptchaResult" }
     }
   },
-  
+
   "providers": {
     "BROWSER_STATE": {
       "description": "Provides current browser state information including active session status, current page URL, and page title",
@@ -283,5 +298,4 @@
     }
   }
 }
-
 

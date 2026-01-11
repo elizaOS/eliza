@@ -16,7 +16,7 @@
 // Cypress support file for Knowledge plugin tests
 
 // Import commands.ts
-import './commands';
+import "./commands";
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
@@ -33,7 +33,11 @@ declare global {
       /**
        * Upload a file to the knowledge base
        */
-      uploadKnowledgeFile(fileName: string, content: string, mimeType?: string): Chainable<void>;
+      uploadKnowledgeFile(
+        fileName: string,
+        content: string,
+        mimeType?: string,
+      ): Chainable<void>;
 
       /**
        * Search for knowledge
@@ -48,11 +52,8 @@ declare global {
   }
 }
 
-// Prevent TypeScript errors
-export {};
-
 // Disable uncaught exception handling for React development warnings
-Cypress.on('uncaught:exception', (err, runnable) => {
+Cypress.on("uncaught:exception", (_err, _runnable) => {
   // Returning false here prevents Cypress from failing the test
   // on uncaught exceptions, which is useful for React development warnings
   return false;

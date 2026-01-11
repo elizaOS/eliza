@@ -14,7 +14,9 @@ Simple agents can do one thing at a time. But real tasks are complex:
 Each of these requires **multiple actions** executed in sequence, with results from one feeding into the next.
 
 <Tip>
-**Action planning lets your agent think in steps.** The LLM decides the sequence, and ElizaOS executes each action, passing results forward automatically.
+  **Action planning lets your agent think in steps.** The LLM decides the
+  sequence, and ElizaOS executes each action, passing results forward
+  automatically.
 </Tip>
 
 ## How It Works
@@ -23,16 +25,16 @@ When the LLM returns multiple actions, ElizaOS creates an **ActionPlan**:
 
 ```typescript
 interface ActionPlan {
-  thought: string;       // LLM's reasoning for this plan
-  totalSteps: number;    // How many actions to execute
-  currentStep: number;   // Which step we're on (0-indexed)
+  thought: string; // LLM's reasoning for this plan
+  totalSteps: number; // How many actions to execute
+  currentStep: number; // Which step we're on (0-indexed)
   steps: ActionPlanStep[];
 }
 
 interface ActionPlanStep {
-  action: string;        // Action name (e.g., "SEARCH", "TWEET")
-  status: 'pending' | 'completed' | 'failed';
-  error?: string;        // If failed, why
+  action: string; // Action name (e.g., "SEARCH", "TWEET")
+  status: "pending" | "completed" | "failed";
+  error?: string; // If failed, why
   result?: ActionResult; // Output from this step
 }
 ```
@@ -62,35 +64,35 @@ In your action handler, access results from previous steps:
 
 ```typescript
 const myAction: Action = {
-  name: 'SUMMARIZE',
-  description: 'Summarize the results from previous actions',
+  name: "SUMMARIZE",
+  description: "Summarize the results from previous actions",
 
   async handler(runtime, message, state, options, callback) {
     // Get all previous action results
     const previousResults = state?.data?.actionResults || [];
 
     // Find specific action result
-    const searchResult = previousResults.find(r => r.action === 'SEARCH');
+    const searchResult = previousResults.find((r) => r.action === "SEARCH");
 
     if (searchResult?.text) {
       // Use search results to generate summary
       const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: `Summarize this: ${searchResult.text}`
+        prompt: `Summarize this: ${searchResult.text}`,
       });
 
       return {
         text: summary,
-        action: 'SUMMARIZE',
-        success: true
+        action: "SUMMARIZE",
+        success: true,
       };
     }
 
     return {
-      text: 'No previous results to summarize',
-      action: 'SUMMARIZE',
-      success: false
+      text: "No previous results to summarize",
+      action: "SUMMARIZE",
+      success: false,
     };
-  }
+  },
 };
 ```
 
@@ -126,31 +128,31 @@ When a step fails, the plan continues by default. Handle failures gracefully:
 
 ```typescript
 const resilientAction: Action = {
-  name: 'PROCESS_DATA',
+  name: "PROCESS_DATA",
 
   async handler(runtime, message, state, options, callback) {
     const previousResults = state?.data?.actionResults || [];
 
     // Check if a required previous step failed
-    const fetchResult = previousResults.find(r => r.action === 'FETCH_DATA');
+    const fetchResult = previousResults.find((r) => r.action === "FETCH_DATA");
 
     if (fetchResult?.success === false) {
       // Previous step failed - use fallback
       return {
-        text: 'Using cached data due to fetch failure',
-        action: 'PROCESS_DATA',
+        text: "Using cached data due to fetch failure",
+        action: "PROCESS_DATA",
         success: true,
-        data: { usedFallback: true }
+        data: { usedFallback: true },
       };
     }
 
     // Normal processing
     return {
       text: `Processed: ${fetchResult?.text}`,
-      action: 'PROCESS_DATA',
-      success: true
+      action: "PROCESS_DATA",
+      success: true,
     };
-  }
+  },
 };
 ```
 
@@ -163,14 +165,14 @@ After message processing, retrieve action results programmatically:
 const result = await runtime.handleMessage({
   entityId: userId,
   roomId: roomId,
-  content: { text: 'Search and summarize AI news', source: 'api' }
+  content: { text: "Search and summarize AI news", source: "api" },
 });
 
 // Get the action results from that message
 const actionResults = runtime.getActionResults(result.messageId);
 
 for (const result of actionResults) {
-  console.log(`${result.action}: ${result.success ? 'OK' : 'FAILED'}`);
+  console.log(`${result.action}: ${result.success ? "OK" : "FAILED"}`);
   console.log(`Output: ${result.text}`);
   if (result.data) {
     console.log(`Data:`, result.data);
@@ -184,7 +186,8 @@ When building actions that work well in chains:
 
 <CardGroup cols={2}>
   <Card title="Return structured data" icon="database">
-    Include a `data` field in results for downstream actions to consume programmatically.
+    Include a `data` field in results for downstream actions to consume
+    programmatically.
   </Card>
   <Card title="Be idempotent" icon="rotate">
     Actions may be retried. Avoid side effects that can't be repeated safely.
@@ -202,65 +205,69 @@ When building actions that work well in chains:
 ```typescript
 // Step 1: Fetch data
 const fetchAction: Action = {
-  name: 'FETCH_DATA',
+  name: "FETCH_DATA",
   async handler(runtime, message, state) {
     const data = await fetchFromAPI();
     return {
       text: `Fetched ${data.length} records`,
-      action: 'FETCH_DATA',
+      action: "FETCH_DATA",
       success: true,
-      data: { records: data }  // Structured data for next step
+      data: { records: data }, // Structured data for next step
     };
-  }
+  },
 };
 
 // Step 2: Transform data (uses Step 1 output)
 const transformAction: Action = {
-  name: 'TRANSFORM_DATA',
+  name: "TRANSFORM_DATA",
   async handler(runtime, message, state) {
     const fetchResult = state?.data?.actionResults?.find(
-      r => r.action === 'FETCH_DATA'
+      (r) => r.action === "FETCH_DATA",
     );
 
     if (!fetchResult?.data?.records) {
-      return { text: 'No data to transform', action: 'TRANSFORM_DATA', success: false };
+      return {
+        text: "No data to transform",
+        action: "TRANSFORM_DATA",
+        success: false,
+      };
     }
 
-    const transformed = fetchResult.data.records.map(r => ({
+    const transformed = fetchResult.data.records.map((r) => ({
       ...r,
       processed: true,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }));
 
     return {
       text: `Transformed ${transformed.length} records`,
-      action: 'TRANSFORM_DATA',
+      action: "TRANSFORM_DATA",
       success: true,
-      data: { records: transformed }
+      data: { records: transformed },
     };
-  }
+  },
 };
 
 // Step 3: Store data (uses Step 2 output)
 const storeAction: Action = {
-  name: 'STORE_DATA',
+  name: "STORE_DATA",
   async handler(runtime, message, state) {
     const transformResult = state?.data?.actionResults?.find(
-      r => r.action === 'TRANSFORM_DATA'
+      (r) => r.action === "TRANSFORM_DATA",
     );
 
     if (!transformResult?.data?.records) {
-      return { text: 'No data to store', action: 'STORE_DATA', success: false };
+      return { text: "No data to store", action: "STORE_DATA", success: false };
     }
 
     await database.insert(transformResult.data.records);
 
     return {
       text: `Stored ${transformResult.data.records.length} records`,
-      action: 'STORE_DATA',
-      success: true
+      action: "STORE_DATA",
+      success: true,
     };
-  }
+  },
 };
 ```
 
@@ -268,18 +275,22 @@ const storeAction: Action = {
 
 ```typescript
 interface ActionResult {
-  action: string;       // Action name
-  text: string;         // Human-readable result
-  success: boolean;     // Did it work?
-  error?: string;       // Error message if failed
-  data?: Record<string, unknown>;  // Structured data for chaining
+  action: string; // Action name
+  text: string; // Human-readable result
+  success: boolean; // Did it work?
+  error?: string; // Error message if failed
+  data?: Record<string, unknown>; // Structured data for chaining
 }
 ```
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Actions Reference" icon="bolt" href="/plugins/components#actions">
+  <Card
+    title="Actions Reference"
+    icon="bolt"
+    href="/plugins/components#actions"
+  >
     Complete action handler API
   </Card>
   <Card title="State Management" icon="layer-group" href="/runtime/core#state">

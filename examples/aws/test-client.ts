@@ -7,7 +7,7 @@
  *   npx ts-node test-client.ts --endpoint http://localhost:3000/chat
  */
 
-import * as readline from "readline";
+import * as readline from "node:readline";
 
 // Parse command line arguments
 function parseArgs(): { endpoint: string; conversationId: string | null } {
@@ -65,7 +65,7 @@ interface ErrorResponse {
 async function sendMessage(
   endpoint: string,
   message: string,
-  conversationId: string | null
+  conversationId: string | null,
 ): Promise<ChatResponse> {
   const body: Record<string, string> = { message };
   if (conversationId) {
@@ -91,26 +91,20 @@ async function sendMessage(
 }
 
 async function checkHealth(baseEndpoint: string): Promise<boolean> {
-  try {
-    // Derive health endpoint from chat endpoint
-    const healthEndpoint = baseEndpoint.replace(/\/chat\/?$/, "/health");
+  // Derive health endpoint from chat endpoint
+  const healthEndpoint = baseEndpoint.replace(/\/chat\/?$/, "/health");
 
-    const response = await fetch(healthEndpoint, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
+  const response = await fetch(healthEndpoint, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
 
-    if (response.ok) {
-      const data = await response.json();
-      console.log(
-        `✅ Connected to ${data.runtime} runtime (v${data.version})\n`
-      );
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
+  if (response.ok) {
+    const data = await response.json();
+    console.log(`✅ Connected to ${data.runtime} runtime (v${data.version})\n`);
+    return true;
   }
+  return false;
 }
 
 async function main(): Promise<void> {
@@ -129,7 +123,9 @@ async function main(): Promise<void> {
     output: process.stdout,
   });
 
-  console.log("💬 Chat with Eliza (type 'exit' to quit, 'new' for new conversation)\n");
+  console.log(
+    "💬 Chat with Eliza (type 'exit' to quit, 'new' for new conversation)\n",
+  );
 
   const prompt = (): void => {
     rl.question("You: ", async (input) => {
@@ -153,21 +149,18 @@ async function main(): Promise<void> {
         return;
       }
 
-      try {
-        process.stdout.write("Eliza: ");
-        const start = Date.now();
-        const response = await sendMessage(endpoint, text, conversationId);
-        const duration = Date.now() - start;
+      process.stdout.write("Eliza: ");
+      const start = Date.now();
+      const response = await sendMessage(endpoint, text, conversationId);
+      const duration = Date.now() - start;
 
-        console.log(response.response);
-        console.log(`\n  [${duration}ms | ${response.conversationId.slice(0, 8)}...]\n`);
+      console.log(response.response);
+      console.log(
+        `\n  [${duration}ms | ${response.conversationId.slice(0, 8)}...]\n`,
+      );
 
-        // Track conversation for continuity
-        conversationId = response.conversationId;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.log(`\n❌ Error: ${message}\n`);
-      }
+      // Track conversation for continuity
+      conversationId = response.conversationId;
 
       prompt();
     });
@@ -180,8 +173,3 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
-
-
-
-
-

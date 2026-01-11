@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the GitHub plugin
 //!
 //! Strong types with validation - no unknown or any types.
@@ -883,5 +884,10 @@ pub enum GitHubEventType {
     /// Status event
     Status,
 }
+
+
+
+
+
 
 

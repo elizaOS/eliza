@@ -6,18 +6,22 @@
  */
 
 import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import {
   AgentRuntime,
+  bootstrapPlugin,
   ChannelType,
+  type Character,
+  type Content,
   createMessageMemory,
   stringToUuid,
-  bootstrapPlugin,
-  type Character,
   type UUID,
-  type Content,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { v4 as uuidv4 } from "uuid";
 
 // Types for request/response
@@ -139,7 +143,7 @@ function validateChatRequest(body: Record<string, unknown>): ChatRequest {
 function sendJson<T extends Record<string, unknown>>(
   res: ServerResponse,
   statusCode: number,
-  body: T
+  body: T,
 ): void {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
@@ -187,7 +191,7 @@ async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   // Process message and collect response
   let responseText = "";
 
-  await rt.messageService!.handleMessage(rt, message, async (content) => {
+  await rt.messageService?.handleMessage(rt, message, async (content) => {
     if (content?.text) {
       responseText += content.text;
     }
@@ -236,9 +240,12 @@ function handleInfo(): InfoResponse {
  */
 async function handleRequest(
   req: IncomingMessage,
-  res: ServerResponse
+  res: ServerResponse,
 ): Promise<void> {
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const url = new URL(
+    req.url ?? "/",
+    `http://${req.headers.host ?? "localhost"}`,
+  );
   const path = url.pathname;
   const method = req.method ?? "GET";
 
@@ -250,41 +257,29 @@ async function handleRequest(
     return;
   }
 
-  try {
-    // Info endpoint
-    if (path === "/" && method === "GET") {
-      sendJson(res, 200, handleInfo());
-      return;
-    }
-
-    // Health check
-    if (path === "/health" && method === "GET") {
-      sendJson(res, 200, handleHealth());
-      return;
-    }
-
-    // Chat endpoint
-    if (path === "/chat" && method === "POST") {
-      const body = await parseBody<Record<string, unknown>>(req);
-      const request = validateChatRequest(body);
-      const response = await handleChat(request);
-      sendJson(res, 200, response);
-      return;
-    }
-
-    // Not found
-    sendJson(res, 404, { error: "Not found", code: "NOT_FOUND" });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("Request error:", message);
-
-    if (message.includes("required") || message.includes("must be")) {
-      sendJson(res, 400, { error: message, code: "BAD_REQUEST" });
-      return;
-    }
-
-    sendJson(res, 500, { error: "Internal server error", code: "INTERNAL_ERROR" });
+  // Info endpoint
+  if (path === "/" && method === "GET") {
+    sendJson(res, 200, handleInfo());
+    return;
   }
+
+  // Health check
+  if (path === "/health" && method === "GET") {
+    sendJson(res, 200, handleHealth());
+    return;
+  }
+
+  // Chat endpoint
+  if (path === "/chat" && method === "POST") {
+    const body = await parseBody<Record<string, unknown>>(req);
+    const request = validateChatRequest(body);
+    const response = await handleChat(request);
+    sendJson(res, 200, response);
+    return;
+  }
+
+  // Not found
+  sendJson(res, 404, { error: "Not found", code: "NOT_FOUND" });
 }
 
 // Start server
@@ -294,7 +289,10 @@ const server = createServer((req, res) => {
   handleRequest(req, res).catch((err) => {
     console.error("Unhandled error:", err);
     if (!res.headersSent) {
-      sendJson(res, 500, { error: "Internal server error", code: "INTERNAL_ERROR" });
+      sendJson(res, 500, {
+        error: "Internal server error",
+        code: "INTERNAL_ERROR",
+      });
     }
   });
 });

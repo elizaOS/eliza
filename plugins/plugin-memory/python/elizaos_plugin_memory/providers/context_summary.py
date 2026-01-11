@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -44,9 +44,7 @@ class ContextSummaryProvider:
     ) -> ProviderResult:
         """Get context summary for a room."""
         try:
-            current_summary = await self._memory_service.get_current_session_summary(
-                room_id
-            )
+            current_summary = await self._memory_service.get_current_session_summary(room_id)
 
             if not current_summary:
                 return ProviderResult(
@@ -69,9 +67,7 @@ class ContextSummaryProvider:
                 summary_with_topics += f"\n*Topics: {topics_str}*"
 
             session_summaries = f"# Conversation Summary\n\n{summary_only}"
-            session_summaries_with_topics = (
-                f"# Conversation Summary\n\n{summary_with_topics}"
-            )
+            session_summaries_with_topics = f"# Conversation Summary\n\n{summary_with_topics}"
 
             return ProviderResult(
                 data={
@@ -95,5 +91,8 @@ class ContextSummaryProvider:
                 values={"sessionSummaries": "", "sessionSummariesWithTopics": ""},
                 text="",
             )
+
+
+
 
 

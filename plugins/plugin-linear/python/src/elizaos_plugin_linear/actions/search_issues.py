@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from elizaos_plugin_linear.actions.base import (
-    Action,
     ActionExample,
     ActionResult,
     HandlerCallback,
@@ -63,16 +62,18 @@ async def handler(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             raise RuntimeError("Linear service not available")
-        
+
         content = message.get("content", {}).get("text", "")
         if not content:
             error_message = "Please provide search criteria for issues."
             if callback:
-                await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+                await callback(
+                    {"text": error_message, "source": message.get("content", {}).get("source")}
+                )
             return {"text": error_message, "success": False}
-        
+
         filters = LinearSearchFilters()
-        
+
         # Check for explicit filters in options
         if options and options.get("filters"):
             opt_filters = options["filters"]
@@ -88,7 +89,7 @@ async def handler(
             # Use LLM to extract search filters
             prompt = SEARCH_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
-            
+
             if not response:
                 filters.query = content
             else:
@@ -96,13 +97,13 @@ async def handler(
                     cleaned = re.sub(r"^```(?:json)?\n?", "", response)
                     cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                     parsed = json.loads(cleaned)
-                    
+
                     filters.query = parsed.get("query")
                     filters.limit = parsed.get("limit", 10)
-                    
+
                     if parsed.get("states"):
                         filters.state = parsed["states"]
-                    
+
                     if parsed.get("assignees"):
                         processed = []
                         for assignee in parsed["assignees"]:
@@ -116,7 +117,7 @@ async def handler(
                                 processed.append(assignee)
                         if processed:
                             filters.assignee = processed
-                    
+
                     if parsed.get("priorities"):
                         priority_map = {"urgent": 1, "high": 2, "normal": 3, "low": 4}
                         priorities = []
@@ -128,17 +129,17 @@ async def handler(
                                 priorities.append(int(p_lower))
                         if priorities:
                             filters.priority = priorities
-                    
+
                     if parsed.get("teams"):
                         filters.team = parsed["teams"][0]
-                    
+
                     if parsed.get("labels"):
                         filters.label = parsed["labels"]
-                        
+
                 except json.JSONDecodeError:
                     logger.error("Failed to parse search filters")
                     filters.query = content
-        
+
         # Apply default team filter if configured
         if not filters.team:
             default_team_key = runtime.get_setting("LINEAR_DEFAULT_TEAM_KEY")
@@ -150,40 +151,47 @@ async def handler(
                 if not searching_all:
                     filters.team = default_team_key
                     logger.info(f"Applying default team filter: {default_team_key}")
-        
+
         if options and options.get("limit"):
             filters.limit = int(options["limit"])
-        
+
         issues = await linear_service.search_issues(filters)
-        
+
         if not issues:
             no_results = "No issues found matching your search criteria."
             if callback:
-                await callback({"text": no_results, "source": message.get("content", {}).get("source")})
+                await callback(
+                    {"text": no_results, "source": message.get("content", {}).get("source")}
+                )
             return {
                 "text": no_results,
                 "success": True,
                 "data": {"issues": [], "filters": filters.__dict__, "count": 0},
             }
-        
+
         priority_labels = ["", "Urgent", "High", "Normal", "Low"]
-        
+
         issue_list = []
         for i, issue in enumerate(issues):
             state = issue.get("state", {})
             assignee = issue.get("assignee", {})
             priority = priority_labels[issue.get("priority", 0)] or "No priority"
-            
+
             issue_list.append(
-                f"{i+1}. {issue['identifier']}: {issue['title']}\n"
+                f"{i + 1}. {issue['identifier']}: {issue['title']}\n"
                 f"   Status: {state.get('name', 'No state')} | Priority: {priority} | "
                 f"Assignee: {assignee.get('name', 'Unassigned') if assignee else 'Unassigned'}"
             )
-        
-        result_message = f"📋 Found {len(issues)} issue{'s' if len(issues) != 1 else ''}:\n\n" + "\n\n".join(issue_list)
+
+        result_message = (
+            f"📋 Found {len(issues)} issue{'s' if len(issues) != 1 else ''}:\n\n"
+            + "\n\n".join(issue_list)
+        )
         if callback:
-            await callback({"text": result_message, "source": message.get("content", {}).get("source")})
-        
+            await callback(
+                {"text": result_message, "source": message.get("content", {}).get("source")}
+            )
+
         return {
             "text": f"Found {len(issues)} issue{'s' if len(issues) != 1 else ''}",
             "success": True,
@@ -193,12 +201,14 @@ async def handler(
                 "count": len(issues),
             },
         }
-        
+
     except Exception as error:
         logger.error(f"Failed to search issues: {error}")
         error_message = f"❌ Failed to search issues: {error}"
         if callback:
-            await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+            await callback(
+                {"text": error_message, "source": message.get("content", {}).get("source")}
+            )
         return {"text": error_message, "success": False}
 
 
@@ -209,11 +219,20 @@ search_issues_action = create_action(
     examples=[
         [
             ActionExample(name="User", content={"text": "Show me all open bugs"}),
-            ActionExample(name="Assistant", content={"text": "I'll search for all open bug issues.", "actions": ["SEARCH_LINEAR_ISSUES"]}),
+            ActionExample(
+                name="Assistant",
+                content={
+                    "text": "I'll search for all open bug issues.",
+                    "actions": ["SEARCH_LINEAR_ISSUES"],
+                },
+            ),
         ],
     ],
     validate=validate,
     handler=handler,
 )
+
+
+
 
 

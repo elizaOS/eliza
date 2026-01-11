@@ -1,46 +1,46 @@
 import {
-  Content,
+  type Content,
   createUniqueUuid,
-  FragmentMetadata,
-  IAgentRuntime,
-  KnowledgeItem,
+  type FragmentMetadata,
+  type IAgentRuntime,
+  type KnowledgeItem,
   logger,
-  Memory,
-  MemoryMetadata,
+  type Memory,
+  type MemoryMetadata,
   MemoryType,
+  type Metadata,
   ModelType,
   Semaphore,
   Service,
   splitChunks,
-  UUID,
-  Metadata,
-} from '@elizaos/core';
+  type UUID,
+} from "@elizaos/core";
+import { validateModelConfig } from "./config";
+import { loadDocsFromPath } from "./docs-loader";
 import {
   createDocumentMemory,
   extractTextFromDocument,
   processFragmentsSynchronously,
-} from './document-processor.ts';
-import { validateModelConfig } from './config';
-import { AddKnowledgeOptions } from './types.ts';
-import type { KnowledgeConfig, LoadResult } from './types';
-import { loadDocsFromPath } from './docs-loader';
-import { isBinaryContentType, looksLikeBase64, generateContentBasedId } from './utils.ts';
+} from "./document-processor.ts";
+import type { KnowledgeConfig, LoadResult } from "./types";
+import type { AddKnowledgeOptions } from "./types.ts";
+import { generateContentBasedId, isBinaryContentType, looksLikeBase64 } from "./utils.ts";
 
-const parseBooleanEnv = (value: any): boolean => {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value.toLowerCase() === 'true';
-  return false; // Default to false if undefined or other type
+const parseBooleanEnv = (value: string | number | boolean | undefined): boolean => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() === "true";
+  if (typeof value === "number") return value !== 0;
+  return false; // Default to false if undefined
 };
 
 /**
  * Knowledge Service - Provides retrieval augmented generation capabilities
  */
 export class KnowledgeService extends Service {
-  static readonly serviceType = 'knowledge';
+  static readonly serviceType = "knowledge";
   public override config: Metadata = {};
-  private knowledgeConfig: KnowledgeConfig = {} as KnowledgeConfig;
   capabilityDescription =
-    'Provides Retrieval Augmented Generation capabilities, including knowledge upload and querying.';
+    "Provides Retrieval Augmented Generation capabilities, including knowledge upload and querying.";
 
   private knowledgeProcessingSemaphore: Semaphore;
 
@@ -48,7 +48,7 @@ export class KnowledgeService extends Service {
    * Create a new Knowledge service
    * @param runtime Agent runtime
    */
-  constructor(runtime: IAgentRuntime, config?: Partial<KnowledgeConfig>) {
+  constructor(runtime: IAgentRuntime, _config?: Partial<KnowledgeConfig>) {
     super(runtime);
     this.knowledgeProcessingSemaphore = new Semaphore(10);
   }
@@ -62,11 +62,12 @@ export class KnowledgeService extends Service {
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Get the agent-specific knowledge path from runtime settings
-      const knowledgePathSetting = this.runtime.getSetting('KNOWLEDGE_PATH');
-      const knowledgePath = typeof knowledgePathSetting === 'string' ? knowledgePathSetting : undefined;
+      const knowledgePathSetting = this.runtime.getSetting("KNOWLEDGE_PATH");
+      const knowledgePath =
+        typeof knowledgePathSetting === "string" ? knowledgePathSetting : undefined;
 
       const result: LoadResult = await loadDocsFromPath(
-        this as any,
+        this as KnowledgeService,
         this.runtime.agentId,
         undefined, // worldId
         knowledgePath
@@ -97,92 +98,84 @@ export class KnowledgeService extends Service {
   static async start(runtime: IAgentRuntime): Promise<KnowledgeService> {
     logger.info(`Starting Knowledge service for agent: ${runtime.agentId}`);
 
-    logger.info('Initializing Knowledge Plugin...');
-    let validatedConfig: any = {};
-    try {
-      // Validate the model configuration
-      logger.info('Validating model configuration for Knowledge plugin...');
+    logger.info("Initializing Knowledge Plugin...");
+    // Validate the model configuration
+    logger.info("Validating model configuration for Knowledge plugin...");
 
-      logger.debug(`[Knowledge Plugin] INIT DEBUG:`);
-      logger.debug(
-        `[Knowledge Plugin] - process.env.CTX_KNOWLEDGE_ENABLED: '${process.env.CTX_KNOWLEDGE_ENABLED}'`
-      );
+    logger.debug(`[Knowledge Plugin] INIT DEBUG:`);
+    logger.debug(
+      `[Knowledge Plugin] - process.env.CTX_KNOWLEDGE_ENABLED: '${process.env.CTX_KNOWLEDGE_ENABLED}'`
+    );
 
-      // just for debug/check
-      const config = {
-        CTX_KNOWLEDGE_ENABLED: parseBooleanEnv(runtime.getSetting('CTX_KNOWLEDGE_ENABLED')),
-      };
+    // just for debug/check
+    const config = {
+      CTX_KNOWLEDGE_ENABLED: parseBooleanEnv(runtime.getSetting("CTX_KNOWLEDGE_ENABLED")),
+    };
 
-      logger.debug(
-        `[Knowledge Plugin] - config.CTX_KNOWLEDGE_ENABLED: '${config.CTX_KNOWLEDGE_ENABLED}'`
-      );
-      logger.debug(
-        `[Knowledge Plugin] - runtime.getSetting('CTX_KNOWLEDGE_ENABLED'): '${runtime.getSetting('CTX_KNOWLEDGE_ENABLED')}'`
-      );
+    logger.debug(
+      `[Knowledge Plugin] - config.CTX_KNOWLEDGE_ENABLED: '${config.CTX_KNOWLEDGE_ENABLED}'`
+    );
+    logger.debug(
+      `[Knowledge Plugin] - runtime.getSetting('CTX_KNOWLEDGE_ENABLED'): '${runtime.getSetting("CTX_KNOWLEDGE_ENABLED")}'`
+    );
 
-      validatedConfig = validateModelConfig(runtime);
+    const validatedConfig = validateModelConfig(runtime);
 
-      // Help inform how this was detected
-      const ctxEnabledFromEnv = parseBooleanEnv(process.env.CTX_KNOWLEDGE_ENABLED);
-      const ctxEnabledFromRuntime = parseBooleanEnv(runtime.getSetting('CTX_KNOWLEDGE_ENABLED'));
-      const ctxEnabledFromValidated = validatedConfig.CTX_KNOWLEDGE_ENABLED;
+    // Help inform how this was detected
+    const ctxEnabledFromEnv = parseBooleanEnv(process.env.CTX_KNOWLEDGE_ENABLED);
+    const ctxEnabledFromRuntime = parseBooleanEnv(runtime.getSetting("CTX_KNOWLEDGE_ENABLED"));
+    const ctxEnabledFromValidated = validatedConfig.CTX_KNOWLEDGE_ENABLED;
 
-      // Use the most permissive check during initialization
-      const finalCtxEnabled = ctxEnabledFromValidated;
+    // Use the most permissive check during initialization
+    const finalCtxEnabled = ctxEnabledFromValidated;
 
-      logger.debug(`[Knowledge Plugin] CTX_KNOWLEDGE_ENABLED sources:`);
-      logger.debug(`[Knowledge Plugin] - From env: ${ctxEnabledFromEnv}`);
-      logger.debug(`[Knowledge Plugin] - From runtime: ${ctxEnabledFromRuntime}`);
-      logger.debug(`[Knowledge Plugin] - FINAL RESULT: ${finalCtxEnabled}`);
+    logger.debug(`[Knowledge Plugin] CTX_KNOWLEDGE_ENABLED sources:`);
+    logger.debug(`[Knowledge Plugin] - From env: ${ctxEnabledFromEnv}`);
+    logger.debug(`[Knowledge Plugin] - From runtime: ${ctxEnabledFromRuntime}`);
+    logger.debug(`[Knowledge Plugin] - FINAL RESULT: ${finalCtxEnabled}`);
 
-      // Log the operational mode
-      if (finalCtxEnabled) {
-        logger.info('Running in Contextual Knowledge mode with text generation capabilities.');
-        logger.info(
-          `Using ${validatedConfig.EMBEDDING_PROVIDER || 'auto-detected'} for embeddings and ${validatedConfig.TEXT_PROVIDER} for text generation.`
-        );
-        logger.info(`Text model: ${validatedConfig.TEXT_MODEL}`);
-      } else {
-        const usingPluginOpenAI = !process.env.EMBEDDING_PROVIDER;
-
-        logger.warn(
-          'Running in Basic Embedding mode - documents will NOT be enriched with context!'
-        );
-        logger.info('To enable contextual enrichment:');
-        logger.info('   - Set CTX_KNOWLEDGE_ENABLED=true');
-        logger.info('   - Configure TEXT_PROVIDER (anthropic/openai/openrouter/google)');
-        logger.info('   - Configure TEXT_MODEL and API key');
-
-        if (usingPluginOpenAI) {
-          logger.info('Using auto-detected configuration from plugin-openai for embeddings.');
-        } else {
-          logger.info(
-            `Using ${validatedConfig.EMBEDDING_PROVIDER} for embeddings with ${validatedConfig.TEXT_EMBEDDING_MODEL}.`
-          );
-        }
-      }
-
-      logger.info('Model configuration validated successfully.');
-      logger.info(`Knowledge Plugin initialized for agent: ${runtime.character.name}`);
-
+    // Log the operational mode
+    if (finalCtxEnabled) {
+      logger.info("Running in Contextual Knowledge mode with text generation capabilities.");
       logger.info(
-        'Knowledge Plugin initialized. Frontend panel should be discoverable via its public route.'
+        `Using ${validatedConfig.EMBEDDING_PROVIDER || "auto-detected"} for embeddings and ${validatedConfig.TEXT_PROVIDER} for text generation.`
       );
-    } catch (error) {
-      logger.error({ error }, 'Failed to initialize Knowledge plugin');
-      throw error;
+      logger.info(`Text model: ${validatedConfig.TEXT_MODEL}`);
+    } else {
+      const usingPluginOpenAI = !process.env.EMBEDDING_PROVIDER;
+
+      logger.warn("Running in Basic Embedding mode - documents will NOT be enriched with context!");
+      logger.info("To enable contextual enrichment:");
+      logger.info("   - Set CTX_KNOWLEDGE_ENABLED=true");
+      logger.info("   - Configure TEXT_PROVIDER (anthropic/openai/openrouter/google)");
+      logger.info("   - Configure TEXT_MODEL and API key");
+
+      if (usingPluginOpenAI) {
+        logger.info("Using auto-detected configuration from plugin-openai for embeddings.");
+      } else {
+        logger.info(
+          `Using ${validatedConfig.EMBEDDING_PROVIDER} for embeddings with ${validatedConfig.TEXT_EMBEDDING_MODEL}.`
+        );
+      }
     }
+
+    logger.info("Model configuration validated successfully.");
+    logger.info(`Knowledge Plugin initialized for agent: ${runtime.character.name}`);
+
+    logger.info(
+      "Knowledge Plugin initialized. Frontend panel should be discoverable via its public route."
+    );
 
     const service = new KnowledgeService(runtime);
     service.config = validatedConfig; // as Metadata
 
     if (service.config.LOAD_DOCS_ON_STARTUP) {
-      logger.info('LOAD_DOCS_ON_STARTUP is enabled. Loading documents from docs folder...');
+      logger.info("LOAD_DOCS_ON_STARTUP is enabled. Loading documents from docs folder...");
       service.loadInitialDocuments().catch((error) => {
-        logger.error({ error }, 'Error during initial document loading in KnowledgeService');
+        logger.error({ error }, "Error during initial document loading in KnowledgeService");
       });
     } else {
-      logger.info('LOAD_DOCS_ON_STARTUP is disabled. Skipping automatic document loading.');
+      logger.info("LOAD_DOCS_ON_STARTUP is disabled. Skipping automatic document loading.");
     }
 
     // Process character knowledge AFTER service is initialized
@@ -191,13 +184,13 @@ export class KnowledgeService extends Service {
         `KnowledgeService: Processing ${service.runtime.character.knowledge.length} character knowledge items.`
       );
       const stringKnowledge = service.runtime.character.knowledge.filter(
-        (item): item is string => typeof item === 'string'
+        (item): item is string => typeof item === "string"
       );
       // Run in background, don't await here to prevent blocking startup
       await service.processCharacterKnowledge(stringKnowledge).catch((err) => {
         logger.error(
           { error: err },
-          'KnowledgeService: Error processing character knowledge during startup'
+          "KnowledgeService: Error processing character knowledge during startup"
         );
       });
     } else {
@@ -261,7 +254,7 @@ export class KnowledgeService extends Service {
 
         // Count existing fragments for this document
         const fragments = await this.runtime.getMemories({
-          tableName: 'knowledge',
+          tableName: "knowledge",
         });
 
         // Filter fragments related to this specific document
@@ -323,13 +316,13 @@ export class KnowledgeService extends Service {
       let extractedText: string;
       let documentContentToStore: string;
       const isPdfFile =
-        contentType === 'application/pdf' || originalFilename.toLowerCase().endsWith('.pdf');
+        contentType === "application/pdf" || originalFilename.toLowerCase().endsWith(".pdf");
 
       if (isPdfFile) {
         // For PDFs: extract text for fragments but store original base64 in main document
         try {
-          fileBuffer = Buffer.from(content, 'base64');
-        } catch (e: any) {
+          fileBuffer = Buffer.from(content, "base64");
+        } catch (e) {
           logger.error(
             { error: e },
             `KnowledgeService: Failed to convert base64 to buffer for ${originalFilename}`
@@ -341,8 +334,8 @@ export class KnowledgeService extends Service {
       } else if (isBinaryContentType(contentType, originalFilename)) {
         // For other binary files: extract text and store as plain text
         try {
-          fileBuffer = Buffer.from(content, 'base64');
-        } catch (e: any) {
+          fileBuffer = Buffer.from(content, "base64");
+        } catch (e) {
           logger.error(
             { error: e },
             `KnowledgeService: Failed to convert base64 to buffer for ${originalFilename}`
@@ -359,9 +352,9 @@ export class KnowledgeService extends Service {
         if (looksLikeBase64(content)) {
           try {
             // Try to decode from base64
-            const decodedBuffer = Buffer.from(content, 'base64');
+            const decodedBuffer = Buffer.from(content, "base64");
             // Check if it's valid UTF-8
-            const decodedText = decodedBuffer.toString('utf8');
+            const decodedText = decodedBuffer.toString("utf8");
 
             // Verify the decoded text doesn't contain too many invalid characters
             const invalidCharCount = (decodedText.match(/\ufffd/g) || []).length;
@@ -369,14 +362,17 @@ export class KnowledgeService extends Service {
 
             if (invalidCharCount > 0 && invalidCharCount / textLength > 0.1) {
               // More than 10% invalid characters, probably not a text file
-              throw new Error('Decoded content contains too many invalid characters');
+              throw new Error("Decoded content contains too many invalid characters");
             }
 
             logger.debug(`Successfully decoded base64 content for text file: ${originalFilename}`);
             extractedText = decodedText;
             documentContentToStore = decodedText;
           } catch (e) {
-            logger.error({ error: e as any }, `Failed to decode base64 for ${originalFilename}`);
+            logger.error(
+              { error: e instanceof Error ? e : new Error(String(e)) },
+              `Failed to decode base64 for ${originalFilename}`
+            );
             // If it looked like base64 but failed to decode properly, this is an error
             throw new Error(
               `File ${originalFilename} appears to be corrupted or incorrectly encoded`
@@ -390,7 +386,7 @@ export class KnowledgeService extends Service {
         }
       }
 
-      if (!extractedText || extractedText.trim() === '') {
+      if (!extractedText || extractedText.trim() === "") {
         const noTextError = new Error(
           `KnowledgeService: No text content extracted from ${originalFilename} (type: ${contentType}).`
         );
@@ -426,7 +422,7 @@ export class KnowledgeService extends Service {
         `KnowledgeService: memoryWithScope agentId=${memoryWithScope.agentId}, entityId=${memoryWithScope.entityId}`
       );
 
-      await this.runtime.createMemory(memoryWithScope, 'documents');
+      await this.runtime.createMemory(memoryWithScope, "documents");
 
       logger.debug(
         `KnowledgeService: Stored document ${originalFilename} (Memory ID: ${memoryWithScope.id})`
@@ -451,9 +447,10 @@ export class KnowledgeService extends Service {
         storedDocumentMemoryId: memoryWithScope.id as UUID,
         fragmentCount,
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorStack = error instanceof Error ? error.stack : undefined;
       logger.error(
-        { error, stack: error.stack },
+        { error, stack: errorStack },
         `KnowledgeService: Error processing document ${originalFilename}`
       );
       throw error;
@@ -462,7 +459,7 @@ export class KnowledgeService extends Service {
 
   // --- Knowledge methods moved from AgentRuntime ---
 
-  private async handleProcessingError(error: any, context: string) {
+  private async handleProcessingError(error: unknown, context: string) {
     logger.error({ error }, `KnowledgeService: Error ${context}`);
     throw error;
   }
@@ -480,7 +477,7 @@ export class KnowledgeService extends Service {
   ): Promise<KnowledgeItem[]> {
     logger.debug(`KnowledgeService: getKnowledge called for message id: ${message.id}`);
     if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-      logger.warn('KnowledgeService: Invalid or empty message content for knowledge query.');
+      logger.warn("KnowledgeService: Invalid or empty message content for knowledge query.");
       return [];
     }
 
@@ -494,7 +491,7 @@ export class KnowledgeService extends Service {
     if (scope?.entityId) filterScope.entityId = scope.entityId;
 
     const fragments = await this.runtime.searchMemories({
-      tableName: 'knowledge',
+      tableName: "knowledge",
       embedding,
       query: message.content.text,
       ...filterScope,
@@ -553,8 +550,8 @@ export class KnowledgeService extends Service {
           usedInResponse: true,
         },
         timestamp: existingMemory.metadata?.timestamp || Date.now(),
-        type: existingMemory.metadata?.type || 'message',
-      };
+        type: MemoryType.CUSTOM,
+      } as unknown as Memory["metadata"];
 
       // Update the memory
       await this.runtime.updateMemory({
@@ -565,19 +562,29 @@ export class KnowledgeService extends Service {
       logger.debug(
         `Enriched conversation memory ${memoryId} with RAG data: ${ragMetadata.totalFragments} fragments`
       );
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn(
-        `Failed to enrich conversation memory ${memoryId} with RAG data: ${error.message}`
+        `Failed to enrich conversation memory ${memoryId} with RAG data: ${errorMessage}`
       );
     }
   }
 
   /**
-   * Set the current response memory ID for RAG tracking
-   * This is called by the knowledge provider to track which response memory to enrich
+   * RAG metadata interface for tracking retrieval augmented generation usage
    */
   private pendingRAGEnrichment: Array<{
-    ragMetadata: any;
+    ragMetadata: {
+      retrievedFragments: Array<{
+        fragmentId: UUID;
+        documentTitle: string;
+        similarityScore?: number;
+        contentPreview: string;
+      }>;
+      queryText: string;
+      totalFragments: number;
+      retrievalTimestamp: number;
+    };
     timestamp: number;
   }> = [];
 
@@ -585,7 +592,17 @@ export class KnowledgeService extends Service {
    * Store RAG metadata for the next conversation memory that gets created
    * @param ragMetadata The RAG metadata to associate with the next memory
    */
-  setPendingRAGMetadata(ragMetadata: any): void {
+  setPendingRAGMetadata(ragMetadata: {
+    retrievedFragments: Array<{
+      fragmentId: UUID;
+      documentTitle: string;
+      similarityScore?: number;
+      contentPreview: string;
+    }>;
+    queryText: string;
+    totalFragments: number;
+    retrievalTimestamp: number;
+  }): void {
     // Clean up old pending enrichments (older than 30 seconds)
     const now = Date.now();
     this.pendingRAGEnrichment = this.pendingRAGEnrichment.filter(
@@ -613,7 +630,7 @@ export class KnowledgeService extends Service {
     try {
       // Get recent conversation memories (last 10 seconds)
       const recentMemories = await this.runtime.getMemories({
-        tableName: 'messages',
+        tableName: "messages",
         count: 10,
       });
 
@@ -621,9 +638,9 @@ export class KnowledgeService extends Service {
       const recentConversationMemories = recentMemories
         .filter(
           (memory) =>
-            memory.metadata?.type === 'message' &&
+            memory.metadata?.type === "message" &&
             now - (memory.createdAt || 0) < 10000 && // Created in last 10 seconds
-            !(memory.metadata as any)?.ragUsage // Doesn't already have RAG data
+            !(memory.metadata && "ragUsage" in memory.metadata && memory.metadata.ragUsage) // Doesn't already have RAG data
         )
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // Most recent first
 
@@ -634,7 +651,7 @@ export class KnowledgeService extends Service {
           (memory) => (memory.createdAt || 0) > pendingEntry.timestamp
         );
 
-        if (matchingMemory && matchingMemory.id) {
+        if (matchingMemory?.id) {
           await this.enrichConversationMemoryWithRAG(matchingMemory.id, pendingEntry.ragMetadata);
 
           // Remove this pending enrichment
@@ -644,8 +661,9 @@ export class KnowledgeService extends Service {
           }
         }
       }
-    } catch (error: any) {
-      logger.warn(`Error enriching recent memories with RAG data: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(`Error enriching recent memories with RAG data: ${errorMessage}`);
     }
   }
 
@@ -662,7 +680,7 @@ export class KnowledgeService extends Service {
         // Generate content-based ID for character knowledge
         const knowledgeId = generateContentBasedId(item, this.runtime.agentId, {
           maxChars: 2000, // Use first 2KB of content
-          includeFilename: 'character-knowledge', // A constant identifier for character knowledge
+          includeFilename: "character-knowledge", // A constant identifier for character knowledge
         }) as UUID;
 
         if (await this.checkExistingKnowledge(knowledgeId)) {
@@ -679,24 +697,24 @@ export class KnowledgeService extends Service {
         let metadata: MemoryMetadata = {
           type: MemoryType.DOCUMENT, // Character knowledge often represents a doc/fact.
           timestamp: Date.now(),
-          source: 'character', // Indicate the source
+          source: "character", // Indicate the source
         };
 
         const pathMatch = item.match(/^Path: (.+?)(?:\n|\r\n)/);
         if (pathMatch) {
           const filePath = pathMatch[1].trim();
-          const extension = filePath.split('.').pop() || '';
-          const filename = filePath.split('/').pop() || '';
-          const title = filename.replace(`.${extension}`, '');
+          const extension = filePath.split(".").pop() || "";
+          const filename = filePath.split("/").pop() || "";
+          const title = filename.replace(`.${extension}`, "");
           metadata = {
             ...metadata,
             path: filePath,
             filename: filename,
             fileExt: extension,
             title: title,
-            fileType: `text/${extension || 'plain'}`, // Assume text if not specified
+            fileType: `text/${extension || "plain"}`, // Assume text if not specified
             fileSize: item.length,
-          };
+          } as unknown as Memory["metadata"];
         }
 
         // Using _internalAddKnowledge for character knowledge
@@ -717,7 +735,7 @@ export class KnowledgeService extends Service {
           }
         );
       } catch (error) {
-        await this.handleProcessingError(error, 'processing character knowledge');
+        await this.handleProcessingError(error, "processing character knowledge");
       } finally {
         this.knowledgeProcessingSemaphore.release();
       }
@@ -764,10 +782,10 @@ export class KnowledgeService extends Service {
       content: item.content,
       metadata: {
         ...(item.metadata || {}), // Spread existing metadata
-        type: MemoryType.DOCUMENT, // Ensure it's marked as a document
+        type: MemoryType.CUSTOM, // Use CUSTOM to allow extra fields
         documentId: item.id, // Ensure metadata.documentId is set to the item's ID
         timestamp: item.metadata?.timestamp || Date.now(),
-      },
+      } as unknown as Memory["metadata"],
       createdAt: Date.now(),
     };
 
@@ -781,7 +799,7 @@ export class KnowledgeService extends Service {
         id: item.id, // Ensure ID is passed for update
       });
     } else {
-      await this.runtime.createMemory(documentMemory, 'documents');
+      await this.runtime.createMemory(documentMemory, "documents");
     }
 
     const fragments = await this.splitAndCreateFragments(
@@ -815,7 +833,7 @@ export class KnowledgeService extends Service {
       await this.runtime.addEmbeddingToMemory(fragment);
 
       // Store the fragment in the knowledge table
-      await this.runtime.createMemory(fragment, 'knowledge');
+      await this.runtime.createMemory(fragment, "knowledge");
     } catch (error) {
       logger.error({ error }, `KnowledgeService: Error processing fragment ${fragment.id}`);
       throw error;

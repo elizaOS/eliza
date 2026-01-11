@@ -231,14 +231,14 @@ vercel deploy
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | - | Your OpenAI API key |
-| `OPENAI_SMALL_MODEL` | No | `gpt-5-mini` | Small model to use |
-| `OPENAI_LARGE_MODEL` | No | `gpt-5` | Large model to use |
-| `CHARACTER_NAME` | No | `Eliza` | Agent's name |
-| `CHARACTER_BIO` | No | `A helpful AI assistant.` | Agent's bio |
-| `CHARACTER_SYSTEM` | No | (default) | System prompt |
+| Variable             | Required | Default                   | Description         |
+| -------------------- | -------- | ------------------------- | ------------------- |
+| `OPENAI_API_KEY`     | Yes      | -                         | Your OpenAI API key |
+| `OPENAI_SMALL_MODEL` | No       | `gpt-5-mini`              | Small model to use  |
+| `OPENAI_LARGE_MODEL` | No       | `gpt-5`                   | Large model to use  |
+| `CHARACTER_NAME`     | No       | `Eliza`                   | Agent's name        |
+| `CHARACTER_BIO`      | No       | `A helpful AI assistant.` | Agent's bio         |
+| `CHARACTER_SYSTEM`   | No       | (default)                 | System prompt       |
 
 ### Character Customization
 
@@ -254,14 +254,14 @@ vercel env add CHARACTER_SYSTEM
 
 ## Comparison with AWS Lambda
 
-| Feature | Vercel Edge | AWS Lambda |
-|---------|-------------|------------|
-| Cold start | ~50ms | 2-5s |
-| Global distribution | Automatic | Via CloudFront |
-| Pricing | Per invocation | Per invocation + duration |
-| Max execution time | 30s (Edge) | 15 min |
-| Memory | 128MB (Edge) | Up to 10GB |
-| Languages | JS/TS, WASM | Many |
+| Feature             | Vercel Edge    | AWS Lambda                |
+| ------------------- | -------------- | ------------------------- |
+| Cold start          | ~50ms          | 2-5s                      |
+| Global distribution | Automatic      | Via CloudFront            |
+| Pricing             | Per invocation | Per invocation + duration |
+| Max execution time  | 30s (Edge)     | 15 min                    |
+| Memory              | 128MB (Edge)   | Up to 10GB                |
+| Languages           | JS/TS, WASM    | Many                      |
 
 ## Performance Considerations
 
@@ -302,16 +302,19 @@ vercel logs -f
 Vercel pricing (as of 2025):
 
 **Hobby (Free)**:
+
 - 100GB bandwidth/month
 - 100 hours function execution/month
 - Serverless functions only
 
 **Pro ($20/month)**:
+
 - 1TB bandwidth/month
 - 1000 hours function execution/month
 - Edge functions included
 
 **Example (10K requests/month, avg 2s response)**:
+
 - Function hours: 10,000 × 2s = ~5.5 hours
 - Well within free tier
 
@@ -328,11 +331,13 @@ bun install
 ### OPENAI_API_KEY Not Found
 
 1. Verify the environment variable is set in Vercel:
+
    ```bash
    vercel env ls
    ```
 
 2. If missing, add it:
+
    ```bash
    vercel env add OPENAI_API_KEY
    ```
@@ -378,8 +383,6 @@ vercel remove your-project-name
 - [Vercel Edge Functions](https://vercel.com/docs/functions/edge-functions)
 - [Vercel CLI Documentation](https://vercel.com/docs/cli)
 - [AWS Lambda Examples](../aws/README.md)
-
-
 
 
 

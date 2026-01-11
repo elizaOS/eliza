@@ -14,11 +14,11 @@ Running Tests:
 """
 
 import os
+
 import pytest
 
 from elizaos_plugin_discord import DiscordConfig, DiscordService
 from elizaos_plugin_discord.types import Snowflake
-
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration

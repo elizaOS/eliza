@@ -72,9 +72,8 @@ export type TypedServiceClass<T extends ServiceTypeName> = {
  * }
  * ```
  */
-export interface ServiceClassMap {
-  // Extensible via module augmentation
-}
+// biome-ignore lint/complexity/noBannedTypes: Empty interface for module augmentation
+export type ServiceClassMap = {};
 
 /**
  * Helper to infer service instance type from service type name
@@ -147,8 +146,8 @@ export abstract class Service {
   }
 
   /** Stop service connection - subclasses must override this */
-  static async stop(_runtime: IAgentRuntime): Promise<void> {
-    throw new Error("Service.stop() must be implemented by subclass");
+  static async stopRuntime(_runtime: IAgentRuntime): Promise<void> {
+    throw new Error("Service.stopRuntime() must be implemented by subclass");
   }
 
   /** Optional static method to register send handlers */

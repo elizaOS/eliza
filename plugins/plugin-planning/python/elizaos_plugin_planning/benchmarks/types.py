@@ -2,12 +2,12 @@
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from uuid import UUID
 
 
 @dataclass
 class BenchmarkConfig:
     """Benchmark configuration."""
+
     realm_bench_path: Optional[str] = None
     api_bank_path: Optional[str] = None
     run_realm_bench: bool = True
@@ -23,6 +23,7 @@ class BenchmarkConfig:
 @dataclass
 class RealmBenchTask:
     """REALM-Bench task definition."""
+
     id: str
     name: str
     description: str
@@ -38,6 +39,7 @@ class RealmBenchTask:
 @dataclass
 class RealmBenchTestCase:
     """REALM-Bench test case."""
+
     task: RealmBenchTask
     input: dict[str, Any]
     expected: dict[str, Any]
@@ -46,6 +48,7 @@ class RealmBenchTestCase:
 @dataclass
 class RealmBenchResult:
     """REALM-Bench execution result."""
+
     test_case_id: str
     task_id: str
     success: bool
@@ -54,23 +57,28 @@ class RealmBenchResult:
     actions_performed: list[str]
     plan_generated: Optional[dict[str, Any]]
     error: Optional[str] = None
-    metrics: dict[str, float] = field(default_factory=lambda: {
-        "planning_time": 0.0,
-        "execution_time": 0.0,
-        "plan_quality": 0.0,
-        "goal_achievement": 0.0,
-        "efficiency": 0.0,
-    })
-    details: dict[str, Any] = field(default_factory=lambda: {
-        "plan_adaptations": 0,
-        "error_recoveries": 0,
-        "resource_usage": {},
-    })
+    metrics: dict[str, float] = field(
+        default_factory=lambda: {
+            "planning_time": 0.0,
+            "execution_time": 0.0,
+            "plan_quality": 0.0,
+            "goal_achievement": 0.0,
+            "efficiency": 0.0,
+        }
+    )
+    details: dict[str, Any] = field(
+        default_factory=lambda: {
+            "plan_adaptations": 0,
+            "error_recoveries": 0,
+            "resource_usage": {},
+        }
+    )
 
 
 @dataclass
 class RealmBenchReport:
     """REALM-Bench benchmark report."""
+
     total_tests: int
     passed_tests: int
     failed_tests: int
@@ -80,16 +88,19 @@ class RealmBenchReport:
     average_goal_achievement: float
     average_efficiency: float
     results: list[RealmBenchResult]
-    summary: dict[str, Any] = field(default_factory=lambda: {
-        "task_categories": {},
-        "common_failures": [],
-        "recommendations": [],
-    })
+    summary: dict[str, Any] = field(
+        default_factory=lambda: {
+            "task_categories": {},
+            "common_failures": [],
+            "recommendations": [],
+        }
+    )
 
 
 @dataclass
 class ApiBankApi:
     """API-Bank API definition."""
+
     name: str
     description: str
     parameters: list[dict[str, Any]]
@@ -99,6 +110,7 @@ class ApiBankApi:
 @dataclass
 class ApiBankApiCall:
     """API-Bank API call."""
+
     api: str
     parameters: dict[str, Any]
 
@@ -106,6 +118,7 @@ class ApiBankApiCall:
 @dataclass
 class ApiBankTestCase:
     """API-Bank test case."""
+
     id: str
     level: int  # 1, 2, or 3
     description: str
@@ -118,6 +131,7 @@ class ApiBankTestCase:
 @dataclass
 class ApiBankResult:
     """API-Bank test result."""
+
     test_case_id: str
     level: int
     success: bool
@@ -127,56 +141,71 @@ class ApiBankResult:
     response_generated: str
     response_expected: str
     error: Optional[str] = None
-    metrics: dict[str, float] = field(default_factory=lambda: {
-        "planning_time": 0.0,
-        "execution_time": 0.0,
-        "api_call_accuracy": 0.0,
-        "parameter_accuracy": 0.0,
-        "response_quality": 0.0,
-    })
+    metrics: dict[str, float] = field(
+        default_factory=lambda: {
+            "planning_time": 0.0,
+            "execution_time": 0.0,
+            "api_call_accuracy": 0.0,
+            "parameter_accuracy": 0.0,
+            "response_quality": 0.0,
+        }
+    )
 
 
 @dataclass
 class ApiBankReport:
     """API-Bank benchmark report."""
+
     total_tests: int
     passed_tests: int
     failed_tests: int
     results: list[ApiBankResult]
     level_breakdown: dict[int, dict[str, Any]] = field(default_factory=dict)
-    overall_metrics: dict[str, float] = field(default_factory=lambda: {
-        "average_api_call_accuracy": 0.0,
-        "average_parameter_accuracy": 0.0,
-        "average_response_quality": 0.0,
-    })
+    overall_metrics: dict[str, float] = field(
+        default_factory=lambda: {
+            "average_api_call_accuracy": 0.0,
+            "average_parameter_accuracy": 0.0,
+            "average_response_quality": 0.0,
+        }
+    )
 
 
 @dataclass
 class BenchmarkResults:
     """Comprehensive benchmark results."""
+
     metadata: dict[str, Any]
     realm_bench_results: Optional[RealmBenchReport] = None
     api_bank_results: Optional[ApiBankReport] = None
-    overall_metrics: dict[str, Any] = field(default_factory=lambda: {
-        "total_tests": 0,
-        "total_passed": 0,
-        "overall_success_rate": 0.0,
-        "average_planning_time": 0.0,
-        "average_execution_time": 0.0,
-        "memory_usage": {"peak": 0, "average": 0},
-    })
-    comparison: dict[str, Any] = field(default_factory=lambda: {
-        "planning_vs_baseline": {"improvement_rate": 0.0, "categories": []},
-        "strengths_and_weaknesses": {
-            "strengths": [],
-            "weaknesses": [],
-            "recommendations": [],
-        },
-    })
-    summary: dict[str, Any] = field(default_factory=lambda: {
-        "status": "pending",
-        "key_findings": [],
-        "performance_score": 0,
-    })
+    overall_metrics: dict[str, Any] = field(
+        default_factory=lambda: {
+            "total_tests": 0,
+            "total_passed": 0,
+            "overall_success_rate": 0.0,
+            "average_planning_time": 0.0,
+            "average_execution_time": 0.0,
+            "memory_usage": {"peak": 0, "average": 0},
+        }
+    )
+    comparison: dict[str, Any] = field(
+        default_factory=lambda: {
+            "planning_vs_baseline": {"improvement_rate": 0.0, "categories": []},
+            "strengths_and_weaknesses": {
+                "strengths": [],
+                "weaknesses": [],
+                "recommendations": [],
+            },
+        }
+    )
+    summary: dict[str, Any] = field(
+        default_factory=lambda: {
+            "status": "pending",
+            "key_findings": [],
+            "performance_score": 0,
+        }
+    )
+
+
+
 
 

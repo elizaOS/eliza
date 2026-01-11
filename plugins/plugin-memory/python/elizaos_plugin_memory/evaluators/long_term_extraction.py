@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from elizaos_plugin_memory.types import LongTermMemoryCategory, MemoryExtraction
@@ -167,7 +167,7 @@ class LongTermExtractionEvaluator:
         self,
         entity_id: UUID,
         room_id: UUID,
-        message_text: Optional[str],
+        message_text: str | None,
     ) -> bool:
         """Check if extraction should run."""
         if entity_id == self._agent_id:
@@ -272,5 +272,8 @@ class LongTermExtractionEvaluator:
 
         except Exception as e:
             logger.error("Error during long-term memory extraction: %s", e)
+
+
+
 
 

@@ -4,7 +4,6 @@ Type definitions for the Todo Plugin.
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -47,15 +46,15 @@ class NotificationType(str, Enum):
 class TodoMetadata(BaseModel):
     """Metadata stored with todos."""
 
-    created_at: Optional[str] = None
-    description: Optional[str] = None
-    due_date: Optional[str] = None
-    completed_at: Optional[str] = None
-    completed_today: Optional[bool] = None
-    last_completed_date: Optional[str] = None
-    streak: Optional[int] = None
-    recurring: Optional[RecurringPattern] = None
-    points_awarded: Optional[int] = None
+    created_at: str | None = None
+    description: str | None = None
+    due_date: str | None = None
+    completed_at: str | None = None
+    completed_today: bool | None = None
+    last_completed_date: str | None = None
+    streak: int | None = None
+    recurring: RecurringPattern | None = None
+    points_awarded: int | None = None
 
     class Config:
         """Pydantic config."""
@@ -72,13 +71,13 @@ class Todo(BaseModel):
     room_id: UUID
     entity_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     type: TaskType
-    priority: Optional[Priority] = None
+    priority: Priority | None = None
     is_urgent: bool = False
     is_completed: bool = False
-    due_date: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    due_date: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     metadata: TodoMetadata = Field(default_factory=TodoMetadata)
@@ -93,39 +92,39 @@ class CreateTodoParams(BaseModel):
     room_id: UUID
     entity_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     type: TaskType
-    priority: Optional[Priority] = None
+    priority: Priority | None = None
     is_urgent: bool = False
-    due_date: Optional[datetime] = None
-    metadata: Optional[TodoMetadata] = None
+    due_date: datetime | None = None
+    metadata: TodoMetadata | None = None
     tags: list[str] = Field(default_factory=list)
 
 
 class UpdateTodoParams(BaseModel):
     """Parameters for updating a todo."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    priority: Optional[Priority] = None
-    is_urgent: Optional[bool] = None
-    is_completed: Optional[bool] = None
-    due_date: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    metadata: Optional[TodoMetadata] = None
+    name: str | None = None
+    description: str | None = None
+    priority: Priority | None = None
+    is_urgent: bool | None = None
+    is_completed: bool | None = None
+    due_date: datetime | None = None
+    completed_at: datetime | None = None
+    metadata: TodoMetadata | None = None
 
 
 class TodoFilters(BaseModel):
     """Filter parameters for querying todos."""
 
-    agent_id: Optional[UUID] = None
-    world_id: Optional[UUID] = None
-    room_id: Optional[UUID] = None
-    entity_id: Optional[UUID] = None
-    type: Optional[TaskType] = None
-    is_completed: Optional[bool] = None
-    tags: Optional[list[str]] = None
-    limit: Optional[int] = None
+    agent_id: UUID | None = None
+    world_id: UUID | None = None
+    room_id: UUID | None = None
+    entity_id: UUID | None = None
+    type: TaskType | None = None
+    is_completed: bool | None = None
+    tags: list[str] | None = None
+    limit: int | None = None
 
 
 class ReminderMetadata(BaseModel):
@@ -134,7 +133,7 @@ class ReminderMetadata(BaseModel):
     todo_id: UUID
     todo_name: str
     reminder_type: str
-    due_date: Optional[datetime] = None
+    due_date: datetime | None = None
 
 
 class ReminderMessage(BaseModel):
@@ -143,8 +142,8 @@ class ReminderMessage(BaseModel):
     entity_id: UUID
     message: str
     priority: str  # 'low' | 'medium' | 'high'
-    platforms: Optional[list[str]] = None
-    metadata: Optional[ReminderMetadata] = None
+    platforms: list[str] | None = None
+    metadata: ReminderMetadata | None = None
 
 
 class TodoPluginConfig(BaseModel):
@@ -166,12 +165,12 @@ class TaskSelection(BaseModel):
 class TaskUpdate(BaseModel):
     """Task update properties."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    priority: Optional[Priority] = None
-    urgent: Optional[bool] = None
-    due_date: Optional[str] = None
-    recurring: Optional[RecurringPattern] = None
+    name: str | None = None
+    description: str | None = None
+    priority: Priority | None = None
+    urgent: bool | None = None
+    due_date: str | None = None
+    recurring: RecurringPattern | None = None
 
 
 class ConfirmationResponse(BaseModel):
@@ -179,6 +178,9 @@ class ConfirmationResponse(BaseModel):
 
     is_confirmation: bool
     should_proceed: bool
-    modifications: Optional[str] = None
+    modifications: str | None = None
+
+
+
 
 

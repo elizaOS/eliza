@@ -1,6 +1,6 @@
 """Repository State Provider."""
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 from elizaos_plugin_github.types import ListIssuesParams, ListPullRequestsParams, RepositoryRef
 
@@ -29,9 +29,9 @@ class RepositoryStateProvider:
 
     async def get(
         self,
-        context: ProviderContext,
+        context: ProviderContext,  # noqa: ARG002
         service: object,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get repository state context."""
         from elizaos_plugin_github.service import GitHubService
 
@@ -45,9 +45,7 @@ class RepositoryStateProvider:
                 return "GitHub repository not configured. Please set GITHUB_OWNER and GITHUB_REPO."
 
             # Fetch repository info
-            repo = await service.get_repository(
-                RepositoryRef(owner=config.owner, repo=config.repo)
-            )
+            repo = await service.get_repository(RepositoryRef(owner=config.owner, repo=config.repo))
 
             # Fetch recent open issues (limit 5)
             issues = await service.list_issues(
@@ -84,7 +82,7 @@ class RepositoryStateProvider:
             if issues:
                 parts.append("### Recent Open Issues")
                 for issue in issues:
-                    labels = ", ".join(l.name for l in issue.labels)
+                    labels = ", ".join(label.name for label in issue.labels)
                     label_str = f" [{labels}]" if labels else ""
                     parts.append(f"- #{issue.number}: {issue.title}{label_str}")
                 parts.append("")
@@ -102,5 +100,3 @@ class RepositoryStateProvider:
 
         except Exception as e:
             return f"Unable to fetch GitHub repository state: {e}"
-
-

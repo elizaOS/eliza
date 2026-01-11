@@ -1,7 +1,7 @@
 {
-  "extends": "../../tsconfig.build.template.json",
+  "extends": "../../../tsconfig.build.template.json",
   "compilerOptions": {
-    "rootDir": "./typescript",
+    "rootDir": ".",
     "outDir": "./dist/browser",
     "declaration": true,
     "declarationMap": true,
@@ -10,7 +10,6 @@
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["./typescript/**/*.ts"],
-  "exclude": ["./typescript/__tests__/**", "./typescript/**/*.test.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./__tests__/**", "./**/*.test.ts", "./dist/**", "./build.ts"]
 }
-

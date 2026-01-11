@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Relationship schema for elizaOS database
 
 /// SQL for creating the relationships table

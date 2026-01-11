@@ -1,4 +1,3 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import {
   type AgentRuntime,
   ChannelType,
@@ -13,6 +12,7 @@ import {
 } from "@elizaos/core";
 import { pgTable, serial, text, uuid } from "drizzle-orm/pg-core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -97,7 +97,7 @@ describe("Dynamic Migration Tests", () => {
     it("should create tables for the core sql plugin in the public schema", async () => {
       const db = adapter.getDatabase();
       const tables = await db.execute(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       const tableNames = tables.rows.map((r: any) => r.table_name);
       expect(tableNames).toContain("agents");
@@ -107,7 +107,7 @@ describe("Dynamic Migration Tests", () => {
     it("should create tables for the hello-world plugin", async () => {
       const db = adapter.getDatabase();
       const tables = await db.execute(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       const tableNames = tables.rows.map((r: any) => r.table_name);
       // Plugin tables are created in public schema
@@ -159,22 +159,22 @@ describe("Dynamic Migration Tests", () => {
       const memoryId = await adapter.createMemory(memory, "memories");
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved).toBeDefined();
-      expect(retrieved && retrieved.content).toEqual({
+      expect(retrieved?.content).toEqual({
         text: "Hello from dynamic schema!",
       });
     });
 
     it("should handle complex relationships in dynamic schemas", async () => {
-      const { adapter: complexAdapter, cleanup: complexCleanup } =
-        await createIsolatedTestDatabase("complex-plugin-tests", [
-          complexPlugin,
-        ]);
+      const { adapter: complexAdapter, cleanup: complexCleanup } = await createIsolatedTestDatabase(
+        "complex-plugin-tests",
+        [complexPlugin]
+      );
 
       const db = complexAdapter.getDatabase();
 
       // Check tables in public schema (where plugin tables are created)
       const tables = await db.execute(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       const tableNames = tables.rows.map((r: any) => r.table_name);
       expect(tableNames).toContain("users");

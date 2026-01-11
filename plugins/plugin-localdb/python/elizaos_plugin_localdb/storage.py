@@ -3,8 +3,6 @@ JSON file-based storage implementation for Python.
 """
 
 import json
-import os
-import shutil
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
@@ -65,7 +63,7 @@ class JSONStorage:
         """Get all items in a collection."""
         collection_dir = self._get_collection_dir(collection)
         items: List[Dict[str, Any]] = []
-        
+
         if not collection_dir.exists():
             return items
 
@@ -96,7 +94,7 @@ class JSONStorage:
         """Set an item in a collection."""
         collection_dir = self._get_collection_dir(collection)
         collection_dir.mkdir(parents=True, exist_ok=True)
-        
+
         file_path = self._get_file_path(collection, item_id)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, default=str)
@@ -124,7 +122,7 @@ class JSONStorage:
     ) -> None:
         """Delete all items matching a predicate."""
         collection_dir = self._get_collection_dir(collection)
-        
+
         if not collection_dir.exists():
             return
 
@@ -169,4 +167,3 @@ class JSONStorage:
                 return f.read()
         except IOError:
             return None
-

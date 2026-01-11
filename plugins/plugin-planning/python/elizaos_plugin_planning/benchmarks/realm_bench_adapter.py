@@ -1,10 +1,8 @@
 """REALM-Bench Adapter - Tests ElizaOS planning capabilities against REALM-Bench scenarios."""
 
-import asyncio
 import json
 import logging
 import time
-from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -22,7 +20,7 @@ logger = logging.getLogger(__name__)
 class RealmBenchAdapter:
     """
     Production-Ready REALM-Bench Adapter.
-    
+
     Tests ElizaOS planning capabilities against REALM-Bench scenarios.
     """
 
@@ -52,7 +50,9 @@ class RealmBenchAdapter:
         start_time = time.time()
         results: list[RealmBenchResult] = []
 
-        logger.info(f"[RealmBenchAdapter] Starting benchmark with {len(self.test_cases)} test cases")
+        logger.info(
+            f"[RealmBenchAdapter] Starting benchmark with {len(self.test_cases)} test cases"
+        )
 
         for test_case in self.test_cases:
             try:
@@ -226,7 +226,11 @@ class RealmBenchAdapter:
             {
                 "name": "Complex Multi-Step Planning",
                 "goal": "Coordinate multiple interdependent tasks with resource constraints",
-                "requirements": ["resource management", "dependency resolution", "parallel execution"],
+                "requirements": [
+                    "resource management",
+                    "dependency resolution",
+                    "parallel execution",
+                ],
                 "tools": ["allocate_resource", "schedule_task", "coordinate_execution"],
                 "input": (
                     "Create a comprehensive project plan with resource allocation and task coordination"
@@ -287,7 +291,11 @@ class RealmBenchAdapter:
                     "implement_solution",
                 ],
                 "input": "Help me solve the performance issues in our application",
-                "expected_actions": ["identify_problem", "generate_solutions", "implement_solution"],
+                "expected_actions": [
+                    "identify_problem",
+                    "generate_solutions",
+                    "implement_solution",
+                ],
             },
         ]
 
@@ -366,9 +374,7 @@ class RealmBenchAdapter:
 
         required_actions = test_case.expected.get("metrics", {}).get("required_actions", [])
         action_coverage = (
-            execution_result.completed_steps / len(required_actions)
-            if required_actions
-            else 1.0
+            execution_result.completed_steps / len(required_actions) if required_actions else 1.0
         )
         goal_achievement = min(1.0, action_coverage) if execution_result.success else 0
 
@@ -419,10 +425,9 @@ class RealmBenchAdapter:
             category_results = [r for r in results if r.task_id.startswith(category)]
             category_passed = len([r for r in category_results if r.success])
             task_categories[category]["success_rate"] = category_passed / len(category_results)
-            task_categories[category]["average_score"] = (
-                sum(r.metrics.get("goal_achievement", 0) for r in category_results)
-                / len(category_results)
-            )
+            task_categories[category]["average_score"] = sum(
+                r.metrics.get("goal_achievement", 0) for r in category_results
+            ) / len(category_results)
 
         # Common failures
         error_counts: dict[str, int] = {}
@@ -476,5 +481,8 @@ class RealmBenchAdapter:
         except Exception as e:
             logger.error(f"[RealmBenchAdapter] Error saving report: {e}")
             raise
+
+
+
 
 

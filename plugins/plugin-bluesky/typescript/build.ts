@@ -17,7 +17,16 @@ async function buildPlugin() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: ["@elizaos/core", "@atproto/api", "@atproto/identity", "@atproto/lexicon", "@atproto/syntax", "@atproto/xrpc", "lru-cache", "zod"],
+    external: [
+      "@elizaos/core",
+      "@atproto/api",
+      "@atproto/identity",
+      "@atproto/lexicon",
+      "@atproto/syntax",
+      "@atproto/xrpc",
+      "lru-cache",
+      "zod",
+    ],
   });
 
   // Build Browser entry
@@ -42,5 +51,3 @@ if (isWatch) {
 } else {
   await buildPlugin();
 }
-
-

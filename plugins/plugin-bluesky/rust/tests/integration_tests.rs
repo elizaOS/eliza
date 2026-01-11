@@ -1,6 +1,6 @@
 //! Integration tests for the BlueSky plugin.
 
-use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig, CreatePostRequest, TimelineRequest};
+use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig, CreatePostRequest, PostReference, TimelineRequest};
 
 fn get_test_config() -> Option<BlueSkyConfig> {
     // Try to load from environment
@@ -46,7 +46,8 @@ async fn test_client_creation() {
 async fn test_client_not_authenticated() {
     let config = BlueSkyConfig::new("test.bsky.social", "test-password").unwrap();
     let client = BlueSkyClient::new(config).unwrap();
-    assert!(!client.is_authenticated().await);
+    // Check that session is None when not authenticated
+    assert!(client.session().await.is_none());
 }
 
 #[tokio::test]
@@ -58,13 +59,16 @@ async fn test_timeline_request() {
 #[tokio::test]
 async fn test_create_post_request() {
     let request = CreatePostRequest::new("Hello, world!");
-    assert_eq!(request.content.text, "Hello, world!");
+    assert_eq!(request.text, "Hello, world!");
 }
 
 #[tokio::test]
 async fn test_create_post_request_with_reply() {
-    let request = CreatePostRequest::new("This is a reply")
-        .with_reply_to("at://did:plc:test/app.bsky.feed.post/abc".to_string(), "bafytest".to_string());
+    let mut request = CreatePostRequest::new("This is a reply");
+    request.reply_to = Some(PostReference {
+        uri: "at://did:plc:test/app.bsky.feed.post/abc".to_string(),
+        cid: "bafytest".to_string(),
+    });
 
     assert!(request.reply_to.is_some());
     let reply = request.reply_to.unwrap();

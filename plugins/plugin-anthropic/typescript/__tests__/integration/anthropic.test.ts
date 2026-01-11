@@ -5,10 +5,10 @@
  * Run with: ANTHROPIC_API_KEY=your-key bun test typescript/__tests__/integration/
  */
 
-import {  describe, expect, it, beforeAll  } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 // Check if we have an API key before running tests
-const API_KEY = process.env["ANTHROPIC_API_KEY"];
+const API_KEY = process.env.ANTHROPIC_API_KEY;
 const shouldSkip = !API_KEY;
 
 // Dynamic import to avoid errors when API key is missing
@@ -26,9 +26,9 @@ const createMockRuntime = () => ({
       case "ANTHROPIC_API_KEY":
         return API_KEY;
       case "ANTHROPIC_SMALL_MODEL":
-        return process.env["ANTHROPIC_SMALL_MODEL"];
+        return process.env.ANTHROPIC_SMALL_MODEL;
       case "ANTHROPIC_LARGE_MODEL":
-        return process.env["ANTHROPIC_LARGE_MODEL"];
+        return process.env.ANTHROPIC_LARGE_MODEL;
       default:
         return undefined;
     }
@@ -44,14 +44,14 @@ beforeAll(async () => {
     const providers = await import("../../providers/anthropic");
     createAnthropicClient = providers.createAnthropicClient;
     createAnthropicClientWithTopPSupport = providers.createAnthropicClientWithTopPSupport;
-    
+
     const json = await import("../../utils/json");
     extractAndParseJSON = json.extractAndParseJSON;
-    
+
     const config = await import("../../utils/config");
     getSmallModel = config.getSmallModel;
     getLargeModel = config.getLargeModel;
-    
+
     const ai = await import("ai");
     generateText = ai.generateText;
   }
@@ -119,7 +119,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
       const anthropic = createAnthropicClient(runtime as never);
       const modelName = getSmallModel(runtime as never);
 
-      const { text, finishReason } = await generateText({
+      const { text } = await generateText({
         model: anthropic(modelName),
         prompt: "Count from 1 to 10: 1, 2, 3,",
         maxTokens: 100,
@@ -147,10 +147,10 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
       });
 
       const parsed = extractAndParseJSON(text);
-      
+
       expect(parsed).toBeDefined();
       expect(typeof parsed).toBe("object");
-      
+
       // Check it's not an error response
       if ("type" in parsed && parsed.type === "unstructured_response") {
         throw new Error(`Failed to parse JSON: ${text}`);
@@ -178,18 +178,18 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
       });
 
       const parsed = extractAndParseJSON(text);
-      
+
       expect(parsed).toBeDefined();
       expect(typeof parsed).toBe("object");
-      
+
       // Validate structure if not an error
       if (!("type" in parsed)) {
         const obj = parsed as Record<string, unknown>;
-        expect(obj["id"]).toBeDefined();
-        expect(obj["title"]).toBeDefined();
-        expect(obj["author"]).toBeDefined();
-        expect(obj["tags"]).toBeDefined();
-        expect(Array.isArray(obj["tags"])).toBe(true);
+        expect(obj.id).toBeDefined();
+        expect(obj.title).toBeDefined();
+        expect(obj.author).toBeDefined();
+        expect(obj.tags).toBeDefined();
+        expect(Array.isArray(obj.tags)).toBe(true);
       }
     });
 
@@ -206,7 +206,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
       });
 
       const parsed = extractAndParseJSON(text);
-      
+
       expect(parsed).toBeDefined();
       expect(typeof parsed).toBe("object");
     });
@@ -250,9 +250,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
       expect(usage).toBeDefined();
       expect(usage?.promptTokens).toBeGreaterThan(0);
       expect(usage?.completionTokens).toBeGreaterThan(0);
-      expect(usage?.totalTokens).toBe(
-        (usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0)
-      );
+      expect(usage?.totalTokens).toBe((usage?.promptTokens ?? 0) + (usage?.completionTokens ?? 0));
     });
   });
 });
@@ -265,5 +263,3 @@ if (shouldSkip) {
       "ANTHROPIC_API_KEY=your-key bun test typescript/__tests__/integration/"
   );
 }
-
-

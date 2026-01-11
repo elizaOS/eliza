@@ -4,14 +4,15 @@ Pure TypeScript examples using elizaOS.
 
 ## Examples
 
-| File | Description |
-|------|-------------|
-| `chat.ts` | Interactive CLI chat with an AI agent |
+| File                | Description                                         |
+| ------------------- | --------------------------------------------------- |
+| `chat.ts`           | Interactive CLI chat with an AI agent               |
 | `adventure-game.ts` | Text adventure game with AI-powered decision making |
 
 ## Prerequisites
 
 1. Build the project (from repo root):
+
    ```bash
    bun install
    bun run build
@@ -45,15 +46,15 @@ PGLITE_DATA_DIR=./adventure-db LOG_LEVEL=fatal bun run examples/typescript/adven
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | (required) | OpenAI API key |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL |
-| `OPENAI_SMALL_MODEL` | `gpt-5-mini` | Small model |
-| `OPENAI_LARGE_MODEL` | `gpt-5` | Large model |
-| `LOG_LEVEL` | `info` | Set to `fatal` to suppress logs |
-| `PGLITE_DATA_DIR` | `memory://` | PGLite storage directory |
-| `POSTGRES_URL` | (optional) | PostgreSQL connection string |
+| Variable             | Default                     | Description                     |
+| -------------------- | --------------------------- | ------------------------------- |
+| `OPENAI_API_KEY`     | (required)                  | OpenAI API key                  |
+| `OPENAI_BASE_URL`    | `https://api.openai.com/v1` | API base URL                    |
+| `OPENAI_SMALL_MODEL` | `gpt-5-mini`                | Small model                     |
+| `OPENAI_LARGE_MODEL` | `gpt-5`                     | Large model                     |
+| `LOG_LEVEL`          | `info`                      | Set to `fatal` to suppress logs |
+| `PGLITE_DATA_DIR`    | `memory://`                 | PGLite storage directory        |
+| `POSTGRES_URL`       | (optional)                  | PostgreSQL connection string    |
 
 ## API Usage
 
@@ -100,7 +101,7 @@ await runtime.messageService.handleMessage(
       console.log(content.text);
     }
     return [];
-  }
+  },
 );
 
 // Cleanup
@@ -110,7 +111,12 @@ await runtime.stop();
 ### Adventure Game Example
 
 ```typescript
-import { AgentRuntime, ModelType, stringToUuid, bootstrapPlugin } from "@elizaos/core";
+import {
+  AgentRuntime,
+  ModelType,
+  stringToUuid,
+  bootstrapPlugin,
+} from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
@@ -140,11 +146,13 @@ await runtime.stop();
 ## Features
 
 ### Chat
+
 - Full conversation support with streaming responses
 - Embedded database via PGLite
 - Memory persistence across sessions
 
 ### Adventure Game
+
 - 7 dungeon rooms to explore
 - Items: torch, sword, golden key, health potions, treasure
 - Enemies: goblin, skeleton, dragon (final boss)
@@ -157,4 +165,3 @@ await runtime.stop();
 - `../rust-wasm/` - TypeScript examples with optional Rust-WASM interop
 - `../python/` - Python examples
 - `../rust/` - Pure Rust examples
-

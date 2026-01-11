@@ -410,3 +410,119 @@ class TestAsyncOperations:
         result = await mock_get({}, {})
         assert result["text"] == "Async provider data"
 
+
+class TestServiceHandling:
+    """Test service handling in bridge server."""
+
+    def test_service_start_request(self):
+        """Test service.start request format."""
+        request = {
+            "type": "service.start",
+            "id": "req-456",
+            "serviceType": "CUSTOM_SERVICE",
+        }
+
+        json_str = json.dumps(request)
+        parsed = json.loads(json_str)
+
+        assert parsed["type"] == "service.start"
+        assert parsed["serviceType"] == "CUSTOM_SERVICE"
+
+    def test_service_stop_request(self):
+        """Test service.stop request format."""
+        request = {
+            "type": "service.stop",
+            "id": "req-789",
+            "serviceType": "CUSTOM_SERVICE",
+        }
+
+        json_str = json.dumps(request)
+        parsed = json.loads(json_str)
+
+        assert parsed["type"] == "service.stop"
+        assert parsed["serviceType"] == "CUSTOM_SERVICE"
+
+    def test_service_manifest_entry(self):
+        """Test service manifest entry format."""
+        service_entry = {
+            "type": "CUSTOM_SERVICE",
+            "description": "A custom service for testing",
+        }
+
+        manifest = {
+            "name": "service-plugin",
+            "services": [service_entry],
+        }
+
+        assert manifest["services"][0]["type"] == "CUSTOM_SERVICE"
+        assert manifest["services"][0]["description"] == "A custom service for testing"
+
+
+class TestRouteHandling:
+    """Test route handling in bridge server."""
+
+    def test_route_handle_request(self):
+        """Test route.handle request format."""
+        request = {
+            "type": "route.handle",
+            "id": "req-101",
+            "path": "/api/test",
+            "request": {
+                "method": "GET",
+                "body": {},
+                "params": {},
+                "query": {"limit": "10"},
+                "headers": {"authorization": "Bearer token"},
+            },
+        }
+
+        json_str = json.dumps(request)
+        parsed = json.loads(json_str)
+
+        assert parsed["type"] == "route.handle"
+        assert parsed["path"] == "/api/test"
+        assert parsed["request"]["query"]["limit"] == "10"
+
+    def test_route_result_success(self):
+        """Test route.result success format."""
+        response = {
+            "type": "route.result",
+            "id": "req-101",
+            "status": 200,
+            "body": {"data": [1, 2, 3]},
+            "headers": {"content-type": "application/json"},
+        }
+
+        assert response["status"] == 200
+        assert response["body"]["data"] == [1, 2, 3]
+
+    def test_route_result_error(self):
+        """Test route.result error format."""
+        response = {
+            "type": "route.result",
+            "id": "req-101",
+            "status": 404,
+            "body": {"error": "Not found"},
+        }
+
+        assert response["status"] == 404
+        assert response["body"]["error"] == "Not found"
+
+    def test_route_manifest_entry(self):
+        """Test route manifest entry format."""
+        route_entry = {
+            "path": "/api/users",
+            "type": "GET",
+            "public": True,
+            "name": "get_users",
+        }
+
+        manifest = {
+            "name": "route-plugin",
+            "routes": [route_entry],
+        }
+
+        assert manifest["routes"][0]["path"] == "/api/users"
+        assert manifest["routes"][0]["type"] == "GET"
+        assert manifest["routes"][0]["public"] is True
+

@@ -1,16 +1,7 @@
-import {
-  type Agent,
-  type Entity,
-  logger,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
-import {
-  DIMENSION_MAP,
-  type EmbeddingDimensionColumn,
-} from "../schema/embedding";
+import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PGliteClientManager } from "./manager";
 
 /**
@@ -56,7 +47,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withEntityContext<T>(
     _entityId: UUID | null,
-    callback: (tx: PgliteDatabase) => Promise<T>,
+    callback: (tx: PgliteDatabase) => Promise<T>
   ): Promise<T> {
     // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
     // The entityId parameter is ignored since PGLite doesn't support RLS
@@ -69,16 +60,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: {
-    serverId: UUID;
-    count?: number;
-  }): Promise<Memory[]> {
+  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
-    logger.warn(
-      { src: "plugin:sql" },
-      "getMemoriesByServerId called but not implemented",
-    );
+    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
     return [];
   }
 
@@ -120,7 +105,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
       const error = new Error("Database is shutting down - operation rejected");
       logger.warn(
         { src: "plugin:sql", error: error.message },
-        "Database operation rejected during shutdown",
+        "Database operation rejected during shutdown"
       );
       throw error;
     }
@@ -153,11 +138,20 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   /**
-   * Asynchronously retrieves the connection from the client.
+   * Asynchronously retrieves the Drizzle database connection.
    *
-   * @returns {Promise<PGlite>} A Promise that resolves with the connection.
+   * @returns {Promise<PgliteDatabase>} A Promise that resolves with the Drizzle database.
    */
-  async getConnection() {
+  async getConnection(): Promise<PgliteDatabase> {
+    return this.db as PgliteDatabase;
+  }
+
+  /**
+   * Get the underlying PGlite client (for testing/advanced use).
+   *
+   * @returns {PGlite} The underlying PGlite client.
+   */
+  getRawConnection() {
     return this.manager.getConnection();
   }
 }

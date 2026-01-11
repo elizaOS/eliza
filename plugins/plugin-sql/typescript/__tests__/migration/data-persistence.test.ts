@@ -1,4 +1,3 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -15,6 +14,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 
@@ -51,8 +51,7 @@ describe("Data Persistence Through Migrations", () => {
       `);
 
       // Insert significant amount of data
-      const customerData: Array<{ id: number; name: string; email: string }> =
-        [];
+      const customerData: Array<{ id: number; name: string; email: string }> = [];
       for (let i = 1; i <= 100; i++) {
         customerData.push({
           id: i,
@@ -69,9 +68,7 @@ describe("Data Persistence Through Migrations", () => {
       }
 
       // Verify initial data
-      const initialCount = await db.execute(
-        sql`SELECT COUNT(*) as count FROM customers`,
-      );
+      const initialCount = await db.execute(sql`SELECT COUNT(*) as count FROM customers`);
       expect(Number(initialCount.rows[0].count)).toBe(100);
 
       // Step 2: Define schema with new columns
@@ -122,7 +119,7 @@ describe("Data Persistence Through Migrations", () => {
       expect(status.hasRun).toBe(true);
       expect(status.snapshots).toBeGreaterThan(0);
       expect(status.journal).toBeDefined();
-      expect(status.journal && status.journal.entries).toHaveLength(2); // One for introspection, one for migration
+      expect(status.journal?.entries).toHaveLength(2); // One for introspection, one for migration
     });
 
     it("should preserve data through column type changes that are safe", async () => {
@@ -230,14 +227,10 @@ describe("Data Persistence Through Migrations", () => {
       }
 
       // Verify initial state
-      const empCount = await db.execute(
-        sql`SELECT COUNT(*) as count FROM employees`,
-      );
+      const empCount = await db.execute(sql`SELECT COUNT(*) as count FROM employees`);
       expect(Number(empCount.rows[0].count)).toBe(50);
 
-      const deptCount = await db.execute(
-        sql`SELECT COUNT(*) as count FROM departments`,
-      );
+      const deptCount = await db.execute(sql`SELECT COUNT(*) as count FROM departments`);
       expect(Number(deptCount.rows[0].count)).toBe(4);
 
       // Define schemas with modifications
@@ -253,9 +246,7 @@ describe("Data Persistence Through Migrations", () => {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         name: text("name").notNull(),
         email: text("email").notNull().unique(),
-        department_id: integer("department_id").references(
-          () => departmentsTable.id,
-        ),
+        department_id: integer("department_id").references(() => departmentsTable.id),
         salary: numeric("salary", { precision: 10, scale: 2 }),
         hired_at: timestamp("hired_at").defaultNow(),
         position: text("position"), // New column
@@ -344,14 +335,12 @@ describe("Data Persistence Through Migrations", () => {
           {
             verbose: false,
             force: false, // Don't force destructive changes
-          },
+          }
         );
         expect(true).toBe(false); // Should not reach here
       } catch (error) {
         // Expected to fail
-        expect((error as Error).message).toContain(
-          "Destructive migration blocked",
-        );
+        expect((error as Error).message).toContain("Destructive migration blocked");
       }
 
       // Verify data is still intact after failed migration
@@ -375,11 +364,7 @@ describe("Data Persistence Through Migrations", () => {
         total: integer("total").notNull(),
       });
 
-      await migrator.migrate(
-        "@elizaos/plugin-sql",
-        { orders: ordersV1 },
-        { verbose: false },
-      );
+      await migrator.migrate("@elizaos/plugin-sql", { orders: ordersV1 }, { verbose: false });
 
       // Insert data
       for (let i = 1; i <= 5; i++) {
@@ -395,11 +380,7 @@ describe("Data Persistence Through Migrations", () => {
         customer_name: text("customer_name"),
       });
 
-      await migrator.migrate(
-        "@elizaos/plugin-sql",
-        { orders: ordersV2 },
-        { verbose: false },
-      );
+      await migrator.migrate("@elizaos/plugin-sql", { orders: ordersV2 }, { verbose: false });
 
       // Version 3: Add status and created_at
       const ordersV3 = pgTable("orders", {
@@ -410,11 +391,7 @@ describe("Data Persistence Through Migrations", () => {
         created_at: timestamp("created_at").defaultNow(),
       });
 
-      await migrator.migrate(
-        "@elizaos/plugin-sql",
-        { orders: ordersV3 },
-        { verbose: false },
-      );
+      await migrator.migrate("@elizaos/plugin-sql", { orders: ordersV3 }, { verbose: false });
 
       // Verify data persisted through all migrations
       const finalData = await db.execute(sql`
@@ -431,11 +408,11 @@ describe("Data Persistence Through Migrations", () => {
       // Verify complete migration history
       const status = await migrator.getStatus("@elizaos/plugin-sql");
       expect(status.hasRun).toBe(true);
-      expect(status.journal && status.journal.entries).toHaveLength(3); // Three migrations
+      expect(status.journal?.entries).toHaveLength(3); // Three migrations
       expect(status.snapshots).toBe(3); // Three snapshots
 
       // Verify each snapshot was saved correctly
-      const journalEntries = (status.journal && status.journal.entries) || [];
+      const journalEntries = status.journal?.entries || [];
       expect(journalEntries[0].idx).toBe(0);
       expect(journalEntries[1].idx).toBe(1);
       expect(journalEntries[2].idx).toBe(2);
@@ -491,7 +468,7 @@ describe("Data Persistence Through Migrations", () => {
             '${tagsLiteral}'::text[],
             ${profile.metadata ? `'${JSON.stringify(profile.metadata)}'::jsonb` : "NULL"}
           )
-        `),
+        `)
         );
       }
 
@@ -574,7 +551,7 @@ describe("Data Persistence Through Migrations", () => {
           const eventNum = batch * batchSize + i;
           const eventType = eventTypes[eventNum % eventTypes.length];
           values.push(
-            `('${eventType}', '{"id": ${eventNum}, "timestamp": "${new Date().toISOString()}"}')`,
+            `('${eventType}', '{"id": ${eventNum}, "timestamp": "${new Date().toISOString()}"}')`
           );
         }
 
@@ -582,14 +559,12 @@ describe("Data Persistence Through Migrations", () => {
           sql.raw(`
           INSERT INTO events (event_type, payload) 
           VALUES ${values.join(", ")}
-        `),
+        `)
         );
       }
 
       // Verify initial count
-      const initialCount = await db.execute(
-        sql`SELECT COUNT(*) as count FROM events`,
-      );
+      const initialCount = await db.execute(sql`SELECT COUNT(*) as count FROM events`);
       expect(Number(initialCount.rows[0].count)).toBe(1000);
 
       // Define schema with new columns and indexes
@@ -612,9 +587,7 @@ describe("Data Persistence Through Migrations", () => {
       });
 
       // Verify all data is preserved
-      const finalCount = await db.execute(
-        sql`SELECT COUNT(*) as count FROM events`,
-      );
+      const finalCount = await db.execute(sql`SELECT COUNT(*) as count FROM events`);
       expect(Number(finalCount.rows[0].count)).toBe(1000);
 
       // Spot check some records

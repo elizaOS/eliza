@@ -1,13 +1,16 @@
 export { FarcasterAgentManager } from "./AgentManager";
 export { FarcasterCastManager } from "./CastManager";
-export { FarcasterInteractionManager } from "./InteractionManager";
 export {
+  EmbedManager,
+  isEmbedCast,
+  isEmbedUrl,
+  type ProcessedEmbed,
+} from "./EmbedManager";
+export { FarcasterInteractionManager } from "./InteractionManager";
+export type { IInteractionProcessor } from "./InteractionProcessor";
+export {
+  createFarcasterInteractionSource,
   FarcasterInteractionSource,
   FarcasterPollingSource,
   FarcasterWebhookSource,
-  createFarcasterInteractionSource,
 } from "./InteractionSource";
-export { type IInteractionProcessor } from "./InteractionProcessor";
-export { EmbedManager, isEmbedUrl, isEmbedCast, type ProcessedEmbed } from "./EmbedManager";
-
-

@@ -4,28 +4,17 @@
  * Providers for tracking created plugins.
  */
 
-import {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-} from "@elizaos/core";
-import { getPluginCreationService } from "../utils/get-plugin-creation-service";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { PluginRegistryData } from "../types";
+import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 
 /**
  * Provider for the plugin registry.
  */
 export const pluginRegistryProvider: Provider = {
   name: "plugin_registry",
-  description:
-    "Provides information about all created plugins in the current session",
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State
-  ): Promise<ProviderResult> => {
+  description: "Provides information about all created plugins in the current session",
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const service = getPluginCreationService(runtime);
 
     if (!service) {
@@ -58,14 +47,12 @@ export const pluginRegistryProvider: Provider = {
         name,
         ...pluginStatus.get(name),
       })),
-      activeJobs: jobs.filter(
-        (j) => j.status === "running" || j.status === "pending"
-      ).length,
+      activeJobs: jobs.filter((j) => j.status === "running" || j.status === "pending").length,
     };
 
     return {
       text: `Plugin Registry: ${createdPlugins.length} plugins created, ${registryData.activeJobs} active jobs`,
-      data: registryData,
+      data: registryData as unknown as Record<string, import("@elizaos/core").ProviderValue>,
     };
   },
 };
@@ -76,11 +63,7 @@ export const pluginRegistryProvider: Provider = {
 export const pluginExistsProvider: Provider = {
   name: "plugin_exists_check",
   description: "Checks if a specific plugin has already been created",
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     const service = getPluginCreationService(runtime);
 
     if (!service) {
@@ -90,9 +73,7 @@ export const pluginExistsProvider: Provider = {
       };
     }
 
-    const pluginNameMatch = message.content.text.match(
-      /@[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+/
-    );
+    const pluginNameMatch = message.content.text.match(/@[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+/);
 
     if (!pluginNameMatch) {
       return {
@@ -116,5 +97,3 @@ export const pluginExistsProvider: Provider = {
     };
   },
 };
-
-

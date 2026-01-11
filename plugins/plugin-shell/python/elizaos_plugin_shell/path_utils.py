@@ -4,9 +4,9 @@ Path and command validation utilities for the shell plugin.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -91,20 +91,20 @@ def is_safe_command(command: str) -> bool:
     """
     # Check for path traversal patterns
     path_traversal_patterns = [
-        r"\.\./",   # ../
+        r"\.\./",  # ../
         r"\.\.\\",  # ..\
-        r"/\.\.",   # /..
+        r"/\.\.",  # /..
         r"\\\.\.",  # \..
     ]
 
     # Check for dangerous command patterns
     dangerous_patterns = [
-        r"\$\(",        # Command substitution $(
-        r"`[^']*`",     # Command substitution ` (but allow in quotes)
-        r"\|\s*sudo",   # Pipe to sudo
-        r";\s*sudo",    # Chain with sudo
-        r"&\s*&",       # && chaining
-        r"\|\s*\|",     # || chaining
+        r"\$\(",  # Command substitution $(
+        r"`[^']*`",  # Command substitution ` (but allow in quotes)
+        r"\|\s*sudo",  # Pipe to sudo
+        r";\s*sudo",  # Chain with sudo
+        r"&\s*&",  # && chaining
+        r"\|\s*\|",  # || chaining
     ]
 
     # Check for path traversal
@@ -173,5 +173,8 @@ def is_forbidden_command(
                 return True
 
     return False
+
+
+
 
 

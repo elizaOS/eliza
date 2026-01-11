@@ -4,20 +4,12 @@
  * Provides text generation using OpenAI's language models.
  */
 
-import type {
-  GenerateTextParams,
-  IAgentRuntime,
-  ModelTypeName,
-} from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { generateText, streamText, type LanguageModelUsage } from "ai";
+import { generateText, type LanguageModelUsage, streamText } from "ai";
 import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
-import {
-  getExperimentalTelemetry,
-  getLargeModel,
-  getSmallModel,
-} from "../utils/config";
+import { getExperimentalTelemetry, getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
 // ============================================================================
@@ -83,7 +75,7 @@ async function generateTextByModelType(
   // Note: gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
   // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
   const generateParams = {
-    model: openai.chat(modelName) as unknown as Parameters<typeof generateText>[0]['model'],
+    model: openai.chat(modelName) as unknown as Parameters<typeof generateText>[0]["model"],
     prompt: params.prompt,
     system: systemPrompt,
     maxOutputTokens: params.maxTokens ?? 8192,
@@ -103,7 +95,9 @@ async function generateTextByModelType(
   }
 
   // Non-streaming mode
-  const { text, usage } = await generateText(generateParams as unknown as Parameters<typeof generateText>[0]);
+  const { text, usage } = await generateText(
+    generateParams as unknown as Parameters<typeof generateText>[0]
+  );
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, params.prompt, usage);
@@ -129,12 +123,7 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextByModelType(
-    runtime,
-    params,
-    ModelType.TEXT_SMALL,
-    getSmallModel
-  );
+  return generateTextByModelType(runtime, params, ModelType.TEXT_SMALL, getSmallModel);
 }
 
 /**
@@ -150,10 +139,5 @@ export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  return generateTextByModelType(
-    runtime,
-    params,
-    ModelType.TEXT_LARGE,
-    getLargeModel
-  );
+  return generateTextByModelType(runtime, params, ModelType.TEXT_LARGE, getLargeModel);
 }

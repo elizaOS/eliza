@@ -11,8 +11,7 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos_plugin_rss.client import RssClient, RssClientError, extract_urls, format_relative_time
-from elizaos_plugin_rss.parser import create_empty_feed, parse_rss_to_json
+from elizaos_plugin_rss.client import RssClient, RssClientError
 from elizaos_plugin_rss.types import (
     FeedFormat,
     FeedItemMetadata,
@@ -55,7 +54,9 @@ class RssPlugin:
             self.config.disable_actions = True
 
         feed_format = os.environ.get("RSS_FEED_FORMAT", "csv")
-        self.config.feed_format = FeedFormat(feed_format) if feed_format in ("csv", "markdown") else FeedFormat.CSV
+        self.config.feed_format = (
+            FeedFormat(feed_format) if feed_format in ("csv", "markdown") else FeedFormat.CSV
+        )
 
         interval = os.environ.get("RSS_CHECK_INTERVAL_MINUTES")
         if interval:
@@ -78,7 +79,7 @@ class RssPlugin:
             await self.client.close()
             self.client = None
 
-    async def __aenter__(self) -> "RssPlugin":
+    async def __aenter__(self) -> RssPlugin:
         await self.start()
         return self
 
@@ -125,6 +126,7 @@ class RssPlugin:
                 feed_title = feed.title
 
         import time
+
         self.subscribed_feeds[url] = FeedSubscriptionMetadata(
             type="feed_subscription",
             subscribedAt=int(time.time() * 1000),
@@ -267,7 +269,11 @@ class RssPlugin:
                 if item.author:
                     output += f"- Author: {item.author}\n"
                 if item.description:
-                    desc = item.description[:200] + "..." if len(item.description) > 200 else item.description
+                    desc = (
+                        item.description[:200] + "..."
+                        if len(item.description) > 200
+                        else item.description
+                    )
                     output += f"- Description: {desc}\n"
                 output += "\n"
 
@@ -313,5 +319,8 @@ def get_rss_plugin() -> RssPlugin:
         RssPlugin configured from environment.
     """
     return RssPlugin()
+
+
+
 
 

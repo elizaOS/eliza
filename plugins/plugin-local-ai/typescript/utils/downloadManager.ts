@@ -1,8 +1,8 @@
-import fs from 'node:fs';
-import https from 'node:https';
-import path from 'node:path';
-import { logger } from '@elizaos/core';
-import type { ModelSpec } from '../types';
+import fs from "node:fs";
+import https from "node:https";
+import path from "node:path";
+import { logger } from "@elizaos/core";
+import type { ModelSpec } from "../types";
 
 /**
  * Class representing a Download Manager.
@@ -48,7 +48,7 @@ export class DownloadManager {
   private ensureCacheDirectory(): void {
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      logger.debug('Created cache directory');
+      logger.debug("Created cache directory");
     }
   }
 
@@ -56,10 +56,10 @@ export class DownloadManager {
    * Ensure that the models directory exists. If it does not exist, create it.
    */
   private ensureModelsDirectory(): void {
-    logger.debug('Ensuring models directory exists:', this.modelsDir);
+    logger.debug("Ensuring models directory exists:", this.modelsDir);
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
-      logger.debug('Created models directory');
+      logger.debug("Created models directory");
     }
   }
 
@@ -93,7 +93,7 @@ export class DownloadManager {
         url,
         {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
           },
           timeout: 300000, // Increase timeout to 5 minutes
         },
@@ -101,7 +101,7 @@ export class DownloadManager {
           if (response.statusCode === 301 || response.statusCode === 302) {
             const redirectUrl = response.headers.location;
             if (!redirectUrl) {
-              reject(new Error('Redirect location not found'));
+              reject(new Error("Redirect location not found"));
               return;
             }
             // logger.info(`Following redirect to: ${redirectUrl}`);
@@ -116,25 +116,25 @@ export class DownloadManager {
             return;
           }
 
-          const totalSize = Number.parseInt(response.headers['content-length'] || '0', 10);
+          const totalSize = Number.parseInt(response.headers["content-length"] || "0", 10);
           let downloadedSize = 0;
           let lastLoggedPercent = 0;
           const barLength = 30;
 
           // Log initial progress bar
           const fileName = path.basename(destPath);
-          logger.info(`Downloading ${fileName}: ${'▱'.repeat(barLength)} 0%`);
+          logger.info(`Downloading ${fileName}: ${"▱".repeat(barLength)} 0%`);
 
           const file = fs.createWriteStream(tempPath);
 
-          response.on('data', (chunk) => {
+          response.on("data", (chunk) => {
             downloadedSize += chunk.length;
             const percent = Math.round((downloadedSize / totalSize) * 100);
 
             // Only update progress bar when percentage changes significantly (every 5%)
             if (percent >= lastLoggedPercent + 5) {
               const filledLength = Math.floor((downloadedSize / totalSize) * barLength);
-              const progressBar = '▰'.repeat(filledLength) + '▱'.repeat(barLength - filledLength);
+              const progressBar = "▰".repeat(filledLength) + "▱".repeat(barLength - filledLength);
               logger.info(`Downloading ${fileName}: ${progressBar} ${percent}%`);
               lastLoggedPercent = percent;
             }
@@ -142,11 +142,11 @@ export class DownloadManager {
 
           response.pipe(file);
 
-          file.on('finish', () => {
+          file.on("finish", () => {
             file.close(() => {
               try {
                 // Show completed progress bar
-                const completedBar = '▰'.repeat(barLength);
+                const completedBar = "▰".repeat(barLength);
                 logger.info(`Downloading ${fileName}: ${completedBar} 100%`);
 
                 // Ensure the destination directory exists
@@ -240,7 +240,7 @@ export class DownloadManager {
             });
           });
 
-          file.on('error', (err) => {
+          file.on("error", (err) => {
             logger.error(`File write error: ${err instanceof Error ? err.message : String(err)}`);
             file.close(() => {
               if (fs.existsSync(tempPath)) {
@@ -260,7 +260,7 @@ export class DownloadManager {
         }
       );
 
-      request.on('error', (err) => {
+      request.on("error", (err) => {
         logger.error(`Request error: ${err instanceof Error ? err.message : String(err)}`);
         if (fs.existsSync(tempPath)) {
           try {
@@ -276,8 +276,8 @@ export class DownloadManager {
         reject(err);
       });
 
-      request.on('timeout', () => {
-        logger.error('Download timeout occurred');
+      request.on("timeout", () => {
+        logger.error("Download timeout occurred");
         request.destroy();
         if (fs.existsSync(tempPath)) {
           try {
@@ -290,7 +290,7 @@ export class DownloadManager {
         }
         // Remove from active downloads
         this.activeDownloads.delete(destPath);
-        reject(new Error('Download timeout'));
+        reject(new Error("Download timeout"));
       });
     });
   }
@@ -339,12 +339,12 @@ export class DownloadManager {
    */
   public async downloadModel(modelSpec: ModelSpec, modelPath: string): Promise<boolean> {
     try {
-      logger.info('Starting local model download...');
+      logger.info("Starting local model download...");
 
       // Ensure model directory exists
       const modelDir = path.dirname(modelPath);
       if (!fs.existsSync(modelDir)) {
-        logger.info('Creating model directory:', modelDir);
+        logger.info("Creating model directory:", modelDir);
         fs.mkdirSync(modelDir, { recursive: true });
       }
 
@@ -352,20 +352,20 @@ export class DownloadManager {
         // Try different URL patterns in sequence, similar to TTS manager approach
         const attempts = [
           {
-            description: 'LFS URL with GGUF suffix',
+            description: "LFS URL with GGUF suffix",
             url: `https://huggingface.co/${modelSpec.repo}/resolve/main/${modelSpec.name}?download=true`,
           },
           {
-            description: 'LFS URL without GGUF suffix',
-            url: `https://huggingface.co/${modelSpec.repo.replace('-GGUF', '')}/resolve/main/${modelSpec.name}?download=true`,
+            description: "LFS URL without GGUF suffix",
+            url: `https://huggingface.co/${modelSpec.repo.replace("-GGUF", "")}/resolve/main/${modelSpec.name}?download=true`,
           },
           {
-            description: 'Standard URL with GGUF suffix',
+            description: "Standard URL with GGUF suffix",
             url: `https://huggingface.co/${modelSpec.repo}/resolve/main/${modelSpec.name}`,
           },
           {
-            description: 'Standard URL without GGUF suffix',
-            url: `https://huggingface.co/${modelSpec.repo.replace('-GGUF', '')}/resolve/main/${modelSpec.name}`,
+            description: "Standard URL without GGUF suffix",
+            url: `https://huggingface.co/${modelSpec.repo.replace("-GGUF", "")}/resolve/main/${modelSpec.name}`,
           },
         ];
 
@@ -382,7 +382,7 @@ export class DownloadManager {
 
         for (const attempt of attempts) {
           try {
-            logger.info('Attempting model download:', {
+            logger.info("Attempting model download:", {
               description: attempt.description,
               url: attempt.url,
               timestamp: new Date().toISOString(),
@@ -398,7 +398,7 @@ export class DownloadManager {
             break;
           } catch (error) {
             lastError = error;
-            logger.warn('Model download attempt failed:', {
+            logger.warn("Model download attempt failed:", {
               description: attempt.description,
               error: error instanceof Error ? error.message : String(error),
               timestamp: new Date().toISOString(),
@@ -407,7 +407,7 @@ export class DownloadManager {
         }
 
         if (!downloadSuccess) {
-          throw lastError || new Error('All download attempts failed');
+          throw lastError || new Error("All download attempts failed");
         }
 
         // Return true to indicate the model was newly downloaded
@@ -415,11 +415,11 @@ export class DownloadManager {
       }
 
       // Model already exists
-      logger.info('Model already exists at:', modelPath);
+      logger.info("Model already exists at:", modelPath);
       // Return false to indicate the model already existed
       return false;
     } catch (error) {
-      logger.error('Model download failed:', {
+      logger.error("Model download failed:", {
         error: error instanceof Error ? error.message : String(error),
         modelPath: modelPath,
         model: modelSpec.name,

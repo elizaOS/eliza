@@ -37,164 +37,139 @@ export const generateImageAction = {
     callback?: HandlerCallback,
     responses?: Memory[],
   ): Promise<ActionResult> => {
-    try {
-      const allProviders =
-        (responses && responses.flatMap((res) => (res.content && res.content.providers) || [])) || [];
+    const allProviders =
+      responses?.flatMap((res) => res.content?.providers || []) || [];
 
-      state = await runtime.composeState(message, [
-        ...(allProviders ?? []),
-        "RECENT_MESSAGES",
-      ]);
+    state = await runtime.composeState(message, [
+      ...(allProviders ?? []),
+      "RECENT_MESSAGES",
+    ]);
 
-      const prompt = composePromptFromState({
-        state,
-        template:
-          (runtime.character.templates && runtime.character.templates.imageGenerationTemplate) ||
-          imageGenerationTemplate,
-      });
+    const prompt = composePromptFromState({
+      state,
+      template:
+        runtime.character.templates?.imageGenerationTemplate ||
+        imageGenerationTemplate,
+    });
 
-      const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
+    const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
 
-      // Parse XML response
-      const parsedXml = parseKeyValueXml(promptResponse);
-      const promptValue = parsedXml?.prompt;
+    // Parse XML response
+    const parsedXml = parseKeyValueXml(promptResponse);
+    const promptValue = parsedXml?.prompt;
 
-      const imagePrompt: string =
-        typeof promptValue === "string"
-          ? promptValue
-          : "Unable to generate descriptive prompt for image";
+    const imagePrompt: string =
+      typeof promptValue === "string"
+        ? promptValue
+        : "Unable to generate descriptive prompt for image";
 
-      const imageResponse = await runtime.useModel(ModelType.IMAGE, {
-        prompt: imagePrompt,
-      });
+    const imageResponse = await runtime.useModel(ModelType.IMAGE, {
+      prompt: imagePrompt,
+    });
 
-      if (
-        !imageResponse ||
-        imageResponse.length === 0 ||
-        !(imageResponse[0] && imageResponse[0].url)
-      ) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:image_generation",
-            agentId: runtime.agentId,
-            imagePrompt,
-          },
-          "Image generation failed - no valid response received",
-        );
-        return {
-          text: "Image generation failed",
-          values: {
-            success: false,
-            error: "IMAGE_GENERATION_FAILED",
-            prompt: imagePrompt,
-          },
-          data: {
-            actionName: "GENERATE_IMAGE",
-            prompt: imagePrompt,
-            rawResponse: imageResponse,
-          },
-          success: false,
-        };
-      }
-
-      const imageUrl = imageResponse[0].url;
-
-      logger.info(
-        {
-          src: "plugin:bootstrap:action:image_generation",
-          agentId: runtime.agentId,
-          imageUrl,
-        },
-        "Received image URL",
-      );
-
-      // Determine file extension from URL or default to png
-      const getFileExtension = (url: string): string => {
-        try {
-          const urlPath = new URL(url).pathname;
-          const urlPathSplit = urlPath.split(".");
-          const extension = (urlPathSplit.length > 0 && urlPathSplit[urlPathSplit.length - 1] && urlPathSplit[urlPathSplit.length - 1].toLowerCase());
-          // Common image extensions
-          if (
-            extension &&
-            ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(extension)
-          ) {
-            return extension;
-          }
-          // Extension not in allowed list, fall through to default
-        } catch (_e) {
-          // URL parsing failed (malformed URL), fall back to png
-        }
-        return "png"; // Default fallback for invalid/unknown extensions
-      };
-
-      // Create shared attachment data to avoid duplication
-      const extension = getFileExtension(imageUrl);
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, 19);
-      const fileName = `Generated_Image_${timestamp}.${extension}`;
-      const attachmentId = v4();
-
-      const responseContent = {
-        attachments: [
-          {
-            id: attachmentId,
-            url: imageUrl,
-            title: fileName,
-            contentType: ContentType.IMAGE,
-          },
-        ],
-        thought: `Generated an image based on: "${imagePrompt}"`,
-        actions: ["GENERATE_IMAGE"],
-        text: imagePrompt,
-      };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        text: "Generated image",
-        values: {
-          success: true,
-          imageGenerated: true,
-          imageUrl,
-          prompt: imagePrompt,
-        },
-        data: {
-          actionName: "GENERATE_IMAGE",
-          imageUrl,
-          prompt: imagePrompt,
-        },
-        success: true,
-      };
-    } catch (error) {
-      const err = error as Error;
+    if (
+      !imageResponse ||
+      imageResponse.length === 0 ||
+      !imageResponse[0]?.url
+    ) {
       logger.error(
         {
           src: "plugin:bootstrap:action:image_generation",
           agentId: runtime.agentId,
-          error: err.message,
+          imagePrompt,
         },
-        "Exception during image generation",
+        "Image generation failed - no valid response received",
       );
       return {
         text: "Image generation failed",
         values: {
           success: false,
           error: "IMAGE_GENERATION_FAILED",
+          prompt: imagePrompt,
         },
         data: {
           actionName: "GENERATE_IMAGE",
-          errorMessage: err.message,
+          prompt: imagePrompt,
+          rawResponse: imageResponse,
         },
         success: false,
       };
     }
+
+    const imageUrl = imageResponse[0].url;
+
+    logger.info(
+      {
+        src: "plugin:bootstrap:action:image_generation",
+        agentId: runtime.agentId,
+        imageUrl,
+      },
+      "Received image URL",
+    );
+
+    // Determine file extension from URL or default to png
+    const getFileExtension = (url: string): string => {
+      const urlPath = new URL(url).pathname;
+      const urlPathSplit = urlPath.split(".");
+      const extension =
+        urlPathSplit.length > 0 &&
+        urlPathSplit[urlPathSplit.length - 1] &&
+        urlPathSplit[urlPathSplit.length - 1].toLowerCase();
+      // Common image extensions
+      if (
+        extension &&
+        ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(extension)
+      ) {
+        return extension;
+      }
+      // Extension not in allowed list, default to png
+      return "png";
+    };
+
+    // Create shared attachment data to avoid duplication
+    const extension = getFileExtension(imageUrl);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+    const fileName = `Generated_Image_${timestamp}.${extension}`;
+    const attachmentId = v4();
+
+    const responseContent = {
+      attachments: [
+        {
+          id: attachmentId,
+          url: imageUrl,
+          title: fileName,
+          contentType: ContentType.IMAGE,
+        },
+      ],
+      thought: `Generated an image based on: "${imagePrompt}"`,
+      actions: ["GENERATE_IMAGE"],
+      text: imagePrompt,
+    };
+
+    if (callback) {
+      await callback(responseContent);
+    }
+
+    return {
+      text: "Generated image",
+      values: {
+        success: true,
+        imageGenerated: true,
+        imageUrl,
+        prompt: imagePrompt,
+      },
+      data: {
+        actionName: "GENERATE_IMAGE",
+        imageUrl,
+        prompt: imagePrompt,
+      },
+      success: true,
+    };
   },
   examples: [
     [

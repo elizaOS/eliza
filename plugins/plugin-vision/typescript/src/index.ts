@@ -1,21 +1,21 @@
 // Vision plugin -- gives an agent visual perception through camera integration
-import { Plugin } from '@elizaos/core';
-import { VisionService } from './service';
-import { visionProvider } from './provider';
+import type { Plugin } from "@elizaos/core";
 import {
-  describeSceneAction,
   captureImageAction,
-  killAutonomousAction,
-  setVisionModeAction,
-  nameEntityAction,
+  describeSceneAction,
   identifyPersonAction,
+  killAutonomousAction,
+  nameEntityAction,
+  setVisionModeAction,
   trackEntityAction,
-} from './action';
-import { testSuites } from './tests/e2e/index';
+} from "./action";
+import { visionProvider } from "./provider";
+import { VisionService } from "./service";
+import { testSuites } from "./tests/e2e/index";
 
 export const visionPlugin: Plugin = {
-  name: 'vision',
-  description: 'Provides visual perception through camera integration and scene analysis',
+  name: "vision",
+  description: "Provides visual perception through camera integration and scene analysis",
   services: [VisionService],
   providers: [visionProvider],
   actions: [

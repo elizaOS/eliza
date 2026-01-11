@@ -4,7 +4,7 @@
  * These tests verify the plugin exports and structure without making API calls.
  */
 
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 
 describe("Anthropic Plugin Structure", () => {
   it("should export anthropicPlugin with correct structure", async () => {
@@ -128,5 +128,3 @@ describe("Type Guards", () => {
     expect(createModelName("claude-3-5-haiku")).toBe("claude-3-5-haiku");
   });
 });
-
-

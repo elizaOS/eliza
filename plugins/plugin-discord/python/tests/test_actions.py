@@ -7,9 +7,9 @@ from elizaos_plugin_discord.actions import (
     ActionResult,
     get_all_actions,
 )
-from elizaos_plugin_discord.actions.send_message import SendMessageAction
-from elizaos_plugin_discord.actions.send_dm import SendDmAction
 from elizaos_plugin_discord.actions.add_reaction import AddReactionAction
+from elizaos_plugin_discord.actions.send_dm import SendDmAction
+from elizaos_plugin_discord.actions.send_message import SendMessageAction
 
 
 class TestActionResult:

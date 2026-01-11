@@ -42,6 +42,9 @@ uuid = { version = "1.19", features = ["v4", "serde"] }
 # Regex for parsing
 regex = "1.10"
 
+# Lazy static initialization
+once_cell = "1.19"
+
 # Date/time handling
 chrono = { version = "0.4", features = ["serde"] }
 

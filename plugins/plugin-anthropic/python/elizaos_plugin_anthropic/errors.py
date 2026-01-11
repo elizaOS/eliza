@@ -132,5 +132,3 @@ class ServerError(AnthropicError):
     def is_retryable(self) -> bool:
         """Server errors can be retried."""
         return True
-
-

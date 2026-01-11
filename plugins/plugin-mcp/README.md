@@ -70,27 +70,27 @@ MCP supports multiple transport types for connecting to servers. Each type has i
 ### Transport Types
 
 - **`streamable-http`** or **`http`** - Modern Streamable HTTP transport (recommended)
-- **`sse`** - Legacy Server-Sent Events transport (deprecated, use `streamable-http` instead)  
+- **`sse`** - Legacy Server-Sent Events transport (deprecated, use `streamable-http` instead)
 - **`stdio`** - Process-based transport using standard input/output
 
 ### HTTP Transport Options (streamable-http, http, sse)
 
-| Option    | Type   | Description                            |
-| --------- | ------ | -------------------------------------- |
+| Option    | Type   | Description                                         |
+| --------- | ------ | --------------------------------------------------- |
 | `type`    | string | Transport type: "streamable-http", "http", or "sse" |
-| `url`     | string | The URL of the HTTP/SSE endpoint       |
-| `timeout` | number | _Optional_ Timeout for connections     |
+| `url`     | string | The URL of the HTTP/SSE endpoint                    |
+| `timeout` | number | _Optional_ Timeout for connections                  |
 
 ### stdio Transport Options
 
-| Option           | Type     | Description                                       |
-| ---------------- | -------- | ------------------------------------------------- |
-| `type`           | string   | Must be "stdio"                                   |
-| `command`        | string   | _Optional_ The command to run the MCP server      |
-| `args`           | string[] | _Optional_ Command-line arguments for the server  |
-| `env`            | object   | _Optional_ Environment variables to pass to the server |
-| `cwd`            | string   | _Optional_ Working directory to run the server in |
-| `timeoutInMillis`| number   | _Optional_ Timeout in milliseconds for tool calls |
+| Option            | Type     | Description                                            |
+| ----------------- | -------- | ------------------------------------------------------ |
+| `type`            | string   | Must be "stdio"                                        |
+| `command`         | string   | _Optional_ The command to run the MCP server           |
+| `args`            | string[] | _Optional_ Command-line arguments for the server       |
+| `env`             | object   | _Optional_ Environment variables to pass to the server |
+| `cwd`             | string   | _Optional_ Working directory to run the server in      |
+| `timeoutInMillis` | number   | _Optional_ Timeout in milliseconds for tool calls      |
 
 ### Example Configuration
 
@@ -153,42 +153,42 @@ graph TD
     %% MCP Server Validation
     action --> check{MCP Servers Available?}
     check -->|No| fail[Return No Tools Available]
-    
+
     %% Tool Selection Flow
     check -->|Yes| state[Get MCP Provider Data]
     state --> prompt[Create Tool Selection Prompt]
-    
+
     %% First Model Use - Tool Selection
     prompt --> model1[Use Language Model for Tool Selection]
     model1 --> parse[Parse Selection]
     parse --> retry{Valid Selection?}
-    
+
     %% Second Model Use - Retry Selection
     retry -->|No| feedback[Generate Feedback]
     feedback --> model2[Use Language Model for Retry]
     model2 --> parse
-    
+
     %% Tool Selection Result
     retry -->|Yes| toolAvailable{Tool Available?}
     toolAvailable -->|No| fallback[Fallback Response]
-    
+
     %% Tool Execution Flow
     toolAvailable -->|Yes| callTool[Call MCP Tool]
     callTool --> processResult[Process Tool Result]
-    
+
     %% Memory Creation
     processResult --> createMemory[Create Memory Record]
     createMemory --> reasoningPrompt[Create Reasoning Prompt]
-    
+
     %% Third Model Use - Response Generation
     reasoningPrompt --> model3[Use Language Model for Response]
     model3 --> respondToUser[Send Response to User]
-    
+
     %% Styling
     classDef model fill:#f9f,stroke:#333,stroke-width:2px;
     classDef decision fill:#bbf,stroke:#333,stroke-width:2px;
     classDef output fill:#bfb,stroke:#333,stroke-width:2px;
-    
+
     class model1,model2,model3 model;
     class check,retry,toolAvailable decision;
     class respondToUser,fallback output;

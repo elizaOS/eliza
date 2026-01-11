@@ -480,7 +480,7 @@ adzeStore.addListener(
   (log: { data?: { message?: string | unknown[]; level?: number } }) => {
     try {
       const d = log.data;
-      const dMessage = d && d.message;
+      const dMessage = d?.message;
       const msg = Array.isArray(dMessage)
         ? dMessage
             .map((m: unknown) => (typeof m === "string" ? m : safeStringify(m)))
@@ -491,7 +491,7 @@ adzeStore.addListener(
 
       const entry: LogEntry = {
         time: Date.now(),
-        level: (d && typeof d.level === "number") ? d.level : undefined,
+        level: d && typeof d.level === "number" ? d.level : undefined,
         msg,
       };
       globalInMemoryDestination.write(entry);
@@ -750,7 +750,6 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     typeof level === "number" ? "info" : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
 
-
   /**
    * Invoke Adze method with error capture
    */
@@ -910,7 +909,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Clear console and memory buffer
    */
   const clear = (): void => {
-    const consoleClear = console && console.clear;
+    const consoleClear = console?.clear;
     if (typeof consoleClear === "function") {
       consoleClear();
     }

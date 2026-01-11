@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! S3 Storage Plugin for elizaOS
 //!
 //! This crate provides AWS S3 and S3-compatible storage integration for elizaOS agents.
@@ -126,5 +127,10 @@ pub async fn get_s3_storage_plugin() -> AnyhowResult<S3StoragePlugin> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create S3 storage plugin: {}", e))
 }
+
+
+
+
+
 
 

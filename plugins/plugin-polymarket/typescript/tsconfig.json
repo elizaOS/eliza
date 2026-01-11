@@ -5,7 +5,7 @@
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -22,12 +22,7 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
     "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../../core/src"],
-      "@elizaos/core/*": ["../../core/src/*"]
-    }
+    "noUnusedParameters": false
   },
   "include": ["./**/*.ts"],
   "exclude": ["dist", "node_modules", "__tests__"]

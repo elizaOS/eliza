@@ -62,8 +62,7 @@ export const MAX_BRIDGE_POLL_ATTEMPTS = 60 as const;
 /**
  * Native token address (zero address)
  */
-export const NATIVE_TOKEN_ADDRESS =
-  "0x0000000000000000000000000000000000000000" as const;
+export const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 /**
  * Chain name mapping for Bebop aggregator

@@ -1,9 +1,9 @@
-import { describe, expect, test } from 'bun:test';
-import { parseRssToJson, createEmptyFeed } from '../parser';
-import { extractUrls, formatRelativeTime } from '../utils';
+import { describe, expect, test } from "bun:test";
+import { createEmptyFeed, parseRssToJson } from "../parser";
+import { extractUrls, formatRelativeTime } from "../utils";
 
-describe('RSS Parser', () => {
-  test('should parse basic RSS 2.0 feed', () => {
+describe("RSS Parser", () => {
+  test("should parse basic RSS 2.0 feed", () => {
     const xml = `<?xml version="1.0"?>
       <rss version="2.0">
         <channel>
@@ -22,15 +22,15 @@ describe('RSS Parser', () => {
 
     const feed = parseRssToJson(xml);
 
-    expect(feed.title).toBe('Test Feed');
-    expect(feed.link).toBe('https://example.com');
-    expect(feed.description).toBe('A test RSS feed');
+    expect(feed.title).toBe("Test Feed");
+    expect(feed.link).toBe("https://example.com");
+    expect(feed.description).toBe("A test RSS feed");
     expect(feed.items.length).toBe(1);
-    expect(feed.items[0].title).toBe('Test Article');
-    expect(feed.items[0].guid).toBe('article-1');
+    expect(feed.items[0].title).toBe("Test Article");
+    expect(feed.items[0].guid).toBe("article-1");
   });
 
-  test('should parse RSS with multiple categories', () => {
+  test("should parse RSS with multiple categories", () => {
     const xml = `<?xml version="1.0"?>
       <rss version="2.0">
         <channel>
@@ -47,12 +47,12 @@ describe('RSS Parser', () => {
     const feed = parseRssToJson(xml);
 
     expect(feed.items.length).toBe(1);
-    expect(feed.items[0].category).toContain('Tech');
-    expect(feed.items[0].category).toContain('News');
-    expect(feed.items[0].category).toContain('AI');
+    expect(feed.items[0].category).toContain("Tech");
+    expect(feed.items[0].category).toContain("News");
+    expect(feed.items[0].category).toContain("AI");
   });
 
-  test('should parse RSS with enclosure', () => {
+  test("should parse RSS with enclosure", () => {
     const xml = `<?xml version="1.0"?>
       <rss version="2.0">
         <channel>
@@ -68,11 +68,11 @@ describe('RSS Parser', () => {
 
     expect(feed.items.length).toBe(1);
     expect(feed.items[0].enclosure).not.toBeNull();
-    expect(feed.items[0].enclosure?.url).toBe('https://example.com/ep1.mp3');
-    expect(feed.items[0].enclosure?.type).toBe('audio/mpeg');
+    expect(feed.items[0].enclosure?.url).toBe("https://example.com/ep1.mp3");
+    expect(feed.items[0].enclosure?.type).toBe("audio/mpeg");
   });
 
-  test('should parse RSS with CDATA', () => {
+  test("should parse RSS with CDATA", () => {
     const xml = `<?xml version="1.0"?>
       <rss version="2.0">
         <channel>
@@ -87,94 +87,92 @@ describe('RSS Parser', () => {
     const feed = parseRssToJson(xml);
 
     expect(feed.items.length).toBe(1);
-    expect(feed.items[0].description).toContain('<p>HTML content here</p>');
+    expect(feed.items[0].description).toContain("<p>HTML content here</p>");
   });
 
-  test('should create empty feed', () => {
+  test("should create empty feed", () => {
     const feed = createEmptyFeed();
 
-    expect(feed.title).toBe('');
+    expect(feed.title).toBe("");
     expect(feed.items).toEqual([]);
   });
 });
 
-describe('URL Extraction', () => {
-  test('should extract HTTP URLs', () => {
-    const text = 'Check out https://example.com and http://test.com for more.';
+describe("URL Extraction", () => {
+  test("should extract HTTP URLs", () => {
+    const text = "Check out https://example.com and http://test.com for more.";
     const urls = extractUrls(text);
 
     expect(urls.length).toBe(2);
-    expect(urls.some(u => u.includes('example.com'))).toBe(true);
-    expect(urls.some(u => u.includes('test.com'))).toBe(true);
+    expect(urls.some((u) => u.includes("example.com"))).toBe(true);
+    expect(urls.some((u) => u.includes("test.com"))).toBe(true);
   });
 
-  test('should extract www URLs', () => {
-    const text = 'Visit www.example.com for details.';
+  test("should extract www URLs", () => {
+    const text = "Visit www.example.com for details.";
     const urls = extractUrls(text);
 
     expect(urls.length).toBe(1);
-    expect(urls[0].startsWith('http://www.example.com')).toBe(true);
+    expect(urls[0].startsWith("http://www.example.com")).toBe(true);
   });
 
-  test('should extract URLs with paths', () => {
-    const text = 'Read https://example.com/blog/post-1?id=123';
+  test("should extract URLs with paths", () => {
+    const text = "Read https://example.com/blog/post-1?id=123";
     const urls = extractUrls(text);
 
     expect(urls.length).toBe(1);
-    expect(urls[0]).toContain('example.com/blog/post-1');
+    expect(urls[0]).toContain("example.com/blog/post-1");
   });
 
-  test('should strip trailing punctuation', () => {
-    const text = 'See https://example.com. Also https://test.com!';
+  test("should strip trailing punctuation", () => {
+    const text = "See https://example.com. Also https://test.com!";
     const urls = extractUrls(text);
 
     expect(urls.length).toBe(2);
-    expect(urls.every(u => !u.endsWith('.') && !u.endsWith('!'))).toBe(true);
+    expect(urls.every((u) => !u.endsWith(".") && !u.endsWith("!"))).toBe(true);
   });
 
-  test('should deduplicate URLs', () => {
-    const text = 'Visit https://example.com and https://example.com again.';
+  test("should deduplicate URLs", () => {
+    const text = "Visit https://example.com and https://example.com again.";
     const urls = extractUrls(text);
 
     expect(urls.length).toBe(1);
   });
 
-  test('should handle text with no URLs', () => {
-    const text = 'This text has no URLs.';
+  test("should handle text with no URLs", () => {
+    const text = "This text has no URLs.";
     const urls = extractUrls(text);
 
     expect(urls.length).toBe(0);
   });
 });
 
-describe('Relative Time Formatting', () => {
-  test('should format just now', () => {
+describe("Relative Time Formatting", () => {
+  test("should format just now", () => {
     const now = Date.now();
     const result = formatRelativeTime(now - 30000); // 30 seconds ago
 
-    expect(result).toBe('just now');
+    expect(result).toBe("just now");
   });
 
-  test('should format minutes ago', () => {
+  test("should format minutes ago", () => {
     const now = Date.now();
     const result = formatRelativeTime(now - 5 * 60000); // 5 minutes ago
 
-    expect(result).toContain('5 minute');
+    expect(result).toContain("5 minute");
   });
 
-  test('should format hours ago', () => {
+  test("should format hours ago", () => {
     const now = Date.now();
     const result = formatRelativeTime(now - 3 * 60 * 60000); // 3 hours ago
 
-    expect(result).toContain('3 hour');
+    expect(result).toContain("3 hour");
   });
 
-  test('should format days ago', () => {
+  test("should format days ago", () => {
     const now = Date.now();
     const result = formatRelativeTime(now - 2 * 24 * 60 * 60000); // 2 days ago
 
-    expect(result).toContain('2 day');
+    expect(result).toContain("2 day");
   });
 });
-
-

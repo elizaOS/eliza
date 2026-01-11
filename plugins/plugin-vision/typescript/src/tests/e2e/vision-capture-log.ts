@@ -1,34 +1,35 @@
-import type { TestSuite, IAgentRuntime } from '@elizaos/core';
-import { VisionService } from '../../service';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+// @ts-nocheck
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import type { IAgentRuntime, TestSuite } from "@elizaos/core";
+import type { VisionService } from "../../service";
 
 export class VisionCaptureLogTestSuite implements TestSuite {
-  name = 'plugin-vision-capture-log';
-  description = 'Captures 30 seconds of vision data and saves to logs for analysis';
+  name = "plugin-vision-capture-log";
+  description = "Captures 30 seconds of vision data and saves to logs for analysis";
 
   tests = [
     {
-      name: 'Should capture and log 30 seconds of vision data',
+      name: "Should capture and log 30 seconds of vision data",
       fn: async (runtime: IAgentRuntime) => {
-        console.log('Starting 30-second vision capture test...');
+        console.log("Starting 30-second vision capture test...");
 
-        const visionService = runtime.getService<VisionService>('VISION');
+        const visionService = runtime.getService<VisionService>("VISION");
         if (!visionService) {
-          throw new Error('Vision service not available');
+          throw new Error("Vision service not available");
         }
 
         if (!visionService.isActive()) {
-          console.warn('⚠️  Vision service not active - no camera available');
-          console.log('   Cannot capture vision data without a camera');
+          console.warn("⚠️  Vision service not active - no camera available");
+          console.log("   Cannot capture vision data without a camera");
           return;
         }
 
         // Create logs directory if it doesn't exist
-        const logsDir = path.join(process.cwd(), 'logs');
+        const logsDir = path.join(process.cwd(), "logs");
         const sessionDir = path.join(
           logsDir,
-          `vision-capture-${new Date().toISOString().replace(/[:.]/g, '-')}`
+          `vision-capture-${new Date().toISOString().replace(/[:.]/g, "-")}`
         );
         await fs.mkdir(sessionDir, { recursive: true });
 
@@ -38,13 +39,13 @@ export class VisionCaptureLogTestSuite implements TestSuite {
         const captureData = {
           sessionId: `vision-capture-${Date.now()}`,
           startTime: new Date().toISOString(),
-          endTime: '',
+          endTime: "",
           runtime: {
             agentId: runtime.agentId,
             characterName: runtime.character.name,
           },
           camera: visionService.getCameraInfo(),
-          captures: [] as any[],
+          captures: [] as Array<{ timestamp: number; sceneDescription: string }>,
           statistics: {
             totalFrames: 0,
             totalSceneChanges: 0,
@@ -84,7 +85,7 @@ export class VisionCaptureLogTestSuite implements TestSuite {
             const imageBuffer = await visionService.captureImage();
             let imageBase64: string | null = null;
             if (imageBuffer) {
-              imageBase64 = imageBuffer.toString('base64');
+              imageBase64 = imageBuffer.toString("base64");
             }
 
             const capture = {
@@ -120,9 +121,9 @@ export class VisionCaptureLogTestSuite implements TestSuite {
             if (imageBase64) {
               const imagePath = path.join(
                 sessionDir,
-                `capture-${String(captureCount).padStart(3, '0')}.jpg`
+                `capture-${String(captureCount).padStart(3, "0")}.jpg`
               );
-              await fs.writeFile(imagePath, Buffer.from(imageBase64, 'base64'));
+              await fs.writeFile(imagePath, Buffer.from(imageBase64, "base64"));
             }
 
             // Update statistics
@@ -152,7 +153,7 @@ export class VisionCaptureLogTestSuite implements TestSuite {
               // Save detailed scene log
               const sceneLogPath = path.join(
                 sessionDir,
-                `scene-${String(captureCount).padStart(3, '0')}.json`
+                `scene-${String(captureCount).padStart(3, "0")}.json`
               );
               await fs.writeFile(
                 sceneLogPath,
@@ -223,11 +224,11 @@ export class VisionCaptureLogTestSuite implements TestSuite {
             : 0;
 
         // Save main capture log
-        const mainLogPath = path.join(sessionDir, 'vision-capture-summary.json');
+        const mainLogPath = path.join(sessionDir, "vision-capture-summary.json");
         await fs.writeFile(mainLogPath, JSON.stringify(captureData, null, 2));
 
         // Generate markdown report
-        const reportPath = path.join(sessionDir, 'vision-capture-report.md');
+        const reportPath = path.join(sessionDir, "vision-capture-report.md");
         const report = `# Vision Capture Report
 
 ## Session Information
@@ -238,8 +239,8 @@ export class VisionCaptureLogTestSuite implements TestSuite {
 - **Agent**: ${captureData.runtime.characterName} (${captureData.runtime.agentId})
 
 ## Camera Information
-- **Name**: ${captureData.camera?.name || 'Unknown'}
-- **ID**: ${captureData.camera?.id || 'Unknown'}
+- **Name**: ${captureData.camera?.name || "Unknown"}
+- **ID**: ${captureData.camera?.id || "Unknown"}
 
 ## Capture Statistics
 - **Total Frames Captured**: ${captureCount}
@@ -253,14 +254,14 @@ ${
   Object.entries(captureData.statistics.objectTypeCounts)
     .sort(([, a], [, b]) => b - a)
     .map(([type, count]) => `- **${type}**: ${count} detections`)
-    .join('\n') || '- No objects detected'
+    .join("\n") || "- No objects detected"
 }
 
 ## Pose Distribution
 ${
   Object.entries(captureData.statistics.poseCounts)
     .map(([pose, count]) => `- **${pose}**: ${count} detections`)
-    .join('\n') || '- No people detected'
+    .join("\n") || "- No people detected"
 }
 
 ## Sample Scene Descriptions
@@ -274,7 +275,7 @@ ${captureData.captures
 - Objects: ${c.scene.objectCount}
 - People: ${c.scene.peopleCount}`
   )
-  .join('\n\n')}
+  .join("\n\n")}
 
 ## Files Generated
 - \`vision-capture-summary.json\` - Complete capture data
@@ -285,8 +286,8 @@ ${captureData.captures
 
         await fs.writeFile(reportPath, report);
 
-        console.log('\n✅ Vision capture test completed!');
-        console.log('📊 Capture Summary:');
+        console.log("\n✅ Vision capture test completed!");
+        console.log("📊 Capture Summary:");
         console.log(`   - Total frames: ${captureCount}`);
         console.log(`   - Scene changes: ${captureData.statistics.totalSceneChanges}`);
         console.log(
@@ -295,12 +296,12 @@ ${captureData.captures
         console.log(`   - Objects detected: ${captureData.statistics.totalObjectsDetected}`);
         console.log(`   - People detected: ${captureData.statistics.totalPeopleDetected}`);
         console.log(`\n📁 Results saved to: ${sessionDir}`);
-        console.log('   - Summary: vision-capture-summary.json');
-        console.log('   - Report: vision-capture-report.md');
-        console.log('   - Images: capture-XXX.jpg');
-        console.log('   - Scene data: scene-XXX.json');
+        console.log("   - Summary: vision-capture-summary.json");
+        console.log("   - Report: vision-capture-report.md");
+        console.log("   - Images: capture-XXX.jpg");
+        console.log("   - Scene data: scene-XXX.json");
 
-        console.log('✅ Vision capture log test PASSED');
+        console.log("✅ Vision capture log test PASSED");
       },
     },
   ];

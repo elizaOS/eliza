@@ -55,8 +55,7 @@ export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {
   const placeId = runtime.getSetting("ROBLOX_PLACE_ID") as string | undefined;
   const webhookSecret = runtime.getSetting("ROBLOX_WEBHOOK_SECRET") as string | undefined;
   const messagingTopic =
-    (runtime.getSetting("ROBLOX_MESSAGING_TOPIC") as string) ||
-    ROBLOX_DEFAULTS.MESSAGING_TOPIC;
+    (runtime.getSetting("ROBLOX_MESSAGING_TOPIC") as string) || ROBLOX_DEFAULTS.MESSAGING_TOPIC;
   const pollIntervalStr = runtime.getSetting("ROBLOX_POLL_INTERVAL") as string | undefined;
   const pollInterval = pollIntervalStr
     ? parseInt(pollIntervalStr, 10)
@@ -74,5 +73,3 @@ export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {
     dryRun,
   };
 }
-
-

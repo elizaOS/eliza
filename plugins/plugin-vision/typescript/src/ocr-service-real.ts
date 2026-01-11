@@ -1,7 +1,7 @@
-import { logger } from '@elizaos/core';
-import Tesseract from 'tesseract.js';
-import type { OCRResult, ScreenTile, BoundingBox } from './types';
-import sharp from 'sharp';
+import { logger } from "@elizaos/core";
+import sharp from "sharp";
+import Tesseract from "tesseract.js";
+import type { BoundingBox, OCRResult, ScreenTile } from "./types";
 
 export class RealOCRService {
   private worker: Tesseract.Worker | null = null;
@@ -24,21 +24,21 @@ export class RealOCRService {
 
   private async _initialize(): Promise<void> {
     try {
-      logger.info('[RealOCR] Initializing Tesseract.js...');
+      logger.info("[RealOCR] Initializing Tesseract.js...");
 
       // Create worker
-      this.worker = await Tesseract.createWorker('eng', 1, {
+      this.worker = await Tesseract.createWorker("eng", 1, {
         logger: (m) => {
-          if (m.status === 'recognizing text') {
+          if (m.status === "recognizing text") {
             logger.debug(`[RealOCR] Progress: ${(m.progress * 100).toFixed(1)}%`);
           }
         },
       });
 
       this.initialized = true;
-      logger.info('[RealOCR] Tesseract.js initialized successfully');
+      logger.info("[RealOCR] Tesseract.js initialized successfully");
     } catch (error) {
-      logger.error('[RealOCR] Failed to initialize:', error);
+      logger.error("[RealOCR] Failed to initialize:", error);
       throw error;
     }
   }
@@ -49,7 +49,7 @@ export class RealOCRService {
     }
 
     if (!this.worker) {
-      throw new Error('OCR worker not initialized');
+      throw new Error("OCR worker not initialized");
     }
 
     try {
@@ -62,7 +62,7 @@ export class RealOCRService {
       // Convert Tesseract result to our format
       return this.convertTesseractResult(result);
     } catch (error) {
-      logger.error('[RealOCR] Text extraction failed:', error);
+      logger.error("[RealOCR] Text extraction failed:", error);
       throw error;
     }
   }
@@ -70,9 +70,9 @@ export class RealOCRService {
   async extractFromTile(tile: ScreenTile): Promise<OCRResult> {
     if (!tile.data) {
       return {
-        text: '',
+        text: "",
         blocks: [],
-        fullText: '',
+        fullText: "",
       };
     }
 
@@ -90,16 +90,27 @@ export class RealOCRService {
 
       return processed;
     } catch (error) {
-      logger.warn('[RealOCR] Image preprocessing failed, using original:', error);
+      logger.warn("[RealOCR] Image preprocessing failed, using original:", error);
       return imageBuffer;
     }
   }
 
   private convertTesseractResult(result: Tesseract.RecognizeResult): OCRResult {
-    const blocks: OCRResult['blocks'] = [];
+    const blocks: OCRResult["blocks"] = [];
 
-    // Process lines as blocks
-    const lines = (result.data as any).lines || [];
+    // Process lines as blocks - Tesseract result.data has lines property
+    interface TesseractLine {
+      text: string;
+      confidence: number;
+      bbox: { x0: number; y0: number; x1: number; y1: number };
+      words: Array<{
+        text: string;
+        confidence: number;
+        bbox: { x0: number; y0: number; x1: number; y1: number };
+      }>;
+    }
+    const data = result.data as { lines?: TesseractLine[]; text: string };
+    const lines = data.lines || [];
     for (const line of lines) {
       if (line.confidence > 30) {
         // Filter low confidence
@@ -112,7 +123,7 @@ export class RealOCRService {
             height: line.bbox.y1 - line.bbox.y0,
           },
           confidence: line.confidence / 100,
-          words: line.words.map((word: any) => ({
+          words: line.words.map((word) => ({
             text: word.text,
             bbox: {
               x: word.bbox.x0,
@@ -162,7 +173,7 @@ export class RealOCRService {
       if (!rows.has(rowY)) {
         rows.set(rowY, []);
       }
-      rows.get(rowY)!.push(block);
+      rows.get(rowY)?.push(block);
     }
 
     // Find potential tables (multiple aligned rows)
@@ -223,7 +234,7 @@ export class RealOCRService {
 
       // Check if this looks like a label
       if (current.text.match(/[:：]\s*$/)) {
-        const label = current.text.replace(/[:：]\s*$/, '').trim();
+        const label = current.text.replace(/[:：]\s*$/, "").trim();
 
         // Look for value in nearby blocks
         for (let j = i + 1; j < blocks.length && j < i + 3; j++) {
@@ -264,13 +275,11 @@ export class RealOCRService {
 
     for (const block of ocrResult.blocks) {
       // Check for list markers
-      const listMatch = block.text.match(
-        /^[\u2022\u2023\u25E6\u2043\u2219•·‣⁃◦▪▫◆◇○●\-\*]\s+(.+)$/
-      );
+      const listMatch = block.text.match(/^[\u2022\u2023\u25E6\u2043\u2219•·‣⁃◦▪▫◆◇○●\-*]\s+(.+)$/);
       const numberedMatch = block.text.match(/^(\d+\.|\d+\)|\(\d+\)|[a-zA-Z]\.)\s+(.+)$/);
 
       if (listMatch || numberedMatch) {
-        const itemText = listMatch ? listMatch[1] : numberedMatch![2];
+        const itemText = listMatch ? listMatch[1] : numberedMatch?.[2];
         currentList.push(itemText.trim());
 
         if (!listBounds) {
@@ -315,6 +324,6 @@ export class RealOCRService {
     }
     this.initialized = false;
     this.initPromise = null;
-    logger.info('[RealOCR] Disposed');
+    logger.info("[RealOCR] Disposed");
   }
 }

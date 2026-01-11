@@ -1,7 +1,5 @@
 """Tests for PDF plugin types."""
 
-import pytest
-
 from elizaos_plugin_pdf.types import (
     PdfConversionResult,
     PdfDocumentInfo,
@@ -121,5 +119,8 @@ class TestPdfDocumentInfo:
         assert info.page_count == 1
         assert info.metadata.title == "Test"
         assert len(info.pages) == 1
+
+
+
 
 

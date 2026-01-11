@@ -3,9 +3,9 @@
 import tiktoken
 
 from elizaos_plugin_elizacloud.types import (
+    DetokenizeTextParams,
     ElizaCloudConfig,
     TokenizeTextParams,
-    DetokenizeTextParams,
 )
 
 
@@ -30,11 +30,11 @@ async def handle_tokenizer_encode(
     params: TokenizeTextParams,
 ) -> list[int]:
     """Handle TEXT_TOKENIZER_ENCODE - tokenize text into token IDs.
-    
+
     Args:
         config: ElizaOS Cloud configuration.
         params: Tokenization parameters with prompt and model type.
-        
+
     Returns:
         List of token IDs.
     """
@@ -48,16 +48,19 @@ async def handle_tokenizer_decode(
     params: DetokenizeTextParams,
 ) -> str:
     """Handle TEXT_TOKENIZER_DECODE - decode token IDs back to text.
-    
+
     Args:
         config: ElizaOS Cloud configuration.
         params: Detokenization parameters with tokens and model type.
-        
+
     Returns:
         Decoded text string.
     """
     model_name = _get_model_name(config, params.model_type)
     encoding = _get_encoding(model_name)
     return encoding.decode(params.tokens)
+
+
+
 
 

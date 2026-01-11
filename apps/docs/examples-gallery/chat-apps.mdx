@@ -1,24 +1,25 @@
 ---
-title: 'Chat Applications'
-description: 'Interactive chat examples in TypeScript, Python, and Rust'
+title: "Chat Applications"
+description: "Interactive chat examples in TypeScript, Python, and Rust"
 ---
 
 Build conversational AI agents with these chat application examples.
 
 ## Available Examples
 
-| Example | Language | Location | Description |
-|---------|----------|----------|-------------|
-| CLI Chat | TypeScript | `examples/chat/typescript/chat.ts` | Interactive terminal chat |
-| CLI Chat | Python | `examples/chat/python/chat.py` | Async Python chat |
-| CLI Chat | Rust | `examples/chat/rust/chat/src/main.rs` | Native Rust chat |
-| WASM Chat | TypeScript | `examples/chat/rust-wasm/chat.ts` | Rust WASM interop |
+| Example   | Language   | Location                              | Description               |
+| --------- | ---------- | ------------------------------------- | ------------------------- |
+| CLI Chat  | TypeScript | `examples/chat/typescript/chat.ts`    | Interactive terminal chat |
+| CLI Chat  | Python     | `examples/chat/python/chat.py`        | Async Python chat         |
+| CLI Chat  | Rust       | `examples/chat/rust/chat/src/main.rs` | Native Rust chat          |
+| WASM Chat | TypeScript | `examples/chat/rust-wasm/chat.ts`     | Rust WASM interop         |
 
 ---
 
 ## CLI Chat
 
 The foundational example. Demonstrates:
+
 - Runtime initialization with plugins
 - Message handling and streaming
 - Conversation flow management
@@ -31,20 +32,26 @@ bun run examples/chat/typescript/chat.ts
 ```
 
 **Key code:**
+
 ```typescript
 const runtime = new AgentRuntime({
-  character: { name: 'Eliza', bio: 'A helpful AI assistant.' },
+  character: { name: "Eliza", bio: "A helpful AI assistant." },
   plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
 });
 
 await runtime.initialize();
 
 // Handle messages with streaming
-await runtime.messageService.handleMessage(runtime, message, async (content) => {
-  process.stdout.write(content.text);
-  return [];
-});
+await runtime.messageService.handleMessage(
+  runtime,
+  message,
+  async (content) => {
+    process.stdout.write(content.text);
+    return [];
+  },
+);
 ```
+
   </Tab>
   <Tab title="Python">
 ```bash
@@ -54,6 +61,7 @@ python examples/chat/python/chat.py
 ```
 
 **Key code:**
+
 ```python
 runtime = AgentRuntime(
     character=Character(name="Eliza", bio="A helpful AI assistant."),
@@ -65,6 +73,7 @@ await runtime.initialize()
 result = await runtime.message_service.handle_message(runtime, message)
 print(result.response_content.text)
 ```
+
   </Tab>
   <Tab title="Rust">
 ```bash
@@ -74,6 +83,7 @@ cargo run
 ```
 
 **Key code:**
+
 ```rust
 let runtime = AgentRuntime::new(RuntimeOptions {
     character: Some(character),
@@ -87,6 +97,7 @@ let result = runtime.message_service()
     .handle_message(&runtime, &mut message, None, None)
     .await?;
 ```
+
   </Tab>
 </Tabs>
 
@@ -133,13 +144,17 @@ const memories = await runtime.getMemories({ roomId, count: 10 });
 Display responses as they're generated:
 
 ```typescript
-await runtime.messageService.handleMessage(runtime, message, async (content) => {
-  if (content?.text) {
-    // Write each chunk as it arrives
-    process.stdout.write(content.text);
-  }
-  return [];
-});
+await runtime.messageService.handleMessage(
+  runtime,
+  message,
+  async (content) => {
+    if (content?.text) {
+      // Write each chunk as it arrives
+      process.stdout.write(content.text);
+    }
+    return [];
+  },
+);
 ```
 
 ---
@@ -150,7 +165,7 @@ await runtime.messageService.handleMessage(runtime, message, async (content) => 
 
 ```typescript
 // Use Claude instead of GPT
-import { anthropicPlugin } from '@elizaos/plugin-anthropic';
+import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 
 const runtime = new AgentRuntime({
   character,
@@ -193,12 +208,17 @@ await handleMessage("How do they relate to what we discussed?");
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="REST API Examples" icon="server" href="/examples-gallery/rest-apis">
+  <Card
+    title="REST API Examples"
+    icon="server"
+    href="/examples-gallery/rest-apis"
+  >
     Expose your chat agent via HTTP
   </Card>
   <Card title="Web Apps" icon="browser" href="/examples-gallery/web-apps">
     Build browser-based chat interfaces
   </Card>
 </CardGroup>
+
 
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Cache schema for elizaOS database
 
 /// SQL for creating the cache table

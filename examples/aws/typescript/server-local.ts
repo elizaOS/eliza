@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Local HTTP server for testing the Lambda handler
  * Run with: bun run server-local.ts
@@ -7,17 +8,17 @@
  * allowing you to test the Lambda handler locally.
  */
 
-import { handler } from "./handler-standalone";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
-import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
+import { handler } from "./handler-standalone";
 
 // Load .env from root if not already set
 function loadEnv(): void {
   const envPaths = [
-    resolve(import.meta.dir, "../../../.env"),  // Root .env
-    resolve(import.meta.dir, "../.env"),        // aws/.env
-    resolve(import.meta.dir, ".env"),           // typescript/.env
+    resolve(import.meta.dir, "../../../.env"), // Root .env
+    resolve(import.meta.dir, "../.env"), // aws/.env
+    resolve(import.meta.dir, ".env"), // typescript/.env
   ];
 
   for (const envPath of envPaths) {
@@ -71,7 +72,7 @@ const mockContext: Context = {
  * Convert Bun Request to API Gateway event
  */
 async function requestToEvent(
-  request: Request
+  request: Request,
 ): Promise<APIGatewayProxyEventV2> {
   const url = new URL(request.url);
   const body = request.method !== "GET" ? await request.text() : undefined;
@@ -124,26 +125,14 @@ Press Ctrl+C to stop
 const server = Bun.serve({
   port: PORT,
   async fetch(request: Request): Promise<Response> {
-    try {
-      const event = await requestToEvent(request);
-      const result = await handler(event, mockContext);
+    const event = await requestToEvent(request);
+    const result = await handler(event, mockContext);
 
-      return new Response(result.body, {
-        status: result.statusCode,
-        headers: result.headers as Record<string, string>,
-      });
-    } catch (error) {
-      console.error("Server error:", error);
-      return new Response(
-        JSON.stringify({ error: "Internal server error", code: "SERVER_ERROR" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
+    return new Response(result.body, {
+      status: result.statusCode,
+      headers: result.headers as Record<string, string>,
+    });
   },
 });
 
 console.log(`✅ Server running at http://localhost:${server.port}`);
-

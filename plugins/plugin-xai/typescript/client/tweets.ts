@@ -14,7 +14,7 @@ import type {
 } from "twitter-api-v2";
 import type { TwitterAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
-import type { QueryTweetsResponse } from "./api-types";
+import type { QueryTweetsResponse } from "./types";
 
 /**
  * Default options for Twitter API v2 request parameters.
@@ -291,15 +291,13 @@ export interface Retweeter {
   description?: string;
 }
 
-export type TweetQuery =
-  | Partial<Tweet>
-  | ((tweet: Tweet) => boolean | Promise<boolean>);
+export type TweetQuery = Partial<Tweet> | ((tweet: Tweet) => boolean | Promise<boolean>);
 
 export async function fetchTweets(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -319,11 +317,7 @@ export async function fetchTweets(
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: [
-        "author_id",
-        "attachments.media_keys",
-        "referenced_tweets.id",
-      ],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -340,7 +334,8 @@ export async function fetchTweets(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch tweets: ${error?.message || error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch tweets: ${message}`);
   }
 }
 
@@ -348,7 +343,7 @@ export async function fetchTweetsAndReplies(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -367,11 +362,7 @@ export async function fetchTweetsAndReplies(
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: [
-        "author_id",
-        "attachments.media_keys",
-        "referenced_tweets.id",
-      ],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -388,9 +379,8 @@ export async function fetchTweetsAndReplies(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(
-      `Failed to fetch tweets and replies: ${error?.message || error}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch tweets and replies: ${message}`);
   }
 }
 
@@ -400,14 +390,18 @@ export async function createCreateTweetRequestV2(
   tweetId?: string,
   options?: {
     poll?: PollData;
-  },
+  }
 ) {
   const v2client = await auth.getV2Client();
   if (v2client == null) {
     throw new Error("V2 client is not initialized");
   }
   const { poll } = options || {};
-  let tweetConfig;
+  let tweetConfig: {
+    text: string;
+    poll?: { options: string[]; duration_minutes: number };
+    reply?: { in_reply_to_tweet_id: string };
+  };
   if (poll) {
     tweetConfig = {
       text,
@@ -433,21 +427,13 @@ export async function createCreateTweetRequestV2(
   if (options?.poll) {
     optionsConfig = {
       expansions: ["attachments.poll_ids"],
-      pollFields: [
-        "options",
-        "duration_minutes",
-        "end_datetime",
-        "voting_status",
-      ],
+      pollFields: ["options", "duration_minutes", "end_datetime", "voting_status"],
     };
   }
   return await getTweetV2(tweetResponse.data.id, auth, optionsConfig);
 }
 
-export function parseTweetV2ToV1(
-  tweetV2: TweetV2,
-  includes?: ApiV2Includes,
-): Tweet {
+export function parseTweetV2ToV1(tweetV2: TweetV2, includes?: ApiV2Includes): Tweet {
   const parsedTweet: Tweet = {
     id: tweetV2.id,
     text: tweetV2.text ?? "",
@@ -476,23 +462,12 @@ export function parseTweetV2ToV1(
       : Date.now() / 1000,
     permanentUrl: `https://twitter.com/i/status/${tweetV2.id}`,
     // Check for referenced tweets
-    isReply:
-      tweetV2.referenced_tweets?.some((ref) => ref.type === "replied_to") ??
-      false,
-    isRetweet:
-      tweetV2.referenced_tweets?.some((ref) => ref.type === "retweeted") ??
-      false,
-    isQuoted:
-      tweetV2.referenced_tweets?.some((ref) => ref.type === "quoted") ?? false,
-    inReplyToStatusId: tweetV2.referenced_tweets?.find(
-      (ref) => ref.type === "replied_to",
-    )?.id,
-    quotedStatusId: tweetV2.referenced_tweets?.find(
-      (ref) => ref.type === "quoted",
-    )?.id,
-    retweetedStatusId: tweetV2.referenced_tweets?.find(
-      (ref) => ref.type === "retweeted",
-    )?.id,
+    isReply: tweetV2.referenced_tweets?.some((ref) => ref.type === "replied_to") ?? false,
+    isRetweet: tweetV2.referenced_tweets?.some((ref) => ref.type === "retweeted") ?? false,
+    isQuoted: tweetV2.referenced_tweets?.some((ref) => ref.type === "quoted") ?? false,
+    inReplyToStatusId: tweetV2.referenced_tweets?.find((ref) => ref.type === "replied_to")?.id,
+    quotedStatusId: tweetV2.referenced_tweets?.find((ref) => ref.type === "quoted")?.id,
+    retweetedStatusId: tweetV2.referenced_tweets?.find((ref) => ref.type === "retweeted")?.id,
   };
 
   // Process Polls
@@ -523,10 +498,7 @@ export function parseTweetV2ToV1(
         parsedTweet.videos.push({
           id: media.media_key,
           preview: media.preview_image_url ?? "",
-          url:
-            media.variants?.find(
-              (variant) => variant.content_type === "video/mp4",
-            )?.url ?? "",
+          url: media.variants?.find((variant) => variant.content_type === "video/mp4")?.url ?? "",
         });
       }
     });
@@ -534,9 +506,7 @@ export function parseTweetV2ToV1(
 
   // Process User (for author info)
   if (includes?.users?.length) {
-    const user = includes.users.find(
-      (user: UserV2) => user.id === tweetV2.author_id,
-    );
+    const user = includes.users.find((user: UserV2) => user.id === tweetV2.author_id);
     if (user) {
       parsedTweet.username = user.username ?? "";
       parsedTweet.name = user.name ?? "";
@@ -545,9 +515,7 @@ export function parseTweetV2ToV1(
 
   // Process Place (if any)
   if (tweetV2?.geo?.place_id && includes?.places?.length) {
-    const place = includes.places.find(
-      (place: PlaceV2) => place.id === tweetV2?.geo?.place_id,
-    );
+    const place = includes.places.find((place: PlaceV2) => place.id === tweetV2?.geo?.place_id);
     if (place) {
       parsedTweet.place = {
         id: place.id,
@@ -569,7 +537,7 @@ export async function createCreateTweetRequest(
   auth: TwitterAuth,
   tweetId?: string,
   mediaData?: { data: Buffer; mediaType: string }[],
-  hideLinkPreview = false,
+  _hideLinkPreview = false
 ) {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -577,7 +545,11 @@ export async function createCreateTweetRequest(
   }
 
   try {
-    let tweetConfig: any = {
+    const tweetConfig: {
+      text: string;
+      reply?: { in_reply_to_tweet_id: string };
+      poll?: { options: string[]; duration_minutes: number };
+    } = {
       text,
     };
 
@@ -603,7 +575,8 @@ export async function createCreateTweetRequest(
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to create tweet: ${error?.message || error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to create tweet: ${message}`);
   }
 }
 
@@ -611,7 +584,7 @@ export async function createCreateNoteTweetRequest(
   text: string,
   auth: TwitterAuth,
   tweetId?: string,
-  mediaData?: { data: Buffer; mediaType: string }[],
+  mediaData?: { data: Buffer; mediaType: string }[]
 ) {
   // Twitter API v2 doesn't have a separate endpoint for "note tweets"
   // Long tweets are handled automatically by the v2 tweet endpoint
@@ -622,7 +595,7 @@ export async function fetchListTweets(
   listId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -641,11 +614,7 @@ export async function fetchListTweets(
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: [
-        "author_id",
-        "attachments.media_keys",
-        "referenced_tweets.id",
-      ],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -662,7 +631,8 @@ export async function fetchListTweets(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch list tweets: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch list tweets: ${message}`);
   }
 }
 
@@ -676,23 +646,25 @@ export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
     const result = await v2client.v2.deleteTweet(tweetId);
     return {
       ok: true,
+      success: true,
       json: async () => result,
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to delete tweet: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to delete tweet: ${message}`);
   }
 }
 
 export async function* getTweets(
   user: string,
   maxTweets: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
 
   if (!userIdRes.success) {
-    throw (userIdRes as any).err;
+    throw userIdRes.err;
   }
 
   const { value: userId } = userIdRes;
@@ -701,12 +673,7 @@ export async function* getTweets(
   let totalFetched = 0;
 
   while (totalFetched < maxTweets) {
-    const response = await fetchTweets(
-      userId,
-      maxTweets - totalFetched,
-      cursor,
-      auth,
-    );
+    const response = await fetchTweets(userId, maxTweets - totalFetched, cursor, auth);
 
     for (const tweet of response.tweets) {
       yield tweet;
@@ -722,18 +689,13 @@ export async function* getTweets(
 export async function* getTweetsByUserId(
   userId: string,
   maxTweets: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
   let totalFetched = 0;
 
   while (totalFetched < maxTweets) {
-    const response = await fetchTweets(
-      userId,
-      maxTweets - totalFetched,
-      cursor,
-      auth,
-    );
+    const response = await fetchTweets(userId, maxTweets - totalFetched, cursor, auth);
 
     for (const tweet of response.tweets) {
       yield tweet;
@@ -749,12 +711,12 @@ export async function* getTweetsByUserId(
 export async function* getTweetsAndReplies(
   user: string,
   maxTweets: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
 
   if (!userIdRes.success) {
-    throw (userIdRes as any).err;
+    throw userIdRes.err;
   }
 
   const { value: userId } = userIdRes;
@@ -763,12 +725,7 @@ export async function* getTweetsAndReplies(
   let totalFetched = 0;
 
   while (totalFetched < maxTweets) {
-    const response = await fetchTweetsAndReplies(
-      userId,
-      maxTweets - totalFetched,
-      cursor,
-      auth,
-    );
+    const response = await fetchTweetsAndReplies(userId, maxTweets - totalFetched, cursor, auth);
 
     for (const tweet of response.tweets) {
       yield tweet;
@@ -784,18 +741,13 @@ export async function* getTweetsAndReplies(
 export async function* getTweetsAndRepliesByUserId(
   userId: string,
   maxTweets: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
   let totalFetched = 0;
 
   while (totalFetched < maxTweets) {
-    const response = await fetchTweetsAndReplies(
-      userId,
-      maxTweets - totalFetched,
-      cursor,
-      auth,
-    );
+    const response = await fetchTweetsAndReplies(userId, maxTweets - totalFetched, cursor, auth);
 
     for (const tweet of response.tweets) {
       yield tweet;
@@ -812,7 +764,7 @@ export async function fetchLikedTweets(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -831,11 +783,7 @@ export async function fetchLikedTweets(
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: [
-        "author_id",
-        "attachments.media_keys",
-        "referenced_tweets.id",
-      ],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -852,20 +800,19 @@ export async function fetchLikedTweets(
       next: response.meta.next_token,
     };
   } catch (error) {
-    throw new Error(`Failed to fetch liked tweets: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch liked tweets: ${message}`);
   }
 }
 
 export async function getTweetWhere(
   tweets: AsyncIterable<Tweet>,
-  query: TweetQuery,
+  query: TweetQuery
 ): Promise<Tweet | null> {
   const isCallback = typeof query === "function";
 
   for await (const tweet of tweets) {
-    const matches = isCallback
-      ? await query(tweet)
-      : checkTweetMatches(tweet, query);
+    const matches = isCallback ? await query(tweet) : checkTweetMatches(tweet, query);
 
     if (matches) {
       return tweet;
@@ -877,7 +824,7 @@ export async function getTweetWhere(
 
 export async function getTweetsWhere(
   tweets: AsyncIterable<Tweet>,
-  query: TweetQuery,
+  query: TweetQuery
 ): Promise<Tweet[]> {
   const isCallback = typeof query === "function";
   const filtered = [];
@@ -903,7 +850,7 @@ export async function getLatestTweet(
   user: string,
   includeRetweets: boolean,
   max: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<Tweet | null | undefined> {
   const timeline = getTweets(user, max, auth);
 
@@ -915,10 +862,7 @@ export async function getLatestTweet(
 
 // TweetResultByRestId interface removed - no longer used with v2 API
 
-export async function getTweet(
-  id: string,
-  auth: TwitterAuth,
-): Promise<Tweet | null> {
+export async function getTweet(id: string, auth: TwitterAuth): Promise<Tweet | null> {
   const client = await auth.getV2Client();
 
   try {
@@ -951,7 +895,8 @@ export async function getTweet(
 
     return parseTweetV2ToV1(tweet.data, tweet.includes);
   } catch (error) {
-    console.error(`Failed to get tweet: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to get tweet: ${message}`);
     return null;
   }
 }
@@ -966,7 +911,7 @@ export async function getTweetV2(
     mediaFields?: TTweetv2MediaField[];
     userFields?: TTweetv2UserField[];
     placeFields?: TTweetv2PlaceField[];
-  } = defaultOptions,
+  } = defaultOptions
 ): Promise<Tweet | null> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -1008,7 +953,7 @@ export async function getTweetsV2(
     mediaFields?: TTweetv2MediaField[];
     userFields?: TTweetv2UserField[];
     placeFields?: TTweetv2PlaceField[];
-  } = defaultOptions,
+  } = defaultOptions
 ): Promise<Tweet[]> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -1030,11 +975,7 @@ export async function getTweetsV2(
       return [];
     }
     return (
-      await Promise.all(
-        tweetsV2.map(
-          async (tweet) => await getTweetV2(tweet.id, auth, options),
-        ),
-      )
+      await Promise.all(tweetsV2.map(async (tweet) => await getTweetV2(tweet.id, auth, options)))
     ).filter((tweet): tweet is Tweet => tweet !== null);
   } catch (error) {
     console.error(`Error fetching tweets for IDs: ${ids.join(", ")}`, error);
@@ -1042,30 +983,16 @@ export async function getTweetsV2(
   }
 }
 
-export async function getTweetAnonymous(
-  id: string,
-  auth: TwitterAuth,
-): Promise<Tweet | null> {
+export async function getTweetAnonymous(id: string, auth: TwitterAuth): Promise<Tweet | null> {
   // Twitter API v2 doesn't support anonymous access
   // Use the regular getTweet method
   return getTweet(id, auth);
 }
 
-interface MediaUploadResponse {
-  media_id_string: string;
-  size: number;
-  expires_after_secs: number;
-  image: {
-    image_type: string;
-    w: number;
-    h: number;
-  };
-}
-
-async function uploadMedia(
-  mediaData: Buffer,
-  auth: TwitterAuth,
-  mediaType: string,
+async function _uploadMedia(
+  _mediaData: Buffer,
+  _auth: TwitterAuth,
+  _mediaType: string
 ): Promise<string> {
   // Twitter API v2 media upload is not yet fully implemented in twitter-api-v2 library
   // This would require using the v1.1 media upload endpoint with proper OAuth
@@ -1078,7 +1005,7 @@ export async function createQuoteTweetRequest(
   text: string,
   quotedTweetId: string,
   auth: TwitterAuth,
-  mediaData?: { data: Buffer; mediaType: string }[],
+  _mediaData?: { data: Buffer; mediaType: string }[]
 ) {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -1100,7 +1027,8 @@ export async function createQuoteTweetRequest(
       data: result,
     };
   } catch (error) {
-    throw new Error(`Failed to create quote tweet: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to create quote tweet: ${message}`);
   }
 }
 
@@ -1110,10 +1038,7 @@ export async function createQuoteTweetRequest(
  * @param auth The authentication object.
  * @returns A promise that resolves when the tweet is liked.
  */
-export async function likeTweet(
-  tweetId: string,
-  auth: TwitterAuth,
-): Promise<void> {
+export async function likeTweet(tweetId: string, auth: TwitterAuth): Promise<void> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -1122,10 +1047,11 @@ export async function likeTweet(
   try {
     await v2client.v2.like(
       (await v2client.v2.me()).data.id, // Current user ID
-      tweetId,
+      tweetId
     );
   } catch (error) {
-    throw new Error(`Failed to like tweet: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to like tweet: ${message}`);
   }
 }
 
@@ -1135,10 +1061,7 @@ export async function likeTweet(
  * @param auth The authentication object.
  * @returns A promise that resolves when the tweet is retweeted.
  */
-export async function retweet(
-  tweetId: string,
-  auth: TwitterAuth,
-): Promise<void> {
+export async function retweet(tweetId: string, auth: TwitterAuth): Promise<void> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -1147,10 +1070,11 @@ export async function retweet(
   try {
     await v2client.v2.retweet(
       (await v2client.v2.me()).data.id, // Current user ID
-      tweetId,
+      tweetId
     );
   } catch (error) {
-    throw new Error(`Failed to retweet: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to retweet: ${message}`);
   }
 }
 
@@ -1158,7 +1082,7 @@ export async function createCreateLongTweetRequest(
   text: string,
   auth: TwitterAuth,
   tweetId?: string,
-  mediaData?: { data: Buffer; mediaType: string }[],
+  mediaData?: { data: Buffer; mediaType: string }[]
 ) {
   // Twitter API v2 handles long tweets automatically
   // Just use the regular tweet creation endpoint
@@ -1173,10 +1097,10 @@ export async function createCreateLongTweetRequest(
  * All comments must remain in English.
  */
 export async function fetchRetweetersPage(
-  tweetId: string,
-  auth: TwitterAuth,
-  cursor?: string,
-  count = 40,
+  _tweetId: string,
+  _auth: TwitterAuth,
+  _cursor?: string,
+  _count = 40
 ): Promise<{
   retweeters: Retweeter[];
   bottomCursor?: string;
@@ -1198,10 +1122,7 @@ export async function fetchRetweetersPage(
  * @param auth The TwitterAuth object for authentication.
  * @returns A list of all users that retweeted the tweet.
  */
-export async function getAllRetweeters(
-  tweetId: string,
-  auth: TwitterAuth,
-): Promise<Retweeter[]> {
+export async function getAllRetweeters(tweetId: string, auth: TwitterAuth): Promise<Retweeter[]> {
   let allRetweeters: Retweeter[] = [];
   let cursor: string | undefined;
 
@@ -1211,7 +1132,7 @@ export async function getAllRetweeters(
       tweetId,
       auth,
       cursor,
-      40,
+      40
     );
     allRetweeters = allRetweeters.concat(retweeters);
 

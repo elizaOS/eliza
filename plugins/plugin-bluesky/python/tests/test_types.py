@@ -1,11 +1,11 @@
 """Tests for BlueSky types."""
 
 from elizaos_plugin_bluesky.types import (
-    BlueSkyProfile,
     BlueSkyPost,
+    BlueSkyProfile,
     BlueSkySession,
-    PostRecord,
     NotificationReason,
+    PostRecord,
 )
 
 
@@ -89,5 +89,6 @@ class TestNotificationReason:
         assert NotificationReason.LIKE.value == "like"
         assert NotificationReason.REPOST.value == "repost"
         assert NotificationReason.QUOTE.value == "quote"
+
 
 

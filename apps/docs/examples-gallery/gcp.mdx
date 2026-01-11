@@ -1,6 +1,6 @@
 ---
-title: 'GCP Examples'
-description: 'Deploy elizaOS to Google Cloud Functions and Cloud Run'
+title: "GCP Examples"
+description: "Deploy elizaOS to Google Cloud Functions and Cloud Run"
 ---
 
 Deploy AI agents to Google Cloud Platform.
@@ -20,11 +20,11 @@ gcloud functions deploy eliza-chat \
 
 ## Available Implementations
 
-| Language | Directory | Runtime |
-|----------|-----------|---------|
-| TypeScript | `examples/gcp/typescript/` | Node.js 20 |
-| Python | `examples/gcp/python/` | Python 3.11 |
-| Rust | `examples/gcp/rust/` | Cloud Run |
+| Language   | Directory                  | Runtime     |
+| ---------- | -------------------------- | ----------- |
+| TypeScript | `examples/gcp/typescript/` | Node.js 20  |
+| Python     | `examples/gcp/python/`     | Python 3.11 |
+| Rust       | `examples/gcp/rust/`       | Cloud Run   |
 
 ## TypeScript Handler
 
@@ -87,11 +87,12 @@ resource "google_cloudfunctions_function" "eliza" {
   name        = "eliza-chat"
   runtime     = "nodejs20"
   entry_point = "elizaChat"
-  
+
   environment_variables = {
     OPENAI_API_KEY = var.openai_api_key
   }
 }
 ```
+
 
 

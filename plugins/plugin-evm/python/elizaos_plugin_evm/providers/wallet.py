@@ -14,10 +14,8 @@ from web3.exceptions import ContractLogicError, Web3RPCError
 from web3.types import TxParams, Wei
 
 from elizaos_plugin_evm.constants import (
-    DEFAULT_DECIMALS,
     ERC20_ABI,
     GAS_BUFFER_MULTIPLIER,
-    NATIVE_TOKEN_ADDRESS,
 )
 from elizaos_plugin_evm.error import EVMError
 from elizaos_plugin_evm.types import (
@@ -431,5 +429,3 @@ class EVMWalletProvider:
             raise
         except Exception as e:
             raise EVMError.transaction_failed(f"Wait failed: {e}") from e
-
-

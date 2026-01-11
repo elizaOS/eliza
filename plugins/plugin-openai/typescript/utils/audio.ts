@@ -58,11 +58,7 @@ export type AudioMimeType =
  * @param expected - Expected byte sequence
  * @returns True if bytes match
  */
-function matchBytes(
-  buffer: Buffer,
-  offset: number,
-  expected: readonly number[]
-): boolean {
+function matchBytes(buffer: Buffer, offset: number, expected: readonly number[]): boolean {
   for (let i = 0; i < expected.length; i++) {
     const expectedByte = expected[i];
     if (expectedByte === undefined || buffer[offset + i] !== expectedByte) {
@@ -133,9 +129,7 @@ export function detectAudioMimeType(buffer: Buffer): AudioMimeType {
     return "audio/webm";
   }
 
-  logger.warn(
-    "Could not detect audio format from buffer, using generic binary type"
-  );
+  logger.warn("Could not detect audio format from buffer, using generic binary type");
   return "application/octet-stream";
 }
 

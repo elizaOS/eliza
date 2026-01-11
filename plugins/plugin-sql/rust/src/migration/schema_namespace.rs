@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Schema namespace utilities for plugin isolation.
 
 use anyhow::{Context, Result};

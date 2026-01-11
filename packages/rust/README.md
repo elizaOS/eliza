@@ -57,14 +57,14 @@ use elizaos::{AgentRuntime, Character, parse_character};
 async fn main() -> anyhow::Result<()> {
     let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
     let character = parse_character(json)?;
-    
+
     let runtime = AgentRuntime::new(RuntimeOptions {
         character: Some(character),
         ..Default::default()
     }).await?;
-    
+
     runtime.initialize().await?;
-    
+
     Ok(())
 }
 ```
@@ -72,13 +72,19 @@ async fn main() -> anyhow::Result<()> {
 ### JavaScript (WASM)
 
 ```javascript
-import init, { WasmAgentRuntime, parse_character, validate_character } from '@elizaos/core/rust';
+import init, {
+  WasmAgentRuntime,
+  parse_character,
+  validate_character,
+} from "@elizaos/core/rust";
 
 // Initialize WASM module
 await init();
 
 // Create a runtime
-const runtime = await new WasmAgentRuntime('{"name": "TestAgent", "bio": "A test agent"}');
+const runtime = await new WasmAgentRuntime(
+  '{"name": "TestAgent", "bio": "A test agent"}',
+);
 await runtime.initialize();
 
 console.log(`Agent ID: ${runtime.agent_id}`);
@@ -122,4 +128,3 @@ This implementation is designed to be 100% compatible with the TypeScript versio
 ## License
 
 MIT
-

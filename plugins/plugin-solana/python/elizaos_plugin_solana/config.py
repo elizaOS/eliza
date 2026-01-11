@@ -2,13 +2,13 @@
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey
 
-from elizaos_plugin_solana.errors import ConfigError, InvalidKeypairError, InvalidPublicKeyError
+from elizaos_plugin_solana.errors import ConfigError, InvalidPublicKeyError
 from elizaos_plugin_solana.keypair import KeypairUtils
 
 DEFAULT_RPC_URL = "https://api.mainnet-beta.solana.com"
@@ -34,9 +34,9 @@ class WalletConfig:
     rpc_url: str
     public_key: Pubkey
     slippage_bps: int = 50
-    helius_api_key: Optional[str] = None
-    birdeye_api_key: Optional[str] = None
-    _keypair: Optional[Keypair] = field(default=None, repr=False)
+    helius_api_key: str | None = None
+    birdeye_api_key: str | None = None
+    _keypair: Keypair | None = field(default=None, repr=False)
 
     @classmethod
     def read_only(cls, rpc_url: str, public_key: str) -> "WalletConfig":
@@ -106,16 +106,12 @@ class WalletConfig:
         if private_key:
             keypair = KeypairUtils.from_string(private_key)
             public_key = keypair.pubkey()
-            _keypair: Optional[Keypair] = keypair
+            _keypair: Keypair | None = keypair
         else:
             # Fall back to public key only
-            public_key_str = os.getenv("SOLANA_PUBLIC_KEY") or os.getenv(
-                "WALLET_PUBLIC_KEY"
-            )
+            public_key_str = os.getenv("SOLANA_PUBLIC_KEY") or os.getenv("WALLET_PUBLIC_KEY")
             if not public_key_str:
-                raise ConfigError(
-                    "Either SOLANA_PRIVATE_KEY or SOLANA_PUBLIC_KEY is required"
-                )
+                raise ConfigError("Either SOLANA_PRIVATE_KEY or SOLANA_PUBLIC_KEY is required")
             try:
                 public_key = Pubkey.from_string(public_key_str)
             except Exception as e:
@@ -140,7 +136,7 @@ class WalletConfig:
     @classmethod
     def from_env_or_generate(
         cls,
-        store_callback: Optional[SettingStorageCallback] = None,
+        store_callback: SettingStorageCallback | None = None,
     ) -> "WalletConfig":
         """Load configuration from environment variables, generating a new keypair if none exists.
 
@@ -165,9 +161,7 @@ class WalletConfig:
             public_key = keypair.pubkey()
         else:
             # Check for public key only
-            public_key_str = os.getenv("SOLANA_PUBLIC_KEY") or os.getenv(
-                "WALLET_PUBLIC_KEY"
-            )
+            public_key_str = os.getenv("SOLANA_PUBLIC_KEY") or os.getenv("WALLET_PUBLIC_KEY")
             if public_key_str:
                 try:
                     public_key = Pubkey.from_string(public_key_str)
@@ -187,16 +181,10 @@ class WalletConfig:
                     store_callback("SOLANA_PUBLIC_KEY", public_key_base58, False)
 
                 # Log warnings about the auto-generated keypair
-                logger.warning(
-                    "⚠️  No Solana wallet found. Generated new wallet automatically."
-                )
+                logger.warning("⚠️  No Solana wallet found. Generated new wallet automatically.")
                 logger.warning(f"📍 New Solana wallet address: {public_key_base58}")
-                logger.warning(
-                    "🔐 Private key has been stored securely in agent settings."
-                )
-                logger.warning(
-                    "💡 Fund this wallet to enable SOL and token transfers."
-                )
+                logger.warning("🔐 Private key has been stored securely in agent settings.")
+                logger.warning("💡 Fund this wallet to enable SOL and token transfers.")
 
         slippage_str = os.getenv("SLIPPAGE", "50")
         try:
@@ -261,5 +249,3 @@ class WalletConfig:
             birdeye_api_key=key,
             _keypair=self._keypair,
         )
-
-

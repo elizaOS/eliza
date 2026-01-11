@@ -4,13 +4,14 @@
 
 import {
   type Action,
+  createUniqueUuid,
   type IAgentRuntime,
   type Memory,
+  ModelType,
   type State,
-  createUniqueUuid,
 } from "@elizaos/core";
-import { FARCASTER_SERVICE_NAME } from "../types";
 import type { FarcasterService } from "../services/FarcasterService";
+import { FARCASTER_SERVICE_NAME } from "../types";
 
 export const sendCastAction: Action = {
   name: "SEND_CAST",
@@ -19,7 +20,9 @@ export const sendCastAction: Action = {
     [
       {
         name: "user",
-        content: { text: "Can you post about the new ElizaOS features on Farcaster?" },
+        content: {
+          text: "Can you post about the new ElizaOS features on Farcaster?",
+        },
       },
       {
         name: "assistant",
@@ -32,7 +35,9 @@ export const sendCastAction: Action = {
     [
       {
         name: "user",
-        content: { text: "Share on Farcaster that we just launched version 2.0!" },
+        content: {
+          text: "Share on Farcaster that we just launched version 2.0!",
+        },
       },
       {
         name: "assistant",
@@ -56,11 +61,7 @@ export const sendCastAction: Action = {
     return hasKeyword && isServiceAvailable;
   },
 
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State
-  ) => {
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const postService = service?.getCastService(runtime.agentId);
@@ -77,12 +78,13 @@ export const sendCastAction: Action = {
       } else {
         const prompt = `Based on this request: "${message.content.text}", generate a concise Farcaster cast (max 320 characters). Be engaging and use appropriate hashtags if relevant.`;
 
-        const response = await runtime.useModel("text_large" as any, { prompt } as any);
-        castContent = typeof response === "string" ? response : (response as { text?: string }).text || "";
+        const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+        castContent =
+          typeof response === "string" ? response : (response as { text?: string }).text || "";
       }
 
       if (castContent.length > 320) {
-        castContent = castContent.substring(0, 317) + "...";
+        castContent = `${castContent.substring(0, 317)}...`;
       }
 
       const cast = await postService.createCast({
@@ -120,4 +122,3 @@ export const sendCastAction: Action = {
     }
   },
 };
-

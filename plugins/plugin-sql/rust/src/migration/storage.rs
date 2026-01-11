@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Storage for migration snapshots and journal entries.
 
 use anyhow::{Context, Result};

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
-import type { IMessageService } from "../types/message-service";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
+import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 
@@ -83,7 +83,7 @@ describe("DefaultMessageService", () => {
           const responseText =
             "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
           const textParams = params as GenerateTextParams;
-          if (textParams && textParams.stream) {
+          if (textParams?.stream) {
             // Return TextStreamResult for streaming - simulate chunked response
             return {
               textStream: (async function* () {
@@ -859,7 +859,7 @@ describe("DefaultMessageService", () => {
       };
 
       // Mock useModel to return XML where thought/text are objects (empty tags become {})
-      (mockRuntime.useModel = vi.fn(
+      mockRuntime.useModel = vi.fn(
         async (
           modelType: (typeof ModelType)[keyof typeof ModelType],
           params: unknown,
@@ -871,7 +871,7 @@ describe("DefaultMessageService", () => {
           const responseText =
             "<response><thought></thought><actions>REPLY</actions><text></text></response>";
           const textParams = params as GenerateTextParams;
-          if (textParams && textParams.stream) {
+          if (textParams?.stream) {
             return {
               textStream: (async function* () {
                 yield responseText;
@@ -886,9 +886,9 @@ describe("DefaultMessageService", () => {
           }
           return responseText;
         },
-      )),
-        // Add required mocks for the message processing flow
-        (mockRuntime.emitEvent = vi.fn(async () => {}));
+      );
+      // Add required mocks for the message processing flow
+      mockRuntime.emitEvent = vi.fn(async () => {});
       mockRuntime.getRoom = vi.fn(async () => ({
         id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         name: "Test Room",
@@ -908,7 +908,7 @@ describe("DefaultMessageService", () => {
 
       // Verify the logging was called (which uses the type guards)
       const mockRuntimeLogger = mockRuntime.logger;
-      expect(mockRuntimeLogger && mockRuntimeLogger.info).toHaveBeenCalled();
+      expect(mockRuntimeLogger?.info).toHaveBeenCalled();
     });
   });
 
@@ -923,9 +923,7 @@ describe("DefaultMessageService", () => {
       // The default timeout should be 1000ms (1 second)
       const mockRuntimeGetSetting = mockRuntime.getSetting;
       const timeout = parseInt(
-        String(
-          (mockRuntimeGetSetting && mockRuntimeGetSetting("PROVIDERS_TOTAL_TIMEOUT_MS")) || "1000",
-        ),
+        String(mockRuntimeGetSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
       expect(timeout).toBe(1000);
@@ -940,9 +938,7 @@ describe("DefaultMessageService", () => {
 
       const mockRuntimeGetSetting = mockRuntime.getSetting;
       const timeout = parseInt(
-        String(
-          (mockRuntimeGetSetting && mockRuntimeGetSetting("PROVIDERS_TOTAL_TIMEOUT_MS")) || "1000",
-        ),
+        String(mockRuntimeGetSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
       expect(timeout).toBe(5000);

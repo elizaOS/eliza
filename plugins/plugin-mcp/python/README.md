@@ -29,16 +29,16 @@ async def main():
         command="npx",
         args=["-y", "@modelcontextprotocol/server-memory"]
     )
-    
+
     async with StdioTransport(config) as transport:
         client = McpClient(transport)
         await client.connect()
-        
+
         # List available tools
         tools = await client.list_tools()
         for tool in tools:
             print(f"Tool: {tool.name} - {tool.description}")
-        
+
         # Call a tool
         result = await client.call_tool(
             name="store_memory",
@@ -96,4 +96,3 @@ ruff format .
 ## License
 
 MIT License - see LICENSE file for details.
-

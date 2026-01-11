@@ -2,9 +2,14 @@
  * Remote Attestation Provider for Phala TEE.
  */
 
-import { type Provider, type IAgentRuntime, type Memory, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Memory, type Provider } from "@elizaos/core";
 import { TappdClient, type TdxQuoteHashAlgorithms, type TdxQuoteResponse } from "@phala/dstack-sdk";
-import type { RemoteAttestationQuote, RemoteAttestationMessage, TdxQuoteHashAlgorithm, TeeProviderResult } from "../types";
+import type {
+  RemoteAttestationMessage,
+  RemoteAttestationQuote,
+  TdxQuoteHashAlgorithm,
+  TeeProviderResult,
+} from "../types";
 import { getTeeEndpoint } from "../utils";
 import { RemoteAttestationProvider } from "./base";
 
@@ -77,14 +82,15 @@ export const phalaRemoteAttestationProvider: Provider = {
   name: "phala-remote-attestation",
 
   get: async (runtime: IAgentRuntime, message: Memory): Promise<TeeProviderResult> => {
-    const teeMode = runtime.getSetting("TEE_MODE");
-    if (!teeMode) {
+    const teeModeRaw = runtime.getSetting("TEE_MODE");
+    if (!teeModeRaw) {
       return {
         data: null,
         values: {},
         text: "TEE_MODE is not configured",
       };
     }
+    const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : String(teeModeRaw);
 
     const provider = new PhalaRemoteAttestationProvider(teeMode);
     const agentId = runtime.agentId;
@@ -102,9 +108,7 @@ export const phalaRemoteAttestationProvider: Provider = {
 
       logger.debug(`Generating attestation for message: ${JSON.stringify(attestationMessage)}`);
 
-      const attestation = await provider.generateAttestation(
-        JSON.stringify(attestationMessage)
-      );
+      const attestation = await provider.generateAttestation(JSON.stringify(attestationMessage));
 
       return {
         data: {
@@ -124,5 +128,3 @@ export const phalaRemoteAttestationProvider: Provider = {
     }
   },
 };
-
-

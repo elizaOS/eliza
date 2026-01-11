@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! PGLite connection manager for elizaOS WASM environments
 
 #![cfg(feature = "wasm")]

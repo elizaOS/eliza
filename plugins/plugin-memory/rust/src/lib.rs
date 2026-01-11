@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin Memory - Rust Implementation
 //!
 //! This crate provides memory management capabilities for elizaOS agents,
@@ -60,5 +61,10 @@ pub const PLUGIN_DESCRIPTION: &str =
     "Advanced memory management with conversation summarization and long-term persistent memory";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

@@ -5,15 +5,15 @@
  */
 
 import type {
-  IAgentRuntime,
-  TranscriptionParams as CoreTranscriptionParams,
   TextToSpeechParams as CoreTextToSpeechParams,
+  TranscriptionParams as CoreTranscriptionParams,
+  IAgentRuntime,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
-  OpenAITranscriptionResponse,
   TextToSpeechParams as LocalTextToSpeechParams,
   TranscriptionParams as LocalTranscriptionParams,
+  OpenAITranscriptionResponse,
   TTSOutputFormat,
   TTSVoice,
 } from "../types";
@@ -43,11 +43,7 @@ type AudioInput = Blob | File | Buffer;
  * - Core params object with audioUrl string
  * - Plain string (treated as URL)
  */
-type TranscriptionInput =
-  | AudioInput
-  | LocalTranscriptionParams
-  | CoreTranscriptionParams
-  | string;
+type TranscriptionInput = AudioInput | LocalTranscriptionParams | CoreTranscriptionParams | string;
 
 /**
  * All accepted TTS input types
@@ -78,9 +74,7 @@ function isBuffer(value: unknown): value is Buffer {
 /**
  * Type guard for local TranscriptionParams object (has audio property)
  */
-function isLocalTranscriptionParams(
-  value: unknown
-): value is LocalTranscriptionParams {
+function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -93,9 +87,7 @@ function isLocalTranscriptionParams(
 /**
  * Type guard for core TranscriptionParams object (has audioUrl property)
  */
-function isCoreTranscriptionParams(
-  value: unknown
-): value is CoreTranscriptionParams {
+function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionParams {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -263,7 +255,7 @@ export async function handleTextToSpeech(
   let text: string;
   let voice: string | undefined;
   let format: TTSOutputFormat = "mp3";
-  let model: string;
+  let model: string | undefined;
   let instructions: string | undefined;
 
   if (typeof input === "string") {
@@ -286,7 +278,7 @@ export async function handleTextToSpeech(
   }
 
   // Get configuration with defaults
-  model = model! ?? getTTSModel(runtime);
+  model = model ?? getTTSModel(runtime);
   voice = voice ?? getTTSVoice(runtime);
   instructions = instructions ?? getTTSInstructions(runtime);
 
@@ -302,18 +294,9 @@ export async function handleTextToSpeech(
   }
 
   // Validate voice - cast to TTSVoice for type safety
-  const validVoices: TTSVoice[] = [
-    "alloy",
-    "echo",
-    "fable",
-    "onyx",
-    "nova",
-    "shimmer",
-  ];
+  const validVoices: TTSVoice[] = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
   if (voice && !validVoices.includes(voice as TTSVoice)) {
-    throw new Error(
-      `Invalid voice: ${voice}. Must be one of: ${validVoices.join(", ")}`
-    );
+    throw new Error(`Invalid voice: ${voice}. Must be one of: ${validVoices.join(", ")}`);
   }
 
   const baseURL = getBaseURL(runtime);
@@ -342,9 +325,7 @@ export async function handleTextToSpeech(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
-    throw new Error(
-      `OpenAI TTS failed: ${response.status} ${response.statusText} - ${errorText}`
-    );
+    throw new Error(`OpenAI TTS failed: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   return response.arrayBuffer();

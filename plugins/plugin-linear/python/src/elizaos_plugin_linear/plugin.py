@@ -4,23 +4,23 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from elizaos_plugin_linear.actions import (
-    create_issue_action,
-    get_issue_action,
-    update_issue_action,
-    delete_issue_action,
-    search_issues_action,
-    create_comment_action,
-    list_teams_action,
-    list_projects_action,
-    get_activity_action,
     clear_activity_action,
+    create_comment_action,
+    create_issue_action,
+    delete_issue_action,
+    get_activity_action,
+    get_issue_action,
+    list_projects_action,
+    list_teams_action,
+    search_issues_action,
+    update_issue_action,
 )
 from elizaos_plugin_linear.actions.base import Action
 from elizaos_plugin_linear.providers import (
-    linear_issues_provider,
-    linear_teams_provider,
-    linear_projects_provider,
     linear_activity_provider,
+    linear_issues_provider,
+    linear_projects_provider,
+    linear_teams_provider,
 )
 from elizaos_plugin_linear.providers.base import Provider
 from elizaos_plugin_linear.services.linear import LinearService
@@ -29,6 +29,7 @@ from elizaos_plugin_linear.services.linear import LinearService
 @dataclass
 class Plugin:
     """Plugin definition for ElizaOS."""
+
     name: str
     description: str
     services: list[type[Any]]
@@ -59,5 +60,8 @@ linear_plugin = Plugin(
         linear_activity_provider,
     ],
 )
+
+
+
 
 

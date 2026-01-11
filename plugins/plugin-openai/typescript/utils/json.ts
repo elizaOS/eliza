@@ -62,10 +62,7 @@ export function getJsonRepairFunction(): JsonRepairFunction {
 
     try {
       // Remove markdown code block wrappers
-      const cleanedText = text.replace(
-        JSON_CLEANUP_PATTERNS.MARKDOWN_JSON,
-        ""
-      );
+      const cleanedText = text.replace(JSON_CLEANUP_PATTERNS.MARKDOWN_JSON, "");
 
       // Validate the cleaned JSON parses correctly
       JSON.parse(cleanedText);

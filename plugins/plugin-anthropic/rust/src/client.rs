@@ -9,11 +9,11 @@ use tracing::{debug, error};
 
 use crate::config::AnthropicConfig;
 use crate::error::{AnthropicError, Result};
-use crate::models::{Model, ModelSize};
+use crate::models::Model;
 use crate::types::{
     ContentBlock, ErrorResponse, Message, MessagesRequest, MessagesResponse,
-    ObjectGenerationParams, ObjectGenerationResponse, StopReason, TextGenerationParams,
-    TextGenerationResponse, TokenUsage,
+    ObjectGenerationParams, ObjectGenerationResponse, TextGenerationParams,
+    TextGenerationResponse,
 };
 
 /// Anthropic API client.
@@ -371,7 +371,7 @@ impl AnthropicClient {
                     if depth == 0 {
                         if let Some(s) = start {
                             let candidate = &text[s..=i];
-                            if best.map_or(true, |b| candidate.len() > b.len()) {
+                            if best.is_none() || candidate.len() > best.unwrap().len() {
                                 best = Some(candidate);
                             }
                         }

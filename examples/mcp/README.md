@@ -6,11 +6,11 @@ This directory contains MCP (Model Context Protocol) server implementations that
 
 ## Available Examples
 
-| Framework | Language | Directory |
-|-----------|----------|-----------|
+| Framework                                  | Language   | Directory     |
+| ------------------------------------------ | ---------- | ------------- |
 | [@modelcontextprotocol/sdk](./typescript/) | TypeScript | `typescript/` |
-| [mcp-python](./python/) | Python | `python/` |
-| [mcp-rust](./rust/) | Rust | `rust/` |
+| [mcp-python](./python/)                    | Python     | `python/`     |
+| [mcp-rust](./rust/)                        | Rust       | `rust/`       |
 
 ## What is MCP?
 
@@ -25,9 +25,11 @@ The Model Context Protocol (MCP) is an open protocol that standardizes how AI ap
 All implementations expose the same tools:
 
 ### `chat`
+
 Send a message to the agent and receive a response.
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -48,6 +50,7 @@ Send a message to the agent and receive a response.
 **Returns:** Agent's response text
 
 ### `get_agent_info`
+
 Get information about the agent.
 
 **Returns:** Agent name, bio, and capabilities
@@ -88,6 +91,7 @@ export OPENAI_API_KEY=your-key
 ```
 
 Optional configuration:
+
 - `MCP_PORT` - Port for HTTP transport (default: 3000)
 - `OPENAI_BASE_URL` - Custom OpenAI-compatible endpoint
 - `OPENAI_SMALL_MODEL` - Model for quick responses
@@ -126,4 +130,3 @@ cd python && python test_client.py
 # Rust
 cd rust && cargo test
 ```
-

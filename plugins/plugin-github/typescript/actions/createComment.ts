@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { createCommentSchema, type CreateCommentParams } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type CreateCommentParams, createCommentSchema } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -52,32 +53,17 @@ const examples: ActionExample[][] = [
 
 export const createCommentAction: Action = {
   name: "CREATE_GITHUB_COMMENT",
-  similes: [
-    "COMMENT_ON_ISSUE",
-    "COMMENT_ON_PR",
-    "ADD_COMMENT",
-    "REPLY_TO_ISSUE",
-    "POST_COMMENT",
-  ],
-  description:
-    "Creates a comment on a GitHub issue or pull request.",
+  similes: ["COMMENT_ON_ISSUE", "COMMENT_ON_PR", "ADD_COMMENT", "REPLY_TO_ISSUE", "POST_COMMENT"],
+  description: "Creates a comment on a GitHub issue or pull request.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
     }
 
     const text = (message.content as Content).text?.toLowerCase() ?? "";
-    return (
-      text.includes("comment") ||
-      text.includes("reply") ||
-      text.includes("respond")
-    );
+    return text.includes("comment") || text.includes("reply") || text.includes("respond");
   },
 
   handler: async (
@@ -85,8 +71,8 @@ export const createCommentAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -96,7 +82,7 @@ export const createCommentAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
@@ -104,15 +90,18 @@ export const createCommentAction: Action = {
       const text = content.text ?? "";
 
       const params: CreateCommentParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        issueNumber: (state?.["issueNumber"] as number) ?? 0,
-        body: (state?.["body"] as string) ?? text,
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        issueNumber: (state?.issueNumber as number) ?? 0,
+        body: (state?.body as string) ?? text,
       };
 
       const validation = createCommentSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid comment parameters: ${errors}`);
@@ -121,7 +110,7 @@ export const createCommentAction: Action = {
             text: `I couldn't create the comment due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       const comment = await service.createComment(params);
@@ -134,10 +123,9 @@ export const createCommentAction: Action = {
         });
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to create comment: ${errorMessage}`);
 
       if (callback) {
@@ -146,7 +134,7 @@ export const createCommentAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -154,5 +142,3 @@ export const createCommentAction: Action = {
 };
 
 export default createCommentAction;
-
-

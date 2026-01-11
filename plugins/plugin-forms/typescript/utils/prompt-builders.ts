@@ -3,29 +3,24 @@
  * Uses the generated prompts and shared types from @elizaos/core.
  */
 
-import { composePrompt } from "@elizaos/core";
 import type { PromptFieldInfo } from "@elizaos/core";
+import { composePrompt } from "@elizaos/core";
 import {
-  FORM_EXTRACTION_TEMPLATE,
   FORM_CREATION_TEMPLATE,
+  FORM_EXTRACTION_TEMPLATE,
 } from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Build the form extraction prompt with the given user message and fields.
- * 
+ *
  * @param userMessage - The user's message to extract values from
  * @param fields - List of field information objects
  * @returns The formatted prompt string
  */
-export function buildExtractionPrompt(
-  userMessage: string,
-  fields: PromptFieldInfo[],
-): string {
+export function buildExtractionPrompt(userMessage: string, fields: PromptFieldInfo[]): string {
   const fieldDescriptions = fields
     .map((f) => {
-      const criteriaAttr = f.criteria
-        ? ` criteria="${f.criteria}"`
-        : "";
+      const criteriaAttr = f.criteria ? ` criteria="${f.criteria}"` : "";
       const desc = f.description || "";
       return `  <field id="${f.id}" type="${f.type}" label="${f.label}"${criteriaAttr}>${desc}</field>`;
     })
@@ -47,18 +42,13 @@ export function buildExtractionPrompt(
 
 /**
  * Build the form creation prompt with available form types.
- * 
+ *
  * @param userMessage - The user's message requesting form creation
  * @param availableTypes - List of available form type names
  * @returns The formatted prompt string
  */
-export function buildCreationPrompt(
-  userMessage: string,
-  availableTypes: string[],
-): string {
-  const typesList = availableTypes
-    .map((t) => `  <type>${t}</type>`)
-    .join("\n");
+export function buildCreationPrompt(userMessage: string, availableTypes: string[]): string {
+  const typesList = availableTypes.map((t) => `  <type>${t}</type>`).join("\n");
 
   return composePrompt({
     state: {
@@ -68,4 +58,3 @@ export function buildCreationPrompt(
     template: FORM_CREATION_TEMPLATE,
   });
 }
-

@@ -5,11 +5,11 @@
  */
 
 import {
-  type IAgentRuntime,
-  type State,
-  ModelType,
   composePromptFromState,
+  type IAgentRuntime,
   logger,
+  ModelType,
+  type State,
 } from "@elizaos/core";
 import { LLM_CALL_TIMEOUT_MS } from "../constants";
 
@@ -39,10 +39,7 @@ export async function callLLMWithTimeout<T>(
 
   // Create a timeout promise
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(
-      () => reject(new Error(`LLM call timed out after ${timeoutMs}ms`)),
-      timeoutMs
-    );
+    setTimeout(() => reject(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
   });
 
   try {
@@ -74,11 +71,9 @@ export async function callLLMWithTimeout<T>(
     return parsed;
   } catch (error) {
     if (error instanceof SyntaxError) {
-      logger.error(`[${actionName}] Failed to parse LLM response as JSON: ${error.message}`);
-    } else {
-      logger.error(`[${actionName}] LLM call error: ${String(error)}`);
+      throw new Error(`Failed to parse LLM response as JSON: ${error.message}`);
     }
-    return null;
+    throw error;
   }
 }
 

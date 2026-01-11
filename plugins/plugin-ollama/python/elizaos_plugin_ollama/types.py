@@ -22,11 +22,11 @@ class TextGenerationParams(BaseModel):
     top_k: int | None = None
     stop: list[str] | None = None
 
-    def with_system(self, system: str) -> "TextGenerationParams":
+    def with_system(self, system: str) -> TextGenerationParams:
         """Set the system prompt."""
         return self.model_copy(update={"system": system})
 
-    def with_temperature(self, temperature: float) -> "TextGenerationParams":
+    def with_temperature(self, temperature: float) -> TextGenerationParams:
         """Set temperature."""
         return self.model_copy(update={"temperature": temperature})
 
@@ -50,11 +50,11 @@ class ObjectGenerationParams(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    def with_system(self, system: str) -> "ObjectGenerationParams":
+    def with_system(self, system: str) -> ObjectGenerationParams:
         """Set the system prompt."""
         return self.model_copy(update={"system": system})
 
-    def with_json_schema(self, json_schema: dict[str, Any]) -> "ObjectGenerationParams":
+    def with_json_schema(self, json_schema: dict[str, Any]) -> ObjectGenerationParams:
         """Set a JSON schema."""
         return self.model_copy(update={"json_schema": json_schema})
 
@@ -129,4 +129,3 @@ class EmbeddingsResponse(BaseModel):
     """Response body from the Ollama embeddings API."""
 
     embedding: list[float]
-

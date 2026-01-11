@@ -20,12 +20,12 @@ async def main():
         "https://api.mainnet-beta.solana.com",
         "YourPublicKeyHere"
     )
-    
+
     async with SolanaClient(config) as client:
         # Get SOL balance
         balance = await client.get_sol_balance()
         print(f"Balance: {balance} SOL")
-        
+
         # Get token accounts
         tokens = await client.get_token_accounts()
         for token in tokens:
@@ -62,11 +62,13 @@ config = WalletConfig.from_env()
 ```
 
 Required environment variables:
+
 - `SOLANA_RPC_URL` - Solana RPC endpoint (defaults to mainnet)
 - `SOLANA_PRIVATE_KEY` or `WALLET_PRIVATE_KEY` - Private key for signing
 - `SOLANA_PUBLIC_KEY` or `WALLET_PUBLIC_KEY` - Public key (if no private key)
 
 Optional:
+
 - `SLIPPAGE` - Slippage tolerance in basis points (default: 50)
 - `HELIUS_API_KEY` - For enhanced RPC
 - `BIRDEYE_API_KEY` - For token price data
@@ -111,5 +113,3 @@ mypy elizaos_plugin_solana
 ## License
 
 MIT
-
-

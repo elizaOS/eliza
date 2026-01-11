@@ -94,3 +94,6 @@ class TestConfig:
         assert config.embeddings_url == "https://openrouter.ai/api/v1/embeddings"
 
 
+
+
+

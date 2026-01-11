@@ -54,7 +54,6 @@ async fn test_generate_object() {
     let response = client.generate_object(GenerateObjectParams {
         prompt: "Generate a JSON object with a single field 'name' set to 'test'.".to_string(),
         temperature: Some(0.0),
-        model: None,
     }).await;
     
     assert!(response.is_ok(), "Failed: {:?}", response.err());

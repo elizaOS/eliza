@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as os from "os";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTools, parseToolCalls } from "../lib/sub-agents/tools.js";
 
 describe("createTools", () => {
@@ -75,7 +75,10 @@ describe("createTools", () => {
       });
 
       expect(result.success).toBe(true);
-      const content = await fs.readFile(path.join(testDir, "nested/dir/file.txt"), "utf-8");
+      const content = await fs.readFile(
+        path.join(testDir, "nested/dir/file.txt"),
+        "utf-8",
+      );
       expect(content).toBe("Nested content");
     });
   });
@@ -93,7 +96,10 @@ describe("createTools", () => {
       });
 
       expect(result.success).toBe(true);
-      const content = await fs.readFile(path.join(testDir, "edit.txt"), "utf-8");
+      const content = await fs.readFile(
+        path.join(testDir, "edit.txt"),
+        "utf-8",
+      );
       expect(content).toBe("Hello Universe");
     });
 
@@ -136,12 +142,20 @@ describe("createTools", () => {
       const tools = createTools(testDir);
       const searchFiles = tools.find((t) => t.name === "search_files")!;
 
-      await fs.writeFile(path.join(testDir, "a.txt"), "hello world\nsecond\n", "utf-8");
-      await fs.writeFile(path.join(testDir, "b.ts"), "const x = 'world';\n", "utf-8");
+      await fs.writeFile(
+        path.join(testDir, "a.txt"),
+        "hello world\nsecond\n",
+        "utf-8",
+      );
+      await fs.writeFile(
+        path.join(testDir, "b.ts"),
+        "const x = 'world';\n",
+        "utf-8",
+      );
 
       const result = await searchFiles.execute({ pattern: "world", path: "." });
       expect(result.success).toBe(true);
-      expect(result.output).toContain("Search \"world\"");
+      expect(result.output).toContain('Search "world"');
       expect(result.output).toContain("a.txt");
       expect(result.output).toContain("b.ts");
     });
@@ -193,7 +207,8 @@ describe("parseToolCalls", () => {
   });
 
   it("should parse tool call with multiple args", () => {
-    const text = 'TOOL: edit_file(filepath="test.ts", old_str="old", new_str="new")';
+    const text =
+      'TOOL: edit_file(filepath="test.ts", old_str="old", new_str="new")';
     const calls = parseToolCalls(text);
 
     expect(calls).toHaveLength(1);
@@ -240,4 +255,3 @@ describe("parseToolCalls", () => {
     expect(calls).toHaveLength(0);
   });
 });
-

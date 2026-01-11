@@ -1,14 +1,6 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  check,
-  integer,
-  pgTable,
-  text,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, check, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
@@ -27,7 +19,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
 
   beforeEach(async () => {
     const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
-      "schema_evolution_constraint_modifications_test",
+      "schema_evolution_constraint_modifications_test"
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
@@ -78,10 +70,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     const schemaV2 = { users: userTableV2 };
 
     console.log("\n🔍 Checking NOT NULL constraint addition...");
-    const check = await migrator.checkMigration(
-      "@elizaos/not-null-test-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/not-null-test-v1", schemaV2);
 
     // This should warn about potential issues
     if (check) {
@@ -100,17 +89,13 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     }
 
     if (migrationError) {
-      console.log(
-        "  ✅ Migration failed as expected (NULL values violate NOT NULL)",
-      );
+      console.log("  ✅ Migration failed as expected (NULL values violate NOT NULL)");
       console.log(`  Error: ${migrationError.message.substring(0, 100)}...`);
     }
 
     // Fix the data first
     console.log("\n🔧 Fixing NULL values...");
-    await db.execute(
-      sql`UPDATE users SET email = 'default@example.com' WHERE email IS NULL`,
-    );
+    await db.execute(sql`UPDATE users SET email = 'default@example.com' WHERE email IS NULL`);
     console.log("  ✅ Updated NULL emails with default values");
 
     // Now migration should succeed
@@ -121,9 +106,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     // Verify constraint is in place
     let insertError: Error | null = null;
     try {
-      await db.execute(
-        sql`INSERT INTO users (name, email) VALUES ('Test User', NULL)`,
-      );
+      await db.execute(sql`INSERT INTO users (name, email) VALUES ('Test User', NULL)`);
     } catch (error) {
       insertError = error as Error;
     }
@@ -163,16 +146,13 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
         name: text("name").notNull(),
         username: text("username").unique(), // Now unique!
       },
-      (table) => [unique("username_unique").on(table.username)],
+      (table) => [unique("username_unique").on(table.username)]
     );
 
     const schemaV2 = { agents: agentTableV2 };
 
     console.log("\n🔍 Checking UNIQUE constraint addition...");
-    const check = await migrator.checkMigration(
-      "@elizaos/unique-test-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/unique-test-v1", schemaV2);
 
     if (check) {
       console.log("  ⚠️ Migration check results:");
@@ -191,9 +171,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     }
 
     if (migrationError) {
-      console.log(
-        "  ✅ Migration failed as expected (duplicates violate UNIQUE)",
-      );
+      console.log("  ✅ Migration failed as expected (duplicates violate UNIQUE)");
       console.log(`  Error: ${migrationError.message.substring(0, 100)}...`);
     }
 
@@ -202,7 +180,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     await db.execute(
       sql`UPDATE agents SET username = username || '-' || id WHERE username IN (
         SELECT username FROM agents GROUP BY username HAVING COUNT(*) > 1
-      )`,
+      )`
     );
     console.log("  ✅ Made usernames unique by appending IDs");
 
@@ -214,9 +192,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     // Verify unique constraint is enforced
     let insertError: Error | null = null;
     try {
-      await db.execute(
-        sql`INSERT INTO agents (name, username) VALUES ('Test', 'beta')`,
-      );
+      await db.execute(sql`INSERT INTO agents (name, username) VALUES ('Test', 'beta')`);
     } catch (error) {
       insertError = error as Error;
     }
@@ -261,16 +237,13 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
       () => [
         check("positive_price", sql`price > 0`),
         check("non_negative_quantity", sql`quantity >= 0`),
-      ],
+      ]
     );
 
     const schemaV2 = { products: productTableV2 };
 
     console.log("\n🔍 Checking CHECK constraint addition...");
-    const check2 = await migrator.checkMigration(
-      "@elizaos/check-test-v1",
-      schemaV2,
-    );
+    const check2 = await migrator.checkMigration("@elizaos/check-test-v1", schemaV2);
 
     if (check2) {
       console.log("  ⚠️ Migration analysis:");
@@ -308,7 +281,7 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
     let insertError: Error | null = null;
     try {
       await db.execute(
-        sql`INSERT INTO products (name, price, quantity) VALUES ('Bad Product', -10, 5)`,
+        sql`INSERT INTO products (name, price, quantity) VALUES ('Bad Product', -10, 5)`
       );
     } catch (error) {
       insertError = error as Error;
@@ -351,16 +324,13 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
       (table) => [
         check("value_positive", sql`value > 0`), // Add CHECK constraint
         unique("code_unique_constraint").on(table.code), // Additional unique constraint
-      ],
+      ]
     );
 
     const schemaV2 = { test_multi_constraints: tableV2 };
 
     console.log("\n🔍 Checking multiple constraint additions...");
-    const check2 = await migrator.checkMigration(
-      "@elizaos/multi-constraints-v1",
-      schemaV2,
-    );
+    const check2 = await migrator.checkMigration("@elizaos/multi-constraints-v1", schemaV2);
 
     if (check2) {
       console.log("  ⚠️ Multiple constraints being added:");
@@ -373,15 +343,9 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
 
     // Fix data to meet all constraints
     console.log("\n🔧 Preparing data for constraints...");
-    await db.execute(
-      sql`DELETE FROM test_multi_constraints WHERE code IS NULL`,
-    );
-    await db.execute(
-      sql`UPDATE test_multi_constraints SET value = 50 WHERE value IS NULL`,
-    );
-    await db.execute(
-      sql`UPDATE test_multi_constraints SET active = true WHERE active IS NULL`,
-    );
+    await db.execute(sql`DELETE FROM test_multi_constraints WHERE code IS NULL`);
+    await db.execute(sql`UPDATE test_multi_constraints SET value = 50 WHERE value IS NULL`);
+    await db.execute(sql`UPDATE test_multi_constraints SET active = true WHERE active IS NULL`);
 
     // Apply migration
     console.log("\n📦 Applying multiple constraints...");
@@ -393,27 +357,21 @@ describe("Schema Evolution Test: Constraint Modifications", () => {
 
     // Test NOT NULL on code
     try {
-      await db.execute(
-        sql`INSERT INTO test_multi_constraints (code, value) VALUES (NULL, 100)`,
-      );
+      await db.execute(sql`INSERT INTO test_multi_constraints (code, value) VALUES (NULL, 100)`);
     } catch (_e) {
       violations.push("NOT NULL on code");
     }
 
     // Test UNIQUE on code
     try {
-      await db.execute(
-        sql`INSERT INTO test_multi_constraints (code, value) VALUES ('ABC', 100)`,
-      );
+      await db.execute(sql`INSERT INTO test_multi_constraints (code, value) VALUES ('ABC', 100)`);
     } catch (_e) {
       violations.push("UNIQUE on code");
     }
 
     // Test CHECK on value
     try {
-      await db.execute(
-        sql`INSERT INTO test_multi_constraints (code, value) VALUES ('XYZ', -10)`,
-      );
+      await db.execute(sql`INSERT INTO test_multi_constraints (code, value) VALUES ('XYZ', -10)`);
     } catch (_e) {
       violations.push("CHECK on value");
     }

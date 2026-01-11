@@ -4,13 +4,8 @@
  * Provides context about the current GitHub repository state.
  */
 
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type State,
-} from "@elizaos/core";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 
 /**
  * Repository state provider
@@ -20,25 +15,22 @@ import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
  */
 export const repositoryStateProvider: Provider = {
   name: "GITHUB_REPOSITORY_STATE",
-  description:
-    "Provides context about the current GitHub repository including recent activity",
+  description: "Provides context about the current GitHub repository including recent activity",
 
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<string | null> => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
-      return null;
+      return { text: null };
     }
 
     try {
       const config = service.getConfig();
 
       if (!config.owner || !config.repo) {
-        return "GitHub repository not configured. Please set GITHUB_OWNER and GITHUB_REPO.";
+        return {
+          text: "GitHub repository not configured. Please set GITHUB_OWNER and GITHUB_REPO.",
+        };
       }
 
       // Fetch repository info
@@ -79,9 +71,7 @@ export const repositoryStateProvider: Provider = {
         parts.push("### Recent Open Issues");
         for (const issue of issues) {
           const labels = issue.labels.map((l) => l.name).join(", ");
-          parts.push(
-            `- #${issue.number}: ${issue.title}${labels ? ` [${labels}]` : ""}`,
-          );
+          parts.push(`- #${issue.number}: ${issue.title}${labels ? ` [${labels}]` : ""}`);
         }
         parts.push("");
       }
@@ -90,22 +80,19 @@ export const repositoryStateProvider: Provider = {
         parts.push("### Recent Open Pull Requests");
         for (const pr of pullRequests) {
           const status = pr.draft ? "[DRAFT] " : "";
-          parts.push(
-            `- #${pr.number}: ${status}${pr.title} (${pr.head.ref} → ${pr.base.ref})`,
-          );
+          parts.push(`- #${pr.number}: ${status}${pr.title} (${pr.head.ref} → ${pr.base.ref})`);
         }
         parts.push("");
       }
 
-      return parts.join("\n");
+      return { text: parts.join("\n") };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      return `Unable to fetch GitHub repository state: ${errorMessage}`;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        text: `Unable to fetch GitHub repository state: ${errorMessage}`,
+      };
     }
   },
 };
 
 export default repositoryStateProvider;
-
-

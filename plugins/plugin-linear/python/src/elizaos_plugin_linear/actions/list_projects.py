@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from elizaos_plugin_linear.actions.base import (
-    Action,
     ActionExample,
     ActionResult,
     HandlerCallback,
@@ -58,72 +57,83 @@ async def handler(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             raise RuntimeError("Linear service not available")
-        
+
         content = message.get("content", {}).get("text", "")
         team_id: str | None = None
         show_all = False
         state_filter: str | None = None
-        
+
         # Use LLM to parse the request
         if content:
             prompt = LIST_PROJECTS_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
-            
+
             if response:
                 try:
                     cleaned = re.sub(r"^```(?:json)?\n?", "", response)
                     cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                     parsed = json.loads(cleaned)
-                    
+
                     # Handle team filter
                     if parsed.get("teamFilter"):
                         teams = await linear_service.get_teams()
                         team = next(
-                            (t for t in teams 
-                             if t["key"].lower() == parsed["teamFilter"].lower()
-                             or t["name"].lower() == parsed["teamFilter"].lower()),
-                            None
+                            (
+                                t
+                                for t in teams
+                                if t["key"].lower() == parsed["teamFilter"].lower()
+                                or t["name"].lower() == parsed["teamFilter"].lower()
+                            ),
+                            None,
                         )
                         if team:
                             team_id = team["id"]
-                            logger.info(f"Filtering projects by team: {team['name']} ({team['key']})")
-                    
+                            logger.info(
+                                f"Filtering projects by team: {team['name']} ({team['key']})"
+                            )
+
                     show_all = parsed.get("showAll", False)
                     state_filter = parsed.get("stateFilter")
-                    
+
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse project filters")
-                    
+
                     # Fallback to basic parsing
-                    team_match = re.search(r"(?:for|in|of)\s+(?:the\s+)?(\w+)\s+team", content, re.IGNORECASE)
+                    team_match = re.search(
+                        r"(?:for|in|of)\s+(?:the\s+)?(\w+)\s+team", content, re.IGNORECASE
+                    )
                     if team_match:
                         teams = await linear_service.get_teams()
                         team = next(
-                            (t for t in teams 
-                             if t["key"].lower() == team_match.group(1).lower()
-                             or t["name"].lower() == team_match.group(1).lower()),
-                            None
+                            (
+                                t
+                                for t in teams
+                                if t["key"].lower() == team_match.group(1).lower()
+                                or t["name"].lower() == team_match.group(1).lower()
+                            ),
+                            None,
                         )
                         if team:
                             team_id = team["id"]
-                    
+
                     show_all = "all" in content.lower() and "project" in content.lower()
-        
+
         # Apply default team filter if configured and not showing all
         if not team_id and not show_all:
             default_team_key = runtime.get_setting("LINEAR_DEFAULT_TEAM_KEY")
             if default_team_key:
                 teams = await linear_service.get_teams()
                 default_team = next(
-                    (t for t in teams if t["key"].lower() == default_team_key.lower()),
-                    None
+                    (t for t in teams if t["key"].lower() == default_team_key.lower()), None
                 )
                 if default_team:
                     team_id = default_team["id"]
-                    logger.info(f"Applying default team filter for projects: {default_team['name']}")
-        
+                    logger.info(
+                        f"Applying default team filter for projects: {default_team['name']}"
+                    )
+
         projects = await linear_service.get_projects(team_id)
-        
+
         # Client-side filtering by state
         if state_filter and state_filter != "all":
             filtered = []
@@ -139,48 +149,57 @@ async def handler(
                     if state in ("completed", "done", "canceled"):
                         filtered.append(project)
             projects = filtered
-        
+
         if not projects:
             no_projects_msg = (
-                "No projects found for the specified team." if team_id
+                "No projects found for the specified team."
+                if team_id
                 else "No projects found in Linear."
             )
             if callback:
-                await callback({"text": no_projects_msg, "source": message.get("content", {}).get("source")})
+                await callback(
+                    {"text": no_projects_msg, "source": message.get("content", {}).get("source")}
+                )
             return {"text": no_projects_msg, "success": True, "data": {"projects": []}}
-        
+
         # Format project list
         project_list = []
         for i, project in enumerate(projects):
             teams_data = project.get("teams", {}).get("nodes", [])
             team_names = ", ".join(t["name"] for t in teams_data) or "No teams"
             status = project.get("state") or "Active"
-            progress = f" ({round(project['progress'] * 100)}% complete)" if project.get("progress") else ""
+            progress = (
+                f" ({round(project['progress'] * 100)}% complete)"
+                if project.get("progress")
+                else ""
+            )
             lead = project.get("lead")
             lead_text = f" | Lead: {lead['name']}" if lead else ""
-            
+
             dates = []
             if project.get("startDate"):
                 dates.append(f"Start: {project['startDate'][:10]}")
             if project.get("targetDate"):
                 dates.append(f"Due: {project['targetDate'][:10]}")
             date_info = f"\n   {' | '.join(dates)}" if dates else ""
-            
+
             project_list.append(
-                f"{i+1}. {project['name']}{' - ' + project['description'] if project.get('description') else ''}\n"
+                f"{i + 1}. {project['name']}{' - ' + project['description'] if project.get('description') else ''}\n"
                 f"   Status: {status}{progress} | Teams: {team_names}{lead_text}{date_info}"
             )
-        
+
         header_text = (
-            f'📁 Found {len(projects)} {state_filter} project{"s" if len(projects) != 1 else ""}:'
+            f"📁 Found {len(projects)} {state_filter} project{'s' if len(projects) != 1 else ''}:"
             if state_filter and state_filter != "all"
-            else f'📁 Found {len(projects)} project{"s" if len(projects) != 1 else ""}:'
+            else f"📁 Found {len(projects)} project{'s' if len(projects) != 1 else ''}:"
         )
-        
+
         result_message = f"{header_text}\n\n" + "\n\n".join(project_list)
         if callback:
-            await callback({"text": result_message, "source": message.get("content", {}).get("source")})
-        
+            await callback(
+                {"text": result_message, "source": message.get("content", {}).get("source")}
+            )
+
         return {
             "text": f"Found {len(projects)} project{'s' if len(projects) != 1 else ''}",
             "success": True,
@@ -202,12 +221,14 @@ async def handler(
                 "filters": {"team": team_id, "state": state_filter},
             },
         }
-        
+
     except Exception as error:
         logger.error(f"Failed to list projects: {error}")
         error_message = f"❌ Failed to list projects: {error}"
         if callback:
-            await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+            await callback(
+                {"text": error_message, "source": message.get("content", {}).get("source")}
+            )
         return {"text": error_message, "success": False}
 
 
@@ -218,11 +239,20 @@ list_projects_action = create_action(
     examples=[
         [
             ActionExample(name="User", content={"text": "Show me all projects"}),
-            ActionExample(name="Assistant", content={"text": "I'll list all the projects in Linear.", "actions": ["LIST_LINEAR_PROJECTS"]}),
+            ActionExample(
+                name="Assistant",
+                content={
+                    "text": "I'll list all the projects in Linear.",
+                    "actions": ["LIST_LINEAR_PROJECTS"],
+                },
+            ),
         ],
     ],
     validate=validate,
     handler=handler,
 )
+
+
+
 
 

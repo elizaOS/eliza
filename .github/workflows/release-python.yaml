@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: 'Package to release'
+        description: "Package to release"
         required: true
         type: choice
         options:
@@ -19,7 +19,7 @@ on:
           - elizaos
           - elizaos-plugin-sql
       dry_run:
-        description: 'Dry run (do not publish)'
+        description: "Dry run (do not publish)"
         required: false
         type: boolean
         default: false
@@ -28,10 +28,10 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
+
     permissions:
       contents: read
-      id-token: write  # Required for trusted publishing
+      id-token: write # Required for trusted publishing
 
     strategy:
       fail-fast: false
@@ -65,7 +65,7 @@ jobs:
         run: |
           PACKAGE="${{ github.event.inputs.package || 'all' }}"
           MATRIX_NAME="${{ matrix.name }}"
-          
+
           if [[ "$PACKAGE" == "all" ]] || [[ "$PACKAGE" == "$MATRIX_NAME" ]]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
           else
@@ -80,7 +80,7 @@ jobs:
         if: steps.check.outputs.should_build == 'true'
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install build dependencies
         if: steps.check.outputs.should_build == 'true'
@@ -101,21 +101,21 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          
+
           # Update version in pyproject.toml
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
-          
+
           # Update __version__ in __init__.py if it exists
           if [[ "${{ matrix.name }}" == "elizaos" ]]; then
             INIT_FILE="elizaos/__init__.py"
           else
             INIT_FILE="elizaos_plugin_sql/__init__.py"
           fi
-          
+
           if [[ -f "$INIT_FILE" ]]; then
             sed -i "s/__version__ = \".*\"/__version__ = \"${VERSION}\"/" "$INIT_FILE"
           fi
-          
+
           echo "Updated version to ${VERSION}"
 
       - name: Install package dependencies
@@ -177,4 +177,3 @@ jobs:
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "pip install ${{ matrix.pypi_name }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-

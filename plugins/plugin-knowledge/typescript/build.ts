@@ -1,10 +1,11 @@
 /**
  * Build script for Knowledge Plugin
  */
+
+import { existsSync } from "node:fs";
+import { cp, mkdir, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { build } from "bun";
-import { rm, mkdir, copyFile, cp, readdir } from "fs/promises";
-import { join, dirname } from "path";
-import { existsSync } from "fs";
 
 const outdir = "./dist";
 
@@ -129,6 +130,3 @@ buildPlugin().catch((err) => {
   console.error("Build failed:", err);
   process.exit(1);
 });
-
-
-

@@ -48,9 +48,18 @@ export async function demonstrateToolCompatibility() {
   const testRuntimes = [
     { modelProvider: "openai", model: "gpt-4" } as unknown as IAgentRuntime,
     { modelProvider: "openai", model: "o3-mini" } as unknown as IAgentRuntime, // Reasoning model
-    { modelProvider: "anthropic", model: "claude-3" } as unknown as IAgentRuntime,
-    { modelProvider: "google", model: "gemini-pro" } as unknown as IAgentRuntime,
-    { modelProvider: "unknown", model: "some-other-model" } as unknown as IAgentRuntime,
+    {
+      modelProvider: "anthropic",
+      model: "claude-3",
+    } as unknown as IAgentRuntime,
+    {
+      modelProvider: "google",
+      model: "gemini-pro",
+    } as unknown as IAgentRuntime,
+    {
+      modelProvider: "unknown",
+      model: "some-other-model",
+    } as unknown as IAgentRuntime,
   ];
 
   console.log("Original problematic schema:");
@@ -134,7 +143,10 @@ function findSchemaChanges(original: JSONSchema7, transformed: JSONSchema7): str
 // Example of how to use in practice
 export async function exampleUsage() {
   // In your MCP action, you would do something like this:
-  const mockRuntime = { modelProvider: "openai", model: "o3-mini" } as unknown as IAgentRuntime;
+  const mockRuntime = {
+    modelProvider: "openai",
+    model: "o3-mini",
+  } as unknown as IAgentRuntime;
   const compatibility = await createMcpToolCompatibility(mockRuntime);
 
   // Original MCP tool schema from server

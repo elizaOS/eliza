@@ -6,7 +6,7 @@
  * using real database connections (PGLite).
  */
 
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DatabaseAdapter } from "../database";
 
 describe("DatabaseAdapter Abstract Class", () => {

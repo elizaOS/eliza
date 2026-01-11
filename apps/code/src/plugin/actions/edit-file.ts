@@ -1,15 +1,15 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
 import { getCwd } from "../providers/cwd.js";
 
 interface EditParams {
@@ -38,13 +38,24 @@ function extractEditParams(text: string): EditParams {
 
   const codeBlocks = text.match(/```[\w]*\n?([\s\S]*?)```/g);
   if (codeBlocks && codeBlocks.length >= 2) {
-    oldStr = codeBlocks[0].replace(/```[\w]*\n?/, "").replace(/```$/, "").trim();
-    newStr = codeBlocks[1].replace(/```[\w]*\n?/, "").replace(/```$/, "").trim();
+    oldStr = codeBlocks[0]
+      .replace(/```[\w]*\n?/, "")
+      .replace(/```$/, "")
+      .trim();
+    newStr = codeBlocks[1]
+      .replace(/```[\w]*\n?/, "")
+      .replace(/```$/, "")
+      .trim();
   } else if (codeBlocks && codeBlocks.length === 1) {
-    newStr = codeBlocks[0].replace(/```[\w]*\n?/, "").replace(/```$/, "").trim();
+    newStr = codeBlocks[0]
+      .replace(/```[\w]*\n?/, "")
+      .replace(/```$/, "")
+      .trim();
   }
 
-  const replaceMatch = text.match(/replace\s+["'](.+?)["']\s+with\s+["'](.+?)["']/i);
+  const replaceMatch = text.match(
+    /replace\s+["'](.+?)["']\s+with\s+["'](.+?)["']/i,
+  );
   if (replaceMatch) {
     oldStr = replaceMatch[1];
     newStr = replaceMatch[2];
@@ -77,7 +88,10 @@ INPUTS EXPECTED:
 
 If only new content is provided without old content, the entire file will be replaced.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("edit") ||
@@ -93,7 +107,7 @@ If only new content is provided without old content, the entire file will be rep
     message: Memory,
     state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const text = message.content.text ?? "";
     let { filepath, oldStr, newStr } = extractEditParams(text);
@@ -120,7 +134,11 @@ If only new content is provided without old content, the entire file will be rep
         await fs.writeFile(fullPath, newStr, "utf-8");
         const result = `Replaced entire content of ${filepath}`;
         await callback?.({ text: result });
-        return { success: true, text: result, data: { filepath, action: "replace" } };
+        return {
+          success: true,
+          text: result,
+          data: { filepath, action: "replace" },
+        };
       }
 
       if (!originalContent.includes(oldStr)) {
@@ -134,7 +152,11 @@ If only new content is provided without old content, the entire file will be rep
 
       const result = `Edited ${filepath}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
       await callback?.({ text: result });
-      return { success: true, text: result, data: { filepath, action: "edit" } };
+      return {
+        success: true,
+        text: result,
+        data: { filepath, action: "edit" },
+      };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       const msg =
@@ -151,8 +173,14 @@ If only new content is provided without old content, the entire file will be rep
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: 'edit package.json replace "1.0.0" with "1.1.0"' } },
-      { name: "{{agent}}", content: { text: "Updating version...", actions: ["EDIT_FILE"] } },
+      {
+        name: "{{user1}}",
+        content: { text: 'edit package.json replace "1.0.0" with "1.1.0"' },
+      },
+      {
+        name: "{{agent}}",
+        content: { text: "Updating version...", actions: ["EDIT_FILE"] },
+      },
     ],
   ],
 };

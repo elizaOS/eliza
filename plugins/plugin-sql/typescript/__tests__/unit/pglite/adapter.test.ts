@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import type { PGliteClientManager } from "../../../pglite/manager";
 
@@ -46,10 +46,7 @@ describe("PgliteDatabaseAdapter", () => {
       isShuttingDown: vi.fn().mockReturnValue(false),
     };
 
-    adapter = new PgliteDatabaseAdapter(
-      agentId,
-      mockManager as PGliteClientManager,
-    );
+    adapter = new PgliteDatabaseAdapter(agentId, mockManager as PGliteClientManager);
   });
 
   describe("constructor", () => {
@@ -71,7 +68,7 @@ describe("PgliteDatabaseAdapter", () => {
       await adapter.init();
       expect(logger.debug).toHaveBeenCalledWith(
         { src: "plugin:sql" },
-        "PGliteDatabaseAdapter initialized",
+        "PGliteDatabaseAdapter initialized"
       );
     });
   });
@@ -123,9 +120,7 @@ describe("PgliteDatabaseAdapter", () => {
       mockManager.getConnection.mockReturnValue(mockConnection);
 
       const connection = await adapter.getConnection();
-      await expect(connection.query("SELECT 1")).rejects.toThrow(
-        "Query failed",
-      );
+      await expect(connection.query("SELECT 1")).rejects.toThrow("Query failed");
     });
   });
 
@@ -142,14 +137,11 @@ describe("PgliteDatabaseAdapter", () => {
         isShuttingDown: vi.fn().mockReturnValue(true),
       } as PGliteClientManager;
 
-      const shuttingDownAdapter = new PgliteDatabaseAdapter(
-        agentId,
-        shuttingDownManager,
-      );
+      const shuttingDownAdapter = new PgliteDatabaseAdapter(agentId, shuttingDownManager);
 
       // Attempt operation during shutdown should throw
       await expect(shuttingDownAdapter.getAgent(agentId)).rejects.toThrow(
-        "Database is shutting down - operation rejected",
+        "Database is shutting down - operation rejected"
       );
 
       // Verify warning was logged
@@ -158,7 +150,7 @@ describe("PgliteDatabaseAdapter", () => {
           src: "plugin:sql",
           error: "Database is shutting down - operation rejected",
         }),
-        "Database operation rejected during shutdown",
+        "Database operation rejected during shutdown"
       );
     });
 
@@ -172,18 +164,13 @@ describe("PgliteDatabaseAdapter", () => {
         isShuttingDown: vi.fn().mockReturnValue(true),
       } as PGliteClientManager;
 
-      const shuttingDownAdapter = new PgliteDatabaseAdapter(
-        agentId,
-        shuttingDownManager,
-      );
+      const shuttingDownAdapter = new PgliteDatabaseAdapter(agentId, shuttingDownManager);
 
       try {
         await shuttingDownAdapter.getAgent(agentId);
         expect.unreachable("Should have thrown");
       } catch (error: any) {
-        expect(error.message).toBe(
-          "Database is shutting down - operation rejected",
-        );
+        expect(error.message).toBe("Database is shutting down - operation rejected");
         expect(error).toBeInstanceOf(Error);
       }
     });

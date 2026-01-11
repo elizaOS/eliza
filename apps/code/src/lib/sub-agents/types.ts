@@ -1,5 +1,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type { CodeTask, TaskResult, ProgressUpdate, JsonValue, TaskTraceEvent } from "../../types.js";
+import type {
+  CodeTask,
+  JsonValue,
+  ProgressUpdate,
+  TaskResult,
+  TaskTraceEvent,
+} from "../../types.js";
 
 /**
  * Result from executing a tool

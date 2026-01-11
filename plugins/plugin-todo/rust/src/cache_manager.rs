@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! High-performance caching manager with LRU eviction and TTL support.
 
 use std::collections::HashMap;
@@ -48,6 +49,7 @@ pub struct CacheManager {
     misses: Arc<RwLock<u64>>,
     evictions: Arc<RwLock<u64>>,
 }
+
 
 impl Default for CacheManager {
     fn default() -> Self {
@@ -298,5 +300,10 @@ impl CacheManager {
         self.get(&key).await
     }
 }
+
+
+
+
+
 
 

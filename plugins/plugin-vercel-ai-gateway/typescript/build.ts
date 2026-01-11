@@ -2,9 +2,9 @@
  * Build script for Vercel AI Gateway TypeScript plugin.
  */
 
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = join(__dirname, "dist");
@@ -57,5 +57,3 @@ buildAll().catch((error) => {
   console.error("Build failed:", error);
   process.exit(1);
 });
-
-

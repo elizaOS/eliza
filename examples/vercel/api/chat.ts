@@ -8,9 +8,9 @@
 import {
   AgentRuntime,
   ChannelType,
+  type Character,
   createMessageMemory,
   stringToUuid,
-  type Character,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
@@ -73,7 +73,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
     const character = getCharacter();
     runtime = new AgentRuntime({
       character,
-      plugins: [sqlPlugin, openaiPlugin],  // bootstrapPlugin auto-included by runtime
+      plugins: [sqlPlugin, openaiPlugin], // bootstrapPlugin auto-included by runtime
     });
     await runtime.initialize();
     console.log("elizaOS runtime initialized successfully");
@@ -85,7 +85,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
 function jsonResponse<T extends Record<string, unknown>>(
   statusCode: number,
-  body: T
+  body: T,
 ): Response {
   return new Response(JSON.stringify(body), {
     status: statusCode,
@@ -128,7 +128,7 @@ async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
   let responseText = "";
 
-  await rt.messageService!.handleMessage(rt, message, async (content) => {
+  await rt.messageService?.handleMessage(rt, message, async (content) => {
     if (content?.text) {
       responseText += content.text;
     }
@@ -136,7 +136,8 @@ async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   });
 
   return {
-    response: responseText || "I apologize, but I could not generate a response.",
+    response:
+      responseText || "I apologize, but I could not generate a response.",
     conversationId,
     timestamp: new Date().toISOString(),
   };
@@ -152,10 +153,10 @@ export default async function handler(request: Request): Promise<Response> {
 
   // Only allow POST
   if (method !== "POST") {
-      return jsonResponse(405, {
-        error: "Method not allowed",
-        code: "METHOD_NOT_ALLOWED",
-      } as Record<string, unknown>);
+    return jsonResponse(405, {
+      error: "Method not allowed",
+      code: "METHOD_NOT_ALLOWED",
+    } as Record<string, unknown>);
   }
 
   try {
@@ -172,7 +173,9 @@ export default async function handler(request: Request): Promise<Response> {
       message: body.message.trim(),
       userId: typeof body.userId === "string" ? body.userId : undefined,
       conversationId:
-        typeof body.conversationId === "string" ? body.conversationId : undefined,
+        typeof body.conversationId === "string"
+          ? body.conversationId
+          : undefined,
     };
 
     const response = await handleChat(chatRequest);
@@ -191,4 +194,3 @@ export default async function handler(request: Request): Promise<Response> {
     });
   }
 }
-

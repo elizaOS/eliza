@@ -12,6 +12,8 @@
  */
 
 import type {
+  TextToSpeechParams as CoreTextToSpeechParams,
+  TranscriptionParams as CoreTranscriptionParams,
   DetokenizeTextParams,
   GenerateTextParams,
   IAgentRuntime,
@@ -21,8 +23,6 @@ import type {
   Plugin,
   TextEmbeddingParams,
   TokenizeTextParams,
-  TranscriptionParams as CoreTranscriptionParams,
-  TextToSpeechParams as CoreTextToSpeechParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeOpenAI } from "./init";
@@ -39,11 +39,7 @@ import {
   handleTokenizerEncode,
   handleTranscription,
 } from "./models";
-import type {
-  ImageGenerationResult,
-  OpenAIPluginConfig,
-  TextStreamResult,
-} from "./types";
+import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL } from "./utils/config";
 
 // Re-export types for consumers
@@ -180,7 +176,7 @@ export const openaiPlugin: Plugin = {
             }
 
             const data = (await response.json()) as { data?: unknown[] };
-            logger.info(`[OpenAI Test] API connected. ${(data.data && data.data.length) ?? 0} models available.`);
+            logger.info(`[OpenAI Test] API connected. ${data.data?.length ?? 0} models available.`);
           },
         },
         {
@@ -274,9 +270,7 @@ export const openaiPlugin: Plugin = {
               throw new Error("No streaming chunks received");
             }
 
-            logger.info(
-              `[OpenAI Test] Streaming test: ${chunks.length} chunks received`
-            );
+            logger.info(`[OpenAI Test] Streaming test: ${chunks.length} chunks received`);
           },
         },
         {
@@ -316,9 +310,7 @@ export const openaiPlugin: Plugin = {
               throw new Error("Transcription should return a string");
             }
 
-            logger.info(
-              `[OpenAI Test] Transcription: "${transcription.substring(0, 50)}..."`
-            );
+            logger.info(`[OpenAI Test] Transcription: "${transcription.substring(0, 50)}..."`);
           },
         },
         {

@@ -111,5 +111,3 @@ export interface OllamaTagsResponse {
   /** Available models */
   models: OllamaModelInfo[];
 }
-
-

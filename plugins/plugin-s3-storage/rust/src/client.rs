@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! S3 Storage Client
 //!
 //! Async client for S3 storage operations using AWS SDK.

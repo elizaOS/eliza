@@ -1,11 +1,8 @@
+#![allow(missing_docs)]
 //! HTTP/SSE transport for MCP connections.
 
 use async_trait::async_trait;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
 
 use crate::error::{McpError, McpResult};
 use crate::transport::Transport;
@@ -15,11 +12,7 @@ use crate::types::HttpServerConfig;
 pub struct HttpTransport {
     config: HttpServerConfig,
     client: Option<reqwest::Client>,
-    request_id: AtomicU64,
-    pending_responses: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Value>>>>,
-    sse_task: Option<tokio::task::JoinHandle<()>>,
     connected: bool,
-    response_rx: Option<mpsc::Receiver<Value>>,
 }
 
 impl HttpTransport {
@@ -28,17 +21,8 @@ impl HttpTransport {
         Self {
             config,
             client: None,
-            request_id: AtomicU64::new(0),
-            pending_responses: Arc::new(Mutex::new(HashMap::new())),
-            sse_task: None,
             connected: false,
-            response_rx: None,
         }
-    }
-
-    /// Generate the next request ID.
-    fn next_id(&self) -> u64 {
-        self.request_id.fetch_add(1, Ordering::SeqCst)
     }
 }
 
@@ -86,14 +70,7 @@ impl Transport for HttpTransport {
 
     async fn close(&mut self) -> McpResult<()> {
         self.connected = false;
-
-        if let Some(task) = self.sse_task.take() {
-            task.abort();
-        }
-
         self.client = None;
-        self.pending_responses.lock().await.clear();
-
         Ok(())
     }
 
@@ -140,6 +117,8 @@ mod tests {
         assert!(!transport.is_connected());
     }
 }
+
+
 
 
 

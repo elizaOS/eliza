@@ -59,12 +59,12 @@ src/
 
 ```typescript
 // Example: src/__tests__/plugin.test.ts
-import { describe, it, expect } from 'bun:test';
-import { starterPlugin } from '../plugin';
+import { describe, it, expect } from "bun:test";
+import { starterPlugin } from "../plugin";
 
-describe('Plugin Configuration', () => {
-  it('should have correct plugin metadata', () => {
-    expect(starterPlugin.name).toBe('plugin-starter');
+describe("Plugin Configuration", () => {
+  it("should have correct plugin metadata", () => {
+    expect(starterPlugin.name).toBe("plugin-starter");
   });
 });
 ```
@@ -79,18 +79,18 @@ describe('Plugin Configuration', () => {
 
 ```typescript
 // Example: src/__tests__/e2e/starter-plugin.ts
-import { type TestSuite } from '@elizaos/core';
+import { type TestSuite } from "@elizaos/core";
 
 export const StarterPluginTestSuite: TestSuite = {
-  name: 'plugin_starter_test_suite',
+  name: "plugin_starter_test_suite",
   tests: [
     {
-      name: 'hello_world_action_test',
+      name: "hello_world_action_test",
       fn: async (runtime) => {
         // Test with real runtime - no mocks needed!
-        const action = runtime.actions.find((a) => a.name === 'HELLO_WORLD');
+        const action = runtime.actions.find((a) => a.name === "HELLO_WORLD");
         if (!action) {
-          throw new Error('Action not found');
+          throw new Error("Action not found");
         }
         // Test real behavior...
       },
@@ -133,10 +133,10 @@ E2E tests are integrated into your plugin by:
 
 ```typescript
 // src/plugin.ts
-import { StarterPluginTestSuite } from './__tests__/e2e/starter-plugin';
+import { StarterPluginTestSuite } from "./__tests__/e2e/starter-plugin";
 
 export const starterPlugin: Plugin = {
-  name: 'plugin-starter',
+  name: "plugin-starter",
   // ... other properties
   tests: [StarterPluginTestSuite], // Direct import, no tests.ts needed
 };
@@ -171,14 +171,12 @@ E2E tests receive a real `IAgentRuntime` instance, allowing you to:
 ### Best Practices
 
 1. **Use Component Tests for**:
-
    - Algorithm logic
    - Data transformations
    - Input validation
    - Error handling
 
 2. **Use E2E Tests for**:
-
    - User scenarios
    - Action execution flows
    - Provider data integration
@@ -206,7 +204,6 @@ Before publishing your plugin, ensure you meet these requirements:
    ```
 
 2. **GitHub Repository**
-
    - Create a public GitHub repository for this plugin
    - Add the 'elizaos-plugins' topic to the repository
    - Use 'main' as the default branch

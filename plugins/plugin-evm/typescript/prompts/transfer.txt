@@ -1,0 +1,28 @@
+Given the recent messages and wallet information below:
+
+{{recentMessages}}
+
+{{chainBalances}}
+
+Extract the following information about the requested token transfer:
+- Chain to execute on (must be one of the supported chains)
+- Amount to transfer (only number without coin symbol, e.g., "0.1")
+- Recipient address (must be a valid Ethereum address)
+- Token symbol or address (if not a native token transfer)
+- Additional data/calldata (if any is included)
+
+Respond with an XML block containing only the extracted values. Use null for any values that cannot be determined.
+
+<response>
+    <fromChain>{{supportedChains}} | null</fromChain>
+    <amount>string | null</amount>
+    <toAddress>string | null</toAddress>
+    <token>string | null</token>
+    <data>string | null</data>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
+
+
+
+

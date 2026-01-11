@@ -2,7 +2,7 @@
 
 /**
  * Build script using bun build
- * Replaces tsup with native bun build functionality
+ * Uses Bun.build for bundling
  */
 
 import { $ } from 'bun';

@@ -1,15 +1,18 @@
-import type { Plugin } from '@elizaos/core';
-import { MemoryService } from './services/memory-service';
-import { summarizationEvaluator, longTermExtractionEvaluator } from './evaluators';
-import { longTermMemoryProvider, contextSummaryProvider } from './providers';
-import * as schema from './schemas';
+import type { Plugin } from "@elizaos/core";
+import { longTermExtractionEvaluator, summarizationEvaluator } from "./evaluators";
+import { contextSummaryProvider, longTermMemoryProvider } from "./providers";
+import * as schema from "./schemas";
+import { MemoryService } from "./services/memory-service";
 
+export {
+  longTermExtractionEvaluator,
+  summarizationEvaluator,
+} from "./evaluators";
+export { contextSummaryProvider, longTermMemoryProvider } from "./providers";
+export * from "./schemas";
+export { MemoryService } from "./services/memory-service";
 // Re-exports
-export * from './types';
-export * from './schemas';
-export { MemoryService } from './services/memory-service';
-export { contextSummaryProvider, longTermMemoryProvider } from './providers';
-export { summarizationEvaluator, longTermExtractionEvaluator } from './evaluators';
+export * from "./types";
 
 /**
  * Memory Plugin
@@ -43,9 +46,9 @@ export { summarizationEvaluator, longTermExtractionEvaluator } from './evaluator
  * - `memory_access_logs`: Optional usage tracking
  */
 export const memoryPlugin: Plugin = {
-  name: 'memory',
+  name: "memory",
   description:
-    'Advanced memory management with conversation summarization and long-term persistent memory',
+    "Advanced memory management with conversation summarization and long-term persistent memory",
 
   services: [MemoryService],
 
@@ -57,5 +60,3 @@ export const memoryPlugin: Plugin = {
 };
 
 export default memoryPlugin;
-
-

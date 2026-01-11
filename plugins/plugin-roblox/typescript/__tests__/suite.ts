@@ -2,12 +2,8 @@
  * Test suite for Roblox plugin
  */
 
-import type {
-  IAgentRuntime,
-  TestCase,
-  TestSuite,
-} from "@elizaos/core";
-import { RobloxService } from "../services/RobloxService";
+import type { IAgentRuntime, TestCase, TestSuite } from "@elizaos/core";
+import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
 /**
@@ -29,7 +25,9 @@ export class RobloxTestSuite implements TestSuite {
 
         if (apiKey && universeId) {
           if (!service) {
-            throw new Error("Roblox service should be initialized when API key and Universe ID are provided");
+            throw new Error(
+              "Roblox service should be initialized when API key and Universe ID are provided"
+            );
           }
         } else {
           runtime.logger.info("Roblox service not initialized - missing configuration (expected)");
@@ -70,5 +68,3 @@ export class RobloxTestSuite implements TestSuite {
     },
   ];
 }
-
-

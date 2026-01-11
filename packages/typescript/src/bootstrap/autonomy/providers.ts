@@ -1,26 +1,39 @@
 /**
  * Autonomy Providers for elizaOS
- * 
+ *
  * Providers that supply autonomous context information.
  */
 
-import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "../../types";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "../../types";
 import { stringToUuid } from "../../utils";
-import { AutonomyService, AUTONOMY_SERVICE_TYPE } from "./service";
+import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
 /**
  * Admin Chat Provider
- * 
+ *
  * Provides conversation history with admin user for autonomous context.
  * Only active in autonomous room to give agent memory of admin interactions.
  */
 export const adminChatProvider: Provider = {
   name: "ADMIN_CHAT_HISTORY",
-  description: "Provides recent conversation history with the admin user for autonomous context",
+  description:
+    "Provides recent conversation history with the admin user for autonomous context",
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
     // Only provide admin chat context in autonomous room
-    const autonomyService = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE);
+    const autonomyService = runtime.getService<AutonomyService>(
+      AUTONOMY_SERVICE_TYPE,
+    );
     if (!autonomyService) {
       return { text: "", data: {} };
     }
@@ -77,8 +90,11 @@ export const adminChatProvider: Provider = {
       .join("\n");
 
     // Get recent admin messages
-    const recentAdminMessages = adminMessages.filter((msg) => msg.entityId === adminUUID).slice(-3);
-    const lastAdminMessage = recentAdminMessages[recentAdminMessages.length - 1];
+    const recentAdminMessages = adminMessages
+      .filter((msg) => msg.entityId === adminUUID)
+      .slice(-3);
+    const lastAdminMessage =
+      recentAdminMessages[recentAdminMessages.length - 1];
     const adminMoodContext =
       recentAdminMessages.length > 0
         ? `Last admin message: "${lastAdminMessage?.content.text || "N/A"}"`
@@ -93,7 +109,7 @@ export const adminChatProvider: Provider = {
         recentMessageCount: recentAdminMessages.length,
         lastAdminMessage: lastAdminMessage?.content.text || "",
         conversationActive: adminMessages.some(
-          (m) => Date.now() - (m.createdAt || 0) < 3600000
+          (m) => Date.now() - (m.createdAt || 0) < 3600000,
         ),
       },
     };
@@ -102,17 +118,24 @@ export const adminChatProvider: Provider = {
 
 /**
  * Autonomy Status Provider
- * 
+ *
  * Shows autonomy status in regular conversations.
  * Does NOT show in autonomous room to avoid unnecessary context.
  */
 export const autonomyStatusProvider: Provider = {
   name: "AUTONOMY_STATUS",
-  description: "Provides current autonomy status for agent awareness in conversations",
+  description:
+    "Provides current autonomy status for agent awareness in conversations",
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
     // Get autonomy service
-    const autonomyService = runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE);
+    const autonomyService = runtime.getService<AutonomyService>(
+      AUTONOMY_SERVICE_TYPE,
+    );
     if (!autonomyService) {
       return { text: "", data: {} };
     }
@@ -145,7 +168,9 @@ export const autonomyStatusProvider: Provider = {
 
     const intervalSeconds = Math.round(interval / 1000);
     const intervalUnit =
-      intervalSeconds < 60 ? `${intervalSeconds} seconds` : `${Math.round(intervalSeconds / 60)} minutes`;
+      intervalSeconds < 60
+        ? `${intervalSeconds} seconds`
+        : `${Math.round(intervalSeconds / 60)} minutes`;
 
     return {
       text: `[AUTONOMY_STATUS]\nCurrent status: ${statusIcon} ${status}\nThinking interval: ${intervalUnit}\n[/AUTONOMY_STATUS]`,
@@ -154,9 +179,12 @@ export const autonomyStatusProvider: Provider = {
         serviceRunning,
         interval,
         intervalSeconds,
-        status: serviceRunning ? "running" : autonomyEnabled ? "enabled" : "disabled",
+        status: serviceRunning
+          ? "running"
+          : autonomyEnabled
+            ? "enabled"
+            : "disabled",
       },
     };
   },
 };
-

@@ -231,27 +231,15 @@ export async function getWorldSettings(
   runtime: IAgentRuntime,
   worldId: UUID,
 ): Promise<WorldSettings | null> {
-  try {
-    const world = await runtime.getWorld(worldId);
+  const world = await runtime.getWorld(worldId);
 
-    if (!world || !(world.metadata && world.metadata.settings)) {
-      return null;
-    }
-
-    // Decrypt secret values before returning (settings are stored encrypted)
-    const salt = getSalt();
-    return unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:bootstrap:action:settings",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error getting settings state",
-    );
+  if (!world || !world.metadata?.settings) {
     return null;
   }
+
+  // Decrypt secret values before returning (settings are stored encrypted)
+  const salt = getSalt();
+  return unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
 }
 
 /**
@@ -262,48 +250,36 @@ export async function updateWorldSettings(
   worldId: UUID,
   worldSettings: WorldSettings,
 ): Promise<boolean> {
-  try {
-    const world = await runtime.getWorld(worldId);
+  const world = await runtime.getWorld(worldId);
 
-    if (!world) {
-      logger.error(
-        {
-          src: "plugin:bootstrap:action:settings",
-          agentId: runtime.agentId,
-          worldId,
-        },
-        "No world found",
-      );
-      return false;
-    }
-
-    // Initialize metadata if it doesn't exist
-    if (!world.metadata) {
-      world.metadata = {};
-    }
-
-    // Encrypt secret values before saving (settings must be stored encrypted)
-    const salt = getSalt();
-    const saltedSettings = saltWorldSettings(worldSettings, salt);
-
-    // Update settings state
-    world.metadata.settings = saltedSettings;
-
-    // Save updated world
-    await runtime.updateWorld(world);
-
-    return true;
-  } catch (error) {
+  if (!world) {
     logger.error(
       {
         src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
+        worldId,
       },
-      "Error updating settings state",
+      "No world found",
     );
     return false;
   }
+
+  // Initialize metadata if it doesn't exist
+  if (!world.metadata) {
+    world.metadata = {};
+  }
+
+  // Encrypt secret values before saving (settings must be stored encrypted)
+  const salt = getSalt();
+  const saltedSettings = saltWorldSettings(worldSettings, salt);
+
+  // Update settings state
+  world.metadata.settings = saltedSettings;
+
+  // Save updated world
+  await runtime.updateWorld(world);
+
+  return true;
 }
 
 /**
@@ -390,62 +366,57 @@ async function extractSettingValues(
     If a setting is mentioned but no clear value is provided, do not include it.
     `;
 
-  try {
-    // Use runtime.useModel directly with strong typing
-    const result = await runtime.useModel<
-      typeof ModelType.OBJECT_LARGE,
-      SettingUpdate[]
-    >(ModelType.OBJECT_LARGE, {
-      prompt: basePrompt,
-      output: "array",
-      schema: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            key: { type: "string" },
-            value: { type: "string" },
-          },
-          required: ["key", "value"],
+  // Use runtime.useModel directly with strong typing
+  const result = await runtime.useModel<
+    typeof ModelType.OBJECT_LARGE,
+    SettingUpdate[]
+  >(ModelType.OBJECT_LARGE, {
+    prompt: basePrompt,
+    output: "array",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          key: { type: "string" },
+          value: { type: "string" },
         },
+        required: ["key", "value"],
       },
-    });
+    },
+  });
 
-    // Validate the extracted settings
-    if (!result) {
-      return [];
-    }
+  // Validate the extracted settings
+  if (!result) {
+    return [];
+  }
 
-    function extractValidSettings(obj: unknown, worldSettings: WorldSettings) {
-      const extracted: SettingUpdate[] = [];
+  function extractValidSettings(obj: unknown, worldSettings: WorldSettings) {
+    const extracted: SettingUpdate[] = [];
 
-      function traverse(node: unknown): void {
-        if (Array.isArray(node)) {
-          for (const item of node) {
-            traverse(item);
-          }
-        } else if (typeof node === "object" && node !== null) {
-          for (const [key, value] of Object.entries(node)) {
-            if (worldSettings[key] && typeof value !== "object") {
-              extracted.push({ key, value });
-            } else {
-              traverse(value);
-            }
+    function traverse(node: unknown): void {
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          traverse(item);
+        }
+      } else if (typeof node === "object" && node !== null) {
+        for (const [key, value] of Object.entries(node)) {
+          if (worldSettings[key] && typeof value !== "object") {
+            extracted.push({ key, value });
+          } else {
+            traverse(value);
           }
         }
       }
-
-      traverse(obj);
-      return extracted;
     }
 
-    const extractedSettings = extractValidSettings(result, worldSettings);
-
-    return extractedSettings;
-  } catch (error) {
-    console.error("Error extracting settings:", error);
-    return [];
+    traverse(obj);
+    return extracted;
   }
+
+  const extractedSettings = extractValidSettings(result, worldSettings);
+
+  return extractedSettings;
 }
 
 /**
@@ -464,77 +435,62 @@ async function processSettingUpdates(
   const messages: string[] = [];
   let updatedAny = false;
 
-  try {
-    // Create a copy of the state for atomic updates
-    const updatedState = { ...worldSettings };
+  // Create a copy of the state for atomic updates
+  const updatedState = { ...worldSettings };
 
-    // Process all updates
-    for (const update of updates) {
-      const setting = updatedState[update.key];
-      if (!setting) {
+  // Process all updates
+  for (const update of updates) {
+    const setting = updatedState[update.key];
+    if (!setting) {
+      continue;
+    }
+
+    // Check dependencies if they exist
+    if (setting.dependsOn?.length) {
+      const dependenciesMet = setting.dependsOn.every(
+        (dep) => updatedState[dep] && updatedState[dep].value !== null,
+      );
+      if (!dependenciesMet) {
+        messages.push(`Cannot update ${setting.name} - dependencies not met`);
         continue;
       }
-
-      // Check dependencies if they exist
-      if (setting.dependsOn && setting.dependsOn.length) {
-        const dependenciesMet = setting.dependsOn.every(
-          (dep) => updatedState[dep] && updatedState[dep].value !== null,
-        );
-        if (!dependenciesMet) {
-          messages.push(`Cannot update ${setting.name} - dependencies not met`);
-          continue;
-        }
-      }
-
-      // Update the setting
-      updatedState[update.key] = {
-        ...setting,
-        value: update.value,
-      };
-
-      messages.push(`Updated ${setting.name} successfully`);
-      updatedAny = true;
-
-      // Execute onSetAction if defined
-      if (setting.onSetAction) {
-        const actionMessage = setting.onSetAction(update.value);
-        if (actionMessage) {
-          messages.push(actionMessage);
-        }
-      }
     }
 
-    // If any updates were made, save the entire state to world metadata
-    if (updatedAny) {
-      // Save to world metadata
-      const saved = await updateWorldSettings(runtime, worldId, updatedState);
-
-      if (!saved) {
-        throw new Error("Failed to save updated state to world metadata");
-      }
-
-      // Verify save by retrieving it again
-      const savedState = await getWorldSettings(runtime, worldId);
-      if (!savedState) {
-        throw new Error("Failed to verify state save");
-      }
-    }
-
-    return { updatedAny, messages };
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:bootstrap:action:settings",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error processing setting updates",
-    );
-    return {
-      updatedAny: false,
-      messages: ["Error occurred while updating settings"],
+    // Update the setting
+    updatedState[update.key] = {
+      ...setting,
+      value: update.value,
     };
+
+    messages.push(`Updated ${setting.name} successfully`);
+    updatedAny = true;
+
+    // Execute onSetAction if defined
+    if (setting.onSetAction) {
+      const actionMessage = setting.onSetAction(update.value);
+      if (actionMessage) {
+        messages.push(actionMessage);
+      }
+    }
   }
+
+  // If any updates were made, save the entire state to world metadata
+  if (updatedAny) {
+    // Save to world metadata
+    const saved = await updateWorldSettings(runtime, worldId, updatedState);
+
+    if (!saved) {
+      throw new Error("Failed to save updated state to world metadata");
+    }
+
+    // Verify save by retrieving it again
+    const savedState = await getWorldSettings(runtime, worldId);
+    if (!savedState) {
+      throw new Error("Failed to verify state save");
+    }
+  }
+
+  return { updatedAny, messages };
 }
 
 /**
@@ -546,71 +502,40 @@ async function handleOnboardingComplete(
   _state: State,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
-  try {
-    // Generate completion message
-    const prompt = composePrompt({
-      state: {
-        settingsStatus: formatSettingsList(worldSettings),
-      },
-      template: completionTemplate,
-    });
+  // Generate completion message
+  const prompt = composePrompt({
+    state: {
+      settingsStatus: formatSettingsList(worldSettings),
+    },
+    template: completionTemplate,
+  });
 
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt,
+  });
 
-    const responseContent = parseKeyValueXml(response) as Content;
+  const responseContent = parseKeyValueXml(response) as Content;
 
-    await callback({
-      text: responseContent.text,
-      actions: ["ONBOARDING_COMPLETE"],
-      source: "discord",
-    });
+  await callback({
+    text: responseContent.text,
+    actions: ["ONBOARDING_COMPLETE"],
+    source: "discord",
+  });
 
-    return {
-      text: "Onboarding completed successfully",
-      values: {
-        success: true,
-        onboardingComplete: true,
-        allRequiredConfigured: true,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "ONBOARDING_COMPLETE",
-        settingsStatus: formatSettingsList(worldSettings),
-      },
+  return {
+    text: "Onboarding completed successfully",
+    values: {
       success: true,
-    };
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:bootstrap:action:settings",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error handling settings completion",
-    );
-    await callback({
-      text: "Great! All required settings have been configured. Your server is now fully set up and ready to use.",
-      actions: ["ONBOARDING_COMPLETE"],
-      source: "discord",
-    });
-
-    return {
-      text: "Onboarding completed with fallback message",
-      values: {
-        success: true,
-        onboardingComplete: true,
-        fallbackUsed: true,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "ONBOARDING_COMPLETE",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      success: true,
-    };
-  }
+      onboardingComplete: true,
+      allRequiredConfigured: true,
+    },
+    data: {
+      actionName: "UPDATE_SETTINGS",
+      action: "ONBOARDING_COMPLETE",
+      settingsStatus: formatSettingsList(worldSettings),
+    },
+    success: true,
+  };
 }
 
 /**
@@ -623,91 +548,59 @@ async function generateSuccessResponse(
   messages: string[],
   callback: HandlerCallback,
 ): Promise<ActionResult> {
-  try {
-    // Check if all required settings are now configured
-    const { requiredUnconfigured } = categorizeSettings(worldSettings);
+  const { requiredUnconfigured } = categorizeSettings(worldSettings);
 
-    if (requiredUnconfigured.length === 0) {
-      // All required settings are configured, complete settings
-      return await handleOnboardingComplete(
-        runtime,
-        worldSettings,
-        state,
-        callback,
-      );
-    }
-
-    const requiredUnconfiguredString = requiredUnconfigured
-      .map(([key, setting]) => `${key}: ${setting.name}`)
-      .join("\n");
-
-    // Generate success message
-    const prompt = composePrompt({
-      state: {
-        updateMessages: messages.join("\n"),
-        nextSetting: requiredUnconfiguredString,
-        remainingRequired: requiredUnconfigured.length.toString(),
-      },
-      template: successTemplate,
-    });
-
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-
-    const responseContent = parseKeyValueXml(response) as Content;
-
-    await callback({
-      text: responseContent.text,
-      actions: ["SETTING_UPDATED"],
-      source: "discord",
-    });
-
-    return {
-      text: "Settings updated successfully",
-      values: {
-        success: true,
-        settingsUpdated: true,
-        remainingRequired: requiredUnconfigured.length,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "SETTING_UPDATED",
-        updatedMessages: messages,
-        remainingRequired: requiredUnconfigured.length,
-      },
-      success: true,
-    };
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:bootstrap:action:settings",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error generating success response",
+  if (requiredUnconfigured.length === 0) {
+    // All required settings are configured, complete settings
+    return await handleOnboardingComplete(
+      runtime,
+      worldSettings,
+      state,
+      callback,
     );
-    await callback({
-      text: "Settings updated successfully. Please continue with the remaining configuration.",
-      actions: ["SETTING_UPDATED"],
-      source: "discord",
-    });
-
-    return {
-      text: "Settings updated with fallback message",
-      values: {
-        success: true,
-        settingsUpdated: true,
-        fallbackUsed: true,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "SETTING_UPDATED",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      success: true,
-    };
   }
+
+  const requiredUnconfiguredString = requiredUnconfigured
+    .map(([key, setting]) => `${key}: ${setting.name}`)
+    .join("\n");
+
+  // Generate success message
+  const prompt = composePrompt({
+    state: {
+      updateMessages: messages.join("\n"),
+      nextSetting: requiredUnconfiguredString,
+      remainingRequired: requiredUnconfigured.length.toString(),
+    },
+    template: successTemplate,
+  });
+
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt,
+  });
+
+  const responseContent = parseKeyValueXml(response) as Content;
+
+  await callback({
+    text: responseContent.text,
+    actions: ["SETTING_UPDATED"],
+    source: "discord",
+  });
+
+  return {
+    text: "Settings updated successfully",
+    values: {
+      success: true,
+      settingsUpdated: true,
+      remainingRequired: requiredUnconfigured.length,
+    },
+    data: {
+      actionName: "UPDATE_SETTINGS",
+      action: "SETTING_UPDATED",
+      updatedMessages: messages,
+      remainingRequired: requiredUnconfigured.length,
+    },
+    success: true,
+  };
 }
 
 /**
@@ -719,89 +612,57 @@ async function generateFailureResponse(
   state: State,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
-  try {
-    // Get next required setting
-    const { requiredUnconfigured } = categorizeSettings(worldSettings);
+  const { requiredUnconfigured } = categorizeSettings(worldSettings);
 
-    if (requiredUnconfigured.length === 0) {
-      // All required settings are configured, complete settings
-      return await handleOnboardingComplete(
-        runtime,
-        worldSettings,
-        state,
-        callback,
-      );
-    }
-
-    const requiredUnconfiguredString = requiredUnconfigured
-      .map(([key, setting]) => `${key}: ${setting.name}`)
-      .join("\n");
-
-    // Generate failure message
-    const prompt = composePrompt({
-      state: {
-        nextSetting: requiredUnconfiguredString,
-        remainingRequired: requiredUnconfigured.length.toString(),
-      },
-      template: failureTemplate,
-    });
-
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
-
-    const responseContent = parseKeyValueXml(response) as Content;
-
-    await callback({
-      text: responseContent.text,
-      actions: ["SETTING_UPDATE_FAILED"],
-      source: "discord",
-    });
-
-    return {
-      text: "No settings were updated",
-      values: {
-        success: false,
-        settingsUpdated: false,
-        remainingRequired: requiredUnconfigured.length,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "SETTING_UPDATE_FAILED",
-        remainingRequired: requiredUnconfigured.length,
-      },
-      success: false,
-    };
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:bootstrap:action:settings",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error generating failure response",
+  if (requiredUnconfigured.length === 0) {
+    // All required settings are configured, complete settings
+    return await handleOnboardingComplete(
+      runtime,
+      worldSettings,
+      state,
+      callback,
     );
-    await callback({
-      text: "I couldn't understand your settings update. Please try again with a clearer format.",
-      actions: ["SETTING_UPDATE_FAILED"],
-      source: "discord",
-    });
-
-    return {
-      text: "Failed to parse settings with fallback message",
-      values: {
-        success: false,
-        settingsUpdated: false,
-        fallbackUsed: true,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "SETTING_UPDATE_FAILED",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      success: false,
-    };
   }
+
+  const requiredUnconfiguredString = requiredUnconfigured
+    .map(([key, setting]) => `${key}: ${setting.name}`)
+    .join("\n");
+
+  // Generate failure message
+  const prompt = composePrompt({
+    state: {
+      nextSetting: requiredUnconfiguredString,
+      remainingRequired: requiredUnconfigured.length.toString(),
+    },
+    template: failureTemplate,
+  });
+
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt,
+  });
+
+  const responseContent = parseKeyValueXml(response) as Content;
+
+  await callback({
+    text: responseContent.text,
+    actions: ["SETTING_UPDATE_FAILED"],
+    source: "discord",
+  });
+
+  return {
+    text: "No settings were updated",
+    values: {
+      success: false,
+      settingsUpdated: false,
+      remainingRequired: requiredUnconfigured.length,
+    },
+    data: {
+      actionName: "UPDATE_SETTINGS",
+      action: "SETTING_UPDATE_FAILED",
+      remainingRequired: requiredUnconfigured.length,
+    },
+    success: false,
+  };
 }
 
 /**
@@ -812,67 +673,35 @@ async function generateErrorResponse(
   state: State,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
-  try {
-    const prompt = composePromptFromState({
-      state,
-      template: errorTemplate,
-    });
+  const prompt = composePromptFromState({
+    state,
+    template: errorTemplate,
+  });
 
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt,
+  });
 
-    const responseContent = parseKeyValueXml(response) as Content;
+  const responseContent = parseKeyValueXml(response) as Content;
 
-    await callback({
-      text: responseContent.text,
-      actions: ["SETTING_UPDATE_ERROR"],
-      source: "discord",
-    });
+  await callback({
+    text: responseContent.text,
+    actions: ["SETTING_UPDATE_ERROR"],
+    source: "discord",
+  });
 
-    return {
-      text: "Error processing settings",
-      values: {
-        success: false,
-        error: "PROCESSING_ERROR",
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "SETTING_UPDATE_ERROR",
-      },
+  return {
+    text: "Error processing settings",
+    values: {
       success: false,
-    };
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:bootstrap:action:settings",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error generating error response",
-    );
-    await callback({
-      text: "I'm sorry, but I encountered an error while processing your request. Please try again or contact support if the issue persists.",
-      actions: ["SETTING_UPDATE_ERROR"],
-      source: "discord",
-    });
-
-    return {
-      text: "Error with fallback message",
-      values: {
-        success: false,
-        error: "PROCESSING_ERROR",
-        fallbackUsed: true,
-      },
-      data: {
-        actionName: "UPDATE_SETTINGS",
-        action: "SETTING_UPDATE_ERROR",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      success: false,
-      error: error instanceof Error ? error : new Error(String(error)),
-    };
-  }
+      error: "PROCESSING_ERROR",
+    },
+    data: {
+      actionName: "UPDATE_SETTINGS",
+      action: "SETTING_UPDATE_ERROR",
+    },
+    success: false,
+  };
 }
 
 /**
@@ -890,71 +719,59 @@ export const updateSettingsAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    try {
-      if (message.content.channelType !== ChannelType.DM) {
-        logger.debug(
-          {
-            src: "plugin:bootstrap:action:settings",
-            agentId: runtime.agentId,
-            channelType: message.content.channelType,
-          },
-          "Skipping settings in non-DM channel",
-        );
-        return false;
-      }
-
-      // Find the server where this user is the owner
+    if (message.content.channelType !== ChannelType.DM) {
       logger.debug(
         {
           src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
-          entityId: message.entityId,
+          channelType: message.content.channelType,
         },
-        "Looking for server where user is owner",
+        "Skipping settings in non-DM channel",
       );
-      const worlds = await findWorldsForOwner(runtime, message.entityId);
-      if (!worlds) {
-        return false;
-      }
+      return false;
+    }
 
-      const world = worlds.find((world) => world.metadata && world.metadata.settings);
+    // Find the server where this user is the owner
+    logger.debug(
+      {
+        src: "plugin:bootstrap:action:settings",
+        agentId: runtime.agentId,
+        entityId: message.entityId,
+      },
+      "Looking for server where user is owner",
+    );
+    const worlds = await findWorldsForOwner(runtime, message.entityId);
+    if (!worlds) {
+      return false;
+    }
 
-      // Check if there's an active settings state in world metadata
-      const worldMetadata = world && world.metadata;
-      const worldSettings = worldMetadata && worldMetadata.settings;
+    const world = worlds.find((world) => world.metadata?.settings);
 
-      if (!worldSettings) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:settings",
-            agentId: runtime.agentId,
-            messageServerId: world && world.messageServerId,
-          },
-          "No settings state found for server",
-        );
-        return false;
-      }
+    // Check if there's an active settings state in world metadata
+    const worldMetadata = world?.metadata;
+    const worldSettings = worldMetadata?.settings;
 
-      logger.debug(
-        {
-          src: "plugin:bootstrap:action:settings",
-          agentId: runtime.agentId,
-          messageServerId: world.messageServerId,
-        },
-        "Found valid settings state for server",
-      );
-      return true;
-    } catch (error) {
+    if (!worldSettings) {
       logger.error(
         {
           src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
+          messageServerId: world?.messageServerId,
         },
-        "Error validating settings action",
+        "No settings state found for server",
       );
       return false;
     }
+
+    logger.debug(
+      {
+        src: "plugin:bootstrap:action:settings",
+        agentId: runtime.agentId,
+        messageServerId: world?.messageServerId,
+      },
+      "Found valid settings state for server",
+    );
+    return true;
   },
 
   handler: async (
@@ -964,305 +781,276 @@ export const updateSettingsAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    try {
-      if (!state) {
-        logger.error(
-          { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
-          "State is required for settings handler",
-        );
-        if (callback) {
-          await generateErrorResponse(runtime, state!, callback);
-        }
-        return {
-          text: "State is required for settings handler",
-          values: {
-            success: false,
-            error: "STATE_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_SETTINGS",
-            error: "State is required",
-          },
+    if (!state) {
+      logger.error(
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
+        "State is required for settings handler",
+      );
+      return {
+        text: "State is required for settings handler",
+        values: {
           success: false,
-          error: new Error("State is required for settings handler"),
-        };
-      }
+          error: "STATE_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_SETTINGS",
+          error: "State is required",
+        },
+        success: false,
+        error: new Error("State is required for settings handler"),
+      };
+    }
 
-      if (!message) {
-        logger.error(
-          { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
-          "Message is required for settings handler",
-        );
-        await generateErrorResponse(runtime, state, callback!);
-        return {
-          text: "Message is required for settings handler",
-          values: {
-            success: false,
-            error: "MESSAGE_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_SETTINGS",
-            error: "Message is required",
-          },
+    if (!message) {
+      logger.error(
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
+        "Message is required for settings handler",
+      );
+      if (callback) {
+        await generateErrorResponse(runtime, state, callback);
+      }
+      return {
+        text: "Message is required for settings handler",
+        values: {
           success: false,
-          error: new Error("Message is required for settings handler"),
-        };
-      }
+          error: "MESSAGE_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_SETTINGS",
+          error: "Message is required",
+        },
+        success: false,
+        error: new Error("Message is required for settings handler"),
+      };
+    }
 
-      if (!callback) {
-        logger.error(
-          { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
-          "Callback is required for settings handler",
-        );
-        return {
-          text: "Callback is required for settings handler",
-          values: {
-            success: false,
-            error: "CALLBACK_REQUIRED",
-          },
-          data: {
-            actionName: "UPDATE_SETTINGS",
-            error: "Callback is required",
-          },
+    if (!callback) {
+      logger.error(
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
+        "Callback is required for settings handler",
+      );
+      return {
+        text: "Callback is required for settings handler",
+        values: {
           success: false,
-          error: new Error("Callback is required for settings handler"),
-        };
-      }
+          error: "CALLBACK_REQUIRED",
+        },
+        data: {
+          actionName: "UPDATE_SETTINGS",
+          error: "Callback is required",
+        },
+        success: false,
+        error: new Error("Callback is required for settings handler"),
+      };
+    }
 
-      // Find the server where this user is the owner
-      logger.info(
+    // Find the server where this user is the owner
+    logger.info(
+      {
+        src: "plugin:bootstrap:action:settings",
+        agentId: runtime.agentId,
+        entityId: message.entityId,
+      },
+      "Handler looking for server for user",
+    );
+    const worlds = await findWorldsForOwner(runtime, message.entityId);
+    const serverOwnership = worlds?.find((world) => world.metadata?.settings);
+    if (!serverOwnership) {
+      logger.error(
         {
           src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           entityId: message.entityId,
         },
-        "Handler looking for server for user",
+        "No server found for user in handler",
       );
-      const worlds = await findWorldsForOwner(runtime, message.entityId);
-      const serverOwnership = worlds && worlds.find((world) => world.metadata && world.metadata.settings);
-      if (!serverOwnership) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:settings",
-            agentId: runtime.agentId,
-            entityId: message.entityId,
-          },
-          "No server found for user in handler",
-        );
-        await generateErrorResponse(runtime, state, callback);
-        return {
-          text: "No server found for user",
-          values: {
-            success: false,
-            error: "NO_SERVER_FOUND",
-          },
-          data: {
-            actionName: "UPDATE_SETTINGS",
-            error: "No server found where user is owner",
-            entityId: message.entityId,
-          },
+      await generateErrorResponse(runtime, state, callback);
+      return {
+        text: "No server found for user",
+        values: {
           success: false,
-        };
-      }
+          error: "NO_SERVER_FOUND",
+        },
+        data: {
+          actionName: "UPDATE_SETTINGS",
+          error: "No server found where user is owner",
+          entityId: message.entityId,
+        },
+        success: false,
+      };
+    }
 
-      const worldId = serverOwnership.id;
-      logger.info(
+    const worldId = serverOwnership.id;
+    logger.info(
+      {
+        src: "plugin:bootstrap:action:settings",
+        agentId: runtime.agentId,
+        worldId,
+      },
+      "Using world ID",
+    );
+
+    // Get settings state directly from the world object we already have
+    // Must decrypt secret values (settings are stored encrypted)
+    const serverOwnershipMetadata = serverOwnership.metadata;
+    const rawSettings = serverOwnershipMetadata?.settings as
+      | WorldSettings
+      | undefined;
+    const worldSettings = rawSettings
+      ? unsaltWorldSettings(rawSettings, getSalt())
+      : undefined;
+
+    if (!worldSettings) {
+      logger.error(
         {
           src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           worldId,
         },
-        "Using world ID",
+        "No settings state found for world in handler",
+      );
+      await generateErrorResponse(runtime, state, callback);
+      return {
+        text: "No settings state found",
+        values: {
+          success: false,
+          error: "NO_SETTINGS_STATE",
+        },
+        data: {
+          actionName: "UPDATE_SETTINGS",
+          error: "No settings state found for world",
+          worldId,
+        },
+        success: false,
+      };
+    }
+
+    // Extract setting values from message
+    logger.info(
+      {
+        src: "plugin:bootstrap:action:settings",
+        agentId: runtime.agentId,
+        text: message.content.text,
+      },
+      "Extracting settings from message",
+    );
+    const extractedSettings = await extractSettingValues(
+      runtime,
+      message,
+      state,
+      worldSettings,
+    );
+    logger.info(
+      {
+        src: "plugin:bootstrap:action:settings",
+        agentId: runtime.agentId,
+        count: extractedSettings.length,
+      },
+      "Extracted settings",
+    );
+
+    // Process extracted settings
+    const updateResults = await processSettingUpdates(
+      runtime,
+      worldId,
+      worldSettings,
+      extractedSettings,
+    );
+
+    // Generate appropriate response
+    if (updateResults.updatedAny) {
+      logger.info(
+        {
+          src: "plugin:bootstrap:action:settings",
+          agentId: runtime.agentId,
+          messages: updateResults.messages,
+        },
+        "Successfully updated settings",
       );
 
-      // Get settings state directly from the world object we already have
-      // Must decrypt secret values (settings are stored encrypted)
-      const serverOwnershipMetadata = serverOwnership.metadata;
-      const rawSettings = (serverOwnershipMetadata && serverOwnershipMetadata.settings) as
-        | WorldSettings
-        | undefined;
-      const worldSettings = rawSettings
-        ? unsaltWorldSettings(rawSettings, getSalt())
-        : undefined;
-
-      if (!worldSettings) {
+      // Get updated settings state
+      const updatedWorldSettings = await getWorldSettings(runtime, worldId);
+      if (!updatedWorldSettings) {
         logger.error(
           {
             src: "plugin:bootstrap:action:settings",
             agentId: runtime.agentId,
-            worldId,
           },
-          "No settings state found for world in handler",
+          "Failed to retrieve updated settings state",
         );
         await generateErrorResponse(runtime, state, callback);
         return {
-          text: "No settings state found",
+          text: "Failed to retrieve updated settings state",
           values: {
             success: false,
-            error: "NO_SETTINGS_STATE",
+            error: "RETRIEVE_FAILED",
           },
           data: {
             actionName: "UPDATE_SETTINGS",
-            error: "No settings state found for world",
+            error: "Failed to retrieve updated settings state",
             worldId,
           },
           success: false,
         };
       }
 
-      // Extract setting values from message
-      logger.info(
-        {
-          src: "plugin:bootstrap:action:settings",
-          agentId: runtime.agentId,
-          text: message.content.text,
-        },
-        "Extracting settings from message",
-      );
-      const extractedSettings = await extractSettingValues(
+      await generateSuccessResponse(
         runtime,
-        message,
+        updatedWorldSettings,
         state,
-        worldSettings,
-      );
-      logger.info(
-        {
-          src: "plugin:bootstrap:action:settings",
-          agentId: runtime.agentId,
-          count: extractedSettings.length,
-        },
-        "Extracted settings",
+        updateResults.messages,
+        callback,
       );
 
-      // Process extracted settings
-      const updateResults = await processSettingUpdates(
-        runtime,
-        worldId,
-        worldSettings,
-        extractedSettings,
-      );
+      // Check if all required settings are configured
+      const { requiredUnconfigured } = categorizeSettings(updatedWorldSettings);
+      const allConfigured = requiredUnconfigured.length === 0;
 
-      // Generate appropriate response
-      if (updateResults.updatedAny) {
-        logger.info(
-          {
-            src: "plugin:bootstrap:action:settings",
-            agentId: runtime.agentId,
-            messages: updateResults.messages,
-          },
-          "Successfully updated settings",
-        );
-
-        // Get updated settings state
-        const updatedWorldSettings = await getWorldSettings(runtime, worldId);
-        if (!updatedWorldSettings) {
-          logger.error(
-            {
-              src: "plugin:bootstrap:action:settings",
-              agentId: runtime.agentId,
-            },
-            "Failed to retrieve updated settings state",
-          );
-          await generateErrorResponse(runtime, state, callback);
-          return {
-            text: "Failed to retrieve updated settings state",
-            values: {
-              success: false,
-              error: "RETRIEVE_FAILED",
-            },
-            data: {
-              actionName: "UPDATE_SETTINGS",
-              error: "Failed to retrieve updated settings state",
-              worldId,
-            },
-            success: false,
-          };
-        }
-
-        await generateSuccessResponse(
-          runtime,
-          updatedWorldSettings,
-          state,
-          updateResults.messages,
-          callback,
-        );
-
-        // Check if all required settings are configured
-        const { requiredUnconfigured } =
-          categorizeSettings(updatedWorldSettings);
-        const allConfigured = requiredUnconfigured.length === 0;
-
-        return {
-          text: "Settings updated successfully",
-          values: {
-            success: true,
-            settingsUpdated: extractedSettings.length,
-            updatedSettings: extractedSettings.map((s) => s.key),
-            remainingRequired: requiredUnconfigured.length,
-            allConfigured,
-            worldId,
-          },
-          data: {
-            actionName: "UPDATE_SETTINGS",
-            updatedSettingsKeys: extractedSettings.map((s) => s.key),
-            updatedSettingsCount: extractedSettings.length,
-            messagesCount: updateResults.messages.length,
-            remainingRequired: requiredUnconfigured.map(([key, _]) => key),
-            allConfigured,
-            worldId: worldId ?? "",
-          },
-          success: true,
-        };
-      } else {
-        logger.info(
-          { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
-          "No settings were updated",
-        );
-        await generateFailureResponse(runtime, worldSettings, state, callback);
-
-        const { requiredUnconfigured } = categorizeSettings(worldSettings);
-
-        return {
-          text: "No settings were updated",
-          values: {
-            success: false,
-            error: "NO_UPDATES",
-            remainingRequired: requiredUnconfigured.length,
-            worldId,
-          },
-          data: {
-            actionName: "UPDATE_SETTINGS",
-            error: "No valid settings found in message",
-            remainingRequired: requiredUnconfigured.map(([key, _]) => key),
-            worldId,
-          },
-          success: false,
-        };
-      }
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:bootstrap:action:settings",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error in settings handler",
-      );
-      if (state && callback) {
-        await generateErrorResponse(runtime, state, callback);
-      }
       return {
-        text: "Error in settings handler",
+        text: "Settings updated successfully",
         values: {
-          success: false,
-          error: "HANDLER_ERROR",
+          success: true,
+          settingsUpdated: extractedSettings.length,
+          updatedSettings: extractedSettings.map((s) => s.key),
+          remainingRequired: requiredUnconfigured.length,
+          allConfigured,
+          worldId,
         },
         data: {
           actionName: "UPDATE_SETTINGS",
-          error: error instanceof Error ? error.message : String(error),
+          updatedSettingsKeys: extractedSettings.map((s) => s.key),
+          updatedSettingsCount: extractedSettings.length,
+          messagesCount: updateResults.messages.length,
+          remainingRequired: requiredUnconfigured.map(([key, _]) => key),
+          allConfigured,
+          worldId: worldId ?? "",
+        },
+        success: true,
+      };
+    } else {
+      logger.info(
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
+        "No settings were updated",
+      );
+      await generateFailureResponse(runtime, worldSettings, state, callback);
+
+      const { requiredUnconfigured } = categorizeSettings(worldSettings);
+
+      return {
+        text: "No settings were updated",
+        values: {
+          success: false,
+          error: "NO_UPDATES",
+          remainingRequired: requiredUnconfigured.length,
+          worldId,
+        },
+        data: {
+          actionName: "UPDATE_SETTINGS",
+          error: "No valid settings found in message",
+          remainingRequired: requiredUnconfigured.map(([key, _]) => key),
+          worldId,
         },
         success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
       };
     }
   },

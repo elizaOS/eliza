@@ -1,4 +1,4 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Helper types for database query result rows
 interface MigrationRow {
@@ -37,9 +37,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
   beforeAll(async () => {
     console.log("\n🚀 Testing Runtime Migrator Initialization...\n");
 
-    const testSetup = await createIsolatedTestDatabaseForMigration(
-      "initialization_tests",
-    );
+    const testSetup = await createIsolatedTestDatabaseForMigration("initialization_tests");
     cleanup = testSetup.cleanup;
     _testAgentId = testSetup.testAgentId;
     db = testSetup.db;
@@ -64,11 +62,11 @@ describe("Runtime Migrator - Initialization Tests", () => {
         sql.raw(`SELECT EXISTS (
           SELECT 1 FROM information_schema.schemata 
           WHERE schema_name = 'migrations'
-        )`),
+        )`)
       );
 
       const schemaResultRows0 = schemaResult.rows[0];
-      expect(schemaResultRows0 && schemaResultRows0.exists).toBe(true);
+      expect(schemaResultRows0?.exists).toBe(true);
     });
 
     it("should create all required migration tables", async () => {
@@ -80,11 +78,11 @@ describe("Runtime Migrator - Initialization Tests", () => {
             SELECT 1 FROM pg_tables
             WHERE schemaname = 'migrations'
             AND tablename = '${tableName}'
-          )`),
+          )`)
         );
 
         const resultRows0 = result.rows[0];
-        expect(resultRows0 && resultRows0.exists).toBe(true);
+        expect(resultRows0?.exists).toBe(true);
       }
     });
 
@@ -95,7 +93,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
                  FROM information_schema.columns
                  WHERE table_schema = 'migrations'
                  AND table_name = '_migrations'
-                 ORDER BY ordinal_position`),
+                 ORDER BY ordinal_position`)
       );
 
       const columnNames = migrationsColumns.rows.map((r: any) => r.column_name);
@@ -109,12 +107,10 @@ describe("Runtime Migrator - Initialization Tests", () => {
         sql.raw(`SELECT column_name, data_type
                  FROM information_schema.columns
                  WHERE table_schema = 'migrations'
-                 AND table_name = '_journal'`),
+                 AND table_name = '_journal'`)
       );
 
-      const journalColumnNames = journalColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const journalColumnNames = journalColumns.rows.map((r: any) => r.column_name);
       expect(journalColumnNames).toContain("plugin_name");
       expect(journalColumnNames).toContain("entries");
 
@@ -123,12 +119,10 @@ describe("Runtime Migrator - Initialization Tests", () => {
         sql.raw(`SELECT column_name, data_type
                  FROM information_schema.columns
                  WHERE table_schema = 'migrations'
-                 AND table_name = '_snapshots'`),
+                 AND table_name = '_snapshots'`)
       );
 
-      const snapshotColumnNames = snapshotColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const snapshotColumnNames = snapshotColumns.rows.map((r: any) => r.column_name);
       expect(snapshotColumnNames).toContain("plugin_name");
       expect(snapshotColumnNames).toContain("snapshot");
       expect(snapshotColumnNames).toContain("idx");
@@ -145,7 +139,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
       const tablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'public' 
-                 ORDER BY tablename`),
+                 ORDER BY tablename`)
       );
 
       const createdTables = tablesResult.rows.map((r: any) => r.tablename);
@@ -180,7 +174,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
         sql.raw(`SELECT * FROM migrations._migrations 
                  WHERE plugin_name = '@elizaos/plugin-sql'
                  ORDER BY created_at DESC
-                 LIMIT 1`),
+                 LIMIT 1`)
       );
 
       expect(result.rows.length).toBeGreaterThan(0);
@@ -194,7 +188,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
     it("should save journal entry with migration details", async () => {
       const result = await db.execute(
         sql.raw(`SELECT * FROM migrations._journal 
-                 WHERE plugin_name = '@elizaos/plugin-sql'`),
+                 WHERE plugin_name = '@elizaos/plugin-sql'`)
       );
 
       expect(result.rows.length).toBe(1);
@@ -209,7 +203,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
       const result = await db.execute(
         sql.raw(`SELECT * FROM migrations._snapshots 
                  WHERE plugin_name = '@elizaos/plugin-sql'
-                 ORDER BY idx DESC`),
+                 ORDER BY idx DESC`)
       );
 
       expect(result.rows.length).toBeGreaterThan(0);

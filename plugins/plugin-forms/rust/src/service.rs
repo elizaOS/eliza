@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Forms Service implementation for the elizaOS Forms Plugin.
 //!
 //! This service manages form lifecycle and state, providing methods to create,
@@ -151,53 +152,76 @@ impl<R: Runtime> FormsService<R> {
         form_id: Uuid,
         message_text: &str,
     ) -> FormsResult<FormUpdateResult> {
+        // First, get fields to extract (immutable borrow)
+        let fields_to_extract: Vec<FormField> = {
+            let form = self
+                .forms
+                .get(&form_id)
+                .ok_or_else(|| FormsError::FormNotFound(form_id.to_string()))?;
+
+            if form.status != FormStatus::Active {
+                return Ok(FormUpdateResult::failure("Form is not active"));
+            }
+
+            let current_step = &form.steps[form.current_step_index];
+            let required_fields: Vec<FormField> = current_step
+                .fields
+                .iter()
+                .filter(|f| f.value.is_none() && !f.optional)
+                .cloned()
+                .collect();
+
+            if !required_fields.is_empty() {
+                required_fields
+            } else {
+                current_step
+                    .fields
+                    .iter()
+                    .filter(|f| f.value.is_none())
+                    .cloned()
+                    .collect()
+            }
+        };
+
+        // Extract values using LLM (no mutable borrow needed)
+        let field_refs: Vec<&FormField> = fields_to_extract.iter().collect();
+        let extracted = self.extract_form_values(message_text, &field_refs).await?;
+
+        // Now get mutable borrow for updates
         let form = self
             .forms
             .get_mut(&form_id)
             .ok_or_else(|| FormsError::FormNotFound(form_id.to_string()))?;
 
-        if form.status != FormStatus::Active {
-            return Ok(FormUpdateResult::failure("Form is not active"));
-        }
-
-        let current_step = &mut form.steps[form.current_step_index];
-
-        // Get fields that need values
-        let fields_to_extract: Vec<&FormField> = current_step
-            .fields
-            .iter()
-            .filter(|f| f.value.is_none() && !f.optional)
-            .collect();
-
-        let fields_to_extract = if fields_to_extract.is_empty() {
-            current_step
-                .fields
-                .iter()
-                .filter(|f| f.value.is_none())
-                .collect()
-        } else {
-            fields_to_extract
-        };
-
-        // Extract values using LLM
-        let extracted = self.extract_form_values(message_text, &fields_to_extract).await?;
-
         let mut updated_fields = Vec::new();
         let mut errors = Vec::new();
 
+        let current_step = &mut form.steps[form.current_step_index];
+
         // Update fields with extracted values
-        for field in &mut current_step.fields {
+        // First, validate all values (clone field types to avoid borrow conflict)
+        let mut field_validations: Vec<(String, Result<FieldValue, String>)> = Vec::new();
+        for field in &current_step.fields {
             if let Some(value) = extracted.get(&field.id) {
-                match self.validate_field_value(value, &field.field_type) {
+                let field_type = field.field_type;
+                let validation_result = Self::validate_field_value_static(value, &field_type);
+                field_validations.push((field.id.clone(), validation_result));
+            }
+        }
+        
+        // Then update fields (needs mutable borrow of form)
+        for (field_id, validation_result) in field_validations {
+            if let Some(field) = current_step.fields.iter_mut().find(|f| f.id == field_id) {
+                match validation_result {
                     Ok(validated) => {
                         field.value = Some(validated);
                         field.error = None;
-                        updated_fields.push(field.id.clone());
+                        updated_fields.push(field_id);
                     }
                     Err(error) => {
                         field.error = Some(error.clone());
                         errors.push(FieldError {
-                            field_id: field.id.clone(),
+                            field_id: field_id.clone(),
                             message: error,
                         });
                     }
@@ -222,13 +246,14 @@ impl<R: Runtime> FormsService<R> {
 
         if step_completed {
             current_step.completed = true;
+            let completed_step_name = current_step.name.clone();
 
             if form.current_step_index < form.steps.len() - 1 {
                 form.current_step_index += 1;
                 let next_step_name = form.steps[form.current_step_index].name.clone();
                 message = format!(
                     "Step \"{}\" completed. Moving to step \"{}\".",
-                    current_step.name, next_step_name
+                    completed_step_name, next_step_name
                 );
             } else {
                 form.status = FormStatus::Completed;
@@ -306,7 +331,7 @@ impl<R: Runtime> FormsService<R> {
         parse_key_value_xml(&response).ok_or_else(|| FormsError::ParseError("Failed to parse XML response".to_string()))
     }
 
-    fn validate_field_value(&self, value: &str, field_type: &FormFieldType) -> Result<FieldValue, String> {
+    fn validate_field_value_static(value: &str, field_type: &FormFieldType) -> Result<FieldValue, String> {
         match field_type {
             FormFieldType::Number => {
                 value.parse::<f64>()

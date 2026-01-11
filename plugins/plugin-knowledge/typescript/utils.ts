@@ -1,21 +1,21 @@
-import { Buffer } from 'node:buffer';
-import * as mammoth from 'mammoth';
-import { logger } from '@elizaos/core';
-import { extractText } from 'unpdf';
-import { createHash } from 'crypto';
-import { v5 as uuidv5 } from 'uuid';
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { logger } from "@elizaos/core";
+import * as mammoth from "mammoth";
+import { extractText } from "unpdf";
+import { v5 as uuidv5 } from "uuid";
 
 const PLAIN_TEXT_CONTENT_TYPES = [
-  'application/typescript',
-  'text/typescript',
-  'text/x-python',
-  'application/x-python-code',
-  'application/yaml',
-  'text/yaml',
-  'application/x-yaml',
-  'application/json',
-  'text/markdown',
-  'text/csv',
+  "application/typescript",
+  "text/typescript",
+  "text/x-python",
+  "application/x-python-code",
+  "application/yaml",
+  "text/yaml",
+  "application/x-yaml",
+  "application/json",
+  "text/markdown",
+  "text/csv",
 ];
 
 const MAX_FALLBACK_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -37,7 +37,7 @@ export async function extractTextFromFileBuffer(
   );
 
   if (
-    lowerContentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    lowerContentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     logger.debug(`[TextUtil] Extracting text from DOCX ${originalFilename} via mammoth.`);
     try {
@@ -46,14 +46,16 @@ export async function extractTextFromFileBuffer(
         `[TextUtil] DOCX text extraction complete for ${originalFilename}. Text length: ${result.value.length}`
       );
       return result.value;
-    } catch (docxError: any) {
-      const errorMsg = `[TextUtil] Failed to parse DOCX file ${originalFilename}: ${docxError.message}`;
-      logger.error(errorMsg, docxError.stack);
+    } catch (docxError) {
+      const errorMessage = docxError instanceof Error ? docxError.message : String(docxError);
+      const errorStack = docxError instanceof Error ? docxError.stack : undefined;
+      const errorMsg = `[TextUtil] Failed to parse DOCX file ${originalFilename}: ${errorMessage}`;
+      logger.error(errorMsg, errorStack);
       throw new Error(errorMsg);
     }
   } else if (
-    lowerContentType === 'application/msword' ||
-    originalFilename.toLowerCase().endsWith('.doc')
+    lowerContentType === "application/msword" ||
+    originalFilename.toLowerCase().endsWith(".doc")
   ) {
     // For .doc files, we'll store the content as-is, and just add a message
     // The frontend will handle the display appropriately
@@ -62,13 +64,13 @@ export async function extractTextFromFileBuffer(
     // We'll add a descriptive message as a placeholder
     return `[Microsoft Word Document: ${originalFilename}]\n\nThis document was indexed for search but cannot be displayed directly in the browser. The original document content is preserved for retrieval purposes.`;
   } else if (
-    lowerContentType.startsWith('text/') ||
+    lowerContentType.startsWith("text/") ||
     PLAIN_TEXT_CONTENT_TYPES.includes(lowerContentType)
   ) {
     logger.debug(
       `[TextUtil] Extracting text from plain text compatible file ${originalFilename} (type: ${contentType})`
     );
-    return fileBuffer.toString('utf-8');
+    return fileBuffer.toString("utf-8");
   } else {
     logger.warn(
       `[TextUtil] Unsupported content type: "${contentType}" for ${originalFilename}. Attempting fallback to plain text.`
@@ -90,8 +92,8 @@ export async function extractTextFromFileBuffer(
     }
 
     try {
-      const textContent = fileBuffer.toString('utf-8');
-      if (textContent.includes('\ufffd')) {
+      const textContent = fileBuffer.toString("utf-8");
+      if (textContent.includes("\ufffd")) {
         // Replacement character, indicating potential binary or wrong encoding
         const binaryErrorMsg = `[TextUtil] File ${originalFilename} (type: ${contentType}) seems to be binary or has encoding issues after fallback to plain text (detected \ufffd).`;
         logger.error(binaryErrorMsg);
@@ -101,10 +103,11 @@ export async function extractTextFromFileBuffer(
         `[TextUtil] Successfully processed unknown type ${contentType} as plain text after fallback for ${originalFilename}.`
       );
       return textContent;
-    } catch (fallbackError: any) {
+    } catch (fallbackError) {
       // If the initial toString failed or if we threw due to \ufffd
       const finalErrorMsg = `[TextUtil] Unsupported content type: ${contentType} for ${originalFilename}. Fallback to plain text also failed or indicated binary content.`;
-      logger.error(finalErrorMsg, fallbackError.message ? fallbackError.stack : undefined);
+      const errorStack = fallbackError instanceof Error ? fallbackError.stack : undefined;
+      logger.error(finalErrorMsg, errorStack);
       throw new Error(finalErrorMsg);
     }
   }
@@ -122,7 +125,7 @@ export async function convertPdfToTextFromBuffer(
   pdfBuffer: Buffer,
   filename?: string
 ): Promise<string> {
-  const docName = filename || 'unnamed-document';
+  const docName = filename || "unnamed-document";
   logger.debug(`[PdfService] Starting conversion for ${docName} using unpdf`);
 
   try {
@@ -138,24 +141,25 @@ export async function convertPdfToTextFromBuffer(
 
     if (!result.text || result.text.trim().length === 0) {
       logger.warn(`[PdfService] No text extracted from ${docName}`);
-      return '';
+      return "";
     }
 
     // Clean up excessive whitespace while preserving paragraph structure
     const cleanedText = result.text
-      .split('\n')
+      .split("\n")
       .map((line: string) => line.trim())
       .filter((line: string) => line.length > 0)
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n'); // Max 2 consecutive newlines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n"); // Max 2 consecutive newlines
 
     logger.debug(
       `[PdfService] Conversion complete for ${docName}, ${result.totalPages} pages, length: ${cleanedText.length}`
     );
     return cleanedText;
-  } catch (error: any) {
-    logger.error(`[PdfService] Error converting PDF ${docName}:`, error.message);
-    throw new Error(`Failed to convert PDF to text: ${error.message}`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`[PdfService] Error converting PDF ${docName}:`, errorMessage);
+    throw new Error(`Failed to convert PDF to text: ${errorMessage}`);
   }
 }
 
@@ -168,13 +172,13 @@ export async function convertPdfToTextFromBuffer(
 export function isBinaryContentType(contentType: string, filename: string): boolean {
   // Text-based content types that should NOT be treated as binary
   const textContentTypes = [
-    'text/',
-    'application/json',
-    'application/xml',
-    'application/javascript',
-    'application/typescript',
-    'application/x-yaml',
-    'application/x-sh',
+    "text/",
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/typescript",
+    "application/x-yaml",
+    "application/x-sh",
   ];
 
   // Check if it's a text-based MIME type
@@ -185,17 +189,17 @@ export function isBinaryContentType(contentType: string, filename: string): bool
 
   // Binary content types
   const binaryContentTypes = [
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument',
-    'application/vnd.ms-excel',
-    'application/vnd.ms-powerpoint',
-    'application/zip',
-    'application/x-zip-compressed',
-    'application/octet-stream',
-    'image/',
-    'audio/',
-    'video/',
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/octet-stream",
+    "image/",
+    "audio/",
+    "video/",
   ];
 
   // Check MIME type
@@ -206,73 +210,73 @@ export function isBinaryContentType(contentType: string, filename: string): bool
   }
 
   // Check file extension as fallback
-  const fileExt = filename.split('.').pop()?.toLowerCase() || '';
+  const fileExt = filename.split(".").pop()?.toLowerCase() || "";
 
   // Text file extensions that should NOT be treated as binary
   const textExtensions = [
-    'txt',
-    'md',
-    'markdown',
-    'json',
-    'xml',
-    'html',
-    'htm',
-    'css',
-    'js',
-    'ts',
-    'jsx',
-    'tsx',
-    'yaml',
-    'yml',
-    'toml',
-    'ini',
-    'cfg',
-    'conf',
-    'sh',
-    'bash',
-    'zsh',
-    'fish',
-    'py',
-    'rb',
-    'go',
-    'rs',
-    'java',
-    'c',
-    'cpp',
-    'h',
-    'hpp',
-    'cs',
-    'php',
-    'sql',
-    'r',
-    'swift',
-    'kt',
-    'scala',
-    'clj',
-    'ex',
-    'exs',
-    'vim',
-    'env',
-    'gitignore',
-    'dockerignore',
-    'editorconfig',
-    'log',
-    'csv',
-    'tsv',
-    'properties',
-    'gradle',
-    'sbt',
-    'makefile',
-    'dockerfile',
-    'vagrantfile',
-    'gemfile',
-    'rakefile',
-    'podfile',
-    'csproj',
-    'vbproj',
-    'fsproj',
-    'sln',
-    'pom',
+    "txt",
+    "md",
+    "markdown",
+    "json",
+    "xml",
+    "html",
+    "htm",
+    "css",
+    "js",
+    "ts",
+    "jsx",
+    "tsx",
+    "yaml",
+    "yml",
+    "toml",
+    "ini",
+    "cfg",
+    "conf",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "py",
+    "rb",
+    "go",
+    "rs",
+    "java",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "cs",
+    "php",
+    "sql",
+    "r",
+    "swift",
+    "kt",
+    "scala",
+    "clj",
+    "ex",
+    "exs",
+    "vim",
+    "env",
+    "gitignore",
+    "dockerignore",
+    "editorconfig",
+    "log",
+    "csv",
+    "tsv",
+    "properties",
+    "gradle",
+    "sbt",
+    "makefile",
+    "dockerfile",
+    "vagrantfile",
+    "gemfile",
+    "rakefile",
+    "podfile",
+    "csproj",
+    "vbproj",
+    "fsproj",
+    "sln",
+    "pom",
   ];
 
   // If it's a known text extension, it's not binary
@@ -282,45 +286,45 @@ export function isBinaryContentType(contentType: string, filename: string): bool
 
   // Binary file extensions
   const binaryExtensions = [
-    'pdf',
-    'docx',
-    'doc',
-    'xls',
-    'xlsx',
-    'ppt',
-    'pptx',
-    'zip',
-    'rar',
-    '7z',
-    'tar',
-    'gz',
-    'bz2',
-    'xz',
-    'jpg',
-    'jpeg',
-    'png',
-    'gif',
-    'bmp',
-    'svg',
-    'ico',
-    'webp',
-    'mp3',
-    'mp4',
-    'avi',
-    'mov',
-    'wmv',
-    'flv',
-    'wav',
-    'flac',
-    'ogg',
-    'exe',
-    'dll',
-    'so',
-    'dylib',
-    'bin',
-    'dat',
-    'db',
-    'sqlite',
+    "pdf",
+    "docx",
+    "doc",
+    "xls",
+    "xlsx",
+    "ppt",
+    "pptx",
+    "zip",
+    "rar",
+    "7z",
+    "tar",
+    "gz",
+    "bz2",
+    "xz",
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "svg",
+    "ico",
+    "webp",
+    "mp3",
+    "mp4",
+    "avi",
+    "mov",
+    "wmv",
+    "flv",
+    "wav",
+    "flac",
+    "ogg",
+    "exe",
+    "dll",
+    "so",
+    "dylib",
+    "bin",
+    "dat",
+    "db",
+    "sqlite",
   ];
 
   return binaryExtensions.includes(fileExt);
@@ -336,7 +340,7 @@ export function normalizeS3Url(url: string): string {
   try {
     const urlObj = new URL(url);
     return `${urlObj.origin}${urlObj.pathname}`;
-  } catch (error) {
+  } catch (_error) {
     logger.warn(`[URL NORMALIZER] Failed to parse URL: ${url}. Returning original.`);
     return url;
   }
@@ -360,7 +364,7 @@ export async function fetchUrlContent(
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Eliza-Knowledge-Plugin/1.0',
+        "User-Agent": "Eliza-Knowledge-Plugin/1.0",
       },
     });
     clearTimeout(timeoutId);
@@ -370,7 +374,7 @@ export async function fetchUrlContent(
     }
 
     // Get content type from response headers
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const contentType = response.headers.get("content-type") || "application/octet-stream";
     logger.debug(`[URL FETCHER] Content type from server: ${contentType} for URL: ${url}`);
 
     // Get content as ArrayBuffer
@@ -378,7 +382,7 @@ export async function fetchUrlContent(
     const buffer = Buffer.from(arrayBuffer);
 
     // Convert to base64
-    const base64Content = buffer.toString('base64');
+    const base64Content = buffer.toString("base64");
 
     logger.debug(
       `[URL FETCHER] Successfully fetched content from URL: ${url} (${buffer.length} bytes)`
@@ -387,16 +391,17 @@ export async function fetchUrlContent(
       content: base64Content,
       contentType,
     };
-  } catch (error: any) {
-    logger.error(`[URL FETCHER] Error fetching content from URL ${url}: ${error.message}`);
-    throw new Error(`Failed to fetch content from URL: ${error.message}`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`[URL FETCHER] Error fetching content from URL ${url}: ${errorMessage}`);
+    throw new Error(`Failed to fetch content from URL: ${errorMessage}`);
   }
 }
 
 export function looksLikeBase64(content?: string | null): boolean {
   if (!content || content.length === 0) return false;
 
-  const cleanContent = content.replace(/\s/g, '');
+  const cleanContent = content.replace(/\s/g, "");
 
   // Too short to be meaningful Base64
   if (cleanContent.length < 16) return false;
@@ -447,9 +452,9 @@ export function generateContentBasedId(
   // If it's base64, decode it first to get actual content
   if (looksLikeBase64(content)) {
     try {
-      const decoded = Buffer.from(content, 'base64').toString('utf8');
+      const decoded = Buffer.from(content, "base64").toString("utf8");
       // Check if decoded content is readable text
-      if (!decoded.includes('\ufffd') || contentType?.includes('pdf')) {
+      if (!decoded.includes("\ufffd") || contentType?.includes("pdf")) {
         // For PDFs and other binary files, use a portion of the base64 itself
         contentForHashing = content.slice(0, maxChars);
       } else {
@@ -467,24 +472,24 @@ export function generateContentBasedId(
 
   // Normalize whitespace and line endings for consistency
   contentForHashing = contentForHashing
-    .replace(/\r\n/g, '\n') // Normalize line endings
-    .replace(/\r/g, '\n')
+    .replace(/\r\n/g, "\n") // Normalize line endings
+    .replace(/\r/g, "\n")
     .trim();
 
   // Create a deterministic string that includes all relevant factors
   const componentsToHash = [
     agentId, // Namespace by agent
     contentForHashing, // The actual content
-    includeFilename || '', // Optional filename for additional uniqueness
+    includeFilename || "", // Optional filename for additional uniqueness
   ]
     .filter(Boolean)
-    .join('::');
+    .join("::");
 
   // Create SHA-256 hash
-  const hash = createHash('sha256').update(componentsToHash).digest('hex');
+  const hash = createHash("sha256").update(componentsToHash).digest("hex");
 
   // Use a namespace UUID for documents (you can define this as a constant)
-  const DOCUMENT_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Standard namespace UUID
+  const DOCUMENT_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"; // Standard namespace UUID
 
   // Generate UUID v5 from the hash (deterministic)
   const uuid = uuidv5(hash, DOCUMENT_NAMESPACE);
@@ -504,5 +509,5 @@ export function generateContentBasedId(
  */
 export function extractFirstLines(content: string, maxLines: number = 10): string {
   const lines = content.split(/\r?\n/);
-  return lines.slice(0, maxLines).join('\n');
+  return lines.slice(0, maxLines).join("\n");
 }

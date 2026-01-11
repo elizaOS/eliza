@@ -1,20 +1,20 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  logger,
-  parseKeyValueXml,
-  composePromptFromState,
-  stringToUuid,
+  type ActionResult,
   asUUID,
+  composePromptFromState,
+  findEntityByName,
   type HandlerCallback,
   type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   ModelType,
-  findEntityByName,
-  type ActionResult,
+  parseKeyValueXml,
+  type State,
+  stringToUuid,
 } from "@elizaos/core";
-import { RolodexService } from "../../services/rolodex.ts";
+import type { RolodexService } from "../../services/rolodex.ts";
 
 interface AddContactXmlResult {
   contactName?: string;
@@ -145,151 +145,118 @@ export const addContactAction: Action = {
       throw new Error("RolodexService not available");
     }
 
-    try {
-      // Build proper state for prompt composition
-      if (!state) {
-        state = {
-          values: {},
-          data: {},
-          text: "",
-        };
-      }
-
-      // Add our values to the state
-      state.values = {
-        ...state.values,
-        message: message.content.text,
-        senderId: message.entityId,
-        senderName: state.values?.senderName || "User",
-      };
-
-      // Compose prompt to extract contact information
-      const prompt = composePromptFromState({
-        state,
-        template: addContactTemplate,
-      });
-
-      // Use LLM to extract contact details
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt,
-      });
-
-      const parsedResponse = parseKeyValueXml<AddContactXmlResult>(response);
-      if (!parsedResponse || !parsedResponse.contactName) {
-        logger.warn(
-          "[AddContact] Failed to parse contact information from response",
-        );
-        throw new Error("Could not extract contact information");
-      }
-
-      // Determine entity ID
-      let entityId = parsedResponse.entityId
-        ? asUUID(parsedResponse.entityId)
-        : null;
-
-      // If no entity ID provided, try to find by name
-      if (!entityId && parsedResponse.contactName) {
-        const entity = await findEntityByName(runtime, message, state);
-
-        if (entity) {
-          entityId = entity.id!;
-        } else {
-          // Create a new entity ID based on the name
-          entityId = stringToUuid(
-            `contact-${parsedResponse.contactName}-${runtime.agentId}`,
-          );
-        }
-      }
-
-      if (!entityId) {
-        throw new Error("Could not determine entity ID for contact");
-      }
-
-      // Parse categories
-      const categories = parsedResponse.categories
-        ? parsedResponse.categories.split(",").map((c: string) => c.trim())
-        : ["acquaintance"];
-
-      // Build preferences
-      const preferences: Record<string, string> = {};
-      if (parsedResponse.timezone)
-        preferences.timezone = parsedResponse.timezone;
-      if (parsedResponse.language)
-        preferences.language = parsedResponse.language;
-      if (parsedResponse.notes) preferences.notes = parsedResponse.notes;
-
-      // Add contact
-      const contact = await rolodexService.addContact(
-        entityId,
-        categories,
-        preferences,
-      );
-
-      logger.info(
-        `[AddContact] Added contact ${parsedResponse.contactName} (${entityId})`,
-      );
-
-      // Prepare response
-      const responseText = `I've added ${parsedResponse.contactName} to your contacts as ${categories.join(", ")}. ${
-        parsedResponse.reason || "They have been saved to your rolodex."
-      }`;
-
-      if (callback) {
-        await callback({
-          text: responseText,
-          action: "ADD_CONTACT",
-          metadata: {
-            contactId: entityId,
-            contactName: parsedResponse.contactName,
-            categories,
-            success: true,
-          },
-        });
-      }
-
-      return {
-        success: true,
-        values: {
-          contactId: entityId,
-          contactName: parsedResponse.contactName ?? "",
-          categoriesStr: categories.join(","),
-        },
-        data: {
-          contactId: entityId,
-          contactName: parsedResponse.contactName ?? "",
-          categories: categories.join(","),
-        },
-        text: responseText,
-      };
-    } catch (error) {
-      logger.error(
-        "[AddContact] Error adding contact:",
-        error instanceof Error ? error.message : String(error),
-      );
-
-      const errorText = `I couldn't add the contact. ${
-        error instanceof Error ? error.message : "Please try again."
-      }`;
-
-      if (callback) {
-        await callback({
-          text: errorText,
-          action: "ADD_CONTACT",
-          metadata: { error: true },
-        });
-      }
-
-      return {
-        success: false,
-        values: {
-          error: error instanceof Error ? error.message : String(error),
-        },
-        data: {
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-        text: errorText,
+    // Build proper state for prompt composition
+    if (!state) {
+      state = {
+        values: {},
+        data: {},
+        text: "",
       };
     }
+
+    // Add our values to the state
+    state.values = {
+      ...state.values,
+      message: message.content.text,
+      senderId: message.entityId,
+      senderName: state.values?.senderName || "User",
+    };
+
+    // Compose prompt to extract contact information
+    const prompt = composePromptFromState({
+      state,
+      template: addContactTemplate,
+    });
+
+    // Use LLM to extract contact details
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+
+    const parsedResponse = parseKeyValueXml<AddContactXmlResult>(response);
+    if (!parsedResponse || !parsedResponse.contactName) {
+      logger.warn(
+        "[AddContact] Failed to parse contact information from response",
+      );
+      throw new Error("Could not extract contact information");
+    }
+
+    // Determine entity ID
+    let entityId = parsedResponse.entityId
+      ? asUUID(parsedResponse.entityId)
+      : null;
+
+    // If no entity ID provided, try to find by name
+    if (!entityId && parsedResponse.contactName) {
+      const entity = await findEntityByName(runtime, message, state);
+
+      if (entity?.id) {
+        entityId = entity.id;
+      } else {
+        // Create a new entity ID based on the name
+        entityId = stringToUuid(
+          `contact-${parsedResponse.contactName}-${runtime.agentId}`,
+        );
+      }
+    }
+
+    if (!entityId) {
+      throw new Error("Could not determine entity ID for contact");
+    }
+
+    // Parse categories
+    const categories = parsedResponse.categories
+      ? parsedResponse.categories.split(",").map((c: string) => c.trim())
+      : ["acquaintance"];
+
+    // Build preferences
+    const preferences: Record<string, string> = {};
+    if (parsedResponse.timezone) preferences.timezone = parsedResponse.timezone;
+    if (parsedResponse.language) preferences.language = parsedResponse.language;
+    if (parsedResponse.notes) preferences.notes = parsedResponse.notes;
+
+    // Add contact
+    const _contact = await rolodexService.addContact(
+      entityId,
+      categories,
+      preferences,
+    );
+
+    logger.info(
+      `[AddContact] Added contact ${parsedResponse.contactName} (${entityId})`,
+    );
+
+    // Prepare response
+    const responseText = `I've added ${parsedResponse.contactName} to your contacts as ${categories.join(", ")}. ${
+      parsedResponse.reason || "They have been saved to your rolodex."
+    }`;
+
+    if (callback) {
+      await callback({
+        text: responseText,
+        action: "ADD_CONTACT",
+        metadata: {
+          contactId: entityId,
+          contactName: parsedResponse.contactName,
+          categories,
+          success: true,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      values: {
+        contactId: entityId,
+        contactName: parsedResponse.contactName ?? "",
+        categoriesStr: categories.join(","),
+      },
+      data: {
+        contactId: entityId,
+        contactName: parsedResponse.contactName ?? "",
+        categories: categories.join(","),
+      },
+      text: responseText,
+    };
   },
 };
-

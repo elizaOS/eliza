@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Farcaster Plugin - Rust Implementation
 //!
 //! This crate provides a Farcaster client for elizaOS, enabling agents to

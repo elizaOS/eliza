@@ -12,7 +12,7 @@ import hashlib
 import hmac
 import time
 import urllib.parse
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -72,7 +72,7 @@ class XClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "XClient":
+    async def __aenter__(self) -> XClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -119,9 +119,7 @@ class XClient:
 
         return base64.b64encode(signature).decode("utf-8")
 
-    def _get_oauth_header(
-        self, method: str, url: str, params: dict[str, str] | None = None
-    ) -> str:
+    def _get_oauth_header(self, method: str, url: str, params: dict[str, str] | None = None) -> str:
         """Generate OAuth 1.0a Authorization header."""
         oauth_params = {
             "oauth_consumer_key": self._config.api_key,
@@ -295,7 +293,9 @@ class XClient:
                     voting_status=p.get("voting_status"),
                     options=[
                         PollOption(
-                            position=o.get("position"), label=o.get("label", ""), votes=o.get("votes")
+                            position=o.get("position"),
+                            label=o.get("label", ""),
+                            votes=o.get("votes"),
                         )
                         for o in p.get("options", [])
                     ],
@@ -468,7 +468,9 @@ class XClient:
         if pagination_token:
             params["pagination_token"] = pagination_token
 
-        data = await self._request("GET", "/users/me/timelines/reverse_chronological", params=params)
+        data = await self._request(
+            "GET", "/users/me/timelines/reverse_chronological", params=params
+        )
 
         posts = [self._parse_post(t, data.get("includes")) for t in data.get("data", [])]
 

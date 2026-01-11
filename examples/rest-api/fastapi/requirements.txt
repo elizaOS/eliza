@@ -9,3 +9,8 @@ elizaos-plugin-localdb>=1.0.0
 
 
 
+
+
+
+
+

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Migration service for runtime migrations.
 
 use anyhow::{Context, Result};

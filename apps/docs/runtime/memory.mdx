@@ -12,7 +12,8 @@ An AI without memory is like a goldfish - every conversation starts from zero. Y
 - **Build knowledge** - Facts extracted from conversations persist
 
 <Tip>
-**Memory is your agent's brain.** Messages, facts, relationships, goals - all stored, indexed, and searchable through embeddings.
+  **Memory is your agent's brain.** Messages, facts, relationships, goals - all
+  stored, indexed, and searchable through embeddings.
 </Tip>
 
 ## Memory System
@@ -20,7 +21,11 @@ An AI without memory is like a goldfish - every conversation starts from zero. Y
 The memory system provides hierarchical storage for conversations, knowledge, and agent state. It enables agents to maintain context, learn from interactions, and build persistent knowledge.
 
 <CardGroup cols={2}>
-  <Card title="Conceptual Overview" icon="brain" href="/agents/memory-and-state">
+  <Card
+    title="Conceptual Overview"
+    icon="brain"
+    href="/agents/memory-and-state"
+  >
     Understanding memory architecture
   </Card>
   <Card title="Runtime Core" icon="microchip" href="/runtime/core">
@@ -34,13 +39,13 @@ The memory system provides hierarchical storage for conversations, knowledge, an
 
 ```typescript
 enum MemoryType {
-  MESSAGE = 'message',           // Conversation messages
-  FACT = 'fact',                // Extracted knowledge
-  DOCUMENT = 'document',         // Document storage
-  RELATIONSHIP = 'relationship', // Entity relationships
-  GOAL = 'goal',                // Agent goals
-  TASK = 'task',                // Scheduled tasks
-  ACTION = 'action',            // Action execution records
+  MESSAGE = "message", // Conversation messages
+  FACT = "fact", // Extracted knowledge
+  DOCUMENT = "document", // Document storage
+  RELATIONSHIP = "relationship", // Entity relationships
+  GOAL = "goal", // Agent goals
+  TASK = "task", // Scheduled tasks
+  ACTION = "action", // Action execution records
 }
 ```
 
@@ -74,10 +79,10 @@ State represents the agent's current understanding of context:
 interface State {
   // Key-value pairs for template access
   values: Record<string, any>;
-  
+
   // Structured data from providers
   data: Record<string, any>;
-  
+
   // Concatenated textual context
   text: string;
 }
@@ -93,12 +98,12 @@ flowchart TD
     Execute --> Aggregate[Aggregate Results]
     Aggregate --> Cache[Cache State]
     Cache --> Return[Return State]
-    
+
     classDef input fill:#2196f3,color:#fff
     classDef storage fill:#4caf50,color:#fff
     classDef processing fill:#9c27b0,color:#fff
     classDef output fill:#ff9800,color:#fff
-    
+
     class Message input
     class Store,Cache storage
     class Select,Execute,Aggregate processing
@@ -113,17 +118,17 @@ flowchart TD
 // Store a message
 await runtime.createMemory({
   type: MemoryType.MESSAGE,
-  content: { 
+  content: {
     text: "User message",
-    role: 'user',
-    name: 'John'
+    role: "user",
+    name: "John",
   },
   roomId: message.roomId,
   userId: message.userId,
   metadata: {
-    platform: 'discord',
-    channelId: '12345'
-  }
+    platform: "discord",
+    channelId: "12345",
+  },
 });
 
 // Store a fact
@@ -131,11 +136,11 @@ await runtime.createMemory({
   type: MemoryType.FACT,
   content: {
     text: "The user's favorite color is blue",
-    subject: 'user',
-    predicate: 'favorite_color',
-    object: 'blue'
+    subject: "user",
+    predicate: "favorite_color",
+    object: "blue",
   },
-  roomId: message.roomId
+  roomId: message.roomId,
 });
 
 // Store an action result
@@ -143,11 +148,11 @@ await runtime.createMemory({
   type: MemoryType.ACTION,
   content: {
     text: "Generated image of a sunset",
-    action: 'IMAGE_GENERATION',
-    result: { url: 'https://...' }
+    action: "IMAGE_GENERATION",
+    result: { url: "https://..." },
   },
   roomId: message.roomId,
-  agentId: runtime.agentId
+  agentId: runtime.agentId,
 });
 ```
 
@@ -157,7 +162,7 @@ await runtime.createMemory({
 // Text search with embeddings
 const memories = await runtime.searchMemories(
   "previous conversation about colors",
-  10 // limit
+  10, // limit
 );
 
 // Search with filters
@@ -165,7 +170,7 @@ const facts = await runtime.searchMemories({
   query: "user preferences",
   type: MemoryType.FACT,
   roomId: currentRoom.id,
-  limit: 5
+  limit: 5,
 });
 
 // Search by time range
@@ -173,7 +178,7 @@ const recentMessages = await runtime.searchMemories({
   type: MemoryType.MESSAGE,
   roomId: currentRoom.id,
   after: new Date(Date.now() - 3600000), // Last hour
-  limit: 20
+  limit: 20,
 });
 ```
 
@@ -184,16 +189,15 @@ const recentMessages = await runtime.searchMemories({
 const memory = await runtime.getMemoryById(memoryId);
 
 // Get memories by room
-const roomMemories = await runtime.getMemoriesByRoom(
-  roomId,
-  { type: MemoryType.MESSAGE, limit: 50 }
-);
+const roomMemories = await runtime.getMemoriesByRoom(roomId, {
+  type: MemoryType.MESSAGE,
+  limit: 50,
+});
 
 // Get user memories
-const userMemories = await runtime.getMemoriesByUser(
-  userId,
-  { type: MemoryType.FACT }
-);
+const userMemories = await runtime.getMemoriesByUser(userId, {
+  type: MemoryType.FACT,
+});
 ```
 
 ## Embeddings and Similarity
@@ -202,17 +206,16 @@ const userMemories = await runtime.getMemoriesByUser(
 
 ```typescript
 // Generate embedding for text
-const embedding = await runtime.useModel(
-  ModelType.TEXT_EMBEDDING,
-  { input: "Text to embed" }
-);
+const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  input: "Text to embed",
+});
 
 // Store with embedding
 await runtime.createMemory({
   type: MemoryType.MESSAGE,
   content: { text: "Important message" },
   embedding: embedding,
-  roomId: message.roomId
+  roomId: message.roomId,
 });
 ```
 
@@ -220,29 +223,22 @@ await runtime.createMemory({
 
 ```typescript
 // Search by semantic similarity
-const similarMemories = await runtime.searchMemoriesBySimilarity(
-  embedding,
-  {
-    threshold: 0.8,  // Similarity threshold (0-1)
-    limit: 10,
-    type: MemoryType.MESSAGE
-  }
-);
+const similarMemories = await runtime.searchMemoriesBySimilarity(embedding, {
+  threshold: 0.8, // Similarity threshold (0-1)
+  limit: 10,
+  type: MemoryType.MESSAGE,
+});
 
 // Find related facts
-const queryEmbedding = await runtime.useModel(
-  ModelType.TEXT_EMBEDDING,
-  { input: "What does the user like?" }
-);
+const queryEmbedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  input: "What does the user like?",
+});
 
-const relatedFacts = await runtime.searchMemoriesBySimilarity(
-  queryEmbedding,
-  {
-    type: MemoryType.FACT,
-    threshold: 0.7,
-    limit: 5
-  }
-);
+const relatedFacts = await runtime.searchMemoriesBySimilarity(queryEmbedding, {
+  type: MemoryType.FACT,
+  threshold: 0.7,
+  limit: 5,
+});
 ```
 
 ## Facts and Knowledge
@@ -256,11 +252,11 @@ interface Fact extends Memory {
   type: MemoryType.FACT;
   content: {
     text: string;
-    subject?: string;    // Entity the fact is about
-    predicate?: string;  // Relationship or property
-    object?: string;     // Value or related entity
+    subject?: string; // Entity the fact is about
+    predicate?: string; // Relationship or property
+    object?: string; // Value or related entity
     confidence?: number; // Extraction confidence
-    source?: string;     // Source message ID
+    source?: string; // Source message ID
   };
 }
 ```
@@ -270,22 +266,22 @@ interface Fact extends Memory {
 ```typescript
 // Create a fact
 await runtime.createFact({
-  subject: 'user',
-  predicate: 'works_at',
-  object: 'TechCorp',
+  subject: "user",
+  predicate: "works_at",
+  object: "TechCorp",
   confidence: 0.95,
-  source: message.id
+  source: message.id,
 });
 
 // Query facts
 const userFacts = await runtime.getFacts({
-  subject: 'user',
-  limit: 10
+  subject: "user",
+  limit: 10,
 });
 
 // Update fact confidence
 await runtime.updateFact(factId, {
-  confidence: 0.98
+  confidence: 0.98,
 });
 ```
 
@@ -316,8 +312,8 @@ interface Relationship extends Memory {
 await runtime.createRelationship({
   userId: user.id,
   targetEntityId: otherUser.id,
-  relationshipType: 'friend',
-  strength: 0.8
+  relationshipType: "friend",
+  strength: 0.8,
 });
 
 // Get user relationships
@@ -328,8 +324,8 @@ await runtime.updateRelationship(relationshipId, {
   strength: 0.9,
   metadata: {
     lastInteraction: new Date(),
-    interactionCount: prevCount + 1
-  }
+    interactionCount: prevCount + 1,
+  },
 });
 ```
 
@@ -345,14 +341,15 @@ class StateCache {
   private timestamps: Map<UUID, number>;
   private maxSize: number;
   private ttl: number;
-  
-  constructor(maxSize = 1000, ttl = 300000) { // 5 min TTL
+
+  constructor(maxSize = 1000, ttl = 300000) {
+    // 5 min TTL
     this.cache = new Map();
     this.timestamps = new Map();
     this.maxSize = maxSize;
     this.ttl = ttl;
   }
-  
+
   set(messageId: UUID, state: State): void {
     // Evict oldest if at capacity
     if (this.cache.size >= this.maxSize) {
@@ -362,21 +359,21 @@ class StateCache {
         this.timestamps.delete(oldest);
       }
     }
-    
+
     this.cache.set(messageId, state);
     this.timestamps.set(messageId, Date.now());
   }
-  
+
   get(messageId: UUID): State | undefined {
     const timestamp = this.timestamps.get(messageId);
-    
+
     // Check if expired
     if (timestamp && Date.now() - timestamp > this.ttl) {
       this.cache.delete(messageId);
       this.timestamps.delete(messageId);
       return undefined;
     }
-    
+
     return this.cache.get(messageId);
   }
 }
@@ -389,7 +386,7 @@ class StateCache {
 function cleanupCache(runtime: IAgentRuntime) {
   const now = Date.now();
   const maxAge = 5 * 60 * 1000; // 5 minutes
-  
+
   for (const [messageId, timestamp] of runtime.stateCache.timestamps) {
     if (now - timestamp > maxAge) {
       runtime.stateCache.delete(messageId);
@@ -430,28 +427,27 @@ interface DocumentMemory extends Memory {
 ```typescript
 // Store document
 await runtime.createDocument({
-  title: 'User Manual',
+  title: "User Manual",
   content: documentText,
-  source: 'https://example.com/manual.pdf',
+  source: "https://example.com/manual.pdf",
   chunks: splitIntoChunks(documentText),
   metadata: {
-    mimeType: 'application/pdf',
+    mimeType: "application/pdf",
     size: 1024000,
-    tags: ['manual', 'reference']
-  }
+    tags: ["manual", "reference"],
+  },
 });
 
 // Search documents
 const relevantDocs = await runtime.searchDocuments(
   "how to configure settings",
-  { limit: 5 }
+  { limit: 5 },
 );
 
 // Get document chunks
-const chunks = await runtime.getDocumentChunks(
-  documentId,
-  { relevant_to: "specific query" }
-);
+const chunks = await runtime.getDocumentChunks(documentId, {
+  relevant_to: "specific query",
+});
 ```
 
 ## Memory Cleanup
@@ -462,33 +458,33 @@ const chunks = await runtime.getDocumentChunks(
 class MemoryCleanupService {
   private readonly MAX_MESSAGE_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
   private readonly MAX_FACTS_PER_ROOM = 1000;
-  
+
   async cleanup(runtime: IAgentRuntime) {
     // Remove old messages
     await this.cleanupOldMessages(runtime);
-    
+
     // Consolidate facts
     await this.consolidateFacts(runtime);
-    
+
     // Remove orphaned relationships
     await this.cleanupOrphanedRelationships(runtime);
   }
-  
+
   private async cleanupOldMessages(runtime: IAgentRuntime) {
     const cutoffDate = new Date(Date.now() - this.MAX_MESSAGE_AGE);
-    
+
     await runtime.deleteMemories({
       type: MemoryType.MESSAGE,
-      before: cutoffDate
+      before: cutoffDate,
     });
   }
-  
+
   private async consolidateFacts(runtime: IAgentRuntime) {
     const rooms = await runtime.getAllRooms();
-    
+
     for (const room of rooms) {
       const facts = await runtime.getFacts({ roomId: room.id });
-      
+
       if (facts.length > this.MAX_FACTS_PER_ROOM) {
         // Keep only high-confidence recent facts
         const toKeep = facts
@@ -498,8 +494,8 @@ class MemoryCleanupService {
             return scoreB - scoreA;
           })
           .slice(0, this.MAX_FACTS_PER_ROOM);
-        
-        const toDelete = facts.filter(f => !toKeep.includes(f));
+
+        const toDelete = facts.filter((f) => !toKeep.includes(f));
         for (const fact of toDelete) {
           await runtime.deleteMemory(fact.id);
         }
@@ -519,7 +515,7 @@ await runtime.deleteMemory(memoryId);
 await runtime.deleteMemories({
   type: MemoryType.MESSAGE,
   roomId: roomId,
-  before: cutoffDate
+  before: cutoffDate,
 });
 
 // Clear room memories
@@ -549,11 +545,11 @@ await runtime.createMemoriesBatch([
 ]);
 
 // Batch embedding generation
-const texts = memories.map(m => m.content.text);
-const embeddings = await runtime.useModel(
-  ModelType.TEXT_EMBEDDING,
-  { input: texts, batch: true }
-);
+const texts = memories.map((m) => m.content.text);
+const embeddings = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  input: texts,
+  batch: true,
+});
 ```
 
 ### Memory Compression
@@ -564,36 +560,33 @@ async function compressMemories(runtime: IAgentRuntime, roomId: UUID) {
   const messages = await runtime.getMemories({
     type: MemoryType.MESSAGE,
     roomId,
-    before: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 days
+    before: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days
   });
-  
+
   // Generate summary
-  const summary = await runtime.useModel(
-    ModelType.TEXT_LARGE,
-    {
-      prompt: `Summarize these messages: ${messages.map(m => m.content.text).join('\n')}`,
-      maxTokens: 500
-    }
-  );
-  
+  const summary = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: `Summarize these messages: ${messages.map((m) => m.content.text).join("\n")}`,
+    maxTokens: 500,
+  });
+
   // Store summary
   await runtime.createMemory({
     type: MemoryType.DOCUMENT,
     content: {
       text: summary,
-      title: 'Conversation Summary',
-      source: 'compressed_messages'
+      title: "Conversation Summary",
+      source: "compressed_messages",
     },
     roomId,
     metadata: {
       originalCount: messages.length,
       dateRange: {
         start: messages[0].createdAt,
-        end: messages[messages.length - 1].createdAt
-      }
-    }
+        end: messages[messages.length - 1].createdAt,
+      },
+    },
   });
-  
+
   // Delete original messages
   for (const message of messages) {
     await runtime.deleteMemory(message.id);
@@ -633,15 +626,15 @@ async function compressMemories(runtime: IAgentRuntime, roomId: UUID) {
   <Card title="Events" icon="bolt" href="/runtime/events">
     Learn about the communication system
   </Card>
-  
-  <Card title="Providers" icon="database" href="/runtime/providers">
-    Understand how providers use memory
-  </Card>
-  
-  <Card title="Models" icon="robot" href="/runtime/models">
-    Explore AI model integration
-  </Card>
-  
+
+<Card title="Providers" icon="database" href="/runtime/providers">
+  Understand how providers use memory
+</Card>
+
+<Card title="Models" icon="robot" href="/runtime/models">
+  Explore AI model integration
+</Card>
+
   <Card title="Services" icon="server" href="/runtime/services">
     Build services that manage memory
   </Card>

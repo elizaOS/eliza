@@ -1,10 +1,9 @@
-import * as React from 'react';
-import * as LabelPrimitive from '@radix-ui/react-label';
-import { cva, type VariantProps } from 'class-variance-authority';
-
-import { twMerge } from 'tailwind-merge';
-import { ClassValue } from 'class-variance-authority/types';
-import clsx from 'clsx';
+import * as LabelPrimitive from "@radix-ui/react-label";
+import { cva, type VariantProps } from "class-variance-authority";
+import type { ClassValue } from "class-variance-authority/types";
+import clsx from "clsx";
+import * as React from "react";
+import { twMerge } from "tailwind-merge";
 
 /**
  * Combines multiple class names into a single string.
@@ -16,7 +15,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const labelVariants = cva(
-  'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 );
 
 const Label = React.forwardRef<

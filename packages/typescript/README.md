@@ -125,7 +125,7 @@ Evaluators analyze conversation data and other inputs to extract meaningful info
 The `corePlugin` bundles essential actions, providers, and evaluators from `@elizaos/core`. To use it, add it to the `AgentRuntime` during initialization:
 
 ```typescript
-import { AgentRuntime, corePlugin } from '@elizaos/core';
+import { AgentRuntime, corePlugin } from "@elizaos/core";
 
 const agentRuntime = new AgentRuntime({
   plugins: [
@@ -149,8 +149,8 @@ While `corePlugin` provides many actions, you might need to define custom action
 // (This is a simplified conceptual example)
 
 export const myCustomAction = {
-  name: 'customGreet',
-  description: 'Greets a user in a special way.',
+  name: "customGreet",
+  description: "Greets a user in a special way.",
   validate: async ({ context }) => {
     // Logic to determine if this action should run
     // e.g., return context.message.text.includes('special hello');
@@ -159,8 +159,8 @@ export const myCustomAction = {
   handler: async ({ runtime, context }) => {
     // Logic to execute the action
     // e.g., runtime.sendMessage(context.roomId, "A very special hello to you!");
-    console.log('Custom Greet action executed!');
-    return { success: true, message: 'Custom greeting sent.' };
+    console.log("Custom Greet action executed!");
+    return { success: true, message: "Custom greeting sent." };
   },
 };
 
@@ -176,12 +176,10 @@ For detailed instructions on creating and registering plugins and actions, refer
 The `@elizaos/core` package uses **bun:test** for testing.
 
 1.  **Prerequisites**:
-
     - Ensure `bun` is installed (`npm install -g bun`).
     - Environment variables in `.env` (as described in Configuration) are generally **not required** for most core tests but might be for specific integration tests if any.
 
 2.  **Setup**:
-
     - Navigate to the `packages/typescript` directory: `cd packages/typescript`
     - Install dependencies: `bun install`
 
@@ -205,12 +203,10 @@ The following improvements and features are planned for `@elizaos/core`:
 ### Common Issues
 
 - **AgentRuntime not responding to triggers**:
-
   - **Cause**: Improperly defined action `validate` functions or handlers. Trigger conditions might not be met.
   - **Solution**: Verify `validate` functions correctly identify trigger conditions. Ensure `handler` functions execute as intended. Check console logs for errors during validation/handling.
 
 - **Provider data is outdated/incorrect**:
-
   - **Cause**: Issues with external data source integration or API failures.
   - **Solution**: Check API connections and ensure the provider's data fetching logic is accurate. Review network configurations if needed.
 
@@ -221,19 +217,15 @@ The following improvements and features are planned for `@elizaos/core`:
 ### Frequently Asked Questions
 
 - **Q: How do I define and use a new Action?**
-
   - **A**: Define an action object with `name`, `description`, `validate`, and `handler` functions. Integrate it into `AgentRuntime` usually by creating a plugin that registers the action. Ensure the action's name and description clearly align with its task for proper triggering.
 
 - **Q: My action is registered, but the agent is not calling it.**
-
   - **A**: Double-check the action's `name` and `description` for clarity and relevance to the triggering conditions. Verify that the `validate` function correctly returns `true` (or a truthy value indicating applicability) under the desired conditions. Inspect logs for any errors or warnings related to your action.
 
 - **Q: Can Providers access external API data?**
-
   - **A**: Yes, Providers are designed to interact with external systems, including fetching data from external APIs. This enables the agent to use real-time, dynamic context.
 
 - **Q: How do I extend the agent's evaluation capabilities?**
-
   - **A**: Implement custom evaluators and integrate them with `AgentRuntime` (typically via a plugin). These can be tailored to extract specific information, enhancing the agent's memory and contextual understanding.
 
 - **Q: How can I create a mock environment for testing?**

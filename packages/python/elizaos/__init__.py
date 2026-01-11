@@ -20,6 +20,7 @@ from elizaos.prompts import (
     UPDATE_SETTINGS_TEMPLATE,
 )
 from elizaos.runtime import AgentRuntime
+from elizaos.services import DefaultMessageService, IMessageService, MessageProcessingResult
 from elizaos.settings import (
     decrypt_object_values,
     decrypt_secret,
@@ -28,8 +29,6 @@ from elizaos.settings import (
     encrypt_string_value,
     get_salt,
 )
-from elizaos.services import DefaultMessageService, IMessageService, MessageProcessingResult
-from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 from elizaos.types import (
     UUID,
     Action,
@@ -93,6 +92,7 @@ from elizaos.types.database import IDatabaseAdapter  # noqa: E402
 
 # Rebuild models with forward references
 from elizaos.types.runtime import IAgentRuntime  # noqa: E402
+from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 
 _rebuild_ns = {
     "IAgentRuntime": IAgentRuntime,

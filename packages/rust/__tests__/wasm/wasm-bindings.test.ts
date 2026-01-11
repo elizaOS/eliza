@@ -8,9 +8,9 @@
  *   cd packages/rust && ./build-wasm.sh
  */
 
-import {  beforeAll, describe, expect, it  } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { beforeAll, describe, expect, it } from "vitest";
 
 // Types for the WASM module
 interface WasmModule {

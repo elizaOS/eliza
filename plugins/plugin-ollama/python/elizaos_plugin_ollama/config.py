@@ -56,7 +56,7 @@ class OllamaConfig:
         self._timeout_seconds = timeout_seconds
 
     @classmethod
-    def from_env(cls) -> "OllamaConfig":
+    def from_env(cls) -> OllamaConfig:
         """
         Load configuration from environment variables.
 
@@ -156,7 +156,7 @@ class OllamaConfig:
         """Get the full tags endpoint URL."""
         return f"{self._base_url}/api/tags"
 
-    def with_base_url(self, base_url: str) -> "OllamaConfig":
+    def with_base_url(self, base_url: str) -> OllamaConfig:
         """Create a new config with a different base URL."""
         return OllamaConfig(
             base_url=base_url,
@@ -166,7 +166,7 @@ class OllamaConfig:
             timeout_seconds=self._timeout_seconds,
         )
 
-    def with_timeout(self, seconds: int) -> "OllamaConfig":
+    def with_timeout(self, seconds: int) -> OllamaConfig:
         """Create a new config with a different timeout."""
         return OllamaConfig(
             base_url=self._base_url,
@@ -175,5 +175,8 @@ class OllamaConfig:
             embedding_model=self._embedding_model,
             timeout_seconds=seconds,
         )
+
+
+
 
 

@@ -26,19 +26,19 @@ config = BlueSkyConfig.from_env()
 async with BlueSkyClient(config) as client:
     # Authenticate
     await client.authenticate()
-    
+
     # Create a post
     from elizaos_plugin_bluesky import CreatePostRequest, CreatePostContent
-    
+
     request = CreatePostRequest(
         content=CreatePostContent(text="Hello from Python!")
     )
     post = await client.send_post(request)
     print(f"Created post: {post.uri}")
-    
+
     # Get timeline
     from elizaos_plugin_bluesky import TimelineRequest
-    
+
     timeline = await client.get_timeline(TimelineRequest(limit=10))
     for item in timeline.feed:
         print(f"@{item.post.author.handle}: {item.post.record.text}")
@@ -47,10 +47,12 @@ async with BlueSkyClient(config) as client:
 ## Environment Variables
 
 Required:
+
 - `BLUESKY_HANDLE`: Your BlueSky handle
 - `BLUESKY_PASSWORD`: Your app password
 
 Optional:
+
 - `BLUESKY_SERVICE`: BlueSky service URL (default: https://bsky.social)
 - `BLUESKY_DRY_RUN`: Enable dry run mode (default: false)
 - `BLUESKY_POLL_INTERVAL`: Notification polling interval in seconds (default: 60)
@@ -77,5 +79,6 @@ ruff format .
 ## License
 
 MIT
+
 
 

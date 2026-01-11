@@ -25,7 +25,7 @@
     {
       "description": "Group build tools",
       "groupName": "Build Tools",
-      "matchPackageNames": ["tsup", "vite", "rollup"],
+      "matchPackageNames": ["vite", "rollup"],
       "matchPackagePatterns": [
         "^@vitejs/",
         "^@rollup/",

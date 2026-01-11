@@ -1,19 +1,16 @@
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+} from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Client, Tweet } from "./client/index";
-import {
-  type IAgentRuntime,
-  createUniqueUuid,
-  logger,
-  ModelType,
-  type Memory,
-} from "@elizaos/core";
 import { SearchMode } from "./client/index";
-import { getSetting } from "./utils/settings";
 import { getRandomInterval } from "./environment";
-import {
-  ensureTwitterContext,
-  createMemorySafe
-} from "./utils/memory";
+import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
+import { getSetting } from "./utils/settings";
 
 interface DiscoveryConfig {
   // Topics from character configuration
@@ -48,20 +45,15 @@ interface ScoredAccount {
 }
 
 export class TwitterDiscoveryClient {
-  private client: ClientBase;
   private twitterClient: Client;
   private runtime: IAgentRuntime;
   private config: DiscoveryConfig;
   private isRunning: boolean = false;
   private isDryRun: boolean;
-  private lastDiscoveryTime: number = 0;
-  private state: any;
 
-  constructor(client: ClientBase, runtime: IAgentRuntime, state: any) {
-    this.client = client;
+  constructor(client: ClientBase, runtime: IAgentRuntime, state: Record<string, unknown>) {
     this.twitterClient = client.twitterClient;
     this.runtime = runtime;
-    this.state = state;
 
     // Check dry run mode
     const dryRunSetting =
@@ -71,19 +63,14 @@ export class TwitterDiscoveryClient {
     this.isDryRun =
       dryRunSetting === true ||
       dryRunSetting === "true" ||
-      (typeof dryRunSetting === "string" &&
-        dryRunSetting.toLowerCase() === "true");
+      (typeof dryRunSetting === "string" && dryRunSetting.toLowerCase() === "true");
 
     // Build config from character settings
     this.config = this.buildDiscoveryConfig();
 
-    logger.info("Twitter Discovery Config:", {
-      topics: this.config.topics,
-      isDryRun: this.isDryRun,
-      minFollowerCount: this.config.minFollowerCount,
-      maxFollowsPerCycle: this.config.maxFollowsPerCycle,
-      maxEngagementsPerCycle: this.config.maxEngagementsPerCycle,
-    });
+    logger.info(
+      `Twitter Discovery Config: topics=${this.config.topics.join(", ")}, isDryRun=${this.isDryRun}, minFollowerCount=${this.config.minFollowerCount}, maxFollowsPerCycle=${this.config.maxFollowsPerCycle}, maxEngagementsPerCycle=${this.config.maxEngagementsPerCycle}`
+    );
   }
 
   /**
@@ -125,19 +112,13 @@ export class TwitterDiscoveryClient {
     let topics: string[] = defaultTopics;
 
     if (character) {
-      if (
-        character.topics &&
-        Array.isArray(character.topics) &&
-        character.topics.length > 0
-      ) {
+      if (character.topics && Array.isArray(character.topics) && character.topics.length > 0) {
         topics = character.topics;
       } else if (character.bio) {
         topics = this.extractTopicsFromBio(character.bio);
       }
     } else {
-      logger.warn(
-        "Character not available in runtime, using default topics for discovery",
-      );
+      logger.warn("Character not available in runtime, using default topics for discovery");
     }
 
     return {
@@ -146,23 +127,23 @@ export class TwitterDiscoveryClient {
         (getSetting(this.runtime, "TWITTER_MIN_FOLLOWER_COUNT") as string) ||
           process.env.TWITTER_MIN_FOLLOWER_COUNT ||
           "100",
+        10
       ),
       maxFollowsPerCycle: parseInt(
         (getSetting(this.runtime, "TWITTER_MAX_FOLLOWS_PER_CYCLE") as string) ||
           process.env.TWITTER_MAX_FOLLOWS_PER_CYCLE ||
           "5",
+        10
       ),
       maxEngagementsPerCycle: parseInt(
-        (getSetting(
-          this.runtime,
-          "TWITTER_MAX_ENGAGEMENTS_PER_RUN",
-        ) as string) ||
+        (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ||
           process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
-          "5",  // Reduced from 10 to 5
+          "5",
+        10
       ),
-      likeThreshold: 0.5,    // Increased from 0.3 (be more selective)
-      replyThreshold: 0.7,   // Increased from 0.5 (be more selective)
-      quoteThreshold: 0.85,  // Increased from 0.7 (be more selective)
+      likeThreshold: 0.5, // Increased from 0.3 (be more selective)
+      replyThreshold: 0.7, // Increased from 0.5 (be more selective)
+      quoteThreshold: 0.85, // Increased from 0.7 (be more selective)
     };
   }
 
@@ -178,15 +159,7 @@ export class TwitterDiscoveryClient {
       .split(/\s+/)
       .filter((word) => word.length > 4)
       .filter(
-        (word) =>
-          ![
-            "about",
-            "helping",
-            "working",
-            "people",
-            "making",
-            "building",
-          ].includes(word),
+        (word) => !["about", "helping", "working", "people", "making", "building"].includes(word)
       );
     return [...new Set(words)].slice(0, 5); // Limit to 5 topics
   }
@@ -203,17 +176,16 @@ export class TwitterDiscoveryClient {
 
       try {
         await this.runDiscoveryCycle();
-      } catch (error) {
-        logger.error("Discovery cycle error:", error);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error("Discovery cycle error:", errorMsg);
       }
 
       // Run discovery every 20-40 minutes (with variance)
-      const discoveryIntervalMinutes = getRandomInterval(this.runtime, 'discovery');
+      const discoveryIntervalMinutes = getRandomInterval(this.runtime, "discovery");
       const nextInterval = discoveryIntervalMinutes * 60 * 1000;
 
-      logger.log(
-        `Next discovery cycle in ${discoveryIntervalMinutes.toFixed(1)} minutes`,
-      );
+      logger.log(`Next discovery cycle in ${discoveryIntervalMinutes.toFixed(1)} minutes`);
 
       // Schedule next discovery
       setTimeout(discoveryLoop, nextInterval);
@@ -234,9 +206,7 @@ export class TwitterDiscoveryClient {
     const discoveries = await this.discoverContent();
     const { tweets, accounts } = discoveries;
 
-    logger.info(
-      `Discovered ${tweets.length} tweets and ${accounts.length} accounts`,
-    );
+    logger.info(`Discovered ${tweets.length} tweets and ${accounts.length} accounts`);
 
     // Process discovered accounts (follow high-quality ones)
     const followedCount = await this.processAccounts(accounts);
@@ -245,7 +215,7 @@ export class TwitterDiscoveryClient {
     const engagementCount = await this.processTweets(tweets);
 
     logger.info(
-      `Discovery cycle complete: ${followedCount} follows, ${engagementCount} engagements`,
+      `Discovery cycle complete: ${followedCount} follows, ${engagementCount} engagements`
     );
   }
 
@@ -262,43 +232,45 @@ export class TwitterDiscoveryClient {
     try {
       const topicContent = await this.discoverFromTopics();
       allTweets.push(...topicContent.tweets);
-      topicContent.accounts.forEach((acc) => allAccounts.set(acc.user.id, acc));
-    } catch (error) {
-      logger.error("Failed to discover from topics:", error);
+      for (const acc of topicContent.accounts) {
+        allAccounts.set(acc.user.id, acc);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error("Failed to discover from topics:", errorMsg);
     }
 
     // 2. Discover from conversation threads
     try {
       const threadContent = await this.discoverFromThreads();
       allTweets.push(...threadContent.tweets);
-      threadContent.accounts.forEach((acc) =>
-        allAccounts.set(acc.user.id, acc),
-      );
-    } catch (error) {
-      logger.error("Failed to discover from threads:", error);
+      for (const acc of threadContent.accounts) {
+        allAccounts.set(acc.user.id, acc);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error("Failed to discover from threads:", errorMsg);
     }
 
     // 3. Discover from popular accounts in our topics
     try {
       const popularContent = await this.discoverFromPopularAccounts();
       allTweets.push(...popularContent.tweets);
-      popularContent.accounts.forEach((acc) =>
-        allAccounts.set(acc.user.id, acc),
-      );
+      for (const acc of popularContent.accounts) {
+        allAccounts.set(acc.user.id, acc);
+      }
     } catch (error) {
-      logger.error("Failed to discover from popular accounts:", error);
+      logger.error(
+        "Failed to discover from popular accounts:",
+        error instanceof Error ? error.message : String(error)
+      );
     }
 
     // Sort by relevance score
-    const sortedTweets = allTweets
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
-      .slice(0, 50); // Top 50 tweets
+    const sortedTweets = allTweets.sort((a, b) => b.relevanceScore - a.relevanceScore).slice(0, 50); // Top 50 tweets
 
     const sortedAccounts = Array.from(allAccounts.values())
-      .sort(
-        (a, b) =>
-          b.qualityScore * b.relevanceScore - a.qualityScore * a.relevanceScore,
-      )
+      .sort((a, b) => b.qualityScore * b.relevanceScore - a.qualityScore * a.relevanceScore)
       .slice(0, 20); // Top 20 accounts
 
     return { tweets: sortedTweets, accounts: sortedAccounts };
@@ -327,7 +299,7 @@ export class TwitterDiscoveryClient {
         const popularResults = await this.twitterClient.fetchSearchTweets(
           popularQuery,
           20,
-          SearchMode.Top,
+          SearchMode.Top
         );
 
         for (const tweet of popularResults.tweets) {
@@ -338,6 +310,9 @@ export class TwitterDiscoveryClient {
           tweets.push(scored);
 
           // Extract account info from popular tweet authors
+          if (!tweet.userId || !tweet.username) {
+            continue;
+          }
           const authorUsername = tweet.username;
           const authorName = tweet.name || tweet.username;
 
@@ -355,7 +330,8 @@ export class TwitterDiscoveryClient {
             followersCount: estimatedFollowers,
           });
 
-          if (account.qualityScore > 0.3) { // Lower threshold to discover more accounts
+          if (account.qualityScore > 0.3) {
+            // Lower threshold to discover more accounts
             accounts.set(tweet.userId, account);
           }
         }
@@ -367,17 +343,20 @@ export class TwitterDiscoveryClient {
         const engagedResults = await this.twitterClient.fetchSearchTweets(
           engagedQuery,
           15,
-          SearchMode.Latest,
+          SearchMode.Latest
         );
 
         for (const tweet of engagedResults.tweets) {
           // Only include tweets with some engagement
           if ((tweet.likes || 0) < 5) continue;
-          
+
           const scored = this.scoreTweet(tweet, "topic");
           tweets.push(scored);
 
           // Extract account info from tweet author
+          if (!tweet.userId || !tweet.username) {
+            continue;
+          }
           const authorUsername = tweet.username;
           const authorName = tweet.name || tweet.username;
 
@@ -394,12 +373,16 @@ export class TwitterDiscoveryClient {
             followersCount: estimatedFollowers,
           });
 
-          if (account.qualityScore > 0.2) { // Even lower threshold for engaged content
+          if (account.qualityScore > 0.2) {
+            // Even lower threshold for engaged content
             accounts.set(tweet.userId, account);
           }
         }
       } catch (error) {
-        logger.error(`Failed to search topic ${topic}:`, error);
+        logger.error(
+          `Failed to search topic ${topic}:`,
+          error instanceof Error ? error.message : String(error)
+        );
       }
     }
 
@@ -431,7 +414,7 @@ export class TwitterDiscoveryClient {
       const searchResults = await this.twitterClient.fetchSearchTweets(
         viralQuery,
         15,
-        SearchMode.Top,
+        SearchMode.Top
       );
 
       for (const tweet of searchResults.tweets) {
@@ -443,6 +426,9 @@ export class TwitterDiscoveryClient {
         tweets.push(scored);
 
         // Viral thread authors are likely high-quality accounts
+        if (!tweet.userId || !tweet.username) {
+          continue;
+        }
         const account = this.scoreAccount({
           id: tweet.userId,
           username: tweet.username,
@@ -456,7 +442,10 @@ export class TwitterDiscoveryClient {
         }
       }
     } catch (error) {
-      logger.error("Failed to discover threads:", error);
+      logger.error(
+        "Failed to discover threads:",
+        error instanceof Error ? error.message : String(error)
+      );
     }
 
     return { tweets, accounts: Array.from(accounts.values()) };
@@ -486,7 +475,7 @@ export class TwitterDiscoveryClient {
         const results = await this.twitterClient.fetchSearchTweets(
           influencerQuery,
           10,
-          SearchMode.Top,
+          SearchMode.Top
         );
 
         for (const tweet of results.tweets) {
@@ -501,9 +490,12 @@ export class TwitterDiscoveryClient {
           const estimatedFollowers = Math.max(
             (tweet.likes || 0) * 100,
             (tweet.retweets || 0) * 200,
-            10000,
+            10000
           );
 
+          if (!tweet.userId || !tweet.username) {
+            continue;
+          }
           const account = this.scoreAccount({
             id: tweet.userId,
             username: tweet.username,
@@ -518,7 +510,7 @@ export class TwitterDiscoveryClient {
       } catch (error) {
         logger.error(
           `Failed to discover popular accounts for ${topic}:`,
-          error,
+          error instanceof Error ? error.message : String(error)
         );
       }
     }
@@ -529,10 +521,7 @@ export class TwitterDiscoveryClient {
   // Remove the discoverFromTrends method since API v2 doesn't support it
   // Remove the isTrendRelevant method since we're not using trends
 
-  private scoreTweet(
-    tweet: Tweet,
-    source: string,
-  ): ScoredTweet {
+  private scoreTweet(tweet: Tweet, source: string): ScoredTweet {
     // Skip retweets - we want original content
     if (tweet.isRetweet) {
       return {
@@ -545,27 +534,34 @@ export class TwitterDiscoveryClient {
     let relevanceScore = 0;
 
     // Base score by source
-    const sourceScores = {
+    const sourceScores: Record<string, number> = {
       topic: 0.4,
       thread: 0.35,
     };
-    relevanceScore += sourceScores[source];
+    relevanceScore += sourceScores[source] || 0;
 
     // Score by engagement metrics - much more realistic thresholds
     const engagementScore = Math.min(
       (tweet.likes || 0) / 100 + // 100 likes = 0.1 points (was 1000)
         (tweet.retweets || 0) / 50 + // 50 retweets = 0.1 points (was 500)
         (tweet.replies || 0) / 20, // 20 replies = 0.1 points (was 100)
-      0.3,
+      0.3
     );
     relevanceScore += engagementScore;
 
+    // Score by text relevance if text exists
+    if (tweet.text) {
+      // Additional scoring based on text content can go here
+    }
+
     // Score by content relevance to topics
-    const textLower = tweet.text.toLowerCase();
-    const topicMatches = this.config.topics.filter((topic) =>
-      textLower.includes(topic.toLowerCase()),
-    ).length;
-    relevanceScore += Math.min(topicMatches * 0.15, 0.3); // Increased from 0.1
+    if (tweet.text) {
+      const textLower = tweet.text.toLowerCase();
+      const topicMatches = this.config.topics.filter((topic) =>
+        textLower.includes(topic.toLowerCase())
+      ).length;
+      relevanceScore += Math.min(topicMatches * 0.15, 0.3); // Increased from 0.1
+    }
 
     // Bonus for verified accounts (if available in tweet data)
     // Note: isBlueVerified might not be available in all tweet responses
@@ -602,7 +598,7 @@ export class TwitterDiscoveryClient {
     // Relevance based on username/name matching topics
     const userText = `${user.username} ${user.name}`.toLowerCase();
     const topicMatches = this.config.topics.filter((topic) =>
-      userText.includes(topic.toLowerCase()),
+      userText.includes(topic.toLowerCase())
     ).length;
     relevanceScore = Math.min(topicMatches * 0.3, 1);
 
@@ -651,7 +647,7 @@ export class TwitterDiscoveryClient {
           logger.info(
             `[DRY RUN] Would follow @${scoredAccount.user.username} ` +
               `(quality: ${scoredAccount.qualityScore.toFixed(2)}, ` +
-              `relevance: ${scoredAccount.relevanceScore.toFixed(2)})`,
+              `relevance: ${scoredAccount.relevanceScore.toFixed(2)})`
           );
         } else {
           // Follow the account
@@ -660,7 +656,7 @@ export class TwitterDiscoveryClient {
           logger.info(
             `Followed @${scoredAccount.user.username} ` +
               `(quality: ${scoredAccount.qualityScore.toFixed(2)}, ` +
-              `relevance: ${scoredAccount.relevanceScore.toFixed(2)})`,
+              `relevance: ${scoredAccount.relevanceScore.toFixed(2)})`
           );
 
           // Save follow action to memory
@@ -674,7 +670,7 @@ export class TwitterDiscoveryClient {
       } catch (error) {
         logger.error(
           `Failed to follow @${scoredAccount.user.username}:`,
-          error,
+          error instanceof Error ? error.message : String(error)
         );
       }
     }
@@ -691,15 +687,13 @@ export class TwitterDiscoveryClient {
 
       try {
         // Check if already engaged
-        const tweetMemoryId = createUniqueUuid(
-          this.runtime,
-          scoredTweet.tweet.id,
-        );
+        if (!scoredTweet.tweet.id) {
+          continue;
+        }
+        const tweetMemoryId = createUniqueUuid(this.runtime, scoredTweet.tweet.id);
         const existingMemory = await this.runtime.getMemoryById(tweetMemoryId);
         if (existingMemory) {
-          logger.debug(
-            `Already engaged with tweet ${scoredTweet.tweet.id}, skipping`,
-          );
+          logger.debug(`Already engaged with tweet ${scoredTweet.tweet.id}, skipping`);
           continue;
         }
 
@@ -708,80 +702,77 @@ export class TwitterDiscoveryClient {
           case "like":
             if (this.isDryRun) {
               logger.info(
-                `[DRY RUN] Would like tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`,
+                `[DRY RUN] Would like tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`
               );
             } else {
+              if (!scoredTweet.tweet.id) {
+                continue;
+              }
               await this.twitterClient.likeTweet(scoredTweet.tweet.id);
               logger.info(
-                `Liked tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`,
+                `Liked tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`
               );
             }
             break;
 
-          case "reply":
+          case "reply": {
             const replyText = await this.generateReply(scoredTweet.tweet);
             if (this.isDryRun) {
               logger.info(
-                `[DRY RUN] Would reply to tweet ${scoredTweet.tweet.id} with: "${replyText}"`,
+                `[DRY RUN] Would reply to tweet ${scoredTweet.tweet.id} with: "${replyText}"`
               );
             } else {
-              await this.twitterClient.sendTweet(
-                replyText,
-                scoredTweet.tweet.id,
-              );
+              await this.twitterClient.sendTweet(replyText, scoredTweet.tweet.id);
               logger.info(`Replied to tweet: ${scoredTweet.tweet.id}`);
             }
             break;
+          }
 
-          case "quote":
+          case "quote": {
+            if (!scoredTweet.tweet.id) {
+              continue;
+            }
             const quoteText = await this.generateQuote(scoredTweet.tweet);
             if (this.isDryRun) {
               logger.info(
-                `[DRY RUN] Would quote tweet ${scoredTweet.tweet.id} with: "${quoteText}"`,
+                `[DRY RUN] Would quote tweet ${scoredTweet.tweet.id} with: "${quoteText}"`
               );
             } else {
-              await this.twitterClient.sendQuoteTweet(
-                quoteText,
-                scoredTweet.tweet.id,
-              );
+              await this.twitterClient.sendQuoteTweet(quoteText, scoredTweet.tweet.id);
               logger.info(`Quoted tweet: ${scoredTweet.tweet.id}`);
             }
             break;
+          }
         }
 
         // Save engagement to memory (even in dry run for tracking)
-        await this.saveEngagementMemory(
-          scoredTweet.tweet,
-          scoredTweet.engagementType,
-        );
+        await this.saveEngagementMemory(scoredTweet.tweet, scoredTweet.engagementType);
 
         engagementCount++;
 
         // Add delay to avoid rate limits
         await this.delay(3000 + Math.random() * 5000);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Check if it's a 403 error
-        if (error?.message?.includes("403")) {
+        const errorMessage = (error as { message?: string })?.message;
+        if (errorMessage?.includes("403")) {
           logger.warn(
             `Permission denied (403) for tweet ${scoredTweet.tweet.id}. ` +
-            `This might be a protected account or restricted tweet. Skipping.`
+              `This might be a protected account or restricted tweet. Skipping.`
           );
           // Still save to memory to avoid retrying
-          await this.saveEngagementMemory(
-            scoredTweet.tweet,
-            "skip"
-          );
-        } else if (error?.message?.includes("429")) {
+          await this.saveEngagementMemory(scoredTweet.tweet, "skip");
+        } else if (errorMessage?.includes("429")) {
           logger.warn(
             `Rate limit (429) hit while engaging with tweet ${scoredTweet.tweet.id}. ` +
-            `Pausing engagement cycle.`
+              `Pausing engagement cycle.`
           );
           // Break out of the loop on rate limit
           break;
         } else {
           logger.error(
             `Failed to engage with tweet ${scoredTweet.tweet.id}:`,
-            error
+            error instanceof Error ? error.message : String(error)
           );
         }
       }
@@ -820,7 +811,7 @@ export class TwitterDiscoveryClient {
 
     const prompt = `You are ${characterName}. Generate a thoughtful reply to this tweet:
 
-Tweet by @${tweet.username}: "${tweet.text}"
+Tweet by @${tweet.username || "unknown"}: "${tweet.text || ""}"
 
 Your interests: ${this.config.topics.join(", ")}
 Character bio: ${characterBio}
@@ -836,7 +827,7 @@ Reply:`;
 
     const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      max_tokens: 100,
+      maxTokens: 100,
       temperature: 0.8,
     });
 
@@ -858,7 +849,7 @@ Reply:`;
 
     const prompt = `You are ${characterName}. Add your perspective to this tweet with a quote tweet:
 
-Original tweet by @${tweet.username}: "${tweet.text}"
+Original tweet by @${tweet.username || "unknown"}: "${tweet.text || ""}"
 
 Your interests: ${this.config.topics.join(", ")}
 Character bio: ${characterBio}
@@ -874,7 +865,7 @@ Quote tweet:`;
 
     const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      max_tokens: 100,
+      maxTokens: 100,
       temperature: 0.8,
     });
 
@@ -884,10 +875,14 @@ Quote tweet:`;
   private async saveEngagementMemory(tweet: Tweet, engagementType: string) {
     try {
       // Ensure context exists before saving memory
+      if (!tweet.userId || !tweet.username) {
+        logger.warn("Cannot ensure context: missing userId or username");
+        return;
+      }
       const context = await ensureTwitterContext(this.runtime, {
         userId: tweet.userId,
         username: tweet.username,
-        conversationId: tweet.conversationId || tweet.id,
+        conversationId: tweet.conversationId || tweet.id || "",
       });
 
       const memory: Memory = {
@@ -910,7 +905,10 @@ Quote tweet:`;
       await createMemorySafe(this.runtime, memory, "messages");
       logger.debug(`[Discovery] Saved ${engagementType} memory for tweet ${tweet.id}`);
     } catch (error) {
-      logger.error(`[Discovery] Failed to save engagement memory:`, error);
+      logger.error(
+        `[Discovery] Failed to save engagement memory:`,
+        error instanceof Error ? error.message : String(error)
+      );
       // Don't throw - just log the error
     }
   }
@@ -947,7 +945,10 @@ Quote tweet:`;
       await createMemorySafe(this.runtime, memory, "messages");
       logger.debug(`[Discovery] Saved follow memory for @${user.username}`);
     } catch (error) {
-      logger.error(`[Discovery] Failed to save follow memory:`, error);
+      logger.error(
+        `[Discovery] Failed to save follow memory:`,
+        error instanceof Error ? error.message : String(error)
+      );
       // Don't throw - just log the error
     }
   }

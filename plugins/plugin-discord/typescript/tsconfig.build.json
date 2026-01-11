@@ -5,10 +5,12 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
-    "outDir": "../dist"
+    "outDir": "../dist",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "build.ts"]
 }
-
-

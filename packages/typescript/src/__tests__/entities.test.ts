@@ -315,9 +315,9 @@ describe("entities", () => {
 
       mockRuntime.getRoom = vi.fn().mockResolvedValue(mockRoom);
       mockRuntime.getWorld = vi.fn().mockResolvedValue(mockWorld);
-      mockRuntime.getEntitiesForRoom = vi.fn().mockResolvedValue([
-        mockEntityWithComponents,
-      ]);
+      mockRuntime.getEntitiesForRoom = vi
+        .fn()
+        .mockResolvedValue([mockEntityWithComponents]);
       mockRuntime.getRelationships = vi.fn().mockResolvedValue([]);
       mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
       mockRuntime.useModel = vi.fn().mockResolvedValue(
@@ -327,9 +327,9 @@ describe("entities", () => {
           matches: [{ name: "ExactMatch", reason: "Exact ID match" }],
         }),
       );
-      mockRuntime.getEntityById = vi.fn().mockResolvedValue(
-        mockEntityWithComponents,
-      );
+      mockRuntime.getEntityById = vi
+        .fn()
+        .mockResolvedValue(mockEntityWithComponents);
 
       // Mock parseKeyValueXml to return proper resolution
       const parseXmlSpy = vi.spyOn(utils, "parseKeyValueXml");
@@ -344,7 +344,7 @@ describe("entities", () => {
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
       expect(result).toBeDefined();
-      expect(result && result.id).toBe("entity-exact" as UUID);
+      expect(result?.id).toBe("entity-exact" as UUID);
       // Verify getEntityById was called (covers lines 274-282)
       expect(mockRuntime.getEntityById).toHaveBeenCalledWith("entity-exact");
       parseXmlSpy.mockRestore();
@@ -401,7 +401,7 @@ describe("entities", () => {
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
       expect(result).toBeDefined();
-      expect(result && result.id).toBe("entity-user" as UUID);
+      expect(result?.id).toBe("entity-user" as UUID);
       parseXmlSpy.mockRestore();
     });
 
@@ -456,7 +456,7 @@ describe("entities", () => {
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
       expect(result).toBeDefined();
-      expect(result && result.id).toBe("entity-handle" as UUID);
+      expect(result?.id).toBe("entity-handle" as UUID);
       parseXmlSpy.mockRestore();
     });
   });

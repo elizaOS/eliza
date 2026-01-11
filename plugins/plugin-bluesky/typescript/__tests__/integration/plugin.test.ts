@@ -2,7 +2,7 @@
  * Integration tests for BlueSky plugin.
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import blueSkyPlugin from "../../index";
 
 describe("BlueSky Plugin", () => {
@@ -29,5 +29,3 @@ describe("BlueSky Plugin", () => {
     expect(typeof blueSkyPlugin.init).toBe("function");
   });
 });
-
-

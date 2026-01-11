@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin Planning - Rust Implementation
 //!
 //! This crate provides planning and execution capabilities for elizaOS agents,
@@ -59,5 +60,10 @@ pub const PLUGIN_DESCRIPTION: &str =
     "Comprehensive planning and execution plugin with unified planning service";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

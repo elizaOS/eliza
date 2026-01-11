@@ -6,10 +6,10 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { AwsS3Service } from "./services/s3";
+import { AwsS3Service } from "./services/s3.js";
 
-export * from "./types";
 export * from "./services";
+export * from "./types";
 
 /**
  * S3 Storage Plugin for elizaOS.
@@ -22,5 +22,3 @@ export const storageS3Plugin: Plugin = {
 };
 
 export default storageS3Plugin;
-
-

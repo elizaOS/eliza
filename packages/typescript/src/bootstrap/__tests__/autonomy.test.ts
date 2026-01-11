@@ -9,17 +9,29 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime, Memory, State, UUID } from "../../types";
+import type {
+  IAgentRuntime,
+  Memory,
+  RouteRequest,
+  RouteResponse,
+  State,
+  UUID,
+} from "../../types";
 import { ChannelType, EventType } from "../../types";
 import {
-  AutonomyService,
   AUTONOMY_SERVICE_TYPE,
-  sendToAdminAction,
+  AutonomyService,
   adminChatProvider,
-  autonomyStatusProvider,
   autonomyRoutes,
+  autonomyStatusProvider,
+  sendToAdminAction,
 } from "../autonomy";
-import { createMockRuntime, createMockMemory, createMockState, type MockRuntime } from "./test-utils";
+import {
+  createMockMemory,
+  createMockRuntime,
+  createMockState,
+  type MockRuntime,
+} from "./test-utils";
 
 describe("AutonomyService", () => {
   let mockRuntime: MockRuntime;
@@ -54,7 +66,9 @@ describe("AutonomyService", () => {
     });
 
     it("should create service instance with default values", async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(autonomyService).toBeDefined();
       expect(autonomyService).toBeInstanceOf(AutonomyService);
@@ -69,10 +83,15 @@ describe("AutonomyService", () => {
         return null;
       });
 
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
+      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+        "AUTONOMY_ENABLED",
+        true,
+      );
     });
 
     it("should auto-start loop when AUTONOMY_ENABLED is 'true' string", async () => {
@@ -81,20 +100,24 @@ describe("AutonomyService", () => {
         return null;
       });
 
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(autonomyService.isLoopRunning()).toBe(true);
     });
 
     it("should ensure world and room exist on initialization", async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(mockRuntime.ensureWorldExists).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Autonomy World",
           agentId: mockRuntime.agentId,
           metadata: expect.objectContaining({ type: "autonomy" }),
-        })
+        }),
       );
 
       expect(mockRuntime.ensureRoomExists).toHaveBeenCalledWith(
@@ -103,30 +126,39 @@ describe("AutonomyService", () => {
           source: "autonomy-service",
           type: ChannelType.SELF,
           metadata: expect.objectContaining({ source: "autonomy-service" }),
-        })
+        }),
       );
     });
   });
 
   describe("Loop Management", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
     });
 
     it("should start loop and set running state", async () => {
       await autonomyService.startLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
+      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+        "AUTONOMY_ENABLED",
+        true,
+      );
     });
 
     it("should not start loop if already running", async () => {
       await autonomyService.startLoop();
-      const initialCallCount = (mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length;
+      const initialCallCount = (
+        mockRuntime.setSetting as ReturnType<typeof vi.fn>
+      ).mock.calls.length;
 
       await autonomyService.startLoop();
 
-      expect((mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length).toBe(initialCallCount);
+      expect(
+        (mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length,
+      ).toBe(initialCallCount);
     });
 
     it("should stop loop and clear running state", async () => {
@@ -134,15 +166,22 @@ describe("AutonomyService", () => {
       await autonomyService.stopLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(false);
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", false);
+      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+        "AUTONOMY_ENABLED",
+        false,
+      );
     });
 
     it("should not attempt to stop if loop is not running", async () => {
-      const initialCallCount = (mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length;
+      const initialCallCount = (
+        mockRuntime.setSetting as ReturnType<typeof vi.fn>
+      ).mock.calls.length;
 
       await autonomyService.stopLoop();
 
-      expect((mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length).toBe(initialCallCount);
+      expect(
+        (mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length,
+      ).toBe(initialCallCount);
     });
 
     it("should schedule autonomous thinking at interval", async () => {
@@ -167,14 +206,16 @@ describe("AutonomyService", () => {
               }),
             }),
           }),
-        })
+        }),
       );
     });
   });
 
   describe("Interval Configuration", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
     });
 
     it("should set and get loop interval", () => {
@@ -200,13 +241,18 @@ describe("AutonomyService", () => {
 
   describe("Autonomy Control API", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
     });
 
     it("should enable autonomy via enableAutonomy()", async () => {
       await autonomyService.enableAutonomy();
 
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
+      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+        "AUTONOMY_ENABLED",
+        true,
+      );
       expect(autonomyService.isLoopRunning()).toBe(true);
     });
 
@@ -214,7 +260,10 @@ describe("AutonomyService", () => {
       await autonomyService.enableAutonomy();
       await autonomyService.disableAutonomy();
 
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", false);
+      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+        "AUTONOMY_ENABLED",
+        false,
+      );
       expect(autonomyService.isLoopRunning()).toBe(false);
     });
 
@@ -236,7 +285,9 @@ describe("AutonomyService", () => {
 
   describe("Thinking Guard", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
     });
 
     it("should not be thinking initially", () => {
@@ -264,21 +315,23 @@ describe("AutonomyService", () => {
       autonomyService.isThinking = true;
 
       await autonomyService.startLoop();
-      
+
       // Advance timers - should skip since isThinking is true
       await vi.advanceTimersByTimeAsync(30000);
 
       // Should log debug message about skipping
       expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
         expect.objectContaining({ src: "autonomy" }),
-        expect.stringContaining("still in progress")
+        expect.stringContaining("still in progress"),
       );
     });
   });
 
   describe("Autonomous Thinking", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(mockRuntime as IAgentRuntime);
+      autonomyService = await AutonomyService.start(
+        mockRuntime as IAgentRuntime,
+      );
     });
 
     it("should create first thought prompt when no previous thoughts", async () => {
@@ -298,7 +351,7 @@ describe("AutonomyService", () => {
               }),
             }),
           }),
-        })
+        }),
       );
     });
 
@@ -322,13 +375,15 @@ describe("AutonomyService", () => {
         expect.objectContaining({
           message: expect.objectContaining({
             content: expect.objectContaining({
-              text: expect.stringContaining("Continuing your internal monologue"),
+              text: expect.stringContaining(
+                "Continuing your internal monologue",
+              ),
               metadata: expect.objectContaining({
                 isContinuation: true,
               }),
             }),
           }),
-        })
+        }),
       );
     });
   });
@@ -337,8 +392,8 @@ describe("AutonomyService", () => {
 describe("sendToAdminAction", () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
-  let mockState: Partial<State>;
-  let callbackFn: ReturnType<typeof vi.fn>;
+  let _mockState: Partial<State>;
+  let _callbackFn: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockRuntime = createMockRuntime({
@@ -353,8 +408,8 @@ describe("sendToAdminAction", () => {
     mockMessage = createMockMemory({
       roomId: "autonomous-room-id" as UUID,
     });
-    mockState = createMockState();
-    callbackFn = vi.fn().mockResolvedValue([]);
+    _mockState = createMockState();
+    _callbackFn = vi.fn().mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -372,7 +427,7 @@ describe("sendToAdminAction", () => {
     // In autonomous room - should validate
     const isValid = await sendToAdminAction.validate(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
     );
     expect(isValid).toBe(true);
 
@@ -380,7 +435,7 @@ describe("sendToAdminAction", () => {
     mockMessage.roomId = "other-room-id" as UUID;
     const isInvalid = await sendToAdminAction.validate(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
     );
     expect(isInvalid).toBe(false);
   });
@@ -391,7 +446,7 @@ describe("sendToAdminAction", () => {
 
     const isValid = await sendToAdminAction.validate(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
     );
     expect(isValid).toBe(false);
   });
@@ -434,7 +489,7 @@ describe("adminChatProvider", () => {
     const result = await adminChatProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toBe("");
@@ -447,7 +502,7 @@ describe("adminChatProvider", () => {
     const result = await adminChatProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toBe("");
@@ -459,7 +514,7 @@ describe("adminChatProvider", () => {
     const result = await adminChatProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toContain("No admin user configured");
@@ -486,7 +541,7 @@ describe("adminChatProvider", () => {
     const result = await adminChatProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toContain("ADMIN_CHAT_HISTORY");
@@ -530,7 +585,7 @@ describe("autonomyStatusProvider", () => {
     const result = await autonomyStatusProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toBe("");
@@ -542,7 +597,7 @@ describe("autonomyStatusProvider", () => {
     const result = await autonomyStatusProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toBe("");
@@ -552,7 +607,7 @@ describe("autonomyStatusProvider", () => {
     const result = await autonomyStatusProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toContain("AUTONOMY_STATUS");
@@ -572,7 +627,7 @@ describe("autonomyStatusProvider", () => {
     const result = await autonomyStatusProvider.get(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
-      mockState as State
+      mockState as State,
     );
 
     expect(result.text).toContain("autonomy disabled");
@@ -582,7 +637,13 @@ describe("autonomyStatusProvider", () => {
 
 describe("autonomyRoutes", () => {
   let mockRuntime: MockRuntime;
-  let mockAutonomyService: any;
+  let mockAutonomyService: {
+    getStatus: ReturnType<typeof vi.fn>;
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+    resume: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     mockAutonomyService = {
@@ -619,8 +680,12 @@ describe("autonomyRoutes", () => {
   });
 
   it("should have correct HTTP methods", () => {
-    const statusRoute = autonomyRoutes.find((r) => r.path === "/autonomy/status");
-    const enableRoute = autonomyRoutes.find((r) => r.path === "/autonomy/enable");
+    const statusRoute = autonomyRoutes.find(
+      (r) => r.path === "/autonomy/status",
+    );
+    const enableRoute = autonomyRoutes.find(
+      (r) => r.path === "/autonomy/enable",
+    );
 
     expect(statusRoute?.type).toBe("GET");
     expect(enableRoute?.type).toBe("POST");
@@ -628,14 +693,20 @@ describe("autonomyRoutes", () => {
 
   describe("/autonomy/status route", () => {
     it("should return status successfully", async () => {
-      const statusRoute = autonomyRoutes.find((r) => r.path === "/autonomy/status");
+      const statusRoute = autonomyRoutes.find(
+        (r) => r.path === "/autonomy/status",
+      );
       const mockReq = {};
       const mockRes = {
         json: vi.fn().mockReturnThis(),
         status: vi.fn().mockReturnThis(),
       };
 
-      await statusRoute!.handler(mockReq as any, mockRes as any, mockRuntime as IAgentRuntime);
+      await statusRoute?.handler(
+        mockReq as RouteRequest,
+        mockRes as RouteResponse,
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -645,20 +716,26 @@ describe("autonomyRoutes", () => {
             running: true,
             interval: 30000,
           }),
-        })
+        }),
       );
     });
 
     it("should return 503 when service not available", async () => {
       mockRuntime.getService = vi.fn().mockReturnValue(null);
-      const statusRoute = autonomyRoutes.find((r) => r.path === "/autonomy/status");
+      const statusRoute = autonomyRoutes.find(
+        (r) => r.path === "/autonomy/status",
+      );
       const mockReq = {};
       const mockRes = {
         json: vi.fn().mockReturnThis(),
         status: vi.fn().mockReturnThis(),
       };
 
-      await statusRoute!.handler(mockReq as any, mockRes as any, mockRuntime as IAgentRuntime);
+      await statusRoute?.handler(
+        mockReq as RouteRequest,
+        mockRes as RouteResponse,
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(mockRes.status).toHaveBeenCalledWith(503);
     });
@@ -666,61 +743,79 @@ describe("autonomyRoutes", () => {
 
   describe("/autonomy/enable route", () => {
     it("should enable autonomy successfully", async () => {
-      const enableRoute = autonomyRoutes.find((r) => r.path === "/autonomy/enable");
+      const enableRoute = autonomyRoutes.find(
+        (r) => r.path === "/autonomy/enable",
+      );
       const mockReq = {};
       const mockRes = {
         json: vi.fn().mockReturnThis(),
         status: vi.fn().mockReturnThis(),
       };
 
-      await enableRoute!.handler(mockReq as any, mockRes as any, mockRuntime as IAgentRuntime);
+      await enableRoute?.handler(
+        mockReq as RouteRequest,
+        mockRes as RouteResponse,
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(mockAutonomyService.enableAutonomy).toHaveBeenCalled();
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
           message: "Autonomy enabled",
-        })
+        }),
       );
     });
   });
 
   describe("/autonomy/interval route", () => {
     it("should update interval successfully", async () => {
-      const intervalRoute = autonomyRoutes.find((r) => r.path === "/autonomy/interval");
+      const intervalRoute = autonomyRoutes.find(
+        (r) => r.path === "/autonomy/interval",
+      );
       const mockReq = { body: { interval: 60000 } };
       const mockRes = {
         json: vi.fn().mockReturnThis(),
         status: vi.fn().mockReturnThis(),
       };
 
-      await intervalRoute!.handler(mockReq as any, mockRes as any, mockRuntime as IAgentRuntime);
+      await intervalRoute?.handler(
+        mockReq as RouteRequest,
+        mockRes as RouteResponse,
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(mockAutonomyService.setLoopInterval).toHaveBeenCalledWith(60000);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
           message: "Interval updated",
-        })
+        }),
       );
     });
 
     it("should reject invalid interval", async () => {
-      const intervalRoute = autonomyRoutes.find((r) => r.path === "/autonomy/interval");
+      const intervalRoute = autonomyRoutes.find(
+        (r) => r.path === "/autonomy/interval",
+      );
       const mockReq = { body: { interval: 1000 } }; // Too short
       const mockRes = {
         json: vi.fn().mockReturnThis(),
         status: vi.fn().mockReturnThis(),
       };
 
-      await intervalRoute!.handler(mockReq as any, mockRes as any, mockRuntime as IAgentRuntime);
+      await intervalRoute?.handler(
+        mockReq as RouteRequest,
+        mockRes as RouteResponse,
+        mockRuntime as IAgentRuntime,
+      );
 
       expect(mockRes.status).toHaveBeenCalledWith(400);
       expect(mockRes.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
           error: expect.stringContaining("must be a number between"),
-        })
+        }),
       );
     });
   });
@@ -728,13 +823,13 @@ describe("autonomyRoutes", () => {
 
 describe("Autonomy Integration", () => {
   it("should export all components from autonomy module", async () => {
-    const { 
-      AutonomyService, 
-      AUTONOMY_SERVICE_TYPE, 
-      sendToAdminAction, 
-      adminChatProvider, 
-      autonomyStatusProvider, 
-      autonomyRoutes 
+    const {
+      AutonomyService,
+      AUTONOMY_SERVICE_TYPE,
+      sendToAdminAction,
+      adminChatProvider,
+      autonomyStatusProvider,
+      autonomyRoutes,
     } = await import("../autonomy");
 
     expect(AutonomyService).toBeDefined();
@@ -745,4 +840,3 @@ describe("Autonomy Integration", () => {
     expect(autonomyRoutes).toBeDefined();
   });
 });
-

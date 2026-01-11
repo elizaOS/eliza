@@ -2,14 +2,14 @@
  * BlueSky post service.
  */
 
-import { logger, type IAgentRuntime, ModelType, composePrompt } from "@elizaos/core";
-import { BlueSkyClient } from "../client";
-import type { BlueSkyPost, CreatePostRequest } from "../types";
-import { BLUESKY_MAX_POST_LENGTH } from "../types";
+import { composePrompt, type IAgentRuntime, ModelType } from "@elizaos/core";
+import type { BlueSkyClient } from "../client";
 import {
   generatePostTemplate,
   truncatePostTemplate,
 } from "../generated/prompts/typescript/prompts.js";
+import type { BlueSkyPost, CreatePostRequest } from "../types";
+import { BLUESKY_MAX_POST_LENGTH } from "../types";
 
 export class BlueSkyPostService {
   static serviceType = "IPostService";
@@ -24,11 +24,8 @@ export class BlueSkyPostService {
     return response.feed.map((item) => item.post);
   }
 
-  async createPost(
-    text: string,
-    replyTo?: { uri: string; cid: string }
-  ): Promise<BlueSkyPost> {
-    let postText = text.trim() || await this.generateContent();
+  async createPost(text: string, replyTo?: { uri: string; cid: string }): Promise<BlueSkyPost> {
+    let postText = text.trim() || (await this.generateContent());
 
     if (postText.length > BLUESKY_MAX_POST_LENGTH) {
       postText = await this.truncate(postText);
@@ -74,7 +71,7 @@ export class BlueSkyPostService {
     });
     const truncated = response as string;
     return truncated.length > BLUESKY_MAX_POST_LENGTH
-      ? truncated.substring(0, BLUESKY_MAX_POST_LENGTH - 3) + "..."
+      ? `${truncated.substring(0, BLUESKY_MAX_POST_LENGTH - 3)}...`
       : truncated;
   }
 }

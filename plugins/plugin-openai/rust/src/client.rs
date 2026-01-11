@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! OpenAI API Client
 //!
 //! Async HTTP client for OpenAI API interactions using reqwest.
@@ -141,9 +142,10 @@ impl OpenAIClient {
 
         let mut messages: Vec<ChatMessage> = Vec::new();
         if let Some(system) = &params.system {
+            let system_content: String = system.clone();
             messages.push(ChatMessage {
                 role: "system".to_string(),
-                content: Some(system.clone()),
+                content: Some(system_content),
             });
         }
         messages.push(ChatMessage {
@@ -207,9 +209,10 @@ impl OpenAIClient {
 
         let mut messages: Vec<ChatMessage> = Vec::new();
         if let Some(system) = &params.system {
+            let system_content: String = system.clone();
             messages.push(ChatMessage {
                 role: "system".to_string(),
-                content: Some(system.clone()),
+                content: Some(system_content),
             });
         }
         messages.push(ChatMessage {
@@ -429,13 +432,16 @@ impl OpenAIClient {
         let mut form = Form::new().text("model", model.to_string()).part("file", part);
 
         if let Some(language) = &params.language {
-            form = form.text("language", language.clone());
+            let lang_str: String = language.clone();
+            form = form.text("language", lang_str);
         }
         if let Some(prompt) = &params.prompt {
-            form = form.text("prompt", prompt.clone());
+            let prompt_str: String = prompt.clone();
+            form = form.text("prompt", prompt_str);
         }
         if let Some(temp) = params.temperature {
-            form = form.text("temperature", temp.to_string());
+            let temp_str: String = temp.to_string();
+            form = form.text("temperature", temp_str);
         }
         if let Some(format) = &params.response_format {
             form = form.text(

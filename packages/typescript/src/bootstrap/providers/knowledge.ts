@@ -1,4 +1,11 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult, ProviderValue, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  ProviderValue,
+  State,
+} from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 
 /**
@@ -38,63 +45,48 @@ export const knowledgeProvider: Provider = {
       } as ProviderResult;
     }
 
-    try {
-      // Search for relevant knowledge using searchMemories with knowledge table
-      const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text: queryText,
-      });
-      const relevantKnowledge = await runtime.searchMemories({
-        tableName: "knowledge",
-        embedding,
-        query: queryText,
-        count: 5,
-      });
+    // Search for relevant knowledge using searchMemories with knowledge table
+    const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: queryText,
+    });
+    const relevantKnowledge = await runtime.searchMemories({
+      tableName: "knowledge",
+      embedding,
+      query: queryText,
+      count: 5,
+    });
 
-      for (const entry of relevantKnowledge) {
-        if (entry.content?.text) {
-          let knowledgeText = entry.content.text;
-          // Truncate if too long
-          if (knowledgeText.length > 500) {
-            knowledgeText = knowledgeText.substring(0, 500) + "...";
-          }
-
-          const entryData = {
-            id: entry.id?.toString() || "",
-            text: knowledgeText,
-            source:
-              (entry.metadata?.source as string | undefined) || "unknown",
-          };
-          knowledgeEntries.push(entryData);
-          sections.push(`- ${knowledgeText}`);
+    for (const entry of relevantKnowledge) {
+      if (entry.content?.text) {
+        let knowledgeText = entry.content.text;
+        // Truncate if too long
+        if (knowledgeText.length > 500) {
+          knowledgeText = `${knowledgeText.substring(0, 500)}...`;
         }
+
+        const entryData = {
+          id: entry.id?.toString() || "",
+          text: knowledgeText,
+          source: (entry.metadata?.source as string | undefined) || "unknown",
+        };
+        knowledgeEntries.push(entryData);
+        sections.push(`- ${knowledgeText}`);
       }
-    } catch (error) {
-      runtime.logger.warn(
-        {
-          src: "provider:knowledge",
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error searching knowledge base",
-      );
     }
 
     const contextText =
-      sections.length > 0
-        ? `# Relevant Knowledge\n${sections.join("\n")}`
-        : "";
+      sections.length > 0 ? `# Relevant Knowledge\n${sections.join("\n")}` : "";
 
-      return {
-        text: contextText,
-        values: {
-          knowledgeCount: knowledgeEntries.length,
-          hasKnowledge: knowledgeEntries.length > 0,
-        },
-        data: {
-          entries: knowledgeEntries as unknown as ProviderValue,
-          query: queryText,
-        },
-      } as ProviderResult;
+    return {
+      text: contextText,
+      values: {
+        knowledgeCount: knowledgeEntries.length,
+        hasKnowledge: knowledgeEntries.length > 0,
+      },
+      data: {
+        entries: knowledgeEntries as unknown as ProviderValue,
+        query: queryText,
+      },
+    } as ProviderResult;
   },
 };
-
-

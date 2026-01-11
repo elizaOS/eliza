@@ -1,20 +1,21 @@
 /**
  * Elizagotchi - Virtual Pet Game
- * 
+ *
  * Fullscreen, minimal, stylish design.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Clouds, Ground, Poop, Stars } from "./components/GameElements";
 import { PetSprite } from "./components/PetSprite";
-import { Poop, Ground, Clouds, Stars } from "./components/GameElements";
 import {
-  getGameState,
-  updateGame,
   executeAction,
+  getGameState,
   resetGame,
   setGameState,
+  updateGame,
 } from "./game/plugin";
-import type { PetState, Action, AnimationType } from "./game/types";
+import type { Action, AnimationType, PetState } from "./game/types";
 import "./App.css";
 
 // ============================================================================
@@ -28,7 +29,9 @@ interface StatPillProps {
 }
 
 const StatPill: React.FC<StatPillProps> = ({ icon, value, critical }) => (
-  <div className={`stat-pill ${critical ? "critical" : ""} ${value < 25 ? "low" : value < 50 ? "medium" : "good"}`}>
+  <div
+    className={`stat-pill ${critical ? "critical" : ""} ${value < 25 ? "low" : value < 50 ? "medium" : "good"}`}
+  >
     <span className="stat-pill-icon">{icon}</span>
     <div className="stat-pill-bar">
       <div className="stat-pill-fill" style={{ width: `${value}%` }} />
@@ -47,7 +50,12 @@ interface ActionBtnProps {
   active?: boolean;
 }
 
-const ActionBtn: React.FC<ActionBtnProps> = ({ icon, onClick, disabled, active }) => (
+const ActionBtn: React.FC<ActionBtnProps> = ({
+  icon,
+  onClick,
+  disabled,
+  active,
+}) => (
   <button
     className={`action-btn ${active ? "active" : ""}`}
     onClick={onClick}
@@ -74,7 +82,7 @@ function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       const newState = updateGame();
-      
+
       if (newState.stage !== previousStage.current) {
         previousStage.current = newState.stage;
         if (newState.stage !== "dead") {
@@ -85,10 +93,10 @@ function App() {
           setMessage(newState.causeOfDeath || "Passed away...");
         }
       }
-      
+
       setPetState(newState);
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -103,10 +111,10 @@ function App() {
   const handleAction = useCallback((action: Action) => {
     const result = executeAction(action);
     setPetState(result.state);
-    
+
     if (result.success) {
-      setMessage(result.message.split("!")[0] + "!");
-      
+      setMessage(`${result.message.split("!")[0]}!`);
+
       switch (action) {
         case "feed":
           setAnimation("eating");
@@ -126,7 +134,7 @@ function App() {
         default:
           setAnimation("idle");
       }
-      
+
       if (action !== "sleep" && action !== "light_toggle") {
         setTimeout(() => setAnimation("idle"), 2000);
       }
@@ -170,41 +178,44 @@ function App() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = event.target?.result as string;
-        const data = JSON.parse(json);
-        
-        if (!data.pet || !data.pet.name || !data.pet.stage) {
-          throw new Error("Invalid save file");
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const json = event.target?.result as string;
+          const data = JSON.parse(json);
+
+          if (!data.pet || !data.pet.name || !data.pet.stage) {
+            throw new Error("Invalid save file");
+          }
+
+          // Restore timestamps relative to now
+          const pet: PetState = {
+            ...data.pet,
+            lastUpdate: Date.now(),
+          };
+
+          setGameState(pet);
+          setPetState(pet);
+          previousStage.current = pet.stage;
+          setMessage(`📥 Loaded ${pet.name}!`);
+          setImportError("");
+          setShowSettings(false);
+        } catch (_err) {
+          setImportError("Invalid save file");
         }
-        
-        // Restore timestamps relative to now
-        const pet: PetState = {
-          ...data.pet,
-          lastUpdate: Date.now(),
-        };
-        
-        setGameState(pet);
-        setPetState(pet);
-        previousStage.current = pet.stage;
-        setMessage(`📥 Loaded ${pet.name}!`);
-        setImportError("");
-        setShowSettings(false);
-      } catch (err) {
-        setImportError("Invalid save file");
-      }
-    };
-    reader.readAsText(file);
-    
-    // Reset input so same file can be selected again
-    e.target.value = "";
-  }, []);
+      };
+      reader.readAsText(file);
+
+      // Reset input so same file can be selected again
+      e.target.value = "";
+    },
+    [],
+  );
 
   const isNight = !petState.lightsOn;
   const isDead = petState.stage === "dead";
@@ -252,13 +263,20 @@ function App() {
       {/* Top bar: Stats + Settings */}
       <div className="top-bar">
         <div className="stats-overlay">
-          <StatPill icon="🍔" value={petState.stats.hunger} critical={petState.stats.hunger < 20} />
+          <StatPill
+            icon="🍔"
+            value={petState.stats.hunger}
+            critical={petState.stats.hunger < 20}
+          />
           <StatPill icon="💖" value={petState.stats.happiness} />
           <StatPill icon="⚡" value={petState.stats.energy} />
           <StatPill icon="✨" value={petState.stats.cleanliness} />
           {petState.isSick && <div className="status-badge sick">🤒</div>}
         </div>
-        <button className="settings-btn-top" onClick={() => setShowSettings(!showSettings)}>
+        <button
+          className="settings-btn-top"
+          onClick={() => setShowSettings(!showSettings)}
+        >
           ⚙️
         </button>
       </div>
@@ -270,11 +288,7 @@ function App() {
       </div>
 
       {/* Message toast */}
-      {message && (
-        <div className="toast">
-          {message}
-        </div>
-      )}
+      {message && <div className="toast">{message}</div>}
 
       {/* Actions (bottom) */}
       <div className="actions-bar">
@@ -323,9 +337,12 @@ function App() {
       {/* Settings panel */}
       {showSettings && (
         <div className="settings-panel" onClick={() => setShowSettings(false)}>
-          <div className="settings-content" onClick={e => e.stopPropagation()}>
+          <div
+            className="settings-content"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3>Settings</h3>
-            
+
             <div className="settings-section">
               <button className="settings-action" onClick={handleReset}>
                 🥚 New Pet
@@ -340,7 +357,9 @@ function App() {
               <button className="settings-action" onClick={handleImport}>
                 📥 Import Pet
               </button>
-              {importError && <div className="settings-error">{importError}</div>}
+              {importError && (
+                <div className="settings-error">{importError}</div>
+              )}
             </div>
 
             <div className="settings-info">
@@ -362,7 +381,10 @@ function App() {
               </div>
             </div>
 
-            <button className="settings-close" onClick={() => setShowSettings(false)}>
+            <button
+              className="settings-close"
+              onClick={() => setShowSettings(false)}
+            >
               ✕
             </button>
           </div>

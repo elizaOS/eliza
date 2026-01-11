@@ -1,4 +1,4 @@
-import { McpToolCompatibility, type SchemaConstraints } from "../index";
+import { McpToolCompatibility, type SchemaConstraints } from "../base";
 
 interface OpenAIConstraints {
   minLength?: number;

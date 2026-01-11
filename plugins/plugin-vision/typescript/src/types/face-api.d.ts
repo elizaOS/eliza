@@ -1,4 +1,4 @@
-declare module 'face-api.js' {
+declare module "face-api.js" {
   export interface Box {
     x: number;
     y: number;

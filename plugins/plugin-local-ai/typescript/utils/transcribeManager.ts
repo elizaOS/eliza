@@ -1,19 +1,22 @@
-import { exec } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
-import { promisify } from 'node:util';
-import { logger } from '@elizaos/core';
+import { exec } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { promisify } from "node:util";
+import { logger } from "@elizaos/core";
 
 const execAsync = promisify(exec);
 
 // Lazy load whisper-node to avoid ESM/CommonJS issues
-let whisperModule: any = null;
-async function getWhisper() {
+type WhisperModule = {
+  transcribe: (audioBuffer: Buffer, options?: Record<string, unknown>) => Promise<string>;
+};
+let whisperModule: WhisperModule | null = null;
+async function getWhisper(): Promise<WhisperModule> {
   if (!whisperModule) {
     // Dynamic import for CommonJS module
-    const module = await import('whisper-node');
+    const module = await import("whisper-node");
     // The module exports an object with a whisper property
-    whisperModule = (module as any).whisper;
+    whisperModule = (module as { whisper: WhisperModule }).whisper;
   }
   return whisperModule;
 }
@@ -54,8 +57,8 @@ export class TranscribeManager {
    * @param {string} cacheDir - The directory path for storing cached files.
    */
   private constructor(cacheDir: string) {
-    this.cacheDir = path.join(cacheDir, 'whisper');
-    logger.debug('Initializing TranscribeManager', {
+    this.cacheDir = path.join(cacheDir, "whisper");
+    logger.debug("Initializing TranscribeManager", {
       cacheDir: this.cacheDir,
       timestamp: new Date().toISOString(),
     });
@@ -72,7 +75,7 @@ export class TranscribeManager {
         await this.initializeFFmpeg();
         this.ffmpegInitialized = true;
       } catch (error) {
-        logger.error('FFmpeg initialization failed:', {
+        logger.error("FFmpeg initialization failed:", {
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
           timestamp: new Date().toISOString(),
@@ -111,15 +114,15 @@ export class TranscribeManager {
    */
   private async fetchFFmpegVersion(): Promise<void> {
     try {
-      const { stdout } = await execAsync('ffmpeg -version');
-      this.ffmpegVersion = stdout.split('\n')[0];
-      logger.info('FFmpeg version:', {
+      const { stdout } = await execAsync("ffmpeg -version");
+      this.ffmpegVersion = stdout.split("\n")[0];
+      logger.info("FFmpeg version:", {
         version: this.ffmpegVersion,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
       this.ffmpegVersion = null;
-      logger.error('Failed to get FFmpeg version:', {
+      logger.error("Failed to get FFmpeg version:", {
         error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString(),
       });
@@ -149,7 +152,7 @@ export class TranscribeManager {
         // Verify FFmpeg capabilities
         await this.verifyFFmpegCapabilities();
 
-        logger.success('FFmpeg initialized successfully', {
+        logger.success("FFmpeg initialized successfully", {
           version: this.ffmpegVersion,
           path: this.ffmpegPath,
           timestamp: new Date().toISOString(),
@@ -159,7 +162,7 @@ export class TranscribeManager {
       }
     } catch (error) {
       this.ffmpegAvailable = false;
-      logger.error('FFmpeg initialization failed:', {
+      logger.error("FFmpeg initialization failed:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         timestamp: new Date().toISOString(),
@@ -177,10 +180,10 @@ export class TranscribeManager {
    */
   private async checkFFmpegAvailability(): Promise<void> {
     try {
-      const { stdout, stderr } = await execAsync('which ffmpeg || where ffmpeg');
+      const { stdout, stderr } = await execAsync("which ffmpeg || where ffmpeg");
       this.ffmpegPath = stdout.trim();
       this.ffmpegAvailable = true;
-      logger.info('FFmpeg found at:', {
+      logger.info("FFmpeg found at:", {
         path: this.ffmpegPath,
         stderr: stderr ? stderr.trim() : undefined,
         timestamp: new Date().toISOString(),
@@ -188,9 +191,9 @@ export class TranscribeManager {
     } catch (error) {
       this.ffmpegAvailable = false;
       this.ffmpegPath = null;
-      logger.error('FFmpeg not found in PATH:', {
+      logger.error("FFmpeg not found in PATH:", {
         error: error instanceof Error ? error.message : String(error),
-        stderr: error instanceof Error && 'stderr' in error ? error.stderr : undefined,
+        stderr: error instanceof Error && "stderr" in error ? error.stderr : undefined,
         timestamp: new Date().toISOString(),
       });
     }
@@ -204,11 +207,11 @@ export class TranscribeManager {
   private async verifyFFmpegCapabilities(): Promise<void> {
     try {
       // Check if FFmpeg supports required codecs and formats
-      const { stdout } = await execAsync('ffmpeg -codecs');
-      const hasRequiredCodecs = stdout.includes('pcm_s16le') && stdout.includes('wav');
+      const { stdout } = await execAsync("ffmpeg -codecs");
+      const hasRequiredCodecs = stdout.includes("pcm_s16le") && stdout.includes("wav");
 
       if (!hasRequiredCodecs) {
-        throw new Error('FFmpeg installation missing required codecs (pcm_s16le, wav)');
+        throw new Error("FFmpeg installation missing required codecs (pcm_s16le, wav)");
       }
 
       // logger.info("FFmpeg capabilities verified", {
@@ -216,7 +219,7 @@ export class TranscribeManager {
       //   timestamp: new Date().toISOString()
       // });
     } catch (error) {
-      logger.error('FFmpeg capabilities verification failed:', {
+      logger.error("FFmpeg capabilities verification failed:", {
         error: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString(),
       });
@@ -228,15 +231,15 @@ export class TranscribeManager {
    * Logs instructions on how to install FFmpeg if it is not properly installed.
    */
   private logFFmpegInstallInstructions(): void {
-    logger.warn('FFmpeg is required but not properly installed. Please install FFmpeg:', {
+    logger.warn("FFmpeg is required but not properly installed. Please install FFmpeg:", {
       instructions: {
-        mac: 'brew install ffmpeg',
-        ubuntu: 'sudo apt-get install ffmpeg',
-        windows: 'choco install ffmpeg',
-        manual: 'Download from https://ffmpeg.org/download.html',
+        mac: "brew install ffmpeg",
+        ubuntu: "sudo apt-get install ffmpeg",
+        windows: "choco install ffmpeg",
+        manual: "Download from https://ffmpeg.org/download.html",
       },
-      requiredVersion: '4.0 or later',
-      requiredCodecs: ['pcm_s16le', 'wav'],
+      requiredVersion: "4.0 or later",
+      requiredCodecs: ["pcm_s16le", "wav"],
       timestamp: new Date().toISOString(),
     });
   }
@@ -277,7 +280,7 @@ export class TranscribeManager {
   private async convertToWav(inputPath: string, outputPath: string): Promise<void> {
     if (!this.ffmpegAvailable) {
       throw new Error(
-        'FFmpeg is not installed or not properly configured. Please install FFmpeg to use audio transcription.'
+        "FFmpeg is not installed or not properly configured. Please install FFmpeg to use audio transcription."
       );
     }
 
@@ -288,7 +291,7 @@ export class TranscribeManager {
       );
 
       if (stderr) {
-        logger.warn('FFmpeg conversion error:', {
+        logger.warn("FFmpeg conversion error:", {
           stderr,
           inputPath,
           outputPath,
@@ -297,10 +300,10 @@ export class TranscribeManager {
       }
 
       if (!fs.existsSync(outputPath)) {
-        throw new Error('WAV file was not created successfully');
+        throw new Error("WAV file was not created successfully");
       }
     } catch (error) {
-      logger.error('Audio conversion failed:', {
+      logger.error("Audio conversion failed:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         command: `ffmpeg -y -loglevel error -i "${inputPath}" -acodec pcm_s16le -ar 16000 -ac 1 "${outputPath}"`,
@@ -325,19 +328,19 @@ export class TranscribeManager {
    */
   private async preprocessAudio(audioBuffer: Buffer): Promise<string> {
     if (!this.ffmpegAvailable) {
-      throw new Error('FFmpeg is not installed. Please install FFmpeg to use audio transcription.');
+      throw new Error("FFmpeg is not installed. Please install FFmpeg to use audio transcription.");
     }
 
     try {
       // Check if the buffer is already a WAV file
       const isWav =
         audioBuffer.length > 4 &&
-        audioBuffer.toString('ascii', 0, 4) === 'RIFF' &&
+        audioBuffer.toString("ascii", 0, 4) === "RIFF" &&
         audioBuffer.length > 12 &&
-        audioBuffer.toString('ascii', 8, 12) === 'WAVE';
+        audioBuffer.toString("ascii", 8, 12) === "WAVE";
 
       // Use appropriate extension based on format detection
-      const extension = isWav ? '.wav' : '';
+      const extension = isWav ? ".wav" : "";
       const tempInputFile = path.join(this.cacheDir, `temp_input_${Date.now()}${extension}`);
       const tempWavFile = path.join(this.cacheDir, `temp_${Date.now()}.wav`);
 
@@ -367,7 +370,7 @@ export class TranscribeManager {
           const stream = probeResult.streams?.[0];
 
           if (
-            stream?.sample_rate === '16000' &&
+            stream?.sample_rate === "16000" &&
             stream?.channels === 1 &&
             (stream?.bits_per_raw_sample === 16 || stream?.bits_per_raw_sample === undefined)
           ) {
@@ -377,7 +380,7 @@ export class TranscribeManager {
           }
         } catch (probeError) {
           // If probe fails, continue with conversion
-          logger.debug('FFprobe failed, continuing with conversion:', probeError);
+          logger.debug("FFprobe failed, continuing with conversion:", probeError);
         }
       }
 
@@ -395,7 +398,7 @@ export class TranscribeManager {
 
       return tempWavFile;
     } catch (error) {
-      logger.error('Audio preprocessing failed:', {
+      logger.error("Audio preprocessing failed:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         ffmpegAvailable: this.ffmpegAvailable,
@@ -420,7 +423,7 @@ export class TranscribeManager {
 
     if (!this.ffmpegAvailable) {
       throw new Error(
-        'FFmpeg is not installed or not properly configured. Please install FFmpeg to use audio transcription.'
+        "FFmpeg is not installed or not properly configured. Please install FFmpeg to use audio transcription."
       );
     }
 
@@ -428,19 +431,19 @@ export class TranscribeManager {
       // Preprocess audio to WAV format
       const wavFile = await this.preprocessAudio(audioBuffer);
 
-      logger.info('Starting transcription with whisper...');
+      logger.info("Starting transcription with whisper...");
 
-      let segments;
+      let segments: Array<{ speech?: string }> | null = null;
       try {
         // Get the whisper function
         const whisper = await getWhisper();
 
         // Transcribe using whisper-node
         segments = await whisper(wavFile, {
-          modelName: 'tiny',
-          modelPath: path.join(this.cacheDir, 'models'), // Specify where to store models
+          modelName: "tiny",
+          modelPath: path.join(this.cacheDir, "models"), // Specify where to store models
           whisperOptions: {
-            language: 'en',
+            language: "en",
             word_timestamps: false, // We don't need word-level timestamps
           },
         });
@@ -448,44 +451,44 @@ export class TranscribeManager {
         // Check if it's a model download issue
         const errorMessage =
           whisperError instanceof Error ? whisperError.message : String(whisperError);
-        if (errorMessage.includes('not found') || errorMessage.includes('download')) {
-          logger.error('Whisper model not found. Please run: npx whisper-node download');
+        if (errorMessage.includes("not found") || errorMessage.includes("download")) {
+          logger.error("Whisper model not found. Please run: npx whisper-node download");
           throw new Error(
-            'Whisper model not found. Please install it with: npx whisper-node download'
+            "Whisper model not found. Please install it with: npx whisper-node download"
           );
         }
 
         // For other errors, log and rethrow
-        logger.error('Whisper transcription error:', whisperError);
+        logger.error("Whisper transcription error:", whisperError);
         throw whisperError;
       }
 
       // Clean up temporary WAV file
       if (fs.existsSync(wavFile)) {
         fs.unlinkSync(wavFile);
-        logger.info('Temporary WAV file cleaned up');
+        logger.info("Temporary WAV file cleaned up");
       }
 
       // Check if segments is valid
       if (!segments || !Array.isArray(segments)) {
-        logger.warn('Whisper returned no segments (likely silence or very short audio)');
+        logger.warn("Whisper returned no segments (likely silence or very short audio)");
         // Return empty transcription for silent/empty audio
-        return { text: '' };
+        return { text: "" };
       }
 
       // Handle empty segments array
       if (segments.length === 0) {
-        logger.warn('No speech detected in audio');
-        return { text: '' };
+        logger.warn("No speech detected in audio");
+        return { text: "" };
       }
 
       // Combine all segments into a single text
       const cleanText = segments
-        .map((segment: any) => segment.speech?.trim() || '')
+        .map((segment: { speech?: string }) => segment.speech?.trim() || "")
         .filter((text: string) => text) // Remove empty segments
-        .join(' ');
+        .join(" ");
 
-      logger.success('Transcription complete:', {
+      logger.success("Transcription complete:", {
         textLength: cleanText.length,
         segmentCount: segments.length,
         timestamp: new Date().toISOString(),
@@ -493,7 +496,7 @@ export class TranscribeManager {
 
       return { text: cleanText };
     } catch (error) {
-      logger.error('Transcription failed:', {
+      logger.error("Transcription failed:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         ffmpegAvailable: this.ffmpegAvailable,

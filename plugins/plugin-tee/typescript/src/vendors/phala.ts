@@ -43,5 +43,3 @@ export class PhalaVendor implements TeeVendorInterface {
     return "Phala Network TEE for secure agent execution";
   }
 }
-
-

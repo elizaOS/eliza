@@ -1,30 +1,58 @@
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   asUUID,
-  logger,
-  IAgentRuntime,
-  ModelType,
-  Service,
-  type Memory,
-  type UUID,
-  type IDatabaseAdapter,
-  encryptStringValue,
   decryptStringValue,
+  encryptStringValue,
   getSalt,
+  logger,
+  ModelType,
   parseKeyValueXml,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { z } from 'zod';
-import type { Form, FormField, FormFieldType, FormStatus, FormTemplate, FormUpdateResult } from '../types';
-import { buildExtractionPrompt } from '../utils/prompt-builders.js';
+  Service,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
+import type {
+  Form,
+  FormField,
+  FormFieldType,
+  FormStatus,
+  FormStep,
+  FormTemplate,
+  FormUpdateResult,
+} from "../types";
+import { buildExtractionPrompt } from "../utils/prompt-builders.js";
 
 const FORMS_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 
+// Type guard interface for runtime with database access
+interface RuntimeWithDatabase {
+  getDatabase?: () => Promise<unknown> | unknown;
+}
+
+// Helper function to safely get database from runtime
+function getDatabaseFromRuntime(runtime: IAgentRuntime): Promise<unknown> | unknown | null {
+  const runtimeWithDb = runtime as RuntimeWithDatabase;
+  if (!runtimeWithDb.getDatabase || typeof runtimeWithDb.getDatabase !== "function") {
+    return null;
+  }
+  return runtimeWithDb.getDatabase();
+}
+
 // Zod schemas for validation
-const FormStatusSchema = z.enum(['active', 'completed', 'cancelled']);
+const FormStatusSchema = z.enum(["active", "completed", "cancelled"]);
 
 const FormFieldTypeSchema = z.enum([
-  'text', 'number', 'email', 'tel', 'url', 'textarea',
-  'choice', 'checkbox', 'date', 'time', 'datetime'
+  "text",
+  "number",
+  "email",
+  "tel",
+  "url",
+  "textarea",
+  "choice",
+  "checkbox",
+  "date",
+  "time",
+  "datetime",
 ]);
 
 const FormStepSchema = z.object({
@@ -47,34 +75,40 @@ const DatabaseFormRowSchema = z.object({
       if (!result.success) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Invalid steps format',
+          message: "Invalid steps format",
         });
         return z.NEVER;
       }
       return result.data;
-    } catch (e) {
+    } catch (_e) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Invalid JSON in steps',
+        message: "Invalid JSON in steps",
       });
       return z.NEVER;
     }
   }),
-  created_at: z.union([z.string(), z.date()]).transform(val => new Date(val).getTime()),
-  updated_at: z.union([z.string(), z.date()]).transform(val => new Date(val).getTime()),
-  completed_at: z.union([z.string(), z.date()]).nullable().transform(val => val ? new Date(val).getTime() : undefined),
-  metadata: z.string().nullable().transform((val, ctx) => {
-    if (!val) return {};
-    try {
-      return JSON.parse(val);
-    } catch (e) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Invalid JSON in metadata',
-      });
-      return {};
-    }
-  }),
+  created_at: z.union([z.string(), z.date()]).transform((val) => new Date(val).getTime()),
+  updated_at: z.union([z.string(), z.date()]).transform((val) => new Date(val).getTime()),
+  completed_at: z
+    .union([z.string(), z.date()])
+    .nullable()
+    .transform((val) => (val ? new Date(val).getTime() : undefined)),
+  metadata: z
+    .string()
+    .nullable()
+    .transform((val, ctx) => {
+      if (!val) return {};
+      try {
+        return JSON.parse(val);
+      } catch (_e) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Invalid JSON in metadata",
+        });
+        return {};
+      }
+    }),
 });
 
 // Raw schema for database rows (before decryption)
@@ -84,37 +118,40 @@ const DatabaseFieldRowSchema = z.object({
   label: z.string(),
   type: FormFieldTypeSchema,
   value: z.string().nullable(),
-  is_secret: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)),
-  is_optional: z.union([z.boolean(), z.number()]).transform(val => Boolean(val)),
+  is_secret: z.union([z.boolean(), z.number()]).transform((val) => Boolean(val)),
+  is_optional: z.union([z.boolean(), z.number()]).transform((val) => Boolean(val)),
   description: z.string().nullable(),
   criteria: z.string().nullable(),
   error: z.string().nullable(),
-  metadata: z.string().nullable().transform((val, ctx) => {
-    if (!val) return undefined;
-    try {
-      return JSON.parse(val);
-    } catch (_e) {
-      return undefined;
-    }
-  }),
+  metadata: z
+    .string()
+    .nullable()
+    .transform((val, _ctx) => {
+      if (!val) return undefined;
+      try {
+        return JSON.parse(val);
+      } catch (_e) {
+        return undefined;
+      }
+    }),
 });
 
 // Schema for validating decrypted field values
 const createFieldValueSchema = (type: FormFieldType) => {
   switch (type) {
-    case 'email':
+    case "email":
       return z.string().email();
-    case 'url':
+    case "url":
       return z.string().url();
-    case 'number':
+    case "number":
       return z.number();
-    case 'checkbox':
+    case "checkbox":
       return z.boolean();
-    case 'tel':
+    case "tel":
       return z.string().min(7);
-    case 'date':
-    case 'time':
-    case 'datetime':
+    case "date":
+    case "time":
+    case "datetime":
       return z.string().min(1);
     default:
       return z.union([z.string(), z.number(), z.boolean()]);
@@ -126,8 +163,8 @@ const createFieldValueSchema = (type: FormFieldType) => {
  * It provides methods to create, update, list, and cancel forms.
  */
 export class FormsService extends Service {
-  static serviceName = 'forms';
-  static serviceType = 'forms';
+  static serviceName = "forms";
+  static serviceType = "forms";
 
   private forms: Map<UUID, Form> = new Map();
   private templates: Map<string, FormTemplate> = new Map();
@@ -136,7 +173,7 @@ export class FormsService extends Service {
   private tablesChecked = false;
   private tablesExist = false;
 
-  capabilityDescription = 'Form management service for collecting structured data from users';
+  capabilityDescription = "Form management service for collecting structured data from users";
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -158,49 +195,51 @@ export class FormsService extends Service {
     if (this.tablesExist) {
       await this.restorePersistedForms();
     } else {
-      logger.warn('Forms database tables not found. Persistence disabled until tables are created.');
+      logger.warn(
+        "Forms database tables not found. Persistence disabled until tables are created."
+      );
     }
 
     // Set up auto-persistence with batch processing
     this.persistenceTimer = setInterval(() => {
-      this.persistFormsBatch().catch((err) => logger.error('Failed to persist forms:', err));
+      this.persistFormsBatch().catch((err) => logger.error("Failed to persist forms:", err));
     }, 30000); // Every 30 seconds
 
     // Set up cleanup of completed/expired forms
     this.cleanupTimer = setInterval(() => {
-      this.cleanupOldForms().catch((err) => logger.error('Failed to cleanup forms:', err));
+      this.cleanupOldForms().catch((err) => logger.error("Failed to cleanup forms:", err));
     }, FORMS_CLEANUP_INTERVAL);
   }
 
   private registerDefaultTemplates() {
     // Basic contact form template
-    this.templates.set('contact', {
-      name: 'contact',
-      description: 'Basic contact information form',
+    this.templates.set("contact", {
+      name: "contact",
+      description: "Basic contact information form",
       steps: [
         {
-          id: 'basic-info',
-          name: 'Basic Information',
+          id: "basic-info",
+          name: "Basic Information",
           fields: [
             {
-              id: 'name',
-              label: 'Name',
-              type: 'text',
-              description: 'Your full name',
-              criteria: 'First and last name',
+              id: "name",
+              label: "Name",
+              type: "text",
+              description: "Your full name",
+              criteria: "First and last name",
             },
             {
-              id: 'email',
-              label: 'Email',
-              type: 'email',
-              description: 'Your email address',
-              criteria: 'Valid email format',
+              id: "email",
+              label: "Email",
+              type: "email",
+              description: "Your email address",
+              criteria: "Valid email format",
             },
             {
-              id: 'message',
-              label: 'Message',
-              type: 'textarea',
-              description: 'Your message',
+              id: "message",
+              label: "Message",
+              type: "textarea",
+              description: "Your message",
               optional: true,
             },
           ],
@@ -228,19 +267,19 @@ export class FormsService extends Service {
       if (!this.tablesChecked) {
         await this.checkDatabaseTables();
       }
-      
+
       if (this.tablesExist) {
         return true;
       }
-      
+
       if (i < maxAttempts - 1) {
         logger.debug(`Waiting for forms tables... attempt ${i + 1}/${maxAttempts}`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         this.tablesChecked = false; // Force recheck
       }
     }
-    
-    logger.warn('Forms tables not available after waiting');
+
+    logger.warn("Forms tables not available after waiting");
     return false;
   }
 
@@ -260,7 +299,7 @@ export class FormsService extends Service {
   ): Promise<Form> {
     let form: Form;
 
-    if (typeof templateOrForm === 'string') {
+    if (typeof templateOrForm === "string") {
       // Create from template
       const template = this.templates.get(templateOrForm);
       if (!template) {
@@ -278,7 +317,7 @@ export class FormsService extends Service {
           fields: step.fields.map((field) => ({ ...field })), // Deep copy fields
         })),
         currentStepIndex: 0,
-        status: 'active',
+        status: "active",
         createdAt: Date.now(),
         updatedAt: Date.now(),
         metadata: metadata || {},
@@ -288,12 +327,12 @@ export class FormsService extends Service {
       form = {
         id: asUUID(uuidv4()),
         agentId: this.runtime.agentId,
-        status: 'active',
+        status: "active",
         currentStepIndex: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         ...templateOrForm,
-        steps: templateOrForm.steps!.map((step) => ({
+        steps: templateOrForm.steps?.map((step) => ({
           ...step,
           completed: false,
         })),
@@ -314,14 +353,14 @@ export class FormsService extends Service {
     if (!form) {
       return {
         success: false,
-        message: 'Form not found',
+        message: "Form not found",
       };
     }
 
-    if (form.status !== 'active') {
+    if (form.status !== "active") {
       return {
         success: false,
-        message: 'Form is not active',
+        message: "Form is not active",
       };
     }
 
@@ -329,33 +368,33 @@ export class FormsService extends Service {
     if (!currentStep) {
       return {
         success: false,
-        message: 'No current step',
+        message: "No current step",
       };
     }
 
     // Extract values from message using LLM
     const extractionResult = await this.extractFormValues(
-      message.content.text || '',
-      currentStep.fields.filter(
-        (f) => {
-          // Check if field already has a valid value
-          const hasValue = f.value !== undefined && f.value !== null && f.value !== '';
-          if (hasValue) return false;
-          
-          // For optional fields, only process if mentioned in message
-          if (f.optional) {
-            const messageText = message.content.text?.toLowerCase() || '';
-            const fieldLabel = f.label.toLowerCase();
-            // More flexible matching for optional fields
-            return messageText.includes(fieldLabel) || 
-                   messageText.includes(fieldLabel.replace(/\s+/g, '')) ||
-                   messageText.includes(fieldLabel.replace(/\s+/g, '_'));
-          }
-          
-          // Required fields should always be processed
-          return true;
+      message.content.text || "",
+      currentStep.fields.filter((f) => {
+        // Check if field already has a valid value
+        const hasValue = f.value !== undefined && f.value !== null && f.value !== "";
+        if (hasValue) return false;
+
+        // For optional fields, only process if mentioned in message
+        if (f.optional) {
+          const messageText = message.content.text?.toLowerCase() || "";
+          const fieldLabel = f.label.toLowerCase();
+          // More flexible matching for optional fields
+          return (
+            messageText.includes(fieldLabel) ||
+            messageText.includes(fieldLabel.replace(/\s+/g, "")) ||
+            messageText.includes(fieldLabel.replace(/\s+/g, "_"))
+          );
         }
-      )
+
+        // Required fields should always be processed
+        return true;
+      })
     );
 
     const updatedFields: string[] = [];
@@ -371,7 +410,7 @@ export class FormsService extends Service {
           const validatedValue = this.validateFieldValue(value, field);
           if (validatedValue.isValid) {
             // Encrypt secret fields before storing
-            if (field.secret && typeof validatedValue.value === 'string') {
+            if (field.secret && typeof validatedValue.value === "string") {
               const salt = getSalt();
               field.value = encryptStringValue(validatedValue.value, salt);
             } else {
@@ -379,10 +418,16 @@ export class FormsService extends Service {
             }
             field.error = undefined;
             updatedFields.push(fieldId);
-            logger.debug(`Updated field ${fieldId} with value:`, field.secret ? '[REDACTED]' : validatedValue.value);
+            logger.debug(
+              `Updated field ${fieldId} with value:`,
+              field.secret ? "[REDACTED]" : String(validatedValue.value)
+            );
           } else {
             field.error = validatedValue.error;
-            errors.push({ fieldId, message: validatedValue.error || 'Invalid value' });
+            errors.push({
+              fieldId,
+              message: validatedValue.error || "Invalid value",
+            });
             logger.warn(`Invalid value for field ${fieldId}: ${validatedValue.error}`);
           }
         }
@@ -397,19 +442,14 @@ export class FormsService extends Service {
     const stepCompleted = filledRequiredFields.length === requiredFields.length;
 
     let formCompleted = false;
-    let responseMessage = '';
+    let responseMessage = "";
 
     if (stepCompleted) {
       currentStep.completed = true;
 
       // Execute step callback if defined
       if (currentStep.onComplete) {
-        try {
-          await currentStep.onComplete(form, currentStep.id);
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.error(`Error in step callback for ${currentStep.id}:`, errorMessage);
-        }
+        await currentStep.onComplete(form, currentStep.id);
       }
 
       // Move to next step or complete form
@@ -418,25 +458,20 @@ export class FormsService extends Service {
         responseMessage = `Step "${currentStep.name}" completed. Moving to step "${form.steps[form.currentStepIndex].name}".`;
       } else {
         // All steps completed
-        form.status = 'completed';
+        form.status = "completed";
         formCompleted = true;
-        responseMessage = 'Form completed successfully!';
+        responseMessage = "Form completed successfully!";
 
         // Execute form completion callback if defined
         if (form.onComplete) {
-          try {
-            await form.onComplete(form);
-          } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.error('Error in form completion callback:', errorMessage);
-          }
+          await form.onComplete(form);
         }
       }
     } else {
       // Prepare message about missing fields
       const missingRequired = requiredFields.filter((f) => !f.value);
       if (missingRequired.length > 0) {
-        responseMessage = `Please provide: ${missingRequired.map((f) => f.label).join(', ')}`;
+        responseMessage = `Please provide: ${missingRequired.map((f) => f.label).join(", ")}`;
       }
     }
 
@@ -483,45 +518,45 @@ export class FormsService extends Service {
 
       // Parse the XML response using the core utility
       const parsedXml = parseKeyValueXml<Record<string, string>>(response);
-      
+
       if (!parsedXml) {
-        logger.warn('Failed to parse XML response for form extraction');
+        logger.warn("Failed to parse XML response for form extraction");
         return { values: {} };
       }
 
       // Transform and validate the extracted values
       const values: Record<string, string | number | boolean> = {};
-      
+
       for (const field of fields) {
         const rawValue = parsedXml[field.id];
-        if (rawValue === undefined || rawValue === null || rawValue === '') {
+        if (rawValue === undefined || rawValue === null || rawValue === "") {
           continue;
         }
 
         // Transform based on field type
         switch (field.type) {
-          case 'number': {
+          case "number": {
             const numVal = Number(rawValue);
-            if (!isNaN(numVal)) {
+            if (!Number.isNaN(numVal)) {
               values[field.id] = numVal;
             }
             break;
           }
-          case 'checkbox': {
+          case "checkbox": {
             const boolStr = String(rawValue).toLowerCase();
-            values[field.id] = boolStr === 'true' || boolStr === '1' || boolStr === 'yes';
+            values[field.id] = boolStr === "true" || boolStr === "1" || boolStr === "yes";
             break;
           }
-          case 'email': {
+          case "email": {
             const emailVal = String(rawValue).trim();
-            if (emailVal.includes('@') && emailVal.includes('.')) {
+            if (emailVal.includes("@") && emailVal.includes(".")) {
               values[field.id] = emailVal;
             }
             break;
           }
-          case 'url': {
+          case "url": {
             const urlVal = String(rawValue).trim();
-            if (urlVal.startsWith('http://') || urlVal.startsWith('https://')) {
+            if (urlVal.startsWith("http://") || urlVal.startsWith("https://")) {
               values[field.id] = urlVal;
             }
             break;
@@ -535,7 +570,7 @@ export class FormsService extends Service {
       return { values };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Error extracting form values:', errorMessage);
+      logger.warn(`Error extracting form values: ${errorMessage}`);
       return { values: {} };
     }
   }
@@ -545,7 +580,7 @@ export class FormsService extends Service {
    */
   async listForms(status?: FormStatus): Promise<Form[]> {
     const forms: Form[] = [];
-    
+
     // Directly iterate over the Map instead of converting to array first
     for (const form of this.forms.values()) {
       if (form.agentId === this.runtime.agentId) {
@@ -563,7 +598,7 @@ export class FormsService extends Service {
    */
   async getForm(formId: UUID): Promise<Form | null> {
     const form = this.forms.get(formId);
-    return (form && form.agentId === this.runtime.agentId) ? form : null;
+    return form && form.agentId === this.runtime.agentId ? form : null;
   }
 
   /**
@@ -575,7 +610,7 @@ export class FormsService extends Service {
       return false;
     }
 
-    form.status = 'cancelled';
+    form.status = "cancelled";
     form.updatedAt = Date.now();
     logger.debug(`Cancelled form ${formId}`);
 
@@ -606,15 +641,15 @@ export class FormsService extends Service {
 
     for (const [id, form] of this.forms.entries()) {
       const age = now - form.updatedAt;
-      
+
       // Remove completed forms older than 1 hour
-      if (form.status === 'completed' && age > 60 * 60 * 1000) {
+      if (form.status === "completed" && age > 60 * 60 * 1000) {
         this.forms.delete(id);
         removed++;
         logger.info(`Cleaned up completed form ${id}`);
       }
       // Remove cancelled or other non-active forms older than specified time
-      else if (form.status !== 'active' && age > olderThanMs) {
+      else if (form.status !== "active" && age > olderThanMs) {
         this.forms.delete(id);
         removed++;
         logger.info(`Cleaned up old form ${id}`);
@@ -646,183 +681,198 @@ export class FormsService extends Service {
 
   private async checkDatabaseTables(): Promise<void> {
     if (this.tablesChecked) return;
-    
+
+    const databaseGetter = getDatabaseFromRuntime(this.runtime);
+    if (!databaseGetter) {
+      logger.debug("Database adapter not available");
+      return;
+    }
+
+    const database = typeof databaseGetter === "function" ? await databaseGetter() : databaseGetter;
+    if (!database) {
+      logger.debug("Database not available");
+      return;
+    }
+
+    // Check if forms table exists
     try {
-      const db = this.runtime as any;
-      if (!db.getDatabase) {
-        logger.debug('Database adapter not available');
-        return;
-      }
+      const result = await database.get(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'forms'
+        ) as exists
+      `);
 
-      const database = await db.getDatabase();
-      if (!database) {
-        logger.debug('Database not available');
-        return;
-      }
+      this.tablesExist = result?.exists || false;
 
-      // Check if forms table exists
-      try {
-        const result = await database.get(`
+      if (!this.tablesExist) {
+        // Try with schema prefix
+        const schemaResult = await database.get(`
           SELECT EXISTS (
             SELECT FROM information_schema.tables 
-            WHERE table_name = 'forms'
+            WHERE table_schema LIKE '%forms%' AND table_name = 'forms'
           ) as exists
         `);
-        
-        this.tablesExist = result?.exists || false;
-        
-        if (!this.tablesExist) {
-          // Try with schema prefix
-          const schemaResult = await database.get(`
-            SELECT EXISTS (
-              SELECT FROM information_schema.tables 
-              WHERE table_schema LIKE '%forms%' AND table_name = 'forms'
-            ) as exists
-          `);
-          this.tablesExist = schemaResult?.exists || false;
-        }
-      } catch (error: unknown) {
-        // If the query fails, assume tables don't exist
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.debug('Could not check for forms tables:', errorMessage);
-        this.tablesExist = false;
+        this.tablesExist = schemaResult?.exists || false;
       }
-      
-      this.tablesChecked = true;
-      logger.info(`Forms database tables ${this.tablesExist ? 'found' : 'not found'}`);
     } catch (error: unknown) {
+      // If the query fails, assume tables don't exist
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Error checking database tables:', errorMessage);
-      this.tablesChecked = true;
+      logger.debug("Could not check for forms tables:", errorMessage);
       this.tablesExist = false;
     }
+
+    this.tablesChecked = true;
+    logger.info(`Forms database tables ${this.tablesExist ? "found" : "not found"}`);
   }
 
   private async persistFormsBatch(): Promise<void> {
+    // Skip if tables don't exist
+    if (!this.tablesExist) {
+      return;
+    }
+
+    const databaseGetter = getDatabaseFromRuntime(this.runtime);
+    if (!databaseGetter) {
+      return;
+    }
+
+    const database = typeof databaseGetter === "function" ? await databaseGetter() : databaseGetter;
+    if (!database) {
+      return;
+    }
+
+    // Collect all forms to persist
+    const formsToPersist: Array<{ form: Form; formId: UUID }> = [];
+    for (const [formId, form] of this.forms.entries()) {
+      if (form.agentId === this.runtime.agentId) {
+        formsToPersist.push({ form, formId });
+      }
+    }
+
+    if (formsToPersist.length === 0) {
+      return;
+    }
+
+    // Use a single transaction for all forms
     try {
-      // Skip if tables don't exist
-      if (!this.tablesExist) {
-        return;
-      }
+      await database.run("BEGIN");
 
-      const db = this.runtime as any;
-      if (!db.getDatabase) {
-        return;
-      }
-
-      const database = await db.getDatabase();
-      if (!database) {
-        return;
-      }
-
-      // Collect all forms to persist
-      const formsToPersist: Array<{ form: Form; formId: UUID }> = [];
-      for (const [formId, form] of this.forms.entries()) {
-        if (form.agentId === this.runtime.agentId) {
-          formsToPersist.push({ form, formId });
-        }
-      }
-
-      if (formsToPersist.length === 0) {
-        return;
-      }
-
-      // Use a single transaction for all forms
-      try {
-        await database.run('BEGIN');
-
-        // Batch insert/update all forms
-        for (const { form } of formsToPersist) {
-          const formData = {
-            id: form.id,
-            agentId: form.agentId,
-            name: form.name,
-            description: form.description || null,
-            status: form.status,
-            currentStepIndex: form.currentStepIndex,
-            steps: JSON.stringify(form.steps.map(step => ({
+      // Batch insert/update all forms
+      for (const { form } of formsToPersist) {
+        const formData = {
+          id: form.id,
+          agentId: form.agentId,
+          name: form.name,
+          description: form.description || null,
+          status: form.status,
+          currentStepIndex: form.currentStepIndex,
+          steps: JSON.stringify(
+            form.steps.map((step) => ({
               id: step.id,
               name: step.name,
               completed: step.completed,
-            }))),
-            createdAt: new Date(form.createdAt),
-            updatedAt: new Date(form.updatedAt),
-            completedAt: form.completedAt ? new Date(form.completedAt) : null,
-            metadata: JSON.stringify(form.metadata || {}),
-          };
+            }))
+          ),
+          createdAt: new Date(form.createdAt),
+          updatedAt: new Date(form.updatedAt),
+          completedAt: form.completedAt ? new Date(form.completedAt) : null,
+          metadata: JSON.stringify(form.metadata || {}),
+        };
 
-          await database.run(`
-            INSERT INTO forms (id, agent_id, name, description, status, current_step_index, steps, created_at, updated_at, completed_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              status = EXCLUDED.status,
-              current_step_index = EXCLUDED.current_step_index,
-              steps = EXCLUDED.steps,
-              updated_at = EXCLUDED.updated_at,
-              completed_at = EXCLUDED.completed_at,
-              metadata = EXCLUDED.metadata
-          `, [formData.id, formData.agentId, formData.name, formData.description, formData.status,
-              formData.currentStepIndex, formData.steps, formData.createdAt, formData.updatedAt,
-              formData.completedAt, formData.metadata]);
+        await database.run(
+          `
+          INSERT INTO forms (id, agent_id, name, description, status, current_step_index, steps, created_at, updated_at, completed_at, metadata)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            status = EXCLUDED.status,
+            current_step_index = EXCLUDED.current_step_index,
+            steps = EXCLUDED.steps,
+            updated_at = EXCLUDED.updated_at,
+            completed_at = EXCLUDED.completed_at,
+            metadata = EXCLUDED.metadata
+        `,
+          [
+            formData.id,
+            formData.agentId,
+            formData.name,
+            formData.description,
+            formData.status,
+            formData.currentStepIndex,
+            formData.steps,
+            formData.createdAt,
+            formData.updatedAt,
+            formData.completedAt,
+            formData.metadata,
+          ]
+        );
 
-          // Batch insert/update all fields for this form
-          for (const step of form.steps) {
-            for (const field of step.fields) {
-              const fieldData = {
-                formId: form.id,
-                stepId: step.id,
-                fieldId: field.id,
-                label: field.label,
-                type: field.type,
-                value: field.value !== undefined && field.value !== null ? String(field.value) : null,
-                isSecret: field.secret || false,
-                isOptional: field.optional || false,
-                description: field.description || null,
-                criteria: field.criteria || null,
-                error: field.error || null,
-                metadata: JSON.stringify(field.metadata || {}),
-              };
+        // Batch insert/update all fields for this form
+        for (const step of form.steps) {
+          for (const field of step.fields) {
+            const fieldData = {
+              formId: form.id,
+              stepId: step.id,
+              fieldId: field.id,
+              label: field.label,
+              type: field.type,
+              value: field.value !== undefined && field.value !== null ? String(field.value) : null,
+              isSecret: field.secret || false,
+              isOptional: field.optional || false,
+              description: field.description || null,
+              criteria: field.criteria || null,
+              error: field.error || null,
+              metadata: JSON.stringify(field.metadata || {}),
+            };
 
-              await database.run(`
-                INSERT INTO form_fields (form_id, step_id, field_id, label, type, value, is_secret, is_optional, description, criteria, error, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-                ON CONFLICT(form_id, step_id, field_id) DO UPDATE SET
-                  value = EXCLUDED.value,
-                  error = EXCLUDED.error,
-                  updated_at = datetime('now')
-              `, [fieldData.formId, fieldData.stepId, fieldData.fieldId, fieldData.label,
-                  fieldData.type, fieldData.value, fieldData.isSecret, fieldData.isOptional,
-                  fieldData.description, fieldData.criteria, fieldData.error, fieldData.metadata]);
-            }
+            await database.run(
+              `
+              INSERT INTO form_fields (form_id, step_id, field_id, label, type, value, is_secret, is_optional, description, criteria, error, metadata, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+              ON CONFLICT(form_id, step_id, field_id) DO UPDATE SET
+                value = EXCLUDED.value,
+                error = EXCLUDED.error,
+                updated_at = datetime('now')
+            `,
+              [
+                fieldData.formId,
+                fieldData.stepId,
+                fieldData.fieldId,
+                fieldData.label,
+                fieldData.type,
+                fieldData.value,
+                fieldData.isSecret,
+                fieldData.isOptional,
+                fieldData.description,
+                fieldData.criteria,
+                fieldData.error,
+                fieldData.metadata,
+              ]
+            );
           }
         }
-
-        // Commit all changes at once
-        await database.run('COMMIT');
-        logger.debug(`Successfully persisted ${formsToPersist.length} forms in batch`);
-      } catch (error: unknown) {
-        // Rollback entire batch on any error
-        try {
-          await database.run('ROLLBACK');
-        } catch (rollbackError: unknown) {
-          const rollbackMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
-          logger.error('Error rolling back batch transaction:', rollbackMsg);
-        }
-        
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes('does not exist') || errorMessage.includes('no such table')) {
-          logger.warn('Forms tables do not exist. Marking tables as not found.');
-          this.tablesExist = false;
-          return;
-        }
-        
-        // If batch fails, fall back to individual transactions
-        logger.warn('Batch persistence failed, falling back to individual transactions:', errorMessage);
-        await this.persistFormsIndividual();
       }
+
+      // Commit all changes at once
+      await database.run("COMMIT");
+      logger.debug(`Successfully persisted ${formsToPersist.length} forms in batch`);
     } catch (error: unknown) {
+      // Rollback entire batch on any error
+      await database.run("ROLLBACK");
+
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Error in batch persistence:', errorMessage);
+      if (errorMessage.includes("does not exist") || errorMessage.includes("no such table")) {
+        logger.warn("Forms tables do not exist. Marking tables as not found.");
+        this.tablesExist = false;
+        return;
+      }
+
+      // If batch fails, fall back to individual transactions
+      logger.warn(
+        "Batch persistence failed, falling back to individual transactions:",
+        errorMessage
+      );
+      await this.persistFormsIndividual();
     }
   }
 
@@ -836,7 +886,8 @@ export class FormsService extends Service {
       // Skip if tables don't exist
       if (!this.tablesExist) {
         // Periodically recheck in case tables were created
-        if (!this.tablesChecked || Math.random() < 0.1) { // Check 10% of the time
+        if (!this.tablesChecked || Math.random() < 0.1) {
+          // Check 10% of the time
           await this.checkDatabaseTables();
         }
         if (!this.tablesExist) {
@@ -844,26 +895,27 @@ export class FormsService extends Service {
         }
       }
 
-      const db = this.runtime as any;
-      if (!db.getDatabase) {
-        logger.warn('Database adapter not available for form persistence');
+      const databaseGetter = getDatabaseFromRuntime(this.runtime);
+      if (!databaseGetter) {
+        logger.warn("Database adapter not available for form persistence");
         return;
       }
 
-      const database = await db.getDatabase();
+      const database =
+        typeof databaseGetter === "function" ? await databaseGetter() : databaseGetter;
       if (!database) {
-        logger.warn('Database not available for form persistence');
+        logger.warn("Database not available for form persistence");
         return;
       }
 
       // Persist each form to the database
       for (const [formId, form] of this.forms.entries()) {
         if (form.agentId !== this.runtime.agentId) continue;
-        
+
         // Wrap each form's persistence in a transaction
         try {
-          await database.run('BEGIN');
-          
+          await database.run("BEGIN");
+
           // Serialize form data for database storage
           const formData = {
             id: form.id,
@@ -872,12 +924,14 @@ export class FormsService extends Service {
             description: form.description || null,
             status: form.status,
             currentStepIndex: form.currentStepIndex,
-            steps: JSON.stringify(form.steps.map(step => ({
-              id: step.id,
-              name: step.name,
-              completed: step.completed,
-              // Don't serialize callbacks
-            }))),
+            steps: JSON.stringify(
+              form.steps.map((step) => ({
+                id: step.id,
+                name: step.name,
+                completed: step.completed,
+                // Don't serialize callbacks
+              }))
+            ),
             createdAt: new Date(form.createdAt),
             updatedAt: new Date(form.updatedAt),
             completedAt: form.completedAt ? new Date(form.completedAt) : null,
@@ -886,7 +940,8 @@ export class FormsService extends Service {
 
           // Use raw SQL for compatibility with different database adapters
           try {
-            await database.run(`
+            await database.run(
+              `
               INSERT INTO forms (id, agent_id, name, description, status, current_step_index, steps, created_at, updated_at, completed_at, metadata)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(id) DO UPDATE SET
@@ -896,13 +951,25 @@ export class FormsService extends Service {
                 updated_at = EXCLUDED.updated_at,
                 completed_at = EXCLUDED.completed_at,
                 metadata = EXCLUDED.metadata
-            `, [formData.id, formData.agentId, formData.name, formData.description, formData.status, 
-                formData.currentStepIndex, formData.steps, formData.createdAt, formData.updatedAt, 
-                formData.completedAt, formData.metadata]);
+            `,
+              [
+                formData.id,
+                formData.agentId,
+                formData.name,
+                formData.description,
+                formData.status,
+                formData.currentStepIndex,
+                formData.steps,
+                formData.createdAt,
+                formData.updatedAt,
+                formData.completedAt,
+                formData.metadata,
+              ]
+            );
           } catch (dbError: unknown) {
             const dbErrorMsg = dbError instanceof Error ? dbError.message : String(dbError);
-            if (dbErrorMsg.includes('does not exist') || dbErrorMsg.includes('no such table')) {
-              logger.warn('Forms table does not exist. Marking tables as not found.');
+            if (dbErrorMsg.includes("does not exist") || dbErrorMsg.includes("no such table")) {
+              logger.warn("Forms table does not exist. Marking tables as not found.");
               this.tablesExist = false;
               return;
             }
@@ -918,7 +985,8 @@ export class FormsService extends Service {
                 fieldId: field.id,
                 label: field.label,
                 type: field.type,
-                value: field.value !== undefined && field.value !== null ? String(field.value) : null,
+                value:
+                  field.value !== undefined && field.value !== null ? String(field.value) : null,
                 isSecret: field.secret || false,
                 isOptional: field.optional || false,
                 description: field.description || null,
@@ -928,20 +996,34 @@ export class FormsService extends Service {
               };
 
               try {
-                await database.run(`
+                await database.run(
+                  `
                   INSERT INTO form_fields (form_id, step_id, field_id, label, type, value, is_secret, is_optional, description, criteria, error, metadata, created_at, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                   ON CONFLICT(form_id, step_id, field_id) DO UPDATE SET
                     value = EXCLUDED.value,
                     error = EXCLUDED.error,
                     updated_at = datetime('now')
-                `, [fieldData.formId, fieldData.stepId, fieldData.fieldId, fieldData.label, 
-                    fieldData.type, fieldData.value, fieldData.isSecret, fieldData.isOptional, 
-                    fieldData.description, fieldData.criteria, fieldData.error, fieldData.metadata]);
+                `,
+                  [
+                    fieldData.formId,
+                    fieldData.stepId,
+                    fieldData.fieldId,
+                    fieldData.label,
+                    fieldData.type,
+                    fieldData.value,
+                    fieldData.isSecret,
+                    fieldData.isOptional,
+                    fieldData.description,
+                    fieldData.criteria,
+                    fieldData.error,
+                    fieldData.metadata,
+                  ]
+                );
               } catch (dbError: unknown) {
                 const dbErrorMsg = dbError instanceof Error ? dbError.message : String(dbError);
-                if (dbErrorMsg.includes('does not exist') || dbErrorMsg.includes('no such table')) {
-                  logger.warn('Form fields table does not exist. Marking tables as not found.');
+                if (dbErrorMsg.includes("does not exist") || dbErrorMsg.includes("no such table")) {
+                  logger.warn("Form fields table does not exist. Marking tables as not found.");
                   this.tablesExist = false;
                   return;
                 }
@@ -949,17 +1031,12 @@ export class FormsService extends Service {
               }
             }
           }
-          
+
           // Commit the transaction if all operations succeeded
-          await database.run('COMMIT');
+          await database.run("COMMIT");
         } catch (error: unknown) {
           // Rollback on any error
-          try {
-            await database.run('ROLLBACK');
-          } catch (rollbackError: unknown) {
-            const rollbackMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
-            logger.error(`Error rolling back transaction for form ${formId}:`, rollbackMsg);
-          }
+          await database.run("ROLLBACK");
           const errorMsg = error instanceof Error ? error.message : String(error);
           logger.error(`Error persisting form ${formId}:`, errorMsg);
         }
@@ -967,156 +1044,165 @@ export class FormsService extends Service {
 
       logger.debug(`Persisted forms to database`);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Error persisting forms:', errorMessage);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error persisting forms:`, errorMsg);
     }
   }
 
   private async restorePersistedForms(): Promise<void> {
+    // Skip if tables don't exist
+    if (!this.tablesExist) {
+      return;
+    }
+
+    const databaseGetter = getDatabaseFromRuntime(this.runtime);
+    if (!databaseGetter) {
+      logger.warn("Database adapter not available for form restoration");
+      return;
+    }
+
+    const database = typeof databaseGetter === "function" ? await databaseGetter() : databaseGetter;
+    if (!database) {
+      logger.warn("Database not available for form restoration");
+      return;
+    }
+
+    // Restore forms from database
+    let formsResult: Array<Record<string, unknown>>;
     try {
-      // Skip if tables don't exist
-      if (!this.tablesExist) {
+      formsResult = await database.all(
+        `
+        SELECT * FROM forms 
+        WHERE agent_id = ? AND status != 'completed'
+        ORDER BY updated_at DESC
+      `,
+        [this.runtime.agentId]
+      );
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("does not exist") || errorMessage.includes("no such table")) {
+        logger.debug("Forms table does not exist during restoration");
+        this.tablesExist = false;
         return;
       }
+      throw error;
+    }
 
-      const db = this.runtime as any;
-      if (!db.getDatabase) {
-        logger.warn('Database adapter not available for form restoration');
-        return;
+    if (!formsResult || formsResult.length === 0) {
+      logger.debug("No forms to restore from database");
+      return;
+    }
+
+    for (const formRow of formsResult) {
+      // Validate and sanitize form data
+      const validatedForm = this.validateAndSanitizeFormData(formRow);
+      if (!validatedForm) {
+        logger.warn(`Skipping invalid form ${formRow.id}`);
+        continue;
       }
 
-      const database = await db.getDatabase();
-      if (!database) {
-        logger.warn('Database not available for form restoration');
-        return;
-      }
+      // Parse steps from validated form
+      const steps = validatedForm.steps;
 
-      // Restore forms from database
-      let formsResult;
+      // Restore form fields
+      let fieldsResult: Array<Record<string, unknown>>;
       try {
-        formsResult = await database.all(`
-          SELECT * FROM forms 
-          WHERE agent_id = ? AND status != 'completed'
-          ORDER BY updated_at DESC
-        `, [this.runtime.agentId]);
+        fieldsResult = await database.all(
+          `
+          SELECT * FROM form_fields 
+          WHERE form_id = ?
+          ORDER BY step_id, field_id
+        `,
+          [formRow.id]
+        );
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        if (errorMessage.includes('does not exist') || errorMessage.includes('no such table')) {
-          logger.debug('Forms table does not exist during restoration');
+        if (errorMessage.includes("does not exist") || errorMessage.includes("no such table")) {
+          logger.debug("Form fields table does not exist during restoration");
           this.tablesExist = false;
           return;
         }
         throw error;
       }
 
-      if (!formsResult || formsResult.length === 0) {
-        logger.debug('No forms to restore from database');
-        return;
-      }
-
-      for (const formRow of formsResult) {
-        try {
-          // Validate and sanitize form data
-          const validatedForm = this.validateAndSanitizeFormData(formRow);
-          if (!validatedForm) {
-            logger.warn(`Skipping invalid form ${formRow.id}`);
-            continue;
-          }
-
-          // Parse steps from validated form
-          const steps = validatedForm.steps;
-          
-          // Restore form fields
-          let fieldsResult;
-          try {
-            fieldsResult = await database.all(`
-              SELECT * FROM form_fields 
-              WHERE form_id = ?
-              ORDER BY step_id, field_id
-            `, [formRow.id]);
-          } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            if (errorMessage.includes('does not exist') || errorMessage.includes('no such table')) {
-              logger.debug('Form fields table does not exist during restoration');
-              this.tablesExist = false;
-              return;
-            }
-            throw error;
-          }
-
-          // Group fields by step
-          const fieldsByStep = new Map<string, typeof fieldsResult>();
-          for (const fieldRow of fieldsResult) {
-            if (!fieldsByStep.has(fieldRow.step_id)) {
-              fieldsByStep.set(fieldRow.step_id, []);
-            }
-            fieldsByStep.get(fieldRow.step_id)!.push(fieldRow);
-          }
-
-          // Reconstruct form with validated fields
-          const form: Form = {
-            ...validatedForm,
-            steps: steps.map((step: any) => ({
-              id: step.id,
-              name: step.name,
-              completed: step.completed || false,
-              fields: (fieldsByStep.get(step.id) || []).map((fieldRow: Record<string, unknown>): FormField | null => {
-                const validatedField = this.validateAndSanitizeFieldData(fieldRow);
-                if (!validatedField) {
-                  logger.warn(`Skipping invalid field ${fieldRow.field_id} in form ${formRow.id}`);
-                  return null;
-                }
-                
-                // Decrypt first if needed
-                let fieldValue: string | number | boolean | undefined = fieldRow.value !== null 
-                  ? this.parseFieldValue(String(fieldRow.value), String(fieldRow.type), Boolean(fieldRow.is_secret)) 
-                  : undefined;
-                
-                // Validate decrypted value
-                if (fieldValue !== undefined) {
-                  const valueSchema = createFieldValueSchema(validatedField.type);
-                  const valueResult = valueSchema.safeParse(fieldValue);
-                  
-                  if (!valueResult.success) {
-                    logger.warn(`Invalid field value after decryption for ${fieldRow.field_id}:`, valueResult.error.format());
-                    fieldValue = undefined; // Clear invalid values
-                  } else {
-                    fieldValue = valueResult.data as string | number | boolean; // Use validated value
-                  }
-                }
-                
-                return {
-                  ...validatedField,
-                  value: fieldValue,
-                };
-              }).filter((field: FormField | null): field is FormField => field !== null),
-            })),
-          };
-
-          // Only add form if it has at least one valid step with fields
-          const hasValidSteps = form.steps.some(step => step.fields.length > 0);
-          if (hasValidSteps) {
-            this.forms.set(form.id, form);
-            logger.debug(`Restored form ${form.id} (${form.name}) from database`);
-          } else {
-            logger.warn(`Form ${form.id} has no valid steps/fields, skipping`);
-          }
-        } catch (error: unknown) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          logger.error(`Error restoring form ${formRow.id}:`, errorMsg);
+      // Group fields by step
+      const fieldsByStep = new Map<string, typeof fieldsResult>();
+      for (const fieldRow of fieldsResult) {
+        const stepId = String(fieldRow.step_id);
+        if (!fieldsByStep.has(stepId)) {
+          fieldsByStep.set(stepId, []);
         }
+        fieldsByStep.get(stepId)?.push(fieldRow);
       }
 
-      logger.info(`Restored ${this.forms.size} forms from database`);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Error restoring forms:', errorMessage);
+      // Reconstruct form with validated fields
+      const form: Form = {
+        ...validatedForm,
+        steps: steps.map((step: FormStep) => ({
+          id: step.id,
+          name: step.name,
+          completed: step.completed || false,
+          fields: (fieldsByStep.get(step.id) || [])
+            .map((fieldRow: Record<string, unknown>): FormField | null => {
+              const validatedField = this.validateAndSanitizeFieldData(fieldRow);
+              if (!validatedField) {
+                logger.warn(`Skipping invalid field ${fieldRow.field_id} in form ${formRow.id}`);
+                return null;
+              }
+
+              // Decrypt first if needed
+              let fieldValue: string | number | boolean | undefined =
+                fieldRow.value !== null
+                  ? this.parseFieldValue(
+                      String(fieldRow.value),
+                      String(fieldRow.type),
+                      Boolean(fieldRow.is_secret)
+                    )
+                  : undefined;
+
+              // Validate decrypted value
+              if (fieldValue !== undefined) {
+                const valueSchema = createFieldValueSchema(validatedField.type);
+                const valueResult = valueSchema.safeParse(fieldValue);
+
+                if (!valueResult.success) {
+                  logger.warn(
+                    `Invalid field value after decryption for ${fieldRow.field_id}:`,
+                    valueResult.error.format()
+                  );
+                  fieldValue = undefined; // Clear invalid values
+                } else {
+                  fieldValue = valueResult.data as string | number | boolean; // Use validated value
+                }
+              }
+
+              return {
+                ...validatedField,
+                value: fieldValue,
+              };
+            })
+            .filter((field: FormField | null): field is FormField => field !== null),
+        })),
+      };
+
+      // Only add form if it has at least one valid step with fields
+      const hasValidSteps = form.steps.some((step) => step.fields.length > 0);
+      if (hasValidSteps) {
+        this.forms.set(form.id, form);
+        logger.debug(`Restored form ${form.id} (${form.name}) from database`);
+      } else {
+        logger.warn(`Form ${form.id} has no valid steps/fields, skipping`);
+      }
     }
+
+    logger.info(`Restored ${this.forms.size} forms from database`);
   }
 
-  private validateAndSanitizeFormData(formRow: any): Omit<Form, 'steps'> & { steps: any[] } | null {
+  private validateAndSanitizeFormData(
+    formRow: Record<string, unknown>
+  ): (Omit<Form, "steps"> & { steps: FormStep[] }) | null {
     const result = DatabaseFormRowSchema.safeParse(formRow);
-    
+
     if (!result.success) {
       logger.warn(`Invalid form data for ${formRow.id}:`, result.error.format());
       return null;
@@ -1138,9 +1224,11 @@ export class FormsService extends Service {
     };
   }
 
-  private validateAndSanitizeFieldData(fieldRow: any): Omit<FormField, 'value'> | null {
+  private validateAndSanitizeFieldData(
+    fieldRow: Record<string, unknown>
+  ): Omit<FormField, "value"> | null {
     const result = DatabaseFieldRowSchema.safeParse(fieldRow);
-    
+
     if (!result.success) {
       logger.warn(`Invalid field data:`, result.error.format());
       return null;
@@ -1160,91 +1248,83 @@ export class FormsService extends Service {
     };
   }
 
-  private parseFieldValue(value: string, type: string, isSecret: boolean = false): string | number | boolean {
+  private parseFieldValue(
+    value: string,
+    type: string,
+    isSecret: boolean = false
+  ): string | number | boolean {
     // Decrypt secret values first
     let processedValue = value;
-    if (isSecret && type !== 'number' && type !== 'checkbox') {
+    if (isSecret && type !== "number" && type !== "checkbox") {
       const salt = getSalt();
       processedValue = decryptStringValue(value, salt);
     }
-    
+
     switch (type) {
-      case 'number':
+      case "number":
         return Number(processedValue);
-      case 'checkbox':
-        return processedValue === 'true';
+      case "checkbox":
+        return processedValue === "true";
       default:
         return processedValue;
     }
   }
 
-  private validateFieldValue(value: any, field: FormField): { isValid: boolean; value?: any; error?: string } {
+  private validateFieldValue(
+    value: unknown,
+    field: FormField
+  ): { isValid: boolean; value?: string | number | boolean; error?: string } {
     switch (field.type) {
-      case 'number':
+      case "number": {
         const num = Number(value);
-        if (isNaN(num)) {
-          return { isValid: false, error: 'Must be a valid number' };
+        if (Number.isNaN(num)) {
+          return { isValid: false, error: "Must be a valid number" };
         }
         return { isValid: true, value: num };
-        
-      case 'email':
-        if (typeof value !== 'string' || !value.includes('@') || !value.includes('.')) {
-          return { isValid: false, error: 'Must be a valid email address' };
+      }
+
+      case "email":
+        if (typeof value !== "string" || !value.includes("@") || !value.includes(".")) {
+          return { isValid: false, error: "Must be a valid email address" };
         }
         return { isValid: true, value: value.trim() };
-        
-      case 'url':
-        if (typeof value !== 'string' || (!value.startsWith('http://') && !value.startsWith('https://'))) {
-          return { isValid: false, error: 'Must be a valid URL starting with http:// or https://' };
+
+      case "url":
+        if (
+          typeof value !== "string" ||
+          (!value.startsWith("http://") && !value.startsWith("https://"))
+        ) {
+          return {
+            isValid: false,
+            error: "Must be a valid URL starting with http:// or https://",
+          };
         }
         return { isValid: true, value: value.trim() };
-        
-      case 'tel':
-        if (typeof value !== 'string' || value.length < 7) {
-          return { isValid: false, error: 'Must be a valid phone number' };
+
+      case "tel":
+        if (typeof value !== "string" || value.length < 7) {
+          return { isValid: false, error: "Must be a valid phone number" };
         }
         return { isValid: true, value: value.trim() };
-        
-      case 'date':
-      case 'time':
-      case 'datetime':
-        if (typeof value !== 'string' || !value) {
+
+      case "date":
+      case "time":
+      case "datetime":
+        if (typeof value !== "string" || !value) {
           return { isValid: false, error: `Must be a valid ${field.type}` };
         }
         return { isValid: true, value: value.trim() };
-        
-      case 'checkbox':
+
+      case "checkbox":
         return { isValid: true, value: Boolean(value) };
-        
+
       default:
         // For text, textarea, choice - accept strings
         if (value === null || value === undefined) {
-          return { isValid: false, error: 'Value is required' };
+          return { isValid: false, error: "Value is required" };
         }
         return { isValid: true, value: String(value) };
     }
-  }
-
-  private _serializeForm(form: Form): any {
-    // Convert functions to null for JSON serialization
-    return {
-      ...form,
-      onComplete: undefined,
-      steps: form.steps.map((step) => ({
-        ...step,
-        onComplete: undefined,
-      })),
-    };
-  }
-
-  private _deserializeForm(data: any): Form {
-    // Restore form structure (callbacks will be re-registered by the creating plugin)
-    return {
-      ...data,
-      createdAt: new Date(data.createdAt).getTime(),
-      updatedAt: new Date(data.updatedAt).getTime(),
-      completedAt: data.completedAt ? new Date(data.completedAt).getTime() : undefined,
-    };
   }
 
   private async cleanupOldForms(): Promise<void> {

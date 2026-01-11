@@ -1,15 +1,15 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { getCwd, setCwd } from "../plugin/providers/cwd.js";
-import { readFileAction } from "../plugin/actions/read-file.js";
-import { writeFileAction } from "../plugin/actions/write-file.js";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { changeDirectoryAction } from "../plugin/actions/change-directory.js";
 import { editFileAction } from "../plugin/actions/edit-file.js";
 import { listFilesAction } from "../plugin/actions/list-files.js";
+import { readFileAction } from "../plugin/actions/read-file.js";
 import { searchFilesAction } from "../plugin/actions/search-files.js";
-import { changeDirectoryAction } from "../plugin/actions/change-directory.js";
+import { writeFileAction } from "../plugin/actions/write-file.js";
+import { getCwd, setCwd } from "../plugin/providers/cwd.js";
 
 function createMemory(text: string): Memory {
   return {
@@ -49,7 +49,7 @@ describe("plugin actions: filesystem + directory", () => {
   });
 
   test("WRITE_FILE creates a file when content is provided", async () => {
-    const msg = createMemory('create hello.txt\n```txt\nHello world\n```');
+    const msg = createMemory("create hello.txt\n```txt\nHello world\n```");
     const result = await writeFileAction.handler(runtime, msg);
 
     expect(result.success).toBe(true);
@@ -62,7 +62,10 @@ describe("plugin actions: filesystem + directory", () => {
   test("READ_FILE returns file content and fails for directories", async () => {
     await fs.writeFile(path.join(tempDir, "hello.txt"), "Hello", "utf-8");
 
-    const ok = await readFileAction.handler(runtime, createMemory("read hello.txt"));
+    const ok = await readFileAction.handler(
+      runtime,
+      createMemory("read hello.txt"),
+    );
     expect(ok.success).toBe(true);
     expect(ok.text).toContain("File: hello.txt");
     expect(ok.text).toContain("Hello");
@@ -77,7 +80,7 @@ describe("plugin actions: filesystem + directory", () => {
 
     const edited = await editFileAction.handler(
       runtime,
-      createMemory('edit edit.txt replace "beta" with "gamma"')
+      createMemory('edit edit.txt replace "beta" with "gamma"'),
     );
     expect(edited.success).toBe(true);
 
@@ -86,7 +89,7 @@ describe("plugin actions: filesystem + directory", () => {
 
     const notFound = await editFileAction.handler(
       runtime,
-      createMemory('edit edit.txt replace "does-not-exist" with "x"')
+      createMemory('edit edit.txt replace "does-not-exist" with "x"'),
     );
     expect(notFound.success).toBe(false);
     expect(notFound.text).toContain("Could not find");
@@ -97,7 +100,10 @@ describe("plugin actions: filesystem + directory", () => {
     await fs.writeFile(path.join(tempDir, ".hidden.txt"), "H", "utf-8");
     await fs.mkdir(path.join(tempDir, "dir"), { recursive: true });
 
-    const listed = await listFilesAction.handler(runtime, createMemory("list files in ."));
+    const listed = await listFilesAction.handler(
+      runtime,
+      createMemory("list files in ."),
+    );
     expect(listed.success).toBe(true);
     expect(listed.text).toContain("Directory:");
     expect(listed.text).toContain("a.txt");
@@ -106,12 +112,20 @@ describe("plugin actions: filesystem + directory", () => {
   });
 
   test("SEARCH_FILES finds matches in text files", async () => {
-    await fs.writeFile(path.join(tempDir, "search.txt"), "TODO: fix this\nok\n", "utf-8");
-    await fs.writeFile(path.join(tempDir, "other.bin"), "\u0000\u0001\u0002", "utf-8");
+    await fs.writeFile(
+      path.join(tempDir, "search.txt"),
+      "TODO: fix this\nok\n",
+      "utf-8",
+    );
+    await fs.writeFile(
+      path.join(tempDir, "other.bin"),
+      "\u0000\u0001\u0002",
+      "utf-8",
+    );
 
     const searched = await searchFilesAction.handler(
       runtime,
-      createMemory('search for "todo" in .')
+      createMemory('search for "todo" in .'),
     );
     expect(searched.success).toBe(true);
     expect(searched.text).toContain("search.txt");
@@ -119,14 +133,18 @@ describe("plugin actions: filesystem + directory", () => {
   });
 
   test("CHANGE_DIRECTORY shows current dir when no target is provided and changes dir when target exists", async () => {
-    const current = await changeDirectoryAction.handler(runtime, createMemory("cd"));
+    const current = await changeDirectoryAction.handler(
+      runtime,
+      createMemory("cd"),
+    );
     expect(current.success).toBe(true);
     expect(current.text).toContain("CWD:");
 
-    const changed = await changeDirectoryAction.handler(runtime, createMemory("cd sub"));
+    const changed = await changeDirectoryAction.handler(
+      runtime,
+      createMemory("cd sub"),
+    );
     expect(changed.success).toBe(true);
     expect(getCwd()).toBe(path.join(tempDir, "sub"));
   });
 });
-
-

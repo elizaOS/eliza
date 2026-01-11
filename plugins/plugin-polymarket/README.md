@@ -160,10 +160,14 @@ Summary:
 **TypeScript Usage**:
 
 ```typescript
-import { getSimplifiedMarketsAction } from '@elizaos/plugin-polymarket';
+import { getSimplifiedMarketsAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
-const result = await getSimplifiedMarketsAction.handler(runtime, message, state);
+const result = await getSimplifiedMarketsAction.handler(
+  runtime,
+  message,
+  state,
+);
 
 // Access simplified market data
 const markets = result.data.markets; // SimplifiedMarket[]
@@ -232,7 +236,7 @@ Found 150 markets ready for trading:
 **TypeScript Usage**:
 
 ```typescript
-import { getClobMarkets } from '@elizaos/plugin-polymarket';
+import { getClobMarkets } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getClobMarkets.handler(runtime, message, state);
@@ -343,7 +347,7 @@ Retrieves historical price data for a Polymarket token, providing time-series da
 **TypeScript Usage**:
 
 ```typescript
-import { getPriceHistory } from '@elizaos/plugin-polymarket';
+import { getPriceHistory } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getPriceHistory.handler(runtime, message, state);
@@ -454,7 +458,7 @@ Top 5 Asks:
 **TypeScript Usage**:
 
 ```typescript
-import { getOrderBookSummaryAction } from '@elizaos/plugin-polymarket';
+import { getOrderBookSummaryAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getOrderBookSummaryAction.handler(runtime, message, state);
@@ -543,7 +547,7 @@ Summary:
 **TypeScript Usage**:
 
 ```typescript
-import { getOrderBookDepthAction } from '@elizaos/plugin-polymarket';
+import { getOrderBookDepthAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getOrderBookDepthAction.handler(runtime, message, state);
@@ -635,7 +639,7 @@ This is the best price you would pay to buy this token.
 **TypeScript Usage**:
 
 ```typescript
-import { getBestPriceAction } from '@elizaos/plugin-polymarket';
+import { getBestPriceAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getBestPriceAction.handler(runtime, message, state);
@@ -653,7 +657,7 @@ const side = result.data.side; // buy/sell side
 ```typescript
 interface BestPriceResponse {
   tokenId: string;
-  side: 'buy' | 'sell';
+  side: "buy" | "sell";
   price: string; // Raw price from API
   formattedPrice: string; // Price formatted to 4 decimals
   percentagePrice: string; // Price as percentage (2 decimals)
@@ -714,7 +718,7 @@ The midpoint price represents the halfway point between the best bid and best as
 **TypeScript Usage**:
 
 ```typescript
-import { getMidpointPriceAction } from '@elizaos/plugin-polymarket';
+import { getMidpointPriceAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getMidpointPriceAction.handler(runtime, message, state);
@@ -804,7 +808,7 @@ The spread represents the difference between the best ask and best bid prices.
 **TypeScript Usage**:
 
 ```typescript
-import { getSpreadAction } from '@elizaos/plugin-polymarket';
+import { getSpreadAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await getSpreadAction.handler(runtime, message, state);
@@ -901,7 +905,7 @@ You can now place orders on Polymarket. The system will automatically use these 
 **TypeScript Usage**:
 
 ```typescript
-import { createApiKeyAction } from '@elizaos/plugin-polymarket';
+import { createApiKeyAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await createApiKeyAction.handler(runtime, message, state);
@@ -1003,7 +1007,7 @@ If you need API access, use the CREATE_API_KEY action to generate new credential
 **TypeScript Usage**:
 
 ```typescript
-import { revokeApiKeyAction } from '@elizaos/plugin-polymarket';
+import { revokeApiKeyAction } from "@elizaos/plugin-polymarket";
 
 // Use in your ElizaOS agent
 const result = await revokeApiKeyAction.handler(runtime, message, state);

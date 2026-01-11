@@ -9,7 +9,8 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +50,7 @@ class ScreenCaptureError(VisionError):
 class ModelInitializationError(VisionError):
     """Model initialization errors"""
 
-    def __init__(
-        self, message: str, model_name: str, context: dict[str, Any] | None = None
-    ):
+    def __init__(self, message: str, model_name: str, context: dict[str, Any] | None = None):
         ctx = context or {}
         ctx["model_name"] = model_name
         super().__init__(message, "MODEL_INIT_ERROR", False, ctx)
@@ -182,9 +181,7 @@ class ErrorRecoveryManager:
 
         strategy = self._strategies.get(error.code)
         if not strategy:
-            logger.warning(
-                f"[ErrorRecovery] No recovery strategy for error code: {error.code}"
-            )
+            logger.warning(f"[ErrorRecovery] No recovery strategy for error code: {error.code}")
             return False
 
         if not strategy.can_recover(error):
@@ -258,9 +255,7 @@ class CircuitBreaker:
 
         if self._failures >= self._threshold:
             self._state = "open"
-            logger.error(
-                f"[CircuitBreaker] {self._name} threshold exceeded, opening circuit"
-            )
+            logger.error(f"[CircuitBreaker] {self._name} threshold exceeded, opening circuit")
 
     @property
     def state(self) -> str:
@@ -277,9 +272,9 @@ class CircuitBreaker:
 class VisionErrorHandler:
     """Global vision error handler (singleton)"""
 
-    _instance: "VisionErrorHandler | None" = None
+    _instance: VisionErrorHandler | None = None
 
-    def __new__(cls) -> "VisionErrorHandler":
+    def __new__(cls) -> VisionErrorHandler:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._recovery_manager = ErrorRecoveryManager()
@@ -287,7 +282,7 @@ class VisionErrorHandler:
         return cls._instance
 
     @classmethod
-    def get_instance(cls) -> "VisionErrorHandler":
+    def get_instance(cls) -> VisionErrorHandler:
         """Get the singleton instance"""
         return cls()
 
@@ -316,4 +311,3 @@ class VisionErrorHandler:
         """Reset all circuit breakers"""
         for breaker in self._circuit_breakers.values():
             breaker.reset()
-

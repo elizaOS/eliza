@@ -6,11 +6,11 @@ Serverless AI agents running on Cloudflare Workers, powered by elizaOS.
 
 This example demonstrates how to deploy an AI chat agent to Cloudflare Workers in **three languages**:
 
-| Language | Directory | Port | Description |
-|----------|-----------|------|-------------|
-| **TypeScript** | `./` (root) | 8787 | Primary implementation with streaming support |
-| **Rust** | `./rust-worker/` | 8788 | High-performance WASM implementation |
-| **Python** | `./python-worker/` | 8789 | Python (beta) implementation |
+| Language       | Directory          | Port | Description                                   |
+| -------------- | ------------------ | ---- | --------------------------------------------- |
+| **TypeScript** | `./` (root)        | 8787 | Primary implementation with streaming support |
+| **Rust**       | `./rust-worker/`   | 8788 | High-performance WASM implementation          |
+| **Python**     | `./python-worker/` | 8789 | Python (beta) implementation                  |
 
 All implementations provide a REST API for chat interactions with support for:
 
@@ -39,11 +39,13 @@ bun install
 ### 2. Set Your OpenAI API Key
 
 For local development:
+
 ```bash
 export OPENAI_API_KEY=your_key_here
 ```
 
 For deployment, set it as a secret:
+
 ```bash
 wrangler secret put OPENAI_API_KEY
 # Enter your API key when prompted
@@ -123,6 +125,7 @@ bun run deploy:production
 Returns information about the worker and character.
 
 **Response:**
+
 ```json
 {
   "name": "Eliza",
@@ -143,6 +146,7 @@ Returns information about the worker and character.
 Health check endpoint.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -157,6 +161,7 @@ Health check endpoint.
 Send a message and receive a complete response.
 
 **Request:**
+
 ```json
 {
   "message": "Hello!",
@@ -165,6 +170,7 @@ Send a message and receive a complete response.
 ```
 
 **Response:**
+
 ```json
 {
   "response": "Hello! I'm Eliza, a helpful AI assistant. How can I help you today?",
@@ -178,6 +184,7 @@ Send a message and receive a complete response.
 Send a message and receive a streaming response via Server-Sent Events.
 
 **Request:**
+
 ```json
 {
   "message": "Tell me a story",
@@ -186,6 +193,7 @@ Send a message and receive a streaming response via Server-Sent Events.
 ```
 
 **Response (SSE):**
+
 ```
 data: {"conversationId": "abc123-...", "character": "Eliza"}
 
@@ -204,14 +212,14 @@ data: [DONE]
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | (required) | Your OpenAI API key |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI API base URL |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model to use |
-| `CHARACTER_NAME` | `Eliza` | Character name |
-| `CHARACTER_BIO` | (default bio) | Character biography |
-| `CHARACTER_SYSTEM` | (default system) | System prompt |
+| Variable           | Default                     | Description         |
+| ------------------ | --------------------------- | ------------------- |
+| `OPENAI_API_KEY`   | (required)                  | Your OpenAI API key |
+| `OPENAI_BASE_URL`  | `https://api.openai.com/v1` | OpenAI API base URL |
+| `OPENAI_MODEL`     | `gpt-5-mini`                | Model to use        |
+| `CHARACTER_NAME`   | `Eliza`                     | Character name      |
+| `CHARACTER_BIO`    | (default bio)               | Character biography |
+| `CHARACTER_SYSTEM` | (default system)            | System prompt       |
 
 ### Customizing the Character
 
@@ -236,6 +244,7 @@ OPENAI_MODEL = "meta-llama/Llama-3-70b-chat-hf"
 ```
 
 Remember to set the appropriate API key:
+
 ```bash
 wrangler secret put OPENAI_API_KEY
 # Enter your Together AI / other provider API key
@@ -309,6 +318,7 @@ bun run tail
 ### Cloudflare Dashboard
 
 Visit [Cloudflare Workers Dashboard](https://dash.cloudflare.com/?to=/:account/workers) to view:
+
 - Request metrics
 - Error rates
 - CPU time usage
@@ -319,6 +329,7 @@ Visit [Cloudflare Workers Dashboard](https://dash.cloudflare.com/?to=/:account/w
 ### Conversation Storage
 
 The default implementation stores conversations in memory, which:
+
 - ✅ Works for development and light usage
 - ❌ Loses data on worker restart
 - ❌ Doesn't scale across multiple workers
@@ -355,6 +366,7 @@ routes = [
 ### "OPENAI_API_KEY is not configured"
 
 Set the secret:
+
 ```bash
 wrangler secret put OPENAI_API_KEY
 ```
@@ -362,6 +374,7 @@ wrangler secret put OPENAI_API_KEY
 ### Worker not responding
 
 Check logs:
+
 ```bash
 wrangler tail
 ```
@@ -379,4 +392,3 @@ The worker includes CORS headers. If you still have issues, verify the request m
 ## License
 
 MIT
-

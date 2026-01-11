@@ -1,4 +1,4 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Helper types for database query result rows
 interface MigrationRow {
@@ -43,8 +43,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
   beforeAll(async () => {
     console.log("\n🚀 Simulating full runtime migration flow...\n");
 
-    const testSetup =
-      await createIsolatedTestDatabaseForMigration("runtime_simulation");
+    const testSetup = await createIsolatedTestDatabaseForMigration("runtime_simulation");
     cleanup = testSetup.cleanup;
     db = testSetup.db;
   });
@@ -102,9 +101,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       ORDER BY created_at DESC
     `);
 
-    console.log(
-      `\n📋 Core migration records: ${coreMigrationCheck.rows.length}`,
-    );
+    console.log(`\n📋 Core migration records: ${coreMigrationCheck.rows.length}`);
     expect(coreMigrationCheck.rows.length).toBe(1);
 
     const coreMigration = coreMigrationCheck.rows[0] as MigrationRow;
@@ -147,12 +144,15 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       ORDER BY created_at DESC
     `);
 
-    console.log(
-      `\n📋 Polymarket migration records: ${polymarketMigrationCheck.rows.length}`,
-    );
+    console.log(`\n📋 Polymarket migration records: ${polymarketMigrationCheck.rows.length}`);
     expect(polymarketMigrationCheck.rows.length).toBe(1);
 
-    const polymarketMigration = polymarketMigrationCheck.rows[0] as any;
+    interface MigrationRow {
+      plugin_name: string;
+      hash: string;
+      created_at: Date | string;
+    }
+    const polymarketMigration = polymarketMigrationCheck.rows[0] as MigrationRow;
     console.log("Polymarket migration details:");
     console.log("  - Plugin:", polymarketMigration.plugin_name);
     console.log("  - Hash:", polymarketMigration.hash);
@@ -164,9 +164,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       WHERE plugin_name = 'polymarket'
       ORDER BY id DESC
     `);
-    console.log(
-      `\n📸 Polymarket snapshots: ${polymarketSnapshots.rows.length}`,
-    );
+    console.log(`\n📸 Polymarket snapshots: ${polymarketSnapshots.rows.length}`);
 
     // Verify polymarket schema and tables
     const polymarketSchemaExists = await db.execute(sql`
@@ -175,8 +173,8 @@ describe("Runtime Simulation - Full Migration Flow", () => {
         WHERE schema_name = 'polymarket'
       ) as exists
     `);
-    const firstRow = polymarketSchemaExists.rows && polymarketSchemaExists.rows[0];
-    expect(firstRow && firstRow.exists).toBe(true);
+    const firstRow = polymarketSchemaExists.rows?.[0];
+    expect(firstRow?.exists).toBe(true);
     console.log("\n✅ Polymarket schema created");
 
     const polymarketTables = await db.execute(sql`
@@ -184,9 +182,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       WHERE schemaname = 'polymarket' 
       ORDER BY tablename
     `);
-    const polymarketTableNames = polymarketTables.rows.map(
-      (r: any) => r.tablename,
-    );
+    const polymarketTableNames = polymarketTables.rows.map((r: any) => r.tablename);
     console.log(`📦 Polymarket tables: ${polymarketTableNames.length}`);
     console.log("Tables:", polymarketTableNames.join(", "));
 
@@ -209,9 +205,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
 
     console.log("\nAll migrations:");
     for (const migration of allMigrations.rows as MigrationRow[]) {
-      console.log(
-        `  - ${migration.plugin_name}: ${migration.hash} (${migration.created_at})`,
-      );
+      console.log(`  - ${migration.plugin_name}: ${migration.hash} (${migration.created_at})`);
     }
 
     // Check journal entries (if table exists)
@@ -242,21 +236,13 @@ describe("Runtime Simulation - Full Migration Flow", () => {
 
       try {
         const snapshotData =
-          typeof snapshot.snapshot === "string"
-            ? JSON.parse(snapshot.snapshot)
-            : snapshot.snapshot;
+          typeof snapshot.snapshot === "string" ? JSON.parse(snapshot.snapshot) : snapshot.snapshot;
 
         console.log("\n🔍 Polymarket Snapshot Analysis:");
         console.log("  - Version:", snapshotData.version);
         console.log("  - Dialect:", snapshotData.dialect);
-        console.log(
-          "  - Tables:",
-          Object.keys(snapshotData.tables || {}).length,
-        );
-        console.log(
-          "  - Table names:",
-          Object.keys(snapshotData.tables || {}).join(", "),
-        );
+        console.log("  - Tables:", Object.keys(snapshotData.tables || {}).length);
+        console.log("  - Table names:", Object.keys(snapshotData.tables || {}).join(", "));
 
         // Check if tables are correctly namespaced
         for (const tableName of Object.keys(snapshotData.tables || {})) {
@@ -314,11 +300,9 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       SELECT COUNT(*) as count FROM migrations._migrations
     `);
 
-    console.log(
-      `\n📊 Final migration count: ${(finalMigrationCount.rows && finalMigrationCount.rows[0] && finalMigrationCount.rows[0].count)}`,
-    );
-    const finalFirstRow = finalMigrationCount.rows && finalMigrationCount.rows[0];
-    expect(Number(finalFirstRow && finalFirstRow.count)).toBe(2);
+    console.log(`\n📊 Final migration count: ${finalMigrationCount.rows?.[0]?.count}`);
+    const finalFirstRow = finalMigrationCount.rows?.[0];
+    expect(Number(finalFirstRow?.count)).toBe(2);
 
     // Final summary
     console.log(`\n${"=".repeat(80)}`);
@@ -350,9 +334,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
 
     console.log("\nMigration Order:");
     for (const record of migrationOrder.rows as MigrationOrderRow[]) {
-      console.log(
-        `  ${record.migration_order}. ${record.plugin_name} at ${record.created_at}`,
-      );
+      console.log(`  ${record.migration_order}. ${record.plugin_name} at ${record.created_at}`);
     }
 
     // Core should be migrated first

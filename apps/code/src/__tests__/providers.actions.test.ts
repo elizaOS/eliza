@@ -1,9 +1,21 @@
-import { describe, test, expect, beforeEach } from "vitest";
-import { ChannelType, stringToUuid, type IAgentRuntime, type Memory, type Room, type State, type Task, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Memory,
+  type Room,
+  type State,
+  stringToUuid,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
+import { describe, expect, test } from "vitest";
+import {
+  pauseTaskAction,
+  resumeTaskAction,
+} from "../plugin/actions/task-management.js";
 import { actionsProvider } from "../plugin/providers/actions.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
-import { pauseTaskAction, resumeTaskAction } from "../plugin/actions/task-management.js";
 
 function createMemory(text: string, roomId?: UUID): Memory {
   return {
@@ -72,7 +84,8 @@ function createMockRuntimeWithService(actions: IAgentRuntime["actions"]): {
     updateTask: async (id: UUID, updates: Partial<Task>) => {
       const task = tasks.get(id);
       if (!task) return;
-      if (updates.metadata) task.metadata = { ...task.metadata, ...updates.metadata };
+      if (updates.metadata)
+        task.metadata = { ...task.metadata, ...updates.metadata };
     },
 
     deleteTask: async (id: UUID) => {
@@ -95,7 +108,10 @@ function createMockRuntimeWithService(actions: IAgentRuntime["actions"]): {
 
 describe("ACTIONS provider includes task control actions", () => {
   test("stop task -> PAUSE_TASK appears in possible actions", async () => {
-    const { runtime, setService, roomId } = createMockRuntimeWithService([pauseTaskAction, resumeTaskAction]);
+    const { runtime, setService, roomId } = createMockRuntimeWithService([
+      pauseTaskAction,
+      resumeTaskAction,
+    ]);
     const service = (await CodeTaskService.start(runtime)) as CodeTaskService;
     setService(service);
 
@@ -106,7 +122,10 @@ describe("ACTIONS provider includes task control actions", () => {
 
   test("restart task -> RESUME_TASK appears in possible actions", async () => {
     process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
-    const { runtime, setService, roomId } = createMockRuntimeWithService([pauseTaskAction, resumeTaskAction]);
+    const { runtime, setService, roomId } = createMockRuntimeWithService([
+      pauseTaskAction,
+      resumeTaskAction,
+    ]);
     const service = (await CodeTaskService.start(runtime)) as CodeTaskService;
     setService(service);
 
@@ -118,5 +137,3 @@ describe("ACTIONS provider includes task control actions", () => {
     delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
   });
 });
-
-

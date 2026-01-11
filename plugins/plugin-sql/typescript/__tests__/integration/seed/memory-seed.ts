@@ -197,10 +197,7 @@ export const memoryTestFragments: Memory[] = Array(3)
   }));
 
 // Helper function to create similar memory for vector similarity testing
-export const createSimilarMemoryVector = (
-  baseMemory: Memory,
-  similarity: number,
-): Memory => {
+export const createSimilarMemoryVector = (baseMemory: Memory, similarity: number): Memory => {
   // Only works if baseMemory has an embedding
   if (!baseMemory.embedding || !Array.isArray(baseMemory.embedding)) {
     throw new Error("Base memory must have an embedding");
@@ -216,12 +213,8 @@ export const createSimilarMemoryVector = (
   });
 
   // Normalize the resulting vector
-  const magnitude = Math.sqrt(
-    blendedVector.reduce((sum, val) => sum + val * val, 0),
-  );
-  const normalizedVector = blendedVector.map((val) =>
-    Number((val / magnitude).toFixed(6)),
-  );
+  const magnitude = Math.sqrt(blendedVector.reduce((sum, val) => sum + val * val, 0));
+  const normalizedVector = blendedVector.map((val) => Number((val / magnitude).toFixed(6)));
 
   return {
     ...baseMemory,

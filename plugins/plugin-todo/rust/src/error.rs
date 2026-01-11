@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Todo Plugin.
 
 use thiserror::Error;
@@ -67,5 +68,10 @@ impl TodoError {
         Self::Internal(msg.into())
     }
 }
+
+
+
+
+
 
 

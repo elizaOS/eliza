@@ -16,21 +16,24 @@ export class EnvAuthProvider implements TwitterOAuth1Provider {
 
   constructor(
     private readonly runtime?: IAgentRuntime,
-    private readonly state?: any,
+    private readonly state?: Record<string, unknown>
   ) {}
 
   async getOAuth1Credentials(): Promise<OAuth1Credentials> {
-    const apiKey =
-      this.state?.TWITTER_API_KEY ?? getSetting(this.runtime, "TWITTER_API_KEY");
-    const apiSecretKey =
-      this.state?.TWITTER_API_SECRET_KEY ??
-      getSetting(this.runtime, "TWITTER_API_SECRET_KEY");
-    const accessToken =
-      this.state?.TWITTER_ACCESS_TOKEN ??
-      getSetting(this.runtime, "TWITTER_ACCESS_TOKEN");
-    const accessTokenSecret =
+    const apiKeyRaw = this.state?.TWITTER_API_KEY ?? getSetting(this.runtime, "TWITTER_API_KEY");
+    const apiSecretKeyRaw =
+      this.state?.TWITTER_API_SECRET_KEY ?? getSetting(this.runtime, "TWITTER_API_SECRET_KEY");
+    const accessTokenRaw =
+      this.state?.TWITTER_ACCESS_TOKEN ?? getSetting(this.runtime, "TWITTER_ACCESS_TOKEN");
+    const accessTokenSecretRaw =
       this.state?.TWITTER_ACCESS_TOKEN_SECRET ??
       getSetting(this.runtime, "TWITTER_ACCESS_TOKEN_SECRET");
+
+    const apiKey = typeof apiKeyRaw === "string" ? apiKeyRaw : undefined;
+    const apiSecretKey = typeof apiSecretKeyRaw === "string" ? apiSecretKeyRaw : undefined;
+    const accessToken = typeof accessTokenRaw === "string" ? accessTokenRaw : undefined;
+    const accessTokenSecret =
+      typeof accessTokenSecretRaw === "string" ? accessTokenSecretRaw : undefined;
 
     const missing: string[] = [];
     if (!apiKey) missing.push("TWITTER_API_KEY");
@@ -38,15 +41,17 @@ export class EnvAuthProvider implements TwitterOAuth1Provider {
     if (!accessToken) missing.push("TWITTER_ACCESS_TOKEN");
     if (!accessTokenSecret) missing.push("TWITTER_ACCESS_TOKEN_SECRET");
     if (missing.length) {
-      throw new Error(
-        `Missing required Twitter env credentials: ${missing.join(", ")}`,
-      );
+      throw new Error(`Missing required Twitter env credentials: ${missing.join(", ")}`);
+    }
+
+    if (!apiKey || !apiSecretKey || !accessToken || !accessTokenSecret) {
+      throw new Error("Twitter credentials validation failed");
     }
 
     return {
       appKey: apiKey,
       appSecret: apiSecretKey,
-      accessToken,
+      accessToken: accessToken,
       accessSecret: accessTokenSecret,
     };
   }
@@ -56,4 +61,3 @@ export class EnvAuthProvider implements TwitterOAuth1Provider {
     return creds.accessToken;
   }
 }
-

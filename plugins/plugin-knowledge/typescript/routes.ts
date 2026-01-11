@@ -1,27 +1,53 @@
-import type { IAgentRuntime, Route, UUID, Memory, KnowledgeItem } from '@elizaos/core';
-import { MemoryType, createUniqueUuid, logger, ModelType } from '@elizaos/core';
-import { KnowledgeService } from './service';
-import fs from 'node:fs'; // For file operations in upload
-import path from 'node:path'; // For path operations
-import multer from 'multer'; // For handling multipart uploads
-import { fetchUrlContent, normalizeS3Url } from './utils'; // Import utils functions
+import fs from "node:fs"; // For file operations in upload
+import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path"; // For path operations
+import type { IAgentRuntime, Memory, Metadata, Route, UUID } from "@elizaos/core";
+import { createUniqueUuid, logger, MemoryType, ModelType } from "@elizaos/core";
+import multer from "multer"; // For handling multipart uploads
+import { KnowledgeService } from "./service";
+import { fetchUrlContent, normalizeS3Url } from "./utils"; // Import utils functions
+
+// Extended request type that includes Node.js and multer-specific properties
+interface ExtendedRequest extends IncomingMessage {
+  body?: Record<string, unknown>;
+  params?: Record<string, string>;
+  query?: Record<string, string | string[]>;
+  files?: MulterFile[];
+  originalUrl?: string;
+  path?: string;
+  url?: string;
+}
+
+// Extended response type that includes Node.js-specific methods
+// Using intersection type to avoid pipe type conflict
+type ExtendedResponse = ServerResponse<IncomingMessage> & {
+  pipe?: <T extends NodeJS.WritableStream>(destination: T) => T;
+};
 
 // Create multer configuration function that uses runtime settings
 const createUploadMiddleware = (runtime: IAgentRuntime) => {
-  const uploadDir = runtime.getSetting('KNOWLEDGE_UPLOAD_DIR') || '/tmp/uploads/';
-  const maxFileSize = parseInt(runtime.getSetting('KNOWLEDGE_MAX_FILE_SIZE') || '52428800'); // 50MB default
-  const maxFiles = parseInt(runtime.getSetting('KNOWLEDGE_MAX_FILES') || '10');
-  const allowedMimeTypes = runtime.getSetting('KNOWLEDGE_ALLOWED_MIME_TYPES')?.split(',') || [
-    'text/plain',
-    'text/markdown',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/html',
-    'application/json',
-    'application/xml',
-    'text/csv',
-  ];
+  const uploadDir = String(runtime.getSetting("KNOWLEDGE_UPLOAD_DIR") || "/tmp/uploads/");
+  const maxFileSize = parseInt(
+    String(runtime.getSetting("KNOWLEDGE_MAX_FILE_SIZE") || "52428800"),
+    10
+  ); // 50MB default
+  const maxFiles = parseInt(String(runtime.getSetting("KNOWLEDGE_MAX_FILES") || "10"), 10);
+  const allowedMimeTypes =
+    String(runtime.getSetting("KNOWLEDGE_ALLOWED_MIME_TYPES") || "")
+      .split(",")
+      .filter(Boolean).length > 0
+      ? String(runtime.getSetting("KNOWLEDGE_ALLOWED_MIME_TYPES") || "").split(",")
+      : [
+          "text/plain",
+          "text/markdown",
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "text/html",
+          "application/json",
+          "application/xml",
+          "text/csv",
+        ];
 
   return multer({
     dest: uploadDir,
@@ -29,13 +55,13 @@ const createUploadMiddleware = (runtime: IAgentRuntime) => {
       fileSize: maxFileSize,
       files: maxFiles,
     },
-    fileFilter: (req, file, cb) => {
+    fileFilter: (_req, file, cb) => {
       if (allowedMimeTypes.includes(file.mimetype)) {
         cb(null, true);
       } else {
         cb(
           new Error(
-            `File type ${file.mimetype} not allowed. Allowed types: ${allowedMimeTypes.join(', ')}`
+            `File type ${file.mimetype} not allowed. Allowed types: ${allowedMimeTypes.join(", ")}`
           )
         );
       }
@@ -57,14 +83,20 @@ interface MulterFile {
 }
 
 // Helper to send success response
-function sendSuccess(res: any, data: any, status = 200) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+function sendSuccess(res: ExtendedResponse, data: unknown, status = 200) {
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ success: true, data }));
 }
 
 // Helper to send error response
-function sendError(res: any, status: number, code: string, message: string, details?: string) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+function sendError(
+  res: ExtendedResponse,
+  status: number,
+  code: string,
+  message: string,
+  details?: string
+) {
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ success: false, error: { code, message, details } }));
 }
 
@@ -82,15 +114,21 @@ const cleanupFile = (filePath: string) => {
 // Helper to clean up multiple files
 const cleanupFiles = (files: MulterFile[]) => {
   if (files) {
-    files.forEach((file) => cleanupFile(file.path));
+    files.forEach((file) => {
+      cleanupFile(file.path);
+    });
   }
 };
 
 // Main upload handler (without multer, multer is applied by wrapper)
-async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function uploadKnowledgeHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
-    return sendError(res, 500, 'SERVICE_NOT_FOUND', 'KnowledgeService not found');
+    return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
   // Check if the request has uploaded files or URLs
@@ -98,7 +136,7 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
   const isJsonRequest = !hasUploadedFiles && req.body && (req.body.fileUrl || req.body.fileUrls);
 
   if (!hasUploadedFiles && !isJsonRequest) {
-    return sendError(res, 400, 'INVALID_REQUEST', 'Request must contain either files or URLs');
+    return sendError(res, 400, "INVALID_REQUEST", "Request must contain either files or URLs");
   }
 
   try {
@@ -107,7 +145,7 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
       const files = req.files as MulterFile[];
 
       if (!files || files.length === 0) {
-        return sendError(res, 400, 'NO_FILES', 'No files uploaded');
+        return sendError(res, 400, "NO_FILES", "No files uploaded");
       }
 
       // Validate files for corruption/truncation
@@ -119,7 +157,7 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
         }
 
         // Check if file has a name
-        if (!file.originalname || file.originalname.trim() === '') {
+        if (!file.originalname || file.originalname.trim() === "") {
           logger.warn(`File has no name`);
           return true;
         }
@@ -135,11 +173,11 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
 
       if (invalidFiles.length > 0) {
         cleanupFiles(files);
-        const invalidFileNames = invalidFiles.map((f) => f.originalname || 'unnamed').join(', ');
+        const invalidFileNames = invalidFiles.map((f) => f.originalname || "unnamed").join(", ");
         return sendError(
           res,
           400,
-          'INVALID_FILES',
+          "INVALID_FILES",
           `Invalid or corrupted files: ${invalidFileNames}`
         );
       }
@@ -149,19 +187,19 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
       const agentId = (req.body.agentId as UUID) || (req.query.agentId as UUID);
 
       if (!agentId) {
-        logger.error('[Document Processor] ❌ No agent ID provided in upload request');
+        logger.error("[Document Processor] ❌ No agent ID provided in upload request");
         return sendError(
           res,
           400,
-          'MISSING_AGENT_ID',
-          'Agent ID is required for uploading knowledge'
+          "MISSING_AGENT_ID",
+          "Agent ID is required for uploading knowledge"
         );
       }
 
       const worldId = (req.body.worldId as UUID) || agentId;
       logger.info(`[Document Processor] 📤 Processing file upload for agent: ${agentId}`);
 
-      const processingPromises = files.map(async (file, index) => {
+      const processingPromises = files.map(async (file, _index) => {
         const originalFilename = file.originalname;
         const filePath = file.path;
 
@@ -171,13 +209,13 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
 
         try {
           const fileBuffer = await fs.promises.readFile(filePath);
-          const base64Content = fileBuffer.toString('base64');
+          const base64Content = fileBuffer.toString("base64");
 
           // Construct AddKnowledgeOptions directly using available variables
           // Note: We no longer provide clientDocumentId - the service will generate it
-          const addKnowledgeOpts: import('./types.ts').AddKnowledgeOptions = {
+          const addKnowledgeOpts: import("./types.ts").AddKnowledgeOptions = {
             agentId: agentId, // Pass the agent ID from frontend
-            clientDocumentId: '' as UUID, // This will be ignored by the service
+            clientDocumentId: "" as UUID, // This will be ignored by the service
             contentType: file.mimetype, // Directly from multer file object
             originalFilename: originalFilename, // Directly from multer file object
             content: base64Content, // The base64 string of the file
@@ -196,19 +234,18 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
             type: file.mimetype,
             size: file.size,
             uploadedAt: Date.now(),
-            status: 'success',
+            status: "success",
           };
-        } catch (fileError: any) {
+        } catch (fileError: unknown) {
           logger.error(
-            `[Document Processor] ❌ Error processing file ${file.originalname}:`,
-            fileError
+            `[Document Processor] ❌ Error processing file ${file.originalname}: ${fileError instanceof Error ? fileError.message : String(fileError)}`
           );
           cleanupFile(filePath);
           return {
-            id: '', // No ID since processing failed
+            id: "", // No ID since processing failed
             filename: originalFilename,
-            status: 'error_processing',
-            error: fileError.message,
+            status: "error_processing",
+            error: fileError instanceof Error ? fileError.message : String(fileError),
           };
         }
       });
@@ -226,7 +263,7 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
           : [];
 
       if (fileUrls.length === 0) {
-        return sendError(res, 400, 'MISSING_URL', 'File URL is required');
+        return sendError(res, 400, "MISSING_URL", "File URL is required");
       }
 
       // Get agentId from request body or query parameter
@@ -234,12 +271,12 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
       const agentId = (req.body.agentId as UUID) || (req.query.agentId as UUID);
 
       if (!agentId) {
-        logger.error('[Document Processor] ❌ No agent ID provided in URL request');
+        logger.error("[Document Processor] ❌ No agent ID provided in URL request");
         return sendError(
           res,
           400,
-          'MISSING_AGENT_ID',
-          'Agent ID is required for uploading knowledge from URLs'
+          "MISSING_AGENT_ID",
+          "Agent ID is required for uploading knowledge from URLs"
         );
       }
 
@@ -255,9 +292,9 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
 
           // Extract filename from URL for better display
           const urlObject = new URL(fileUrl);
-          const pathSegments = urlObject.pathname.split('/');
+          const pathSegments = urlObject.pathname.split("/");
           // Decode URL-encoded characters and handle empty filename
-          const encodedFilename = pathSegments[pathSegments.length - 1] || 'document.pdf';
+          const encodedFilename = pathSegments[pathSegments.length - 1] || "document.pdf";
           const originalFilename = decodeURIComponent(encodedFilename);
 
           logger.debug(`[Document Processor] 🌐 Fetching content from URL: ${fileUrl}`);
@@ -269,31 +306,31 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
           let contentType = fetchedContentType;
 
           // If content type is generic, try to infer from file extension
-          if (contentType === 'application/octet-stream') {
-            const fileExtension = originalFilename.split('.').pop()?.toLowerCase();
+          if (contentType === "application/octet-stream") {
+            const fileExtension = originalFilename.split(".").pop()?.toLowerCase();
             if (fileExtension) {
-              if (['pdf'].includes(fileExtension)) {
-                contentType = 'application/pdf';
-              } else if (['txt', 'text'].includes(fileExtension)) {
-                contentType = 'text/plain';
-              } else if (['md', 'markdown'].includes(fileExtension)) {
-                contentType = 'text/markdown';
-              } else if (['doc', 'docx'].includes(fileExtension)) {
-                contentType = 'application/msword';
-              } else if (['html', 'htm'].includes(fileExtension)) {
-                contentType = 'text/html';
-              } else if (['json'].includes(fileExtension)) {
-                contentType = 'application/json';
-              } else if (['xml'].includes(fileExtension)) {
-                contentType = 'application/xml';
+              if (["pdf"].includes(fileExtension)) {
+                contentType = "application/pdf";
+              } else if (["txt", "text"].includes(fileExtension)) {
+                contentType = "text/plain";
+              } else if (["md", "markdown"].includes(fileExtension)) {
+                contentType = "text/markdown";
+              } else if (["doc", "docx"].includes(fileExtension)) {
+                contentType = "application/msword";
+              } else if (["html", "htm"].includes(fileExtension)) {
+                contentType = "text/html";
+              } else if (["json"].includes(fileExtension)) {
+                contentType = "application/json";
+              } else if (["xml"].includes(fileExtension)) {
+                contentType = "application/xml";
               }
             }
           }
 
           // Construct AddKnowledgeOptions with the fetched content
-          const addKnowledgeOpts: import('./types.ts').AddKnowledgeOptions = {
+          const addKnowledgeOpts: import("./types.ts").AddKnowledgeOptions = {
             agentId: agentId, // Pass the agent ID from frontend
-            clientDocumentId: '' as UUID, // This will be ignored by the service
+            clientDocumentId: "" as UUID, // This will be ignored by the service
             contentType: contentType,
             originalFilename: originalFilename,
             content: content, // Use the base64 encoded content from the URL
@@ -315,17 +352,19 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
             id: result.clientDocumentId, // Use the content-based ID returned by the service
             fileUrl: fileUrl,
             filename: originalFilename,
-            message: 'Knowledge created successfully',
+            message: "Knowledge created successfully",
             createdAt: Date.now(),
             fragmentCount: result.fragmentCount,
-            status: 'success',
+            status: "success",
           };
-        } catch (urlError: any) {
-          logger.error(`[Document Processor] ❌ Error processing URL ${fileUrl}:`, urlError);
+        } catch (urlError: unknown) {
+          logger.error(
+            `[Document Processor] ❌ Error processing URL ${fileUrl}: ${urlError instanceof Error ? urlError.message : String(urlError)}`
+          );
           return {
             fileUrl: fileUrl,
-            status: 'error_processing',
-            error: urlError.message,
+            status: "error_processing",
+            error: urlError instanceof Error ? urlError.message : String(urlError),
           };
         }
       });
@@ -333,41 +372,51 @@ async function uploadKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
       const results = await Promise.all(processingPromises);
       sendSuccess(res, results);
     }
-  } catch (error: any) {
-    logger.error({ error }, '[Document Processor] ❌ Error processing knowledge');
+  } catch (error: unknown) {
+    logger.error({ error }, "[Document Processor] ❌ Error processing knowledge");
     if (hasUploadedFiles) {
       cleanupFiles(req.files as MulterFile[]);
     }
-    sendError(res, 500, 'PROCESSING_ERROR', 'Failed to process knowledge', error.message);
+    sendError(
+      res,
+      500,
+      "PROCESSING_ERROR",
+      "Failed to process knowledge",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function getKnowledgeDocumentsHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function getKnowledgeDocumentsHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(
       res,
       500,
-      'SERVICE_NOT_FOUND',
-      'KnowledgeService not found for getKnowledgeDocumentsHandler'
+      "SERVICE_NOT_FOUND",
+      "KnowledgeService not found for getKnowledgeDocumentsHandler"
     );
   }
 
   try {
     const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 10000;
     const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : Date.now();
-    const includeEmbedding = req.query.includeEmbedding === 'true';
-    const agentId = req.query.agentId as UUID | undefined;
+    const includeEmbedding = req.query.includeEmbedding === "true";
+    const _agentId = req.query.agentId as UUID | undefined;
 
     // Retrieve fileUrls if they are provided in the request
     const fileUrls = req.query.fileUrls
-      ? typeof req.query.fileUrls === 'string' && req.query.fileUrls.includes(',')
-        ? req.query.fileUrls.split(',')
+      ? typeof req.query.fileUrls === "string" && req.query.fileUrls.includes(",")
+        ? req.query.fileUrls.split(",")
         : [req.query.fileUrls]
       : null;
 
     const memories = await service.getMemories({
-      tableName: 'documents',
+      tableName: "documents",
       count: limit,
       end: before,
     });
@@ -388,8 +437,8 @@ async function getKnowledgeDocumentsHandler(req: any, res: any, runtime: IAgentR
           urlBasedIds.includes(memory.id) || // If the ID corresponds directly
           // Or if the URL is stored in the metadata (check if it exists)
           (memory.metadata &&
-            'url' in memory.metadata &&
-            typeof memory.metadata.url === 'string' &&
+            "url" in memory.metadata &&
+            typeof memory.metadata.url === "string" &&
             normalizedRequestUrls.includes(normalizeS3Url(memory.metadata.url)))
       );
 
@@ -406,17 +455,27 @@ async function getKnowledgeDocumentsHandler(req: any, res: any, runtime: IAgentR
         }));
     sendSuccess(res, {
       memories: cleanMemories,
-      urlFiltered: fileUrls ? true : false,
+      urlFiltered: !!fileUrls,
       totalFound: cleanMemories.length,
       totalRequested: fileUrls ? fileUrls.length : 0,
     });
-  } catch (error: any) {
-    logger.error({ error }, '[Document Processor] ❌ Error retrieving documents');
-    sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve documents', error.message);
+  } catch (error: unknown) {
+    logger.error({ error }, "[Document Processor] ❌ Error retrieving documents");
+    sendError(
+      res,
+      500,
+      "RETRIEVAL_ERROR",
+      "Failed to retrieve documents",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function deleteKnowledgeDocumentHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function deleteKnowledgeDocumentHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   logger.debug(`[Document Processor] 🗑️ DELETE request for document: ${req.params.knowledgeId}`);
 
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
@@ -424,8 +483,8 @@ async function deleteKnowledgeDocumentHandler(req: any, res: any, runtime: IAgen
     return sendError(
       res,
       500,
-      'SERVICE_NOT_FOUND',
-      'KnowledgeService not found for deleteKnowledgeDocumentHandler'
+      "SERVICE_NOT_FOUND",
+      "KnowledgeService not found for deleteKnowledgeDocumentHandler"
     );
   }
 
@@ -434,7 +493,7 @@ async function deleteKnowledgeDocumentHandler(req: any, res: any, runtime: IAgen
 
   if (!knowledgeId || knowledgeId.length < 36) {
     logger.error(`[Document Processor] ❌ Invalid knowledge ID format: ${knowledgeId}`);
-    return sendError(res, 400, 'INVALID_ID', 'Invalid Knowledge ID format');
+    return sendError(res, 400, "INVALID_ID", "Invalid Knowledge ID format");
   }
 
   try {
@@ -445,13 +504,23 @@ async function deleteKnowledgeDocumentHandler(req: any, res: any, runtime: IAgen
     await service.deleteMemory(typedKnowledgeId);
     logger.info(`[Document Processor] ✅ Successfully deleted document: ${typedKnowledgeId}`);
     sendSuccess(res, null, 204);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({ error }, `[Document Processor] ❌ Error deleting document ${knowledgeId}`);
-    sendError(res, 500, 'DELETE_ERROR', 'Failed to delete document', error.message);
+    sendError(
+      res,
+      500,
+      "DELETE_ERROR",
+      "Failed to delete document",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function getKnowledgeByIdHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function getKnowledgeByIdHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   logger.debug(`[Document Processor] 🔍 GET request for document: ${req.params.knowledgeId}`);
 
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
@@ -459,8 +528,8 @@ async function getKnowledgeByIdHandler(req: any, res: any, runtime: IAgentRuntim
     return sendError(
       res,
       500,
-      'SERVICE_NOT_FOUND',
-      'KnowledgeService not found for getKnowledgeByIdHandler'
+      "SERVICE_NOT_FOUND",
+      "KnowledgeService not found for getKnowledgeByIdHandler"
     );
   }
 
@@ -469,18 +538,18 @@ async function getKnowledgeByIdHandler(req: any, res: any, runtime: IAgentRuntim
 
   if (!knowledgeId || knowledgeId.length < 36) {
     logger.error(`[Document Processor] ❌ Invalid knowledge ID format: ${knowledgeId}`);
-    return sendError(res, 400, 'INVALID_ID', 'Invalid Knowledge ID format');
+    return sendError(res, 400, "INVALID_ID", "Invalid Knowledge ID format");
   }
 
   try {
     logger.debug(`[Document Processor] 🔍 Retrieving document: ${knowledgeId}`);
-    const agentId = req.query.agentId as UUID | undefined;
+    const _agentId = req.query.agentId as UUID | undefined;
 
     // Use the service methods instead of calling runtime directly
     // We can't use getMemoryById directly because it's not exposed by the service
     // So we'll use getMemories with a filter
     const memories = await service.getMemories({
-      tableName: 'documents',
+      tableName: "documents",
       count: 10000,
     });
 
@@ -491,7 +560,7 @@ async function getKnowledgeByIdHandler(req: any, res: any, runtime: IAgentRuntim
     const document = memories.find((memory) => memory.id === typedKnowledgeId);
 
     if (!document) {
-      return sendError(res, 404, 'NOT_FOUND', `Knowledge with ID ${typedKnowledgeId} not found`);
+      return sendError(res, 404, "NOT_FOUND", `Knowledge with ID ${typedKnowledgeId} not found`);
     }
 
     // Filter the embedding if necessary
@@ -501,14 +570,24 @@ async function getKnowledgeByIdHandler(req: any, res: any, runtime: IAgentRuntim
     };
 
     sendSuccess(res, { document: cleanDocument });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({ error }, `[Document Processor] ❌ Error retrieving document ${knowledgeId}`);
-    sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve document', error.message);
+    sendError(
+      res,
+      500,
+      "RETRIEVAL_ERROR",
+      "Failed to retrieve document",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
 // Handler for the panel itself - serves the actual HTML frontend
-async function knowledgePanelHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function knowledgePanelHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const agentId = runtime.agentId; // Get from runtime context
 
   logger.debug(`[Document Processor] 🌐 Serving knowledge panel for agent ${agentId}`);
@@ -517,23 +596,23 @@ async function knowledgePanelHandler(req: any, res: any, runtime: IAgentRuntime)
   // Request path will be like: /api/agents/[uuid]/plugins/knowledge/display
   // We need: /api/agents/[uuid]/plugins/knowledge
   const requestPath = req.originalUrl || req.url || req.path;
-  const pluginBasePath = requestPath.replace(/\/display.*$/, '');
+  const pluginBasePath = requestPath.replace(/\/display.*$/, "");
 
   logger.debug(`[Document Processor] 🌐 Plugin base path: ${pluginBasePath}`);
 
   try {
     const currentDir = path.dirname(new URL(import.meta.url).pathname);
     // Serve the main index.html from Vite's build output
-    const frontendPath = path.join(currentDir, '../dist/index.html');
+    const frontendPath = path.join(currentDir, "../dist/index.html");
 
     logger.debug(`[Document Processor] 🌐 Looking for frontend at: ${frontendPath}`);
 
     if (fs.existsSync(frontendPath)) {
-      const html = await fs.promises.readFile(frontendPath, 'utf8');
+      const html = await fs.promises.readFile(frontendPath, "utf8");
       // Inject config into existing HTML with the correct API base path
       // Also fix relative asset paths to use absolute paths
       let injectedHtml = html.replace(
-        '<head>',
+        "<head>",
         `<head>
           <script>
             window.ELIZA_CONFIG = {
@@ -546,34 +625,40 @@ async function knowledgePanelHandler(req: any, res: any, runtime: IAgentRuntime)
       // Fix relative asset paths to be absolute
       injectedHtml = injectedHtml.replace(/src="\.\/assets\//g, `src="${pluginBasePath}/assets/`);
       injectedHtml = injectedHtml.replace(/href="\.\/assets\//g, `href="${pluginBasePath}/assets/`);
-      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.writeHead(200, { "Content-Type": "text/html" });
       res.end(injectedHtml);
     } else {
       // Fallback: serve a basic HTML page that loads the JS bundle from the assets folder
       // Use manifest.json to get the correct asset filenames if it exists
-      let cssFile = 'index.css';
-      let jsFile = 'index.js';
+      let cssFile = "index.css";
+      let jsFile = "index.js";
 
-      const manifestPath = path.join(currentDir, '../dist/manifest.json');
+      const manifestPath = path.join(currentDir, "../dist/manifest.json");
       if (fs.existsSync(manifestPath)) {
         try {
-          const manifestContent = await fs.promises.readFile(manifestPath, 'utf8');
+          const manifestContent = await fs.promises.readFile(manifestPath, "utf8");
           const manifest = JSON.parse(manifestContent);
 
           // Look for the entry points in the manifest
           // Different Vite versions might structure the manifest differently
+          interface ViteManifestEntry {
+            file?: string;
+            css?: string[];
+            isEntry?: boolean;
+          }
           for (const [key, value] of Object.entries(manifest)) {
-            if (typeof value === 'object' && value !== null) {
-              if (key.endsWith('.css') || (value as any).file?.endsWith('.css')) {
-                cssFile = (value as any).file || key;
+            if (typeof value === "object" && value !== null) {
+              const entry = value as ViteManifestEntry;
+              if (key.endsWith(".css") || entry.file?.endsWith(".css")) {
+                cssFile = entry.file || key;
               }
-              if (key.endsWith('.js') || (value as any).file?.endsWith('.js')) {
-                jsFile = (value as any).file || key;
+              if (key.endsWith(".js") || entry.file?.endsWith(".js")) {
+                jsFile = entry.file || key;
               }
             }
           }
         } catch (manifestError) {
-          logger.error({ error: manifestError }, '[Document Processor] ❌ Error reading manifest');
+          logger.error({ error: manifestError }, "[Document Processor] ❌ Error reading manifest");
           // Continue with default filenames if manifest can't be read
         }
       }
@@ -609,17 +694,27 @@ async function knowledgePanelHandler(req: any, res: any, runtime: IAgentRuntime)
     <script type="module" src="${pluginBasePath}/assets/${jsFile}"></script>
 </body>
 </html>`;
-      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.writeHead(200, { "Content-Type": "text/html" });
       res.end(html);
     }
-  } catch (error: any) {
-    logger.error({ error }, '[Document Processor] ❌ Error serving frontend');
-    sendError(res, 500, 'FRONTEND_ERROR', 'Failed to load knowledge panel', error.message);
+  } catch (error: unknown) {
+    logger.error({ error }, "[Document Processor] ❌ Error serving frontend");
+    sendError(
+      res,
+      500,
+      "FRONTEND_ERROR",
+      "Failed to load knowledge panel",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
 // Generic handler to serve static assets from the dist/assets directory
-async function frontendAssetHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function frontendAssetHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  _runtime: IAgentRuntime
+) {
   try {
     // Use originalUrl or url first, fallback to path
     const fullPath = req.originalUrl || req.url || req.path;
@@ -628,64 +723,74 @@ async function frontendAssetHandler(req: any, res: any, runtime: IAgentRuntime) 
 
     // The path will be like: /api/agents/X/plugins/knowledge/assets/file.js
     // We need to extract everything after '/assets/'
-    const assetsMarker = '/assets/';
+    const assetsMarker = "/assets/";
     const assetsStartIndex = fullPath.lastIndexOf(assetsMarker); // Use lastIndexOf to get the last occurrence
 
     let assetName = null;
     if (assetsStartIndex !== -1) {
       assetName = fullPath.substring(assetsStartIndex + assetsMarker.length);
       // Remove any query parameters if present
-      const queryIndex = assetName.indexOf('?');
+      const queryIndex = assetName.indexOf("?");
       if (queryIndex !== -1) {
         assetName = assetName.substring(0, queryIndex);
       }
     }
 
-    if (!assetName || assetName.includes('..')) {
+    if (!assetName || assetName.includes("..")) {
       // Basic sanitization
       return sendError(
         res,
         400,
-        'BAD_REQUEST',
+        "BAD_REQUEST",
         `Invalid asset name: '${assetName}' from path ${fullPath}`
       );
     }
 
-    const assetPath = path.join(currentDir, '../dist/assets', assetName);
+    const assetPath = path.join(currentDir, "../dist/assets", assetName);
     logger.debug(`[Document Processor] 🌐 Serving asset: ${assetPath}`);
 
     if (fs.existsSync(assetPath)) {
       const fileStream = fs.createReadStream(assetPath);
-      let contentType = 'application/octet-stream'; // Default
-      if (assetPath.endsWith('.js')) {
-        contentType = 'application/javascript';
-      } else if (assetPath.endsWith('.css')) {
-        contentType = 'text/css';
+      let contentType = "application/octet-stream"; // Default
+      if (assetPath.endsWith(".js")) {
+        contentType = "application/javascript";
+      } else if (assetPath.endsWith(".css")) {
+        contentType = "text/css";
       }
-      res.writeHead(200, { 'Content-Type': contentType });
-      fileStream.pipe(res);
+      res.writeHead(200, { "Content-Type": contentType });
+      fileStream.pipe(res as unknown as NodeJS.WritableStream);
     } else {
-      sendError(res, 404, 'NOT_FOUND', `Asset not found: ${req.url}`);
+      sendError(res, 404, "NOT_FOUND", `Asset not found: ${req.url}`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({ error }, `[Document Processor] ❌ Error serving asset ${req.url}`);
-    sendError(res, 500, 'ASSET_ERROR', `Failed to load asset ${req.url}`, error.message);
+    sendError(
+      res,
+      500,
+      "ASSET_ERROR",
+      `Failed to load asset ${req.url}`,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function getKnowledgeChunksHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function getKnowledgeChunksHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
-    return sendError(res, 500, 'SERVICE_NOT_FOUND', 'KnowledgeService not found');
+    return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
   try {
     const documentId = req.query.documentId as string | undefined;
-    const documentsOnly = req.query.documentsOnly === 'true';
+    const documentsOnly = req.query.documentsOnly === "true";
 
     // Always get documents first
     const documents = await service.getMemories({
-      tableName: 'documents',
+      tableName: "documents",
       count: 10000, // High limit to get all documents
       end: Date.now(),
     });
@@ -697,7 +802,7 @@ async function getKnowledgeChunksHandler(req: any, res: any, runtime: IAgentRunt
         stats: {
           documents: documents.length,
           fragments: 0,
-          mode: 'documents-only',
+          mode: "documents-only",
         },
       });
       return;
@@ -707,13 +812,13 @@ async function getKnowledgeChunksHandler(req: any, res: any, runtime: IAgentRunt
     if (documentId) {
       // High limit to support documents with many fragments, but reduced from 100k to prevent memory issues
       const allFragments = await service.getMemories({
-        tableName: 'knowledge',
+        tableName: "knowledge",
         count: 50000, // Reduced from 100000 - still high enough for large documents
       });
 
       const documentFragments = allFragments.filter((fragment) => {
-        const metadata = fragment.metadata as any;
-        return metadata?.documentId === documentId;
+        const metadata = fragment.metadata as Metadata;
+        return typeof metadata?.documentId === "string" && metadata.documentId === documentId;
       });
 
       // Return the specific document and its fragments
@@ -727,7 +832,7 @@ async function getKnowledgeChunksHandler(req: any, res: any, runtime: IAgentRunt
         stats: {
           documents: specificDocument ? 1 : 0,
           fragments: documentFragments.length,
-          mode: 'single-document',
+          mode: "single-document",
           documentId,
         },
       });
@@ -740,19 +845,29 @@ async function getKnowledgeChunksHandler(req: any, res: any, runtime: IAgentRunt
       stats: {
         documents: documents.length,
         fragments: 0,
-        mode: 'documents-only',
+        mode: "documents-only",
       },
     });
-  } catch (error: any) {
-    logger.error({ error }, '[Document Processor] ❌ Error retrieving chunks');
-    sendError(res, 500, 'RETRIEVAL_ERROR', 'Failed to retrieve knowledge chunks', error.message);
+  } catch (error: unknown) {
+    logger.error({ error }, "[Document Processor] ❌ Error retrieving chunks");
+    sendError(
+      res,
+      500,
+      "RETRIEVAL_ERROR",
+      "Failed to retrieve knowledge chunks",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function searchKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function searchKnowledgeHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
-    return sendError(res, 500, 'SERVICE_NOT_FOUND', 'KnowledgeService not found');
+    return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
   try {
@@ -777,7 +892,7 @@ async function searchKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
     const agentId = (req.query.agentId as UUID) || runtime.agentId;
 
     if (!searchText || searchText.trim().length === 0) {
-      return sendError(res, 400, 'INVALID_QUERY', 'Search query cannot be empty');
+      return sendError(res, 400, "INVALID_QUERY", "Search query cannot be empty");
     }
 
     // Log if values were clamped
@@ -801,7 +916,7 @@ async function searchKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
 
     // Use searchMemories directly for more control over the search
     const results = await runtime.searchMemories({
-      tableName: 'knowledge',
+      tableName: "knowledge",
       embedding,
       query: searchText,
       count: limit,
@@ -812,26 +927,29 @@ async function searchKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
     // Enhance results with document information
     const enhancedResults = await Promise.all(
       results.map(async (fragment) => {
-        let documentTitle = 'Unknown Document';
-        let documentFilename = 'unknown';
+        let documentTitle = "Unknown Document";
+        let documentFilename = "unknown";
 
         // Try to get the parent document information
         if (
           fragment.metadata &&
-          typeof fragment.metadata === 'object' &&
-          'documentId' in fragment.metadata
+          typeof fragment.metadata === "object" &&
+          "documentId" in fragment.metadata
         ) {
           const documentId = fragment.metadata.documentId as UUID;
           try {
             const document = await runtime.getMemoryById(documentId);
-            if (document && document.metadata) {
+            if (document?.metadata) {
+              const docMetadata = document.metadata as Metadata;
               documentTitle =
-                (document.metadata as any).title ||
-                (document.metadata as any).filename ||
+                (typeof docMetadata.title === "string" ? docMetadata.title : undefined) ||
+                (typeof docMetadata.filename === "string" ? docMetadata.filename : undefined) ||
                 documentTitle;
-              documentFilename = (document.metadata as any).filename || documentFilename;
+              documentFilename =
+                (typeof docMetadata.filename === "string" ? docMetadata.filename : undefined) ||
+                documentFilename;
             }
-          } catch (e) {
+          } catch (_e) {
             logger.debug(`Could not fetch document ${documentId} for fragment`);
           }
         }
@@ -859,25 +977,35 @@ async function searchKnowledgeHandler(req: any, res: any, runtime: IAgentRuntime
       results: enhancedResults,
       count: enhancedResults.length,
     });
-  } catch (error: any) {
-    logger.error({ error }, '[Document Processor] ❌ Error searching knowledge');
-    sendError(res, 500, 'SEARCH_ERROR', 'Failed to search knowledge', error.message);
+  } catch (error: unknown) {
+    logger.error({ error }, "[Document Processor] ❌ Error searching knowledge");
+    sendError(
+      res,
+      500,
+      "SEARCH_ERROR",
+      "Failed to search knowledge",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
 // New Graph-specific handlers for ultra-lightweight rendering
 
-async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function getGraphNodesHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
-    return sendError(res, 500, 'SERVICE_NOT_FOUND', 'KnowledgeService not found');
+    return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
   try {
     // Parse pagination parameters
     const parsedPage = req.query.page ? Number.parseInt(req.query.page as string, 10) : 1;
     const parsedLimit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 20;
-    const type = req.query.type as 'document' | 'fragment' | undefined;
+    const type = req.query.type as "document" | "fragment" | undefined;
     const agentId = (req.query.agentId as UUID) || runtime.agentId;
 
     const page = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
@@ -885,12 +1013,12 @@ async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) 
     const offset = (page - 1) * limit;
 
     logger.debug(
-      `[Graph API] 📊 Fetching graph nodes: page=${page}, limit=${limit}, type=${type || 'all'}, agent=${agentId}`
+      `[Graph API] 📊 Fetching graph nodes: page=${page}, limit=${limit}, type=${type || "all"}, agent=${agentId}`
     );
 
     // Get total count of documents for pagination metadata
     const totalDocuments = await service.countMemories({
-      tableName: 'documents',
+      tableName: "documents",
       roomId: agentId,
       unique: false, // Count all documents, not just unique ones
     });
@@ -901,14 +1029,14 @@ async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) 
 
     // Fetch only the required page of documents using database-level pagination
     const paginatedDocuments = await service.getMemories({
-      tableName: 'documents',
+      tableName: "documents",
       roomId: agentId,
       count: limit,
       offset: offset,
     });
 
     // Build lightweight nodes
-    const nodes: Array<{ id: UUID; type: 'document' | 'fragment' }> = [];
+    const nodes: Array<{ id: UUID; type: "document" | "fragment" }> = [];
     const links: Array<{ source: UUID; target: UUID }> = [];
 
     // Add document nodes (filter out any without IDs)
@@ -917,15 +1045,15 @@ async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) 
         logger.warn(`[Graph API] ⚠️  Skipping document without ID`);
         return;
       }
-      nodes.push({ id: doc.id, type: 'document' });
+      nodes.push({ id: doc.id, type: "document" });
     });
 
     // Always include fragments for the paginated documents (unless specifically requesting documents only)
-    if (type !== 'document') {
+    if (type !== "document") {
       // Get all fragments for the paginated documents
       // High limit to support documents with many fragments, but reduced from 100k to prevent memory issues
       const allFragments = await service.getMemories({
-        tableName: 'knowledge',
+        tableName: "knowledge",
         roomId: agentId,
         count: 50000, // Reduced from 100000 - still high enough for large documents
       });
@@ -952,12 +1080,12 @@ async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) 
         }
 
         const docFragments = allFragments.filter((fragment) => {
-          const metadata = fragment.metadata as any;
+          const metadata = fragment.metadata as Metadata;
           // Check both documentId match and that it's a fragment type (case-insensitive)
           // Safely handle type checking with string validation
-          const typeString = typeof metadata?.type === 'string' ? metadata.type : null;
+          const typeString = typeof metadata?.type === "string" ? metadata.type : null;
           const isFragment =
-            (typeString && typeString.toLowerCase() === 'fragment') ||
+            (typeString && typeString.toLowerCase() === "fragment") ||
             metadata?.type === MemoryType.FRAGMENT ||
             // If no type but has documentId, assume it's a fragment
             (!metadata?.type && metadata?.documentId);
@@ -974,11 +1102,11 @@ async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) 
           const docId = doc.id;
           if (!frag.id || !docId) {
             logger.warn(
-              `[Graph API] ⚠️  Skipping fragment without ID for document ${docId || 'unknown'}`
+              `[Graph API] ⚠️  Skipping fragment without ID for document ${docId || "unknown"}`
             );
             return;
           }
-          nodes.push({ id: frag.id, type: 'fragment' });
+          nodes.push({ id: frag.id, type: "fragment" });
           links.push({ source: docId, target: frag.id });
         });
       });
@@ -999,23 +1127,33 @@ async function getGraphNodesHandler(req: any, res: any, runtime: IAgentRuntime) 
         totalDocuments,
       },
     });
-  } catch (error: any) {
-    logger.error('[Graph API] ❌ Error fetching graph nodes:', error);
-    sendError(res, 500, 'GRAPH_ERROR', 'Failed to fetch graph nodes', error.message);
+  } catch (error: unknown) {
+    logger.error({ error }, "[Graph API] ❌ Error fetching graph nodes");
+    sendError(
+      res,
+      500,
+      "GRAPH_ERROR",
+      "Failed to fetch graph nodes",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function getGraphNodeDetailsHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function getGraphNodeDetailsHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
-    return sendError(res, 500, 'SERVICE_NOT_FOUND', 'KnowledgeService not found');
+    return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
   const nodeId = req.params.nodeId as UUID;
   const agentId = (req.query.agentId as UUID) || runtime.agentId;
 
   if (!nodeId || nodeId.length < 36) {
-    return sendError(res, 400, 'INVALID_ID', 'Invalid node ID format');
+    return sendError(res, 400, "INVALID_ID", "Invalid node ID format");
   }
 
   try {
@@ -1023,7 +1161,7 @@ async function getGraphNodeDetailsHandler(req: any, res: any, runtime: IAgentRun
 
     // Try to find in documents first - don't filter by roomId initially to see if node exists at all
     const allDocuments = await service.getMemories({
-      tableName: 'documents',
+      tableName: "documents",
       count: 10000,
     });
 
@@ -1048,7 +1186,7 @@ async function getGraphNodeDetailsHandler(req: any, res: any, runtime: IAgentRun
       // Return document details without embedding
       sendSuccess(res, {
         id: document.id,
-        type: 'document',
+        type: "document",
         content: document.content,
         metadata: document.metadata,
         createdAt: document.createdAt,
@@ -1064,7 +1202,7 @@ async function getGraphNodeDetailsHandler(req: any, res: any, runtime: IAgentRun
     logger.debug(`[Graph API] 📊 Document not found, searching in fragments`);
     // High limit to support documents with many fragments, but reduced from 100k to prevent memory issues
     const allFragments = await service.getMemories({
-      tableName: 'knowledge',
+      tableName: "knowledge",
       count: 50000, // Reduced from 100000 - still high enough for large documents
     });
 
@@ -1088,7 +1226,7 @@ async function getGraphNodeDetailsHandler(req: any, res: any, runtime: IAgentRun
       logger.info(`[Graph API] ✅ Found fragment: ${nodeId}`);
       sendSuccess(res, {
         id: fragment.id,
-        type: 'fragment',
+        type: "fragment",
         content: fragment.content,
         metadata: fragment.metadata,
         createdAt: fragment.createdAt,
@@ -1101,24 +1239,34 @@ async function getGraphNodeDetailsHandler(req: any, res: any, runtime: IAgentRun
     }
 
     logger.error(`[Graph API] ❌ Node ${nodeId} not found in documents or fragments`);
-    sendError(res, 404, 'NOT_FOUND', `Node with ID ${nodeId} not found`);
-  } catch (error: any) {
-    logger.error(`[Graph API] ❌ Error fetching node details for ${nodeId}:`, error);
-    sendError(res, 500, 'GRAPH_ERROR', 'Failed to fetch node details', error.message);
+    sendError(res, 404, "NOT_FOUND", `Node with ID ${nodeId} not found`);
+  } catch (error: unknown) {
+    logger.error({ error }, `[Graph API] ❌ Error fetching node details for ${nodeId}`);
+    sendError(
+      res,
+      500,
+      "GRAPH_ERROR",
+      "Failed to fetch node details",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
-async function expandDocumentGraphHandler(req: any, res: any, runtime: IAgentRuntime) {
+async function expandDocumentGraphHandler(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
-    return sendError(res, 500, 'SERVICE_NOT_FOUND', 'KnowledgeService not found');
+    return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
   const documentId = req.params.documentId as UUID;
   const agentId = (req.query.agentId as UUID) || runtime.agentId;
 
   if (!documentId || documentId.length < 36) {
-    return sendError(res, 400, 'INVALID_ID', 'Invalid document ID format');
+    return sendError(res, 400, "INVALID_ID", "Invalid document ID format");
   }
 
   try {
@@ -1127,7 +1275,7 @@ async function expandDocumentGraphHandler(req: any, res: any, runtime: IAgentRun
     // Get all fragments for this document
     // High limit to support documents with many fragments, but reduced from 100k to prevent memory issues
     const allFragments = await service.getMemories({
-      tableName: 'knowledge',
+      tableName: "knowledge",
       roomId: agentId, // Filter by agent
       count: 50000, // Reduced from 100000 - still high enough for large documents
     });
@@ -1135,20 +1283,27 @@ async function expandDocumentGraphHandler(req: any, res: any, runtime: IAgentRun
     logger.debug(`[Graph API] 📊 Total fragments in knowledge table: ${allFragments.length}`);
 
     // Log a sample fragment to see its structure (only in development/debug mode)
-    if (allFragments.length > 0 && process.env.NODE_ENV !== 'production') {
+    if (allFragments.length > 0 && process.env.NODE_ENV !== "production") {
       logger.debug(
         `[Graph API] 📊 Sample fragment metadata: ${JSON.stringify(allFragments[0].metadata)}`
       );
 
       // Log all unique metadata types found
-      const uniqueTypes = new Set(allFragments.map((f) => (f.metadata as any)?.type));
+      const uniqueTypes = new Set(
+        allFragments
+          .map((f) => {
+            const meta = f.metadata as Metadata;
+            return typeof meta?.type === "string" ? meta.type : undefined;
+          })
+          .filter((t): t is string => t !== undefined)
+      );
       logger.debug(
         `[Graph API] 📊 Unique metadata types found in knowledge table: ${JSON.stringify(Array.from(uniqueTypes))}`
       );
 
       // Log metadata of all fragments for this specific document
       const relevantFragments = allFragments.filter((fragment) => {
-        const metadata = fragment.metadata as any;
+        const metadata = fragment.metadata as Metadata;
         const hasDocumentId = metadata?.documentId === documentId;
         if (hasDocumentId) {
           logger.debug(
@@ -1164,12 +1319,12 @@ async function expandDocumentGraphHandler(req: any, res: any, runtime: IAgentRun
     }
 
     const documentFragments = allFragments.filter((fragment) => {
-      const metadata = fragment.metadata as any;
+      const metadata = fragment.metadata as Metadata;
       // Check both documentId match and that it's a fragment type (case-insensitive)
       // Safely handle type checking with string validation
-      const typeString = typeof metadata?.type === 'string' ? metadata.type : null;
+      const typeString = typeof metadata?.type === "string" ? metadata.type : null;
       const isFragment =
-        (typeString && typeString.toLowerCase() === 'fragment') ||
+        (typeString && typeString.toLowerCase() === "fragment") ||
         metadata?.type === MemoryType.FRAGMENT ||
         // If no type but has documentId, assume it's a fragment
         (!metadata?.type && metadata?.documentId);
@@ -1181,7 +1336,7 @@ async function expandDocumentGraphHandler(req: any, res: any, runtime: IAgentRun
       .filter((frag) => frag.id !== undefined)
       .map((frag) => ({
         id: frag.id as UUID,
-        type: 'fragment' as const,
+        type: "fragment" as const,
       }));
 
     const links = documentFragments
@@ -1199,88 +1354,114 @@ async function expandDocumentGraphHandler(req: any, res: any, runtime: IAgentRun
       links,
       fragmentCount: nodes.length,
     });
-  } catch (error: any) {
-    logger.error(`[Graph API] ❌ Error expanding document ${documentId}:`, error);
-    sendError(res, 500, 'GRAPH_ERROR', 'Failed to expand document', error.message);
+  } catch (error: unknown) {
+    logger.error({ error }, `[Graph API] ❌ Error expanding document ${documentId}`);
+    sendError(
+      res,
+      500,
+      "GRAPH_ERROR",
+      "Failed to expand document",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 
 // Wrapper handler that applies multer middleware before calling the upload handler
-async function uploadKnowledgeWithMulter(req: any, res: any, runtime: IAgentRuntime) {
+async function uploadKnowledgeWithMulter(
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) {
   const upload = createUploadMiddleware(runtime);
   const uploadArray = upload.array(
-    'files',
-    parseInt(runtime.getSetting('KNOWLEDGE_MAX_FILES') || '10')
+    "files",
+    parseInt(String(runtime.getSetting("KNOWLEDGE_MAX_FILES") || "10"), 10)
   );
 
   // Apply multer middleware manually
-  uploadArray(req, res, (err: any) => {
-    if (err) {
-      logger.error({ error: err }, '[Document Processor] ❌ File upload error');
-      return sendError(res, 400, 'UPLOAD_ERROR', err.message);
+  // Using explicit any cast for multer compatibility with different Express types
+  (uploadArray as (req: unknown, res: unknown, next: (err: Error | null) => void) => void)(
+    req,
+    res,
+    (err: Error | null) => {
+      if (err) {
+        logger.error({ error: err }, "[Document Processor] ❌ File upload error");
+        return sendError(res, 400, "UPLOAD_ERROR", err.message);
+      }
+      // If multer succeeded, call the actual handler
+      uploadKnowledgeHandler(req, res, runtime);
     }
-    // If multer succeeded, call the actual handler
-    uploadKnowledgeHandler(req, res, runtime);
-  });
+  );
 }
+
+// Type alias for route handler with extended types
+type ExtendedRouteHandler = (
+  req: ExtendedRequest,
+  res: ExtendedResponse,
+  runtime: IAgentRuntime
+) => Promise<void>;
+
+// Cast handler to the expected Route handler type
+const asRouteHandler = (handler: ExtendedRouteHandler): Route["handler"] =>
+  handler as unknown as Route["handler"];
 
 export const knowledgeRoutes: Route[] = [
   {
-    type: 'GET',
-    name: 'Knowledge',
-    path: '/display',
-    handler: knowledgePanelHandler,
+    type: "GET",
+    name: "Knowledge",
+    path: "/display",
+    handler: asRouteHandler(knowledgePanelHandler),
     public: true,
   },
   {
-    type: 'GET',
-    path: '/assets/*',
-    handler: frontendAssetHandler,
+    type: "GET",
+    path: "/assets/*",
+    handler: asRouteHandler(frontendAssetHandler),
   },
   {
-    type: 'POST',
-    path: '/documents',
-    handler: uploadKnowledgeWithMulter,
+    type: "POST",
+    path: "/documents",
+    handler: asRouteHandler(uploadKnowledgeWithMulter),
   },
   {
-    type: 'GET',
-    path: '/documents',
-    handler: getKnowledgeDocumentsHandler,
+    type: "GET",
+    path: "/documents",
+    handler: asRouteHandler(getKnowledgeDocumentsHandler),
   },
   {
-    type: 'GET',
-    path: '/documents/:knowledgeId',
-    handler: getKnowledgeByIdHandler,
+    type: "GET",
+    path: "/documents/:knowledgeId",
+    handler: asRouteHandler(getKnowledgeByIdHandler),
   },
   {
-    type: 'DELETE',
-    path: '/documents/:knowledgeId',
-    handler: deleteKnowledgeDocumentHandler,
+    type: "DELETE",
+    path: "/documents/:knowledgeId",
+    handler: asRouteHandler(deleteKnowledgeDocumentHandler),
   },
   {
-    type: 'GET',
-    path: '/knowledges',
-    handler: getKnowledgeChunksHandler,
+    type: "GET",
+    path: "/knowledges",
+    handler: asRouteHandler(getKnowledgeChunksHandler),
   },
   {
-    type: 'GET',
-    path: '/search',
-    handler: searchKnowledgeHandler,
+    type: "GET",
+    path: "/search",
+    handler: asRouteHandler(searchKnowledgeHandler),
   },
   // New graph routes
   {
-    type: 'GET',
-    path: '/graph/nodes',
-    handler: getGraphNodesHandler,
+    type: "GET",
+    path: "/graph/nodes",
+    handler: asRouteHandler(getGraphNodesHandler),
   },
   {
-    type: 'GET',
-    path: '/graph/node/:nodeId',
-    handler: getGraphNodeDetailsHandler,
+    type: "GET",
+    path: "/graph/node/:nodeId",
+    handler: asRouteHandler(getGraphNodeDetailsHandler),
   },
   {
-    type: 'GET',
-    path: '/graph/expand/:documentId',
-    handler: expandDocumentGraphHandler,
+    type: "GET",
+    path: "/graph/expand/:documentId",
+    handler: asRouteHandler(expandDocumentGraphHandler),
   },
 ];

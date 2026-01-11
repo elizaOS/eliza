@@ -5,6 +5,7 @@
 This guide explains how to test the Twitter plugin after removing username/password authentication and Twitter Spaces functionality.
 
 The plugin supports multiple auth modes:
+
 - `TWITTER_AUTH_MODE=env` (legacy OAuth 1.0a keys/tokens)
 - `TWITTER_AUTH_MODE=oauth` (OAuth 2.0 Authorization Code + PKCE, interactive “login + approve”, no client secret)
 - `TWITTER_AUTH_MODE=broker` (stub only, not implemented yet)

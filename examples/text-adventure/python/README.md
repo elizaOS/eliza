@@ -4,9 +4,9 @@ Interactive examples using elizaOS Python implementation.
 
 ## Examples
 
-| File | Description |
-|------|-------------|
-| `chat.py` | Interactive CLI chat with an AI agent |
+| File                | Description                                         |
+| ------------------- | --------------------------------------------------- |
+| `chat.py`           | Interactive CLI chat with an AI agent               |
 | `adventure-game.py` | Text adventure game with AI-powered decision making |
 
 ## Install
@@ -37,13 +37,13 @@ LOG_LEVEL=fatal OPENAI_API_KEY=your_key ./examples/python/.venv/bin/python examp
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | (required) | OpenAI API key |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL |
-| `OPENAI_SMALL_MODEL` | `gpt-5-mini` | Small model |
-| `OPENAI_LARGE_MODEL` | `gpt-5` | Large model |
-| `LOG_LEVEL` | `info` | Set to `fatal` to suppress logs |
+| Variable             | Default                     | Description                     |
+| -------------------- | --------------------------- | ------------------------------- |
+| `OPENAI_API_KEY`     | (required)                  | OpenAI API key                  |
+| `OPENAI_BASE_URL`    | `https://api.openai.com/v1` | API base URL                    |
+| `OPENAI_SMALL_MODEL` | `gpt-5-mini`                | Small model                     |
+| `OPENAI_LARGE_MODEL` | `gpt-5`                     | Large model                     |
+| `LOG_LEVEL`          | `info`                      | Set to `fatal` to suppress logs |
 
 ## API Usage
 

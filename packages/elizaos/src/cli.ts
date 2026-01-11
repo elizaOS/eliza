@@ -5,7 +5,7 @@
  */
 
 import { Command } from "commander";
-import { version, info, create } from "./commands/index.js";
+import { create, info, version } from "./commands/index.js";
 
 const program = new Command();
 
@@ -22,7 +22,10 @@ program
 program
   .command("info")
   .description("Display information about available examples")
-  .option("-l, --language <lang>", "Filter by language (typescript, python, rust)")
+  .option(
+    "-l, --language <lang>",
+    "Filter by language (typescript, python, rust)",
+  )
   .option("-j, --json", "Output as JSON")
   .action(info);
 
@@ -36,4 +39,3 @@ program
   .action(create);
 
 program.parse();
-

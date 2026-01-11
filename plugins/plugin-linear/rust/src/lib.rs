@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! ElizaOS Linear Plugin (Rust)
 //!
 //! A comprehensive Linear integration plugin for ElizaOS that enables

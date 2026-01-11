@@ -1,6 +1,6 @@
-import { logger } from '@elizaos/core';
-import type { Florence2Result, ScreenTile, BoundingBox } from './types';
-import { Florence2Local } from './florence2-local';
+import { logger } from "@elizaos/core";
+import { Florence2Local } from "./florence2-local";
+import type { BoundingBox, Florence2Result, ScreenTile } from "./types";
 
 export class Florence2Model {
   private initialized = false;
@@ -16,17 +16,17 @@ export class Florence2Model {
     }
 
     try {
-      logger.info('[Florence2] Initializing local Florence-2 model with TensorFlow.js...');
+      logger.info("[Florence2] Initializing local Florence-2 model with TensorFlow.js...");
 
       await this.localModel.initialize();
 
       this.initialized = true;
-      logger.info('[Florence2] Local model initialized successfully');
+      logger.info("[Florence2] Local model initialized successfully");
     } catch (error) {
-      logger.error('[Florence2] Failed to initialize local model:', error);
+      logger.error("[Florence2] Failed to initialize local model:", error);
       // Don't throw - we have good fallbacks
       this.initialized = true;
-      logger.warn('[Florence2] Running with enhanced fallback mode');
+      logger.warn("[Florence2] Running with enhanced fallback mode");
     }
   }
 
@@ -36,7 +36,7 @@ export class Florence2Model {
     }
 
     if (!tile.data) {
-      throw new Error('Tile has no image data');
+      throw new Error("Tile has no image data");
     }
 
     try {
@@ -46,7 +46,7 @@ export class Florence2Model {
         logger.debug(`[Florence2] Analyzed tile ${tile.id}: ${result.caption}`);
         return result;
       } catch (_modelError) {
-        logger.warn('[Florence2] Local model analysis failed, falling back:', _modelError);
+        logger.warn("[Florence2] Local model analysis failed, falling back:", _modelError);
       }
 
       // Fall back to mock analysis
@@ -54,7 +54,7 @@ export class Florence2Model {
       logger.debug(`[Florence2] Mock analyzed tile ${tile.id}: ${result.caption}`);
       return result;
     } catch (error) {
-      logger.error('[Florence2] Analysis failed:', error);
+      logger.error("[Florence2] Analysis failed:", error);
       throw error;
     }
   }
@@ -71,7 +71,7 @@ export class Florence2Model {
         logger.debug(`[Florence2] Analyzed image: ${result.caption}`);
         return result;
       } catch (_modelError) {
-        logger.warn('[Florence2] Local model analysis failed, falling back:', _modelError);
+        logger.warn("[Florence2] Local model analysis failed, falling back:", _modelError);
       }
 
       // Fall back to mock analysis
@@ -79,7 +79,7 @@ export class Florence2Model {
       logger.debug(`[Florence2] Mock analyzed image: ${result.caption}`);
       return result;
     } catch (error) {
-      logger.error('[Florence2] Image analysis failed:', error);
+      logger.error("[Florence2] Image analysis failed:", error);
       throw error;
     }
   }
@@ -92,41 +92,41 @@ export class Florence2Model {
     const isLeftRegion = tile.col < 2;
 
     // Simulate different UI regions
-    let caption = 'Desktop screen region';
+    let caption = "Desktop screen region";
     const objects: Array<{ label: string; bbox: BoundingBox; confidence: number }> = [];
     const regions: Array<{ description: string; bbox: BoundingBox }> = [];
     const tags: string[] = [];
 
     if (isUpperRegion) {
-      caption = 'Application window with menu bar';
+      caption = "Application window with menu bar";
       objects.push({
-        label: 'window',
+        label: "window",
         bbox: { x: 0, y: 0, width: tile.width, height: 50 },
         confidence: 0.9,
       });
       objects.push({
-        label: 'menu_bar',
+        label: "menu_bar",
         bbox: { x: 0, y: 0, width: tile.width, height: 30 },
         confidence: 0.85,
       });
-      tags.push('ui', 'application', 'desktop');
+      tags.push("ui", "application", "desktop");
     }
 
     if (isLeftRegion) {
-      caption = 'Sidebar or navigation area';
+      caption = "Sidebar or navigation area";
       objects.push({
-        label: 'sidebar',
+        label: "sidebar",
         bbox: { x: 0, y: 0, width: 100, height: tile.height },
         confidence: 0.8,
       });
-      tags.push('navigation', 'sidebar');
+      tags.push("navigation", "sidebar");
     }
 
     // Add some common UI elements
     const buttonCount = Math.floor(Math.random() * 3) + 1;
     for (let i = 0; i < buttonCount; i++) {
       objects.push({
-        label: 'button',
+        label: "button",
         bbox: {
           x: Math.random() * (tile.width - 100),
           y: Math.random() * (tile.height - 40),
@@ -141,7 +141,7 @@ export class Florence2Model {
     const textRegions = Math.floor(Math.random() * 2) + 1;
     for (let i = 0; i < textRegions; i++) {
       regions.push({
-        description: 'Text content area',
+        description: "Text content area",
         bbox: {
           x: Math.random() * (tile.width - 200),
           y: Math.random() * (tile.height - 100),
@@ -151,7 +151,7 @@ export class Florence2Model {
       });
     }
 
-    tags.push('screen', 'interface', 'computer');
+    tags.push("screen", "interface", "computer");
 
     return {
       caption,
@@ -180,7 +180,7 @@ export class Florence2Model {
       try {
         result = await this.localModel.analyzeImage(imageBuffer);
       } catch (_modelError) {
-        logger.warn('[Florence2] Local model failed for UI detection, using fallback');
+        logger.warn("[Florence2] Local model failed for UI detection, using fallback");
         result = await this.mockAnalyzeBuffer(imageBuffer);
       }
 
@@ -191,7 +191,7 @@ export class Florence2Model {
         confidence: obj.confidence,
       }));
     } catch (error) {
-      logger.error('[Florence2] UI element detection failed:', error);
+      logger.error("[Florence2] UI element detection failed:", error);
       return [];
     }
   }
@@ -202,67 +202,67 @@ export class Florence2Model {
 
     const scenarios = [
       {
-        caption: 'Indoor scene with a person in front of a computer',
+        caption: "Indoor scene with a person in front of a computer",
         objects: [
           {
-            label: 'person',
+            label: "person",
             bbox: { x: 300, y: 200, width: 200, height: 300 },
             confidence: 0.9,
           },
           {
-            label: 'computer',
+            label: "computer",
             bbox: { x: 400, y: 350, width: 150, height: 100 },
             confidence: 0.85,
           },
           {
-            label: 'desk',
+            label: "desk",
             bbox: { x: 350, y: 400, width: 250, height: 100 },
             confidence: 0.8,
           },
         ],
-        tags: ['indoor', 'office', 'workspace', 'person', 'computer'],
+        tags: ["indoor", "office", "workspace", "person", "computer"],
       },
       {
-        caption: 'Room interior with furniture and lighting',
+        caption: "Room interior with furniture and lighting",
         objects: [
           {
-            label: 'chair',
+            label: "chair",
             bbox: { x: 200, y: 300, width: 100, height: 150 },
             confidence: 0.85,
           },
           {
-            label: 'table',
+            label: "table",
             bbox: { x: 350, y: 350, width: 150, height: 100 },
             confidence: 0.8,
           },
           {
-            label: 'lamp',
+            label: "lamp",
             bbox: { x: 500, y: 200, width: 50, height: 100 },
             confidence: 0.75,
           },
         ],
-        tags: ['indoor', 'room', 'furniture', 'interior'],
+        tags: ["indoor", "room", "furniture", "interior"],
       },
       {
-        caption: 'Person working at a desk with computer monitor',
+        caption: "Person working at a desk with computer monitor",
         objects: [
           {
-            label: 'person',
+            label: "person",
             bbox: { x: 250, y: 150, width: 250, height: 350 },
             confidence: 0.92,
           },
           {
-            label: 'monitor',
+            label: "monitor",
             bbox: { x: 450, y: 300, width: 120, height: 80 },
             confidence: 0.88,
           },
           {
-            label: 'keyboard',
+            label: "keyboard",
             bbox: { x: 430, y: 380, width: 100, height: 30 },
             confidence: 0.82,
           },
         ],
-        tags: ['person', 'working', 'computer', 'desk', 'office'],
+        tags: ["person", "working", "computer", "desk", "office"],
       },
     ];
 
@@ -279,31 +279,31 @@ export class Florence2Model {
 
   private mapToUIElementType(label: string): string {
     const mapping: Record<string, string> = {
-      button: 'button',
-      text_field: 'input',
-      text_area: 'textarea',
-      checkbox: 'checkbox',
-      radio_button: 'radio',
-      dropdown: 'select',
-      menu: 'menu',
-      menu_bar: 'menubar',
-      toolbar: 'toolbar',
-      window: 'window',
-      dialog: 'dialog',
-      icon: 'icon',
-      image: 'image',
-      video: 'video',
-      link: 'link',
-      heading: 'heading',
-      paragraph: 'text',
-      list: 'list',
-      table: 'table',
-      scrollbar: 'scrollbar',
-      tab: 'tab',
-      panel: 'panel',
+      button: "button",
+      text_field: "input",
+      text_area: "textarea",
+      checkbox: "checkbox",
+      radio_button: "radio",
+      dropdown: "select",
+      menu: "menu",
+      menu_bar: "menubar",
+      toolbar: "toolbar",
+      window: "window",
+      dialog: "dialog",
+      icon: "icon",
+      image: "image",
+      video: "video",
+      link: "link",
+      heading: "heading",
+      paragraph: "text",
+      list: "list",
+      table: "table",
+      scrollbar: "scrollbar",
+      tab: "tab",
+      panel: "panel",
     };
 
-    return mapping[label.toLowerCase()] || 'unknown';
+    return mapping[label.toLowerCase()] || "unknown";
   }
 
   async generateSceneGraph(tiles: ScreenTile[]): Promise<{
@@ -369,15 +369,15 @@ export class Florence2Model {
 
     // Check containment
     if (this.contains(box1, box2)) {
-      return 'contains';
+      return "contains";
     }
     if (this.contains(box2, box1)) {
-      return 'contained_by';
+      return "contained_by";
     }
 
     // Check overlap
     if (this.overlaps(box1, box2)) {
-      return 'overlaps';
+      return "overlaps";
     }
 
     // Check adjacency and direction
@@ -388,9 +388,9 @@ export class Florence2Model {
     if (distance < 100) {
       // Close proximity
       if (Math.abs(dx) > Math.abs(dy)) {
-        return dx > 0 ? 'right_of' : 'left_of';
+        return dx > 0 ? "right_of" : "left_of";
       } else {
-        return dy > 0 ? 'below' : 'above';
+        return dy > 0 ? "below" : "above";
       }
     }
 
@@ -422,6 +422,6 @@ export class Florence2Model {
   async dispose(): Promise<void> {
     // Clean up resources if needed
     this.initialized = false;
-    logger.info('[Florence2] Model disposed');
+    logger.info("[Florence2] Model disposed");
   }
 }

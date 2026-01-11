@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! ElizaOS Cloud API client implementation.
 
 use reqwest::Client;
@@ -201,7 +202,7 @@ impl ElizaCloudClient {
 
         let response = self
             .client
-            .post(&self.get_url("/chat/completions", false))
+            .post(self.get_url("/chat/completions", false))
             .headers(self.auth_headers(false))
             .json(&request)
             .send()
@@ -237,7 +238,7 @@ impl ElizaCloudClient {
 
         let response = self
             .client
-            .post(&self.get_url("/embeddings", true))
+            .post(self.get_url("/embeddings", true))
             .headers(self.auth_headers(true))
             .json(&request)
             .send()
@@ -263,7 +264,7 @@ impl ElizaCloudClient {
 
         let response = self
             .client
-            .post(&self.get_url("/generate-image", false))
+            .post(self.get_url("/generate-image", false))
             .headers(self.auth_headers(false))
             .json(&request)
             .send()
@@ -323,7 +324,7 @@ impl ElizaCloudClient {
 
         let response = self
             .client
-            .post(&self.get_url("/chat/completions", false))
+            .post(self.get_url("/chat/completions", false))
             .headers(self.auth_headers(false))
             .json(&request)
             .send()
@@ -374,7 +375,7 @@ impl ElizaCloudClient {
 
         let response = self
             .client
-            .post(&self.get_url("/audio/speech", false))
+            .post(self.get_url("/audio/speech", false))
             .headers(self.auth_headers(false))
             .json(&request)
             .send()
@@ -432,7 +433,7 @@ impl ElizaCloudClient {
 
         let response = self
             .client
-            .post(&self.get_url("/audio/transcriptions", false))
+            .post(self.get_url("/audio/transcriptions", false))
             .headers(headers)
             .multipart(form)
             .send()

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! BlueSky API client using AT Protocol.
 
 use chrono::Utc;
@@ -139,7 +140,7 @@ impl BlueSkyClient {
 
         let session = self.session.read().await;
         let session = session.as_ref().ok_or_else(|| BlueSkyError::auth("Not authenticated"))?;
-        let rkey = uri.split('/').last().ok_or_else(|| BlueSkyError::post("Invalid URI", "delete"))?;
+        let rkey = uri.split('/').next_back().ok_or_else(|| BlueSkyError::post("Invalid URI", "delete"))?;
 
         self.request("POST", "com.atproto.repo.deleteRecord", None, Some(serde_json::json!({
             "repo": session.did,

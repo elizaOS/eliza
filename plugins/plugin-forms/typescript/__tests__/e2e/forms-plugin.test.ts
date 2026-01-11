@@ -1,37 +1,40 @@
 import {
-  type TestSuite,
+  asUUID,
+  type Content,
+  type GenerateTextParams,
+  type HandlerCallback,
   type IAgentRuntime,
   type Memory,
-  type State,
-  asUUID,
   ModelType,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import type { FormsService } from '../../services/forms-service';
-import type { FormField } from '../../types';
+  type State,
+  type TestSuite,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { FormsService } from "../../services/forms-service";
+import type { FormField } from "../../types";
 
 export class FormsPluginTestSuite implements TestSuite {
-  name = 'forms-plugin-e2e';
-  description = 'E2E tests for the forms plugin';
+  name = "forms-plugin-e2e";
+  description = "E2E tests for the forms plugin";
 
   tests = [
     {
-      name: 'Basic service functionality',
+      name: "Basic service functionality",
       fn: async (runtime: IAgentRuntime) => {
-        console.log('Test runtime agent ID:', runtime.agentId);
+        console.log("Test runtime agent ID:", runtime.agentId);
 
         // Get forms service
-        const formsService = runtime.getService('forms') as FormsService;
+        const formsService = runtime.getService("forms") as FormsService;
         if (!formsService) {
-          throw new Error('Forms service not found');
+          throw new Error("Forms service not found");
         }
 
-        console.log('Forms service found');
-        console.log('Service runtime agent ID:', (formsService as any).runtime?.agentId);
+        console.log("Forms service found");
+        console.log("Service runtime agent ID:", formsService.runtime?.agentId);
 
         // Create a form directly
-        const form = await formsService.createForm('contact');
-        console.log('Created form:', {
+        const form = await formsService.createForm("contact");
+        console.log("Created form:", {
           id: form.id,
           agentId: form.agentId,
           name: form.name,
@@ -40,9 +43,9 @@ export class FormsPluginTestSuite implements TestSuite {
 
         // List all forms (no filter)
         const allForms = await formsService.listForms();
-        console.log('All forms:', allForms.length);
+        console.log("All forms:", allForms.length);
         allForms.forEach((f) => {
-          console.log('Form in list:', {
+          console.log("Form in list:", {
             id: f.id,
             agentId: f.agentId,
             name: f.name,
@@ -51,55 +54,55 @@ export class FormsPluginTestSuite implements TestSuite {
         });
 
         // List active forms
-        const activeForms = await formsService.listForms('active');
-        console.log('Active forms:', activeForms.length);
+        const activeForms = await formsService.listForms("active");
+        console.log("Active forms:", activeForms.length);
 
         if (activeForms.length === 0) {
-          throw new Error('Form was created but not found in list');
+          throw new Error("Form was created but not found in list");
         }
       },
     },
     {
-      name: 'Forms plugin loads correctly',
+      name: "Forms plugin loads correctly",
       fn: async (runtime: IAgentRuntime) => {
         // Log runtime info for debugging
-        console.log('Runtime services:', Array.from(runtime.services?.keys() || []));
-        console.log('Runtime actions:', runtime.actions?.map((a) => a.name) || []);
-        console.log('Runtime providers:', runtime.providers?.map((p) => p.name) || []);
+        console.log("Runtime services:", Array.from(runtime.services?.keys() || []));
+        console.log("Runtime actions:", runtime.actions?.map((a) => a.name) || []);
+        console.log("Runtime providers:", runtime.providers?.map((p) => p.name) || []);
 
         // Check that the forms service is registered
-        const formsService = runtime.getService('forms');
+        const formsService = runtime.getService("forms");
         if (!formsService) {
-          throw new Error('Forms service not registered');
+          throw new Error("Forms service not registered");
         }
-        console.log('✓ Forms service registered successfully');
+        console.log("✓ Forms service registered successfully");
 
         // Check that actions are registered
-        const createFormAction = runtime.actions.find((a) => a.name === 'CREATE_FORM');
-        const updateFormAction = runtime.actions.find((a) => a.name === 'UPDATE_FORM');
-        const cancelFormAction = runtime.actions.find((a) => a.name === 'CANCEL_FORM');
+        const createFormAction = runtime.actions.find((a) => a.name === "CREATE_FORM");
+        const updateFormAction = runtime.actions.find((a) => a.name === "UPDATE_FORM");
+        const cancelFormAction = runtime.actions.find((a) => a.name === "CANCEL_FORM");
 
         if (!createFormAction) {
-          throw new Error('CREATE_FORM action not found');
+          throw new Error("CREATE_FORM action not found");
         }
         if (!updateFormAction) {
-          throw new Error('UPDATE_FORM action not found');
+          throw new Error("UPDATE_FORM action not found");
         }
         if (!cancelFormAction) {
-          throw new Error('CANCEL_FORM action not found');
+          throw new Error("CANCEL_FORM action not found");
         }
-        console.log('✓ All forms actions registered');
+        console.log("✓ All forms actions registered");
 
         // Check provider
-        const formsProvider = runtime.providers.find((p) => p.name === 'FORMS_CONTEXT');
+        const formsProvider = runtime.providers.find((p) => p.name === "FORMS_CONTEXT");
         if (!formsProvider) {
-          throw new Error('Forms provider not found');
+          throw new Error("Forms provider not found");
         }
-        console.log('✓ Forms provider registered');
+        console.log("✓ Forms provider registered");
       },
     },
     {
-      name: 'Create and complete a simple contact form',
+      name: "Create and complete a simple contact form",
       fn: async (runtime: IAgentRuntime) => {
         // Setup model handlers for testing
         setupModelHandlers(runtime);
@@ -108,48 +111,48 @@ export class FormsPluginTestSuite implements TestSuite {
         const userId = asUUID(uuidv4());
 
         // Get forms service
-        const formsService = runtime.getService('forms') as FormsService;
+        const formsService = runtime.getService("forms") as FormsService;
         if (!formsService) {
-          throw new Error('Forms service not found');
+          throw new Error("Forms service not found");
         }
 
         // Create a form directly via service
-        console.log('Creating form via service...');
-        const form = await formsService.createForm('contact');
-        console.log('Form created:', form.id, form.name, form.status);
+        console.log("Creating form via service...");
+        const form = await formsService.createForm("contact");
+        console.log("Form created:", form.id, form.name, form.status);
 
         // Verify form exists
-        const activeForms = await formsService.listForms('active');
-        console.log('Active forms:', activeForms.length);
+        const activeForms = await formsService.listForms("active");
+        console.log("Active forms:", activeForms.length);
 
         if (activeForms.length === 0) {
-          throw new Error('No active forms found after creation');
+          throw new Error("No active forms found after creation");
         }
 
         // Now test the action handler
-        const createFormAction = runtime.actions.find((a) => a.name === 'CREATE_FORM');
+        const createFormAction = runtime.actions.find((a) => a.name === "CREATE_FORM");
         if (!createFormAction) {
-          throw new Error('CREATE_FORM action not found');
+          throw new Error("CREATE_FORM action not found");
         }
 
         // Check that form was created
         if (!form) {
-          throw new Error('Created form not found');
+          throw new Error("Created form not found");
         }
 
-        console.log('✓ Form created successfully:', form.id);
+        console.log("✓ Form created successfully:", form.id);
 
         // Get the UPDATE_FORM action
-        const updateFormAction = runtime.actions.find((a) => a.name === 'UPDATE_FORM');
+        const updateFormAction = runtime.actions.find((a) => a.name === "UPDATE_FORM");
         if (!updateFormAction) {
-          throw new Error('UPDATE_FORM action not found');
+          throw new Error("UPDATE_FORM action not found");
         }
 
         // Store form ID in state for the action
         const state = {
           values: { activeFormId: form.id },
           data: { activeFormId: form.id },
-          text: '',
+          text: "",
         };
 
         // Update form with name
@@ -158,8 +161,8 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'My name is John Doe',
-            source: 'test',
+            text: "My name is John Doe",
+            source: "test",
           },
           createdAt: Date.now() + 1000,
         };
@@ -169,8 +172,8 @@ export class FormsPluginTestSuite implements TestSuite {
           updateMessage1,
           state,
           {},
-          async (response: any) => {
-            console.log('Action response:', response);
+          async (response: Content) => {
+            console.log("Action response:", response);
             return [];
           }
         );
@@ -181,8 +184,8 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'My email is john@example.com',
-            source: 'test',
+            text: "My email is john@example.com",
+            source: "test",
           },
           createdAt: Date.now() + 2000,
         };
@@ -192,8 +195,8 @@ export class FormsPluginTestSuite implements TestSuite {
           updateMessage2,
           state,
           {},
-          async (response: any) => {
-            console.log('Action response:', response);
+          async (response: Content) => {
+            console.log("Action response:", response);
             return [];
           }
         );
@@ -204,8 +207,8 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'I would like to learn more about your consulting services',
-            source: 'test',
+            text: "I would like to learn more about your consulting services",
+            source: "test",
           },
           createdAt: Date.now() + 3000,
         };
@@ -215,45 +218,45 @@ export class FormsPluginTestSuite implements TestSuite {
           updateMessage3,
           state,
           {},
-          async (response: any) => {
-            console.log('Action response:', response);
+          async (response: Content) => {
+            console.log("Action response:", response);
             return [];
           }
         );
 
         // Check that form is completed
-        const completedForms = await formsService.listForms('completed');
+        const completedForms = await formsService.listForms("completed");
         if (completedForms.length === 0) {
-          throw new Error('Form was not marked as completed');
+          throw new Error("Form was not marked as completed");
         }
 
         const completedForm = completedForms[0];
-        console.log('✓ Form completed successfully');
+        console.log("✓ Form completed successfully");
 
         // Verify form data
-        const nameField = completedForm.steps[0].fields.find((f: FormField) => f.id === 'name');
-        const emailField = completedForm.steps[0].fields.find((f: FormField) => f.id === 'email');
+        const nameField = completedForm.steps[0].fields.find((f: FormField) => f.id === "name");
+        const emailField = completedForm.steps[0].fields.find((f: FormField) => f.id === "email");
         const messageField = completedForm.steps[0].fields.find(
-          (f: FormField) => f.id === 'message'
+          (f: FormField) => f.id === "message"
         );
 
-        if (nameField?.value !== 'John Doe') {
-          throw new Error('Name field not updated correctly');
+        if (nameField?.value !== "John Doe") {
+          throw new Error("Name field not updated correctly");
         }
-        if (emailField?.value !== 'john@example.com') {
-          throw new Error('Email field not updated correctly');
+        if (emailField?.value !== "john@example.com") {
+          throw new Error("Email field not updated correctly");
         }
-        if (messageField && messageField.value && typeof messageField.value === 'string') {
-          if (!messageField.value.includes('services')) {
-            throw new Error('Message field not updated correctly');
+        if (messageField?.value && typeof messageField.value === "string") {
+          if (!messageField.value.includes("services")) {
+            throw new Error("Message field not updated correctly");
           }
         }
 
-        console.log('✓ All form fields updated correctly');
+        console.log("✓ All form fields updated correctly");
       },
     },
     {
-      name: 'Cancel an active form',
+      name: "Cancel an active form",
       fn: async (runtime: IAgentRuntime) => {
         // Setup model handlers for testing
         setupModelHandlers(runtime);
@@ -262,10 +265,10 @@ export class FormsPluginTestSuite implements TestSuite {
         const userId = asUUID(uuidv4());
 
         // Get actions
-        const createFormAction = runtime.actions.find((a) => a.name === 'CREATE_FORM');
-        const cancelFormAction = runtime.actions.find((a) => a.name === 'CANCEL_FORM');
+        const createFormAction = runtime.actions.find((a) => a.name === "CREATE_FORM");
+        const cancelFormAction = runtime.actions.find((a) => a.name === "CANCEL_FORM");
         if (!createFormAction || !cancelFormAction) {
-          throw new Error('Required actions not found');
+          throw new Error("Required actions not found");
         }
 
         // Create a form
@@ -274,34 +277,37 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'Create a contact form',
-            source: 'test',
+            text: "Create a contact form",
+            source: "test",
           },
           createdAt: Date.now(),
         };
 
         let createdFormId: string | undefined;
-        const callback = async (response: any) => {
-          if (response.data?.formId) {
-            createdFormId = response.data.formId;
+        const callback: HandlerCallback = async (response: Content) => {
+          if (response.data && typeof response.data === "object" && "formId" in response.data) {
+            const data = response.data as { formId?: string };
+            if (data.formId) {
+              createdFormId = data.formId;
+            }
           }
           return [];
         };
 
-        const state = { values: {}, data: {}, text: '' };
+        const state = { values: {}, data: {}, text: "" };
         await createFormAction.handler(runtime, createMessage, state, {}, callback);
 
         if (!createdFormId) {
-          throw new Error('Form was not created');
+          throw new Error("Form was not created");
         }
 
-        console.log('Created form to cancel:', createdFormId);
+        console.log("Created form to cancel:", createdFormId);
 
-        const formsService = runtime.getService('forms') as FormsService;
-        const activeForms = await formsService.listForms('active');
+        const formsService = runtime.getService("forms") as FormsService;
+        const activeForms = await formsService.listForms("active");
 
         if (activeForms.length === 0) {
-          throw new Error('No active forms found');
+          throw new Error("No active forms found");
         }
 
         // Cancel the form
@@ -310,8 +316,8 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'Cancel the form',
-            source: 'test',
+            text: "Cancel the form",
+            source: "test",
           },
           createdAt: Date.now() + 1000,
         };
@@ -322,36 +328,36 @@ export class FormsPluginTestSuite implements TestSuite {
           {
             values: { activeFormId: createdFormId },
             data: { activeFormId: createdFormId },
-            text: '',
+            text: "",
           },
           { parameters: { formId: createdFormId } },
           callback
         );
 
         // Check that form is cancelled
-        const cancelledForms = await formsService.listForms('cancelled');
-        console.log('Cancelled forms:', cancelledForms.length);
+        const cancelledForms = await formsService.listForms("cancelled");
+        console.log("Cancelled forms:", cancelledForms.length);
 
         if (cancelledForms.length === 0) {
-          throw new Error('Form was not cancelled');
+          throw new Error("Form was not cancelled");
         }
 
-        const activeFormsAfter = await formsService.listForms('active');
-        console.log('Active forms after cancel:', activeFormsAfter.length);
+        const activeFormsAfter = await formsService.listForms("active");
+        console.log("Active forms after cancel:", activeFormsAfter.length);
         activeFormsAfter.forEach((f) => {
-          console.log('Still active:', f.id, f.name);
+          console.log("Still active:", f.id, f.name);
         });
 
         const targetFormStillActive = activeFormsAfter.find((f) => f.id === createdFormId);
         if (targetFormStillActive) {
-          throw new Error('Form still active after cancellation');
+          throw new Error("Form still active after cancellation");
         }
 
-        console.log('✓ Form cancelled successfully');
+        console.log("✓ Form cancelled successfully");
       },
     },
     {
-      name: 'Forms provider shows active forms',
+      name: "Forms provider shows active forms",
       fn: async (runtime: IAgentRuntime) => {
         // Setup model handlers for testing
         setupModelHandlers(runtime);
@@ -360,9 +366,9 @@ export class FormsPluginTestSuite implements TestSuite {
         const userId = asUUID(uuidv4());
 
         // Get the CREATE_FORM action
-        const createFormAction = runtime.actions.find((a) => a.name === 'CREATE_FORM');
+        const createFormAction = runtime.actions.find((a) => a.name === "CREATE_FORM");
         if (!createFormAction) {
-          throw new Error('CREATE_FORM action not found');
+          throw new Error("CREATE_FORM action not found");
         }
 
         // Create a form
@@ -371,98 +377,101 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'Create a new contact form',
-            source: 'test',
+            text: "Create a new contact form",
+            source: "test",
           },
           createdAt: Date.now(),
         };
 
         let createdFormId: string | undefined;
-        const callback = async (response: any) => {
-          if (response.data?.formId) {
-            createdFormId = response.data.formId;
+        const callback: HandlerCallback = async (response: Content) => {
+          if (response.data && typeof response.data === "object" && "formId" in response.data) {
+            const data = response.data as { formId?: string };
+            if (data.formId) {
+              createdFormId = data.formId;
+            }
           }
           return [];
         };
 
-        const state = { values: {}, data: {}, text: '' };
+        const state = { values: {}, data: {}, text: "" };
         await createFormAction.handler(runtime, createMessage, state, {}, callback);
 
         if (!createdFormId) {
-          throw new Error('Form was not created');
+          throw new Error("Form was not created");
         }
 
         // Get provider state
-        const formsProvider = runtime.providers.find((p) => p.name === 'FORMS_CONTEXT');
+        const formsProvider = runtime.providers.find((p) => p.name === "FORMS_CONTEXT");
         if (!formsProvider) {
-          throw new Error('Forms provider not found');
+          throw new Error("Forms provider not found");
         }
 
         const mockMessage: Memory = {
           entityId: userId,
           agentId: runtime.agentId,
           roomId,
-          content: { text: 'test', source: 'test' },
+          content: { text: "test", source: "test" },
           createdAt: Date.now(),
         };
 
         const mockState: State = {
           values: {},
           data: {},
-          text: '',
+          text: "",
         };
 
         const providerResult = await formsProvider.get(runtime, mockMessage, mockState);
 
-        console.log('Provider result:', {
+        console.log("Provider result:", {
           hasText: !!providerResult.text,
-          textIncludes: providerResult.text?.includes('Active Form:'),
+          textIncludes: providerResult.text?.includes("Active Form:"),
           data: providerResult.data,
         });
 
-        if (!providerResult.text?.includes('Active Form:')) {
-          console.log('Provider text:', providerResult.text);
-          throw new Error('Provider did not return active forms information');
+        if (!providerResult.text?.includes("Active Form:")) {
+          console.log("Provider text:", providerResult.text);
+          throw new Error("Provider did not return active forms information");
         }
 
         const formsData = providerResult.data?.forms as Array<unknown> | undefined;
         if (!formsData || formsData.length === 0) {
-          throw new Error('Provider did not return active forms data');
+          throw new Error("Provider did not return active forms data");
         }
 
-        console.log('✓ Forms provider returns active forms');
+        console.log("✓ Forms provider returns active forms");
       },
     },
     {
-      name: 'Handle secret fields correctly',
+      name: "Handle secret fields correctly",
       fn: async (runtime: IAgentRuntime) => {
         // Setup model handlers for testing
         setupModelHandlers(runtime);
 
         // Create a custom form with a secret field
-        const formsService = runtime.getService('forms') as FormsService;
+        const formsService = runtime.getService("forms") as FormsService;
 
         const customForm = await formsService.createForm({
-          name: 'api-setup',
+          name: "api-setup",
           agentId: runtime.agentId,
           steps: [
             {
-              id: 'credentials',
-              name: 'API Credentials',
+              id: "credentials",
+              name: "API Credentials",
               fields: [
                 {
-                  id: 'apiKey',
-                  label: 'API Key',
-                  type: 'text',
-                  description: 'Your API key',
+                  id: "apiKey",
+                  label: "API Key",
+                  type: "text",
+                  description: "Your API key",
                   optional: false,
                   secret: true,
                 },
                 {
-                  id: 'endpoint',
-                  label: 'API Endpoint',
-                  type: 'text',
-                  description: 'API endpoint URL',
+                  id: "endpoint",
+                  label: "API Endpoint",
+                  type: "text",
+                  description: "API endpoint URL",
                   optional: false,
                 },
               ],
@@ -470,20 +479,20 @@ export class FormsPluginTestSuite implements TestSuite {
           ],
         });
 
-        console.log('✓ Created form with secret field');
+        console.log("✓ Created form with secret field");
 
         // Check the form was created
         const allForms = await formsService.listForms();
         console.log(
-          'All forms after creation:',
+          "All forms after creation:",
           allForms.map((f) => ({ id: f.id, name: f.name, status: f.status }))
         );
 
         const apiForm = await formsService.getForm(customForm.id);
         console.log(
-          'API form status:',
+          "API form status:",
           apiForm?.status,
-          'fields:',
+          "fields:",
           apiForm?.steps[0].fields.map((f) => ({ id: f.id, value: f.value }))
         );
 
@@ -497,8 +506,8 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId,
           content: {
-            text: 'My API key is sk-12345 and the endpoint is https://api.example.com',
-            source: 'test',
+            text: "My API key is sk-12345 and the endpoint is https://api.example.com",
+            source: "test",
           },
           createdAt: Date.now(),
         };
@@ -506,16 +515,16 @@ export class FormsPluginTestSuite implements TestSuite {
         const updateResult = await formsService.updateForm(customForm.id, updateMessage);
 
         if (!updateResult.success) {
-          throw new Error('Failed to update form with secret');
+          throw new Error("Failed to update form with secret");
         }
 
-        console.log('✓ Form updated with secret values');
+        console.log("✓ Form updated with secret values");
 
         // Check the form after update
         const updatedForm = await formsService.getForm(customForm.id);
-        console.log('Updated form status:', updatedForm?.status);
+        console.log("Updated form status:", updatedForm?.status);
         console.log(
-          'Updated form fields:',
+          "Updated form fields:",
           updatedForm?.steps[0].fields.map((f) => ({
             id: f.id,
             value: f.value,
@@ -524,40 +533,40 @@ export class FormsPluginTestSuite implements TestSuite {
         );
 
         // Get all forms including completed ones to check masking
-        const completedForms = await formsService.listForms('completed');
+        const completedForms = await formsService.listForms("completed");
         console.log(
-          'Completed forms:',
+          "Completed forms:",
           completedForms.map((f) => ({ id: f.id, name: f.name }))
         );
 
         // The api-setup form should be completed after update
-        const completedApiForm = completedForms.find((f) => f.name === 'api-setup');
+        const completedApiForm = completedForms.find((f) => f.name === "api-setup");
         if (!completedApiForm) {
-          throw new Error('api-setup form not found in completed forms');
+          throw new Error("api-setup form not found in completed forms");
         }
 
         // Check that the secret field has a value
-        const secretField = completedApiForm.steps[0].fields.find((f: any) => f.id === 'apiKey');
+        const secretField = completedApiForm.steps[0].fields.find((f) => f.id === "apiKey");
         if (!secretField || !secretField.value) {
-          throw new Error('Secret field was not set');
+          throw new Error("Secret field was not set");
         }
 
         // Since the provider only shows active forms, let's verify the masking logic directly
         // by checking that the field is marked as secret
         if (!secretField.secret) {
-          throw new Error('API key field is not marked as secret');
+          throw new Error("API key field is not marked as secret");
         }
 
-        console.log('✓ Secret fields are properly masked');
+        console.log("✓ Secret fields are properly masked");
       },
     },
     {
-      name: 'Multi-step form progression',
+      name: "Multi-step form progression",
       fn: async (runtime: IAgentRuntime) => {
         // Setup model handlers for testing
         setupModelHandlers(runtime);
 
-        const formsService = runtime.getService('forms') as FormsService;
+        const formsService = runtime.getService("forms") as FormsService;
 
         // Track callback executions
         let step1Completed = false;
@@ -566,63 +575,63 @@ export class FormsPluginTestSuite implements TestSuite {
 
         // Create a multi-step form
         const multiStepForm = await formsService.createForm({
-          name: 'project-setup',
+          name: "project-setup",
           steps: [
             {
-              id: 'basic-info',
-              name: 'Basic Information',
+              id: "basic-info",
+              name: "Basic Information",
               fields: [
                 {
-                  id: 'projectName',
-                  label: 'Project Name',
-                  type: 'text',
-                  description: 'Name of your project',
+                  id: "projectName",
+                  label: "Project Name",
+                  type: "text",
+                  description: "Name of your project",
                   optional: false,
                 },
                 {
-                  id: 'description',
-                  label: 'Description',
-                  type: 'textarea',
-                  description: 'Brief project description',
+                  id: "description",
+                  label: "Description",
+                  type: "textarea",
+                  description: "Brief project description",
                   optional: true,
                 },
               ],
               onComplete: async () => {
                 step1Completed = true;
-                console.log('✓ Step 1 callback executed');
+                console.log("✓ Step 1 callback executed");
               },
             },
             {
-              id: 'tech-stack',
-              name: 'Technology Stack',
+              id: "tech-stack",
+              name: "Technology Stack",
               fields: [
                 {
-                  id: 'language',
-                  label: 'Programming Language',
-                  type: 'choice',
-                  description: 'Primary programming language',
+                  id: "language",
+                  label: "Programming Language",
+                  type: "choice",
+                  description: "Primary programming language",
                   optional: false,
                   metadata: {
-                    choices: ['TypeScript', 'JavaScript', 'Python'],
+                    choices: ["TypeScript", "JavaScript", "Python"],
                   },
                 },
                 {
-                  id: 'framework',
-                  label: 'Framework',
-                  type: 'text',
-                  description: 'Framework to use',
+                  id: "framework",
+                  label: "Framework",
+                  type: "text",
+                  description: "Framework to use",
                   optional: false,
                 },
               ],
               onComplete: async () => {
                 step2Completed = true;
-                console.log('✓ Step 2 callback executed');
+                console.log("✓ Step 2 callback executed");
               },
             },
           ],
           onComplete: async () => {
             formCompleted = true;
-            console.log('✓ Form completion callback executed');
+            console.log("✓ Form completion callback executed");
           },
         });
 
@@ -632,20 +641,20 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId: asUUID(uuidv4()),
           content: {
-            text: 'The project name is MyAwesomeApp',
-            source: 'test',
+            text: "The project name is MyAwesomeApp",
+            source: "test",
           },
           createdAt: Date.now(),
         } as Memory);
 
         if (!step1Completed) {
-          throw new Error('Step 1 callback was not executed');
+          throw new Error("Step 1 callback was not executed");
         }
 
         // Check current step
         const formAfterStep1 = await formsService.getForm(multiStepForm.id);
         if (!formAfterStep1 || formAfterStep1.currentStepIndex !== 1) {
-          throw new Error('Form did not progress to step 2');
+          throw new Error("Form did not progress to step 2");
         }
 
         // Complete step 2
@@ -654,27 +663,27 @@ export class FormsPluginTestSuite implements TestSuite {
           agentId: runtime.agentId,
           roomId: asUUID(uuidv4()),
           content: {
-            text: 'I want to use TypeScript with Next.js framework',
-            source: 'test',
+            text: "I want to use TypeScript with Next.js framework",
+            source: "test",
           },
           createdAt: Date.now(),
         } as Memory);
 
         if (!step2Completed) {
-          throw new Error('Step 2 callback was not executed');
+          throw new Error("Step 2 callback was not executed");
         }
 
         if (!formCompleted) {
-          throw new Error('Form completion callback was not executed');
+          throw new Error("Form completion callback was not executed");
         }
 
         // Verify form is completed
         const completedForm = await formsService.getForm(multiStepForm.id);
-        if (!completedForm || completedForm.status !== 'completed') {
-          throw new Error('Form was not marked as completed');
+        if (!completedForm || completedForm.status !== "completed") {
+          throw new Error("Form was not marked as completed");
         }
 
-        console.log('✓ Multi-step form completed successfully');
+        console.log("✓ Multi-step form completed successfully");
       },
     },
   ];
@@ -685,20 +694,24 @@ export default new FormsPluginTestSuite();
 
 // Helper to setup model handlers for testing
 function setupModelHandlers(runtime: IAgentRuntime) {
-  console.log('Setting up model handlers...');
+  console.log("Setting up model handlers...");
 
   // Store original method
   const originalUseModel = runtime.useModel.bind(runtime);
 
   // Override useModel to handle TEXT_SMALL
-  (runtime as any).useModel = async (modelType: any, params: any) => {
-    console.log('Mock useModel called:', modelType, params);
+  (
+    runtime as unknown as {
+      useModel: (modelType: ModelType, params: GenerateTextParams) => Promise<string>;
+    }
+  ).useModel = async (modelType: ModelType, params: GenerateTextParams) => {
+    console.log("Mock useModel called:", modelType, params);
 
-    if (modelType === ModelType.TEXT_SMALL || modelType === 'TEXT_SMALL') {
+    if (modelType === ModelType.TEXT_SMALL || modelType === "TEXT_SMALL") {
       // Extract the user message from params
-      const messages = params.messages || [];
-      const userMessageObj = messages.find((m: any) => m.role === 'user');
-      let userMessage = userMessageObj?.content || '';
+      const messages = (params.messages || []) as Array<{ role?: string; content?: string }>;
+      const userMessageObj = messages.find((m) => m.role === "user");
+      let userMessage = userMessageObj?.content || "";
 
       // The prompt contains the actual user message in quotes after "User message:"
       const actualMessageMatch = userMessage.match(/User message:\s*"([^"]+)"/);
@@ -706,10 +719,10 @@ function setupModelHandlers(runtime: IAgentRuntime) {
         userMessage = actualMessageMatch[1];
       }
 
-      console.log('Extracting from actual user message:', userMessage);
+      console.log("Extracting from actual user message:", userMessage);
 
       // Extract form values from the user message
-      const values: Record<string, any> = {};
+      const values: Record<string, string | number | boolean> = {};
 
       // Extract name
       const nameMatch = userMessage.match(
@@ -727,9 +740,9 @@ function setupModelHandlers(runtime: IAgentRuntime) {
 
       // Extract message/description
       if (
-        userMessage.toLowerCase().includes('learn') ||
-        userMessage.toLowerCase().includes('services') ||
-        userMessage.toLowerCase().includes('about')
+        userMessage.toLowerCase().includes("learn") ||
+        userMessage.toLowerCase().includes("services") ||
+        userMessage.toLowerCase().includes("about")
       ) {
         values.message = userMessage;
       }
@@ -754,8 +767,8 @@ function setupModelHandlers(runtime: IAgentRuntime) {
       }
 
       // Extract language choice
-      if (userMessage.toLowerCase().includes('typescript')) {
-        values.language = 'TypeScript';
+      if (userMessage.toLowerCase().includes("typescript")) {
+        values.language = "TypeScript";
       }
 
       // Extract framework
@@ -764,7 +777,7 @@ function setupModelHandlers(runtime: IAgentRuntime) {
         values.framework = frameworkMatch[1];
       }
 
-      console.log('Extracted values:', values);
+      console.log("Extracted values:", values);
 
       return JSON.stringify(values);
     }

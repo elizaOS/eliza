@@ -1,10 +1,7 @@
+export { DEFAULT_FORBIDDEN_COMMANDS, loadShellConfig } from "./config";
 export {
-  validatePath,
-  isSafeCommand,
   extractBaseCommand,
   isForbiddenCommand,
+  isSafeCommand,
+  validatePath,
 } from "./pathUtils";
-
-export { loadShellConfig, DEFAULT_FORBIDDEN_COMMANDS } from "./config";
-
-

@@ -9,4 +9,3 @@
   "include": ["index.ts", "index.node.ts", "index.browser.ts"],
   "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
 }
-

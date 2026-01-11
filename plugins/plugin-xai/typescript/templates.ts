@@ -3,7 +3,7 @@
  * DO NOT EDIT - Generated from ./generated/prompts/typescript/prompts.ts
  */
 export {
-  twitterActionTemplate,
   quoteTweetTemplate,
   replyTweetTemplate,
-} from './generated/prompts/typescript/prompts.js';
+  twitterActionTemplate,
+} from "./generated/prompts/typescript/prompts.js";

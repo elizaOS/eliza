@@ -1,0 +1,27 @@
+# Task: Extract Form Field Values
+
+## User Message
+<user_message>
+{{user_message}}
+</user_message>
+
+## Fields to Extract
+<fields>
+{{field_descriptions}}
+</fields>
+
+## Instructions
+Parse the user's message and extract values for the listed form fields.
+Only extract values that are explicitly stated in the message.
+If a value cannot be found, omit that field from the response.
+
+Return your response in XML format:
+<response>
+{{field_templates}}
+</response>
+
+Be precise and extract only what is explicitly stated.
+
+
+
+

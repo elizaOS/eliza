@@ -228,8 +228,7 @@ export const formatPosts = ({
     ([, messagesA], [, messagesB]) => {
       const lastMessageB = messagesB[messagesB.length - 1];
       const lastMessageA = messagesA[messagesA.length - 1];
-      return ((lastMessageB && lastMessageB.createdAt) || 0) -
-        ((lastMessageA && lastMessageA.createdAt) || 0);
+      return (lastMessageB?.createdAt || 0) - (lastMessageA?.createdAt || 0);
     },
   );
 
@@ -246,9 +245,9 @@ export const formatPosts = ({
             "No entity found for message",
           );
         }
-        const entityNames = entity && entity.names;
-        const userName = (entityNames && entityNames[0]) || "Unknown User";
-        const displayName = (entityNames && entityNames[0]) || "unknown";
+        const entityNames = entity?.names;
+        const userName = entityNames?.[0] || "Unknown User";
+        const displayName = entityNames?.[0] || "unknown";
 
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ""}
@@ -289,9 +288,11 @@ export const formatMessages = ({
 
       const messageActions = (message.content as Content).actions;
       const messageThought = (message.content as Content).thought;
-      const foundEntity = entities.find((entity: Entity) => entity.id === message.entityId);
-      const foundEntityNames = foundEntity && foundEntity.names;
-      const formattedName = (foundEntityNames && foundEntityNames[0]) || "Unknown User";
+      const foundEntity = entities.find(
+        (entity: Entity) => entity.id === message.entityId,
+      );
+      const foundEntityNames = foundEntity?.names;
+      const formattedName = foundEntityNames?.[0] || "Unknown User";
 
       const attachments = (message.content as Content).attachments;
 
@@ -949,7 +950,9 @@ function getCachedSha1(message: string): Uint8Array {
   if (sha1Cache.size > 10000) {
     // Remove oldest entries (first ones in iteration order)
     const keysToDelete = Array.from(sha1Cache.keys()).slice(0, 5000);
-    keysToDelete.forEach((key) => sha1Cache.delete(key));
+    for (const key of keysToDelete) {
+      sha1Cache.delete(key);
+    }
   }
 
   return digest;

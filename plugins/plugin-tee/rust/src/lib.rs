@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS TEE Plugin - Trusted Execution Environment Integration
 //!
 //! This crate provides TEE integration for secure key management and remote attestation.

@@ -36,5 +36,3 @@ export interface TeeVendorInterface {
   /** Get the vendor description */
   getDescription(): string;
 }
-
-

@@ -114,11 +114,10 @@ export const characterProvider: Provider = {
                 const messageContent = message.content;
                 const messageContentAction = messageContent.action;
                 const messageContentActions = messageContent.actions;
-                const actionsText = messageContentAction || (messageContentActions && messageContentActions.join(", "));
+                const actionsText =
+                  messageContentAction || messageContentActions?.join(", ");
                 let messageString = `${message.name}: ${messageContent.text}${
-                  actionsText
-                    ? ` (actions: ${actionsText})`
-                    : ""
+                  actionsText ? ` (actions: ${actionsText})` : ""
                 }`;
                 exampleNames.forEach((name, index) => {
                   const placeholder = `{{name${index + 1}}}`;
@@ -141,14 +140,14 @@ export const characterProvider: Provider = {
 
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-    const roomType = room && room.type;
+    const roomType = room?.type;
     const isPostFormat =
       roomType === ChannelType.FEED || roomType === ChannelType.THREAD;
 
     // Style directions
     const characterStyle = character.style;
-    const characterStyleAll = characterStyle && characterStyle.all;
-    const characterStylePost = characterStyle && characterStyle.post;
+    const characterStyleAll = characterStyle?.all;
+    const characterStylePost = characterStyle?.post;
     const postDirections =
       (characterStyleAll && characterStyleAll.length > 0) ||
       (characterStylePost && characterStylePost.length > 0)
@@ -162,7 +161,7 @@ export const characterProvider: Provider = {
           )
         : "";
 
-    const characterStyleChat = characterStyle && characterStyle.chat;
+    const characterStyleChat = characterStyle?.chat;
     const messageDirections =
       (characterStyleAll && characterStyleAll.length > 0) ||
       (characterStyleChat && characterStyleChat.length > 0)

@@ -1,22 +1,22 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "fs/promises";
-import * as path from "path";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import type { UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { ensureSessionIdentity } from "../lib/identity.js";
 import {
-  saveSession,
-  loadSession,
   clearSession,
-  toEpoch,
-  toDate,
-  sanitizeRole,
-  serializeRoom,
   deserializeRoom,
   isValidSessionData,
-  type SessionState,
+  loadSession,
   type SerializedRoom,
+  type SessionState,
+  sanitizeRole,
+  saveSession,
+  serializeRoom,
+  toDate,
+  toEpoch,
 } from "../lib/session.js";
-import type { UUID } from "@elizaos/core";
 import type { ChatRoom, Message } from "../types.js";
-import { ensureSessionIdentity } from "../lib/identity.js";
 
 // ============================================================================
 // Test Fixtures
@@ -47,7 +47,9 @@ function createTestRoom(overrides: Partial<ChatRoom> = {}): ChatRoom {
   };
 }
 
-function createTestSession(overrides: Partial<SessionState> = {}): SessionState {
+function createTestSession(
+  overrides: Partial<SessionState> = {},
+): SessionState {
   return {
     rooms: [createTestRoom()],
     currentRoomId: "room-1",
@@ -304,7 +306,11 @@ describe("session round-trip", () => {
       messages: [
         createTestMessage({ id: "1", role: "user", content: "Hello" }),
         createTestMessage({ id: "2", role: "assistant", content: "Hi there!" }),
-        createTestMessage({ id: "3", role: "system", content: "System message" }),
+        createTestMessage({
+          id: "3",
+          role: "system",
+          content: "System message",
+        }),
       ],
     });
 
@@ -350,14 +356,14 @@ describe("saveSession and loadSession", () => {
     const loaded = await loadSession();
 
     expect(loaded).not.toBeNull();
-    expect(loaded!.currentRoomId).toBe(session.currentRoomId);
-    expect(loaded!.currentTaskId).toBe(session.currentTaskId);
-    expect(loaded!.rooms).toHaveLength(1);
-    expect(loaded!.rooms[0].name).toBe("Test Room");
-    expect(loaded!.focusedPane).toBe("tasks");
-    expect(loaded!.taskPaneVisibility).toBe("shown");
-    expect(loaded!.taskPaneWidthFraction).toBe(0.55);
-    expect(loaded!.showFinishedTasks).toBe(true);
+    expect(loaded?.currentRoomId).toBe(session.currentRoomId);
+    expect(loaded?.currentTaskId).toBe(session.currentTaskId);
+    expect(loaded?.rooms).toHaveLength(1);
+    expect(loaded?.rooms[0].name).toBe("Test Room");
+    expect(loaded?.focusedPane).toBe("tasks");
+    expect(loaded?.taskPaneVisibility).toBe("shown");
+    expect(loaded?.taskPaneWidthFraction).toBe(0.55);
+    expect(loaded?.showFinishedTasks).toBe(true);
   });
 
   test("should return null for missing session file", async () => {
@@ -399,7 +405,7 @@ describe("saveSession and loadSession", () => {
         currentRoomId: "room-1",
         rooms: [],
       }),
-      "utf-8"
+      "utf-8",
     );
 
     const loaded = await loadSession();
@@ -416,7 +422,6 @@ describe("saveSession and loadSession", () => {
 
     expect(loaded).not.toBeNull();
     // Should fall back to first room's ID
-    expect(loaded!.currentRoomId).toBe("room-1");
+    expect(loaded?.currentRoomId).toBe("room-1");
   });
 });
-

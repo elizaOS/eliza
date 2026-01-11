@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Geist Mono', monospace;
+  font-family: "Geist Mono", monospace;
   font-weight: 600;
   font-size: 1.25rem;
   color: white;
@@ -248,7 +248,9 @@
   font-family: inherit;
   font-size: 0.95rem;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .input:focus {
@@ -276,7 +278,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s, transform 0.1s;
+  transition:
+    background 0.2s,
+    transform 0.1s;
 }
 
 .sendButton:hover:not(:disabled) {
@@ -302,7 +306,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .footerMeta {
@@ -354,8 +360,4 @@
     height: 44px;
   }
 }
-
-
-
-
 

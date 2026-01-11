@@ -36,14 +36,14 @@ use uuid::Uuid;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create configuration
     let config = MemoryConfig::default();
-    
+
     // Initialize service
     let service = MemoryService::new(config);
-    
+
     // Store a long-term memory
     let agent_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
-    
+
     let memory = service.store_long_term_memory(
         agent_id,
         entity_id,
@@ -54,21 +54,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         None,
     ).await?;
-    
+
     println!("Stored memory: {:?}", memory);
-    
+
     Ok(())
 }
 ```
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MEMORY_SUMMARIZATION_THRESHOLD` | 16 | Messages before summarization |
-| `MEMORY_RETAIN_RECENT` | 6 | Recent messages to keep |
-| `MEMORY_LONG_TERM_ENABLED` | true | Enable long-term extraction |
-| `MEMORY_CONFIDENCE_THRESHOLD` | 0.85 | Minimum confidence to store |
+| Setting                          | Default | Description                   |
+| -------------------------------- | ------- | ----------------------------- |
+| `MEMORY_SUMMARIZATION_THRESHOLD` | 16      | Messages before summarization |
+| `MEMORY_RETAIN_RECENT`           | 6       | Recent messages to keep       |
+| `MEMORY_LONG_TERM_ENABLED`       | true    | Enable long-term extraction   |
+| `MEMORY_CONFIDENCE_THRESHOLD`    | 0.85    | Minimum confidence to store   |
 
 ## Development
 
@@ -86,5 +86,6 @@ cargo clippy --all-targets -- -D warnings
 ## License
 
 MIT
+
 
 

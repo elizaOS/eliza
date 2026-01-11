@@ -2,13 +2,13 @@
  * Image model handlers for OpenRouter.
  */
 
-import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from '@elizaos/core';
-import { logger, ModelType } from '@elizaos/core';
-import { generateText } from 'ai';
+import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { generateText } from "ai";
 
-import { createOpenRouterProvider } from '../providers';
-import { getImageModel, getImageGenerationModel } from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
+import { createOpenRouterProvider } from "../providers";
+import { getImageGenerationModel, getImageModel } from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
 
 /**
  * IMAGE_DESCRIPTION model handler.
@@ -22,18 +22,19 @@ export async function handleImageDescription(
 
   logger.log(`[OpenRouter] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
-  const imageUrl = typeof params === 'string' ? params : params.imageUrl;
-  const prompt = typeof params === 'string' ? 'Describe this image' : params.prompt || 'Describe this image';
+  const imageUrl = typeof params === "string" ? params : params.imageUrl;
+  const prompt =
+    typeof params === "string" ? "Describe this image" : params.prompt || "Describe this image";
 
   try {
     const generateParams = {
       model: openrouter.chat(modelName),
       messages: [
         {
-          role: 'user' as const,
+          role: "user" as const,
           content: [
-            { type: 'text' as const, text: prompt },
-            { type: 'image' as const, image: imageUrl },
+            { type: "text" as const, text: prompt },
+            { type: "image" as const, image: imageUrl },
           ],
         },
       ],

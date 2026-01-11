@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration utilities for Vercel AI Gateway plugin.
 
 use crate::error::{GatewayError, Result};
@@ -89,5 +90,10 @@ mod tests {
         assert!(model_supports_temperature("claude-3-sonnet"));
     }
 }
+
+
+
+
+
 
 

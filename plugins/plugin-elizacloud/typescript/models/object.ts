@@ -2,7 +2,7 @@ import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateObject, JSONParseError } from "ai";
 import { createOpenAIClient } from "../providers/openai";
-import { getSmallModel, getLargeModel } from "../utils/config";
+import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { getJsonRepairFunction } from "../utils/helpers";
 
@@ -29,7 +29,9 @@ async function generateObjectByModelType(
 
   try {
     const { object, usage } = await generateObject({
-      model: openai.languageModel(modelName) as unknown as Parameters<typeof generateObject>[0]['model'],
+      model: openai.languageModel(modelName) as unknown as Parameters<
+        typeof generateObject
+      >[0]["model"],
       output: "no-schema",
       prompt: params.prompt,
       temperature: temperature,

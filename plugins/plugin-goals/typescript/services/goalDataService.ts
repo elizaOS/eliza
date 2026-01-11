@@ -1,14 +1,40 @@
-import { type IAgentRuntime, type UUID, logger, Service, ServiceType, asUUID } from '@elizaos/core';
-import { and, eq, isNull, asc, inArray, type SQL } from 'drizzle-orm';
-import { goalsTable, goalTagsTable } from '../schema.js';
-import { v4 as uuidv4 } from 'uuid';
+import { asUUID, type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
+import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
+import { goalsTable, goalTagsTable } from "../schema.js";
 
 // Type helper for Drizzle db instance
+type DrizzleTable = unknown;
+type DrizzleCondition = unknown;
+type DrizzleValues = Record<string, unknown>;
+type DrizzleFields = Record<string, unknown>;
+type DrizzleResult = Record<string, unknown>;
+type OrderByArg = unknown;
+
 type DrizzleDB = {
-  insert: (table: any) => { values: (values: any) => { returning: () => Promise<any[]>; onConflictDoNothing: () => { execute: () => Promise<void> } } };
-  select: (fields?: any) => { from: (table: any) => { where: (condition?: any) => { orderBy: (...args: any[]) => Promise<any[]> } & Promise<any[]> } };
-  update: (table: any) => { set: (values: any) => { where: (condition: any) => Promise<any> } };
-  delete: (table: any) => { where: (condition: any) => Promise<any> };
+  insert: (table: DrizzleTable) => {
+    values: (values: DrizzleValues | DrizzleValues[]) => {
+      returning: () => Promise<DrizzleResult[]>;
+      onConflictDoNothing: () => { execute: () => Promise<void> };
+    };
+  };
+  select: (fields?: DrizzleFields) => {
+    from: (table: DrizzleTable) => {
+      where: (
+        condition?: DrizzleCondition
+      ) => { orderBy: (...args: OrderByArg[]) => Promise<DrizzleResult[]> } & Promise<
+        DrizzleResult[]
+      >;
+    };
+  };
+  update: (table: DrizzleTable) => {
+    set: (values: DrizzleValues) => {
+      where: (condition: DrizzleCondition) => Promise<DrizzleResult>;
+    };
+  };
+  delete: (table: DrizzleTable) => {
+    where: (condition: DrizzleCondition) => Promise<DrizzleResult>;
+  };
 };
 
 /**
@@ -17,7 +43,7 @@ type DrizzleDB = {
 export interface GoalData {
   id: UUID;
   agentId: UUID;
-  ownerType: 'agent' | 'entity';
+  ownerType: "agent" | "entity";
   ownerId: UUID;
   name: string;
   description?: string | null;
@@ -25,7 +51,7 @@ export interface GoalData {
   completedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   tags?: string[];
 }
 
@@ -44,20 +70,20 @@ export class GoalDataService {
    */
   async createGoal(params: {
     agentId: UUID;
-    ownerType: 'agent' | 'entity';
+    ownerType: "agent" | "entity";
     ownerId: UUID;
     name: string;
     description?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
     tags?: string[];
   }): Promise<UUID | null> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
-      if (!db) throw new Error('Database not available');
+      if (!db) throw new Error("Database not available");
 
       // Create the goal
       const goalId = asUUID(uuidv4());
-      const values: any = {
+      const values: DrizzleValues = {
         id: goalId,
         agentId: params.agentId,
         ownerType: params.ownerType,
@@ -65,16 +91,13 @@ export class GoalDataService {
         name: params.name,
         metadata: params.metadata || {},
       };
-      
+
       // Only include description if it's provided
       if (params.description !== undefined) {
         values.description = params.description;
       }
-      
-      const [goal] = await db
-        .insert(goalsTable)
-        .values(values)
-        .returning();
+
+      const [goal] = await db.insert(goalsTable).values(values).returning();
 
       if (!goal) return null;
 
@@ -82,16 +105,16 @@ export class GoalDataService {
       if (params.tags && params.tags.length > 0) {
         const tagInserts = params.tags.map((tag) => ({
           id: asUUID(uuidv4()),
-          goalId: goal.id,
+          goalId,
           tag,
         }));
 
         await db.insert(goalTagsTable).values(tagInserts);
       }
 
-      return goal.id;
+      return goalId;
     } catch (error) {
-      logger.error('Error creating goal:', error);
+      logger.error("Error creating goal:", error);
       throw error;
     }
   }
@@ -100,14 +123,14 @@ export class GoalDataService {
    * Get goals with optional filters
    */
   async getGoals(filters?: {
-    ownerType?: 'agent' | 'entity';
+    ownerType?: "agent" | "entity";
     ownerId?: UUID;
     isCompleted?: boolean;
     tags?: string[];
   }): Promise<GoalData[]> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
-      if (!db) throw new Error('Database not available');
+      if (!db) throw new Error("Database not available");
 
       const conditions: SQL[] = [];
       if (filters?.ownerType) {
@@ -127,7 +150,7 @@ export class GoalDataService {
         .orderBy(asc(goalsTable.createdAt));
 
       // Get tags for all goals
-      const goalIds = goals.map((goal) => goal.id);
+      const goalIds = goals.map((goal) => asUUID(goal.id as string));
       if (goalIds.length === 0) return [];
 
       const tags = await db
@@ -142,31 +165,42 @@ export class GoalDataService {
       // Group tags by goal
       const tagsByGoal = tags.reduce(
         (acc, tag) => {
-          if (!acc[tag.goalId]) acc[tag.goalId] = [];
-          acc[tag.goalId].push(tag.tag);
+          const tagGoalId = asUUID(tag.goalId as string);
+          if (!acc[tagGoalId]) acc[tagGoalId] = [];
+          const goalTags = acc[tagGoalId] as string[];
+          goalTags.push(tag.tag as string);
           return acc;
         },
-        {} as Record<string, string[]>
+        {} as Record<UUID, string[]>
       );
 
       // Filter by tags if specified
       let filteredGoals = goals;
       if (filters?.tags && filters.tags.length > 0) {
         filteredGoals = goals.filter((goal) => {
-          const goalTags = tagsByGoal[goal.id] || [];
-          return filters.tags!.some((tag) => goalTags.includes(tag));
+          const goalId = asUUID(goal.id as string);
+          const goalTags = (tagsByGoal[goalId] || []) as string[];
+          return filters.tags?.some((tag) => goalTags.includes(tag));
         });
       }
 
-      return filteredGoals.map((goal) => ({
-        ...goal,
-        tags: tagsByGoal[goal.id] || [],
-        createdAt: new Date(goal.createdAt),
-        updatedAt: new Date(goal.updatedAt),
-        completedAt: goal.completedAt ? new Date(goal.completedAt) : null,
-      }));
+      return filteredGoals.map((goal) => {
+        const goalId = asUUID(goal.id as string);
+        return {
+          ...goal,
+          id: goalId,
+          agentId: asUUID(goal.agentId as string),
+          ownerId: asUUID(goal.ownerId as string),
+          tags: tagsByGoal[goalId] || [],
+          createdAt: new Date(goal.createdAt as string | number | Date),
+          updatedAt: new Date(goal.updatedAt as string | number | Date),
+          completedAt: goal.completedAt
+            ? new Date(goal.completedAt as string | number | Date)
+            : null,
+        } as GoalData;
+      });
     } catch (error) {
-      logger.error('Error getting goals:', error);
+      logger.error("Error getting goals:", error);
       throw error;
     }
   }
@@ -177,7 +211,7 @@ export class GoalDataService {
   async getGoal(goalId: UUID): Promise<GoalData | null> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
-      if (!db) throw new Error('Database not available');
+      if (!db) throw new Error("Database not available");
 
       const [goal] = await db.select().from(goalsTable).where(eq(goalsTable.id, goalId));
 
@@ -188,13 +222,16 @@ export class GoalDataService {
 
       return {
         ...goal,
-        tags: tags.map((t) => t.tag),
-        createdAt: new Date(goal.createdAt),
-        updatedAt: new Date(goal.updatedAt),
-        completedAt: goal.completedAt ? new Date(goal.completedAt) : null,
-      };
+        id: asUUID(goal.id as string),
+        agentId: asUUID(goal.agentId as string),
+        ownerId: asUUID(goal.ownerId as string),
+        tags: tags.map((t) => t.tag as string),
+        createdAt: new Date(goal.createdAt as string | number | Date),
+        updatedAt: new Date(goal.updatedAt as string | number | Date),
+        completedAt: goal.completedAt ? new Date(goal.completedAt as string | number | Date) : null,
+      } as GoalData;
     } catch (error) {
-      logger.error('Error getting goal:', error);
+      logger.error("Error getting goal:", error);
       throw error;
     }
   }
@@ -209,16 +246,16 @@ export class GoalDataService {
       description?: string;
       isCompleted?: boolean;
       completedAt?: Date;
-      metadata?: Record<string, any>;
+      metadata?: Record<string, unknown>;
       tags?: string[];
     }
   ): Promise<boolean> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
-      if (!db) throw new Error('Database not available');
+      if (!db) throw new Error("Database not available");
 
       // Update goal fields
-      const fieldsToUpdate: any = {
+      const fieldsToUpdate: DrizzleValues = {
         updatedAt: new Date(),
       };
 
@@ -249,7 +286,7 @@ export class GoalDataService {
 
       return true;
     } catch (error) {
-      logger.error('Error updating goal:', error);
+      logger.error("Error updating goal:", error);
       throw error;
     }
   }
@@ -260,12 +297,12 @@ export class GoalDataService {
   async deleteGoal(goalId: UUID): Promise<boolean> {
     try {
       const db = this.runtime.db as DrizzleDB | undefined;
-      if (!db) throw new Error('Database not available');
+      if (!db) throw new Error("Database not available");
 
       await db.delete(goalsTable).where(eq(goalsTable.id, goalId));
       return true;
     } catch (error) {
-      logger.error('Error deleting goal:', error);
+      logger.error("Error deleting goal:", error);
       throw error;
     }
   }
@@ -273,7 +310,7 @@ export class GoalDataService {
   /**
    * Get uncompleted goals
    */
-  async getUncompletedGoals(ownerType?: 'agent' | 'entity', ownerId?: UUID): Promise<GoalData[]> {
+  async getUncompletedGoals(ownerType?: "agent" | "entity", ownerId?: UUID): Promise<GoalData[]> {
     try {
       const conditions = [eq(goalsTable.isCompleted, false)];
 
@@ -290,7 +327,7 @@ export class GoalDataService {
         ownerId,
       });
     } catch (error) {
-      logger.error('Error getting uncompleted goals:', error);
+      logger.error("Error getting uncompleted goals:", error);
       throw error;
     }
   }
@@ -298,7 +335,7 @@ export class GoalDataService {
   /**
    * Get completed goals
    */
-  async getCompletedGoals(ownerType?: 'agent' | 'entity', ownerId?: UUID): Promise<GoalData[]> {
+  async getCompletedGoals(ownerType?: "agent" | "entity", ownerId?: UUID): Promise<GoalData[]> {
     try {
       return this.getGoals({
         isCompleted: true,
@@ -306,7 +343,7 @@ export class GoalDataService {
         ownerId,
       });
     } catch (error) {
-      logger.error('Error getting completed goals:', error);
+      logger.error("Error getting completed goals:", error);
       throw error;
     }
   }
@@ -315,7 +352,7 @@ export class GoalDataService {
    * Count goals with filters
    */
   async countGoals(
-    ownerType: 'agent' | 'entity',
+    ownerType: "agent" | "entity",
     ownerId: UUID,
     isCompleted?: boolean
   ): Promise<number> {
@@ -327,7 +364,7 @@ export class GoalDataService {
       });
       return goals.length;
     } catch (error) {
-      logger.error('Error counting goals:', error);
+      logger.error("Error counting goals:", error);
       throw error;
     }
   }
@@ -335,14 +372,14 @@ export class GoalDataService {
   /**
    * Get all goals for a specific owner (both completed and uncompleted)
    */
-  async getAllGoalsForOwner(ownerType: 'agent' | 'entity', ownerId: UUID): Promise<GoalData[]> {
+  async getAllGoalsForOwner(ownerType: "agent" | "entity", ownerId: UUID): Promise<GoalData[]> {
     try {
       return this.getGoals({
         ownerType,
         ownerId,
       });
     } catch (error) {
-      logger.error('Error getting all goals for owner:', error);
+      logger.error("Error getting all goals for owner:", error);
       throw error;
     }
   }
@@ -353,7 +390,7 @@ export class GoalDataService {
  */
 export function createGoalDataService(runtime: IAgentRuntime): GoalDataService {
   if (!runtime.db) {
-    throw new Error('Database instance not available on runtime');
+    throw new Error("Database instance not available on runtime");
   }
   return new GoalDataService(runtime);
 }
@@ -362,12 +399,12 @@ export function createGoalDataService(runtime: IAgentRuntime): GoalDataService {
  * Service wrapper for the GoalDataService to be registered with the plugin
  */
 export class GoalDataServiceWrapper extends Service {
-  static serviceName = 'goalDataService';
-  static serviceType = 'GOAL_DATA' as any; // Custom service type for goal data
+  static serviceName = "goalDataService";
+  static serviceType = "GOAL_DATA" as const; // Custom service type for goal data
 
   private goalDataService: GoalDataService | null = null;
 
-  capabilityDescription = 'Manages goal data storage and retrieval';
+  capabilityDescription = "Manages goal data storage and retrieval";
 
   async stop(): Promise<void> {
     // Clean up any resources if needed
@@ -378,7 +415,7 @@ export class GoalDataServiceWrapper extends Service {
     const service = new GoalDataServiceWrapper();
 
     if (!runtime.db) {
-      logger.warn('Database not available, GoalDataService will be limited');
+      logger.warn("Database not available, GoalDataService will be limited");
     } else {
       service.goalDataService = new GoalDataService(runtime);
     }

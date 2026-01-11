@@ -23,22 +23,24 @@ def _get_text(element: Element | None, tag: str, namespaces: dict[str, str] | No
     """Safely extract text content from an XML element."""
     if element is None:
         return ""
-    
+
     child = element.find(tag, namespaces)
     if child is None or child.text is None:
         return ""
-    
+
     text = child.text.strip()
     # Decode HTML entities
     text = html.unescape(text)
     return text
 
 
-def _get_all_text(element: Element | None, tag: str, namespaces: dict[str, str] | None = None) -> list[str]:
+def _get_all_text(
+    element: Element | None, tag: str, namespaces: dict[str, str] | None = None
+) -> list[str]:
     """Safely extract all text content from matching XML elements."""
     if element is None:
         return []
-    
+
     results: list[str] = []
     for child in element.findall(tag, namespaces):
         if child.text:
@@ -50,8 +52,8 @@ def _get_all_text(element: Element | None, tag: str, namespaces: dict[str, str] 
 
 def _parse_cdata(text: str) -> str:
     """Remove CDATA wrappers from text."""
-    cdata_pattern = re.compile(r'<!\[CDATA\[(.*?)\]\]>', re.DOTALL)
-    return cdata_pattern.sub(r'\1', text)
+    cdata_pattern = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.DOTALL)
+    return cdata_pattern.sub(r"\1", text)
 
 
 def _parse_image(channel: Element) -> RssImage | None:
@@ -59,7 +61,7 @@ def _parse_image(channel: Element) -> RssImage | None:
     image = channel.find("image")
     if image is None:
         return None
-    
+
     return RssImage(
         url=_get_text(image, "url"),
         title=_get_text(image, "title"),
@@ -74,7 +76,7 @@ def _parse_enclosure(item: Element) -> RssEnclosure | None:
     enclosure = item.find("enclosure")
     if enclosure is None:
         return None
-    
+
     return RssEnclosure(
         url=enclosure.get("url", ""),
         type=enclosure.get("type", ""),
@@ -86,7 +88,7 @@ def _parse_rss_item(item: Element) -> RssItem:
     """Parse a single RSS item element."""
     description = _get_text(item, "description")
     description = _parse_cdata(description)
-    
+
     return RssItem(
         title=_get_text(item, "title"),
         link=_get_text(item, "link"),
@@ -109,24 +111,25 @@ def _parse_atom_item(entry: Element, namespaces: dict[str, str]) -> RssItem:
         link_elem = entry.find("atom:link", namespaces)
     if link_elem is not None:
         link = link_elem.get("href", "")
-    
+
     # Get content or summary
     description = _get_text(entry, "atom:content", namespaces)
     if not description:
         description = _get_text(entry, "atom:summary", namespaces)
     description = _parse_cdata(description)
-    
+
     # Get categories
     categories: list[str] = []
     for cat in entry.findall("atom:category", namespaces):
         term = cat.get("term", "")
         if term:
             categories.append(term)
-    
+
     return RssItem(
         title=_get_text(entry, "atom:title", namespaces),
         link=link,
-        pubDate=_get_text(entry, "atom:published", namespaces) or _get_text(entry, "atom:updated", namespaces),
+        pubDate=_get_text(entry, "atom:published", namespaces)
+        or _get_text(entry, "atom:updated", namespaces),
         description=description,
         author=_get_text(entry, "atom:author/atom:name", namespaces),
         category=categories,
@@ -139,27 +142,27 @@ def _parse_atom_item(entry: Element, namespaces: dict[str, str]) -> RssItem:
 def parse_rss_to_json(xml_content: str) -> RssFeed:
     """
     Parse RSS or Atom XML content to a RssFeed object.
-    
+
     Args:
         xml_content: Raw XML string from feed
-        
+
     Returns:
         Parsed RssFeed object
-        
+
     Raises:
         ValueError: If the XML cannot be parsed or is not a valid feed
     """
     try:
         # Parse XML safely
         root = ET.fromstring(xml_content)
-        
+
         # Check for Atom feed
         if root.tag == "{http://www.w3.org/2005/Atom}feed" or root.tag == "feed":
             return _parse_atom_feed(root)
-        
+
         # Assume RSS feed
         return _parse_rss_feed(root)
-        
+
     except ET.ParseError as e:
         raise ValueError(f"Failed to parse XML: {e}") from e
 
@@ -169,15 +172,15 @@ def _parse_rss_feed(root: Element) -> RssFeed:
     channel = root.find("channel")
     if channel is None:
         raise ValueError("No channel element found in RSS feed")
-    
+
     description = _get_text(channel, "description")
     description = _parse_cdata(description)
-    
+
     # Parse items
     items: list[RssItem] = []
     for item in channel.findall("item"):
         items.append(_parse_rss_item(item))
-    
+
     return RssFeed(
         title=_get_text(channel, "title"),
         description=description,
@@ -197,7 +200,7 @@ def _parse_atom_feed(root: Element) -> RssFeed:
     """Parse an Atom feed."""
     # Define Atom namespace
     ns = {"atom": "http://www.w3.org/2005/Atom"}
-    
+
     # Handle both namespaced and non-namespaced Atom
     if root.tag == "{http://www.w3.org/2005/Atom}feed":
         namespaces = ns
@@ -205,15 +208,19 @@ def _parse_atom_feed(root: Element) -> RssFeed:
     else:
         namespaces = {}
         prefix = ""
-    
+
     # Get link - Atom uses link[@href] attribute
     link = ""
-    link_elem = root.find(f"{prefix}link[@rel='alternate']", namespaces) if namespaces else root.find("link[@rel='alternate']")
+    link_elem = (
+        root.find(f"{prefix}link[@rel='alternate']", namespaces)
+        if namespaces
+        else root.find("link[@rel='alternate']")
+    )
     if link_elem is None:
         link_elem = root.find(f"{prefix}link", namespaces) if namespaces else root.find("link")
     if link_elem is not None:
         link = link_elem.get("href", "")
-    
+
     # Get subtitle (Atom's description equivalent)
     description = ""
     if namespaces:
@@ -222,13 +229,13 @@ def _parse_atom_feed(root: Element) -> RssFeed:
         subtitle = root.find("subtitle")
         if subtitle is not None and subtitle.text:
             description = subtitle.text.strip()
-    
+
     # Parse entries
     items: list[RssItem] = []
     entry_tag = f"{prefix}entry" if prefix else "entry"
     for entry in root.findall(entry_tag, namespaces) if namespaces else root.findall("entry"):
         items.append(_parse_atom_item(entry, namespaces))
-    
+
     title = ""
     if namespaces:
         title = _get_text(root, "atom:title", namespaces)
@@ -236,7 +243,7 @@ def _parse_atom_feed(root: Element) -> RssFeed:
         title_elem = root.find("title")
         if title_elem is not None and title_elem.text:
             title = title_elem.text.strip()
-    
+
     return RssFeed(
         title=title,
         description=description,
@@ -267,5 +274,8 @@ def create_empty_feed() -> RssFeed:
         image=None,
         items=[],
     )
+
+
+
 
 

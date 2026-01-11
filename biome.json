@@ -1,6 +1,11 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "ignoreUnknown": true,
     "maxSize": 1048576
@@ -8,9 +13,46 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "correctness": {
+        "noUnusedPrivateClassMembers": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noImplicitAnyLet": "warn",
+        "useIterableCallbackReturn": "warn",
+        "noAssignInExpressions": "warn",
+        "useAdjacentOverloadSignatures": "warn"
+      },
+      "complexity": {
+        "noBannedTypes": "warn"
+      }
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

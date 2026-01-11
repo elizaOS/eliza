@@ -1,12 +1,13 @@
 """SAY_ALOUD Action - Speak text using SAM synthesizer."""
 
-import re
 import logging
+import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Protocol, Any, Callable, Awaitable
+from typing import Any, Protocol
 
-from ..types import SamTTSOptions, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS
 from ..services.sam_tts_service import SamTTSService
+from ..types import SPEECH_TRIGGERS, VOCALIZATION_PATTERNS, SamTTSOptions
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +86,17 @@ class SayAloudAction:
 
     name: str = "SAY_ALOUD"
     description: str = "Speak text aloud using SAM retro speech synthesizer"
-    examples: list[list[dict[str, Any]]] = field(default_factory=lambda: [
-        [
-            {"name": "{{user1}}", "content": {"text": "Can you say hello out loud?"}},
-            {"name": "{{agent}}", "content": {"text": "I'll say hello.", "action": "SAY_ALOUD"}},
-        ],
-    ])
+    examples: list[list[dict[str, Any]]] = field(
+        default_factory=lambda: [
+            [
+                {"name": "{{user1}}", "content": {"text": "Can you say hello out loud?"}},
+                {
+                    "name": "{{agent}}",
+                    "content": {"text": "I'll say hello.", "action": "SAY_ALOUD"},
+                },
+            ],
+        ]
+    )
 
     async def validate(self, runtime: Runtime, message: Memory) -> bool:
         """Check if action should trigger."""
@@ -126,11 +132,13 @@ class SayAloudAction:
         audio = await sam_service.speak_text(text_to_speak, voice_options)
 
         if callback:
-            await callback({
-                "text": f'I spoke: "{text_to_speak}"',
-                "action": "SAY_ALOUD",
-                "audioData": list(audio),
-            })
+            await callback(
+                {
+                    "text": f'I spoke: "{text_to_speak}"',
+                    "action": "SAY_ALOUD",
+                    "audioData": list(audio),
+                }
+            )
 
 
 say_aloud_action = SayAloudAction()

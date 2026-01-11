@@ -17,7 +17,13 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "allowImportingTsExtensions": true,
+    "baseUrl": "../../../",
+    "paths": {
+      "@elizaos/core": ["packages/typescript/src"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
+    }
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]

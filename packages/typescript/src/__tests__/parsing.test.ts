@@ -1,4 +1,4 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseBooleanFromText, parseJSONObjectFromText } from "../utils";
 
 describe("Parsing Module", () => {
@@ -52,7 +52,9 @@ describe("Parsing Module", () => {
     it("should throw for invalid JSON", () => {
       expect(() => parseJSONObjectFromText("invalid")).toThrow();
       expect(() => parseJSONObjectFromText("{invalid}")).toThrow();
-      expect(() => parseJSONObjectFromText("```json\n{invalid}\n```")).toThrow();
+      expect(() =>
+        parseJSONObjectFromText("```json\n{invalid}\n```"),
+      ).toThrow();
     });
   });
 });

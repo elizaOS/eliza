@@ -1,4 +1,4 @@
-declare module '@tensorflow-models/pose-detection' {
+declare module "@tensorflow-models/pose-detection" {
   export interface Keypoint {
     x: number;
     y: number;
@@ -18,13 +18,13 @@ declare module '@tensorflow-models/pose-detection' {
   }
 
   export enum SupportedModels {
-    PoseNet = 'PoseNet',
-    MoveNet = 'MoveNet',
-    BlazePose = 'BlazePose',
+    PoseNet = "PoseNet",
+    MoveNet = "MoveNet",
+    BlazePose = "BlazePose",
   }
 
   export interface PosenetModelConfig {
-    architecture?: 'MobileNetV1' | 'ResNet50';
+    architecture?: "MobileNetV1" | "ResNet50";
     outputStride?: number;
     inputResolution?: { width: number; height: number };
     multiplier?: number;

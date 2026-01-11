@@ -35,7 +35,7 @@ export const solanaEnvSchema = z
       z.object({
         SOLANA_SECRET_SALT: z.string().min(1).optional(),
       }),
-    ]),
+    ])
   )
   .and(
     z.object({
@@ -44,7 +44,7 @@ export const solanaEnvSchema = z
       SOLANA_RPC_URL: z.string().min(1, "RPC URL is required"),
       //HELIUS_API_KEY: z.string().min(1, 'Helius API key is required'),
       //BIRDEYE_API_KEY: z.string().min(1, 'Birdeye API key is required'),
-    }),
+    })
   );
 
 /**
@@ -60,9 +60,7 @@ export type SolanaConfig = z.infer<typeof solanaEnvSchema>;
  * @returns {Promise<SolanaConfig>} - A promise that resolves with the validated SolanaConfig object.
  * @throws {Error} - If the Solana configuration validation fails.
  */
-export async function validateSolanaConfig(
-  runtime: IAgentRuntime,
-): Promise<SolanaConfig> {
+export async function validateSolanaConfig(runtime: IAgentRuntime): Promise<SolanaConfig> {
   try {
     const config = {
       SOLANA_SECRET_SALT: runtime.getSetting("SOLANA_SECRET_SALT"), // wtf is this?
@@ -82,9 +80,7 @@ export async function validateSolanaConfig(
       const errorMessages = error.issues
         .map((err) => `${err.path.join(".")}: ${err.message}`)
         .join("\n");
-      throw new Error(
-        `Solana configuration validation failed:\n${errorMessages}`,
-      );
+      throw new Error(`Solana configuration validation failed:\n${errorMessages}`);
     }
     throw error;
   }

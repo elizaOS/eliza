@@ -10,8 +10,8 @@ from typing import Any
 from elizaos_browser.services.browser_service import BrowserService
 from elizaos_browser.types import ActionResult
 from elizaos_browser.utils.errors import (
-    BrowserError,
     ActionError,
+    BrowserError,
     SessionError,
     handle_browser_error,
 )
@@ -94,12 +94,10 @@ async def browser_select(
 
     except Exception as e:
         logger.error(f"Error in BROWSER_SELECT action: {e}")
-        error = ActionError("select", "dropdown", e)
-        handle_browser_error(error, callback)
+        browser_error: BrowserError = ActionError("select", "dropdown", e)
+        handle_browser_error(browser_error, callback)
         return ActionResult(
             success=False,
             error=str(e),
             data={"actionName": "BROWSER_SELECT"},
         )
-
-

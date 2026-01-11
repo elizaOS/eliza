@@ -1,10 +1,10 @@
-import { logger } from '@elizaos/core';
-import { pipeline, type TextToAudioPipeline } from '@huggingface/transformers';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fetch } from 'undici';
-import { MODEL_SPECS } from '../types';
-import { PassThrough, Readable } from 'node:stream';
+import fs from "node:fs";
+import path from "node:path";
+import { PassThrough, Readable } from "node:stream";
+import { logger } from "@elizaos/core";
+import { pipeline, type TextToAudioPipeline } from "@huggingface/transformers";
+import { fetch } from "undici";
+import { MODEL_SPECS } from "../types";
 
 // Audio Utils
 
@@ -23,10 +23,10 @@ function getWavHeader(
   bitsPerSample = 16
 ): Buffer {
   const wavHeader = Buffer.alloc(44);
-  wavHeader.write('RIFF', 0);
+  wavHeader.write("RIFF", 0);
   wavHeader.writeUInt32LE(36 + audioLength, 4); // Length of entire file in bytes minus 8
-  wavHeader.write('WAVE', 8);
-  wavHeader.write('fmt ', 12);
+  wavHeader.write("WAVE", 8);
+  wavHeader.write("fmt ", 12);
   wavHeader.writeUInt32LE(16, 16); // Length of format data
   wavHeader.writeUInt16LE(1, 20); // Type of format (1 is PCM)
   wavHeader.writeUInt16LE(channelCount, 22); // Number of channels
@@ -34,7 +34,7 @@ function getWavHeader(
   wavHeader.writeUInt32LE((sampleRate * bitsPerSample * channelCount) / 8, 28); // Byte rate
   wavHeader.writeUInt16LE((bitsPerSample * channelCount) / 8, 32); // Block align ((BitsPerSample * Channels) / 8)
   wavHeader.writeUInt16LE(bitsPerSample, 34); // Bits per sample
-  wavHeader.write('data', 36); // Data chunk header
+  wavHeader.write("data", 36); // Data chunk header
   wavHeader.writeUInt32LE(audioLength, 40); // Data chunk size
   return wavHeader;
 }
@@ -59,14 +59,14 @@ function prependWavHeader(
   const wavHeader = getWavHeader(audioLength, sampleRate, channelCount, bitsPerSample);
   let pushedHeader = false;
   const passThrough = new PassThrough();
-  readable.on('data', (data: Buffer) => {
+  readable.on("data", (data: Buffer) => {
     if (!pushedHeader) {
       passThrough.push(wavHeader);
       pushedHeader = true;
     }
     passThrough.push(data);
   });
-  readable.on('end', () => {
+  readable.on("end", () => {
     passThrough.end();
   });
   return passThrough;
@@ -84,9 +84,9 @@ export class TTSManager {
   private initializingPromise: Promise<void> | null = null;
 
   private constructor(cacheDir: string) {
-    this.cacheDir = path.join(cacheDir, 'tts');
+    this.cacheDir = path.join(cacheDir, "tts");
     this.ensureCacheDirectory();
-    logger.debug('TTSManager using Transformers.js initialized');
+    logger.debug("TTSManager using Transformers.js initialized");
   }
 
   public static getInstance(cacheDir: string): TTSManager {
@@ -99,20 +99,20 @@ export class TTSManager {
   private ensureCacheDirectory(): void {
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      logger.debug('Created TTS cache directory:', this.cacheDir);
+      logger.debug("Created TTS cache directory:", this.cacheDir);
     }
   }
 
   private async initialize(): Promise<void> {
     // Guard against concurrent calls: if an initialization is already in progress, return its promise.
     if (this.initializingPromise) {
-      logger.debug('TTS initialization already in progress, awaiting existing promise.');
+      logger.debug("TTS initialization already in progress, awaiting existing promise.");
       return this.initializingPromise;
     }
 
     // If already initialized, no need to do anything further.
     if (this.initialized) {
-      logger.debug('TTS already initialized.');
+      logger.debug("TTS already initialized.");
       return;
     }
 
@@ -120,18 +120,18 @@ export class TTSManager {
     // The promise is stored in this.initializingPromise and cleared in the finally block.
     this.initializingPromise = (async () => {
       try {
-        logger.info('Initializing TTS with Transformers.js backend...');
+        logger.info("Initializing TTS with Transformers.js backend...");
 
         const ttsModelSpec = MODEL_SPECS.tts.default;
         if (!ttsModelSpec) {
-          throw new Error('Default TTS model specification not found in MODEL_SPECS.');
+          throw new Error("Default TTS model specification not found in MODEL_SPECS.");
         }
         const modelName = ttsModelSpec.modelId;
         const speakerEmbeddingUrl = ttsModelSpec.defaultSpeakerEmbeddingUrl;
 
         // 1. Load the TTS Pipeline
         logger.info(`Loading TTS pipeline for model: ${modelName}`);
-        this.synthesizer = await pipeline('text-to-audio', modelName);
+        this.synthesizer = await pipeline("text-to-audio", modelName);
         logger.success(`TTS pipeline loaded successfully for model: ${modelName}`);
 
         // 2. Load Default Speaker Embedding (if specified)
@@ -140,14 +140,14 @@ export class TTSManager {
           const embeddingPath = path.join(this.cacheDir, embeddingFilename);
 
           if (fs.existsSync(embeddingPath)) {
-            logger.info('Loading default speaker embedding from cache...');
+            logger.info("Loading default speaker embedding from cache...");
             const buffer = fs.readFileSync(embeddingPath);
             this.defaultSpeakerEmbedding = new Float32Array(
               buffer.buffer,
               buffer.byteOffset,
               buffer.length / Float32Array.BYTES_PER_ELEMENT
             );
-            logger.success('Default speaker embedding loaded from cache.');
+            logger.success("Default speaker embedding loaded from cache.");
           } else {
             logger.info(`Downloading default speaker embedding from: ${speakerEmbeddingUrl}`);
             const response = await fetch(speakerEmbeddingUrl);
@@ -157,7 +157,7 @@ export class TTSManager {
             const buffer = await response.arrayBuffer();
             this.defaultSpeakerEmbedding = new Float32Array(buffer);
             fs.writeFileSync(embeddingPath, Buffer.from(buffer));
-            logger.success('Default speaker embedding downloaded and cached.');
+            logger.success("Default speaker embedding downloaded and cached.");
           }
         } else {
           logger.warn(
@@ -168,13 +168,13 @@ export class TTSManager {
 
         // Check synthesizer as embedding might be optional for some models
         if (!this.synthesizer) {
-          throw new Error('TTS initialization failed: Pipeline not loaded.');
+          throw new Error("TTS initialization failed: Pipeline not loaded.");
         }
 
-        logger.success('TTS initialization complete (Transformers.js)');
+        logger.success("TTS initialization complete (Transformers.js)");
         this.initialized = true;
       } catch (error) {
-        logger.error('TTS (Transformers.js) initialization failed:', {
+        logger.error("TTS (Transformers.js) initialization failed:", {
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
         });
@@ -185,7 +185,7 @@ export class TTSManager {
       } finally {
         // Clear the promise once initialization is complete (successfully or not)
         this.initializingPromise = null;
-        logger.debug('TTS initializingPromise cleared after completion/failure.');
+        logger.debug("TTS initializingPromise cleared after completion/failure.");
       }
     })();
 
@@ -204,11 +204,11 @@ export class TTSManager {
 
       // Check synthesizer is initialized (embedding might be null but handled in synthesizer call)
       if (!this.synthesizer) {
-        throw new Error('TTS Manager not properly initialized.');
+        throw new Error("TTS Manager not properly initialized.");
       }
 
-      logger.info('Starting speech generation with Transformers.js for text:', {
-        text: text.substring(0, 50) + '...',
+      logger.info("Starting speech generation with Transformers.js for text:", {
+        text: `${text.substring(0, 50)}...`,
       });
 
       // Generate audio using the pipeline
@@ -223,13 +223,13 @@ export class TTSManager {
       const audioFloat32 = output.audio;
       const samplingRate = output.sampling_rate;
 
-      logger.info('Raw audio data received from pipeline:', {
+      logger.info("Raw audio data received from pipeline:", {
         samplingRate,
         length: audioFloat32.length,
       });
 
       if (!audioFloat32 || audioFloat32.length === 0) {
-        throw new Error('TTS pipeline generated empty audio output.');
+        throw new Error("TTS pipeline generated empty audio output.");
       }
 
       // Convert Float32Array to Int16 Buffer (standard PCM for WAV)
@@ -240,7 +240,7 @@ export class TTSManager {
       }
       const audioBuffer = Buffer.from(pcmData.buffer);
 
-      logger.info('Audio data converted to 16-bit PCM Buffer:', {
+      logger.info("Audio data converted to 16-bit PCM Buffer:", {
         byteLength: audioBuffer.length,
       });
 
@@ -254,12 +254,12 @@ export class TTSManager {
         16 // Bit depth
       );
 
-      logger.success('Speech generation complete (Transformers.js)');
+      logger.success("Speech generation complete (Transformers.js)");
       return audioStream;
     } catch (error) {
-      logger.error('Transformers.js speech generation failed:', {
+      logger.error("Transformers.js speech generation failed:", {
         error: error instanceof Error ? error.message : String(error),
-        text: text.substring(0, 50) + '...',
+        text: `${text.substring(0, 50)}...`,
         stack: error instanceof Error ? error.stack : undefined,
       });
       throw error;

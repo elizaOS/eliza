@@ -1,6 +1,7 @@
 """Tests for configuration."""
 
 import os
+
 import pytest
 
 from elizaos_plugin_discord.config import DiscordConfig

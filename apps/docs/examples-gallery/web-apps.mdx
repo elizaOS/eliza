@@ -1,18 +1,18 @@
 ---
-title: 'Web Applications'
-description: 'Browser-based elizaOS examples with React, Next.js, and vanilla HTML'
+title: "Web Applications"
+description: "Browser-based elizaOS examples with React, Next.js, and vanilla HTML"
 ---
 
 Build web applications powered by elizaOS agents.
 
 ## Available Examples
 
-| Example | Framework | Location | Features |
-|---------|-----------|----------|----------|
-| HTML ELIZA | Vanilla JS | `examples/html/` | Zero dependencies, CRT UI |
-| React | React + Vite | `examples/react/` | Full React app |
-| React WASM | React + Rust | `examples/react-wasm/` | Rust WASM core |
-| Next.js | Next.js 14 | `examples/next/` | SSR + API routes |
+| Example    | Framework    | Location               | Features                  |
+| ---------- | ------------ | ---------------------- | ------------------------- |
+| HTML ELIZA | Vanilla JS   | `examples/html/`       | Zero dependencies, CRT UI |
+| React      | React + Vite | `examples/react/`      | Full React app            |
+| React WASM | React + Rust | `examples/react-wasm/` | Rust WASM core            |
+| Next.js    | Next.js 14   | `examples/next/`       | SSR + API routes          |
 
 ---
 
@@ -26,6 +26,7 @@ open index.html  # Or use a local server
 ```
 
 **Features:**
+
 - Pure HTML, CSS, JavaScript
 - ES modules via import maps
 - Classic ELIZA pattern matching (no API keys)
@@ -36,29 +37,29 @@ open index.html  # Or use a local server
 
 ```html
 <script type="importmap">
-{
-  "imports": {
-    "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
-    "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js"
+  {
+    "imports": {
+      "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
+      "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js"
+    }
   }
-}
 </script>
 
 <script type="module">
-import { AgentRuntime, ModelType } from "@elizaos/core";
-import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+  import { AgentRuntime, ModelType } from "@elizaos/core";
+  import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 
-const runtime = new AgentRuntime({
-  character: { name: "Eliza", bio: "A psychotherapist simulation." },
-  plugins: [elizaClassicPlugin],
-});
+  const runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A psychotherapist simulation." },
+    plugins: [elizaClassicPlugin],
+  });
 
-await runtime.initialize();
+  await runtime.initialize();
 
-// Use the model
-const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-  prompt: userInput,
-});
+  // Use the model
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: userInput,
+  });
 </script>
 ```
 
@@ -75,6 +76,7 @@ bun dev
 ```
 
 **Features:**
+
 - React 18 with hooks
 - PGLite for in-browser PostgreSQL
 - Hot module reloading
@@ -168,6 +170,7 @@ bun dev
 ```
 
 **Features:**
+
 - Rust core in the browser
 - ~30% faster than pure TypeScript
 - Same API as native Rust
@@ -182,10 +185,12 @@ import init, { WasmAgentRuntime } from "@elizaos/core/rust";
 await init();
 
 // Create runtime
-const runtime = await new WasmAgentRuntime(JSON.stringify({
-  name: "Eliza",
-  bio: "A helpful AI assistant.",
-}));
+const runtime = await new WasmAgentRuntime(
+  JSON.stringify({
+    name: "Eliza",
+    bio: "A helpful AI assistant.",
+  }),
+);
 
 await runtime.initialize();
 
@@ -206,6 +211,7 @@ OPENAI_API_KEY="your-key" bun dev
 ```
 
 **Features:**
+
 - Server-side rendering
 - API routes for agent logic
 - OpenAI integration
@@ -272,7 +278,7 @@ export async function POST(request: Request) {
             controller.enqueue(encoder.encode(content.text));
           }
           return [];
-        }
+        },
       );
       controller.close();
     },
@@ -286,14 +292,14 @@ export async function POST(request: Request) {
 
 ## Comparison
 
-| Feature | HTML | React | React WASM | Next.js |
-|---------|:----:|:-----:|:----------:|:-------:|
-| Build Step | ❌ | ✅ | ✅ | ✅ |
-| SSR | ❌ | ❌ | ❌ | ✅ |
-| API Keys | ❌ | Optional | Optional | ✅ |
-| TypeScript | ❌ | ✅ | ✅ | ✅ |
-| Performance | Good | Good | Excellent | Good |
-| Complexity | Low | Medium | High | Medium |
+| Feature     | HTML |  React   | React WASM | Next.js |
+| ----------- | :--: | :------: | :--------: | :-----: |
+| Build Step  |  ❌  |    ✅    |     ✅     |   ✅    |
+| SSR         |  ❌  |    ❌    |     ❌     |   ✅    |
+| API Keys    |  ❌  | Optional |  Optional  |   ✅    |
+| TypeScript  |  ❌  |    ✅    |     ✅     |   ✅    |
+| Performance | Good |   Good   | Excellent  |  Good   |
+| Complexity  | Low  |  Medium  |    High    | Medium  |
 
 ---
 
@@ -307,5 +313,6 @@ export async function POST(request: Request) {
     Build HTTP endpoints
   </Card>
 </CardGroup>
+
 
 

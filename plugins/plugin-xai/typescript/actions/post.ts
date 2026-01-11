@@ -1,15 +1,17 @@
 import {
-  Action,
+  type Action,
   type ActionExample,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
-  type Memory,
-  type State,
   logger,
+  type Memory,
   ModelType,
+  type State,
 } from "@elizaos/core";
 import type { XService } from "../services/x.service";
+import { sendTweet } from "../utils";
 
 export const postAction: Action = {
   name: "POST",
@@ -24,9 +26,10 @@ export const postAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
-    _options: Record<string, unknown>,
-    callback?: HandlerCallback
+    _state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
+    _responses?: Memory[]
   ): Promise<ActionResult> => {
     logger.info("Executing POST action");
 
@@ -35,10 +38,11 @@ export const postAction: Action = {
       throw new Error("X service not available");
     }
 
-    const client = xService.xClient.client;
-    if (!client.profile) {
+    const clientBase = xService.xClient.client;
+    if (!clientBase.profile) {
       throw new Error("X client not initialized - no profile");
     }
+    const _client = clientBase.twitterClient;
 
     let text = message.content?.text?.trim();
     if (!text) {
@@ -62,12 +66,16 @@ export const postAction: Action = {
           break;
         }
       }
-      text = truncated.trim() || text.substring(0, 277) + "...";
+      text = truncated.trim() || `${text.substring(0, 277)}...`;
     }
 
     // Generate natural post if input is short/generic
     let finalText = text;
-    if (text.length < 50 || text.toLowerCase().includes("post") || text.toLowerCase().includes("tweet")) {
+    if (
+      text.length < 50 ||
+      text.toLowerCase().includes("post") ||
+      text.toLowerCase().includes("tweet")
+    ) {
       const prompt = `You are ${runtime.character.name}.
 ${runtime.character.bio || ""}
 
@@ -94,12 +102,12 @@ Post:`;
       finalText = String(response).trim();
     }
 
-    const result = await client.xClient.sendPost(finalText);
+    const result = await sendTweet(clientBase, finalText);
 
-    if (result?.data) {
-      const postData = result.data.data || result.data;
-      const postId = postData.id || Date.now().toString();
-      const postUrl = `https://x.com/${client.profile.username}/status/${postId}`;
+    if (result) {
+      // Extract post ID from the nested TweetResponse structure
+      const postId = result.id || result.data?.id || result.data?.data?.id || Date.now().toString();
+      const postUrl = `https://x.com/${clientBase.profile.username}/status/${postId}`;
 
       logger.info(`Posted: ${postId}`);
 
@@ -143,7 +151,9 @@ Post:`;
     [
       {
         name: "{{user1}}",
-        content: { text: "Post: The future of AI is collaborative intelligence" },
+        content: {
+          text: "Post: The future of AI is collaborative intelligence",
+        },
       },
       {
         name: "{{agent}}",

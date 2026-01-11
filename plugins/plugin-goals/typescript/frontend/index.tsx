@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
 import {
   QueryClient,
   QueryClientProvider,
-  useQuery,
   useMutation,
+  useQuery,
   useQueryClient,
-} from '@tanstack/react-query';
-import './index.css';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Checkbox } from './ui/checkbox';
-import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from './ui/card';
-import { Separator } from './ui/separator';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import Loader from './loader';
-import { cn } from './utils';
-import { PlusCircle } from 'lucide-react';
+} from "@tanstack/react-query";
+import React, { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import { PlusCircle } from "lucide-react";
+import Loader from "./loader";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Checkbox } from "./ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Separator } from "./ui/separator";
+import { cn } from "./utils";
 
 // Define Task type based on backend structure
 // NOTE: Adjust this type based on the actual structure returned by IAgentRuntime and modified by API routes
@@ -29,7 +29,7 @@ interface TaskMetadata {
   lastReminderSent?: string; // ISO string
   pointsAwarded?: number;
   completedAt?: string; // ISO string
-  [key: string]: any; // Allow other metadata properties
+  [key: string]: unknown; // Allow other metadata properties
 }
 
 interface Task {
@@ -69,9 +69,9 @@ const queryClient = new QueryClient();
 const getContextFromUrl = () => {
   const params = new URLSearchParams(window.location.search);
   return {
-    roomId: params.get('roomId'),
-    entityId: params.get('entityId'),
-    worldId: params.get('worldId'),
+    roomId: params.get("roomId"),
+    entityId: params.get("entityId"),
+    worldId: params.get("worldId"),
   };
 };
 
@@ -79,11 +79,11 @@ const getContextFromUrl = () => {
 
 const useGoals = () => {
   return useQuery<WorldWithRooms[], Error>({
-    queryKey: ['goalsStructured'],
+    queryKey: ["goalsStructured"],
     queryFn: async () => {
-      const response = await fetch('/api/goals');
+      const response = await fetch("/api/goals");
       if (!response.ok) {
-        throw new Error('Network response was not ok');
+        throw new Error("Network response was not ok");
       }
       return response.json();
     },
@@ -93,9 +93,9 @@ const useGoals = () => {
 // --- Hook to fetch tags ---
 const useTags = () => {
   return useQuery<string[], Error>({
-    queryKey: ['taskTags'],
+    queryKey: ["taskTags"],
     queryFn: async () => {
-      const response = await fetch('/api/tags');
+      const response = await fetch("/api/tags");
       if (!response.ok) {
         const errorData = await response.text();
         throw new Error(`Failed to fetch tags: ${errorData}`);
@@ -108,9 +108,9 @@ const useTags = () => {
 // --- Hook to fetch ALL tasks (for debugging) ---
 const useAllTasks = () => {
   return useQuery<TaskIdentifier[], Error>({
-    queryKey: ['allTasks'],
+    queryKey: ["allTasks"],
     queryFn: async () => {
-      const response = await fetch('/api/all-tasks'); // Use new endpoint
+      const response = await fetch("/api/all-tasks"); // Use new endpoint
       if (!response.ok) {
         const errorData = await response.text();
         throw new Error(`Failed to fetch all tasks: ${errorData}`);
@@ -126,7 +126,7 @@ const useAddTask = () => {
   return useMutation<
     Task,
     Error,
-    Omit<Task, 'id'> & {
+    Omit<Task, "id"> & {
       type: string;
       isUrgent?: boolean;
       priority?: number;
@@ -135,12 +135,12 @@ const useAddTask = () => {
   >({
     mutationFn: async (newTaskData) => {
       if (!newTaskData.roomId) {
-        throw new Error('Room ID is required to add a task.');
+        throw new Error("Room ID is required to add a task.");
       }
-      const response = await fetch('/api/goals', {
-        method: 'POST',
+      const response = await fetch("/api/goals", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(newTaskData),
       });
@@ -151,8 +151,8 @@ const useAddTask = () => {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['goalsStructured'] });
-      queryClient.invalidateQueries({ queryKey: ['allTasks'] }); // Invalidate all tasks too
+      queryClient.invalidateQueries({ queryKey: ["goalsStructured"] });
+      queryClient.invalidateQueries({ queryKey: ["allTasks"] }); // Invalidate all tasks too
     },
   });
 };
@@ -161,7 +161,7 @@ const useCompleteTask = () => {
   const queryClient = useQueryClient();
 
   return useMutation<
-    any,
+    unknown,
     Error,
     {
       taskId: string;
@@ -170,9 +170,9 @@ const useCompleteTask = () => {
   >({
     mutationFn: async ({ taskId, context }) => {
       const response = await fetch(`/api/goals/${taskId}/complete`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(context),
       });
@@ -184,8 +184,8 @@ const useCompleteTask = () => {
     },
     onSuccess: (data, { taskId }) => {
       console.log(`Task ${taskId} completed:`, data.message);
-      queryClient.invalidateQueries({ queryKey: ['goalsStructured'] });
-      queryClient.invalidateQueries({ queryKey: ['allTasks'] });
+      queryClient.invalidateQueries({ queryKey: ["goalsStructured"] });
+      queryClient.invalidateQueries({ queryKey: ["allTasks"] });
     },
     onError: (error, { taskId }) => {
       console.error(`Error completing task ${taskId}:`, error);
@@ -195,10 +195,10 @@ const useCompleteTask = () => {
 
 const useUncompleteTask = () => {
   const queryClient = useQueryClient();
-  return useMutation<any, Error, string>({
+  return useMutation<unknown, Error, string>({
     mutationFn: async (taskId) => {
       const response = await fetch(`/api/goals/${taskId}/uncomplete`, {
-        method: 'PUT',
+        method: "PUT",
       });
       if (!response.ok) {
         const errorData = await response.text();
@@ -208,8 +208,8 @@ const useUncompleteTask = () => {
     },
     onSuccess: (data, taskId) => {
       console.log(`Task ${taskId} uncompleted:`, data.message);
-      queryClient.invalidateQueries({ queryKey: ['goalsStructured'] });
-      queryClient.invalidateQueries({ queryKey: ['allTasks'] });
+      queryClient.invalidateQueries({ queryKey: ["goalsStructured"] });
+      queryClient.invalidateQueries({ queryKey: ["allTasks"] });
     },
     onError: (error, taskId) => {
       console.error(`Error uncompleting task ${taskId}:`, error);
@@ -217,17 +217,21 @@ const useUncompleteTask = () => {
   });
 };
 
+interface DeleteTaskResponse {
+  message: string;
+}
+
 const useDeleteTask = () => {
   const queryClient = useQueryClient();
-  return useMutation<any, Error, string>({
+  return useMutation<DeleteTaskResponse, Error, string>({
     mutationFn: async (taskId) => {
       const response = await fetch(`/api/goals/${taskId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
       if (
         response.ok &&
         response.status !== 204 &&
-        response.headers.get('content-length') !== '0'
+        response.headers.get("content-length") !== "0"
       ) {
         return response.json();
       } else if (response.ok) {
@@ -238,9 +242,9 @@ const useDeleteTask = () => {
       }
     },
     onSuccess: (data, taskId) => {
-      console.log(`Task ${taskId} deletion success:`, data?.message || 'Deleted');
-      queryClient.invalidateQueries({ queryKey: ['goalsStructured'] });
-      queryClient.invalidateQueries({ queryKey: ['allTasks'] });
+      console.log(`Task ${taskId} deletion success:`, data?.message || "Deleted");
+      queryClient.invalidateQueries({ queryKey: ["goalsStructured"] });
+      queryClient.invalidateQueries({ queryKey: ["allTasks"] });
     },
     onError: (error, taskId) => {
       console.error(`Error deleting task ${taskId}:`, error);
@@ -248,14 +252,20 @@ const useDeleteTask = () => {
   });
 };
 
+interface CreateRoomResponse {
+  id: string;
+  name: string;
+  worldId: string;
+}
+
 const useCreateRoom = () => {
   const queryClient = useQueryClient();
-  return useMutation<any, Error, { worldId: string; name: string }>({
+  return useMutation<CreateRoomResponse, Error, { worldId: string; name: string }>({
     mutationFn: async ({ worldId, name }) => {
       const response = await fetch(`/api/worlds/${worldId}/rooms`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ name }),
       });
@@ -267,10 +277,10 @@ const useCreateRoom = () => {
     },
     onSuccess: (newRoomData) => {
       console.log(`Room created successfully:`, newRoomData);
-      queryClient.invalidateQueries({ queryKey: ['goalsStructured'] });
+      queryClient.invalidateQueries({ queryKey: ["goalsStructured"] });
     },
     onError: (error) => {
-      console.error('Error creating room:', error);
+      console.error("Error creating room:", error);
       alert(`Error creating room: ${error.message}`);
     },
   });
@@ -279,39 +289,43 @@ const useCreateRoom = () => {
 // --- Components ---
 
 const AddTaskForm = ({ worlds }: { worlds: WorldWithRooms[] }) => {
-  const [name, setName] = useState('');
-  const [type, setType] = useState('one-off');
-  const [priority, setPriority] = useState('4');
-  const [dueDate, setDueDate] = useState('');
+  const [name, setName] = useState("");
+  const [type, setType] = useState("one-off");
+  const [priority, setPriority] = useState("4");
+  const [dueDate, setDueDate] = useState("");
   const [isUrgent, setIsUrgent] = useState(false);
-  const [selectedWorldId, setSelectedWorldId] = useState<string>('');
-  const [selectedRoomId, setSelectedRoomId] = useState<string>('');
+  const [selectedWorldId, setSelectedWorldId] = useState<string>("");
+  const [selectedRoomId, setSelectedRoomId] = useState<string>("");
   const addTaskMutation = useAddTask();
 
   const availableRooms = worlds.find((w) => w.worldId === selectedWorldId)?.rooms || [];
 
   useEffect(() => {
-    setSelectedRoomId('');
+    setSelectedRoomId("");
   }, [selectedWorldId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !selectedRoomId) {
-      alert('Please enter a task name and select a world/room.');
+      alert("Please enter a task name and select a world/room.");
       return;
     }
-    const taskData: any = { name: name.trim(), type, roomId: selectedRoomId };
-    if (type === 'one-off') {
+    const taskData: Record<string, string | number | boolean> = {
+      name: name.trim(),
+      type,
+      roomId: selectedRoomId,
+    };
+    if (type === "one-off") {
       taskData.priority = parseInt(priority, 10);
       if (dueDate) taskData.dueDate = dueDate;
       taskData.isUrgent = isUrgent;
     }
     addTaskMutation.mutate(taskData, {
       onSuccess: () => {
-        setName('');
-        setType('one-off');
-        setPriority('4');
-        setDueDate('');
+        setName("");
+        setType("one-off");
+        setPriority("4");
+        setDueDate("");
         setIsUrgent(false);
       },
       onError: (error) => {
@@ -358,7 +372,7 @@ const AddTaskForm = ({ worlds }: { worlds: WorldWithRooms[] }) => {
               >
                 <SelectTrigger id="room-select" data-testid="room-select">
                   <SelectValue
-                    placeholder={availableRooms.length > 0 ? 'Select Room' : 'No rooms in world'}
+                    placeholder={availableRooms.length > 0 ? "Select Room" : "No rooms in world"}
                   />
                 </SelectTrigger>
                 <SelectContent>
@@ -405,7 +419,7 @@ const AddTaskForm = ({ worlds }: { worlds: WorldWithRooms[] }) => {
             </Select>
           </div>
 
-          {type === 'one-off' && (
+          {type === "one-off" && (
             <div className="pl-4 border-l-2 space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="task-priority">Priority (1=High)</Label>
@@ -457,7 +471,7 @@ const AddTaskForm = ({ worlds }: { worlds: WorldWithRooms[] }) => {
             data-testid="create-goal-btn"
             disabled={addTaskMutation.isPending || !selectedRoomId}
           >
-            {addTaskMutation.isPending ? <Loader /> : 'Add Task'}
+            {addTaskMutation.isPending ? <Loader /> : "Add Task"}
           </Button>
           {addTaskMutation.isError && (
             <p className="text-red-500 text-sm">Error: {addTaskMutation.error.message}</p>
@@ -472,7 +486,7 @@ const TaskItem = ({ task }: { task: Task }) => {
   const completeTaskMutation = useCompleteTask();
   const uncompleteTaskMutation = useUncompleteTask();
   const deleteTaskMutation = useDeleteTask();
-  const isCompleted = task.tags?.includes('completed');
+  const isCompleted = task.tags?.includes("completed");
   const { entityId, worldId } = getContextFromUrl();
 
   const handleCheckboxChange = () => {
@@ -492,32 +506,32 @@ const TaskItem = ({ task }: { task: Task }) => {
     }
   };
 
-  let details = '';
-  if (task.tags?.includes('daily')) {
+  let details = "";
+  if (task.tags?.includes("daily")) {
     const streak = task.metadata?.streak ?? 0;
     details = `(Daily, Streak: ${streak})`;
-  } else if (task.tags?.includes('one-off')) {
-    const priority = task.tags?.find((t) => t.startsWith('priority-'))?.split('-')[1] ?? '4';
-    const urgent = task.tags?.includes('urgent') ? ' 🔴 Urgent' : '';
+  } else if (task.tags?.includes("one-off")) {
+    const priority = task.tags?.find((t) => t.startsWith("priority-"))?.split("-")[1] ?? "4";
+    const urgent = task.tags?.includes("urgent") ? " 🔴 Urgent" : "";
     const dueDate = task.metadata?.dueDate
       ? ` Due: ${new Date(task.metadata.dueDate).toLocaleDateString()}`
-      : '';
+      : "";
     details = `(P${priority}${urgent}${dueDate})`;
-  } else if (task.tags?.includes('aspirational')) {
-    details = '(Aspirational Goal)';
+  } else if (task.tags?.includes("aspirational")) {
+    details = "(Aspirational Goal)";
   }
 
   const completedDate = task.metadata?.completedAt
     ? new Date(task.metadata.completedAt).toLocaleDateString()
-    : '';
+    : "";
   const points = task.metadata?.pointsAwarded ?? 0;
 
   return (
     <div
       data-testid="goal-item"
       className={cn(
-        'flex items-center justify-between p-2 rounded hover:bg-muted/50',
-        isCompleted && 'opacity-60'
+        "flex items-center justify-between p-2 rounded hover:bg-muted/50",
+        isCompleted && "opacity-60"
       )}
     >
       <div className="flex items-center space-x-3 flex-grow min-w-0">
@@ -527,20 +541,20 @@ const TaskItem = ({ task }: { task: Task }) => {
           checked={isCompleted}
           onCheckedChange={handleCheckboxChange}
           disabled={completeTaskMutation.isPending || uncompleteTaskMutation.isPending}
-          aria-label={isCompleted ? 'Mark task as incomplete' : 'Mark task as complete'}
+          aria-label={isCompleted ? "Mark task as incomplete" : "Mark task as complete"}
           aria-labelledby={`task-label-${task.id}`}
         />
         <Label
           htmlFor={`task-${task.id}`}
           id={`task-label-${task.id}`}
-          className={cn('flex-grow truncate cursor-pointer', isCompleted && 'line-through')}
+          className={cn("flex-grow truncate cursor-pointer", isCompleted && "line-through")}
         >
           {task.name}
           <span className="text-xs text-muted-foreground ml-1">{details}</span>
           {isCompleted && (
             <span className="text-xs text-green-600 ml-2">
               (Completed {completedDate}
-              {points > 0 ? `, +${points} pts` : ''})
+              {points > 0 ? `, +${points} pts` : ""})
             </span>
           )}
         </Label>
@@ -556,7 +570,7 @@ const TaskItem = ({ task }: { task: Task }) => {
           aria-label="Delete task"
           className="hover:bg-destructive/10 text-muted-foreground hover:text-destructive p-1 h-auto"
         >
-          {deleteTaskMutation.isPending ? <Loader /> : '🗑️'}
+          {deleteTaskMutation.isPending ? <Loader /> : "🗑️"}
         </Button>
       </div>
     </div>
@@ -621,13 +635,13 @@ const AllTasksList = () => {
                   <strong>ID:</strong> {task.id}
                 </p>
                 <p>
-                  <strong>RoomID:</strong> {task.roomId || 'N/A'}
+                  <strong>RoomID:</strong> {task.roomId || "N/A"}
                 </p>
                 <p>
-                  <strong>WorldID:</strong> {task.worldId || 'N/A'}
+                  <strong>WorldID:</strong> {task.worldId || "N/A"}
                 </p>
                 <p>
-                  <strong>EntityID:</strong> {task.entityId || 'N/A'}
+                  <strong>EntityID:</strong> {task.entityId || "N/A"}
                 </p>
               </div>
             ))}
@@ -645,19 +659,19 @@ function App() {
 
   useEffect(() => {
     if (isSuccess) {
-      console.log('Fetched Worlds Data:', worlds);
+      console.log("Fetched Worlds Data:", worlds);
     }
     if (error) {
-      console.error('useGoals Error:', error);
+      console.error("useGoals Error:", error);
     }
   }, [worlds, isSuccess, error]);
 
   const handleAddRoom = (worldId: string) => {
-    const roomName = prompt('Enter the name for the new room:');
-    if (roomName && roomName.trim()) {
+    const roomName = prompt("Enter the name for the new room:");
+    if (roomName?.trim()) {
       createRoomMutation.mutate({ worldId, name: roomName.trim() });
     } else if (roomName !== null) {
-      alert('Room name cannot be empty.');
+      alert("Room name cannot be empty.");
     }
   };
 
@@ -690,90 +704,88 @@ function App() {
             </Card>
           )}
 
-          {worlds &&
-            worlds.map((world) => (
-              <Collapsible
-                key={world.worldId}
-                defaultOpen
-                className="space-y-2"
-                data-testid="world-section"
-              >
-                <div className="flex items-center justify-between">
-                  <CollapsibleTrigger asChild>
-                    <Button
-                      variant="link"
-                      data-testid="world-toggle"
-                      className="text-xl font-semibold p-0 text-left hover:no-underline"
-                    >
-                      {world.worldName}
-                    </Button>
-                  </CollapsibleTrigger>
+          {worlds?.map((world) => (
+            <Collapsible
+              key={world.worldId}
+              defaultOpen
+              className="space-y-2"
+              data-testid="world-section"
+            >
+              <div className="flex items-center justify-between">
+                <CollapsibleTrigger asChild>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    data-testid="add-room-btn"
-                    onClick={() => handleAddRoom(world.worldId)}
-                    disabled={createRoomMutation.isPending}
-                    aria-label="Add new room to this world"
-                    className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                    variant="link"
+                    data-testid="world-toggle"
+                    className="text-xl font-semibold p-0 text-left hover:no-underline"
                   >
-                    {createRoomMutation.isPending ? <Loader /> : <PlusCircle className="size-4" />}
-                    Add Room
+                    {world.worldName}
                   </Button>
-                </div>
-                <CollapsibleContent className="space-y-4 pl-4 border-l-2" data-testid="world-rooms">
-                  {world.rooms.length === 0 && (
-                    <p className="text-muted-foreground text-sm italic pl-2">
-                      No rooms with tasks in this world yet.
-                    </p>
-                  )}
-                  {world.rooms.map((room) => (
-                    <Card
-                      key={room.roomId}
-                      data-testid="room-section"
-                      className="border shadow-sm ml-2 p-1 bg-card"
-                    >
-                      <CardHeader className="p-2 pb-1">
-                        <CardTitle className="text-base font-medium" data-testid="room-name">
-                          {room.roomName}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-1 p-2 pt-1">
-                        {room.tasks.filter((task) => !task.tags?.includes('completed')).length >
-                        0 ? (
-                          room.tasks
-                            .filter((task) => !task.tags?.includes('completed'))
-                            .map((task) => <TaskItem key={task.id} task={task} />)
-                        ) : (
-                          <p className="text-muted-foreground text-xs px-2 py-1">
-                            No pending tasks in this room.
-                          </p>
-                        )}
-                        {room.tasks.some((task) => task.tags?.includes('completed')) && (
-                          <>
-                            <Separator className="my-2" />
-                            <div className="space-y-1" data-testid="completed-section">
-                              {room.tasks
-                                .filter((task) => task.tags?.includes('completed'))
-                                .map((task) => (
-                                  <TaskItem key={task.id} task={task} />
-                                ))}
-                            </div>
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            ))}
+                </CollapsibleTrigger>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="add-room-btn"
+                  onClick={() => handleAddRoom(world.worldId)}
+                  disabled={createRoomMutation.isPending}
+                  aria-label="Add new room to this world"
+                  className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                >
+                  {createRoomMutation.isPending ? <Loader /> : <PlusCircle className="size-4" />}
+                  Add Room
+                </Button>
+              </div>
+              <CollapsibleContent className="space-y-4 pl-4 border-l-2" data-testid="world-rooms">
+                {world.rooms.length === 0 && (
+                  <p className="text-muted-foreground text-sm italic pl-2">
+                    No rooms with tasks in this world yet.
+                  </p>
+                )}
+                {world.rooms.map((room) => (
+                  <Card
+                    key={room.roomId}
+                    data-testid="room-section"
+                    className="border shadow-sm ml-2 p-1 bg-card"
+                  >
+                    <CardHeader className="p-2 pb-1">
+                      <CardTitle className="text-base font-medium" data-testid="room-name">
+                        {room.roomName}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-1 p-2 pt-1">
+                      {room.tasks.filter((task) => !task.tags?.includes("completed")).length > 0 ? (
+                        room.tasks
+                          .filter((task) => !task.tags?.includes("completed"))
+                          .map((task) => <TaskItem key={task.id} task={task} />)
+                      ) : (
+                        <p className="text-muted-foreground text-xs px-2 py-1">
+                          No pending tasks in this room.
+                        </p>
+                      )}
+                      {room.tasks.some((task) => task.tags?.includes("completed")) && (
+                        <>
+                          <Separator className="my-2" />
+                          <div className="space-y-1" data-testid="completed-section">
+                            {room.tasks
+                              .filter((task) => task.tags?.includes("completed"))
+                              .map((task) => (
+                                <TaskItem key={task.id} task={task} />
+                              ))}
+                          </div>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-const rootElement = document.getElementById('root');
+const rootElement = document.getElementById("root");
 if (rootElement) {
   createRoot(rootElement).render(
     <React.StrictMode>
@@ -783,5 +795,5 @@ if (rootElement) {
     </React.StrictMode>
   );
 } else {
-  console.error('Failed to find the root element');
+  console.error("Failed to find the root element");
 }

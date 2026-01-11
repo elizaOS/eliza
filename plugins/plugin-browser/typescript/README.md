@@ -50,22 +50,22 @@ const agent = {
 
 ## Actions
 
-| Action | Description | Examples |
-|--------|-------------|----------|
-| `BROWSER_NAVIGATE` | Navigate to URL | "Go to google.com" |
-| `BROWSER_BACK` | Go back in history | "Go back" |
-| `BROWSER_FORWARD` | Go forward | "Go forward" |
-| `BROWSER_REFRESH` | Refresh page | "Refresh the page" |
-| `BROWSER_CLICK` | Click element | "Click the search button" |
-| `BROWSER_TYPE` | Type text | "Type 'hello' in the search box" |
-| `BROWSER_SELECT` | Select option | "Select 'US' from country dropdown" |
-| `BROWSER_EXTRACT` | Extract data | "Extract the main heading" |
-| `BROWSER_SCREENSHOT` | Take screenshot | "Take a screenshot" |
+| Action               | Description        | Examples                            |
+| -------------------- | ------------------ | ----------------------------------- |
+| `BROWSER_NAVIGATE`   | Navigate to URL    | "Go to google.com"                  |
+| `BROWSER_BACK`       | Go back in history | "Go back"                           |
+| `BROWSER_FORWARD`    | Go forward         | "Go forward"                        |
+| `BROWSER_REFRESH`    | Refresh page       | "Refresh the page"                  |
+| `BROWSER_CLICK`      | Click element      | "Click the search button"           |
+| `BROWSER_TYPE`       | Type text          | "Type 'hello' in the search box"    |
+| `BROWSER_SELECT`     | Select option      | "Select 'US' from country dropdown" |
+| `BROWSER_EXTRACT`    | Extract data       | "Extract the main heading"          |
+| `BROWSER_SCREENSHOT` | Take screenshot    | "Take a screenshot"                 |
 
 ## Providers
 
-| Provider | Description |
-|----------|-------------|
+| Provider        | Description                   |
+| --------------- | ----------------------------- |
 | `BROWSER_STATE` | Current browser session state |
 
 ## API
@@ -111,5 +111,6 @@ npm run typecheck
 ## License
 
 MIT
+
 
 

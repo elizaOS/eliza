@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Text chunking functionality.
 
 use crate::types::ChunkResult;
@@ -13,6 +14,7 @@ pub struct TextChunker {
     /// Overlap tokens between chunks
     pub chunk_overlap: usize,
 }
+
 
 impl Default for TextChunker {
     fn default() -> Self {
@@ -180,6 +182,8 @@ mod tests {
         }
     }
 }
+
+
 
 
 

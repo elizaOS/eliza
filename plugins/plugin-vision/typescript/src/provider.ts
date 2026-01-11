@@ -1,34 +1,34 @@
 // Vision provider - provides current visual perception data to the agent
 import {
+  addHeader,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Provider,
   type State,
-  addHeader,
-  logger,
-} from '@elizaos/core';
-import { type VisionService } from './service';
-import { type BoundingBox, type EntityAttributes } from './types';
+} from "@elizaos/core";
+import type { VisionService } from "./service";
+import type { BoundingBox, EnhancedSceneDescription, EntityAttributes } from "./types";
 
 export const visionProvider: Provider = {
-  name: 'VISION_PERCEPTION',
+  name: "VISION_PERCEPTION",
   description:
-    'Provides current visual perception data including scene description, detected objects, people, and entity tracking. This provider is always active and provides real-time visual awareness.',
+    "Provides current visual perception data including scene description, detected objects, people, and entity tracking. This provider is always active and provides real-time visual awareness.",
   position: 99, // High priority for vision context
   dynamic: false, // Always included - vision is a constant sense
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const visionService = runtime.getService<VisionService>('VISION');
+    const visionService = runtime.getService<VisionService>("VISION");
 
     if (!visionService) {
-      logger.warn('[visionProvider] VisionService not found.');
+      logger.warn("[visionProvider] VisionService not found.");
       return {
         values: {
           visionAvailable: false,
-          sceneDescription: 'Vision service is not available.',
-          cameraStatus: 'No camera connected',
+          sceneDescription: "Vision service is not available.",
+          cameraStatus: "No camera connected",
         },
-        text: addHeader('# Visual Perception', 'Vision service is not available.'),
+        text: addHeader("# Visual Perception", "Vision service is not available."),
         data: { hasVision: false },
       };
     }
@@ -43,13 +43,13 @@ export const visionProvider: Provider = {
     const screenCapture = await visionService.getScreenCapture();
 
     // Get entity tracking data
-    const _worldId = message.worldId || 'default-world';
+    const _worldId = message.worldId || "default-world";
     const entityTracker = visionService.getEntityTracker();
 
     let entityData: {
       activeEntities: Array<{
         id: string;
-        type: 'person' | 'object' | 'pet';
+        type: "person" | "object" | "pet";
         name: string | undefined;
         firstSeen: number;
         duration: number;
@@ -104,31 +104,31 @@ export const visionProvider: Provider = {
       };
     }
 
-    let perceptionText = '';
+    let perceptionText = "";
     let values = {};
     let data = {};
 
     if (!isActive) {
       perceptionText = `Vision mode: ${visionMode}\n`;
-      if (visionMode === 'OFF') {
-        perceptionText += 'Vision is disabled.';
+      if (visionMode === "OFF") {
+        perceptionText += "Vision is disabled.";
       } else {
-        perceptionText += 'Vision service is initializing...';
+        perceptionText += "Vision service is initializing...";
       }
 
       values = {
         visionAvailable: false,
         visionMode,
-        sceneDescription: 'Vision not active',
+        sceneDescription: "Vision not active",
         cameraStatus: cameraInfo
           ? `Camera "${cameraInfo.name}" detected but not active`
-          : 'No camera',
+          : "No camera",
       };
     } else {
       perceptionText = `Vision mode: ${visionMode}\n\n`;
 
       // Camera vision data
-      if ((visionMode === 'CAMERA' || visionMode === 'BOTH') && sceneDescription) {
+      if ((visionMode === "CAMERA" || visionMode === "BOTH") && sceneDescription) {
         const ageInSeconds = (Date.now() - sceneDescription.timestamp) / 1000;
         const secondsAgo = Math.round(ageInSeconds);
 
@@ -136,10 +136,10 @@ export const visionProvider: Provider = {
 
         if (sceneDescription.people.length > 0) {
           perceptionText += `\n\nPeople detected: ${sceneDescription.people.length}`;
-          const poses = sceneDescription.people.map((p) => p.pose).filter((p) => p !== 'unknown');
+          const poses = sceneDescription.people.map((p) => p.pose).filter((p) => p !== "unknown");
           const facings = sceneDescription.people
             .map((p) => p.facing)
-            .filter((f) => f !== 'unknown');
+            .filter((f) => f !== "unknown");
 
           if (poses.length > 0) {
             const poseCounts = poses.reduce(
@@ -151,7 +151,7 @@ export const visionProvider: Provider = {
             );
             perceptionText += `\n  Poses: ${Object.entries(poseCounts)
               .map(([pose, count]) => `${count} ${pose}`)
-              .join(', ')}`;
+              .join(", ")}`;
           }
 
           if (facings.length > 0) {
@@ -164,14 +164,14 @@ export const visionProvider: Provider = {
             );
             perceptionText += `\n  Facing: ${Object.entries(facingCounts)
               .map(([facing, count]) => `${count} facing ${facing}`)
-              .join(', ')}`;
+              .join(", ")}`;
           }
         }
 
         if (sceneDescription.objects.length > 0) {
           const objectTypes = sceneDescription.objects.map((o) => o.type);
           const uniqueObjects = [...new Set(objectTypes)];
-          perceptionText += `\n\nObjects detected: ${uniqueObjects.join(', ')}`;
+          perceptionText += `\n\nObjects detected: ${uniqueObjects.join(", ")}`;
         }
 
         if (sceneDescription.sceneChanged) {
@@ -181,7 +181,7 @@ export const visionProvider: Provider = {
         // Add entity tracking information
         if (entityData) {
           if (entityData.activeEntities.length > 0) {
-            perceptionText += '\n\nCurrently tracking:';
+            perceptionText += "\n\nCurrently tracking:";
             for (const entity of entityData.activeEntities) {
               const name = entity.name || `Unknown ${entity.type}`;
               const duration =
@@ -193,9 +193,9 @@ export const visionProvider: Provider = {
           }
 
           if (entityData.recentlyLeft.length > 0) {
-            perceptionText += '\n\nRecently left:';
+            perceptionText += "\n\nRecently left:";
             for (const departed of entityData.recentlyLeft) {
-              const name = departed.name || 'Unknown person';
+              const name = departed.name || "Unknown person";
               const timeStr =
                 departed.timeAgo < 60000
                   ? `${Math.round(departed.timeAgo / 1000)}s ago`
@@ -207,35 +207,36 @@ export const visionProvider: Provider = {
       }
 
       // Screen vision data
-      if ((visionMode === 'SCREEN' || visionMode === 'BOTH') && screenCapture) {
+      if ((visionMode === "SCREEN" || visionMode === "BOTH") && screenCapture) {
         const screenAge = (Date.now() - screenCapture.timestamp) / 1000;
         const screenSecondsAgo = Math.round(screenAge);
 
-        if (visionMode === 'BOTH') {
-          perceptionText += '\n\n---\n\n';
+        if (visionMode === "BOTH") {
+          perceptionText += "\n\n---\n\n";
         }
 
         perceptionText += `Screen capture (${screenSecondsAgo}s ago):\n`;
         perceptionText += `Resolution: ${screenCapture.width}x${screenCapture.height}\n`;
 
         // Enhanced scene data if available
-        const enhanced = sceneDescription as any;
+        const enhanced = sceneDescription as EnhancedSceneDescription;
         if (enhanced?.screenAnalysis) {
-          if (enhanced.screenAnalysis.activeTile?.analysis) {
-            const tileAnalysis = enhanced.screenAnalysis.activeTile.analysis;
-
+          const tileAnalysis = enhanced.screenAnalysis.activeTile;
+          if (tileAnalysis) {
             if (tileAnalysis.summary) {
               perceptionText += `\nActive area: ${tileAnalysis.summary}`;
             }
 
             if (tileAnalysis.text) {
-              perceptionText += `\n\nVisible text:\n"${tileAnalysis.text.substring(0, 200)}${tileAnalysis.text.length > 200 ? '...' : ''}"`;
+              perceptionText += `\n\nVisible text:\n"${tileAnalysis.text.substring(0, 200)}${tileAnalysis.text.length > 200 ? "..." : ""}"`;
             }
 
             if (tileAnalysis.objects && tileAnalysis.objects.length > 0) {
-              const uiElements = tileAnalysis.objects.map((o: any) => o.type);
+              const uiElements = tileAnalysis.objects.map(
+                (o) => (o as { type?: string }).type || "unknown"
+              );
               const uniqueElements = [...new Set(uiElements)];
-              perceptionText += `\n\nUI elements: ${uniqueElements.join(', ')}`;
+              perceptionText += `\n\nUI elements: ${uniqueElements.join(", ")}`;
             }
           }
 
@@ -248,8 +249,8 @@ export const visionProvider: Provider = {
       values = {
         visionAvailable: true,
         visionMode,
-        sceneDescription: sceneDescription?.description || 'Processing...',
-        cameraStatus: cameraInfo ? `Connected to ${cameraInfo.name}` : 'No camera',
+        sceneDescription: sceneDescription?.description || "Processing...",
+        cameraStatus: cameraInfo ? `Connected to ${cameraInfo.name}` : "No camera",
         cameraId: cameraInfo?.id,
         peopleCount: sceneDescription?.people.length || 0,
         objectCount: sceneDescription?.objects.length || 0,
@@ -269,7 +270,7 @@ export const visionProvider: Provider = {
         objects: sceneDescription?.objects || [],
         people: sceneDescription?.people || [],
         screenCapture: screenCapture || null,
-        enhancedData: (sceneDescription as any)?.screenAnalysis || null,
+        enhancedData: (sceneDescription as EnhancedSceneDescription)?.screenAnalysis || null,
         trackedEntities: entityData?.activeEntities || [],
         worldState: entityData || null,
       };
@@ -277,7 +278,7 @@ export const visionProvider: Provider = {
 
     return {
       values,
-      text: addHeader('# Visual Perception', perceptionText),
+      text: addHeader("# Visual Perception", perceptionText),
       data,
     };
   },

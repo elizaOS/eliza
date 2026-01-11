@@ -123,9 +123,9 @@ class BrowserWebSocketClient:
 
             return response
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             self._message_handlers.pop(request_id, None)
-            raise RuntimeError(f"Request timeout for {msg_type}")
+            raise RuntimeError(f"Request timeout for {msg_type}") from e
 
     def disconnect(self) -> None:
         """Disconnect from the server."""
@@ -248,9 +248,11 @@ class BrowserWebSocketClient:
         """Check server health."""
         try:
             response = await self.send_message("health", {})
-            return response.type == "health" and response.data.get("status") == "ok"
+            return (
+                response.type == "health"
+                and response.data is not None
+                and response.data.get("status") == "ok"
+            )
         except Exception as e:
             logger.error(f"[Browser] Health check failed: {e}")
             return False
-
-

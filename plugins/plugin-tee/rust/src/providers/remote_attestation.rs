@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Remote Attestation Provider for Phala TEE.
 
 use async_trait::async_trait;
@@ -90,5 +91,10 @@ impl RemoteAttestationProvider for PhalaRemoteAttestationProvider {
         })
     }
 }
+
+
+
+
+
 
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for xAI and X API.
 
 use chrono::{DateTime, Utc};
@@ -229,7 +230,7 @@ pub struct PlaceData {
 }
 
 /// Post.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Post {
     /// Post ID
     pub id: String,
@@ -283,37 +284,6 @@ pub struct Post {
     pub timestamp: i64,
 }
 
-impl Default for Post {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            text: String::new(),
-            author_id: None,
-            conversation_id: None,
-            created_at: None,
-            language: None,
-            username: String::new(),
-            name: String::new(),
-            metrics: PostMetrics::default(),
-            hashtags: Vec::new(),
-            mentions: Vec::new(),
-            urls: Vec::new(),
-            photos: Vec::new(),
-            videos: Vec::new(),
-            poll: None,
-            place: None,
-            in_reply_to_id: None,
-            quoted_id: None,
-            reposted_id: None,
-            is_reply: false,
-            is_repost: false,
-            is_quote: false,
-            is_sensitive: false,
-            permanent_url: String::new(),
-            timestamp: 0,
-        }
-    }
-}
 
 /// Result of creating a post.
 #[derive(Debug, Clone, Serialize, Deserialize)]

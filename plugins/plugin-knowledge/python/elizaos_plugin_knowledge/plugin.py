@@ -7,7 +7,6 @@ Provides Retrieval Augmented Generation (RAG) capabilities.
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
 from elizaos_plugin_knowledge.service import KnowledgeService
 from elizaos_plugin_knowledge.provider import KnowledgeProvider, DocumentsProvider
@@ -87,7 +86,6 @@ class KnowledgePlugin:
 
     async def _load_startup_documents(self) -> None:
         """Load documents from the configured knowledge path."""
-        import os
         from pathlib import Path
 
         knowledge_path = Path(self._config.knowledge_path)
@@ -142,9 +140,7 @@ class KnowledgePlugin:
                 result = await self._service.add_knowledge(options)
 
                 if result.success:
-                    logger.info(
-                        f"Loaded '{file_path.name}' with {result.fragment_count} fragments"
-                    )
+                    logger.info(f"Loaded '{file_path.name}' with {result.fragment_count} fragments")
                 else:
                     logger.warning(f"Failed to load '{file_path.name}': {result.error}")
 
@@ -331,6 +327,8 @@ def get_knowledge_plugin() -> KnowledgePlugin | None:
         Current plugin instance or None.
     """
     return _plugin_instance
+
+
 
 
 

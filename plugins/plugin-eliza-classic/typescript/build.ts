@@ -1,9 +1,10 @@
 /**
  * Build script for ELIZA Classic Plugin
  */
+
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { build } from "bun";
-import { rm, mkdir, copyFile } from "fs/promises";
-import { join } from "path";
 
 const outdir = "./dist";
 
@@ -73,8 +74,3 @@ buildPlugin().catch((err) => {
   console.error("Build failed:", err);
   process.exit(1);
 });
-
-
-
-
-

@@ -78,7 +78,9 @@ const CLOUD_PROVIDERS: CloudProviderConfig[] = [
 /**
  * Check if a cloud provider is configured by checking for API key
  */
-function checkCloudProvider(config: CloudProviderConfig): InferenceProviderInfo {
+function checkCloudProvider(
+  config: CloudProviderConfig,
+): InferenceProviderInfo {
   const hasKey = config.envVars.some((envVar) => Boolean(process.env[envVar]));
 
   if (hasKey) {
@@ -127,7 +129,8 @@ async function checkOllama(): Promise<InferenceProviderInfo> {
   }
 
   const parseResultDataModels = parseResult.data.models;
-  const models = (parseResultDataModels && parseResultDataModels.map((m: { name: string }) => m.name)) ?? [];
+  const models =
+    parseResultDataModels?.map((m: { name: string }) => m.name) ?? [];
 
   return {
     name: "ollama",
@@ -177,12 +180,12 @@ function buildSummary(
       let info = `   - ${p.name.toUpperCase()}`;
       if (p.endpoint) info += ` (${p.endpoint})`;
       const pModels = p.models;
-      if (pModels && pModels.length) info += ` - ${pModels.length} models`;
+      if (pModels?.length) info += ` - ${pModels.length} models`;
       return info;
     })
     .join("\n");
 
-  const primaryProviderName = primaryProvider && primaryProvider.name;
+  const primaryProviderName = primaryProvider?.name;
   return (
     `Using inference provider: ${primaryProviderName ? primaryProviderName.toUpperCase() : "NONE"}\n` +
     `   Available providers:\n${providerList}`

@@ -1,0 +1,23 @@
+Given the user's request to update a Linear issue, extract the information needed.
+
+User request: "{{userMessage}}"
+
+Extract and return ONLY a JSON object (no markdown formatting, no code blocks) with the following structure:
+{
+  "issueId": "The issue identifier (e.g., ENG-123, COM2-7)",
+  "updates": {
+    "title": "New title if changing the title",
+    "description": "New description if changing the description",
+    "priority": "Priority level if changing (1=urgent, 2=high, 3=normal, 4=low)",
+    "teamKey": "New team key if moving to another team (e.g., ENG, ELIZA, COM2)",
+    "assignee": "New assignee username or email if changing",
+    "status": "New status if changing (e.g., todo, in-progress, done, canceled)",
+    "labels": ["label1", "label2"] (if changing labels, empty array to clear)
+  }
+}
+
+Only include fields that are being updated. Return only the JSON object, no other text.
+
+
+
+

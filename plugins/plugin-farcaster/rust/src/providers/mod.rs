@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Farcaster providers for elizaOS agents.
 
 use crate::config::FarcasterConfig;
@@ -62,6 +63,8 @@ impl<'a> TimelineProvider<'a> {
     pub async fn get(&self, limit: u32) -> String {
         match self.service.get_timeline(limit).await {
             Ok((casts, _)) => {
+                use crate::types::Cast;
+                let casts: Vec<Cast> = casts;
                 if casts.is_empty() {
                     return "No recent casts in timeline.".to_string();
                 }
@@ -145,5 +148,7 @@ impl<'a> ThreadProvider<'a> {
 mod tests {
     // Provider tests would require mocked services
 }
+
+
 
 

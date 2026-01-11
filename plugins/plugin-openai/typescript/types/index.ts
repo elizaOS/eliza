@@ -16,12 +16,7 @@ export type AudioFormat = "mp3" | "wav" | "webm" | "ogg" | "flac" | "mp4";
 /**
  * Supported response formats for transcription
  */
-export type TranscriptionResponseFormat =
-  | "json"
-  | "text"
-  | "srt"
-  | "verbose_json"
-  | "vtt";
+export type TranscriptionResponseFormat = "json" | "text" | "srt" | "verbose_json" | "vtt";
 
 /**
  * Timestamp granularity options for transcription
@@ -36,23 +31,12 @@ export type TTSOutputFormat = "mp3" | "wav" | "flac" | "opus" | "aac" | "pcm";
 /**
  * Supported TTS voices
  */
-export type TTSVoice =
-  | "alloy"
-  | "echo"
-  | "fable"
-  | "onyx"
-  | "nova"
-  | "shimmer";
+export type TTSVoice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 
 /**
  * Image sizes for DALL-E
  */
-export type ImageSize =
-  | "256x256"
-  | "512x512"
-  | "1024x1024"
-  | "1792x1024"
-  | "1024x1792";
+export type ImageSize = "256x256" | "512x512" | "1024x1024" | "1792x1024" | "1024x1792";
 
 /**
  * Image quality options

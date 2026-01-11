@@ -27,8 +27,10 @@ export function getVendor(type: TeeVendorName): TeeVendorInterface {
   return vendor;
 }
 
-// Re-export types
-export { TeeVendorNames, type TeeVendorName, type TeeVendorInterface } from "./types";
 export { PhalaVendor } from "./phala";
-
-
+// Re-export types
+export {
+  type TeeVendorInterface,
+  type TeeVendorName,
+  TeeVendorNames,
+} from "./types";

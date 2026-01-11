@@ -1,7 +1,8 @@
+#![allow(missing_docs)]
 //! Knowledge Service - Core RAG functionality.
 
 use crate::chunker::TextChunker;
-use crate::types::*;
+use crate::types::{self, *};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -74,7 +75,7 @@ impl KnowledgeService {
     }
 
     /// Add knowledge to the system.
-    pub async fn add_knowledge(&mut self, options: AddKnowledgeOptions) -> Result<ProcessingResult> {
+    pub async fn add_knowledge(&mut self, options: AddKnowledgeOptions) -> types::Result<ProcessingResult> {
         let agent_id = options.agent_id.as_deref().unwrap_or("default");
 
         // Generate content-based ID
@@ -142,7 +143,7 @@ impl KnowledgeService {
             );
             fragment_metadata.insert(
                 "position".to_string(),
-                serde_json::Value::Number(i.into()),
+                serde_json::Value::Number(serde_json::Number::from(i as u64)),
             );
 
             let fragment = KnowledgeFragment {
@@ -177,7 +178,7 @@ impl KnowledgeService {
     }
 
     /// Extract text from content based on type.
-    fn extract_text(&self, content: &str, content_type: &str) -> Result<String> {
+    fn extract_text(&self, content: &str, content_type: &str) -> types::Result<String> {
         // For text types, content is already text
         if content_type.starts_with("text/")
             || content_type == "application/json"
@@ -198,7 +199,7 @@ impl KnowledgeService {
         query: &str,
         count: usize,
         threshold: f64,
-    ) -> Result<Vec<SearchResult>> {
+    ) -> types::Result<Vec<SearchResult>> {
         // Without embedding provider, we can't do semantic search
         // Return empty for now (in production, would use actual embeddings)
         log::debug!("Searching for: {} (count: {}, threshold: {})", query, count, threshold);
@@ -245,8 +246,8 @@ impl KnowledgeService {
     }
 
     /// Get knowledge items relevant to a query.
-    pub async fn get_knowledge(&self, query: &str, count: usize) -> Result<Vec<KnowledgeItem>> {
-        let results = self.search(query, count, 0.1).await?;
+    pub async fn get_knowledge(&self, query: &str, count: usize) -> types::Result<Vec<KnowledgeItem>> {
+        let results: Vec<SearchResult> = self.search(query, count, 0.1).await?;
 
         Ok(results
             .into_iter()
@@ -448,6 +449,8 @@ mod tests {
         assert!((sim + 1.0).abs() < 0.001);
     }
 }
+
+
 
 
 

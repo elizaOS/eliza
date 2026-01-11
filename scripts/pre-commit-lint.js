@@ -46,19 +46,18 @@ try {
     process.exit(0);
   }
 
-  // Run prettier on the files
-  console.log("Running prettier on staged files...");
-  const _fileList = filesToLint.join(" ");
-  const prettierProc = Bun.spawnSync(
-    ["bun", "prettier", "--write", ...filesToLint],
+  // Run Biome on the files
+  console.log("Running Biome on staged files...");
+  const biomeProc = Bun.spawnSync(
+    ["bunx", "@biomejs/biome", "check", "--write", ...filesToLint],
     {
       stdout: "inherit",
       stderr: "inherit",
     },
   );
 
-  if (prettierProc.exitCode !== 0) {
-    throw new Error("Prettier formatting failed");
+  if (biomeProc.exitCode !== 0) {
+    throw new Error("Biome formatting/linting failed");
   }
 
   // Add the formatted files back to staging

@@ -68,7 +68,7 @@ class TEEService:
         cls,
         tee_mode: str | None = None,
         secret_salt: str | None = None,
-    ) -> "TEEService":
+    ) -> TEEService:
         """
         Start the TEE service.
 
@@ -141,5 +141,8 @@ class TEEService:
         """
         logger.debug("TEE Service: Deriving raw key")
         return await self._provider.raw_derive_key(path, subject)
+
+
+
 
 

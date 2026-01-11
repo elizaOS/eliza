@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin Todo - Rust Implementation
 //!
 //! This crate provides a Todo task management system for elizaOS,
@@ -77,5 +78,10 @@ pub const PLUGIN_DESCRIPTION: &str =
     "Todo task management with daily recurring and one-off tasks";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

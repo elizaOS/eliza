@@ -1,11 +1,8 @@
 """Tests for S3 storage types."""
 
-import pytest
-
 from elizaos_plugin_s3_storage.types import (
     S3StorageConfig,
     UploadResult,
-    JsonUploadResult,
     get_content_type,
 )
 
@@ -24,7 +21,7 @@ class TestS3StorageConfig:
         """Test config with optional fields."""
         config = S3StorageConfig(
             access_key_id="key",
-            secret_access_key="secret",
+            secret_access_key="secret",  # noqa: S106
             region="eu-west-1",
             bucket="my-bucket",
             upload_path="uploads/",
@@ -69,5 +66,3 @@ class TestContentType:
     def test_no_extension(self) -> None:
         """Test file with no extension."""
         assert get_content_type("README") == "application/octet-stream"
-
-

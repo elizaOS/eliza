@@ -1,4 +1,4 @@
-import {  describe, expect, test  } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { Character } from "../../types";
 import {
   mergeCharacterDefaults,
@@ -101,8 +101,10 @@ describe("Character Config Functions", () => {
 
       expect(merged.name).toBe("TestChar");
       const mergedSettings = merged.settings;
-      const mergedSettingsSecrets = mergedSettings && mergedSettings.secrets as Record<string, string> | undefined;
-      expect(mergedSettingsSecrets && mergedSettingsSecrets.key).toBe("value");
+      const mergedSettingsSecrets =
+        mergedSettings &&
+        (mergedSettings.secrets as Record<string, string> | undefined);
+      expect(mergedSettingsSecrets?.key).toBe("value");
       expect(merged.plugins).toHaveLength(1);
     });
   });

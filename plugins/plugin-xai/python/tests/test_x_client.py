@@ -1,6 +1,7 @@
 """Tests for X client."""
 
 import pytest
+
 from elizaos_plugin_xai.client import XClient, XConfig
 from elizaos_plugin_xai.types import AuthMode
 
@@ -11,9 +12,9 @@ def x_config() -> XConfig:
     return XConfig(
         auth_mode=AuthMode.ENV,
         api_key="test_key",
-        api_secret="test_secret",
-        access_token="test_token",
-        access_token_secret="test_token_secret",
+        api_secret="test_secret",  # noqa: S106
+        access_token="test_token",  # noqa: S106
+        access_token_secret="test_token_secret",  # noqa: S106
     )
 
 
@@ -31,5 +32,3 @@ def test_x_config_from_env() -> None:
     assert config.auth_mode == AuthMode.ENV
     assert config.max_post_length == 280
     assert config.dry_run is False
-
-

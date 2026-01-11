@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Simple Voice plugin.
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ pub struct SamTTSOptions {
     /// Mouth articulation (0-255)
     pub mouth: u8,
 }
+
 
 impl Default for SamTTSOptions {
     fn default() -> Self {

@@ -1,7 +1,6 @@
 import {
   addHeader,
   type IAgentRuntime,
-  logger,
   type Memory,
   type Provider,
   type State,
@@ -32,9 +31,9 @@ export const actionStateProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get action results, plan, and working memory from the incoming state
     const stateData = state.data as Record<string, JsonValue> | undefined;
-    const actionResults = (stateData && stateData.actionResults) || [];
-    const actionPlan = (stateData && stateData.actionPlan) || null;
-    const workingMemory = (stateData && stateData.workingMemory) || {};
+    const actionResults = stateData?.actionResults || [];
+    const actionPlan = stateData?.actionPlan || null;
+    const workingMemory = stateData?.workingMemory || {};
 
     // Format action plan for display
     let planText = "";
@@ -74,7 +73,7 @@ export const actionStateProvider: Provider = {
             if (step.error) {
               stepText += `\n   Error: ${step.error}`;
             }
-            if (step.result && step.result.text) {
+            if (step.result?.text) {
               stepText += `\n   Result: ${step.result.text}`;
             }
 
@@ -91,9 +90,7 @@ export const actionStateProvider: Provider = {
       const formattedResults = actionResults
         .map((result, index) => {
           const resultData = result.data as { actionName?: string } | undefined;
-          const actionName =
-            (resultData && resultData.actionName) ||
-            "Unknown Action";
+          const actionName = resultData?.actionName || "Unknown Action";
           const success = result.success;
           const status = success ? "Success" : "Failed";
 
@@ -154,7 +151,7 @@ export const actionStateProvider: Provider = {
             value && typeof value === "object"
               ? (value as WorkingMemoryEntry)
               : null;
-          if (valueObj && valueObj.actionName && valueObj.result) {
+          if (valueObj?.actionName && valueObj.result) {
             return `**${valueObj.actionName}**: ${valueObj.result.text || JSON.stringify(valueObj.result.data)}`;
           }
           return `**${key}**: ${JSON.stringify(value)}`;
@@ -177,20 +174,13 @@ export const actionStateProvider: Provider = {
 
       recentActionMemories = recentMessages.filter(
         (msg) =>
-          msg.content && msg.content.type === "action_result" &&
-          msg.metadata && msg.metadata.type === "action_result",
+          msg.content &&
+          msg.content.type === "action_result" &&
+          msg.metadata &&
+          msg.metadata.type === "action_result",
       );
-    } catch (error) {
-      if (logger) {
-        logger.error(
-        {
-          src: "plugin:bootstrap:provider:action_state",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to retrieve action memories",
-      );
-      }
+    } catch {
+      // If we can't get memories, continue without them
     }
 
     // Format recent action memories
@@ -200,7 +190,7 @@ export const actionStateProvider: Provider = {
       const groupedByRun = new Map<string, Memory[]>();
 
       for (const mem of recentActionMemories) {
-        const runId: string = String((mem.content && mem.content.runId) || "unknown");
+        const runId: string = String(mem.content?.runId || "unknown");
         if (!groupedByRun.has(runId)) {
           groupedByRun.set(runId, []);
         }
@@ -219,10 +209,10 @@ export const actionStateProvider: Provider = {
           const runText = sortedMemories
             .map((mem: Memory) => {
               const memContent = mem.content;
-              const actionName = (memContent && memContent.actionName) || "Unknown";
-              const status = (memContent && memContent.actionStatus) || "unknown";
-              const planStep = (memContent && memContent.planStep) || "";
-              const text = (memContent && memContent.text) || "";
+              const actionName = memContent?.actionName || "Unknown";
+              const status = memContent?.actionStatus || "unknown";
+              const planStep = memContent?.planStep || "";
+              const text = memContent?.text || "";
 
               let memText = `  - ${actionName} (${status})`;
               if (planStep) {
@@ -237,7 +227,7 @@ export const actionStateProvider: Provider = {
             .join("\n");
 
           const firstMemory = sortedMemories[0];
-          const thought = (firstMemory && firstMemory.content && firstMemory.content.planThought) || "";
+          const thought = firstMemory?.content?.planThought || "";
           return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
         })
         .join("\n\n");
@@ -263,8 +253,8 @@ export const actionStateProvider: Provider = {
       values: {
         hasActionResults: actionResults.length > 0,
         hasActionPlan: !!actionPlan,
-        currentActionStep: (actionPlan && actionPlan.currentStep) || 0,
-        totalActionSteps: (actionPlan && actionPlan.totalSteps) || 0,
+        currentActionStep: actionPlan?.currentStep || 0,
+        totalActionSteps: actionPlan?.totalSteps || 0,
         actionResults: resultsText,
         completedActions: actionResults.filter((r) => r.success).length,
         failedActions: actionResults.filter((r) => !r.success).length,

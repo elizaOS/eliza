@@ -91,3 +91,7 @@ class TranscriptionResult:
     text: str
     language: str
 
+
+
+
+

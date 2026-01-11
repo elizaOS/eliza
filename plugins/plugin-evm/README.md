@@ -6,11 +6,11 @@ Multi-language EVM blockchain plugin for elizaOS with TypeScript, Rust, and Pyth
 
 This plugin provides comprehensive functionality for interacting with EVM-compatible blockchains, including token transfers, cross-chain bridging, and token swaps using LiFi integration. The plugin is available in three languages:
 
-| Language | Package | Status |
-|----------|---------|--------|
-| TypeScript | `@elizaos/plugin-evm` | ✅ Production |
-| Rust | `elizaos-plugin-evm` (crates.io) | ✅ Production |
-| Python | `elizaos-plugin-evm` (PyPI) | ✅ Production |
+| Language   | Package                          | Status        |
+| ---------- | -------------------------------- | ------------- |
+| TypeScript | `@elizaos/plugin-evm`            | ✅ Production |
+| Rust       | `elizaos-plugin-evm` (crates.io) | ✅ Production |
+| Python     | `elizaos-plugin-evm` (PyPI)      | ✅ Production |
 
 ## Features
 
@@ -25,22 +25,22 @@ This plugin provides comprehensive functionality for interacting with EVM-compat
 
 ## Supported Chains
 
-| Chain | ID | Native Token |
-|-------|------|--------------|
-| Ethereum Mainnet | 1 | ETH |
-| Sepolia (testnet) | 11155111 | ETH |
-| Base | 8453 | ETH |
-| Base Sepolia | 84532 | ETH |
-| Arbitrum One | 42161 | ETH |
-| Optimism | 10 | ETH |
-| Polygon | 137 | MATIC |
-| Avalanche C-Chain | 43114 | AVAX |
-| BNB Smart Chain | 56 | BNB |
-| Gnosis | 100 | xDAI |
-| Fantom | 250 | FTM |
-| Linea | 59144 | ETH |
-| Scroll | 534352 | ETH |
-| zkSync Era | 324 | ETH |
+| Chain             | ID       | Native Token |
+| ----------------- | -------- | ------------ |
+| Ethereum Mainnet  | 1        | ETH          |
+| Sepolia (testnet) | 11155111 | ETH          |
+| Base              | 8453     | ETH          |
+| Base Sepolia      | 84532    | ETH          |
+| Arbitrum One      | 42161    | ETH          |
+| Optimism          | 10       | ETH          |
+| Polygon           | 137      | MATIC        |
+| Avalanche C-Chain | 43114    | AVAX         |
+| BNB Smart Chain   | 56       | BNB          |
+| Gnosis            | 100      | xDAI         |
+| Fantom            | 250      | FTM          |
+| Linea             | 59144    | ETH          |
+| Scroll            | 534352   | ETH          |
+| zkSync Era        | 324      | ETH          |
 
 ## Installation
 
@@ -70,7 +70,7 @@ pip install elizaos-plugin-evm
 ### TypeScript
 
 ```typescript
-import { evmPlugin, EvmService } from '@elizaos/plugin-evm';
+import { evmPlugin, EvmService } from "@elizaos/plugin-evm";
 
 // Add to your agent
 const agent = createAgent({
@@ -83,7 +83,7 @@ await service.initialize(runtime);
 
 // Get wallet info
 const address = service.getAddress();
-const balance = await service.getBalance('mainnet');
+const balance = await service.getBalance("mainnet");
 ```
 
 ### Rust
@@ -95,13 +95,13 @@ use elizaos_plugin_evm::{EVMAdapterImpl, EVMAdapter};
 async fn main() -> anyhow::Result<()> {
     let agent_id = UUID::new_v4();
     let private_key = std::env::var("EVM_PRIVATE_KEY")?;
-    
+
     let adapter = EVMAdapterImpl::new(&agent_id, &private_key).await?;
     adapter.init().await?;
-    
+
     let address = adapter.get_address().await?;
     println!("Address: {:?}", address);
-    
+
     Ok(())
 }
 ```
@@ -115,7 +115,7 @@ from elizaos_plugin_evm import EVMWalletProvider, SupportedChain
 async def main():
     provider = EVMWalletProvider("your_private_key")
     print(f"Address: {provider.address}")
-    
+
     balance = await provider.get_balance(SupportedChain.MAINNET)
     print(f"Balance: {balance.native_balance} ETH")
 
@@ -230,7 +230,7 @@ Vote FOR on proposal 1 on the 0xGOVERNOR governor on Ethereum
 // Queue
 Queue proposal 1 on the 0xGOVERNOR governor on Ethereum
 
-// Execute  
+// Execute
 Execute proposal 1 on the 0xGOVERNOR governor on Ethereum
 ```
 
@@ -241,7 +241,7 @@ All implementations enforce strong types with fail-fast validation:
 ### TypeScript (Zod + Branded Types)
 
 ```typescript
-import { ZAddress, ZTransferParams } from '@elizaos/plugin-evm';
+import { ZAddress, ZTransferParams } from "@elizaos/plugin-evm";
 
 // Validated at runtime
 const address = ZAddress.parse("0x1234..."); // Throws if invalid

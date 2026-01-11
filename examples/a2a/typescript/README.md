@@ -35,15 +35,19 @@ bun run test
 ## API Endpoints
 
 ### `GET /`
+
 Returns information about the agent.
 
 ### `GET /health`
+
 Health check endpoint.
 
 ### `POST /chat`
+
 Send a message to the agent.
 
 **Request:**
+
 ```json
 {
   "message": "Hello!",
@@ -52,6 +56,7 @@ Send a message to the agent.
 ```
 
 **Response:**
+
 ```json
 {
   "response": "Hello! How can I help you?",
@@ -62,6 +67,7 @@ Send a message to the agent.
 ```
 
 ### `POST /chat/stream`
+
 Stream a response from the agent (Server-Sent Events).
 
 ## Configuration
@@ -69,4 +75,3 @@ Stream a response from the agent (Server-Sent Events).
 - `PORT` - Server port (default: 3000)
 - `OPENAI_API_KEY` - OpenAI API key (required)
 - `OPENAI_BASE_URL` - Custom OpenAI endpoint
-

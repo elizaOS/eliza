@@ -20,12 +20,12 @@ import { formatEther, type Hex, parseEther } from "viem";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { transferTemplate } from "../templates";
 import {
-  type Transaction,
-  type TransferParams,
-  type SupportedChain,
-  parseTransferParams,
   EVMError,
   EVMErrorCode,
+  parseTransferParams,
+  type SupportedChain,
+  type Transaction,
+  type TransferParams,
 } from "../types";
 
 /**
@@ -48,10 +48,7 @@ export class TransferAction {
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
 
     if (!walletClient.account) {
-      throw new EVMError(
-        EVMErrorCode.WALLET_NOT_INITIALIZED,
-        "Wallet account is not available"
-      );
+      throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
 
     const hash = await walletClient.sendTransaction({
@@ -159,12 +156,7 @@ export const transferAction: Action = {
     const action = new TransferAction(walletProvider);
 
     // Compose transfer context
-    const paramOptions = await buildTransferDetails(
-      state,
-      message,
-      runtime,
-      walletProvider
-    );
+    const paramOptions = await buildTransferDetails(state, message, runtime, walletProvider);
 
     const transferResp = await action.transfer(paramOptions);
 
@@ -223,10 +215,5 @@ export const transferAction: Action = {
     ],
   ],
 
-  similes: [
-    "EVM_TRANSFER",
-    "EVM_SEND_TOKENS",
-    "EVM_TOKEN_TRANSFER",
-    "EVM_MOVE_TOKENS",
-  ],
+  similes: ["EVM_TRANSFER", "EVM_SEND_TOKENS", "EVM_TOKEN_TRANSFER", "EVM_MOVE_TOKENS"],
 };

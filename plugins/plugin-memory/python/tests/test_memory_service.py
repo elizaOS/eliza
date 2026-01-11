@@ -1,13 +1,11 @@
 """Tests for MemoryService."""
 
-import pytest
 from uuid import uuid4
-from datetime import datetime
 
 from elizaos_plugin_memory import (
-    MemoryService,
-    MemoryConfig,
     LongTermMemoryCategory,
+    MemoryConfig,
+    MemoryService,
 )
 
 
@@ -17,7 +15,7 @@ class TestMemoryConfig:
     def test_default_values(self) -> None:
         """Test default configuration values."""
         config = MemoryConfig()
-        
+
         assert config.short_term_summarization_threshold == 16
         assert config.short_term_retain_recent == 6
         assert config.short_term_summarization_interval == 10
@@ -33,7 +31,7 @@ class TestMemoryConfig:
             short_term_summarization_threshold=20,
             long_term_extraction_enabled=False,
         )
-        
+
         assert config.short_term_summarization_threshold == 20
         assert config.long_term_extraction_enabled is False
 
@@ -44,7 +42,7 @@ class TestMemoryService:
     def test_initialization(self) -> None:
         """Test service initialization."""
         service = MemoryService()
-        
+
         assert service.service_type == "memory"
         assert service.config is not None
 
@@ -53,16 +51,16 @@ class TestMemoryService:
         service = MemoryService()
         config1 = service.get_config()
         config2 = service.get_config()
-        
+
         config1.short_term_summarization_threshold = 999
         assert config2.short_term_summarization_threshold != 999
 
     def test_update_config(self) -> None:
         """Test configuration update."""
         service = MemoryService()
-        
+
         service.update_config(short_term_summarization_threshold=50)
-        
+
         config = service.get_config()
         assert config.short_term_summarization_threshold == 50
 
@@ -70,11 +68,11 @@ class TestMemoryService:
         """Test message count increment."""
         service = MemoryService()
         room_id = uuid4()
-        
+
         count1 = service.increment_message_count(room_id)
         count2 = service.increment_message_count(room_id)
         count3 = service.increment_message_count(room_id)
-        
+
         assert count1 == 1
         assert count2 == 2
         assert count3 == 3
@@ -83,11 +81,11 @@ class TestMemoryService:
         """Test message count reset."""
         service = MemoryService()
         room_id = uuid4()
-        
+
         service.increment_message_count(room_id)
         service.increment_message_count(room_id)
         service.reset_message_count(room_id)
-        
+
         count = service.increment_message_count(room_id)
         assert count == 1
 
@@ -105,5 +103,8 @@ class TestLongTermMemoryCategory:
         """Test creating category from string."""
         category = LongTermMemoryCategory("semantic")
         assert category == LongTermMemoryCategory.SEMANTIC
+
+
+
 
 

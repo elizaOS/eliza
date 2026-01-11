@@ -1,16 +1,15 @@
-import { create } from "zustand";
+import { stringToUuid } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { create } from "zustand";
+import { getCwd, setCwd } from "../plugin/providers/cwd.js";
 import type {
-  Message,
   ChatRoom,
-  PaneFocus,
   CodeTask,
+  Message,
+  PaneFocus,
   TaskPaneVisibility,
   TaskUserStatus,
 } from "../types.js";
-import { stringToUuid, type UUID } from "@elizaos/core";
-import { saveSession, loadSession, type SessionState } from "./session.js";
-import { getCwd, setCwd } from "../plugin/providers/cwd.js";
 import {
   createRoomElizaId,
   ensureSessionIdentity,
@@ -18,6 +17,7 @@ import {
   isUuidString,
   type SessionIdentity,
 } from "./identity.js";
+import { loadSession, type SessionState, saveSession } from "./session.js";
 
 function shouldPersistSessionToDisk(): boolean {
   if (process.env.ELIZA_CODE_DISABLE_SESSION_PERSISTENCE === "1") return false;
@@ -26,18 +26,22 @@ function shouldPersistSessionToDisk(): boolean {
   return true;
 }
 
-function getTaskUserStatus(userStatus: TaskUserStatus | undefined): TaskUserStatus {
+function getTaskUserStatus(
+  userStatus: TaskUserStatus | undefined,
+): TaskUserStatus {
   return userStatus ?? "open";
 }
 
 function hasOpenTasks(tasks: CodeTask[]): boolean {
-  return tasks.some((t) => getTaskUserStatus(t.metadata?.userStatus) !== "done");
+  return tasks.some(
+    (t) => getTaskUserStatus(t.metadata?.userStatus) !== "done",
+  );
 }
 
 function computeTaskPaneVisible(
   visibility: TaskPaneVisibility,
   tasks: CodeTask[],
-  focusedPane: PaneFocus
+  focusedPane: PaneFocus,
 ): boolean {
   if (visibility === "shown") return true;
   if (visibility === "hidden") return false;
@@ -81,7 +85,12 @@ interface ElizaCodeState {
   deleteRoom: (roomId: string) => void;
 
   // Message Actions
-  addMessage: (roomId: string, role: Message["role"], content: string, taskId?: string) => Message;
+  addMessage: (
+    roomId: string,
+    role: Message["role"],
+    content: string,
+    taskId?: string,
+  ) => Message;
   clearMessages: (roomId: string) => void;
 
   // Task Actions (for UI sync - actual data managed by CodeTaskService)
@@ -139,7 +148,7 @@ const debouncedSave = (state: ElizaCodeState) => {
   // Don't queue saves while already saving or before session is loaded
   if (!shouldPersistSessionToDisk()) return;
   if (isSaving || !state.sessionLoaded) return;
-  
+
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(async () => {
     isSaving = true;
@@ -216,7 +225,12 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
   },
 
   // Message Actions
-  addMessage: (roomId: string, role: Message["role"], content: string, taskId?: string) => {
+  addMessage: (
+    roomId: string,
+    role: Message["role"],
+    content: string,
+    taskId?: string,
+  ) => {
     const message: Message = {
       id: uuidv4(),
       role,
@@ -228,7 +242,9 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
 
     set((state) => ({
       rooms: state.rooms.map((room) =>
-        room.id === roomId ? { ...room, messages: [...room.messages, message] } : room
+        room.id === roomId
+          ? { ...room, messages: [...room.messages, message] }
+          : room,
       ),
     }));
 
@@ -239,7 +255,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
   clearMessages: (roomId: string) => {
     set((state) => ({
       rooms: state.rooms.map((room) =>
-        room.id === roomId ? { ...room, messages: [] } : room
+        room.id === roomId ? { ...room, messages: [] } : room,
       ),
     }));
     debouncedSave(get());
@@ -250,7 +266,8 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
     let clearedCurrent = false;
     set((state) => {
       const hasCurrent =
-        state.currentTaskId !== null && tasks.some((t) => t.id === state.currentTaskId);
+        state.currentTaskId !== null &&
+        tasks.some((t) => t.id === state.currentTaskId);
       const nextCurrentTaskId = hasCurrent ? state.currentTaskId : null;
       if (state.currentTaskId !== null && nextCurrentTaskId === null) {
         clearedCurrent = true;
@@ -266,7 +283,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
   updateTaskInStore: (taskId: string, updates: Partial<CodeTask>) => {
     set((state) => ({
       tasks: state.tasks.map((task) =>
-        task.id === taskId ? { ...task, ...updates } : task
+        task.id === taskId ? { ...task, ...updates } : task,
       ),
     }));
   },
@@ -313,7 +330,11 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
 
   setTaskPaneVisibility: (visibility: TaskPaneVisibility) => {
     set((state) => {
-      const visible = computeTaskPaneVisible(visibility, state.tasks, state.focusedPane);
+      const visible = computeTaskPaneVisible(
+        visibility,
+        state.tasks,
+        state.focusedPane,
+      );
       if (!visible && state.focusedPane === "tasks") {
         return { taskPaneVisibility: visibility, focusedPane: "chat" };
       }
@@ -330,7 +351,10 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
 
   adjustTaskPaneWidth: (deltaFraction: number) => {
     set((state) => {
-      const next = Math.max(0.2, Math.min(0.75, state.taskPaneWidthFraction + deltaFraction));
+      const next = Math.max(
+        0.2,
+        Math.min(0.75, state.taskPaneWidthFraction + deltaFraction),
+      );
       return { taskPaneWidthFraction: next };
     });
     debouncedSave(get());
@@ -353,7 +377,7 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
     let restored = false;
     try {
       const session = await loadSession();
-      if (session && session.rooms && session.rooms.length > 0) {
+      if (session?.rooms && session.rooms.length > 0) {
         get().restoreSession(session);
         restored = true;
       }
@@ -416,31 +440,42 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
     const showFinishedTasks = session.showFinishedTasks === true;
 
     // Validate and restore rooms
-    if (session.rooms && Array.isArray(session.rooms) && session.rooms.length > 0) {
+    if (
+      session.rooms &&
+      Array.isArray(session.rooms) &&
+      session.rooms.length > 0
+    ) {
       // Ensure all rooms have valid structure
       const validRooms = session.rooms
         .filter(
-        (room) =>
-          room &&
-          typeof room.id === "string" &&
-          typeof room.name === "string" &&
-          Array.isArray(room.messages)
+          (room) =>
+            room &&
+            typeof room.id === "string" &&
+            typeof room.name === "string" &&
+            Array.isArray(room.messages),
         )
         .map((room) => {
           // Repair invalid persisted room UUIDs (e.g. "main-room-uuid") which break the SQL adapter.
-          if (typeof room.elizaRoomId === "string" && isUuidString(room.elizaRoomId)) {
+          if (
+            typeof room.elizaRoomId === "string" &&
+            isUuidString(room.elizaRoomId)
+          ) {
             return room;
           }
           const repairedId =
             room.id === INITIAL_ROOM_ID
               ? getMainRoomElizaId(identity)
-              : stringToUuid(`eliza-code:room:${identity.projectId}:${room.id}`);
+              : stringToUuid(
+                  `eliza-code:room:${identity.projectId}:${room.id}`,
+                );
           return { ...room, elizaRoomId: repairedId };
         });
 
       if (validRooms.length > 0) {
         // Ensure currentRoomId points to a valid room
-        const validCurrentRoomId = validRooms.some((r) => r.id === session.currentRoomId)
+        const validCurrentRoomId = validRooms.some(
+          (r) => r.id === session.currentRoomId,
+        )
           ? session.currentRoomId
           : validRooms[0].id;
 
@@ -462,7 +497,10 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
       // Still update identity even if rooms are invalid, so we can persist stable IDs.
       set({
         identity,
-        focusedPane: taskPaneVisibility === "hidden" && focusedPane === "tasks" ? "chat" : focusedPane,
+        focusedPane:
+          taskPaneVisibility === "hidden" && focusedPane === "tasks"
+            ? "chat"
+            : focusedPane,
         taskPaneVisibility,
         taskPaneWidthFraction,
         showFinishedTasks,
@@ -488,7 +526,11 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
 
   isTaskPaneVisible: () => {
     const state = get();
-    return computeTaskPaneVisible(state.taskPaneVisibility, state.tasks, state.focusedPane);
+    return computeTaskPaneVisible(
+      state.taskPaneVisibility,
+      state.tasks,
+      state.focusedPane,
+    );
   },
 }));
 
@@ -500,7 +542,9 @@ export const selectCurrentRoom = (state: ElizaCodeState) =>
   state.rooms.find((r) => r.id === state.currentRoomId);
 
 export const selectCurrentTask = (state: ElizaCodeState) =>
-  state.currentTaskId ? state.tasks.find((t) => t.id === state.currentTaskId) : null;
+  state.currentTaskId
+    ? state.tasks.find((t) => t.id === state.currentTaskId)
+    : null;
 
 export const selectMessages = (state: ElizaCodeState) => {
   const room = selectCurrentRoom(state);
@@ -510,10 +554,15 @@ export const selectMessages = (state: ElizaCodeState) => {
 export const selectTaskStats = (state: ElizaCodeState) => ({
   total: state.tasks.length,
   running: state.tasks.filter((t) => t.metadata?.status === "running").length,
-  completed: state.tasks.filter((t) => t.metadata?.status === "completed").length,
+  completed: state.tasks.filter((t) => t.metadata?.status === "completed")
+    .length,
   failed: state.tasks.filter((t) => t.metadata?.status === "failed").length,
   pending: state.tasks.filter((t) => t.metadata?.status === "pending").length,
 });
 
 export const selectIsTaskPaneVisible = (state: ElizaCodeState) =>
-  computeTaskPaneVisible(state.taskPaneVisibility, state.tasks, state.focusedPane);
+  computeTaskPaneVisible(
+    state.taskPaneVisibility,
+    state.tasks,
+    state.focusedPane,
+  );

@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from "react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   type?: string;
@@ -13,11 +13,11 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Input({
-  type = 'text',
+  type = "text",
   placeholder,
   value,
   onChange,
-  className = '',
+  className = "",
   disabled = false,
   ref,
   multiple,

@@ -10,15 +10,10 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import {
-  type Message,
-  PermissionsBitField,
-  type TextChannel,
-} from "discord.js";
+import { type Message, PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
-
 import { pinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 // Re-export for backwards compatibility
 export { pinMessageTemplate };
@@ -26,7 +21,7 @@ export { pinMessageTemplate };
 const getMessageRef = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{
   messageRef: string;
 } | null> => {
@@ -41,7 +36,7 @@ const getMessageRef = async (
     });
 
     const parsedResponse = parseJSONObjectFromText(response);
-    if (parsedResponse && parsedResponse.messageRef) {
+    if (parsedResponse?.messageRef) {
       return {
         messageRef: String(parsedResponse.messageRef),
       };
@@ -52,14 +47,7 @@ const getMessageRef = async (
 
 export const pinMessage = {
   name: "PIN_MESSAGE",
-  similes: [
-    "PIN_MESSAGE",
-    "PIN_MSG",
-    "PIN_THIS",
-    "PIN_THAT",
-    "MAKE_PINNED",
-    "ADD_PIN",
-  ],
+  similes: ["PIN_MESSAGE", "PIN_MSG", "PIN_THIS", "PIN_THAT", "MAKE_PINNED", "ADD_PIN"],
   description: "Pin an important message in a Discord channel.",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     return message.content.source === "discord";
@@ -68,12 +56,10 @@ export const pinMessage = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -94,7 +80,7 @@ export const pinMessage = {
 
     try {
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
         await callback({
           text: "I couldn't determine the current channel.",
@@ -103,9 +89,7 @@ export const pinMessage = {
         return;
       }
 
-      const channel = await discordService.client.channels.fetch(
-        room.channelId,
-      );
+      const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
         await callback({
           text: "I can only pin messages in text channels.",
@@ -119,10 +103,8 @@ export const pinMessage = {
       // Check bot permissions
       const textChannelGuild = textChannel.guild;
       const discordServiceClient = discordService.client;
-      const discordServiceClientUser = discordServiceClient && discordServiceClient.user;
-      const botMember = textChannelGuild && textChannelGuild.members.cache.get(
-        discordServiceClientUser && discordServiceClientUser.id,
-      );
+      const discordServiceClientUser = discordServiceClient?.user;
+      const botMember = textChannelGuild?.members.cache.get(discordServiceClientUser?.id);
       if (botMember) {
         const permissions = textChannel.permissionsFor(botMember);
         if (!permissions || !permissions.has(PermissionsBitField.Flags.ManageMessages)) {
@@ -137,31 +119,24 @@ export const pinMessage = {
       let targetMessage: Message | null = null;
 
       // Find the target message
-      if (
-        messageInfo.messageRef === "last" ||
-        messageInfo.messageRef === "previous"
-      ) {
+      if (messageInfo.messageRef === "last" || messageInfo.messageRef === "previous") {
         // Get the last few messages - fetch max allowed by Discord API
         const messages = await textChannel.messages.fetch({ limit: 100 });
         const sortedMessages = Array.from(messages.values()).sort(
-          (a, b) => b.createdTimestamp - a.createdTimestamp,
+          (a, b) => b.createdTimestamp - a.createdTimestamp
         );
 
         // Skip the bot's own message and the command message
         const discordServiceClient = discordService.client;
-        const discordServiceClientUser = discordServiceClient && discordServiceClient.user;
+        const discordServiceClientUser = discordServiceClient?.user;
         targetMessage =
           sortedMessages.find(
-            (msg) =>
-              msg.id !== message.content.id &&
-              msg.author.id !== (discordServiceClientUser && discordServiceClientUser.id),
+            (msg) => msg.id !== message.content.id && msg.author.id !== discordServiceClientUser?.id
           ) || null;
       } else if (/^\d+$/.test(messageInfo.messageRef)) {
         // It's a message ID
         try {
-          targetMessage = await textChannel.messages.fetch(
-            messageInfo.messageRef,
-          );
+          targetMessage = await textChannel.messages.fetch(messageInfo.messageRef);
         } catch (_e) {
           // Message not found
         }
@@ -172,12 +147,8 @@ export const pinMessage = {
 
         targetMessage =
           Array.from(messages.values()).find((msg) => {
-            const contentMatch = msg.content
-              .toLowerCase()
-              .includes(searchLower);
-            const authorMatch = msg.author.username
-              .toLowerCase()
-              .includes(searchLower);
+            const contentMatch = msg.content.toLowerCase().includes(searchLower);
+            const authorMatch = msg.author.username.toLowerCase().includes(searchLower);
             return contentMatch || authorMatch;
           }) || null;
       }
@@ -216,7 +187,7 @@ export const pinMessage = {
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },
-          "Failed to pin message",
+          "Failed to pin message"
         );
         await callback({
           text: "I couldn't pin that message. The channel might have reached the maximum number of pinned messages (50).",
@@ -230,7 +201,7 @@ export const pinMessage = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error pinning message",
+        "Error pinning message"
       );
       await callback({
         text: "I encountered an error while trying to pin the message. Please make sure I have the necessary permissions.",

@@ -4,10 +4,10 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,
-  logger,
 } from "@elizaos/core";
 import { extractFilePathFromText, readFileForPrompt } from "./llm-utils.js";
 
@@ -38,9 +38,14 @@ BEHAVIOR:
 REQUIRES: A valid file path that can be extracted from the user's message.
 OUTPUT: Bug analysis and proposed code fixes (not applied automatically).`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
-    return text.includes("fix") || text.includes("bug") || text.includes("debug");
+    return (
+      text.includes("fix") || text.includes("bug") || text.includes("debug")
+    );
   },
 
   handler: async (
@@ -48,7 +53,7 @@ OUTPUT: Bug analysis and proposed code fixes (not applied automatically).`,
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const text = message.content.text ?? "";
     const filepath = extractFilePathFromText(text);
@@ -63,7 +68,7 @@ OUTPUT: Bug analysis and proposed code fixes (not applied automatically).`,
       "",
       `File: ${file.filepath}`,
       "",
-      "```" + file.extension,
+      `\`\`\`${file.extension}`,
       file.content,
       "```",
       "",
@@ -72,12 +77,14 @@ OUTPUT: Bug analysis and proposed code fixes (not applied automatically).`,
     ].join("\n");
 
     try {
+      // biome-ignore lint/correctness/useHookAtTopLevel: useModel is a runtime method, not a React hook
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
         maxTokens: 2200,
         temperature: 0.2,
       });
-      const out = typeof result === "string" ? result.trim() : String(result).trim();
+      const out =
+        typeof result === "string" ? result.trim() : String(result).trim();
       await callback?.({ text: out });
       return { success: true, text: out };
     } catch (err) {

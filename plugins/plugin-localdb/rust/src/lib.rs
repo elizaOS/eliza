@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin LocalDB - Simple JSON-based storage for Rust
 //!
 //! This crate provides a lightweight, file-based database adapter for elizaOS

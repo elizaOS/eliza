@@ -153,5 +153,3 @@ class TestSupportedChain:
         """Test default RPC URLs are set."""
         for chain in SupportedChain:
             assert chain.default_rpc.startswith("https://")
-
-

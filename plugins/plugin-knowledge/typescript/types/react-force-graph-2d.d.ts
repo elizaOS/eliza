@@ -1,5 +1,5 @@
-declare module 'react-force-graph-2d' {
-  import type { Component, RefObject } from 'react';
+declare module "react-force-graph-2d" {
+  import type { Component } from "react";
 
   export interface NodeObject {
     id?: string | number;
@@ -111,7 +111,7 @@ declare module 'react-force-graph-2d' {
     enablePointerInteraction?: boolean;
 
     // Force engine
-    dagMode?: 'td' | 'bu' | 'lr' | 'rl' | 'radialout' | 'radialin' | null;
+    dagMode?: "td" | "bu" | "lr" | "rl" | "radialout" | "radialin" | null;
     dagLevelDistance?: number | null;
     dagNodeFilter?: (node: NodeObject) => boolean;
     onDagError?: (loopNodeIds: (string | number)[]) => void;
@@ -147,4 +147,3 @@ declare module 'react-force-graph-2d' {
 
   export default ForceGraph2D;
 }
-

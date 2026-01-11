@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Text generation model handlers.
 
 use crate::error::Result;
@@ -39,5 +40,10 @@ pub async fn handle_text_large(
     let client = ElizaCloudClient::new(config)?;
     client.generate_text_large(params).await
 }
+
+
+
+
+
 
 

@@ -1,19 +1,19 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { $ } from "bun";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getViteOutDir } from "./vite-config-utils";
 
 describe("Build Order Integration Test", () => {
   const rootDir = path.resolve(__dirname, "../..");
   const distDir = path.join(rootDir, "dist");
-  let viteBuildDir: string;
+  let _viteBuildDir: string;
   const _tsupBuildMarker = path.join(distDir, "index.js"); // TSup creates this
 
   beforeAll(async () => {
     // Get the actual vite build directory from config
     const viteOutDirRelative = await getViteOutDir(rootDir);
-    viteBuildDir = path.join(rootDir, viteOutDirRelative);
+    _viteBuildDir = path.join(rootDir, viteOutDirRelative);
 
     // Clean dist directory before test
     if (fs.existsSync(distDir)) {
@@ -34,7 +34,9 @@ describe("Build Order Integration Test", () => {
 
     // Verify plugin build outputs exist
     const distFilesAfterPluginBuild = fs.readdirSync(distDir);
-    expect(distFilesAfterPluginBuild.some((file) => file === "index.js")).toBe(true);
+    expect(distFilesAfterPluginBuild.some((file) => file === "index.js")).toBe(
+      true,
+    );
     // Note: .d.ts files may not always be generated if there are type errors
 
     // Then run vite build to generate frontend assets (should coexist with plugin outputs)

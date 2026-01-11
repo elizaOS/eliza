@@ -49,8 +49,10 @@ class BrowserEnvironmentStore {
 
   constructor() {
     // Load from window.ENV if available (common pattern for browser apps)
-    const globalWindow = (globalThis as { window?: { ENV?: EnvironmentConfig } }).window;
-    if (globalWindow && globalWindow.ENV) {
+    const globalWindow = (
+      globalThis as { window?: { ENV?: EnvironmentConfig } }
+    ).window;
+    if (globalWindow?.ENV) {
       this.store = { ...globalWindow.ENV };
     }
 

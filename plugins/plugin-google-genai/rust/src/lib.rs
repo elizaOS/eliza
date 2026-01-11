@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin Google GenAI - Rust Implementation
 //!
 //! This crate provides a Google Generative AI (Gemini) API client for elizaOS,
@@ -71,5 +72,10 @@ pub const PLUGIN_DESCRIPTION: &str =
     "Google GenAI Gemini API client with text generation, embeddings, and image analysis support";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

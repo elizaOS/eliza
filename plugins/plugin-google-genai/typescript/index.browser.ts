@@ -5,7 +5,5 @@
  * due to CORS restrictions on direct Google API access.
  */
 
-export * from './index';
-export { default } from './index';
-
-
+export * from "./index";
+export { default } from "./index";

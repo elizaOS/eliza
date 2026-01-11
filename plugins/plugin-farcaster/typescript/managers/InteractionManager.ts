@@ -13,11 +13,9 @@ import {
 } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import type { FarcasterClient } from "../client/FarcasterClient";
-import { AsyncQueue } from "../utils/asyncqueue";
-import { standardCastHandlerCallback } from "../utils/callbacks";
 import {
-  FARCASTER_SOURCE,
   type Cast,
+  FARCASTER_SOURCE,
   type FarcasterConfig,
   FarcasterEventTypes,
   type FarcasterGenericCastPayload,
@@ -25,12 +23,14 @@ import {
   type Profile,
 } from "../types";
 import { castUuid, neynarCastToCast } from "../utils";
+import { AsyncQueue } from "../utils/asyncqueue";
+import { standardCastHandlerCallback } from "../utils/callbacks";
+import { EmbedManager } from "./EmbedManager";
+import type { IInteractionProcessor } from "./InteractionProcessor";
 import {
   createFarcasterInteractionSource,
   type FarcasterInteractionSource,
 } from "./InteractionSource";
-import type { IInteractionProcessor } from "./InteractionProcessor";
-import { EmbedManager } from "./EmbedManager";
 
 interface FarcasterInteractionManagerParams {
   client: FarcasterClient;
@@ -88,7 +88,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
         );
       } catch (error) {
         this.runtime.logger.warn(
-          { error: error instanceof Error ? error.message : String(error), castHash: cast.hash },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            castHash: cast.hash,
+          },
           "[Farcaster] Failed to process embeds, continuing without media"
         );
       }
@@ -116,7 +119,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
         );
       } catch (error) {
         this.runtime.logger.warn(
-          { error: error instanceof Error ? error.message : String(error), castHash: cast.hash },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            castHash: cast.hash,
+          },
           "[Farcaster] Failed to process embeds, continuing without media"
         );
       }
@@ -146,7 +152,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
       return;
     }
 
-    const memoryId = castUuid({ agentId: this.runtime.agentId, hash: castData.hash });
+    const memoryId = castUuid({
+      agentId: this.runtime.agentId,
+      hash: castData.hash,
+    });
     if (await this.runtime.getMemoryById(memoryId)) {
       this.runtime.logger.debug("Skipping already processed webhook cast:", castData.hash);
       return;
@@ -169,7 +178,7 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
       } catch (error) {
         this.runtime.logger.error(
           { agentId: this.runtime.agentId, error },
-          "Failed to process webhook mention from @" + username
+          `Failed to process webhook mention from @${username}`
         );
       }
     } else if (isReply) {
@@ -190,7 +199,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
 
   async ensureCastConnection(cast: Cast): Promise<Memory> {
     return await this.asyncQueue.submit(async () => {
-      const memoryId = castUuid({ agentId: this.runtime.agentId, hash: cast.hash });
+      const memoryId = castUuid({
+        agentId: this.runtime.agentId,
+        hash: cast.hash,
+      });
       const conversationId = cast.threadId ?? cast.inReplyTo?.hash ?? cast.hash;
       const entityId = createUniqueUuid(this.runtime, cast.authorFid.toString());
       const worldId = createUniqueUuid(this.runtime, cast.authorFid.toString());
@@ -231,7 +243,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
         content: {
           text,
           inReplyTo: cast.inReplyTo?.hash
-            ? castUuid({ agentId: this.runtime.agentId, hash: cast.inReplyTo.hash })
+            ? castUuid({
+                agentId: this.runtime.agentId,
+                hash: cast.inReplyTo.hash,
+              })
             : undefined,
           source: FARCASTER_SOURCE,
           channelType: ChannelType.THREAD,
@@ -254,7 +269,10 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
     const self = this;
 
     async function processThread(currentCast: Cast): Promise<void> {
-      const memoryId = castUuid({ hash: currentCast.hash, agentId: runtime.agentId });
+      const memoryId = castUuid({
+        hash: currentCast.hash,
+        agentId: runtime.agentId,
+      });
 
       if (visited.has(currentCast.hash) || skipMemoryId.has(memoryId)) {
         return;
@@ -268,12 +286,15 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
         runtime.logger.info({ hash: currentCast.hash }, "Creating memory for cast");
         const newMemory = await self.ensureCastConnection(currentCast);
         await runtime.createMemory(newMemory, "messages");
-        runtime.emitEvent(FarcasterEventTypes.THREAD_CAST_CREATED as string, {
-          runtime,
-          memory: newMemory,
-          cast: currentCast,
-          source: FARCASTER_SOURCE,
-        } as EventPayload);
+        runtime.emitEvent(
+          FarcasterEventTypes.THREAD_CAST_CREATED as string,
+          {
+            runtime,
+            memory: newMemory,
+            cast: currentCast,
+            source: FARCASTER_SOURCE,
+          } as EventPayload
+        );
       }
 
       thread.unshift(currentCast);
@@ -323,7 +344,9 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
 
     try {
       if (!this.runtime.messageService) {
-        this.runtime.logger.warn("[Farcaster] messageService not available, skipping mention handling");
+        this.runtime.logger.warn(
+          "[Farcaster] messageService not available, skipping mention handling"
+        );
         return;
       }
       await this.runtime.messageService.handleMessage(this.runtime, memory, callback);
@@ -357,5 +380,3 @@ export class FarcasterInteractionManager implements IInteractionProcessor {
     await this.source.stop();
   }
 }
-
-

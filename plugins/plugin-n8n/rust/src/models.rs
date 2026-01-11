@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Model definitions for the N8n Plugin.
 
 use serde::{Deserialize, Serialize};
@@ -142,5 +143,10 @@ mod tests {
         assert!(JobStatus::Cancelled.is_terminal());
     }
 }
+
+
+
+
+
 
 

@@ -51,12 +51,12 @@ class Model:
         self._default_max_tokens = self._infer_max_tokens(model_id)
 
     @classmethod
-    def small(cls) -> "Model":
+    def small(cls) -> Model:
         """Create the default small model."""
         return cls(cls.CLAUDE_3_5_HAIKU)
 
     @classmethod
-    def large(cls) -> "Model":
+    def large(cls) -> Model:
         """Create the default large model."""
         return cls(cls.CLAUDE_SONNET_4)
 
@@ -115,5 +115,3 @@ class Model:
     def __hash__(self) -> int:
         """Hash by model ID."""
         return hash(self._id)
-
-

@@ -36,7 +36,7 @@ async def main():
         character=character,
     )
     await runtime.initialize()
-    
+
     # Runtime is now ready to process messages
 
 if __name__ == "__main__":
@@ -94,9 +94,3 @@ ruff check elizaos
 ## License
 
 MIT
-
-
-
-
-
-

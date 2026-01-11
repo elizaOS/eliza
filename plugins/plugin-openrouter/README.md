@@ -65,6 +65,7 @@ EMBEDDING_DIMENSIONS=1536
 - `OPENROUTER_API_KEY` (required): Your OpenRouter API key.
 - `OPENROUTER_BASE_URL`: Custom API endpoint (default: https://openrouter.ai/api/v1).
 - `OPENROUTER_BROWSER_BASE_URL`: Browser-only base URL to a proxy endpoint that forwards requests to OpenRouter without exposing keys.
+
 ### Browser mode and proxying
 
 When bundled for the browser, this plugin avoids sending Authorization headers. Set `OPENROUTER_BROWSER_BASE_URL` to a server-side proxy you control that injects the OpenRouter API key. This prevents exposing secrets in frontend builds.
@@ -72,27 +73,31 @@ When bundled for the browser, this plugin avoids sending Authorization headers. 
 Example minimal proxy (Express):
 
 ```ts
-import express from 'express';
-import fetch from 'node-fetch';
+import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-app.post('/openrouter/*', async (req, res) => {
+app.post("/openrouter/*", async (req, res) => {
   const url = `https://openrouter.ai/api/v1/${req.params[0]}`;
   const r = await fetch(url, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(req.body),
   });
-  res.status(r.status).set(Object.fromEntries(r.headers)).send(await r.text());
+  res
+    .status(r.status)
+    .set(Object.fromEntries(r.headers))
+    .send(await r.text());
 });
 
 app.listen(3000);
 ```
+
 - `OPENROUTER_SMALL_MODEL`: Specific model to use for `TEXT_SMALL` and `OBJECT_SMALL`. Overrides `SMALL_MODEL` if set.
 - `OPENROUTER_LARGE_MODEL`: Specific model to use for `TEXT_LARGE` and `OBJECT_LARGE`. Overrides `LARGE_MODEL` if set.
 - `OPENROUTER_IMAGE_MODEL`: Specific model to use for `IMAGE_DESCRIPTION`. Overrides `IMAGE_MODEL` if set.

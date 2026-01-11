@@ -4,7 +4,7 @@
  * These tests verify that our testing utilities work correctly.
  */
 
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createTestCharacter,
   createTestMemory,
@@ -105,10 +105,13 @@ describe("Testing Infrastructure", () => {
 
     it("should wait for condition to become true", async () => {
       let counter = 0;
-      await waitFor(() => {
-        counter++;
-        return counter >= 3;
-      }, { interval: 10 });
+      await waitFor(
+        () => {
+          counter++;
+          return counter >= 3;
+        },
+        { interval: 10 },
+      );
       expect(counter).toBe(3);
     });
 
@@ -120,11 +123,14 @@ describe("Testing Infrastructure", () => {
 
     it("should work with async conditions", async () => {
       let counter = 0;
-      await waitFor(async () => {
-        counter++;
-        await new Promise((r) => setTimeout(r, 5));
-        return counter >= 2;
-      }, { interval: 10 });
+      await waitFor(
+        async () => {
+          counter++;
+          await new Promise((r) => setTimeout(r, 5));
+          return counter >= 2;
+        },
+        { interval: 10 },
+      );
       expect(counter).toBe(2);
     });
   });
@@ -144,9 +150,9 @@ describe("Testing Infrastructure", () => {
     });
 
     it("should throw if error is not an Error instance", async () => {
-      await expect(expectRejection(Promise.reject("string error"))).rejects.toThrow(
-        "Expected Error but got: string",
-      );
+      await expect(
+        expectRejection(Promise.reject("string error")),
+      ).rejects.toThrow("Expected Error but got: string");
     });
 
     it("should check error message with string", async () => {
@@ -293,8 +299,3 @@ describe("Testing Infrastructure", () => {
     });
   });
 });
-
-
-
-
-

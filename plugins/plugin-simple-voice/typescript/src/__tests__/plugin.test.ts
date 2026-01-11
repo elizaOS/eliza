@@ -1,86 +1,101 @@
-import { describe, expect, it, beforeAll, vi } from 'vitest';
-import { simpleVoicePlugin, SamTTSService } from '../index';
-import { logger } from '@elizaos/core';
-import { createMockRuntime, createMockMemory } from './test-utils';
+import { logger } from "@elizaos/core";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { SamTTSService, simpleVoicePlugin } from "../index";
+import { createMockMemory, createMockRuntime } from "./test-utils";
 
 beforeAll(() => {
-  vi.spyOn(logger, 'info');
-  vi.spyOn(logger, 'warn');
+  vi.spyOn(logger, "info");
+  vi.spyOn(logger, "warn");
 });
 
-describe('SimpleVoicePlugin', () => {
-  it('has correct metadata', () => {
-    expect(simpleVoicePlugin.name).toBe('@elizaos/plugin-simple-voice');
-    expect(simpleVoicePlugin.description).toContain('SAM');
+describe("SimpleVoicePlugin", () => {
+  it("has correct metadata", () => {
+    expect(simpleVoicePlugin.name).toBe("@elizaos/plugin-simple-voice");
+    expect(simpleVoicePlugin.description).toContain("SAM");
   });
 
-  it('registers SAY_ALOUD action', () => {
+  it("registers SAY_ALOUD action", () => {
     expect(simpleVoicePlugin.actions).toHaveLength(1);
-    expect(simpleVoicePlugin.actions![0].name).toBe('SAY_ALOUD');
+    const firstAction = simpleVoicePlugin.actions?.[0];
+    expect(firstAction?.name).toBe("SAY_ALOUD");
   });
 
-  it('registers SamTTSService', () => {
+  it("registers SamTTSService", () => {
     expect(simpleVoicePlugin.services).toHaveLength(1);
-    expect(simpleVoicePlugin.services![0]).toBe(SamTTSService);
+    expect(simpleVoicePlugin.services?.[0]).toBe(SamTTSService);
   });
 });
 
-describe('SayAloudAction', () => {
-  const action = simpleVoicePlugin.actions![0];
+describe("SayAloudAction", () => {
+  const action = simpleVoicePlugin.actions?.[0];
 
-  it('validates trigger phrases', async () => {
+  if (!action) {
+    throw new Error("Action not found");
+  }
+
+  it("validates trigger phrases", async () => {
     const runtime = createMockRuntime();
 
-    const triggers = ['say aloud hello', 'speak this text', 'voice command'];
+    const triggers = ["say aloud hello", "speak this text", "voice command"];
     for (const text of triggers) {
-      expect(await action.validate!(runtime, createMockMemory(text))).toBe(true);
+      expect(await action.validate?.(runtime, createMockMemory(text))).toBe(true);
     }
   });
 
-  it('rejects non-trigger phrases', async () => {
+  it("rejects non-trigger phrases", async () => {
     const runtime = createMockRuntime();
 
-    const nonTriggers = ['hello world', 'what is the weather'];
+    const nonTriggers = ["hello world", "what is the weather"];
     for (const text of nonTriggers) {
-      expect(await action.validate!(runtime, createMockMemory(text))).toBe(false);
+      expect(await action.validate?.(runtime, createMockMemory(text))).toBe(false);
     }
   });
 });
 
-describe('SamTTSService', () => {
-  it('has correct service type', () => {
-    expect(SamTTSService.serviceType).toBe('SAM_TTS');
+describe("SamTTSService", () => {
+  it("has correct service type", () => {
+    expect(SamTTSService.serviceType).toBe("SAM_TTS");
   });
 
-  it('generates audio from text', () => {
+  it("generates audio from text", () => {
     const runtime = createMockRuntime();
     const service = new SamTTSService(runtime);
 
-    const audio = service.generateAudio('Hello');
+    const audio = service.generateAudio("Hello");
     expect(audio).toBeInstanceOf(Uint8Array);
     expect(audio.length).toBeGreaterThan(0);
   });
 
-  it('applies voice options', () => {
+  it("applies voice options", () => {
     const runtime = createMockRuntime();
     const service = new SamTTSService(runtime);
 
-    const slow = service.generateAudio('Test', { speed: 40, pitch: 64, throat: 128, mouth: 128 });
-    const fast = service.generateAudio('Test', { speed: 120, pitch: 64, throat: 128, mouth: 128 });
+    const slow = service.generateAudio("Test", {
+      speed: 40,
+      pitch: 64,
+      throat: 128,
+      mouth: 128,
+    });
+    const fast = service.generateAudio("Test", {
+      speed: 120,
+      pitch: 64,
+      throat: 128,
+      mouth: 128,
+    });
 
     // Different speeds produce different length audio
     expect(slow.length).not.toBe(fast.length);
   });
 
-  it('creates valid WAV buffer', () => {
+  it("creates valid WAV buffer", () => {
     const runtime = createMockRuntime();
     const service = new SamTTSService(runtime);
 
-    const audio = service.generateAudio('Test');
+    const audio = service.generateAudio("Test");
     const wav = service.createWAVBuffer(audio);
 
     expect(wav.length).toBe(audio.length + 44);
-    expect(String.fromCharCode(...wav.slice(0, 4))).toBe('RIFF');
-    expect(String.fromCharCode(...wav.slice(8, 12))).toBe('WAVE');
+    expect(String.fromCharCode(...wav.slice(0, 4))).toBe("RIFF");
+    expect(String.fromCharCode(...wav.slice(8, 12))).toBe("WAVE");
   });
 });

@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
-import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 
@@ -20,7 +20,10 @@ export interface TokenStore {
 
 export class RuntimeCacheTokenStore implements TokenStore {
   private readonly key: string;
-  constructor(private readonly runtime: IAgentRuntime, key?: string) {
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    key?: string
+  ) {
     this.key = key ?? `twitter/oauth2/tokens/${runtime.agentId}`;
   }
 
@@ -38,9 +41,8 @@ export class RuntimeCacheTokenStore implements TokenStore {
   }
 
   async clear(): Promise<void> {
-    // Prefer deleting semantics without relying on null (some runtimes/types disallow null).
-    // If the runtime doesn't support true deletion, setting `undefined` should be treated as "not set".
-    await this.runtime.setCache(this.key, undefined as any);
+    // Use deleteCache for proper deletion semantics
+    await this.runtime.deleteCache(this.key);
   }
 }
 
@@ -89,17 +91,14 @@ export class FileTokenStore implements TokenStore {
   }
 }
 
-export function chooseDefaultTokenStore(
-  runtime: IAgentRuntime | undefined,
-): TokenStore {
+export function chooseDefaultTokenStore(runtime: IAgentRuntime | undefined): TokenStore {
   if (runtime && typeof runtime.getCache === "function" && typeof runtime.setCache === "function") {
     return new RuntimeCacheTokenStore(runtime);
   }
 
   logger.warn(
     "Twitter OAuth token persistence: runtime cache API not available; falling back to local token file. " +
-      "This file contains sensitive tokens—protect it and rotate tokens if compromised.",
+      "This file contains sensitive tokens—protect it and rotate tokens if compromised."
   );
   return new FileTokenStore(FileTokenStore.defaultPath());
 }
-

@@ -4,12 +4,10 @@ Key Derivation Provider for Phala TEE.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING
 
 from eth_account import Account
-from nacl.signing import SigningKey
 from solders.keypair import Keypair
 
 from elizaos_plugin_tee.errors import KeyDerivationError
@@ -300,5 +298,8 @@ async def get_derived_keys(
 
     finally:
         await provider.close()
+
+
+
 
 

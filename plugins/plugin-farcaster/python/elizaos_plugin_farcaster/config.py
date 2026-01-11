@@ -5,7 +5,7 @@ Configuration for the Farcaster plugin.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 from elizaos_plugin_farcaster.error import ConfigError
@@ -119,12 +119,8 @@ class FarcasterConfig:
         max_cast_length = int(os.getenv("MAX_CAST_LENGTH", str(DEFAULT_MAX_CAST_LENGTH)))
         poll_interval = int(os.getenv("FARCASTER_POLL_INTERVAL", str(DEFAULT_POLL_INTERVAL)))
         enable_cast = os.getenv("ENABLE_CAST", "true").lower() == "true"
-        cast_interval_min = int(
-            os.getenv("CAST_INTERVAL_MIN", str(DEFAULT_CAST_INTERVAL_MIN))
-        )
-        cast_interval_max = int(
-            os.getenv("CAST_INTERVAL_MAX", str(DEFAULT_CAST_INTERVAL_MAX))
-        )
+        cast_interval_min = int(os.getenv("CAST_INTERVAL_MIN", str(DEFAULT_CAST_INTERVAL_MIN)))
+        cast_interval_max = int(os.getenv("CAST_INTERVAL_MAX", str(DEFAULT_CAST_INTERVAL_MAX)))
         hub_url = os.getenv("FARCASTER_HUB_URL")
 
         return cls(

@@ -66,7 +66,7 @@ class OllamaClient:
         """Close the HTTP client."""
         await self._http_client.aclose()
 
-    async def __aenter__(self) -> "OllamaClient":
+    async def __aenter__(self) -> OllamaClient:
         """Context manager entry."""
         return self
 
@@ -274,9 +274,7 @@ class OllamaClient:
             model=response.model,
         )
 
-    async def generate_embedding(
-        self, params: EmbeddingParams | str
-    ) -> EmbeddingResponse:
+    async def generate_embedding(self, params: EmbeddingParams | str) -> EmbeddingResponse:
         """
         Generate an embedding for the given text.
 
@@ -410,5 +408,8 @@ class OllamaClient:
                         best = candidate
 
         return best
+
+
+
 
 

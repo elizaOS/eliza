@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { useStore } from "./lib/store.js";
+import type { AgentRuntime } from "@elizaos/core";
+import { Box, Text, useApp, useInput } from "ink";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPane } from "./components/ChatPane.js";
-import { TaskPane } from "./components/TaskPane.js";
-import { StatusBar } from "./components/StatusBar.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
+import { StatusBar } from "./components/StatusBar.js";
+import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
+import { useStore } from "./lib/store.js";
 import { handleTaskSlashCommand } from "./lib/task-slash-command.js";
 import { getCwd, setCwd } from "./plugin/providers/cwd.js";
-import { CodeTaskService } from "./plugin/services/code-task.js";
-import type { AgentRuntime } from "@elizaos/core";
+import type { CodeTaskService } from "./plugin/services/code-task.js";
 import type { TaskEvent } from "./types.js";
 
 interface AppProps {
@@ -57,11 +57,16 @@ export function App({ runtime }: AppProps) {
   const { stdout } = useStdout();
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
-  const [startupResumeTaskIds, setStartupResumeTaskIds] = useState<string[] | null>(null);
+  const [startupResumeTaskIds, setStartupResumeTaskIds] = useState<
+    string[] | null
+  >(null);
   const didCheckInterruptedTasks = useRef(false);
   const [showHelpOverlay, setShowHelpOverlay] = useState(false);
 
-  const [terminalSize, setTerminalSize] = useState<{ rows: number; columns: number }>(() => ({
+  const [terminalSize, setTerminalSize] = useState<{
+    rows: number;
+    columns: number;
+  }>(() => ({
     rows: stdout?.rows ?? 24,
     columns: stdout?.columns ?? 80,
   }));
@@ -179,7 +184,9 @@ export function App({ runtime }: AppProps) {
       .detectAndPauseInterruptedTasks()
       .then((pausedTasks) => {
         if (pausedTasks.length === 0) return;
-        const ids = pausedTasks.map((t) => t.id ?? "").filter((id) => id.length > 0);
+        const ids = pausedTasks
+          .map((t) => t.id ?? "")
+          .filter((id) => id.length > 0);
         if (ids.length === 0) return;
 
         setStartupResumeTaskIds(ids);
@@ -192,7 +199,7 @@ export function App({ runtime }: AppProps) {
         addMessage(
           currentRoomId,
           "system",
-          `Found ${ids.length} previously-running task(s). Paused.\nResume now? (y/n)\n\n${preview}`
+          `Found ${ids.length} previously-running task(s). Paused.\nResume now? (y/n)\n\n${preview}`,
         );
       })
       .catch(() => {
@@ -228,7 +235,12 @@ export function App({ runtime }: AppProps) {
             return handleSlashCommand("task", "list");
           }
           const mode = trimmed.toLowerCase();
-          if (mode === "show" || mode === "hide" || mode === "auto" || mode === "toggle") {
+          if (
+            mode === "show" ||
+            mode === "hide" ||
+            mode === "auto" ||
+            mode === "toggle"
+          ) {
             return handleSlashCommand("task", `pane ${mode}`);
           }
           return handleSlashCommand("task", "list");
@@ -264,11 +276,7 @@ export function App({ runtime }: AppProps) {
         case "new": {
           const name = args.trim() || `Chat ${rooms.length + 1}`;
           const newRoom = createRoom(name);
-          addMessage(
-            newRoom.id,
-            "system",
-            `Started: ${name}`
-          );
+          addMessage(newRoom.id, "system", `Started: ${name}`);
           return true;
         }
 
@@ -286,7 +294,7 @@ export function App({ runtime }: AppProps) {
           addMessage(
             currentRoomId,
             "system",
-            `Conversation reset: ${room?.name ?? "Chat"}`
+            `Conversation reset: ${room?.name ?? "Chat"}`,
           );
           return true;
         }
@@ -308,7 +316,7 @@ export function App({ runtime }: AppProps) {
           addMessage(
             currentRoomId,
             "system",
-            `Conversations:\n${roomList}\n\nUse /switch <n|name>.`
+            `Conversations:\n${roomList}\n\nUse /switch <n|name>.`,
           );
           return true;
         }
@@ -319,7 +327,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              "Usage: /switch <number or name>\n\nUse `/conversations` to see available conversations."
+              "Usage: /switch <number or name>\n\nUse `/conversations` to see available conversations.",
             );
             return true;
           }
@@ -327,7 +335,7 @@ export function App({ runtime }: AppProps) {
           // Try to match by number first
           const num = parseInt(query, 10);
           let targetRoom = null;
-          if (!isNaN(num) && num >= 1 && num <= rooms.length) {
+          if (!Number.isNaN(num) && num >= 1 && num <= rooms.length) {
             targetRoom = rooms[num - 1];
           } else {
             // Match by name (case-insensitive partial match)
@@ -335,7 +343,7 @@ export function App({ runtime }: AppProps) {
             targetRoom = rooms.find(
               (r) =>
                 r.name.toLowerCase() === lowerQuery ||
-                r.name.toLowerCase().includes(lowerQuery)
+                r.name.toLowerCase().includes(lowerQuery),
             );
           }
 
@@ -343,7 +351,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              `No conversation found matching: "${query}"\n\nUse \`/conversations\` to see available conversations.`
+              `No conversation found matching: "${query}"\n\nUse \`/conversations\` to see available conversations.`,
             );
             return true;
           }
@@ -352,7 +360,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              `Already in: ${targetRoom.name}`
+              `Already in: ${targetRoom.name}`,
             );
             return true;
           }
@@ -361,7 +369,7 @@ export function App({ runtime }: AppProps) {
           addMessage(
             targetRoom.id,
             "system",
-            `Switched to: ${targetRoom.name}`
+            `Switched to: ${targetRoom.name}`,
           );
           return true;
         }
@@ -369,24 +377,16 @@ export function App({ runtime }: AppProps) {
         case "rename": {
           const newName = args.trim();
           if (!newName) {
-            addMessage(
-              currentRoomId,
-              "system",
-              "Usage: /rename <new name>"
-            );
+            addMessage(currentRoomId, "system", "Usage: /rename <new name>");
             return true;
           }
           // Update room name in store
           useStore.setState((state) => ({
             rooms: state.rooms.map((r) =>
-              r.id === currentRoomId ? { ...r, name: newName } : r
+              r.id === currentRoomId ? { ...r, name: newName } : r,
             ),
           }));
-          addMessage(
-            currentRoomId,
-            "system",
-            `Renamed to: ${newName}`
-          );
+          addMessage(currentRoomId, "system", `Renamed to: ${newName}`);
           return true;
         }
 
@@ -396,7 +396,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              "Usage: /delete <number or name>\n\nNote: Cannot delete the current conversation. Switch first."
+              "Usage: /delete <number or name>\n\nNote: Cannot delete the current conversation. Switch first.",
             );
             return true;
           }
@@ -404,7 +404,7 @@ export function App({ runtime }: AppProps) {
           // Try to match by number first
           const num = parseInt(query, 10);
           let targetRoom = null;
-          if (!isNaN(num) && num >= 1 && num <= rooms.length) {
+          if (!Number.isNaN(num) && num >= 1 && num <= rooms.length) {
             targetRoom = rooms[num - 1];
           } else {
             // Match by name (case-insensitive partial match)
@@ -412,7 +412,7 @@ export function App({ runtime }: AppProps) {
             targetRoom = rooms.find(
               (r) =>
                 r.name.toLowerCase() === lowerQuery ||
-                r.name.toLowerCase().includes(lowerQuery)
+                r.name.toLowerCase().includes(lowerQuery),
             );
           }
 
@@ -420,7 +420,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              `No conversation found matching: "${query}"`
+              `No conversation found matching: "${query}"`,
             );
             return true;
           }
@@ -429,7 +429,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              "Cannot delete current conversation. Switch first."
+              "Cannot delete current conversation. Switch first.",
             );
             return true;
           }
@@ -438,7 +438,7 @@ export function App({ runtime }: AppProps) {
             addMessage(
               currentRoomId,
               "system",
-              "Cannot delete the only conversation."
+              "Cannot delete the only conversation.",
             );
             return true;
           }
@@ -452,11 +452,7 @@ export function App({ runtime }: AppProps) {
           }
 
           deleteRoom(targetRoom.id);
-          addMessage(
-            currentRoomId,
-            "system",
-            `Deleted: ${targetRoom.name}`
-          );
+          addMessage(currentRoomId, "system", `Deleted: ${targetRoom.name}`);
           return true;
         }
 
@@ -479,7 +475,7 @@ Dir: /cd [path], /pwd
 UI: /clear
 Help: /help, ?
 
-Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
+Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
           );
           return true;
         }
@@ -501,7 +497,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
       deleteRoom,
       clearMessages,
       createRoom,
-    ]
+    ],
   );
 
   // Handle sending messages
@@ -516,12 +512,14 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
           addMessage(
             currentRoomId,
             "system",
-            `Reply y/n to resume ${startupResumeTaskIds.length} task(s).`
+            `Reply y/n to resume ${startupResumeTaskIds.length} task(s).`,
           );
           return;
         }
 
-        const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
+        const service = runtime.getService(
+          "CODE_TASK",
+        ) as CodeTaskService | null;
         if (!service) {
           addMessage(currentRoomId, "system", "Task service not available");
           setStartupResumeTaskIds(null);
@@ -532,7 +530,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
           addMessage(
             currentRoomId,
             "system",
-            "OK — tasks remain paused. Use /task resume to resume."
+            "OK — tasks remain paused. Use /task resume to resume.",
           );
           setStartupResumeTaskIds(null);
           return;
@@ -541,7 +539,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
         addMessage(
           currentRoomId,
           "system",
-          `Resuming ${startupResumeTaskIds.length} task(s)…`
+          `Resuming ${startupResumeTaskIds.length} task(s)…`,
         );
         for (const taskId of startupResumeTaskIds) {
           service.startTaskExecution(taskId).catch(() => {});
@@ -579,25 +577,35 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
           identity: state.identity,
         });
 
-        const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
+        const service = runtime.getService(
+          "CODE_TASK",
+        ) as CodeTaskService | null;
         const currentTask = service ? await service.getCurrentTask() : null;
         addMessage(roomId, "assistant", response, currentTask?.id);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        setError(errorMessage);
-        addMessage(currentRoomId, "system", `Error: ${errorMessage}`);
       } finally {
         setLoading(false);
         setAgentTyping(false);
       }
     },
-    [currentRoomId, addMessage, setLoading, setAgentTyping, handleSlashCommand]
+    [
+      currentRoomId,
+      addMessage,
+      setLoading,
+      setAgentTyping,
+      handleSlashCommand,
+      runtime.getService,
+      startupResumeTaskIds,
+    ],
   );
 
   // Global keyboard shortcuts
   useInput((char, key) => {
     if (showHelpOverlay) {
-      if (key.escape || char === "?" || (key.ctrl && (char === "h" || char === "H"))) {
+      if (
+        key.escape ||
+        char === "?" ||
+        (key.ctrl && (char === "h" || char === "H"))
+      ) {
         setShowHelpOverlay(false);
       }
       return;
@@ -616,7 +624,9 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
     }
     if (key.tab) {
       const state = useStore.getState();
-      const isCommandMode = state.focusedPane === "chat" && state.inputValue.trimStart().startsWith("/");
+      const isCommandMode =
+        state.focusedPane === "chat" &&
+        state.inputValue.trimStart().startsWith("/");
       if (!isCommandMode) {
         togglePane();
       }
@@ -664,9 +674,13 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
   const minTasksWidth = 24;
 
   const desiredTasksWidth = Math.floor(terminalWidth * taskPaneWidthFraction);
-  const canSplit = showTaskPane && terminalWidth >= minChatWidth + minTasksWidth;
+  const canSplit =
+    showTaskPane && terminalWidth >= minChatWidth + minTasksWidth;
   const tasksWidth = canSplit
-    ? Math.max(minTasksWidth, Math.min(desiredTasksWidth, terminalWidth - minChatWidth))
+    ? Math.max(
+        minTasksWidth,
+        Math.min(desiredTasksWidth, terminalWidth - minChatWidth),
+      )
     : 0;
   const chatWidth = terminalWidth - tasksWidth;
 
@@ -682,12 +696,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
           <Text bold color="magenta">
             Eliza Code
           </Text>
-          {error && (
-            <Text color="red">
-              {" "}
-              | Error: {error.substring(0, 60)}
-            </Text>
-          )}
+          {error && <Text color="red"> | Error: {error.substring(0, 60)}</Text>}
         </Text>
       </Box>
 
@@ -722,7 +731,10 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`
               isFocused={focusedPane === "tasks"}
               paneHeight={Math.max(1, mainHeight - 2)}
               paneWidth={Math.max(1, tasksWidth - 2)}
-              taskService={(runtime.getService("CODE_TASK") as CodeTaskService | null) ?? null}
+              taskService={
+                (runtime.getService("CODE_TASK") as CodeTaskService | null) ??
+                null
+              }
             />
           </Box>
         )}

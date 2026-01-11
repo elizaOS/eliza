@@ -1,0 +1,26 @@
+Given the recent messages and wallet information below:
+
+{{recentMessages}}
+
+{{walletInfo}}
+
+Extract the following information about the requested vote:
+- Proposal ID
+- Support (0 for against, 1 for yes, 2 for abstain)
+- Governor address
+- Chain to execute on
+
+Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+
+```json
+{
+    "proposalId": string | null,
+    "support": number | null,
+    "governor": string | null,
+    "chain": string | null
+}
+```
+
+
+
+

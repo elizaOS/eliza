@@ -94,5 +94,3 @@ def truncate_to_token_limit(text: str, max_tokens: int, model: str = "gpt-5") ->
     if len(tokens) <= max_tokens:
         return text
     return detokenize(tokens[:max_tokens], model)
-
-

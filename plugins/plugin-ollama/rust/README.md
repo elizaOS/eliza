@@ -32,13 +32,13 @@ async fn main() -> anyhow::Result<()> {
 
 The client can be configured via environment variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OLLAMA_API_ENDPOINT` | Base URL for the Ollama API | `http://localhost:11434` |
-| `OLLAMA_SMALL_MODEL` | Model for small text generation | `gemma3:latest` |
-| `OLLAMA_LARGE_MODEL` | Model for large text generation | `gemma3:latest` |
-| `OLLAMA_EMBEDDING_MODEL` | Model for embeddings | `nomic-embed-text:latest` |
-| `OLLAMA_TIMEOUT_SECONDS` | Request timeout | `300` |
+| Variable                 | Description                     | Default                   |
+| ------------------------ | ------------------------------- | ------------------------- |
+| `OLLAMA_API_ENDPOINT`    | Base URL for the Ollama API     | `http://localhost:11434`  |
+| `OLLAMA_SMALL_MODEL`     | Model for small text generation | `gemma3:latest`           |
+| `OLLAMA_LARGE_MODEL`     | Model for large text generation | `gemma3:latest`           |
+| `OLLAMA_EMBEDDING_MODEL` | Model for embeddings            | `nomic-embed-text:latest` |
+| `OLLAMA_TIMEOUT_SECONDS` | Request timeout                 | `300`                     |
 
 ## Features
 
@@ -55,5 +55,6 @@ The client can be configured via environment variables:
 ## License
 
 MIT
+
 
 

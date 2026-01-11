@@ -16,10 +16,7 @@ export interface KeypairResult {
 /**
  * Extract a string setting from the runtime, returning null if not found.
  */
-function getStringSetting(
-  runtime: IAgentRuntime,
-  key: string,
-): string | null {
+function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
   if (value === null || value === undefined) {
     return null;
@@ -45,16 +42,10 @@ function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
   // Also store the public key for convenience
   runtime.setSetting("SOLANA_PUBLIC_KEY", publicKeyBase58, false);
 
-  logger.warn(
-    "⚠️  No Solana wallet found in agent secrets. Generated new wallet automatically.",
-  );
+  logger.warn("⚠️  No Solana wallet found in agent secrets. Generated new wallet automatically.");
   logger.warn(`📍 New Solana wallet address: ${publicKeyBase58}`);
-  logger.warn(
-    "🔐 Private key has been stored securely in agent settings.",
-  );
-  logger.warn(
-    "💡 Fund this wallet to enable SOL and token transfers.",
-  );
+  logger.warn("🔐 Private key has been stored securely in agent settings.");
+  logger.warn("💡 Fund this wallet to enable SOL and token transfers.");
 
   return keypair;
 }
@@ -70,7 +61,7 @@ function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
  */
 export async function getWalletKey(
   runtime: IAgentRuntime,
-  requirePrivateKey = true,
+  requirePrivateKey = true
 ): Promise<KeypairResult> {
   if (requirePrivateKey) {
     const privateKeyString =
@@ -92,9 +83,7 @@ export async function getWalletKey(
       try {
         // Then try base64
         logger.log("Try decoding base64 instead");
-        const secretKey = Uint8Array.from(
-          Buffer.from(privateKeyString, "base64"),
-        );
+        const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
         return { keypair: Keypair.fromSecretKey(secretKey) };
       } catch (e2) {
         logger.error({ e: e2 }, "Error decoding private key: ");
@@ -123,9 +112,7 @@ export async function getWalletKey(
         return { publicKey: keypair.publicKey };
       } catch {
         try {
-          const secretKey = Uint8Array.from(
-            Buffer.from(privateKeyString, "base64"),
-          );
+          const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
           const keypair = Keypair.fromSecretKey(secretKey);
           return { publicKey: keypair.publicKey };
         } catch {

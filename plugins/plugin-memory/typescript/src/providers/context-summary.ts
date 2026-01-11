@@ -1,13 +1,13 @@
 import {
+  addHeader,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Provider,
-  type State,
   type ProviderResult,
-  addHeader,
-  logger,
-} from '@elizaos/core';
-import { MemoryService } from '../services/memory-service';
+  type State,
+} from "@elizaos/core";
+import type { MemoryService } from "../services/memory-service";
 
 /**
  * Context Summary Provider
@@ -16,20 +16,20 @@ import { MemoryService } from '../services/memory-service';
  * Returns session summaries with and without topics for flexible usage.
  */
 export const contextSummaryProvider: Provider = {
-  name: 'SUMMARIZED_CONTEXT',
-  description: 'Provides summarized context from previous conversations',
+  name: "SUMMARIZED_CONTEXT",
+  description: "Provides summarized context from previous conversations",
   position: 96,
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     try {
-      const memoryService = runtime.getService('memory') as MemoryService | null;
+      const memoryService = runtime.getService("memory") as MemoryService | null;
       const { roomId } = message;
 
       if (!memoryService) {
         return {
           data: {},
-          values: { sessionSummaries: '', sessionSummariesWithTopics: '' },
-          text: '',
+          values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
+          text: "",
         };
       }
 
@@ -38,8 +38,8 @@ export const contextSummaryProvider: Provider = {
       if (!currentSummary) {
         return {
           data: {},
-          values: { sessionSummaries: '', sessionSummariesWithTopics: '' },
-          text: '',
+          values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
+          text: "",
         };
       }
 
@@ -51,29 +51,28 @@ export const contextSummaryProvider: Provider = {
 
       let summaryWithTopics = summaryOnly;
       if (currentSummary.topics && currentSummary.topics.length > 0) {
-        summaryWithTopics += `\n*Topics: ${currentSummary.topics.join(', ')}*`;
+        summaryWithTopics += `\n*Topics: ${currentSummary.topics.join(", ")}*`;
       }
 
-      const sessionSummaries = addHeader('# Conversation Summary', summaryOnly);
-      const sessionSummariesWithTopics = addHeader('# Conversation Summary', summaryWithTopics);
+      const sessionSummaries = addHeader("# Conversation Summary", summaryOnly);
+      const sessionSummariesWithTopics = addHeader("# Conversation Summary", summaryWithTopics);
 
       return {
         data: {
           summaryText: currentSummary.summary,
           messageCount: currentSummary.messageCount,
-          topics: currentSummary.topics?.join(', ') || '',
+          topics: currentSummary.topics?.join(", ") || "",
         },
         values: { sessionSummaries, sessionSummariesWithTopics },
         text: sessionSummariesWithTopics,
       };
     } catch (error) {
-      logger.error({ error }, 'Error in contextSummaryProvider:');
+      logger.error({ error }, "Error in contextSummaryProvider:");
       return {
         data: {},
-        values: { sessionSummaries: '', sessionSummariesWithTopics: '' },
-        text: '',
+        values: { sessionSummaries: "", sessionSummariesWithTopics: "" },
+        text: "",
       };
     }
   },
 };
-

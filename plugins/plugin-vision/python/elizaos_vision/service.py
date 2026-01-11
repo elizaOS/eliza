@@ -7,10 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 import os
 import platform
-import secrets
 import subprocess
 import tempfile
 import time
@@ -43,11 +41,9 @@ logger = logging.getLogger(__name__)
 class RuntimeProtocol(Protocol):
     """Protocol for runtime access"""
 
-    def get_setting(self, key: str) -> str | None:
-        ...
+    def get_setting(self, key: str) -> str | None: ...
 
-    async def use_model(self, model_type: str, data: Any) -> Any:
-        ...
+    async def use_model(self, model_type: str, data: Any) -> Any: ...
 
 
 class CameraDevice:
@@ -128,7 +124,7 @@ class VisionService:
         )
 
     @classmethod
-    async def start(cls, runtime: RuntimeProtocol) -> "VisionService":
+    async def start(cls, runtime: RuntimeProtocol) -> VisionService:
         """Create and start the vision service"""
         service = cls(runtime)
         await service.initialize()
@@ -172,15 +168,9 @@ class VisionService:
         if not tool_check["available"]:
             system = platform.system()
             tool_name = (
-                "imagesnap"
-                if system == "Darwin"
-                else "fswebcam"
-                if system == "Linux"
-                else "ffmpeg"
+                "imagesnap" if system == "Darwin" else "fswebcam" if system == "Linux" else "ffmpeg"
             )
-            logger.warning(
-                f"[VisionService] Camera capture tool '{tool_name}' not found"
-            )
+            logger.warning(f"[VisionService] Camera capture tool '{tool_name}' not found")
             return
 
         camera = await self._find_camera()
@@ -234,18 +224,11 @@ class VisionService:
         """Start processing loops"""
         self._running = True
 
-        if (
-            self._config.vision_mode in (VisionMode.CAMERA, VisionMode.BOTH)
-            and self._camera
-        ):
-            self._frame_processing_task = asyncio.create_task(
-                self._frame_processing_loop()
-            )
+        if self._config.vision_mode in (VisionMode.CAMERA, VisionMode.BOTH) and self._camera:
+            self._frame_processing_task = asyncio.create_task(self._frame_processing_loop())
 
         if self._config.vision_mode in (VisionMode.SCREEN, VisionMode.BOTH):
-            self._screen_processing_task = asyncio.create_task(
-                self._screen_processing_loop()
-            )
+            self._screen_processing_task = asyncio.create_task(self._screen_processing_loop())
 
     async def _frame_processing_loop(self) -> None:
         """Main frame processing loop"""
@@ -276,9 +259,7 @@ class VisionService:
 
             change_percentage = 100.0
             if self._last_frame:
-                change_percentage = await self._calculate_pixel_change(
-                    self._last_frame, frame
-                )
+                change_percentage = await self._calculate_pixel_change(self._last_frame, frame)
 
             await self._update_scene_description(frame, change_percentage)
             self._last_frame = frame
@@ -302,9 +283,7 @@ class VisionService:
             format="rgba",
         )
 
-    async def _calculate_pixel_change(
-        self, frame1: VisionFrame, frame2: VisionFrame
-    ) -> float:
+    async def _calculate_pixel_change(self, frame1: VisionFrame, frame2: VisionFrame) -> float:
         """Calculate percentage of changed pixels"""
         if frame1.width != frame2.width or frame1.height != frame2.height:
             return 100.0
@@ -325,17 +304,13 @@ class VisionService:
 
         return (changed_pixels / total_pixels) * 100
 
-    async def _update_scene_description(
-        self, frame: VisionFrame, change_percentage: float
-    ) -> None:
+    async def _update_scene_description(self, frame: VisionFrame, change_percentage: float) -> None:
         """Update the scene description"""
         try:
             current_time = int(time.time() * 1000)
 
             # Convert to JPEG for VLM
-            img = Image.frombytes(
-                "RGBA", (frame.width, frame.height), frame.data
-            ).convert("RGB")
+            img = Image.frombytes("RGBA", (frame.width, frame.height), frame.data).convert("RGB")
             buffer = BytesIO()
             img.save(buffer, format="JPEG")
             jpeg_data = buffer.getvalue()
@@ -393,9 +368,7 @@ class VisionService:
             logger.error(f"[VisionService] VLM description failed: {e}")
             return "Unable to describe scene"
 
-    async def _detect_motion_objects(
-        self, frame: VisionFrame
-    ) -> list[DetectedObject]:
+    async def _detect_motion_objects(self, frame: VisionFrame) -> list[DetectedObject]:
         """Detect objects based on motion"""
         if not self._last_frame:
             return []
@@ -415,19 +388,11 @@ class VisionService:
                         py = y + by
                         idx = (py * frame.width + px) * 4
 
-                        if idx + 2 < len(frame.data) and idx + 2 < len(
-                            self._last_frame.data
-                        ):
+                        if idx + 2 < len(frame.data) and idx + 2 < len(self._last_frame.data):
                             diff = (
                                 abs(frame.data[idx] - self._last_frame.data[idx])
-                                + abs(
-                                    frame.data[idx + 1]
-                                    - self._last_frame.data[idx + 1]
-                                )
-                                + abs(
-                                    frame.data[idx + 2]
-                                    - self._last_frame.data[idx + 2]
-                                )
+                                + abs(frame.data[idx + 1] - self._last_frame.data[idx + 1])
+                                + abs(frame.data[idx + 2] - self._last_frame.data[idx + 2])
                             )
                             if diff > motion_threshold:
                                 block_motion += 1
@@ -449,9 +414,7 @@ class VisionService:
 
         return self._merge_adjacent_objects(objects)
 
-    def _merge_adjacent_objects(
-        self, objects: list[DetectedObject]
-    ) -> list[DetectedObject]:
+    def _merge_adjacent_objects(self, objects: list[DetectedObject]) -> list[DetectedObject]:
         """Merge adjacent motion blocks"""
         if not objects:
             return []
@@ -476,10 +439,8 @@ class VisionService:
 
                     for c_obj in cluster:
                         is_adjacent = (
-                            abs(c_obj.bounding_box.x - other.bounding_box.x)
-                            <= merge_distance
-                            and abs(c_obj.bounding_box.y - other.bounding_box.y)
-                            <= merge_distance
+                            abs(c_obj.bounding_box.x - other.bounding_box.x) <= merge_distance
+                            and abs(c_obj.bounding_box.y - other.bounding_box.y) <= merge_distance
                         )
                         if is_adjacent:
                             cluster.append(other)
@@ -725,9 +686,7 @@ class VisionService:
                 for cam in cameras:
                     if search_name in cam.name.lower():
                         return self._create_camera_device(cam)
-                logger.warning(
-                    f"[VisionService] Camera '{self._config.camera_name}' not found"
-                )
+                logger.warning(f"[VisionService] Camera '{self._config.camera_name}' not found")
 
             return self._create_camera_device(cameras[0])
 
@@ -778,11 +737,7 @@ class VisionService:
                         current_name = line.replace(":", "").strip()
                     elif line.strip().startswith("/dev/video"):
                         device_id = line.strip().replace("/dev/video", "")
-                        cameras.append(
-                            CameraInfo(
-                                id=device_id, name=current_name, connected=True
-                            )
-                        )
+                        cameras.append(CameraInfo(id=device_id, name=current_name, connected=True))
 
             elif system == "Windows":
                 process = await asyncio.create_subprocess_shell(
@@ -864,4 +819,3 @@ class VisionService:
                     pass
 
         return CameraDevice(id=info.id, name=info.name, capture_fn=capture)
-

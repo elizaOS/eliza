@@ -17,28 +17,26 @@ async def get_activity(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             return ProviderResult(text="Linear service is not available")
-        
+
         activity = linear_service.get_activity_log(10)
-        
+
         if not activity:
             return ProviderResult(text="No recent Linear activity")
-        
+
         activity_list = []
         for item in activity:
             status = "✓" if item.success else "✗"
             try:
-                time_str = datetime.fromisoformat(
-                    item.timestamp.replace("Z", "")
-                ).strftime("%H:%M")
+                time_str = datetime.fromisoformat(item.timestamp.replace("Z", "")).strftime("%H:%M")
             except Exception:
                 time_str = "?"
-            
+
             activity_list.append(
                 f"{status} {time_str}: {item.action} {item.resource_type} {item.resource_id}"
             )
-        
-        text = f"Recent Linear Activity:\n" + "\n".join(activity_list)
-        
+
+        text = "Recent Linear Activity:\n" + "\n".join(activity_list)
+
         return ProviderResult(
             text=text,
             data={
@@ -62,5 +60,8 @@ linear_activity_provider = Provider(
     description="Provides context about recent Linear activity",
     get=get_activity,
 )
+
+
+
 
 

@@ -1,15 +1,15 @@
+#![allow(missing_docs)]
 //! PostgreSQL adapter implementation for elizaOS
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use sqlx::Row;
-use tracing::{debug, error};
 
 use crate::base::*;
 use crate::schema::*;
 use elizaos::{
-    Agent, Component, Entity, GetMemoriesParams, Log, Memory, Metadata, Relationship,
-    Room, SearchMemoriesParams, Task, World, UUID,
+    Agent, Component, Entity, GetMemoriesParams, Log, Memory, Relationship, Room,
+    SearchMemoriesParams, Task, World, UUID,
 };
 
 use super::PostgresConnectionManager;
@@ -930,7 +930,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let uuid = uuid::Uuid::parse_str(world_id.as_str())?;
         let limit = count.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
 
-        let query = if let Some(table) = table_name {
+        let query = if let Some(_table) = table_name {
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,

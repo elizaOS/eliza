@@ -11,11 +11,7 @@ type RouteHandler = NonNullable<Route["handler"]>;
 // HELPER FUNCTIONS
 // ============================================
 
-function sendSuccess<T>(
-  res: Parameters<RouteHandler>[1],
-  data: T,
-  status = 200,
-): void {
+function sendSuccess<T>(res: Parameters<RouteHandler>[1], data: T, status = 200): void {
   const response: ApiResponse<T> = { success: true, data };
   res.status(status).json(response);
 }
@@ -25,10 +21,9 @@ function sendError(
   status: number,
   code: string,
   message: string,
-  details?: string,
+  details?: string
 ): void {
-  const error: ApiError =
-    details !== undefined ? { code, message, details } : { code, message };
+  const error: ApiError = details !== undefined ? { code, message, details } : { code, message };
   const response: ApiResponse<never> = { success: false, error };
   res.status(status).json(response);
 }
@@ -108,7 +103,7 @@ const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
  * Get balance for a specific token
  */
 const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
-  const token = req.params?.["token"];
+  const token = req.params?.token;
   const solanaService = runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
@@ -132,16 +127,11 @@ const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
     const publicKeyStr = publicKey.toBase58();
 
     // Get all token accounts and find the one matching the requested mint
-    const tokenAccounts = await solanaService.getTokenAccountsByKeypair(
-      publicKey,
-      {
-        includeZeroBalances: false,
-      },
-    );
+    const tokenAccounts = await solanaService.getTokenAccountsByKeypair(publicKey, {
+      includeZeroBalances: false,
+    });
 
-    const matchingToken = tokenAccounts.find(
-      (acc) => acc.account.data.parsed.info.mint === token,
-    );
+    const matchingToken = tokenAccounts.find((acc) => acc.account.data.parsed.info.mint === token);
 
     if (!matchingToken) {
       sendError(res, 404, "TOKEN_NOT_FOUND", `Token ${token} not found in wallet`);
@@ -185,9 +175,7 @@ const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
     }
 
     // Get portfolio from cache (updated by service)
-    const portfolioCache = await runtime.getCache<WalletPortfolio>(
-      SOLANA_WALLET_DATA_CACHE_KEY,
-    );
+    const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
 
     if (!portfolioCache) {
       // Portfolio not yet loaded, trigger update
@@ -263,12 +251,9 @@ const getWalletTokensHandler: RouteHandler = async (_req, res, runtime) => {
     }
 
     // Get token accounts directly from service
-    const tokenAccounts = await solanaService.getTokenAccountsByKeypair(
-      publicKey,
-      {
-        includeZeroBalances: false,
-      },
-    );
+    const tokenAccounts = await solanaService.getTokenAccountsByKeypair(publicKey, {
+      includeZeroBalances: false,
+    });
 
     const tokens = tokenAccounts.map((acc) => {
       const info = acc.account.data.parsed.info;

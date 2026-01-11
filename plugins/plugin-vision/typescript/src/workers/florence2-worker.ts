@@ -1,8 +1,8 @@
-import { parentPort, workerData } from 'worker_threads';
-import { logger } from './worker-logger';
-import { Florence2Model } from '../florence2-model';
-import type { Florence2Result, ScreenTile } from '../types';
-import sharp from 'sharp';
+import { parentPort, workerData } from "node:worker_threads";
+import sharp from "sharp";
+import { Florence2Model } from "../florence2-model";
+import type { Florence2Result, ScreenTile } from "../types";
+import { logger } from "./worker-logger";
 
 interface WorkerConfig {
   tileSize: number;
@@ -19,10 +19,8 @@ interface SharedMetadata {
 
 class Florence2Worker {
   private config: WorkerConfig;
-  private sharedBuffer: SharedArrayBuffer;
   private dataView: DataView;
   private atomicState: Int32Array;
-  private resultsBuffer: SharedArrayBuffer;
   private resultsView: DataView;
   private florence2: Florence2Model;
   private isRunning = true;
@@ -32,7 +30,6 @@ class Florence2Worker {
 
   // Atomic indices for input buffer
   private readonly FRAME_ID_INDEX = 0;
-  private readonly WRITE_LOCK_INDEX = 1;
   private readonly WIDTH_INDEX = 2;
   private readonly HEIGHT_INDEX = 3;
   private readonly DISPLAY_INDEX = 4;
@@ -49,23 +46,21 @@ class Florence2Worker {
     resultsBuffer: SharedArrayBuffer
   ) {
     this.config = config;
-    this.sharedBuffer = sharedBuffer;
     this.dataView = new DataView(sharedBuffer);
     this.atomicState = new Int32Array(sharedBuffer, 0, 6);
-    this.resultsBuffer = resultsBuffer;
     this.resultsView = new DataView(resultsBuffer);
     this.florence2 = new Florence2Model();
   }
 
   async initialize(): Promise<void> {
     await this.florence2.initialize();
-    logger.info('[Florence2Worker] Initialized and ready');
+    logger.info("[Florence2Worker] Initialized and ready");
   }
 
   async run(): Promise<void> {
     await this.initialize();
 
-    logger.info('[Florence2Worker] Starting analysis loop...');
+    logger.info("[Florence2Worker] Starting analysis loop...");
 
     while (this.isRunning) {
       try {
@@ -84,7 +79,7 @@ class Florence2Worker {
             logger.info(`[Florence2Worker] Analysis FPS: ${fps.toFixed(2)}`);
 
             parentPort?.postMessage({
-              type: 'fps',
+              type: "fps",
               fps,
               frameCount: this.frameCount,
             });
@@ -97,7 +92,7 @@ class Florence2Worker {
           await new Promise((resolve) => setImmediate(resolve));
         }
       } catch (error) {
-        logger.error('[Florence2Worker] Processing error:', error);
+        logger.error("[Florence2Worker] Processing error:", error);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
@@ -143,7 +138,7 @@ class Florence2Worker {
 
         // Notify main thread
         parentPort?.postMessage({
-          type: 'tile_analyzed',
+          type: "tile_analyzed",
           tileId: tile.id,
           frameId: metadata.frameId,
           displayIndex: metadata.displayIndex,
@@ -232,7 +227,7 @@ class Florence2Worker {
       ...result,
     });
 
-    const resultBytes = Buffer.from(resultJson, 'utf-8');
+    const resultBytes = Buffer.from(resultJson, "utf-8");
 
     // Calculate tile index from ID
     const match = tileId.match(/tile-(\d+)-(\d+)/);
@@ -271,19 +266,19 @@ if (parentPort) {
   const worker = new Florence2Worker(config, sharedBuffer, resultsBuffer);
 
   // Handle messages from main thread
-  parentPort.on('message', (msg) => {
-    if (msg.type === 'stop') {
+  parentPort.on("message", (msg) => {
+    if (msg.type === "stop") {
       worker.stop();
       worker.dispose().then(() => {
-        parentPort?.postMessage({ type: 'stopped' });
+        parentPort?.postMessage({ type: "stopped" });
       });
     }
   });
 
   // Run the worker
   worker.run().catch((error) => {
-    logger.error('[Florence2Worker] Fatal error:', error);
-    parentPort?.postMessage({ type: 'error', error: error.message });
+    logger.error("[Florence2Worker] Fatal error:", error);
+    parentPort?.postMessage({ type: "error", error: error.message });
     process.exit(1);
   });
 }

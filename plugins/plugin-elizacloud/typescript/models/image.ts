@@ -5,11 +5,11 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import {
-  getSetting,
-  getBaseURL,
   getAuthHeader,
+  getBaseURL,
   getImageDescriptionModel,
   getImageGenerationModel,
+  getSetting,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { parseImageDescriptionResponse } from "../utils/helpers";

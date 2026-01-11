@@ -1,21 +1,19 @@
 """Tests for GitHub types."""
 
-import pytest
 from elizaos_plugin_github.types import (
-    IssueState,
-    PullRequestState,
-    MergeMethod,
-    ReviewEvent,
-    GitHubIssue,
-    GitHubPullRequest,
-    GitHubBranch,
-    GitHubComment,
-    GitHubRepository,
-    GitHubUser,
+    CreateBranchParams,
+    CreateCommentParams,
     CreateIssueParams,
     CreatePullRequestParams,
-    CreateCommentParams,
-    CreateBranchParams,
+    GitHubBranch,
+    GitHubComment,
+    GitHubIssue,
+    GitHubPullRequest,
+    GitHubUser,
+    IssueState,
+    MergeMethod,
+    PullRequestState,
+    ReviewEvent,
 )
 
 
@@ -199,5 +197,8 @@ class TestParamModels:
         )
         assert params.branch_name == "feature/new"
         assert params.from_ref == "main"
+
+
+
 
 

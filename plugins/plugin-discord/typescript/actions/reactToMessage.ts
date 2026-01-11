@@ -12,9 +12,8 @@ import {
 } from "@elizaos/core";
 import type { Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
-
 import { reactToMessageTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 // Re-export for backwards compatibility
 export { reactToMessageTemplate };
@@ -38,15 +37,19 @@ function extractEmojisFromText(text: string): string[] {
   // Match Unicode emojis (including multi-codepoint sequences)
   const unicodeEmojiRegex =
     /(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})(?:\uFE0F)?(?:\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})(?:\uFE0F)?)*/gu;
-  let match;
-  while ((match = unicodeEmojiRegex.exec(text)) !== null) {
+  let match: RegExpExecArray | null = null;
+  match = unicodeEmojiRegex.exec(text);
+  while (match !== null) {
     matches.push({ index: match.index, emoji: match[0] });
+    match = unicodeEmojiRegex.exec(text);
   }
 
   // Match Discord custom emojis <:name:id> or <a:name:id>
   const customEmojiRegex = /<a?:\w+:\d+>/g;
-  while ((match = customEmojiRegex.exec(text)) !== null) {
+  match = customEmojiRegex.exec(text);
+  while (match !== null) {
     matches.push({ index: match.index, emoji: match[0] });
+    match = customEmojiRegex.exec(text);
   }
 
   // Sort by position and return just the emojis
@@ -135,12 +138,10 @@ export const reactToMessage = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -158,17 +159,16 @@ export const reactToMessage = {
     // Check if user explicitly requested a reaction (needs LLM for accuracy)
     // vs agent spontaneously reacting (fast path to "last message" is correct)
     const messageContent = message.content;
-    const userText = (messageContent && messageContent.text) || "";
+    const userText = messageContent?.text || "";
     const needsLLM = isExplicitReactionRequest(userText);
 
     if (!needsLLM) {
       // FAST PATH: Agent spontaneously reacting - target is always "last message"
-      const stateData = state.data;
-      const responseText =
-        (stateData && stateData.responseText) ||
-        (stateData && stateData.text) ||
-        (state as any).responseText ||
-        "";
+      const stateData = state.data as Record<string, unknown> | undefined;
+      const stateWithResponseText = state as State & { responseText?: string };
+      const responseText = String(
+        stateData?.responseText || stateData?.text || stateWithResponseText.responseText || ""
+      );
 
       if (responseText) {
         const emojis = extractEmojisFromText(responseText);
@@ -179,7 +179,7 @@ export const reactToMessage = {
               emoji: emojis[0],
               source: "responseText",
             },
-            "[REACT_TO_MESSAGE] Found emoji in response text (fast path)",
+            "[REACT_TO_MESSAGE] Found emoji in response text (fast path)"
           );
           reactionInfo = { messageRef: "last", emoji: emojis[0] };
         }
@@ -188,13 +188,11 @@ export const reactToMessage = {
       if (!reactionInfo) {
         // Check recent messages for this agent's last message
         const stateData = state.data;
-        const recentMessages = ((stateData && stateData.recentMessages) || []) as Memory[];
-        const agentLastMessage = recentMessages
-          .filter((m) => m.entityId === runtime.agentId)
-          .pop();
+        const recentMessages = (stateData?.recentMessages || []) as Memory[];
+        const agentLastMessage = recentMessages.filter((m) => m.entityId === runtime.agentId).pop();
 
-        const agentLastMessageContent = agentLastMessage && agentLastMessage.content;
-        if (agentLastMessageContent && agentLastMessageContent.text) {
+        const agentLastMessageContent = agentLastMessage?.content;
+        if (agentLastMessageContent?.text) {
           const emojis = extractEmojisFromText(agentLastMessageContent.text);
           if (emojis.length > 0) {
             runtime.logger.debug(
@@ -203,7 +201,7 @@ export const reactToMessage = {
                 emoji: emojis[0],
                 source: "agentLastMessage",
               },
-              "[REACT_TO_MESSAGE] Found emoji in agent's last message (fast path)",
+              "[REACT_TO_MESSAGE] Found emoji in agent's last message (fast path)"
             );
             reactionInfo = { messageRef: "last", emoji: emojis[0] };
           }
@@ -224,7 +222,7 @@ export const reactToMessage = {
         });
 
         const parsedResponse = parseJSONObjectFromText(response);
-        if (parsedResponse && parsedResponse.emoji) {
+        if (parsedResponse?.emoji) {
           reactionInfo = {
             messageRef: String(parsedResponse.messageRef || "last"),
             emoji: String(parsedResponse.emoji),
@@ -237,7 +235,7 @@ export const reactToMessage = {
     if (!reactionInfo) {
       runtime.logger.debug(
         { src: "plugin:discord:action:react" },
-        "[REACT_TO_MESSAGE] Could not extract reaction info",
+        "[REACT_TO_MESSAGE] Could not extract reaction info"
       );
       // Only show error to user if they explicitly requested a reaction
       // Silent failure is appropriate when agent spontaneously decides to react
@@ -252,7 +250,7 @@ export const reactToMessage = {
 
     try {
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
         await callback({
           text: "I couldn't determine the current channel.",
@@ -261,9 +259,7 @@ export const reactToMessage = {
         return;
       }
 
-      const channel = await discordService.client.channels.fetch(
-        room.channelId,
-      );
+      const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
         await callback({
           text: "I can only react to messages in text channels.",
@@ -277,30 +273,23 @@ export const reactToMessage = {
       let targetMessage: Message | null = null;
 
       // Find the target message
-      if (
-        reactionInfo.messageRef === "last" ||
-        reactionInfo.messageRef === "previous"
-      ) {
+      if (reactionInfo.messageRef === "last" || reactionInfo.messageRef === "previous") {
         // Get the last few messages - fetch max allowed by Discord API
         const messages = await textChannel.messages.fetch({ limit: 100 });
         const sortedMessages = Array.from(messages.values()).sort(
-          (a, b) => b.createdTimestamp - a.createdTimestamp,
+          (a, b) => b.createdTimestamp - a.createdTimestamp
         );
 
         // Skip the bot's own message and the command message
         const clientUser = discordService.client.user;
         targetMessage =
           sortedMessages.find(
-            (msg) =>
-              msg.id !== message.content.id &&
-              msg.author.id !== (clientUser && clientUser.id),
+            (msg) => msg.id !== message.content.id && msg.author.id !== clientUser?.id
           ) || null;
       } else if (/^\d+$/.test(reactionInfo.messageRef)) {
         // It's a message ID
         try {
-          targetMessage = await textChannel.messages.fetch(
-            reactionInfo.messageRef,
-          );
+          targetMessage = await textChannel.messages.fetch(reactionInfo.messageRef);
         } catch (_e) {
           // Message not found
         }
@@ -311,12 +300,8 @@ export const reactToMessage = {
 
         targetMessage =
           Array.from(messages.values()).find((msg) => {
-            const contentMatch = msg.content
-              .toLowerCase()
-              .includes(searchLower);
-            const authorMatch = msg.author.username
-              .toLowerCase()
-              .includes(searchLower);
+            const contentMatch = msg.content.toLowerCase().includes(searchLower);
+            const authorMatch = msg.author.username.toLowerCase().includes(searchLower);
             return contentMatch || authorMatch;
           }) || null;
       }
@@ -359,7 +344,7 @@ export const reactToMessage = {
             emoji: reactionInfo.emoji,
             error: error instanceof Error ? error.message : String(error),
           },
-          "Failed to add reaction",
+          "Failed to add reaction"
         );
         await callback({
           text: `I couldn't add that reaction. Make sure the emoji "${reactionInfo.emoji}" is valid and I have permission to add reactions.`,
@@ -373,7 +358,7 @@ export const reactToMessage = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error in react to message",
+        "Error in react to message"
       );
       await callback({
         text: "I encountered an error while trying to react to the message. Please make sure I have the necessary permissions.",

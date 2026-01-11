@@ -72,5 +72,3 @@ class EVMError(Exception):
     def route_not_found(cls, message: str) -> "EVMError":
         """Create a route not found error."""
         return cls(EVMErrorCode.ROUTE_NOT_FOUND, message)
-
-

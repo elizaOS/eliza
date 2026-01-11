@@ -8,7 +8,7 @@ import re
 import time
 from urllib.parse import urlparse
 
-from elizaos_browser.types import SecurityConfig, RateLimitConfig, RateLimitEntry
+from elizaos_browser.types import RateLimitConfig, RateLimitEntry, SecurityConfig
 from elizaos_browser.utils.errors import SecurityError
 
 
@@ -160,5 +160,6 @@ def validate_secure_action(url: str | None, validator: UrlValidator) -> None:
     valid, _, error = validator.validate(url)
     if not valid:
         raise SecurityError(f"URL validation failed: {error}", {"url": url, "error": error})
+
 
 

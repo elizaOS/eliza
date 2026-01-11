@@ -6,9 +6,13 @@
  * No API keys or external services required.
  */
 
-import express, { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import { generateElizaResponse } from "@elizaos/plugin-eliza-classic";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
+import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
 // Configuration
@@ -81,12 +85,15 @@ interface ChatRequestBody {
 /**
  * POST /chat - Chat with the agent
  */
-app.post("/chat", (req: Request<object, object, ChatRequestBody>, res: Response) => {
-  try {
+app.post(
+  "/chat",
+  (req: Request<object, object, ChatRequestBody>, res: Response) => {
     const { message, userId: clientUserId } = req.body;
 
     if (!message || typeof message !== "string") {
-      res.status(400).json({ error: "Message is required and must be a string" });
+      res
+        .status(400)
+        .json({ error: "Message is required and must be a string" });
       return;
     }
 
@@ -98,11 +105,8 @@ app.post("/chat", (req: Request<object, object, ChatRequestBody>, res: Response)
       character: CHARACTER.name,
       userId,
     });
-  } catch (error) {
-    console.error("Chat error:", error);
-    res.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" });
-  }
-});
+  },
+);
 
 // ============================================================================
 // Server Startup

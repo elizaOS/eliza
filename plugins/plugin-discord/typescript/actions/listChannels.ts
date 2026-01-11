@@ -20,8 +20,7 @@ export const listChannels = {
     "WHICH_CHANNELS",
     "CHANNELS_LIST",
   ],
-  description:
-    "Lists all Discord channels the bot is currently listening to and responding in.",
+  description: "Lists all Discord channels the bot is currently listening to and responding in.",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     if (message.content.source !== "discord") {
       return false;
@@ -32,12 +31,10 @@ export const listChannels = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       runtime.logger.error(
@@ -45,7 +42,7 @@ export const listChannels = {
           src: "plugin:discord:action:list-channels",
           agentId: runtime.agentId,
         },
-        "Discord service not found or not initialized",
+        "Discord service not found or not initialized"
       );
       return;
     }
@@ -66,14 +63,14 @@ export const listChannels = {
       const channelInfoPromises = allowedChannelIds.map(async (channelId) => {
         try {
           const client = discordService.client;
-          const channel = client && await client.channels.fetch(channelId);
-          if (channel && channel.isTextBased() && !channel.isVoiceBased()) {
+          const channel = client && (await client.channels.fetch(channelId));
+          if (channel?.isTextBased() && !channel.isVoiceBased()) {
             const guild = "guild" in channel ? channel.guild : null;
             return {
               id: channelId,
               name: "name" in channel ? channel.name : "DM",
               mention: `<#${channelId}>`,
-              server: (guild && guild.name) || "Direct Message",
+              server: guild?.name || "Direct Message",
             };
           }
         } catch (_e) {
@@ -88,9 +85,7 @@ export const listChannels = {
         return null;
       });
 
-      const channelInfos = (await Promise.all(channelInfoPromises)).filter(
-        Boolean,
-      );
+      const channelInfos = (await Promise.all(channelInfoPromises)).filter(Boolean);
 
       // Format the response
       let responseText = `I'm currently listening to ${channelInfos.length} channel${channelInfos.length !== 1 ? "s" : ""}:\n\n`;
@@ -107,7 +102,7 @@ export const listChannels = {
           acc[channel.server].push(channel);
           return acc;
         },
-        {} as Record<string, typeof channelInfos>,
+        {} as Record<string, typeof channelInfos>
       );
 
       // Format by server
@@ -142,7 +137,7 @@ export const listChannels = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error listing channels",
+        "Error listing channels"
       );
       await callback({
         text: "I encountered an error while trying to list the channels. Please try again.",

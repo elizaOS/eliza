@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! OpenAI Plugin Types
 //!
 //! Strong types with Serde validation for all API interactions.
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 // ============================================================================
 
 /// Supported TTS voices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TTSVoice {
     /// Alloy voice
@@ -21,22 +22,18 @@ pub enum TTSVoice {
     /// Onyx voice
     Onyx,
     /// Nova voice (default)
+    #[default]
     Nova,
     /// Shimmer voice
     Shimmer,
 }
 
-impl Default for TTSVoice {
-    fn default() -> Self {
-        Self::Nova
-    }
-}
-
 /// Supported TTS output formats.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TTSOutputFormat {
     /// MP3 format (default)
+    #[default]
     Mp3,
     /// WAV format
     Wav,
@@ -50,14 +47,8 @@ pub enum TTSOutputFormat {
     Pcm,
 }
 
-impl Default for TTSOutputFormat {
-    fn default() -> Self {
-        Self::Mp3
-    }
-}
-
 /// Image sizes for DALL-E.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ImageSize {
     /// 256x256 pixels
     #[serde(rename = "256x256")]
@@ -67,6 +58,7 @@ pub enum ImageSize {
     Size512,
     /// 1024x1024 pixels (default)
     #[serde(rename = "1024x1024")]
+    #[default]
     Size1024,
     /// 1792x1024 pixels (landscape)
     #[serde(rename = "1792x1024")]
@@ -76,49 +68,34 @@ pub enum ImageSize {
     Size1024x1792,
 }
 
-impl Default for ImageSize {
-    fn default() -> Self {
-        Self::Size1024
-    }
-}
-
 /// Image quality options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageQuality {
     /// Standard quality (default)
+    #[default]
     Standard,
     /// HD quality
     Hd,
 }
 
-impl Default for ImageQuality {
-    fn default() -> Self {
-        Self::Standard
-    }
-}
-
 /// Image style options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageStyle {
     /// Vivid style (default)
+    #[default]
     Vivid,
     /// Natural style
     Natural,
 }
 
-impl Default for ImageStyle {
-    fn default() -> Self {
-        Self::Vivid
-    }
-}
-
 /// Transcription response format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptionResponseFormat {
     /// JSON format (default)
+    #[default]
     Json,
     /// Plain text format
     Text,
@@ -128,12 +105,6 @@ pub enum TranscriptionResponseFormat {
     VerboseJson,
     /// WebVTT subtitle format
     Vtt,
-}
-
-impl Default for TranscriptionResponseFormat {
-    fn default() -> Self {
-        Self::Json
-    }
 }
 
 // ============================================================================
@@ -361,6 +332,7 @@ pub struct TranscriptionParams {
     /// Response format.
     pub response_format: Option<TranscriptionResponseFormat>,
 }
+
 
 impl Default for TranscriptionParams {
     fn default() -> Self {

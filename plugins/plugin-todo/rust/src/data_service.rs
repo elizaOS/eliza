@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Data service for Todo operations.
 
 use crate::error::{Result, TodoError};
@@ -18,6 +19,7 @@ pub struct TodoDataService {
     todos: Arc<RwLock<HashMap<Uuid, Todo>>>,
     tags: Arc<RwLock<HashMap<Uuid, Vec<String>>>>,
 }
+
 
 impl Default for TodoDataService {
     fn default() -> Self {
@@ -390,5 +392,10 @@ impl TodoDataService {
 pub fn create_todo_data_service() -> TodoDataService {
     TodoDataService::new()
 }
+
+
+
+
+
 
 

@@ -4,26 +4,23 @@
  * Actions for creating, monitoring, and cancelling plugin creation jobs.
  */
 
-import {
+import type {
   Action,
+  ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
 import { z } from "zod";
-import type { PluginSpecification } from "../types";
+import type { PluginCreationJob, PluginSpecification } from "../types";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 import { isValidJsonSpecification, validatePrompt } from "../utils/validation";
 
 // Zod schema for plugin specification validation
 const PluginSpecificationSchema = z.object({
-  name: z
-    .string()
-    .regex(/^@?[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+$/, "Invalid plugin name format"),
-  description: z
-    .string()
-    .min(10, "Description must be at least 10 characters"),
+  name: z.string().regex(/^@?[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+$/, "Invalid plugin name format"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
   version: z
     .string()
     .regex(/^\d+\.\d+\.\d+$/, "Version must be in semver format")
@@ -32,9 +29,7 @@ const PluginSpecificationSchema = z.object({
   actions: z
     .array(
       z.object({
-        name: z
-          .string()
-          .regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Action name must be alphanumeric"),
+        name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Action name must be alphanumeric"),
         description: z.string(),
         parameters: z.record(z.unknown()).optional(),
       })
@@ -43,12 +38,7 @@ const PluginSpecificationSchema = z.object({
   providers: z
     .array(
       z.object({
-        name: z
-          .string()
-          .regex(
-            /^[a-zA-Z][a-zA-Z0-9]*$/,
-            "Provider name must be alphanumeric"
-          ),
+        name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Provider name must be alphanumeric"),
         description: z.string(),
         dataStructure: z.record(z.unknown()).optional(),
       })
@@ -57,9 +47,7 @@ const PluginSpecificationSchema = z.object({
   services: z
     .array(
       z.object({
-        name: z
-          .string()
-          .regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Service name must be alphanumeric"),
+        name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Service name must be alphanumeric"),
         description: z.string(),
         methods: z.array(z.string()).optional(),
       })
@@ -68,12 +56,7 @@ const PluginSpecificationSchema = z.object({
   evaluators: z
     .array(
       z.object({
-        name: z
-          .string()
-          .regex(
-            /^[a-zA-Z][a-zA-Z0-9]*$/,
-            "Evaluator name must be alphanumeric"
-          ),
+        name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Evaluator name must be alphanumeric"),
         description: z.string(),
         triggers: z.array(z.string()).optional(),
       })
@@ -136,20 +119,14 @@ export const createPluginAction: Action = {
       },
     ],
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
       return false;
     }
 
     const jobs = service.getAllJobs();
-    const activeJob = jobs.find(
-      (job) => job.status === "running" || job.status === "pending"
-    );
+    const activeJob = jobs.find((job) => job.status === "running" || job.status === "pending");
     if (activeJob) {
       return false;
     }
@@ -166,36 +143,57 @@ export const createPluginAction: Action = {
     _state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback
-  ): Promise<string> => {
+  ): Promise<ActionResult> => {
     try {
       const service = getPluginCreationService(runtime);
       if (!service) {
-        return "Plugin creation service not available. Please ensure the plugin is properly installed.";
+        return {
+          success: false,
+          text: "Plugin creation service not available. Please ensure the plugin is properly installed.",
+        };
       }
 
       let specification: PluginSpecification;
       try {
-        const parsed = JSON.parse(message.content.text);
-        specification = PluginSpecificationSchema.parse(
-          parsed
-        ) as PluginSpecification;
+        const parsed = JSON.parse(message.content.text ?? "{}");
+        specification = PluginSpecificationSchema.parse(parsed) as PluginSpecification;
       } catch (error) {
         if (error instanceof z.ZodError) {
-          return `Invalid plugin specification:\n${error.errors.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`;
+          return {
+            success: false,
+            text: `Invalid plugin specification:\n${error.errors.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`,
+          };
         }
-        return `Failed to parse specification: ${(error as Error).message}`;
+        return {
+          success: false,
+          text: `Failed to parse specification: ${(error as Error).message}`,
+        };
       }
 
       const apiKey = runtime.getSetting("ANTHROPIC_API_KEY");
-      if (!apiKey) {
-        return "ANTHROPIC_API_KEY is not configured. Please set it to enable AI-powered plugin generation.";
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          success: false,
+          text: "ANTHROPIC_API_KEY is not configured. Please set it to enable AI-powered plugin generation.",
+        };
       }
 
       const jobId = await service.createPlugin(specification, apiKey);
 
-      return `Plugin creation job started successfully!\n\nJob ID: ${jobId}\nPlugin: ${specification.name}\n\nUse 'checkPluginCreationStatus' to monitor progress.`;
+      return {
+        success: true,
+        text: `Plugin creation job started successfully!\n\nJob ID: ${jobId}\nPlugin: ${specification.name}\n\nUse 'checkPluginCreationStatus' to monitor progress.`,
+        data: {
+          jobId,
+          pluginName: specification.name,
+        },
+      };
     } catch (error) {
-      return `Failed to create plugin: ${(error as Error).message}`;
+      return {
+        success: false,
+        text: `Failed to create plugin: ${(error as Error).message}`,
+        error: (error as Error).message,
+      };
     }
   },
 };
@@ -228,11 +226,7 @@ export const checkPluginCreationStatusAction: Action = {
       },
     ],
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
       return false;
@@ -247,27 +241,36 @@ export const checkPluginCreationStatusAction: Action = {
     _state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback
-  ): Promise<string> => {
+  ): Promise<ActionResult> => {
     try {
       const service = getPluginCreationService(runtime);
       if (!service) {
-        return "Plugin creation service not available.";
+        return {
+          success: false,
+          text: "Plugin creation service not available.",
+        };
       }
 
       const jobs = service.getAllJobs();
       if (jobs.length === 0) {
-        return "No plugin creation jobs found.";
+        return {
+          success: false,
+          text: "No plugin creation jobs found.",
+        };
       }
 
-      const jobIdMatch = message.content.text.match(
+      const jobIdMatch = (message.content.text ?? "").match(
         /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i
       );
-      let targetJob;
+      let targetJob: PluginCreationJob | undefined;
 
       if (jobIdMatch) {
         targetJob = service.getJobStatus(jobIdMatch[0]);
         if (!targetJob) {
-          return `Job with ID ${jobIdMatch[0]} not found.`;
+          return {
+            success: false,
+            text: `Job with ID ${jobIdMatch[0]} not found.`,
+          };
         }
       } else {
         targetJob = jobs
@@ -275,14 +278,15 @@ export const checkPluginCreationStatusAction: Action = {
           .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
 
         if (!targetJob) {
-          targetJob = jobs.sort(
-            (a, b) => b.startedAt.getTime() - a.startedAt.getTime()
-          )[0];
+          targetJob = jobs.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0];
         }
       }
 
       if (!targetJob) {
-        return "No plugin creation jobs found.";
+        return {
+          success: false,
+          text: "No plugin creation jobs found.",
+        };
       }
 
       let response = `📦 Plugin Creation Status\n`;
@@ -296,8 +300,7 @@ export const checkPluginCreationStatusAction: Action = {
 
       if (targetJob.completedAt) {
         response += `✅ Completed: ${targetJob.completedAt.toLocaleString()}\n`;
-        const duration =
-          targetJob.completedAt.getTime() - targetJob.startedAt.getTime();
+        const duration = targetJob.completedAt.getTime() - targetJob.startedAt.getTime();
         response += `⏳ Duration: ${Math.round(duration / 1000)}s\n`;
       }
 
@@ -318,9 +321,21 @@ export const checkPluginCreationStatusAction: Action = {
         }
       }
 
-      return response;
+      return {
+        success: true,
+        text: response,
+        data: {
+          jobId: targetJob.id,
+          status: targetJob.status,
+          progress: targetJob.progress,
+        },
+      };
     } catch (error) {
-      return `Failed to check status: ${(error as Error).message}`;
+      return {
+        success: false,
+        text: `Failed to check status: ${(error as Error).message}`,
+        error: (error as Error).message,
+      };
     }
   },
 };
@@ -348,20 +363,14 @@ export const cancelPluginCreationAction: Action = {
       },
     ],
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
       return false;
     }
 
     const jobs = service.getAllJobs();
-    const activeJob = jobs.find(
-      (job) => job.status === "running" || job.status === "pending"
-    );
+    const activeJob = jobs.find((job) => job.status === "running" || job.status === "pending");
     return !!activeJob;
   },
   handler: async (
@@ -370,26 +379,41 @@ export const cancelPluginCreationAction: Action = {
     _state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback
-  ): Promise<string> => {
+  ): Promise<ActionResult> => {
     try {
       const service = getPluginCreationService(runtime);
       if (!service) {
-        return "Plugin creation service not available.";
+        return {
+          success: false,
+          text: "Plugin creation service not available.",
+        };
       }
 
       const jobs = service.getAllJobs();
-      const activeJob = jobs.find(
-        (job) => job.status === "running" || job.status === "pending"
-      );
+      const activeJob = jobs.find((job) => job.status === "running" || job.status === "pending");
 
       if (!activeJob) {
-        return "No active plugin creation job to cancel.";
+        return {
+          success: false,
+          text: "No active plugin creation job to cancel.",
+        };
       }
 
       service.cancelJob(activeJob.id);
-      return `Plugin creation job has been cancelled.\n\nJob ID: ${activeJob.id}\nPlugin: ${activeJob.specification.name}`;
+      return {
+        success: true,
+        text: `Plugin creation job has been cancelled.\n\nJob ID: ${activeJob.id}\nPlugin: ${activeJob.specification.name}`,
+        data: {
+          jobId: activeJob.id,
+          pluginName: activeJob.specification.name,
+        },
+      };
     } catch (error) {
-      return `Failed to cancel job: ${(error as Error).message}`;
+      return {
+        success: false,
+        text: `Failed to cancel job: ${(error as Error).message}`,
+        error: (error as Error).message,
+      };
     }
   },
 };
@@ -400,12 +424,7 @@ export const cancelPluginCreationAction: Action = {
 export const createPluginFromDescriptionAction: Action = {
   name: "createPluginFromDescription",
   description: "Create a plugin from a natural language description",
-  similes: [
-    "describe plugin",
-    "plugin from description",
-    "explain plugin",
-    "I need a plugin that",
-  ],
+  similes: ["describe plugin", "plugin from description", "explain plugin", "I need a plugin that"],
   examples: [
     [
       {
@@ -422,20 +441,14 @@ export const createPluginFromDescriptionAction: Action = {
       },
     ],
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
       return false;
     }
 
     const jobs = service.getAllJobs();
-    const activeJob = jobs.find(
-      (job) => job.status === "running" || job.status === "pending"
-    );
+    const activeJob = jobs.find((job) => job.status === "running" || job.status === "pending");
     if (activeJob) {
       return false;
     }
@@ -448,44 +461,58 @@ export const createPluginFromDescriptionAction: Action = {
     _state?: State,
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback
-  ): Promise<string> => {
+  ): Promise<ActionResult> => {
     try {
       const service = getPluginCreationService(runtime);
       if (!service) {
-        return "Plugin creation service not available.";
+        return {
+          success: false,
+          text: "Plugin creation service not available.",
+        };
       }
 
       const apiKey = runtime.getSetting("ANTHROPIC_API_KEY");
-      if (!apiKey) {
-        return "ANTHROPIC_API_KEY is not configured. Please set it to enable AI-powered plugin generation.";
+      if (!apiKey || typeof apiKey !== "string") {
+        return {
+          success: false,
+          text: "ANTHROPIC_API_KEY is not configured. Please set it to enable AI-powered plugin generation.",
+        };
       }
 
-      const specification = generatePluginSpecification(message.content.text);
+      const specification = generatePluginSpecification(message.content.text ?? "");
 
       try {
         PluginSpecificationSchema.parse(specification);
       } catch (error) {
         if (error instanceof z.ZodError) {
-          return `Failed to generate valid specification:\n${error.errors.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`;
+          return {
+            success: false,
+            text: `Failed to generate valid specification:\n${error.errors.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`,
+          };
         }
       }
 
       const jobId = await service.createPlugin(specification, apiKey);
 
-      return (
-        `I'm creating a plugin based on your description!\n\n` +
-        `📦 Plugin: ${specification.name}\n` +
-        `📝 Description: ${specification.description}\n` +
-        `🆔 Job ID: ${jobId}\n\n` +
-        `Components to be created:\n` +
-        `${specification.actions?.length ? `- ${specification.actions.length} actions\n` : ""}` +
-        `${specification.providers?.length ? `- ${specification.providers.length} providers\n` : ""}` +
-        `${specification.services?.length ? `- ${specification.services.length} services\n` : ""}` +
-        `${specification.evaluators?.length ? `- ${specification.evaluators.length} evaluators\n` : ""}\n` +
-        `Use 'checkPluginCreationStatus' to monitor progress.`
-      );
+      return {
+        success: true,
+        text:
+          `I'm creating a plugin based on your description!\n\n` +
+          `📦 Plugin: ${specification.name}\n` +
+          `📝 Description: ${specification.description}\n` +
+          `🆔 Job ID: ${jobId}\n\n` +
+          `Components to be created:\n` +
+          `${specification.actions?.length ? `- ${specification.actions.length} actions\n` : ""}` +
+          `${specification.providers?.length ? `- ${specification.providers.length} providers\n` : ""}` +
+          `${specification.services?.length ? `- ${specification.services.length} services\n` : ""}` +
+          `${specification.evaluators?.length ? `- ${specification.evaluators.length} evaluators\n` : ""}\n` +
+          `Use 'checkPluginCreationStatus' to monitor progress.`,
+      };
     } catch (error) {
-      return `Failed to create plugin: ${(error as Error).message}`;
+      return {
+        success: false,
+        text: `Failed to create plugin: ${(error as Error).message}`,
+      };
     }
   },
 };
@@ -605,5 +632,3 @@ function generatePluginSpecification(description: string): PluginSpecification {
 
   return specification;
 }
-
-

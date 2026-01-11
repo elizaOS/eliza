@@ -12,8 +12,8 @@ import {
 } from "@elizaos/core";
 import { PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
 import { channelInfoTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 // Re-export for backwards compatibility
 export { channelInfoTemplate };
@@ -28,7 +28,7 @@ export { channelInfoTemplate };
 const getChannelInfo = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{
   channelIdentifier: string;
   messageCount: number;
@@ -52,12 +52,9 @@ const getChannelInfo = async (
       focusUser?: string | null;
     } | null;
 
-    if (parsedResponse && parsedResponse.channelIdentifier) {
+    if (parsedResponse?.channelIdentifier) {
       // Ensure messageCount is within bounds
-      const messageCount = Math.min(
-        Math.max(parsedResponse.messageCount || 10, 1),
-        50,
-      );
+      const messageCount = Math.min(Math.max(parsedResponse.messageCount || 10, 1), 50);
       return {
         channelIdentifier: parsedResponse.channelIdentifier,
         messageCount,
@@ -91,17 +88,15 @@ export const readChannel = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       runtime.logger.error(
         { src: "plugin:discord:action:read-channel", agentId: runtime.agentId },
-        "Discord service not found or not initialized",
+        "Discord service not found or not initialized"
       );
       return;
     }
@@ -110,7 +105,7 @@ export const readChannel = {
     if (!channelInfo) {
       runtime.logger.warn(
         { src: "plugin:discord:action:read-channel", agentId: runtime.agentId },
-        "Could not parse channel information from message",
+        "Could not parse channel information from message"
       );
       await callback({
         text: "I couldn't understand which channel you want me to read from. Please specify the channel name or say 'this channel' for the current channel.",
@@ -122,7 +117,7 @@ export const readChannel = {
     try {
       let targetChannel: TextChannel | null = null;
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
 
       // Determine the target channel
       if (
@@ -131,19 +126,19 @@ export const readChannel = {
         channelInfo.channelIdentifier === "here"
       ) {
         // Use current channel
-        if (room && room.channelId) {
+        if (room?.channelId) {
           targetChannel = (await discordService.client.channels.fetch(
-            room.channelId,
+            room.channelId
           )) as TextChannel;
         }
       } else if (channelInfo.channelIdentifier.match(/^\d+$/)) {
         // It's a channel ID
         targetChannel = (await discordService.client.channels.fetch(
-          channelInfo.channelIdentifier,
+          channelInfo.channelIdentifier
         )) as TextChannel;
       } else {
         // It's a channel name - search in the current server
-        const serverId = room && room.messageServerId;
+        const serverId = room?.messageServerId;
         if (!serverId) {
           await callback({
             text: "I couldn't determine which server to search for that channel.",
@@ -157,10 +152,8 @@ export const readChannel = {
         targetChannel =
           (channels.find(
             (channel) =>
-              channel && channel.name
-                .toLowerCase()
-                .includes(channelInfo.channelIdentifier.toLowerCase()) &&
-              channel.isTextBased(),
+              channel?.name.toLowerCase().includes(channelInfo.channelIdentifier.toLowerCase()) &&
+              channel.isTextBased()
           ) as TextChannel | undefined) || null;
       }
 
@@ -175,9 +168,7 @@ export const readChannel = {
       // Check permissions
       const targetChannelGuild = targetChannel.guild;
       const clientUser = discordService.client.user;
-      const botMember = targetChannelGuild && targetChannelGuild.members.cache.get(
-        clientUser && clientUser.id,
-      );
+      const botMember = targetChannelGuild?.members.cache.get(clientUser?.id);
       if (botMember) {
         const permissions = targetChannel.permissionsFor(botMember);
         if (!permissions || !permissions.has(PermissionsBitField.Flags.ReadMessageHistory)) {
@@ -206,7 +197,7 @@ export const readChannel = {
           summarize: channelInfo.summarize,
           focusUser: channelInfo.focusUser,
         },
-        "Fetching messages",
+        "Fetching messages"
       );
 
       const messages = await targetChannel.messages.fetch({
@@ -228,12 +219,12 @@ export const readChannel = {
         // Filter by user if specified
         const relevantMessages = channelInfo.focusUser
           ? sortedMessages.filter((msg) => {
-              const focusUserLower = channelInfo.focusUser && channelInfo.focusUser.toLowerCase();
+              const focusUserLower = channelInfo.focusUser?.toLowerCase();
               const msgMember = msg.member;
-              const msgMemberDisplayName = msgMember && msgMember.displayName;
+              const msgMemberDisplayName = msgMember?.displayName;
               return (
                 msg.author.username.toLowerCase().includes(focusUserLower || "") ||
-                (msgMemberDisplayName && msgMemberDisplayName.toLowerCase().includes(focusUserLower || ""))
+                msgMemberDisplayName?.toLowerCase().includes(focusUserLower || "")
               );
             })
           : sortedMessages;
@@ -260,12 +251,12 @@ export const readChannel = {
           ? `Please summarize what ${channelInfo.focusUser} has been discussing based on these messages from the Discord channel "${targetChannel.name}":\n\n${messagesToSummarize
               .map((m) => `${m.author} (${m.timestamp}): ${m.content}`)
               .join(
-                "\n\n",
+                "\n\n"
               )}\n\nProvide a concise summary focusing on:\n1. Main topics ${channelInfo.focusUser} discussed\n2. Key points or proposals they made\n3. Any questions they asked or issues they raised\n\nIf ${channelInfo.focusUser} didn't appear in these messages, please note that.`
           : `Please summarize the recent conversation in the Discord channel "${targetChannel.name}" based on these messages:\n\n${messagesToSummarize
               .map((m) => `${m.author} (${m.timestamp}): ${m.content}`)
               .join(
-                "\n\n",
+                "\n\n"
               )}\n\nProvide a concise summary that includes:\n1. Main topics discussed\n2. Key decisions or conclusions\n3. Who contributed what (mention specific usernames)\n4. Any action items or next steps mentioned`;
 
         const summary = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -313,7 +304,7 @@ export const readChannel = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error reading channel",
+        "Error reading channel"
       );
       await callback({
         text: "I encountered an error while trying to read the channel messages. Please make sure I have the necessary permissions and try again.",

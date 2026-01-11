@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Cross-chain bridge action implementation
 //!
 //! Handles cross-chain token bridges using LiFi API.
@@ -117,8 +118,6 @@ struct LifiRoutesResponse {
 
 #[derive(Debug, Deserialize)]
 struct LifiRoute {
-    #[allow(dead_code)]
-    id: String,
     steps: Vec<LifiStep>,
     #[serde(rename = "fromChainId")]
     from_chain_id: u64,

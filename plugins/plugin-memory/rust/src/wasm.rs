@@ -1,8 +1,10 @@
+#![allow(missing_docs)]
 //! WebAssembly bindings for the Memory Plugin.
 
 #![cfg(feature = "wasm")]
 
 use wasm_bindgen::prelude::*;
+use js_sys;
 
 use crate::types::{LongTermMemoryCategory, MemoryExtraction, SummaryResult};
 use crate::config::MemoryConfig;
@@ -19,7 +21,10 @@ pub fn init() {
 #[wasm_bindgen]
 pub fn create_default_config() -> JsValue {
     let config = MemoryConfig::default();
-    serde_wasm_bindgen::to_value(&config).unwrap_or(JsValue::NULL)
+    serde_json::to_string(&config)
+        .ok()
+        .and_then(|s| js_sys::JSON::parse(&s).ok())
+        .unwrap_or(JsValue::NULL)
 }
 
 /// Parse memory category from string.
@@ -27,8 +32,13 @@ pub fn create_default_config() -> JsValue {
 pub fn parse_memory_category(category: &str) -> Result<JsValue, JsValue> {
     category
         .parse::<LongTermMemoryCategory>()
-        .map(|c| serde_wasm_bindgen::to_value(&c).unwrap_or(JsValue::NULL))
-        .map_err(|e| JsValue::from_str(&e))
+        .map(|c| {
+            serde_json::to_string(&c)
+                .ok()
+                .and_then(|s| js_sys::JSON::parse(&s).ok())
+                .unwrap_or(JsValue::NULL)
+        })
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Create a memory extraction result.
@@ -49,7 +59,12 @@ pub fn create_memory_extraction(
         metadata: serde_json::json!({}),
     };
 
-    serde_wasm_bindgen::to_value(&extraction).map_err(|e| JsValue::from_str(&e.to_string()))
+    serde_json::to_string(&extraction)
+        .map_err(|_| JsValue::from_str("Failed to serialize extraction"))
+        .and_then(|s| {
+            js_sys::JSON::parse(&s)
+                .map_err(|_| JsValue::from_str("Failed to parse JSON"))
+        })
 }
 
 /// Create a summary result.
@@ -75,7 +90,13 @@ pub fn create_summary_result(
         key_points,
     };
 
-    serde_wasm_bindgen::to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
+    // Convert to JSON string then parse as JsValue
+    serde_json::to_string(&result)
+        .map_err(|_| JsValue::from_str("Failed to serialize result"))
+        .and_then(|s| {
+            js_sys::JSON::parse(&s)
+                .map_err(|_| JsValue::from_str("Failed to parse JSON"))
+        })
 }
 
 /// Get plugin metadata.
@@ -86,7 +107,10 @@ pub fn get_plugin_info() -> JsValue {
         "description": crate::PLUGIN_DESCRIPTION,
         "version": crate::PLUGIN_VERSION,
     });
-    serde_wasm_bindgen::to_value(&info).unwrap_or(JsValue::NULL)
+    serde_json::to_string(&info)
+        .ok()
+        .and_then(|s| js_sys::JSON::parse(&s).ok())
+        .unwrap_or(JsValue::NULL)
 }
 
 

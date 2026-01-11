@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Plugin Creation Client implementation.
 
 use std::collections::{HashMap, HashSet};
@@ -13,7 +14,7 @@ use uuid::Uuid;
 
 use crate::config::N8nConfig;
 use crate::error::{N8nError, Result};
-use crate::models::{ClaudeModel, JobStatus};
+use crate::models::JobStatus;
 use crate::types::{
     CreatePluginOptions, JobError, PluginCreationJob, PluginSpecification, TestResults,
 };
@@ -372,8 +373,17 @@ impl PluginCreationClient {
             )
         };
 
+        // Build dependencies map
+        let mut deps_map = serde_json::Map::new();
+        deps_map.insert("@elizaos/core".to_string(), serde_json::json!("^1.0.0"));
+        if let Some(additional_deps) = deps {
+            for (k, v) in additional_deps {
+                deps_map.insert(k, serde_json::Value::String(v));
+            }
+        }
+
         // Write package.json
-        let package_json = serde_json::json!({
+        let mut package_json = serde_json::json!({
             "name": name,
             "version": version,
             "description": description,
@@ -384,17 +394,17 @@ impl PluginCreationClient {
                 "test": "vitest run",
                 "lint": "eslint src/**/*.ts"
             },
-            "dependencies": {
-                "@elizaos/core": "^1.0.0",
-            }.as_object().unwrap().clone().into_iter().chain(
-                deps.unwrap_or_default().into_iter()
-            ).collect::<serde_json::Map<String, serde_json::Value>>(),
             "devDependencies": {
                 "@types/node": "^20.0.0",
                 "typescript": "^5.0.0",
                 "vitest": "^1.0.0"
             }
         });
+        
+        // Add dependencies to the JSON object
+        if let Some(obj) = package_json.as_object_mut() {
+            obj.insert("dependencies".to_string(), serde_json::Value::Object(deps_map));
+        }
 
         tokio::fs::write(
             output_path.join("package.json"),
@@ -621,7 +631,7 @@ impl PluginCreationClient {
         result.map(|_| ())
     }
 
-    async fn validate_plugin(&self, job_id: &str) -> Result<()> {
+    async fn validate_plugin(&self, _job_id: &str) -> Result<()> {
         // Skip AI validation for now - would require another API call
         warn!("Skipping AI validation");
         Ok(())
@@ -773,5 +783,7 @@ mod tests {
         );
     }
 }
+
+
 
 

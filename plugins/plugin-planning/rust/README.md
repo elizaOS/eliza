@@ -31,11 +31,11 @@ use elizaos_plugin_planning::{PlanningService, PlanningConfig, PlanningContext, 
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create configuration
     let config = PlanningConfig::default();
-    
+
     // Initialize service
     let service = PlanningService::new(config);
     service.start().await;
-    
+
     // Create a planning context
     let context = PlanningContext {
         goal: "Build a comprehensive website".to_string(),
@@ -48,11 +48,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             timeout_ms: None,
         }),
     };
-    
+
     // Create a plan
     let plan = service.create_comprehensive_plan(&context, None).await?;
     println!("Created plan with {} steps", plan.steps.len());
-    
+
     // Create a simple message
     let message = Message {
         id: uuid::Uuid::new_v4(),
@@ -63,25 +63,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             source: None,
         },
     };
-    
+
     // Execute the plan
     let result = service.execute_plan(&plan, &message).await?;
     println!("Execution success: {}", result.success);
-    
+
     service.stop().await;
-    
+
     Ok(())
 }
 ```
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `PLANNING_MAX_STEPS` | 10 | Maximum steps in a plan |
-| `PLANNING_TIMEOUT_MS` | 60000 | Default execution timeout |
-| `PLANNING_EXECUTION_MODEL` | sequential | Default execution model |
-| `PLANNING_ENABLE_ADAPTATION` | true | Enable plan adaptation |
+| Setting                      | Default    | Description               |
+| ---------------------------- | ---------- | ------------------------- |
+| `PLANNING_MAX_STEPS`         | 10         | Maximum steps in a plan   |
+| `PLANNING_TIMEOUT_MS`        | 60000      | Default execution timeout |
+| `PLANNING_EXECUTION_MODEL`   | sequential | Default execution model   |
+| `PLANNING_ENABLE_ADAPTATION` | true       | Enable plan adaptation    |
 
 ## Development
 
@@ -102,5 +102,6 @@ cargo fmt
 ## License
 
 MIT
+
 
 

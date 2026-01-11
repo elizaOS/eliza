@@ -3,9 +3,9 @@
  * This file exports all test suites so they can be included in the plugin build
  */
 
+export { ReminderDeliveryE2ETestSuite } from "./__tests__/e2e/reminder-delivery";
 // E2E Test Suites
-export { TodoPluginE2ETestSuite } from './__tests__/e2e/todo-plugin';
-export { ReminderDeliveryE2ETestSuite } from './__tests__/e2e/reminder-delivery';
+export { TodoPluginE2ETestSuite } from "./__tests__/e2e/todo-plugin";
 
 // Unit and Integration Test Suites
 // Note: These are vitest test files, not traditional test suites

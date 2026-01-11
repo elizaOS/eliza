@@ -1,87 +1,88 @@
-import type { TestSuite } from '@elizaos/core';
-import { logger } from '@elizaos/core';
+// @ts-nocheck
+import type { TestSuite } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 export class VisionRuntimeTestSuite implements TestSuite {
-  name = 'vision-runtime-tests';
-  description = 'Real runtime tests for vision plugin functionality';
+  name = "vision-runtime-tests";
+  description = "Real runtime tests for vision plugin functionality";
 
   tests = [
     {
-      name: 'Vision service initialization',
+      name: "Vision service initialization",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing vision service initialization...');
+        logger.info("[Test] Testing vision service initialization...");
 
-        const visionService = runtime.getService('VISION');
+        const visionService = runtime.getService("VISION");
         if (!visionService) {
-          throw new Error('Vision service not found in runtime');
+          throw new Error("Vision service not found in runtime");
         }
 
         // Check if service is properly initialized
-        if (typeof visionService.isActive !== 'function') {
-          throw new Error('Vision service missing isActive method');
+        if (typeof visionService.isActive !== "function") {
+          throw new Error("Vision service missing isActive method");
         }
 
         const isActive = visionService.isActive();
         logger.info(`[Test] Vision service active: ${isActive}`);
 
         // Service should be active after initialization
-        if (!isActive && runtime.getSetting('VISION_MODE') !== 'OFF') {
-          throw new Error('Vision service should be active but is not');
+        if (!isActive && runtime.getSetting("VISION_MODE") !== "OFF") {
+          throw new Error("Vision service should be active but is not");
         }
 
-        logger.info('[Test] ✅ Vision service initialization test passed');
+        logger.info("[Test] ✅ Vision service initialization test passed");
       },
     },
 
     {
-      name: 'Scene description functionality',
+      name: "Scene description functionality",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing scene description...');
+        logger.info("[Test] Testing scene description...");
 
-        const visionService = runtime.getService('VISION');
+        const visionService = runtime.getService("VISION");
         if (!visionService) {
-          throw new Error('Vision service not found');
+          throw new Error("Vision service not found");
         }
 
         // Get current scene description
         const scene = await visionService.getSceneDescription();
 
         if (!scene) {
-          logger.warn('[Test] No scene description available (camera might not be connected)');
+          logger.warn("[Test] No scene description available (camera might not be connected)");
           return; // Don't fail if no camera
         }
 
         // Validate scene structure
-        if (typeof scene.timestamp !== 'number') {
-          throw new Error('Scene description missing timestamp');
+        if (typeof scene.timestamp !== "number") {
+          throw new Error("Scene description missing timestamp");
         }
 
-        if (typeof scene.description !== 'string') {
-          throw new Error('Scene description missing description text');
+        if (typeof scene.description !== "string") {
+          throw new Error("Scene description missing description text");
         }
 
         if (!Array.isArray(scene.objects)) {
-          throw new Error('Scene description missing objects array');
+          throw new Error("Scene description missing objects array");
         }
 
         if (!Array.isArray(scene.people)) {
-          throw new Error('Scene description missing people array');
+          throw new Error("Scene description missing people array");
         }
 
         logger.info(`[Test] Scene: ${scene.description.substring(0, 100)}...`);
         logger.info(`[Test] Objects: ${scene.objects.length}, People: ${scene.people.length}`);
-        logger.info('[Test] ✅ Scene description test passed');
+        logger.info("[Test] ✅ Scene description test passed");
       },
     },
 
     {
-      name: 'Vision mode switching',
+      name: "Vision mode switching",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing vision mode switching...');
+        logger.info("[Test] Testing vision mode switching...");
 
-        const visionService = runtime.getService('VISION');
+        const visionService = runtime.getService("VISION");
         if (!visionService) {
-          throw new Error('Vision service not found');
+          throw new Error("Vision service not found");
         }
 
         // Get current mode
@@ -89,7 +90,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
         logger.info(`[Test] Original mode: ${originalMode}`);
 
         // Test switching modes
-        const testModes = ['CAMERA', 'SCREEN', 'BOTH', 'OFF'];
+        const testModes = ["CAMERA", "SCREEN", "BOTH", "OFF"];
 
         for (const mode of testModes) {
           logger.info(`[Test] Switching to mode: ${mode}`);
@@ -103,29 +104,29 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
         // Restore original mode
         await visionService.setVisionMode(originalMode);
-        logger.info('[Test] ✅ Vision mode switching test passed');
+        logger.info("[Test] ✅ Vision mode switching test passed");
       },
     },
 
     {
-      name: 'DESCRIBE_SCENE action execution',
+      name: "DESCRIBE_SCENE action execution",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing DESCRIBE_SCENE action...');
+        logger.info("[Test] Testing DESCRIBE_SCENE action...");
 
         // Find the action
-        const action = runtime.actions.find((a: any) => a.name === 'DESCRIBE_SCENE');
+        const action = runtime.actions.find((a: any) => a.name === "DESCRIBE_SCENE");
         if (!action) {
-          throw new Error('DESCRIBE_SCENE action not found');
+          throw new Error("DESCRIBE_SCENE action not found");
         }
 
         // Create test message
         const message = {
           id: `test-msg-${Date.now()}`,
-          entityId: 'test-entity',
-          roomId: 'test-room',
+          entityId: "test-entity",
+          roomId: "test-room",
           content: {
-            text: 'Describe what you see',
-            source: 'test',
+            text: "Describe what you see",
+            source: "test",
           },
           createdAt: Date.now(),
         };
@@ -133,7 +134,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
         // Validate action
         const isValid = await action.validate(runtime, message);
         if (!isValid) {
-          throw new Error('DESCRIBE_SCENE action validation failed');
+          throw new Error("DESCRIBE_SCENE action validation failed");
         }
 
         // Execute action
@@ -149,116 +150,116 @@ export class VisionRuntimeTestSuite implements TestSuite {
         await action.handler(runtime, message, {}, {}, callback);
 
         if (!responseReceived) {
-          throw new Error('DESCRIBE_SCENE action did not produce a response');
+          throw new Error("DESCRIBE_SCENE action did not produce a response");
         }
 
-        logger.info('[Test] ✅ DESCRIBE_SCENE action test passed');
+        logger.info("[Test] ✅ DESCRIBE_SCENE action test passed");
       },
     },
 
     {
-      name: 'Vision provider integration',
+      name: "Vision provider integration",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing vision provider...');
+        logger.info("[Test] Testing vision provider...");
 
         // Find the vision provider
-        const provider = runtime.providers.find((p: any) => p.name === 'visionProvider');
+        const provider = runtime.providers.find((p: any) => p.name === "visionProvider");
         if (!provider) {
-          throw new Error('Vision provider not found');
+          throw new Error("Vision provider not found");
         }
 
         // Create test message and state
         const message = {
           id: `test-msg-${Date.now()}`,
-          entityId: 'test-entity',
-          roomId: 'test-room',
-          content: { text: 'test', source: 'test' },
+          entityId: "test-entity",
+          roomId: "test-room",
+          content: { text: "test", source: "test" },
           createdAt: Date.now(),
         };
 
         const state = {
           values: {},
           data: {},
-          text: '',
+          text: "",
         };
 
         // Get provider data
         const result = await provider.get(runtime, message, state);
 
-        if (!result || typeof result !== 'object') {
-          throw new Error('Vision provider returned invalid result');
+        if (!result || typeof result !== "object") {
+          throw new Error("Vision provider returned invalid result");
         }
 
         // Check if provider returns vision data when available
-        if (result.text && result.text.includes('I can see')) {
+        if (result.text?.includes("I can see")) {
           logger.info(`[Test] Provider text: ${result.text.substring(0, 100)}...`);
         }
 
-        logger.info('[Test] ✅ Vision provider test passed');
+        logger.info("[Test] ✅ Vision provider test passed");
       },
     },
 
     {
-      name: 'Florence-2 model initialization',
+      name: "Florence-2 model initialization",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing Florence-2 model...');
+        logger.info("[Test] Testing Florence-2 model...");
 
-        const visionService = runtime.getService('VISION');
+        const visionService = runtime.getService("VISION");
         if (!visionService) {
-          throw new Error('Vision service not found');
+          throw new Error("Vision service not found");
         }
 
         // Check if Florence-2 is enabled
         const florence2Enabled =
-          runtime.getSetting('FLORENCE2_ENABLED') === 'true' ||
-          runtime.getSetting('VISION_FLORENCE2_ENABLED') === 'true';
+          runtime.getSetting("FLORENCE2_ENABLED") === "true" ||
+          runtime.getSetting("VISION_FLORENCE2_ENABLED") === "true";
 
         if (!florence2Enabled) {
-          logger.info('[Test] Florence-2 is disabled, skipping test');
+          logger.info("[Test] Florence-2 is disabled, skipping test");
           return;
         }
 
         // If screen mode is enabled, Florence-2 should be initialized
         const mode = visionService.getVisionMode();
-        if (mode === 'SCREEN' || mode === 'BOTH') {
+        if (mode === "SCREEN" || mode === "BOTH") {
           // Try to get screen capture
           const screenCapture = await visionService.getScreenCapture();
           if (screenCapture) {
-            logger.info('[Test] Screen capture available');
+            logger.info("[Test] Screen capture available");
             logger.info(`[Test] Screen size: ${screenCapture.width}x${screenCapture.height}`);
             logger.info(`[Test] Tiles: ${screenCapture.tiles.length}`);
           }
         }
 
-        logger.info('[Test] ✅ Florence-2 model test passed');
+        logger.info("[Test] ✅ Florence-2 model test passed");
       },
     },
 
     {
-      name: 'OCR service functionality',
+      name: "OCR service functionality",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing OCR service...');
+        logger.info("[Test] Testing OCR service...");
 
-        const visionService = runtime.getService('VISION');
+        const visionService = runtime.getService("VISION");
         if (!visionService) {
-          throw new Error('Vision service not found');
+          throw new Error("Vision service not found");
         }
 
         // Check if OCR is enabled
         const ocrEnabled =
-          runtime.getSetting('OCR_ENABLED') === 'true' ||
-          runtime.getSetting('VISION_OCR_ENABLED') === 'true';
+          runtime.getSetting("OCR_ENABLED") === "true" ||
+          runtime.getSetting("VISION_OCR_ENABLED") === "true";
 
         if (!ocrEnabled) {
-          logger.info('[Test] OCR is disabled, skipping test');
+          logger.info("[Test] OCR is disabled, skipping test");
           return;
         }
 
         // If screen mode is enabled, OCR should work
         const mode = visionService.getVisionMode();
-        if (mode === 'SCREEN' || mode === 'BOTH') {
+        if (mode === "SCREEN" || mode === "BOTH") {
           const enhancedScene = await visionService.getEnhancedSceneDescription();
-          if (enhancedScene && enhancedScene.screenAnalysis) {
+          if (enhancedScene?.screenAnalysis) {
             const ocrText = enhancedScene.screenAnalysis.fullScreenOCR;
             if (ocrText) {
               logger.info(`[Test] OCR extracted ${ocrText.length} characters`);
@@ -267,24 +268,24 @@ export class VisionRuntimeTestSuite implements TestSuite {
           }
         }
 
-        logger.info('[Test] ✅ OCR service test passed');
+        logger.info("[Test] ✅ OCR service test passed");
       },
     },
 
     {
-      name: 'Entity tracking system',
+      name: "Entity tracking system",
       fn: async (runtime: any) => {
-        logger.info('[Test] Testing entity tracking...');
+        logger.info("[Test] Testing entity tracking...");
 
-        const visionService = runtime.getService('VISION');
+        const visionService = runtime.getService("VISION");
         if (!visionService) {
-          throw new Error('Vision service not found');
+          throw new Error("Vision service not found");
         }
 
         // Get entity tracker
         const entityTracker = visionService.getEntityTracker();
         if (!entityTracker) {
-          throw new Error('Entity tracker not found');
+          throw new Error("Entity tracker not found");
         }
 
         // Get current entities
@@ -294,7 +295,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
         // Check entity structure if any exist
         for (const entity of entities) {
           if (!entity.id || !entity.type || !entity.lastSeen) {
-            throw new Error('Entity missing required fields');
+            throw new Error("Entity missing required fields");
           }
 
           logger.info(
@@ -302,7 +303,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
           );
         }
 
-        logger.info('[Test] ✅ Entity tracking test passed');
+        logger.info("[Test] ✅ Entity tracking test passed");
       },
     },
   ];

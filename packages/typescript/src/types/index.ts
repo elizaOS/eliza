@@ -11,6 +11,12 @@ export * from "./model";
 export * from "./plugin";
 export * from "./primitives";
 export * from "./prompts";
+// Proto-generated types (single source of truth)
+// These types are generated from /schemas/eliza/v1/*.proto
+// Use these for new code and cross-language interoperability
+export * as proto from "./proto.js";
+// Re-export proto utilities for JSON conversion
+export { fromJson, type JsonObject, toJson } from "./proto.js";
 export * from "./runtime";
 export * from "./service";
 export * from "./service-interfaces";
@@ -20,11 +26,3 @@ export * from "./streaming";
 export * from "./task";
 export * from "./tee";
 export * from "./testing";
-
-// Proto-generated types (single source of truth)
-// These types are generated from /schemas/eliza/v1/*.proto
-// Use these for new code and cross-language interoperability
-export * as proto from "./proto.js";
-
-// Re-export proto utilities for JSON conversion
-export { toJson, fromJson, type JsonObject } from "./proto.js";

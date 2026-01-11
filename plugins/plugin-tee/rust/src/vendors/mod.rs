@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! TEE Vendors module.
 
 pub mod phala;
@@ -27,5 +28,10 @@ pub fn get_vendor(vendor_type: &str) -> Result<Box<dyn TeeVendorInterface>> {
         _ => Err(TeeError::InvalidVendor(vendor_type.to_string())),
     }
 }
+
+
+
+
+
 
 

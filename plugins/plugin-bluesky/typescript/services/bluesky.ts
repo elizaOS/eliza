@@ -2,13 +2,13 @@
  * BlueSky service for elizaOS.
  */
 
-import { logger, Service, type UUID, type IAgentRuntime } from "@elizaos/core";
-import { BLUESKY_SERVICE_NAME } from "../types";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
+import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";
+import { BLUESKY_SERVICE_NAME } from "../types";
 import { hasBlueSkyEnabled, validateBlueSkyConfig } from "../utils/config";
 import { BlueSkyMessageService } from "./message";
 import { BlueSkyPostService } from "./post";
-import { BlueSkyClient } from "../client";
 
 export class BlueSkyService extends Service {
   private static instance: BlueSkyService;

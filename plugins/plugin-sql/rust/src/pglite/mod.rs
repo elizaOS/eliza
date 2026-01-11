@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! PGLite adapter for elizaOS
 //!
 //! This module provides the PGLite database adapter implementation for WASM environments.

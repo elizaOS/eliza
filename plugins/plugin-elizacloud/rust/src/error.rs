@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for ElizaOS Cloud Plugin.
 
 use thiserror::Error;
@@ -181,5 +182,10 @@ mod tests {
         assert!(!bad_request.is_retryable());
     }
 }
+
+
+
+
+
 
 

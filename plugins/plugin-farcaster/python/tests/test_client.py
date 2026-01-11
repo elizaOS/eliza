@@ -73,7 +73,7 @@ def test_client_clear_cache(client: FarcasterClient) -> None:
     # Add something to cache
     client._profile_cache[12345] = None  # type: ignore
     client._cast_cache["abc"] = None  # type: ignore
-    
+
     # Clear and verify
     client.clear_cache()
     assert len(client._profile_cache) == 0

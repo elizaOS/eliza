@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Tokenization model handlers.
 
 use crate::error::{ElizaCloudError, Result};

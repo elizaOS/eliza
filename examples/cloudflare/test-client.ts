@@ -10,7 +10,7 @@
  *   bun run test-client.ts --url <url>  # Custom URL
  */
 
-import * as readline from "readline";
+import * as readline from "node:readline";
 
 interface ChatResponse {
   response: string;
@@ -68,13 +68,9 @@ Examples:
 }
 
 async function getWorkerInfo(baseUrl: string): Promise<InfoResponse | null> {
-  try {
-    const response = await fetch(baseUrl);
-    if (response.ok) {
-      return (await response.json()) as InfoResponse;
-    }
-  } catch {
-    // Worker not available
+  const response = await fetch(baseUrl);
+  if (response.ok) {
+    return (await response.json()) as InfoResponse;
   }
   return null;
 }
@@ -82,7 +78,7 @@ async function getWorkerInfo(baseUrl: string): Promise<InfoResponse | null> {
 async function sendMessage(
   baseUrl: string,
   message: string,
-  conversationId: string | null
+  conversationId: string | null,
 ): Promise<ChatResponse> {
   const response = await fetch(`${baseUrl}/chat`, {
     method: "POST",
@@ -107,7 +103,7 @@ async function sendStreamMessage(
   baseUrl: string,
   message: string,
   conversationId: string | null,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
 ): Promise<{ conversationId: string; character: string }> {
   const response = await fetch(`${baseUrl}/chat/stream`, {
     method: "POST",
@@ -131,7 +127,7 @@ async function sendStreamMessage(
   }
 
   const decoder = new TextDecoder();
-  let metadata = { conversationId: "", character: "" };
+  const metadata = { conversationId: "", character: "" };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -147,19 +143,15 @@ async function sendStreamMessage(
           continue;
         }
 
-        try {
-          const event = JSON.parse(data) as StreamEvent;
-          if (event.conversationId) {
-            metadata.conversationId = event.conversationId;
-          }
-          if (event.character) {
-            metadata.character = event.character;
-          }
-          if (event.text) {
-            onChunk(event.text);
-          }
-        } catch {
-          // Skip malformed JSON
+        const event = JSON.parse(data) as StreamEvent;
+        if (event.conversationId) {
+          metadata.conversationId = event.conversationId;
+        }
+        if (event.character) {
+          metadata.character = event.character;
+        }
+        if (event.text) {
+          onChunk(event.text);
         }
       }
     }
@@ -212,29 +204,24 @@ async function main(): Promise<void> {
         return;
       }
 
-      try {
-        if (stream) {
-          process.stdout.write(`${info.name}: `);
+      if (stream) {
+        process.stdout.write(`${info.name}: `);
 
-          const metadata = await sendStreamMessage(
-            url,
-            text,
-            conversationId,
-            (chunk) => {
-              process.stdout.write(chunk);
-            }
-          );
+        const metadata = await sendStreamMessage(
+          url,
+          text,
+          conversationId,
+          (chunk) => {
+            process.stdout.write(chunk);
+          },
+        );
 
-          conversationId = metadata.conversationId;
-          console.log("\n");
-        } else {
-          const response = await sendMessage(url, text, conversationId);
-          conversationId = response.conversationId;
-          console.log(`\n${response.character}: ${response.response}\n`);
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.error(`\n❌ Error: ${message}\n`);
+        conversationId = metadata.conversationId;
+        console.log("\n");
+      } else {
+        const response = await sendMessage(url, text, conversationId);
+        conversationId = response.conversationId;
+        console.log(`\n${response.character}: ${response.response}\n`);
       }
 
       prompt();
@@ -245,8 +232,3 @@ async function main(): Promise<void> {
 }
 
 main().catch(console.error);
-
-
-
-
-

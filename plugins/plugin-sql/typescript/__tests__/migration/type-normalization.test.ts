@@ -1,4 +1,3 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -16,6 +15,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/database-introspector";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
@@ -85,9 +85,7 @@ describe("Type Normalization", () => {
 
       const schema = {
         test_bigserial: pgTable("test_bigserial", {
-          id: bigint("id", { mode: "number" })
-            .primaryKey()
-            .generatedByDefaultAsIdentity(),
+          id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
           data: jsonb("data"),
         }),
       };
@@ -117,9 +115,7 @@ describe("Type Normalization", () => {
       await migrator.migrate("@test/smallserial", schema, { verbose: false });
 
       // Should complete without errors
-      const result = await db.execute(
-        sql`SELECT COUNT(*) FROM test_smallserial`,
-      );
+      const result = await db.execute(sql`SELECT COUNT(*) FROM test_smallserial`);
       expect(result).toBeDefined();
     });
   });
@@ -176,9 +172,7 @@ describe("Type Normalization", () => {
       await migrator.migrate("@test/timestamptz", schema, { verbose: false });
 
       // Should complete without errors
-      const result = await db.execute(
-        sql`SELECT COUNT(*) FROM test_timestamptz`,
-      );
+      const result = await db.execute(sql`SELECT COUNT(*) FROM test_timestamptz`);
       expect(result).toBeDefined();
     });
   });
@@ -339,16 +333,12 @@ describe("Type Normalization", () => {
       // Drizzle schema with normalized types
       const schema = {
         production_table: pgTable("production_table", {
-          id: bigint("id", { mode: "number" })
-            .primaryKey()
-            .generatedByDefaultAsIdentity(),
+          id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
           user_id: uuid("user_id").notNull(),
           username: varchar("username", { length: 255 }).notNull(),
           email: varchar("email", { length: 255 }).notNull(),
           age: smallint("age"),
-          balance: numeric("balance", { precision: 20, scale: 2 }).default(
-            "0.00",
-          ),
+          balance: numeric("balance", { precision: 20, scale: 2 }).default("0.00"),
           metadata: jsonb("metadata").default({}),
           created_at: timestamp("created_at").defaultNow(),
           updated_at: timestamp("updated_at", {

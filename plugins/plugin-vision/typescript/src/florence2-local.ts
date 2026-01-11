@@ -1,7 +1,7 @@
-import * as tf from '@tensorflow/tfjs-node';
-import { logger } from '@elizaos/core';
-import type { Florence2Result } from './types';
-import sharp from 'sharp';
+import { logger } from "@elizaos/core";
+import * as tf from "@tensorflow/tfjs-node";
+import sharp from "sharp";
+import type { Florence2Result } from "./types";
 
 interface Florence2LocalConfig {
   modelPath?: string;
@@ -14,17 +14,13 @@ export class Florence2Local {
   private initialized = false;
   private config: Florence2LocalConfig;
 
-  // Model constants
-  private readonly IMAGE_SIZE = 384; // Florence-2 uses 384x384 input
-  private readonly VOCAB_SIZE = 51289;
-
   constructor(config?: Florence2LocalConfig) {
     this.config = {
-      modelPath: config?.modelPath || './models/florence2',
+      modelPath: config?.modelPath || "./models/florence2",
       modelUrl:
         config?.modelUrl ||
-        'https://huggingface.co/microsoft/Florence-2-base/resolve/main/model.json',
-      cacheDir: config?.cacheDir || './models/cache',
+        "https://huggingface.co/microsoft/Florence-2-base/resolve/main/model.json",
+      cacheDir: config?.cacheDir || "./models/cache",
     };
   }
 
@@ -34,7 +30,7 @@ export class Florence2Local {
     }
 
     try {
-      logger.info('[Florence2Local] Initializing local Florence-2 model...');
+      logger.info("[Florence2Local] Initializing local Florence-2 model...");
 
       // For now, we'll use a simplified vision model approach
       // In a real implementation, you would load the actual Florence-2 model
@@ -44,14 +40,16 @@ export class Florence2Local {
       // we'll use TensorFlow.js with MobileNet for basic image understanding
       // and combine it with other models for a Florence-2-like experience
 
-      this.model = await tf.loadGraphModel(
-        'https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1'
-      );
+      // Use config URL if available, otherwise use default MobileNet model
+      const modelUrl =
+        this.config.modelUrl ||
+        "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1";
+      this.model = await tf.loadGraphModel(modelUrl);
 
       this.initialized = true;
-      logger.info('[Florence2Local] Model initialized successfully');
+      logger.info("[Florence2Local] Model initialized successfully");
     } catch (error) {
-      logger.error('[Florence2Local] Failed to initialize model:', error);
+      logger.error("[Florence2Local] Failed to initialize model:", error);
       // Don't throw - we'll use enhanced mock fallback
       this.initialized = true;
     }
@@ -78,7 +76,7 @@ export class Florence2Local {
         return await this.enhancedFallback(imageBuffer);
       }
     } catch (error) {
-      logger.error('[Florence2Local] Analysis failed:', error);
+      logger.error("[Florence2Local] Analysis failed:", error);
       return await this.enhancedFallback(imageBuffer);
     }
   }
@@ -99,7 +97,7 @@ export class Florence2Local {
 
   private async runInference(input: tf.Tensor3D): Promise<tf.Tensor> {
     if (!this.model) {
-      throw new Error('Model not loaded');
+      throw new Error("Model not loaded");
     }
 
     // Add batch dimension
@@ -136,11 +134,11 @@ export class Florence2Local {
     // In reality, Florence-2 would use its language model to generate captions
 
     const scenes = [
-      'Indoor scene with various objects visible',
-      'Person in a room with furniture',
-      'Computer workspace with monitor and desk',
-      'Living space with natural lighting',
-      'Office environment with equipment',
+      "Indoor scene with various objects visible",
+      "Person in a room with furniture",
+      "Computer workspace with monitor and desk",
+      "Living space with natural lighting",
+      "Office environment with equipment",
     ];
 
     // Use feature values to select most appropriate caption
@@ -151,16 +149,16 @@ export class Florence2Local {
   private extractTagsFromCaption(caption: string): string[] {
     const words = caption.toLowerCase().split(/\s+/);
     const validTags = [
-      'indoor',
-      'outdoor',
-      'person',
-      'computer',
-      'desk',
-      'office',
-      'room',
-      'furniture',
-      'monitor',
-      'workspace',
+      "indoor",
+      "outdoor",
+      "person",
+      "computer",
+      "desk",
+      "office",
+      "room",
+      "furniture",
+      "monitor",
+      "workspace",
     ];
     return words.filter((word) => validTags.includes(word));
   }
@@ -176,24 +174,24 @@ export class Florence2Local {
     const isIndoor = brightness < 180; // Simplified heuristic
 
     // Generate contextual caption
-    let caption = isIndoor ? 'Indoor scene' : 'Outdoor scene';
+    let caption = isIndoor ? "Indoor scene" : "Outdoor scene";
 
     // Add more context based on image properties
     if (metadata.width && metadata.height) {
       const aspectRatio = metadata.width / metadata.height;
       if (aspectRatio > 1.5) {
-        caption += ' with wide field of view';
+        caption += " with wide field of view";
       } else if (aspectRatio < 0.7) {
-        caption += ' in portrait orientation';
+        caption += " in portrait orientation";
       }
     }
 
     // Detect dominant colors for additional context
     const dominantColor = stats.dominant;
     if (dominantColor.r > 200 && dominantColor.g > 200 && dominantColor.b > 200) {
-      caption += ', well-lit environment';
+      caption += ", well-lit environment";
     } else if (dominantColor.r < 100 && dominantColor.g < 100 && dominantColor.b < 100) {
-      caption += ', dimly lit conditions';
+      caption += ", dimly lit conditions";
     }
 
     return {
@@ -214,6 +212,6 @@ export class Florence2Local {
       this.model = null;
     }
     this.initialized = false;
-    logger.info('[Florence2Local] Model disposed');
+    logger.info("[Florence2Local] Model disposed");
   }
 }

@@ -173,4 +173,3 @@ class FollowUpService(Service):
     async def complete_follow_up(self, entity_id: UUID) -> bool:
         """Mark a follow-up as completed."""
         return await self.cancel_follow_up(entity_id)
-

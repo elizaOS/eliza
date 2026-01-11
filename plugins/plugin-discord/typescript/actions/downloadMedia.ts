@@ -8,11 +8,11 @@ import {
   type IAgentRuntime,
   type Media,
   type Memory,
+  MemoryType,
   ModelType,
   parseJSONObjectFromText,
   ServiceType,
   type State,
-  MemoryType,
 } from "@elizaos/core";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 
@@ -29,7 +29,7 @@ export { mediaUrlTemplate };
 const getMediaUrl = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<string | null> => {
   const prompt = composePromptFromState({
     state,
@@ -72,10 +72,13 @@ export const downloadMedia = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const videoService = runtime.getService(ServiceType.VIDEO) as any;
+    const videoService = runtime.getService(ServiceType.VIDEO) as unknown as {
+      fetchVideoInfo: (url: string) => Promise<{ title: string; description: string }>;
+      downloadVideo: (videoInfo: { title: string; description: string }) => Promise<string>;
+    };
 
     if (!videoService) {
       runtime.logger.error(
@@ -83,7 +86,7 @@ export const downloadMedia = {
           src: "plugin:discord:action:download-media",
           agentId: runtime.agentId,
         },
-        "Video service not found",
+        "Video service not found"
       );
       return;
     }
@@ -95,7 +98,7 @@ export const downloadMedia = {
           src: "plugin:discord:action:download-media",
           agentId: runtime.agentId,
         },
-        "Could not get media URL from messages",
+        "Could not get media URL from messages"
       );
       await runtime.createMemory(
         {
@@ -111,7 +114,7 @@ export const downloadMedia = {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
@@ -154,7 +157,7 @@ export const downloadMedia = {
             attempt: retries,
             error: error instanceof Error ? error.message : String(error),
           },
-          "Error sending message",
+          "Error sending message"
         );
 
         if (retries === maxRetries) {
@@ -164,7 +167,7 @@ export const downloadMedia = {
               agentId: runtime.agentId,
               maxRetries,
             },
-            "Max retries reached, failed to send message with attachment",
+            "Max retries reached, failed to send message with attachment"
           );
           break;
         }

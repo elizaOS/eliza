@@ -45,7 +45,9 @@ class UpdateEntityAction:
         "Use this to modify entity profiles, metadata, or attributes."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that entity update is possible."""
         # Check if there's an entity context
         return message.entity_id is not None
@@ -90,15 +92,16 @@ class UpdateEntityAction:
 
             entity_info = f"""
 Entity ID: {entity.id}
-Name: {entity.name or 'Unknown'}
-Type: {entity.entity_type or 'Unknown'}
+Name: {entity.name or "Unknown"}
+Type: {entity.entity_type or "Unknown"}
 """
             if entity.metadata:
                 entity_info += f"Metadata: {entity.metadata}"
 
             template = (
                 runtime.character.templates.get("updateEntityTemplate")
-                if runtime.character.templates and "updateEntityTemplate" in runtime.character.templates
+                if runtime.character.templates
+                and "updateEntityTemplate" in runtime.character.templates
                 else UPDATE_ENTITY_TEMPLATE
             )
             prompt = runtime.compose_prompt(state=state, template=template)
@@ -220,4 +223,3 @@ update_entity_action = Action(
     handler=UpdateEntityAction().handler,
     examples=UpdateEntityAction().examples,
 )
-

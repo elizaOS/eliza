@@ -4,7 +4,7 @@
  */
 
 // E2E Test Suites
-export { GoalsPluginE2ETestSuite } from './__tests__/e2e/goals-plugin.js';
+export { GoalsPluginE2ETestSuite } from "./__tests__/e2e/goals-plugin.js";
 
 // Unit and Integration Test Suites
 // Note: These are vitest test files, not traditional test suites

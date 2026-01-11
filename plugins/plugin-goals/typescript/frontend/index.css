@@ -1,5 +1,8 @@
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives */
 @tailwind base;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives */
 @tailwind components;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives */
 @tailwind utilities;
 
 @layer base {
@@ -69,6 +72,8 @@
 }
 
 * {
+  /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind @apply is required for this use case */
   @apply dark;
+  /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind @apply is required for this use case */
   @apply font-mono;
 }

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the elizaOS Forms Plugin.
 
 use thiserror::Error;
@@ -36,5 +37,10 @@ pub enum FormsError {
 
 /// Result type for form operations.
 pub type FormsResult<T> = Result<T, FormsError>;
+
+
+
+
+
 
 

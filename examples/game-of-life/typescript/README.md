@@ -16,12 +16,12 @@ A multi-agent simulation demonstrating emergent behavior using elizaOS. Watch 40
 
 Each agent has traits that determine behavior:
 
-| Trait | Range | Effect |
-|-------|-------|--------|
-| Speed | 1-3 | How many cells can move per turn |
-| Vision | 1-5 | How far can see food and other agents |
-| Aggression | 0-100% | Fight vs flee tendency |
-| Metabolism | 0.5-2.0 | Energy efficiency (lower = better) |
+| Trait      | Range   | Effect                                |
+| ---------- | ------- | ------------------------------------- |
+| Speed      | 1-3     | How many cells can move per turn      |
+| Vision     | 1-5     | How far can see food and other agents |
+| Aggression | 0-100%  | Fight vs flee tendency                |
+| Metabolism | 0.5-2.0 | Energy efficiency (lower = better)    |
 
 ### Game Rules
 
@@ -35,6 +35,7 @@ Each agent has traits that determine behavior:
 ### Emergent Behaviors
 
 Watch for these patterns:
+
 - **Predator-Prey Dynamics**: Aggressive agents hunt weaker ones
 - **Evolution of Speed**: Fast agents escape predators or catch prey
 - **Vision Arms Race**: Better vision helps find food and avoid threats
@@ -93,14 +94,14 @@ Edit `CONFIG` in `game.ts` to customize:
 
 ```typescript
 const CONFIG = {
-  WORLD_WIDTH: 40,        // Grid width
-  WORLD_HEIGHT: 25,       // Grid height
-  INITIAL_AGENTS: 40,     // Starting population
-  MAX_AGENTS: 100,        // Population cap
-  STARTING_ENERGY: 100,   // Energy at birth
+  WORLD_WIDTH: 40, // Grid width
+  WORLD_HEIGHT: 25, // Grid height
+  INITIAL_AGENTS: 40, // Starting population
+  MAX_AGENTS: 100, // Population cap
+  STARTING_ENERGY: 100, // Energy at birth
   REPRODUCTION_THRESHOLD: 150, // Energy needed to reproduce
-  FOOD_SPAWN_RATE: 0.02,  // Food spawn probability
-  MUTATION_RATE: 0.2,     // Chance of DNA mutation
+  FOOD_SPAWN_RATE: 0.02, // Food spawn probability
+  MUTATION_RATE: 0.2, // Chance of DNA mutation
   // ... more settings
 };
 ```

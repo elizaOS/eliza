@@ -1,4 +1,4 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Helper types for database query result rows
 interface MigrationRow {
@@ -50,8 +50,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
   beforeAll(async () => {
     console.log("\n🚀 Simulating actual runtime plugin loading scenario...\n");
 
-    const testSetup =
-      await createIsolatedTestDatabaseForMigration("actual_runtime");
+    const testSetup = await createIsolatedTestDatabaseForMigration("actual_runtime");
     cleanup = testSetup.cleanup;
     db = testSetup.db;
   });
@@ -87,9 +86,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       FROM migrations._migrations 
       ORDER BY created_at ASC
     `);
-    console.log(
-      `\n📊 Migrations after plugin-sql: ${afterSqlPlugin.rows.length}`,
-    );
+    console.log(`\n📊 Migrations after plugin-sql: ${afterSqlPlugin.rows.length}`);
     for (const m of afterSqlPlugin.rows as MigrationRow[]) {
       console.log(`  - ${m.plugin_name}`);
     }
@@ -101,9 +98,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     // IMPORTANT: In real runtime, would polymarket create its own migrator instance?
     // Or would it use a shared one? Let's test both scenarios.
 
-    console.log(
-      "\n--- Testing Scenario A: Polymarket creates its own migrator ---",
-    );
+    console.log("\n--- Testing Scenario A: Polymarket creates its own migrator ---");
     const polymarketMigrator = new RuntimeMigrator(db);
     // Note: initialize() is idempotent, so it should detect existing migration tables
     await polymarketMigrator.initialize();
@@ -120,9 +115,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       FROM migrations._migrations 
       ORDER BY created_at ASC
     `);
-    console.log(
-      `\n📊 Migrations after polymarket: ${afterPolymarket.rows.length}`,
-    );
+    console.log(`\n📊 Migrations after polymarket: ${afterPolymarket.rows.length}`);
     for (const m of afterPolymarket.rows as MigrationRow[]) {
       console.log(`  - ${m.plugin_name}`);
     }
@@ -185,10 +178,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
       ORDER BY schema_name
     `);
-    console.log(
-      "Schemas:",
-      schemas.rows.map((r: SchemaRow) => r.schema_name).join(", "),
-    );
+    console.log("Schemas:", schemas.rows.map((r: SchemaRow) => r.schema_name).join(", "));
 
     // Verify tables in each schema
     console.log("\n🔍 Tables per schema:");
@@ -227,9 +217,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     `);
 
     for (const table of tables.rows as TableRow[]) {
-      await db.execute(
-        sql.raw(`DROP TABLE IF EXISTS public."${table.tablename}" CASCADE`),
-      );
+      await db.execute(sql.raw(`DROP TABLE IF EXISTS public."${table.tablename}" CASCADE`));
     }
 
     // Drop migrations schema entirely (it will be recreated)
@@ -260,9 +248,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       ORDER BY created_at ASC
     `);
 
-    console.log(
-      `\n📊 Final migrations with shared migrator: ${finalMigrations.rows.length}`,
-    );
+    console.log(`\n📊 Final migrations with shared migrator: ${finalMigrations.rows.length}`);
     for (const m of finalMigrations.rows as MigrationRow[]) {
       console.log(`  - ${m.plugin_name}`);
     }
@@ -278,12 +264,8 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
 
     const result = schemasExist.rows[0] as SchemaExistsRow;
     console.log("\n✅ Schema verification:");
-    console.log(
-      `  - public schema: ${result.public_exists ? "exists" : "missing"}`,
-    );
-    console.log(
-      `  - polymarket schema: ${result.polymarket_exists ? "exists" : "missing"}`,
-    );
+    console.log(`  - public schema: ${result.public_exists ? "exists" : "missing"}`);
+    console.log(`  - polymarket schema: ${result.polymarket_exists ? "exists" : "missing"}`);
 
     expect(result.public_exists).toBe(true);
     expect(result.polymarket_exists).toBe(true);

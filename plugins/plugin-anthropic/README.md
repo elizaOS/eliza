@@ -6,11 +6,11 @@ A multi-language Anthropic Claude API client for elizaOS, providing text generat
 
 This plugin is implemented in three languages for maximum flexibility:
 
-| Language | Package | Registry |
-|----------|---------|----------|
-| TypeScript | `@elizaos/plugin-anthropic` | npm |
-| Rust | `elizaos-plugin-anthropic` | crates.io |
-| Python | `elizaos-plugin-anthropic` | PyPI |
+| Language   | Package                     | Registry  |
+| ---------- | --------------------------- | --------- |
+| TypeScript | `@elizaos/plugin-anthropic` | npm       |
+| Rust       | `elizaos-plugin-anthropic`  | crates.io |
+| Python     | `elizaos-plugin-anthropic`  | PyPI      |
 
 All implementations share the same API design and behavior.
 
@@ -109,24 +109,24 @@ pip install elizaos-plugin-anthropic
 
 All implementations use the same environment variables:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | **Yes** | - | Your Anthropic API key |
-| `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com` | API base URL |
-| `ANTHROPIC_SMALL_MODEL` | No | `claude-3-5-haiku-20241022` | Small model ID |
-| `ANTHROPIC_LARGE_MODEL` | No | `claude-sonnet-4-20250514` | Large model ID |
-| `ANTHROPIC_TIMEOUT_SECONDS` | No | `60` | Request timeout |
-| `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No | `false` | Enable telemetry (TS only) |
-| `ANTHROPIC_COT_BUDGET` | No | `0` | Chain-of-thought token budget (TS only) |
+| Variable                           | Required | Default                     | Description                             |
+| ---------------------------------- | -------- | --------------------------- | --------------------------------------- |
+| `ANTHROPIC_API_KEY`                | **Yes**  | -                           | Your Anthropic API key                  |
+| `ANTHROPIC_BASE_URL`               | No       | `https://api.anthropic.com` | API base URL                            |
+| `ANTHROPIC_SMALL_MODEL`            | No       | `claude-3-5-haiku-20241022` | Small model ID                          |
+| `ANTHROPIC_LARGE_MODEL`            | No       | `claude-sonnet-4-20250514`  | Large model ID                          |
+| `ANTHROPIC_TIMEOUT_SECONDS`        | No       | `60`                        | Request timeout                         |
+| `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No       | `false`                     | Enable telemetry (TS only)              |
+| `ANTHROPIC_COT_BUDGET`             | No       | `0`                         | Chain-of-thought token budget (TS only) |
 
 ## Available Models
 
-| Model ID | Size | Description |
-|----------|------|-------------|
-| `claude-3-5-haiku-20241022` | Small | Fast and efficient |
-| `claude-sonnet-4-20250514` | Large | Most capable |
+| Model ID                     | Size  | Description          |
+| ---------------------------- | ----- | -------------------- |
+| `claude-3-5-haiku-20241022`  | Small | Fast and efficient   |
+| `claude-sonnet-4-20250514`   | Large | Most capable         |
 | `claude-3-5-sonnet-20241022` | Large | Balanced performance |
-| `claude-3-opus-20240229` | Large | Previous flagship |
+| `claude-3-opus-20240229`     | Large | Previous flagship    |
 
 ## API Reference
 
@@ -139,21 +139,21 @@ All implementations use the same environment variables:
 
 ### Text Generation Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | string | The prompt to generate from |
-| `system` | string? | Optional system prompt |
-| `maxTokens` | number? | Maximum tokens to generate |
-| `temperature` | number? | Randomness (0-1, can't use with topP) |
-| `topP` | number? | Nucleus sampling (can't use with temperature) |
-| `stopSequences` | string[]? | Stop generation at these sequences |
+| Parameter       | Type      | Description                                   |
+| --------------- | --------- | --------------------------------------------- |
+| `prompt`        | string    | The prompt to generate from                   |
+| `system`        | string?   | Optional system prompt                        |
+| `maxTokens`     | number?   | Maximum tokens to generate                    |
+| `temperature`   | number?   | Randomness (0-1, can't use with topP)         |
+| `topP`          | number?   | Nucleus sampling (can't use with temperature) |
+| `stopSequences` | string[]? | Stop generation at these sequences            |
 
 ### Object Generation Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | string | Description of the object to generate |
-| `schema` | object? | Optional JSON schema |
+| Parameter     | Type    | Description                                     |
+| ------------- | ------- | ----------------------------------------------- |
+| `prompt`      | string  | Description of the object to generate           |
+| `schema`      | object? | Optional JSON schema                            |
 | `temperature` | number? | Randomness (default: 0.2 for structured output) |
 
 ## Project Structure
@@ -250,16 +250,16 @@ All implementations follow a **fail-fast** philosophy:
 
 ### Error Types
 
-| Error | Description |
-|-------|-------------|
-| `ApiKeyError` | API key missing or invalid |
-| `ConfigError` | Configuration problem |
-| `RateLimitError` | Rate limit exceeded (retryable) |
-| `ApiError` | API returned an error |
-| `JsonGenerationError` | Failed to parse JSON from response |
-| `InvalidParameterError` | Invalid parameter provided |
-| `NetworkError` | Network connectivity issue |
-| `TimeoutError` | Request timed out |
+| Error                   | Description                        |
+| ----------------------- | ---------------------------------- |
+| `ApiKeyError`           | API key missing or invalid         |
+| `ConfigError`           | Configuration problem              |
+| `RateLimitError`        | Rate limit exceeded (retryable)    |
+| `ApiError`              | API returned an error              |
+| `JsonGenerationError`   | Failed to parse JSON from response |
+| `InvalidParameterError` | Invalid parameter provided         |
+| `NetworkError`          | Network connectivity issue         |
+| `TimeoutError`          | Request timed out                  |
 
 ## License
 

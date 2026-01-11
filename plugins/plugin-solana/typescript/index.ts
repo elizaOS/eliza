@@ -14,10 +14,7 @@ import { SolanaService, SolanaWalletService } from "./service";
 /**
  * Get a string setting from runtime, returning null if not a string.
  */
-function getStringSetting(
-  runtime: IAgentRuntime,
-  key: string,
-): string | null {
+function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
   if (typeof value === "string") {
     return value;
@@ -60,7 +57,7 @@ export const solanaPlugin: Plugin = {
 
     // extensions
     runtime
-      .getServiceLoadPromise("INTEL_CHAIN" as ServiceTypeName)
+      .getServiceLoadPromise("INTEL_CHAIN" as ServiceTypeName as string as ServiceTypeName)
       .then(() => {
         const traderChainService = runtime.getService("INTEL_CHAIN") as unknown;
         if (
@@ -74,7 +71,11 @@ export const solanaPlugin: Plugin = {
             chain: "solana",
             service: SOLANA_SERVICE_NAME,
           };
-          (traderChainService as { registerChain: (info: Record<string, string>) => void }).registerChain(me);
+          (
+            traderChainService as {
+              registerChain: (info: Record<string, string>) => void;
+            }
+          ).registerChain(me);
         }
       })
       .catch((error) => {

@@ -41,7 +41,9 @@ class FollowRoomAction:
         "Use this when you want to actively engage with a room's content."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that room information is available."""
         room_id = message.room_id
         if not room_id:

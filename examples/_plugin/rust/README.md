@@ -43,10 +43,10 @@ cargo build --release --features ffi
 ### In TypeScript
 
 ```typescript
-import { loadWasmPlugin } from '@elizaos/interop';
+import { loadWasmPlugin } from "@elizaos/interop";
 
 const plugin = await loadWasmPlugin({
-  wasmPath: './dist/elizaos_plugin_starter.wasm'
+  wasmPath: "./dist/elizaos_plugin_starter.wasm",
 });
 
 // Register with runtime
@@ -171,11 +171,13 @@ cargo test
 The plugin includes E2E tests that verify the agent can respond and call the `HELLO_RUST` action.
 
 **Prerequisites:**
+
 1. Install wasm-bindgen-cli: `cargo install wasm-bindgen-cli`
 2. Build the WASM module: `bun run build`
 3. Run tests: `elizaos test`
 
 The E2E tests verify:
+
 - Plugin loads correctly
 - `HELLO_RUST` action is registered
 - Agent can respond and call the `HELLO_RUST` action
@@ -197,6 +199,7 @@ bun run build.ts
 ```
 
 This will:
+
 1. Compile Rust to WASM (`target/wasm32-unknown-unknown/release/elizaos_plugin_starter.wasm`)
 2. Generate JavaScript bindings (`dist/elizaos_plugin_starter.js` and `dist/elizaos_plugin_starter_bg.wasm`)
 3. Compile TypeScript (`dist/index.js`)
@@ -213,4 +216,3 @@ cargo build --release --features ffi
 ## License
 
 MIT
-

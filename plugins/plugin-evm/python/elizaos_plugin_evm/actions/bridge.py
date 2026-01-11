@@ -4,7 +4,6 @@ Bridge action for cross-chain token transfers using LiFi.
 
 import asyncio
 import logging
-from decimal import Decimal
 from typing import TypedDict
 
 import httpx
@@ -282,5 +281,3 @@ bridge_action = {
     ],
     "handler": execute_bridge,
 }
-
-

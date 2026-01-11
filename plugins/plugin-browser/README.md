@@ -37,7 +37,7 @@ npm run build
 ```
 
 ```typescript
-import { browserPlugin } from '@elizaos/plugin-browser';
+import { browserPlugin } from "@elizaos/plugin-browser";
 
 const agent = {
   plugins: [browserPlugin],
@@ -78,23 +78,23 @@ plugin.handle_action("BROWSER_NAVIGATE", "Go to google.com").await?;
 
 All implementations support these actions:
 
-| Action | Description | Example |
-|--------|-------------|---------|
-| `BROWSER_NAVIGATE` | Navigate to a URL | "Go to google.com" |
-| `BROWSER_BACK` | Go back in history | "Go back" |
-| `BROWSER_FORWARD` | Go forward in history | "Go forward" |
-| `BROWSER_REFRESH` | Refresh the page | "Refresh the page" |
-| `BROWSER_CLICK` | Click on an element | "Click the search button" |
-| `BROWSER_TYPE` | Type text into a field | "Type 'hello' in the search box" |
-| `BROWSER_SELECT` | Select dropdown option | "Select 'US' from the country dropdown" |
-| `BROWSER_EXTRACT` | Extract data from page | "Extract the main heading" |
-| `BROWSER_SCREENSHOT` | Take a screenshot | "Take a screenshot" |
-| `BROWSER_SOLVE_CAPTCHA` | Solve CAPTCHA | "Solve the captcha" |
+| Action                  | Description            | Example                                 |
+| ----------------------- | ---------------------- | --------------------------------------- |
+| `BROWSER_NAVIGATE`      | Navigate to a URL      | "Go to google.com"                      |
+| `BROWSER_BACK`          | Go back in history     | "Go back"                               |
+| `BROWSER_FORWARD`       | Go forward in history  | "Go forward"                            |
+| `BROWSER_REFRESH`       | Refresh the page       | "Refresh the page"                      |
+| `BROWSER_CLICK`         | Click on an element    | "Click the search button"               |
+| `BROWSER_TYPE`          | Type text into a field | "Type 'hello' in the search box"        |
+| `BROWSER_SELECT`        | Select dropdown option | "Select 'US' from the country dropdown" |
+| `BROWSER_EXTRACT`       | Extract data from page | "Extract the main heading"              |
+| `BROWSER_SCREENSHOT`    | Take a screenshot      | "Take a screenshot"                     |
+| `BROWSER_SOLVE_CAPTCHA` | Solve CAPTCHA          | "Solve the captcha"                     |
 
 ## Providers
 
-| Provider | Description |
-|----------|-------------|
+| Provider        | Description                                              |
+| --------------- | -------------------------------------------------------- |
 | `BROWSER_STATE` | Current browser session state (URL, title, session info) |
 
 ## Configuration
@@ -134,15 +134,15 @@ All implementations communicate with the browser server using WebSocket and foll
 
 All implementations use consistent error codes:
 
-| Code | Description |
-|------|-------------|
+| Code                    | Description                 |
+| ----------------------- | --------------------------- |
 | `SERVICE_NOT_AVAILABLE` | Browser service not running |
-| `SESSION_ERROR` | Session management error |
-| `NAVIGATION_ERROR` | Page navigation failed |
-| `ACTION_ERROR` | Browser action failed |
-| `SECURITY_ERROR` | Security validation failed |
-| `CAPTCHA_ERROR` | CAPTCHA solving failed |
-| `TIMEOUT_ERROR` | Operation timed out |
+| `SESSION_ERROR`         | Session management error    |
+| `NAVIGATION_ERROR`      | Page navigation failed      |
+| `ACTION_ERROR`          | Browser action failed       |
+| `SECURITY_ERROR`        | Security validation failed  |
+| `CAPTCHA_ERROR`         | CAPTCHA solving failed      |
+| `TIMEOUT_ERROR`         | Operation timed out         |
 
 ## Security
 
@@ -154,6 +154,7 @@ All implementations use consistent error codes:
 ## Development
 
 ### TypeScript
+
 ```bash
 cd typescript
 npm install
@@ -163,6 +164,7 @@ npm run typecheck
 ```
 
 ### Python
+
 ```bash
 cd python
 pip install -e ".[dev]"
@@ -172,6 +174,7 @@ ruff check elizaos_browser
 ```
 
 ### Rust
+
 ```bash
 cd rust
 cargo build
@@ -187,6 +190,7 @@ MIT
 ## Credits
 
 Built with:
+
 - [Stagehand](https://github.com/browserbase/stagehand) - AI-first browser automation framework
 - [Playwright](https://playwright.dev/) - Cross-browser automation
 - [CapSolver](https://capsolver.com/) - CAPTCHA solving service

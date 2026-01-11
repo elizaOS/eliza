@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Local AI plugin.
 
 use serde::{Deserialize, Serialize};
@@ -113,5 +114,10 @@ pub struct ModelSpec {
     /// Context size.
     pub context_size: usize,
 }
+
+
+
+
+
 
 

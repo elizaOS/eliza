@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Polymarket plugin
 
 use std::fmt;
@@ -129,5 +130,10 @@ impl PolymarketError {
 
 /// Result type alias for Polymarket operations
 pub type Result<T> = std::result::Result<T, PolymarketError>;
+
+
+
+
+
 
 

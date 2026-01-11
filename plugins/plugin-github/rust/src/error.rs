@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the GitHub plugin
 //!
 //! Provides strongly-typed errors that fail fast with clear messages.
@@ -231,8 +232,6 @@ impl From<reqwest::Error> for GitHubError {
                 timeout_ms: 30000,
                 operation: "HTTP request".to_string(),
             }
-        } else if err.is_connect() {
-            GitHubError::NetworkError(err.to_string())
         } else {
             GitHubError::NetworkError(err.to_string())
         }
@@ -308,5 +307,7 @@ mod tests {
         assert_eq!(err.retry_after_ms(), None);
     }
 }
+
+
 
 

@@ -32,5 +32,3 @@ def usdc_mint() -> str:
 def test_pubkey() -> str:
     """A well-known test public key (system program)."""
     return "11111111111111111111111111111111"
-
-

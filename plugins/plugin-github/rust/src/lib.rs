@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS GitHub Plugin
 //!
 //! This crate provides GitHub integration for elizaOS agents.
@@ -82,5 +83,10 @@ mod tests {
         assert!(!p.description.is_empty());
     }
 }
+
+
+
+
+
 
 

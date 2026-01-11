@@ -26,18 +26,18 @@
     "dotenv": "^17.2.3",
     "ink": "^5.2.0",
     "ink-text-input": "^6.0.0",
-    "react": "^18.3.1",
+    "react": "19.2.3",
     "three": "^0.182.0",
     "uuid": "^13.0.0",
-    "zod": "^3.24.1",
+    "zod": "^4.3.5",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/react": "^18.3.0",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@types/node": "^25.0.3",
+    "@types/react": "19.2.3",
+    "@vitest/coverage-v8": "^4.0.0",
     "react-devtools-core": "^7.0.1",
-    "typescript": "^5.0.0",
-    "vitest": "^2.1.8"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
   }
 }

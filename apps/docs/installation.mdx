@@ -1,6 +1,6 @@
 ---
-title: 'Installation'
-description: 'Install elizaOS in TypeScript, Python, or Rust on macOS, Linux, or Windows'
+title: "Installation"
+description: "Install elizaOS in TypeScript, Python, or Rust on macOS, Linux, or Windows"
 ---
 
 elizaOS is available in three languages with identical APIs. Choose your preferred language below.
@@ -43,6 +43,7 @@ elizaOS is available in three languages with identical APIs. Choose your preferr
     <Tip>
       You don't need to clone the elizaOS repository to build agents. The CLI handles everything. Only clone the monorepo if you're [contributing to core](/guides/contribute-to-core).
     </Tip>
+
   </Tab>
 
   <Tab title="Python">
@@ -109,6 +110,7 @@ elizaOS is available in three languages with identical APIs. Choose your preferr
       pip install elizaos
       ```
     </Tip>
+
   </Tab>
 
   <Tab title="Rust">
@@ -181,6 +183,7 @@ elizaOS is available in three languages with identical APIs. Choose your preferr
     <Tip>
       The Rust implementation compiles to both native binaries and WebAssembly, enabling high-performance browser-based agents.
     </Tip>
+
   </Tab>
 </Tabs>
 
@@ -195,12 +198,12 @@ All languages require an LLM provider API key. Set up your environment:
 echo "OPENAI_API_KEY=your-api-key-here" > .env
 ```
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENAI_API_KEY` | OpenAI API key | Yes (if using OpenAI) |
-| `ANTHROPIC_API_KEY` | Anthropic API key | Yes (if using Claude) |
-| `PGLITE_DATA_DIR` | Local database path | No (defaults to memory) |
-| `POSTGRES_URL` | PostgreSQL connection | No (for production) |
+| Variable            | Description           | Required                |
+| ------------------- | --------------------- | ----------------------- |
+| `OPENAI_API_KEY`    | OpenAI API key        | Yes (if using OpenAI)   |
+| `ANTHROPIC_API_KEY` | Anthropic API key     | Yes (if using Claude)   |
+| `PGLITE_DATA_DIR`   | Local database path   | No (defaults to memory) |
+| `POSTGRES_URL`      | PostgreSQL connection | No (for production)     |
 
 ---
 
@@ -230,6 +233,7 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
     ```bash
     export PATH="$HOME/.bun/bin:$PATH"
     ```
+
   </Accordion>
 
   <Accordion icon="python" title="Python Issues">
@@ -256,6 +260,7 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
     source .venv/bin/activate
     pip install elizaos
     ```
+
   </Accordion>
 
   <Accordion icon="gear" title="Rust Issues">
@@ -280,6 +285,7 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
     rustup target add wasm32-unknown-unknown
     cargo install wasm-pack
     ```
+
   </Accordion>
 
   <Accordion icon="windows" title="Windows-Specific Issues">
@@ -298,6 +304,7 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
 
     **Permission errors:**
     Run Git Bash as Administrator
+
   </Accordion>
 </AccordionGroup>
 
@@ -312,7 +319,11 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
   <Card title="Examples" icon="code" href="/examples/overview">
     Explore working examples in all languages
   </Card>
-  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
     Extend elizaOS with custom functionality
   </Card>
   <Card title="Deploy" icon="cloud" href="/guides/deploy-a-project">

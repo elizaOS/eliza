@@ -14,13 +14,13 @@ async def handle_image_generation(
     params: ImageGenerationParams,
 ) -> list[dict[str, str]]:
     """Handle IMAGE model generation.
-    
+
     Uses ElizaOS Cloud's custom /generate-image endpoint.
-    
+
     Args:
         config: ElizaOS Cloud configuration.
         params: Image generation parameters.
-        
+
     Returns:
         List of generated image data with URLs.
     """
@@ -33,11 +33,11 @@ async def handle_image_description(
     params: ImageDescriptionParams | str,
 ) -> ImageDescriptionResult:
     """Handle IMAGE_DESCRIPTION model.
-    
+
     Args:
         config: ElizaOS Cloud configuration.
         params: Image URL string or ImageDescriptionParams.
-        
+
     Returns:
         Image description with title and description.
     """

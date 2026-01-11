@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures."""
 
 import pytest
+
 from elizaos_plugin_shell import ShellConfig, ShellService
 
 
@@ -19,5 +20,8 @@ def shell_config() -> ShellConfig:
 def shell_service(shell_config: ShellConfig) -> ShellService:
     """Create a test shell service."""
     return ShellService(shell_config)
+
+
+
 
 

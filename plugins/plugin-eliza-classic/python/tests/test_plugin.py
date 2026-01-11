@@ -1,7 +1,5 @@
 """Tests for ELIZA Classic Plugin."""
 
-import pytest
-
 from elizaos_plugin_eliza_classic import (
     ElizaClassicPlugin,
     generate_response,

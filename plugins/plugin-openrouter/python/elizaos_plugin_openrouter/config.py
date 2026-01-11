@@ -73,7 +73,7 @@ class OpenRouterConfig:
         self._timeout_seconds = timeout_seconds
 
     @classmethod
-    def from_env(cls) -> "OpenRouterConfig":
+    def from_env(cls) -> OpenRouterConfig:
         """
         Load configuration from environment variables.
 
@@ -125,9 +125,8 @@ class OpenRouterConfig:
             or DEFAULT_EMBEDDING_MODEL
         )
 
-        embedding_dim_str = (
-            os.environ.get("OPENROUTER_EMBEDDING_DIMENSIONS")
-            or os.environ.get("EMBEDDING_DIMENSIONS")
+        embedding_dim_str = os.environ.get("OPENROUTER_EMBEDDING_DIMENSIONS") or os.environ.get(
+            "EMBEDDING_DIMENSIONS"
         )
         embedding_dimensions = (
             int(embedding_dim_str) if embedding_dim_str else DEFAULT_EMBEDDING_DIMENSIONS
@@ -202,7 +201,7 @@ class OpenRouterConfig:
         """Get the full models endpoint URL."""
         return f"{self._base_url}/models"
 
-    def with_base_url(self, base_url: str) -> "OpenRouterConfig":
+    def with_base_url(self, base_url: str) -> OpenRouterConfig:
         """Create a new config with a different base URL."""
         return OpenRouterConfig(
             api_key=self._api_key,
@@ -215,7 +214,7 @@ class OpenRouterConfig:
             timeout_seconds=self._timeout_seconds,
         )
 
-    def with_timeout(self, seconds: int) -> "OpenRouterConfig":
+    def with_timeout(self, seconds: int) -> OpenRouterConfig:
         """Create a new config with a different timeout."""
         return OpenRouterConfig(
             api_key=self._api_key,
@@ -227,5 +226,8 @@ class OpenRouterConfig:
             embedding_dimensions=self._embedding_dimensions,
             timeout_seconds=seconds,
         )
+
+
+
 
 

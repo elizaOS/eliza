@@ -1,0 +1,32 @@
+# Task: Extract Task Update Information
+
+## User Message
+{{text}}
+
+## Current Task Details
+{{taskDetails}}
+
+## Instructions
+Parse the user's message to determine what changes they want to make to the task.
+Only include fields that the user explicitly wants to update.
+
+Return an XML object with these potential fields (only include fields that should be changed):
+<response>
+  <name>New name for the task</name>
+  <description>New description for the task</description>
+  <priority>New priority (1-4, where 1 is highest)</priority>
+  <urgent>'true' or 'false' for whether the task is urgent</urgent>
+  <dueDate>New due date in ISO format (YYYY-MM-DD), or 'null' to remove the due date</dueDate>
+  <recurring>New recurrence pattern ('daily', 'weekly', 'monthly')</recurring>
+</response>
+
+## Example Output Format
+<response>
+  <description>Updated task description</description>
+  <priority>2</priority>
+  <dueDate>2023-04-30</dueDate>
+</response>
+
+
+
+

@@ -1,15 +1,9 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
-import {
-  integer,
-  pgSchema,
-  pgTable,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { integer, pgSchema, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/database-introspector";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
@@ -170,9 +164,7 @@ describe("Database Introspection Tests", () => {
 
     it("should detect existing tables correctly", async () => {
       // Initially no tables
-      let hasExisting = await introspector.hasExistingTables(
-        "@elizaos/plugin-sql",
-      );
+      let hasExisting = await introspector.hasExistingTables("@elizaos/plugin-sql");
       expect(hasExisting).toBe(false);
 
       // Create a table
@@ -357,9 +349,7 @@ describe("Database Introspection Tests", () => {
       `);
 
       // Test the hasExistingTables method for the plugin
-      const hasExisting = await introspector.hasExistingTables(
-        "@elizaos/test-plugin",
-      );
+      const hasExisting = await introspector.hasExistingTables("@elizaos/test-plugin");
       expect(hasExisting).toBe(true);
 
       // Define schema in code
@@ -403,9 +393,7 @@ describe("Database Introspection Tests", () => {
     });
 
     it("should handle non-existent schema gracefully", async () => {
-      const snapshot = await introspector.introspectSchema(
-        "non_existent_schema",
-      );
+      const snapshot = await introspector.introspectSchema("non_existent_schema");
       expect(Object.keys(snapshot.tables)).toHaveLength(0);
     });
 

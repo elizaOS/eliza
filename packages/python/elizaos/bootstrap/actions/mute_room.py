@@ -41,7 +41,9 @@ class MuteRoomAction:
         "Use this when you want to stop interacting with a room temporarily."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that room can be muted."""
         room_id = message.room_id
         if not room_id:

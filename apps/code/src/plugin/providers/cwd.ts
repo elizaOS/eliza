@@ -1,3 +1,5 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type {
   IAgentRuntime,
   Memory,
@@ -5,8 +7,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
 
 // Global CWD state - defaults to process.cwd()
 let currentWorkingDirectory = process.cwd();
@@ -21,37 +21,39 @@ export function getCwd(): string {
 /**
  * Set the current working directory
  */
-export async function setCwd(newPath: string): Promise<{ success: boolean; path: string; error?: string }> {
+export async function setCwd(
+  newPath: string,
+): Promise<{ success: boolean; path: string; error?: string }> {
   // Resolve relative paths
   const resolved = path.resolve(currentWorkingDirectory, newPath);
-  
+
   try {
     // Check if path exists and is a directory
     const stats = await fs.stat(resolved);
-    
+
     if (!stats.isDirectory()) {
-      return { 
-        success: false, 
-        path: resolved, 
-        error: `Not a directory: ${resolved}` 
+      return {
+        success: false,
+        path: resolved,
+        error: `Not a directory: ${resolved}`,
       };
     }
-    
+
     currentWorkingDirectory = resolved;
     return { success: true, path: resolved };
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
     if (error.code === "ENOENT") {
-      return { 
-        success: false, 
-        path: resolved, 
-        error: `Directory not found: ${resolved}` 
+      return {
+        success: false,
+        path: resolved,
+        error: `Directory not found: ${resolved}`,
       };
     }
-    return { 
-      success: false, 
-      path: resolved, 
-      error: `Error accessing directory: ${error.message}` 
+    return {
+      success: false,
+      path: resolved,
+      error: `Error accessing directory: ${error.message}`,
     };
   }
 }
@@ -62,14 +64,14 @@ export async function setCwd(newPath: string): Promise<{ success: boolean; path:
 function getPathParts(dir: string): string[] {
   const parts: string[] = [];
   let current = dir;
-  
+
   for (let i = 0; i < 3; i++) {
     const parent = path.dirname(current);
     if (parent === current) break;
     parts.unshift(path.basename(current));
     current = parent;
   }
-  
+
   return parts;
 }
 
@@ -84,7 +86,7 @@ export const cwdProvider: Provider = {
   get: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<ProviderResult> => {
     const cwd = getCwd();
     const pathParts = getPathParts(cwd);
@@ -94,14 +96,18 @@ export const cwdProvider: Provider = {
     let contents = "";
     try {
       const entries = await fs.readdir(cwd, { withFileTypes: true });
-      const dirs = entries.filter(e => e.isDirectory() && !e.name.startsWith(".")).slice(0, 5);
-      const files = entries.filter(e => e.isFile() && !e.name.startsWith(".")).slice(0, 5);
-      
+      const dirs = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .slice(0, 5);
+      const files = entries
+        .filter((e) => e.isFile() && !e.name.startsWith("."))
+        .slice(0, 5);
+
       if (dirs.length > 0) {
-        contents += `\nSubdirectories: ${dirs.map(d => d.name + "/").join(", ")}`;
+        contents += `\nSubdirectories: ${dirs.map((d) => `${d.name}/`).join(", ")}`;
       }
       if (files.length > 0) {
-        contents += `\nFiles: ${files.map(f => f.name).join(", ")}`;
+        contents += `\nFiles: ${files.map((f) => f.name).join(", ")}`;
       }
       if (entries.length > 10) {
         contents += `\n(${entries.length} total items)`;

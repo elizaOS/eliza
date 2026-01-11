@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Merge Pull Request Action
 
 use async_trait::async_trait;
@@ -99,5 +100,10 @@ impl GitHubAction for MergePullRequestAction {
         }
     }
 }
+
+
+
+
+
 
 

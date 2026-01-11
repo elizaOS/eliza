@@ -1,12 +1,13 @@
 ---
-title: 'Create a Plugin'
-description: 'Build a working plugin in 20 minutes - from scaffold to test'
+title: "Create a Plugin"
+description: "Build a working plugin in 20 minutes - from scaffold to test"
 ---
 
 **20 minutes.** That's all it takes to build a plugin that generates AI videos from text prompts. No boilerplate, no complex setup - just code that works.
 
 <Tip>
-  **Video Tutorial**: [**Plugin Power: Add Superpowers to Your Agents**](https://www.youtube.com/watch?v=nC6veN2Q-ps&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=4)
+  **Video Tutorial**: [**Plugin Power: Add Superpowers to Your
+  Agents**](https://www.youtube.com/watch?v=nC6veN2Q-ps&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=4)
 </Tip>
 
 ## What We'll Build
@@ -14,6 +15,7 @@ description: 'Build a working plugin in 20 minutes - from scaffold to test'
 This guide shows how to build a [fal.ai](https://fal.ai) plugin that lets your agent generate 6-second, 768p videos from text prompts using the MiniMax Hailuo-02 model. For architectural concepts, see [Plugin Architecture](/plugins/architecture).
 
 **You'll learn:**
+
 - **Actions** (what the agent can DO)
 - **Progressive development** (start simple, organize as you grow)
 - **Local plugin testing** (character.plugins array method)
@@ -44,25 +46,14 @@ Create a project with a plugin inside using CLI commands:
     ```
   </Step>
 
-  <Step title="Create plugin inside project">
-    ```bash Terminal
-    elizaos create --type plugin plugin-fal-ai
-    ```
-    
-    When prompted, choose **Quick Plugin** (we don't need frontend UI)
-    
-    Your structure now looks like:
-    ```
-    my-eliza-project/
-    ├── src/character.ts       # Default Eliza character
-    └── plugin-fal-ai/         # 👈 Plugin lives alongside project
-        ├── src/
-        │   ├── index.ts       # Plugin exports
-        │   ├── plugin.ts      # Main plugin (start here)
-        │   └── __tests__/     # Plugin tests
-        └── package.json
-    ```
-  </Step>
+<Step title="Create plugin inside project">
+  ```bash Terminal elizaos create --type plugin plugin-fal-ai ``` When prompted,
+  choose **Quick Plugin** (we don't need frontend UI) Your structure now looks
+  like: ``` my-eliza-project/ ├── src/character.ts # Default Eliza character └──
+  plugin-fal-ai/ # 👈 Plugin lives alongside project ├── src/ │ ├── index.ts #
+  Plugin exports │ ├── plugin.ts # Main plugin (start here) │ └── __tests__/ #
+  Plugin tests └── package.json ```
+</Step>
 
   <Step title="Add plugin to character">
     In `my-eliza-project/src/character.ts`, add the local path to Eliza's plugins array:
@@ -135,15 +126,13 @@ Now we know exactly what to build and how to call it, so let's start developing 
 
   </Step>
 
-  <Step title="Study the template structure">
-    Open `plugin-fal-ai/src/plugin.ts` to see the sample code patterns for plugins:
-    
-    - `quickAction` - example Action (what agent can DO)
-    - `quickProvider` - example Provider (gives agent CONTEXT)  
-    - `StarterService` - example Service (manages state/connections)
-    - Plugin events, routes, models - other comprehensive patterns
-  
-  </Step>
+<Step title="Study the template structure">
+  Open `plugin-fal-ai/src/plugin.ts` to see the sample code patterns for
+  plugins: - `quickAction` - example Action (what agent can DO) -
+  `quickProvider` - example Provider (gives agent CONTEXT) - `StarterService` -
+  example Service (manages state/connections) - Plugin events, routes, models -
+  other comprehensive patterns
+</Step>
 
   <Step title="Create your text-to-video action using plugin patterns">
     Copy the plugin file and rename it to create your action:
@@ -272,13 +261,13 @@ Now we know exactly what to build and how to call it, so let's start developing 
     export default falaiPlugin; // [!code ++]
     export { generateVideoAction }; // [!code ++]
     ```
-    
+
     <Note>
     You can reference `plugin.ts` as well as other plugins from the [Plugin Registry](/plugin-registry/overview) to see other plugin component examples (providers, services, etc.) as you expand your plugin.
     </Note>
+
   </Step>
 </Steps>
-
 
 ### Add Configuration
 
@@ -289,9 +278,10 @@ Now we know exactly what to build and how to call it, so let's start developing 
     ```bash .env
     PGLITE_DATA_DIR=./.eliza/.elizadb
     OPENAI_API_KEY=your_openai_key_here
-    
+
     FAL_KEY=your_fal_key_here # [!code ++]
     ```
+
   </Step>
 </Steps>
 
@@ -346,12 +336,13 @@ Plugins come default with component and E2E tests. Let's add custom component te
         const mockRuntime = { // [!code ++]
           getSetting: (key: string) => key === 'FAL_KEY' ? 'test-key' : null // [!code ++]
         }; // [!code ++]
-        
+
         const isValid = await generateVideoAction.validate(mockRuntime as any, {} as any); // [!code ++]
         expect(isValid).toBe(true); // [!code ++]
       }); // [!code ++]
     });
     ```
+
   </Step>
 
   <Step title="Run component tests">
@@ -399,16 +390,18 @@ Let's also add a custom E2E test:
 Congratulations! You now have a working video generation plugin. Here are some ways you can improve it:
 
 ### Enhance Your Action
+
 - **Add more similes** - Handle requests like "animate this", "video of", "show me a clip of"
 - **Better examples** - Add more conversation examples so Eliza learns different chat patterns
 - **Error handling** - Handle rate limits, invalid prompts, or API timeouts
 
 ### Add Plugin Components
+
 - **Providers** - Give your agent context about recent videos or video history
-- **Evaluators** - Track analytics, log successful generations, or rate video quality  
+- **Evaluators** - Track analytics, log successful generations, or rate video quality
 - **Services** - Add queueing for multiple video requests or caching for common prompts
 
-The possibilities are endless! 
+The possibilities are endless!
 
 ---
 
@@ -418,7 +411,11 @@ The possibilities are endless!
   <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
     Share your plugin with the elizaOS community
   </Card>
-  <Card title="Contribute to Core" icon="heart" href="/guides/contribute-to-core">
+  <Card
+    title="Contribute to Core"
+    icon="heart"
+    href="/guides/contribute-to-core"
+  >
     Help improve elizaOS by contributing to the core framework
   </Card>
   <Card title="Plugin Registry" icon="book" href="/plugin-registry/overview">

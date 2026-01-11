@@ -1,20 +1,20 @@
-import type { UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
 
 /**
  * Possible types for form fields
  */
 export type FormFieldType =
-  | 'text'
-  | 'number'
-  | 'email'
-  | 'tel'
-  | 'url'
-  | 'textarea'
-  | 'choice'
-  | 'checkbox'
-  | 'date'
-  | 'time'
-  | 'datetime';
+  | "text"
+  | "number"
+  | "email"
+  | "tel"
+  | "url"
+  | "textarea"
+  | "choice"
+  | "checkbox"
+  | "date"
+  | "time"
+  | "datetime";
 
 /**
  * Represents a single field in a form
@@ -74,7 +74,7 @@ export interface FormStep {
 /**
  * Possible statuses for a form
  */
-export type FormStatus = 'active' | 'completed' | 'cancelled';
+export type FormStatus = "active" | "completed" | "cancelled";
 
 /**
  * Represents a complete form instance

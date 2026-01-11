@@ -16,12 +16,12 @@ class TestPostgresAdapter:
     """Tests for PostgreSQL adapter with real database."""
 
     @pytest.mark.asyncio
-    async def test_initialization(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_initialization(self, postgres_adapter: PostgresAdapter) -> None:
         """Test adapter initialization."""
         assert await postgres_adapter.is_ready()
 
     @pytest.mark.asyncio
-    async def test_agent_crud(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_agent_crud(self, postgres_adapter: PostgresAdapter) -> None:
         """Test agent CRUD operations."""
         agent_id = as_uuid(str(uuid.uuid4()))
 
@@ -55,7 +55,7 @@ class TestPostgresAdapter:
         assert agent is None
 
     @pytest.mark.asyncio
-    async def test_entity_operations(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_entity_operations(self, postgres_adapter: PostgresAdapter) -> None:
         """Test entity operations."""
         # First create an agent
         agent_id = as_uuid(str(uuid.uuid4()))
@@ -88,7 +88,7 @@ class TestPostgresAdapter:
         assert entities[0]["names"] == ["TestUser"]
 
     @pytest.mark.asyncio
-    async def test_memory_operations(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_memory_operations(self, postgres_adapter: PostgresAdapter) -> None:
         """Test memory operations."""
         # Create agent
         agent_id = as_uuid(str(uuid.uuid4()))
@@ -150,7 +150,7 @@ class TestPostgresAdapter:
         assert memory is None
 
     @pytest.mark.asyncio
-    async def test_world_operations(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_world_operations(self, postgres_adapter: PostgresAdapter) -> None:
         """Test world operations."""
         # Create agent
         agent_id = as_uuid(str(uuid.uuid4()))
@@ -197,7 +197,7 @@ class TestPostgresAdapter:
         assert world is None
 
     @pytest.mark.asyncio
-    async def test_room_operations(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_room_operations(self, postgres_adapter: PostgresAdapter) -> None:
         """Test room operations."""
         # Create room
         room_ids = await postgres_adapter.create_rooms(
@@ -233,7 +233,7 @@ class TestPostgresAdapter:
         assert rooms is None or len(rooms) == 0
 
     @pytest.mark.asyncio
-    async def test_cache_operations(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_cache_operations(self, postgres_adapter: PostgresAdapter) -> None:
         """Test cache operations."""
         # Set
         result = await postgres_adapter.set_cache("test_key", {"value": "test_value"})
@@ -256,7 +256,7 @@ class TestPostgresAdapter:
         assert cached is None
 
     @pytest.mark.asyncio
-    async def test_task_operations(self, postgres_adapter: "PostgresAdapter") -> None:
+    async def test_task_operations(self, postgres_adapter: PostgresAdapter) -> None:
         """Test task operations."""
         # Create
         task_id = await postgres_adapter.create_task(

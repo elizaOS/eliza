@@ -1,5 +1,5 @@
-import type { Florence2Result, BoundingBox } from '../types';
-import sharp from 'sharp';
+import sharp from "sharp";
+import type { BoundingBox, Florence2Result } from "../types";
 
 export class Florence2WorkerModel {
   private initialized = false;
@@ -23,19 +23,19 @@ export class Florence2WorkerModel {
     const isLight = brightness > 180;
 
     // Generate caption based on tile characteristics
-    let caption = 'Screen region';
+    let caption = "Screen region";
     if (metadata.width && metadata.height) {
       if (metadata.width > metadata.height * 1.5) {
-        caption = 'Wide screen area';
+        caption = "Wide screen area";
       } else if (metadata.height > metadata.width * 1.5) {
-        caption = 'Tall screen area';
+        caption = "Tall screen area";
       }
     }
 
     if (isLight) {
-      caption += ' with bright content';
+      caption += " with bright content";
     } else {
-      caption += ' with dark content';
+      caption += " with dark content";
     }
 
     // Detect potential UI elements based on color patterns
@@ -45,7 +45,7 @@ export class Florence2WorkerModel {
     const colorVariance = stats.channels.reduce((sum, ch) => sum + ch.stdev, 0) / 3;
     if (colorVariance < 50) {
       objects.push({
-        label: 'ui_element',
+        label: "ui_element",
         bbox: { x: 0, y: 0, width: metadata.width || 100, height: metadata.height || 100 },
         confidence: 0.7,
       });
@@ -55,7 +55,7 @@ export class Florence2WorkerModel {
       caption,
       objects,
       regions: [],
-      tags: ['screen', 'ui'],
+      tags: ["screen", "ui"],
     };
   }
 

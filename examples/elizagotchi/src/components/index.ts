@@ -2,7 +2,6 @@
  * Components module exports
  */
 
-export { PetSprite } from "./PetSprite";
 export * from "./GameElements";
-
+export { PetSprite } from "./PetSprite";
 

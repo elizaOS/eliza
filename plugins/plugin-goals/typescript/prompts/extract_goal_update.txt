@@ -1,0 +1,27 @@
+# Task: Extract Goal Update Information
+
+## User Message
+{{text}}
+
+## Current Goal Details
+{{goalDetails}}
+
+## Instructions
+Parse the user's message to determine what changes they want to make to the goal.
+Only name and description can be updated.
+
+Return an XML object with these potential fields (only include fields that should be changed):
+<response>
+  <name>New name for the goal</name>
+  <description>New description for the goal</description>
+</response>
+
+## Example Output Format
+<response>
+  <name>Learn Spanish fluently</name>
+  <description>Achieve conversational fluency in Spanish within 12 months</description>
+</response>
+
+
+
+

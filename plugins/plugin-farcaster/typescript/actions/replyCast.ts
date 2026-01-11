@@ -2,9 +2,10 @@
  * Reply to cast action.
  */
 
-import { type Action, type IAgentRuntime, type Memory, type State } from "@elizaos/core";
-import { FARCASTER_SERVICE_NAME, FarcasterMessageType } from "../types";
+import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
+import { FARCASTER_SERVICE_NAME, FarcasterMessageType } from "../types";
 
 export const replyCastAction: Action = {
   name: "REPLY_TO_CAST",
@@ -13,7 +14,9 @@ export const replyCastAction: Action = {
     [
       {
         name: "user",
-        content: { text: "Someone asked about ElizaOS on Farcaster, can you reply?" },
+        content: {
+          text: "Someone asked about ElizaOS on Farcaster, can you reply?",
+        },
       },
       {
         name: "assistant",
@@ -55,11 +58,7 @@ export const replyCastAction: Action = {
     return hasKeyword && (hasParentCast || isServiceAvailable);
   },
 
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State
-  ) => {
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const messageService = service?.getMessageService(runtime.agentId);
@@ -85,12 +84,13 @@ export const replyCastAction: Action = {
       } else {
         const prompt = `Based on this request: "${message.content.text}", generate a helpful and engaging reply for a Farcaster cast (max 320 characters).`;
 
-        const response = await runtime.useModel("text_large" as any, { prompt } as any);
-        replyContent = typeof response === "string" ? response : (response as { text?: string }).text || "";
+        const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+        replyContent =
+          typeof response === "string" ? response : (response as { text?: string }).text || "";
       }
 
       if (replyContent.length > 320) {
-        replyContent = replyContent.substring(0, 317) + "...";
+        replyContent = `${replyContent.substring(0, 317)}...`;
       }
 
       const reply = await messageService.sendMessage({
@@ -115,4 +115,3 @@ export const replyCastAction: Action = {
     }
   },
 };
-

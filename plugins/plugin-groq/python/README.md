@@ -172,4 +172,3 @@ mypy elizaos_plugin_groq
 ## License
 
 MIT License
-

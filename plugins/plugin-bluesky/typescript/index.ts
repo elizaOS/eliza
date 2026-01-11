@@ -30,11 +30,15 @@ import { logger } from "@elizaos/core";
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
 
-// Re-export types for consumers
-export * from "./types";
 export { BlueSkyClient } from "./client";
 export { BlueSkyService } from "./services/bluesky";
-export { BlueSkyConfig, validateBlueSkyConfig, hasBlueSkyEnabled } from "./utils/config";
+// Re-export types for consumers
+export * from "./types";
+export {
+  BlueSkyConfig,
+  hasBlueSkyEnabled,
+  validateBlueSkyConfig,
+} from "./utils/config";
 
 /**
  * Plugin configuration object structure
@@ -106,20 +110,20 @@ export const blueSkyPlugin: Plugin = {
   description: "BlueSky client plugin using AT Protocol for social interactions",
 
   config: {
-    BLUESKY_HANDLE: process.env["BLUESKY_HANDLE"],
-    BLUESKY_PASSWORD: process.env["BLUESKY_PASSWORD"],
-    BLUESKY_SERVICE: process.env["BLUESKY_SERVICE"],
-    BLUESKY_DRY_RUN: process.env["BLUESKY_DRY_RUN"],
-    BLUESKY_POLL_INTERVAL: process.env["BLUESKY_POLL_INTERVAL"],
-    BLUESKY_ENABLE_POSTING: process.env["BLUESKY_ENABLE_POSTING"],
-    BLUESKY_ENABLE_DMS: process.env["BLUESKY_ENABLE_DMS"],
-    BLUESKY_POST_INTERVAL_MIN: process.env["BLUESKY_POST_INTERVAL_MIN"],
-    BLUESKY_POST_INTERVAL_MAX: process.env["BLUESKY_POST_INTERVAL_MAX"],
-    BLUESKY_ENABLE_ACTION_PROCESSING: process.env["BLUESKY_ENABLE_ACTION_PROCESSING"],
-    BLUESKY_ACTION_INTERVAL: process.env["BLUESKY_ACTION_INTERVAL"],
-    BLUESKY_POST_IMMEDIATELY: process.env["BLUESKY_POST_IMMEDIATELY"],
-    BLUESKY_MAX_ACTIONS_PROCESSING: process.env["BLUESKY_MAX_ACTIONS_PROCESSING"],
-    BLUESKY_MAX_POST_LENGTH: process.env["BLUESKY_MAX_POST_LENGTH"],
+    BLUESKY_HANDLE: process.env.BLUESKY_HANDLE,
+    BLUESKY_PASSWORD: process.env.BLUESKY_PASSWORD,
+    BLUESKY_SERVICE: process.env.BLUESKY_SERVICE,
+    BLUESKY_DRY_RUN: process.env.BLUESKY_DRY_RUN,
+    BLUESKY_POLL_INTERVAL: process.env.BLUESKY_POLL_INTERVAL,
+    BLUESKY_ENABLE_POSTING: process.env.BLUESKY_ENABLE_POSTING,
+    BLUESKY_ENABLE_DMS: process.env.BLUESKY_ENABLE_DMS,
+    BLUESKY_POST_INTERVAL_MIN: process.env.BLUESKY_POST_INTERVAL_MIN,
+    BLUESKY_POST_INTERVAL_MAX: process.env.BLUESKY_POST_INTERVAL_MAX,
+    BLUESKY_ENABLE_ACTION_PROCESSING: process.env.BLUESKY_ENABLE_ACTION_PROCESSING,
+    BLUESKY_ACTION_INTERVAL: process.env.BLUESKY_ACTION_INTERVAL,
+    BLUESKY_POST_IMMEDIATELY: process.env.BLUESKY_POST_IMMEDIATELY,
+    BLUESKY_MAX_ACTIONS_PROCESSING: process.env.BLUESKY_MAX_ACTIONS_PROCESSING,
+    BLUESKY_MAX_POST_LENGTH: process.env.BLUESKY_MAX_POST_LENGTH,
   },
 
   async init(_config, _runtime) {
@@ -132,5 +136,3 @@ export const blueSkyPlugin: Plugin = {
 };
 
 export default blueSkyPlugin;
-
-

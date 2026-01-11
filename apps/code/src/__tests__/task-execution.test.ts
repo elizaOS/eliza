@@ -1,8 +1,17 @@
-import { describe, test, expect, beforeEach } from "vitest";
-import { stringToUuid, type IAgentRuntime, type Task, type UUID } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  stringToUuid,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
+import { beforeEach, describe, expect, test } from "vitest";
+import type {
+  SubAgent,
+  SubAgentContext,
+  SubAgentTool,
+} from "../lib/sub-agents/types.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
-import type { SubAgent, SubAgentContext, SubAgentTool } from "../lib/sub-agents/types.js";
 
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -44,7 +53,8 @@ function createMockRuntime(): IAgentRuntime {
       const task = tasks.get(id);
       if (!task) return;
       if (typeof updates.name === "string") task.name = updates.name;
-      if (typeof updates.description === "string") task.description = updates.description;
+      if (typeof updates.description === "string")
+        task.description = updates.description;
       if (Array.isArray(updates.tags)) task.tags = updates.tags;
       if (updates.roomId) task.roomId = updates.roomId;
       if (updates.worldId) task.worldId = updates.worldId;
@@ -92,13 +102,25 @@ describe("CodeTaskService execution", () => {
       type: "eliza",
       cancel: () => {},
       execute: async (t, ctx) => {
-        ctx.onProgress({ taskId: t.id ?? "", progress: 25, message: "quarter" });
+        ctx.onProgress({
+          taskId: t.id ?? "",
+          progress: 25,
+          message: "quarter",
+        });
         ctx.onMessage("working", "info");
-        return { success: true, summary: "ok", filesCreated: [], filesModified: [] };
+        return {
+          success: true,
+          summary: "ok",
+          filesCreated: [],
+          filesModified: [],
+        };
       },
     };
 
-    await service.startTaskExecution(taskId, { subAgent, tools: createNoopTools() });
+    await service.startTaskExecution(taskId, {
+      subAgent,
+      tools: createNoopTools(),
+    });
 
     const updated = await service.getTask(taskId);
     expect(updated?.metadata.status).toBe("completed");
@@ -152,11 +174,19 @@ describe("CodeTaskService execution", () => {
           await tick();
         }
 
-        return { success: true, summary: "ok", filesCreated: [], filesModified: [] };
+        return {
+          success: true,
+          summary: "ok",
+          filesCreated: [],
+          filesModified: [],
+        };
       },
     };
 
-    const execPromise = service.startTaskExecution(taskId, { subAgent, tools: createNoopTools() });
+    const execPromise = service.startTaskExecution(taskId, {
+      subAgent,
+      tools: createNoopTools(),
+    });
     await started;
 
     await service.pauseTask(taskId);
@@ -208,7 +238,10 @@ describe("CodeTaskService execution", () => {
       },
     };
 
-    const execPromise = service.startTaskExecution(taskId, { subAgent, tools: createNoopTools() });
+    const execPromise = service.startTaskExecution(taskId, {
+      subAgent,
+      tools: createNoopTools(),
+    });
     await started;
 
     await service.cancelTask(taskId);
@@ -235,15 +268,25 @@ describe("CodeTaskService execution", () => {
           ts: Date.now(),
           seq: 1,
         });
-        return { success: true, summary: t.name, filesCreated: [], filesModified: [] };
+        return {
+          success: true,
+          summary: t.name,
+          filesCreated: [],
+          filesModified: [],
+        };
       },
     };
 
-    await service.startTaskExecution(taskId, { subAgent, tools: createNoopTools() });
+    await service.startTaskExecution(taskId, {
+      subAgent,
+      tools: createNoopTools(),
+    });
 
     const updated = await service.getTask(taskId);
     const trace = updated?.metadata.trace ?? [];
-    expect(trace.some((e) => e.kind === "note" && e.message === "hello trace")).toBe(true);
+    expect(
+      trace.some((e) => e.kind === "note" && e.message === "hello trace"),
+    ).toBe(true);
   });
 
   test("detectAndPauseInterruptedTasks pauses tasks left in running state", async () => {
@@ -264,9 +307,9 @@ describe("CodeTaskService execution", () => {
     const updated2 = await service.getTask(id2);
 
     expect(updated1?.metadata.status).toBe("paused");
-    expect(updated1?.metadata.output.join("\n")).toContain("Paused due to restart");
+    expect(updated1?.metadata.output.join("\n")).toContain(
+      "Paused due to restart",
+    );
     expect(updated2?.metadata.status).toBe("completed");
   });
 });
-
-

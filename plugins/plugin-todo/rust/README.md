@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Get todos
     let todos = client.get_todos(None, None, None, None, None, None, None, Some(10)).await?;
-    
+
     // Complete a todo
     client.update_todo(
         todo_id,
@@ -120,7 +120,7 @@ cargo tarpaulin
 ```rust
 impl TodoClient {
     pub async fn new(config: TodoConfig) -> Result<Self>;
-    
+
     pub async fn create_todo(
         &self,
         agent_id: Uuid,
@@ -139,7 +139,7 @@ impl TodoClient {
     ) -> Result<Uuid>;
 
     pub async fn get_todo(&self, todo_id: Uuid) -> Result<Option<TodoData>>;
-    
+
     pub async fn get_todos(
         &self,
         agent_id: Option<Uuid>,
@@ -167,9 +167,9 @@ impl TodoClient {
     ) -> Result<bool>;
 
     pub async fn delete_todo(&self, todo_id: Uuid) -> Result<bool>;
-    
+
     pub async fn get_overdue_todos(/* ... */) -> Result<Vec<TodoData>>;
-    
+
     pub async fn reset_daily_todos(/* ... */) -> Result<i64>;
 }
 ```
@@ -240,6 +240,7 @@ let config = TodoConfig {
 ```
 
 Environment variables:
+
 - `DATABASE_URL` - PostgreSQL connection string
 
 ## License

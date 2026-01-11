@@ -6,20 +6,21 @@ Main plugin class for browser automation.
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-from elizaos_browser.types import BrowserConfig
-from elizaos_browser.services.browser_service import BrowserService
 from elizaos_browser.actions import (
-    browser_navigate,
     browser_click,
-    browser_type,
-    browser_select,
     browser_extract,
+    browser_navigate,
     browser_screenshot,
+    browser_select,
+    browser_type,
 )
 from elizaos_browser.providers import get_browser_state
+from elizaos_browser.services.browser_service import BrowserService
+from elizaos_browser.types import BrowserConfig
 
 logger = logging.getLogger(__name__)
 
@@ -130,5 +131,6 @@ class BrowserPlugin:
 def create_browser_plugin(config: BrowserConfig | None = None) -> BrowserPlugin:
     """Create a browser plugin instance."""
     return BrowserPlugin(config=config or BrowserConfig())
+
 
 

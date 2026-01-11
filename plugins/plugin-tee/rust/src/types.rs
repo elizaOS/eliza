@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Core types for the TEE (Trusted Execution Environment) plugin.
 //!
 //! All types are strongly typed with explicit field requirements.
@@ -37,6 +38,7 @@ impl TeeMode {
     }
 }
 
+
 impl Default for TeeMode {
     fn default() -> Self {
         Self::Local
@@ -67,6 +69,7 @@ impl TeeVendor {
         }
     }
 }
+
 
 impl Default for TeeVendor {
     fn default() -> Self {
@@ -182,6 +185,7 @@ pub struct TeeServiceConfig {
     pub secret_salt: Option<String>,
 }
 
+
 impl Default for TeeServiceConfig {
     fn default() -> Self {
         Self {
@@ -205,5 +209,7 @@ pub struct TeeProviderResult {
 }
 
 use crate::error::TeeError;
+
+
 
 

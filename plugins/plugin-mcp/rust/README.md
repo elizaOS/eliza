@@ -34,19 +34,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cwd: None,
         timeout_ms: 60000,
     };
-    
+
     let transport = StdioTransport::new(config);
     let mut client = McpClient::new(Box::new(transport));
-    
+
     // Connect to the server
     client.connect().await?;
-    
+
     // List available tools
     let tools = client.list_tools().await?;
     for tool in &tools {
         println!("Tool: {} - {}", tool.name, tool.description);
     }
-    
+
     // Call a tool
     let result = client.call_tool(
         "store_memory",
@@ -56,10 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     ).await?;
     println!("Result: {:?}", result);
-    
+
     // Close the connection
     client.close().await?;
-    
+
     Ok(())
 }
 ```
@@ -87,5 +87,3 @@ cargo test -- --nocapture
 ## License
 
 MIT License - see LICENSE file for details.
-
-

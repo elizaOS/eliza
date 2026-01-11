@@ -2,12 +2,16 @@
  * Create command - Create a new elizaOS example project
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as clack from "@clack/prompts";
 import pc from "picocolors";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
-import { loadManifest, getExamplesByLanguage, getExampleByName } from "../manifest.js";
+import {
+  getExampleByName,
+  getExamplesByLanguage,
+  loadManifest,
+} from "../manifest.js";
 import type { CreateOptions, Example } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,7 +43,6 @@ const CATEGORY_ICONS: Record<string, string> = {
   vercel: "▲",
   supabase: "⚡",
 };
-
 
 // Directories/files to skip when copying
 const SKIP_PATTERNS = [
@@ -97,38 +100,34 @@ function findExamplesDir(): string {
 function fixPackageJson(filePath: string): void {
   if (!fs.existsSync(filePath)) return;
 
-  try {
-    const content = fs.readFileSync(filePath, "utf-8");
-    const pkg = JSON.parse(content) as Record<string, unknown>;
+  const content = fs.readFileSync(filePath, "utf-8");
+  const pkg = JSON.parse(content) as Record<string, unknown>;
 
-    // Fix workspace:* references in dependencies
-    const fixDeps = (deps: Record<string, string> | undefined) => {
-      if (!deps) return;
-      for (const [key, value] of Object.entries(deps)) {
-        if (value === "workspace:*") {
-          // Replace with latest version
-          deps[key] = "^1.0.0";
-        }
+  // Fix workspace:* references in dependencies
+  const fixDeps = (deps: Record<string, string> | undefined) => {
+    if (!deps) return;
+    for (const [key, value] of Object.entries(deps)) {
+      if (value === "workspace:*") {
+        // Replace with latest version
+        deps[key] = "^1.0.0";
       }
-    };
+    }
+  };
 
-    fixDeps(pkg.dependencies as Record<string, string> | undefined);
-    fixDeps(pkg.devDependencies as Record<string, string> | undefined);
-    fixDeps(pkg.peerDependencies as Record<string, string> | undefined);
+  fixDeps(pkg.dependencies as Record<string, string> | undefined);
+  fixDeps(pkg.devDependencies as Record<string, string> | undefined);
+  fixDeps(pkg.peerDependencies as Record<string, string> | undefined);
 
-    // Remove private flag so the project can be published if desired
-    delete pkg.private;
+  // Remove private flag so the project can be published if desired
+  delete pkg.private;
 
-    fs.writeFileSync(filePath, JSON.stringify(pkg, null, 2) + "\n");
-  } catch {
-    // Ignore JSON parse errors
-  }
+  fs.writeFileSync(filePath, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
 function copyExample(
   exampleName: string,
   language: string,
-  destination: string
+  destination: string,
 ): void {
   const examplesDir = findExamplesDir();
   const examplePath = path.join(examplesDir, exampleName);
@@ -164,7 +163,9 @@ function getStartInstructions(language: string, projectDir: string): string[] {
     case "python":
       instructions.push(`cd ${projectDir}`);
       instructions.push("python -m venv .venv");
-      instructions.push("source .venv/bin/activate  # or .venv\\Scripts\\activate on Windows");
+      instructions.push(
+        "source .venv/bin/activate  # or .venv\\Scripts\\activate on Windows",
+      );
       instructions.push("pip install -r requirements.txt");
       instructions.push("python main.py  # or the main script");
       break;
@@ -183,7 +184,7 @@ function getStartInstructions(language: string, projectDir: string): string[] {
 
 export async function create(
   projectName: string | undefined,
-  options: CreateOptions
+  options: CreateOptions,
 ): Promise<void> {
   const manifest = loadManifest();
 
@@ -227,9 +228,11 @@ export async function create(
       process.exit(1);
     }
     // Check if example has the selected language
-    if (!selectedExample.languages.some((l) => l.language === selectedLanguage)) {
+    if (
+      !selectedExample.languages.some((l) => l.language === selectedLanguage)
+    ) {
       clack.cancel(
-        `Example '${options.example}' is not available in ${selectedLanguage}`
+        `Example '${options.example}' is not available in ${selectedLanguage}`,
       );
       process.exit(1);
     }
@@ -304,35 +307,21 @@ export async function create(
   const spinner = clack.spinner();
   spinner.start("Creating project...");
 
-  try {
-    spinner.message(`Copying ${selectedExample.name} (${selectedLanguage})...`);
+  spinner.message(`Copying ${selectedExample.name} (${selectedLanguage})...`);
 
-    // Copy the example
-    copyExample(selectedExample.name, selectedLanguage, finalProjectName);
+  // Copy the example
+  copyExample(selectedExample.name, selectedLanguage, finalProjectName);
 
-    spinner.stop("Project created successfully!");
+  spinner.stop("Project created successfully!");
 
-    // Show success message and next steps
-    console.log();
-    clack.note(
-      getStartInstructions(selectedLanguage, finalProjectName).join("\n"),
-      "Next steps"
-    );
+  // Show success message and next steps
+  console.log();
+  clack.note(
+    getStartInstructions(selectedLanguage, finalProjectName).join("\n"),
+    "Next steps",
+  );
 
-    clack.outro(
-      `${pc.green("✨")} Your ${selectedExample.name} project is ready!`
-    );
-  } catch (error) {
-    spinner.stop("Failed to create project");
-
-    // Clean up on failure
-    if (fs.existsSync(finalProjectName)) {
-      fs.rmSync(finalProjectName, { recursive: true, force: true });
-    }
-
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    clack.cancel(`Error: ${errorMessage}`);
-    process.exit(1);
-  }
+  clack.outro(
+    `${pc.green("✨")} Your ${selectedExample.name} project is ready!`,
+  );
 }
-

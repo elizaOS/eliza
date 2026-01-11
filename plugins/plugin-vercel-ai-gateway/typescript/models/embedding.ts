@@ -4,7 +4,7 @@
 
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
-import { buildConfig, getEmbeddingModel, getEmbeddingDimensions } from "../utils/config";
+import { buildConfig, getEmbeddingDimensions, getEmbeddingModel } from "../utils/config";
 
 /**
  * Handle TEXT_EMBEDDING model requests.
@@ -36,5 +36,3 @@ export async function handleTextEmbedding(
     dimensions,
   });
 }
-
-

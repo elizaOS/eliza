@@ -4,19 +4,8 @@
  * Handles cross-chain token bridges using LiFi SDK.
  */
 
-import type {
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
-import {
-  composePromptFromState,
-  logger,
-  ModelType,
-  parseKeyValueXml,
-} from "@elizaos/core";
+import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import {
   createConfig,
   EVM,
@@ -30,26 +19,24 @@ import {
   resumeRoute,
 } from "@lifi/sdk";
 
-import { type Address, formatUnits, parseAbi, parseUnits } from "viem";
+import { type Address, parseAbi, parseUnits } from "viem";
+import {
+  BRIDGE_POLL_INTERVAL_MS,
+  DEFAULT_SLIPPAGE_PERCENT,
+  MAX_BRIDGE_POLL_ATTEMPTS,
+  MAX_PRICE_IMPACT,
+  NATIVE_TOKEN_ADDRESS,
+} from "../constants";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { bridgeTemplate } from "../templates";
 import {
   type BridgeParams,
-  type Transaction,
-  type SupportedChain,
-  parseBridgeParams,
   EVMError,
   EVMErrorCode,
+  parseBridgeParams,
+  type SupportedChain,
+  type Transaction,
 } from "../types";
-import {
-  NATIVE_TOKEN_ADDRESS,
-  MAX_PRICE_IMPACT,
-  DEFAULT_SLIPPAGE_PERCENT,
-  BRIDGE_POLL_INTERVAL_MS,
-  MAX_BRIDGE_POLL_ATTEMPTS,
-  GAS_BUFFER_MULTIPLIER,
-  GAS_PRICE_MULTIPLIER,
-} from "../constants";
 
 export { bridgeTemplate };
 
@@ -70,7 +57,6 @@ interface BridgeExecutionStatus {
  */
 export class BridgeAction {
   private readonly activeRoutes: Map<string, BridgeExecutionStatus> = new Map();
-  private readonly config: ReturnType<typeof createConfig>;
 
   constructor(private readonly walletProvider: WalletProvider) {
     // Create EVM provider configuration for LiFi SDK
@@ -78,15 +64,16 @@ export class BridgeAction {
       getWalletClient: (async () => {
         const firstChain = Object.keys(this.walletProvider.chains)[0];
         return this.walletProvider.getWalletClient(firstChain as SupportedChain);
-      }) as Parameters<typeof EVM>[0]["getWalletClient"],
-      switchChain: ((chainId: number) => {
+      }) as unknown as Parameters<typeof EVM>[0]["getWalletClient"],
+      switchChain: (async (chainId: number) => {
         logger.debug(`LiFi requesting chain switch to ${chainId}...`);
         const chainName = this.getChainNameById(chainId);
         return this.walletProvider.getWalletClient(chainName as SupportedChain);
-      }) as Parameters<typeof EVM>[0]["switchChain"],
+      }) as unknown as Parameters<typeof EVM>[0]["switchChain"],
     });
 
-    this.config = createConfig({
+    // Initialize LiFi SDK config (used globally by the SDK)
+    createConfig({
       integrator: "eliza-agent",
       providers: [evmProvider],
       chains: Object.values(this.walletProvider.chains).map((config) => ({
@@ -125,10 +112,7 @@ export class BridgeAction {
       ([_, config]) => config.id === chainId
     );
     if (!chain) {
-      throw new EVMError(
-        EVMErrorCode.CHAIN_NOT_CONFIGURED,
-        `Chain with ID ${chainId} not found`
-      );
+      throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, `Chain with ID ${chainId} not found`);
     }
     return chain[0];
   }
@@ -137,10 +121,7 @@ export class BridgeAction {
     tokenSymbolOrAddress: string,
     chainId: number
   ): Promise<string> {
-    if (
-      tokenSymbolOrAddress.startsWith("0x") &&
-      tokenSymbolOrAddress.length === 42
-    ) {
+    if (tokenSymbolOrAddress.startsWith("0x") && tokenSymbolOrAddress.length === 42) {
       return tokenSymbolOrAddress;
     }
 
@@ -152,18 +133,12 @@ export class BridgeAction {
     return token.address;
   }
 
-  private async getTokenDecimals(
-    tokenAddress: string,
-    chainName: string
-  ): Promise<number> {
-    const chainConfig = this.walletProvider.getChainConfigs(
-      chainName as SupportedChain
-    );
+  private async getTokenDecimals(tokenAddress: string, chainName: string): Promise<number> {
+    const chainConfig = this.walletProvider.getChainConfigs(chainName as SupportedChain);
 
     if (
       tokenAddress === NATIVE_TOKEN_ADDRESS ||
-      tokenAddress.toUpperCase() ===
-        chainConfig.nativeCurrency.symbol.toUpperCase()
+      tokenAddress.toUpperCase() === chainConfig.nativeCurrency.symbol.toUpperCase()
     ) {
       return chainConfig.nativeCurrency.decimals;
     }
@@ -182,12 +157,10 @@ export class BridgeAction {
     return {
       updateTransactionRequestHook: async (txRequest) => {
         if (txRequest.gas) {
-          txRequest.gas =
-            (BigInt(txRequest.gas) * BigInt(110)) / BigInt(100);
+          txRequest.gas = (BigInt(txRequest.gas) * BigInt(110)) / BigInt(100);
         }
         if (txRequest.gasPrice) {
-          txRequest.gasPrice =
-            (BigInt(txRequest.gasPrice) * BigInt(105)) / BigInt(100);
+          txRequest.gasPrice = (BigInt(txRequest.gasPrice) * BigInt(105)) / BigInt(100);
         }
         return txRequest;
       },
@@ -198,8 +171,7 @@ export class BridgeAction {
         newToAmount: string;
       }) => {
         const priceChange =
-          ((Number(params.newToAmount) - Number(params.oldToAmount)) /
-            Number(params.oldToAmount)) *
+          ((Number(params.newToAmount) - Number(params.oldToAmount)) / Number(params.oldToAmount)) *
           100;
 
         logger.debug(`Exchange rate change: ${priceChange.toFixed(2)}%`);
@@ -210,21 +182,18 @@ export class BridgeAction {
         this.updateRouteStatus(routeId, updatedRoute);
       },
 
-      switchChainHook: ((chainId: number) => {
+      switchChainHook: (async (chainId: number) => {
         logger.debug(`Switching to chain ${chainId}...`);
         const chainName = this.getChainNameById(chainId);
         return this.walletProvider.getWalletClient(chainName as SupportedChain);
-      }) as ExecutionOptions["switchChainHook"],
+      }) as unknown as ExecutionOptions["switchChainHook"],
 
       executeInBackground: false,
       disableMessageSigning: false,
     };
   }
 
-  private updateRouteStatus(
-    routeId: string,
-    route: RouteExtended
-  ): BridgeExecutionStatus {
+  private updateRouteStatus(routeId: string, route: RouteExtended): BridgeExecutionStatus {
     const transactionHashes: string[] = [];
     let currentStep = 0;
     let isComplete = false;
@@ -270,9 +239,7 @@ export class BridgeAction {
     routeId: string
   ): Promise<BridgeExecutionStatus> {
     for (let attempt = 1; attempt <= MAX_BRIDGE_POLL_ATTEMPTS; attempt++) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, BRIDGE_POLL_INTERVAL_MS)
-      );
+      await new Promise((resolve) => setTimeout(resolve, BRIDGE_POLL_INTERVAL_MS));
 
       try {
         const status = await getStatus({
@@ -282,16 +249,11 @@ export class BridgeAction {
           bridge: tool,
         });
 
-        logger.debug(
-          `Poll attempt ${attempt}/${MAX_BRIDGE_POLL_ATTEMPTS}: ${status.status}`
-        );
+        logger.debug(`Poll attempt ${attempt}/${MAX_BRIDGE_POLL_ATTEMPTS}: ${status.status}`);
 
         const routeStatus = this.activeRoutes.get(routeId);
         if (!routeStatus) {
-          throw new EVMError(
-            EVMErrorCode.INVALID_PARAMS,
-            `Route ${routeId} not found`
-          );
+          throw new EVMError(EVMErrorCode.INVALID_PARAMS, `Route ${routeId} not found`);
         }
 
         let isComplete = false;
@@ -308,9 +270,7 @@ export class BridgeAction {
           ...routeStatus,
           isComplete,
           error,
-          currentStep: isComplete
-            ? routeStatus.totalSteps
-            : routeStatus.currentStep,
+          currentStep: isComplete ? routeStatus.totalSteps : routeStatus.currentStep,
         };
 
         this.activeRoutes.set(routeId, updatedStatus);
@@ -333,10 +293,7 @@ export class BridgeAction {
       return timeoutStatus;
     }
 
-    throw new EVMError(
-      EVMErrorCode.NETWORK_ERROR,
-      "Route status polling failed"
-    );
+    throw new EVMError(EVMErrorCode.NETWORK_ERROR, "Route status polling failed");
   }
 
   /**
@@ -349,24 +306,13 @@ export class BridgeAction {
     logger.debug(`Bridge: ${params.fromChain} → ${params.toChain}`);
     logger.debug(`Amount: ${params.amount}`);
 
-    const fromChainConfig = this.walletProvider.getChainConfigs(
-      params.fromChain
-    );
+    const fromChainConfig = this.walletProvider.getChainConfigs(params.fromChain);
     const toChainConfig = this.walletProvider.getChainConfigs(params.toChain);
 
-    const resolvedFromToken = await this.resolveTokenAddress(
-      params.fromToken,
-      fromChainConfig.id
-    );
-    const resolvedToToken = await this.resolveTokenAddress(
-      params.toToken,
-      toChainConfig.id
-    );
+    const resolvedFromToken = await this.resolveTokenAddress(params.fromToken, fromChainConfig.id);
+    const resolvedToToken = await this.resolveTokenAddress(params.toToken, toChainConfig.id);
 
-    const fromTokenDecimals = await this.getTokenDecimals(
-      resolvedFromToken,
-      params.fromChain
-    );
+    const fromTokenDecimals = await this.getTokenDecimals(resolvedFromToken, params.fromChain);
 
     const fromAmountParsed = parseUnits(params.amount, fromTokenDecimals);
 
@@ -403,26 +349,18 @@ export class BridgeAction {
       const executionOptions = this.createExecutionOptions(routeId);
       const executedRoute = await executeRoute(selectedRoute, executionOptions);
 
-      const sourceSteps = executedRoute.steps.filter(
-        (step) => step.execution?.process?.some((p) => p.txHash)
+      const sourceSteps = executedRoute.steps.filter((step) =>
+        step.execution?.process?.some((p) => p.txHash)
       );
 
       if (!sourceSteps.length) {
-        throw new EVMError(
-          EVMErrorCode.NETWORK_ERROR,
-          "No transaction hashes found"
-        );
+        throw new EVMError(EVMErrorCode.NETWORK_ERROR, "No transaction hashes found");
       }
 
-      const mainTxHash = sourceSteps[0]?.execution?.process?.find(
-        (p) => p.txHash
-      )?.txHash;
+      const mainTxHash = sourceSteps[0]?.execution?.process?.find((p) => p.txHash)?.txHash;
 
       if (!mainTxHash) {
-        throw new EVMError(
-          EVMErrorCode.NETWORK_ERROR,
-          "No transaction hash found"
-        );
+        throw new EVMError(EVMErrorCode.NETWORK_ERROR, "No transaction hash found");
       }
 
       logger.debug(`Source transaction: ${mainTxHash}`);
@@ -457,12 +395,7 @@ export class BridgeAction {
   /**
    * Get status of a specific transaction
    */
-  async getTransactionStatus(
-    txHash: string,
-    fromChainId: number,
-    toChainId: number,
-    tool: string
-  ) {
+  async getTransactionStatus(txHash: string, fromChainId: number, toChainId: number, tool: string) {
     return await getStatus({
       txHash,
       fromChain: fromChainId,
@@ -519,10 +452,7 @@ async function buildBridgeDetails(
   const content = parseKeyValueXml(xmlResponse);
 
   if (!content) {
-    throw new EVMError(
-      EVMErrorCode.INVALID_PARAMS,
-      "Failed to parse bridge details from LLM"
-    );
+    throw new EVMError(EVMErrorCode.INVALID_PARAMS, "Failed to parse bridge details from LLM");
   }
 
   const rawParams = {
@@ -645,12 +575,7 @@ export const bridgeAction = {
     ],
   ],
 
-  similes: [
-    "CROSS_CHAIN_TRANSFER",
-    "CHAIN_BRIDGE",
-    "MOVE_CROSS_CHAIN",
-    "BRIDGE_TOKENS",
-  ],
+  similes: ["CROSS_CHAIN_TRANSFER", "CHAIN_BRIDGE", "MOVE_CROSS_CHAIN", "BRIDGE_TOKENS"],
 };
 
 /**

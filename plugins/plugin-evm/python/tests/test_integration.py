@@ -11,22 +11,18 @@ Run with: pytest tests/test_integration.py -v
 """
 
 import os
-from decimal import Decimal
 
 import pytest
 
 from elizaos_plugin_evm import (
     BridgeParams,
     EVMWalletProvider,
-    SwapParams,
     SupportedChain,
+    SwapParams,
     TransferParams,
-    execute_bridge,
-    execute_swap,
     execute_transfer,
 )
 from elizaos_plugin_evm.error import EVMError
-
 
 # Mark for tests that require the private key
 requires_private_key = pytest.mark.skipif(
@@ -266,5 +262,3 @@ class TestErrorHandling:
                 SupportedChain.MAINNET,
                 fake_address,
             )
-
-

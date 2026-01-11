@@ -224,3 +224,7 @@ def create_plugin(config: LocalAIConfig | None = None) -> LocalAIPlugin:
         return get_local_ai_plugin()
     return LocalAIPlugin(config)
 
+
+
+
+

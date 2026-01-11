@@ -45,7 +45,9 @@ class GenerateImageAction:
         "Use this when the user requests visual content or imagery."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that image generation is available."""
         # Check if the runtime has image generation capability
         return runtime.has_model(ModelType.IMAGE)
@@ -68,7 +70,8 @@ class GenerateImageAction:
 
         template = (
             runtime.character.templates.get("imageGenerationTemplate")
-            if runtime.character.templates and "imageGenerationTemplate" in runtime.character.templates
+            if runtime.character.templates
+            and "imageGenerationTemplate" in runtime.character.templates
             else IMAGE_GENERATION_TEMPLATE
         )
         prompt = runtime.compose_prompt(state=state, template=template)
@@ -188,4 +191,3 @@ generate_image_action = Action(
     handler=GenerateImageAction().handler,
     examples=GenerateImageAction().examples,
 )
-

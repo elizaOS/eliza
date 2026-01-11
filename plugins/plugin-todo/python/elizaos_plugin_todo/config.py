@@ -3,8 +3,7 @@ Configuration for the Todo Plugin.
 """
 
 import os
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from elizaos_plugin_todo.errors import ConfigError
 
@@ -14,7 +13,7 @@ class TodoConfig:
     """Configuration for the Todo plugin."""
 
     # Database configuration
-    database_url: Optional[str] = None
+    database_url: str | None = None
 
     # Reminder settings
     enable_reminders: bool = True
@@ -94,5 +93,8 @@ class TodoConfig:
 
         if self.cache_max_size < 10:
             raise ConfigError("cache_max_size must be at least 10")
+
+
+
 
 

@@ -1,24 +1,9 @@
-import type {
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
-import {
-  type Address,
-  encodeFunctionData,
-  type Hex,
-  keccak256,
-  stringToHex,
-} from "viem";
+import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { type Address, encodeFunctionData, type Hex, keccak256, stringToHex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import { WalletProvider } from "../providers/wallet";
 import { executeProposalTemplate } from "../templates";
-import type {
-  ExecuteProposalParams,
-  SupportedChain,
-  Transaction,
-} from "../types";
+import type { ExecuteProposalParams, SupportedChain, Transaction } from "../types";
 
 export { executeProposalTemplate };
 
@@ -70,8 +55,7 @@ export class ExecuteAction {
         logs: receipt.logs,
       };
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Vote failed: ${errorMessage}`);
     }
   }
@@ -85,8 +69,8 @@ export const executeAction = {
     _message: Memory,
     _state: State,
     options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ) => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     try {
       // Validate required fields
       if (
@@ -115,15 +99,27 @@ export const executeAction = {
       const privateKey = runtime.getSetting("EVM_PRIVATE_KEY") as `0x${string}`;
       const walletProvider = new WalletProvider(privateKey, runtime);
       const action = new ExecuteAction(walletProvider);
-      return await action.execute(executeParams);
+      const result = await action.execute(executeParams);
+      return {
+        success: true,
+        text: `Proposal executed successfully. Transaction hash: ${result.hash}`,
+        data: {
+          transactionHash: result.hash,
+          from: result.from,
+          to: result.to,
+          chain: executeParams.chain,
+        },
+      };
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Error in execute handler:", errorMessage);
       if (callback) {
         callback({ text: `Error: ${errorMessage}` });
       }
-      return false;
+      return {
+        success: false,
+        text: `Error: ${errorMessage}`,
+      };
     }
   },
   template: executeProposalTemplate,
@@ -134,7 +130,7 @@ export const executeAction = {
   examples: [
     [
       {
-        user: "user",
+        name: "user",
         content: {
           text: "Execute proposal 123 on the governor at 0x1234567890123456789012345678901234567890 on Ethereum",
           action: "EXECUTE_PROPOSAL",

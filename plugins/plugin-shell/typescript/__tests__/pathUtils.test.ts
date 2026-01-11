@@ -1,28 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  validatePath,
-  isSafeCommand,
   extractBaseCommand,
   isForbiddenCommand,
+  isSafeCommand,
+  validatePath,
 } from "../utils/pathUtils";
 
 describe("Path Utilities", () => {
   describe("validatePath", () => {
     it("should allow paths within the allowed directory", () => {
-      const result = validatePath(
-        "subfolder",
-        "/home/user/allowed",
-        "/home/user/allowed"
-      );
+      const result = validatePath("subfolder", "/home/user/allowed", "/home/user/allowed");
       expect(result).toBe("/home/user/allowed/subfolder");
     });
 
     it("should reject paths outside the allowed directory", () => {
-      const result = validatePath(
-        "../../../etc",
-        "/home/user/allowed",
-        "/home/user/allowed"
-      );
+      const result = validatePath("../../../etc", "/home/user/allowed", "/home/user/allowed");
       expect(result).toBeNull();
     });
 
@@ -103,5 +95,3 @@ describe("Path Utilities", () => {
     });
   });
 });
-
-

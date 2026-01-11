@@ -64,7 +64,9 @@ class RemoveContactAction:
     )
     description: str = "Removes a contact from the rolodex"
 
-    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         return rolodex_service is not None
@@ -172,7 +174,9 @@ class RemoveContactAction:
         """Example interactions."""
         return [
             [
-                ActionExample(name="{{name1}}", content=Content(text="Remove John Doe from my contacts")),
+                ActionExample(
+                    name="{{name1}}", content=Content(text="Remove John Doe from my contacts")
+                ),
                 ActionExample(
                     name="{{name2}}",
                     content=Content(
@@ -193,4 +197,3 @@ remove_contact_action = Action(
     handler=RemoveContactAction().handler,
     examples=RemoveContactAction().examples,
 )
-

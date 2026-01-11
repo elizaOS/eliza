@@ -6,7 +6,6 @@ No defensive programming or error swallowing.
 """
 
 from datetime import datetime
-from typing import Optional
 
 
 class GitHubError(Exception):
@@ -20,7 +19,7 @@ class GitHubError(Exception):
         """Check if this error is retryable."""
         return False
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         """Get retry delay in milliseconds if applicable."""
         return None
 
@@ -109,14 +108,12 @@ class RateLimitedError(GitHubError):
         self._retry_after_ms = retry_after_ms
         self.remaining = remaining
         self.reset_at = reset_at
-        super().__init__(
-            f"Rate limited by GitHub API, retry after {retry_after_ms // 1000}s"
-        )
+        super().__init__(f"Rate limited by GitHub API, retry after {retry_after_ms // 1000}s")
 
     def is_retryable(self) -> bool:
         return True
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         return self._retry_after_ms
 
 
@@ -125,14 +122,12 @@ class SecondaryRateLimitError(GitHubError):
 
     def __init__(self, retry_after_ms: int) -> None:
         self._retry_after_ms = retry_after_ms
-        super().__init__(
-            f"Secondary rate limit hit, retry after {retry_after_ms // 1000}s"
-        )
+        super().__init__(f"Secondary rate limit hit, retry after {retry_after_ms // 1000}s")
 
     def is_retryable(self) -> bool:
         return True
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         return self._retry_after_ms
 
 
@@ -146,7 +141,7 @@ class TimeoutError(GitHubError):
     def is_retryable(self) -> bool:
         return True
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         return self._timeout_ms // 2
 
 
@@ -181,8 +176,8 @@ class GitHubApiError(GitHubError):
         self,
         status: int,
         message: str,
-        code: Optional[str] = None,
-        documentation_url: Optional[str] = None,
+        code: str | None = None,
+        documentation_url: str | None = None,
     ) -> None:
         self.status = status
         self.code = code
@@ -203,7 +198,7 @@ class NetworkError(GitHubError):
     def is_retryable(self) -> bool:
         return True
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         return 1000
 
 
@@ -220,5 +215,8 @@ class WebhookVerificationError(GitHubError):
 
     def __init__(self, reason: str) -> None:
         super().__init__(f"Webhook verification failed: {reason}")
+
+
+
 
 

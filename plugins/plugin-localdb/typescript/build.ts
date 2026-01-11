@@ -5,7 +5,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { build } from "bun";
 
@@ -32,14 +32,7 @@ async function buildAll() {
     format: "esm",
     sourcemap: "linked",
     minify: false,
-    external: [
-      "@elizaos/core",
-      "fs",
-      "path",
-      "node:fs",
-      "node:fs/promises",
-      "node:path",
-    ],
+    external: ["@elizaos/core", "fs", "path", "node:fs", "node:fs/promises", "node:path"],
     naming: "[name].js",
   });
 

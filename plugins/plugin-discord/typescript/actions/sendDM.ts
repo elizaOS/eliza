@@ -12,10 +12,9 @@ import {
 } from "@elizaos/core";
 import type { User } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
-
 // Import generated prompts
 import { sendDmTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 // Re-export for backwards compatibility
 export const dmInfoTemplate = sendDmTemplate;
 
@@ -29,7 +28,7 @@ export const dmInfoTemplate = sendDmTemplate;
 const getDMInfo = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{ recipientIdentifier: string; messageContent: string } | null> => {
   const prompt = composePromptFromState({
     state,
@@ -46,7 +45,7 @@ const getDMInfo = async (
       messageContent: string;
     } | null;
 
-    if (parsedResponse && parsedResponse.recipientIdentifier && parsedResponse.messageContent) {
+    if (parsedResponse?.recipientIdentifier && parsedResponse.messageContent) {
       return parsedResponse;
     }
   }
@@ -63,7 +62,7 @@ const getDMInfo = async (
 const findUser = async (
   discordService: DiscordService,
   identifier: string,
-  currentServerId?: string,
+  currentServerId?: string
 ): Promise<User | null> => {
   if (!discordService.client) {
     return null;
@@ -92,7 +91,7 @@ const findUser = async (
         (m) =>
           m.user.username.toLowerCase() === identifier.toLowerCase() ||
           m.displayName.toLowerCase() === identifier.toLowerCase() ||
-          m.user.tag.toLowerCase() === identifier.toLowerCase(),
+          m.user.tag.toLowerCase() === identifier.toLowerCase()
       );
 
       if (member) {
@@ -109,7 +108,7 @@ const findUser = async (
           (m) =>
             m.user.username.toLowerCase() === identifier.toLowerCase() ||
             m.displayName.toLowerCase() === identifier.toLowerCase() ||
-            m.user.tag.toLowerCase() === identifier.toLowerCase(),
+            m.user.tag.toLowerCase() === identifier.toLowerCase()
         );
 
         if (member) {
@@ -149,17 +148,15 @@ export const sendDM = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       runtime.logger.error(
         { src: "plugin:discord:action:send-dm", agentId: runtime.agentId },
-        "Discord service not found or not initialized",
+        "Discord service not found or not initialized"
       );
       return;
     }
@@ -168,7 +165,7 @@ export const sendDM = {
     if (!dmInfo) {
       runtime.logger.warn(
         { src: "plugin:discord:action:send-dm", agentId: runtime.agentId },
-        "Could not parse DM information from message",
+        "Could not parse DM information from message"
       );
       await callback({
         text: "I couldn't understand who you want me to message or what to send. Please specify the recipient and the message content.",
@@ -178,14 +175,14 @@ export const sendDM = {
     }
 
     try {
-      const room = (state.data && state.data.room) || (await runtime.getRoom(message.roomId));
-      const currentServerId = room && room.messageServerId;
+      const room = state.data?.room || (await runtime.getRoom(message.roomId));
+      const currentServerId = room?.messageServerId;
 
       // Find the user
       const targetUser = await findUser(
         discordService,
         dmInfo.recipientIdentifier,
-        currentServerId,
+        currentServerId
       );
 
       if (!targetUser) {
@@ -225,7 +222,7 @@ export const sendDM = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error sending DM",
+        "Error sending DM"
       );
 
       // Handle specific Discord API errors

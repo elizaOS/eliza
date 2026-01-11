@@ -13,15 +13,14 @@
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@clack/prompts": "^0.11.0",
-    "uuid": "^11.0.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/uuid": "^10.0.0",
-    "typescript": "^5.8.0"
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"
   }
 }
-

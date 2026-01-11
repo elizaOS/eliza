@@ -15,7 +15,6 @@ import subprocess
 import tempfile
 import time
 from io import BytesIO
-from pathlib import Path
 
 from PIL import Image
 
@@ -267,4 +266,3 @@ class ScreenCaptureService:
         if not self._last_capture:
             return []
         return [t for t in self._last_capture.tiles if t.analysis]
-

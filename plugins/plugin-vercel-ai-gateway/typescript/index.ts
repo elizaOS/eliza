@@ -22,7 +22,7 @@ import type {
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { initializeGateway, type GatewayPluginConfig } from "./init";
+import { type GatewayPluginConfig, initializeGateway } from "./init";
 import {
   handleImageDescription,
   handleImageGeneration,
@@ -35,9 +35,9 @@ import {
 import type { ImageDescriptionResult, ImageGenerationResult } from "./types";
 import { getApiKeyOptional, getBaseUrl } from "./utils/config";
 
+export { GatewayClient } from "./providers/client";
 // Re-export types for consumers
 export * from "./types";
-export { GatewayClient } from "./providers/client";
 
 // ============================================================================
 // Plugin Definition
@@ -83,9 +83,7 @@ const pluginTests = [
           }
 
           const data = (await response.json()) as { data?: unknown[] };
-          logger.info(
-            `[Gateway Test] API connected. ${data.data?.length ?? 0} models available.`
-          );
+          logger.info(`[Gateway Test] API connected. ${data.data?.length ?? 0} models available.`);
         },
       },
       {
@@ -99,9 +97,7 @@ const pluginTests = [
             throw new Error("TEXT_SMALL should return non-empty string");
           }
 
-          logger.info(
-            `[Gateway Test] TEXT_SMALL generated: "${text.substring(0, 50)}..."`
-          );
+          logger.info(`[Gateway Test] TEXT_SMALL generated: "${text.substring(0, 50)}..."`);
         },
       },
       {
@@ -115,9 +111,7 @@ const pluginTests = [
             throw new Error("TEXT_LARGE should return non-empty string");
           }
 
-          logger.info(
-            `[Gateway Test] TEXT_LARGE generated: "${text.substring(0, 50)}..."`
-          );
+          logger.info(`[Gateway Test] TEXT_LARGE generated: "${text.substring(0, 50)}..."`);
         },
       },
       {
@@ -131,9 +125,7 @@ const pluginTests = [
             throw new Error("Embedding should return a non-empty array");
           }
 
-          logger.info(
-            `[Gateway Test] Generated embedding with ${embedding.length} dimensions`
-          );
+          logger.info(`[Gateway Test] Generated embedding with ${embedding.length} dimensions`);
         },
       },
       {
@@ -174,9 +166,7 @@ const pluginTests = [
             throw new Error("No streaming chunks received");
           }
 
-          logger.info(
-            `[Gateway Test] Streaming test: ${chunks.length} chunks received`
-          );
+          logger.info(`[Gateway Test] Streaming test: ${chunks.length} chunks received`);
         },
       },
     ],
@@ -190,8 +180,7 @@ const pluginTests = [
  */
 export const gatewayPlugin: Plugin = {
   name: "gateway",
-  description:
-    "Vercel AI Gateway integration for text, image, audio, and embedding models",
+  description: "Vercel AI Gateway integration for text, image, audio, and embedding models",
 
   config: {
     AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY ?? null,
@@ -201,15 +190,11 @@ export const gatewayPlugin: Plugin = {
     AI_GATEWAY_SMALL_MODEL: process.env.AI_GATEWAY_SMALL_MODEL ?? null,
     AI_GATEWAY_LARGE_MODEL: process.env.AI_GATEWAY_LARGE_MODEL ?? null,
     AI_GATEWAY_EMBEDDING_MODEL: process.env.AI_GATEWAY_EMBEDDING_MODEL ?? null,
-    AI_GATEWAY_EMBEDDING_DIMENSIONS:
-      process.env.AI_GATEWAY_EMBEDDING_DIMENSIONS ?? null,
+    AI_GATEWAY_EMBEDDING_DIMENSIONS: process.env.AI_GATEWAY_EMBEDDING_DIMENSIONS ?? null,
     AI_GATEWAY_IMAGE_MODEL: process.env.AI_GATEWAY_IMAGE_MODEL ?? null,
   },
 
-  async init(
-    config: Record<string, string>,
-    runtime: IAgentRuntime
-  ): Promise<void> {
+  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     initializeGateway(config as GatewayPluginConfig, runtime);
   },
 
@@ -268,5 +253,3 @@ export const gatewayPlugin: Plugin = {
 };
 
 export default gatewayPlugin;
-
-

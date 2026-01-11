@@ -6,11 +6,12 @@
  *
  * Works with both PGLite (default) and PostgreSQL (when POSTGRES_URL is set).
  */
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
+
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrateToEntityRLS } from "../../migrations";
 
 describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
@@ -128,9 +129,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'memories'
         ORDER BY column_name
       `);
-      const memoryColumnNames = memoriesColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const memoryColumnNames = memoriesColumns.rows.map((r: any) => r.column_name);
 
       expect(memoryColumnNames).toContain("agent_id");
       expect(memoryColumnNames).toContain("room_id");
@@ -150,9 +149,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'worlds'
         ORDER BY column_name
       `);
-      const worldColumnNames = worldsColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const worldColumnNames = worldsColumns.rows.map((r: any) => r.column_name);
 
       expect(worldColumnNames).toContain("message_server_id");
       expect(worldColumnNames).not.toContain("serverId");
@@ -182,19 +179,15 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       await migrateToEntityRLS(mockAdapter);
 
       // Verify data is preserved
-      const agents = await db.execute(
-        sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`,
-      );
+      const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
       expect(agents.rows[0].name).toBe("Test Agent");
 
-      const rooms = await db.execute(
-        sql`SELECT * FROM rooms WHERE id = ${roomId}::uuid`,
-      );
+      const rooms = await db.execute(sql`SELECT * FROM rooms WHERE id = ${roomId}::uuid`);
       expect(rooms.rows[0].name).toBe("Test Room");
       expect(rooms.rows[0].agent_id).toBe(agentId);
 
       const memories = await db.execute(
-        sql`SELECT * FROM memories WHERE agent_id = ${agentId}::uuid`,
+        sql`SELECT * FROM memories WHERE agent_id = ${agentId}::uuid`
       );
       expect(memories.rows).toHaveLength(1);
       expect(memories.rows[0].room_id).toBe(roomId);
@@ -408,7 +401,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       expect(rooms.rows[0].message_server_id).toBeDefined();
       // The value should be a valid UUID (md5 hash)
       expect(rooms.rows[0].message_server_id).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
       );
     });
 
@@ -484,9 +477,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'agents'
         ORDER BY column_name
       `);
-      const agentColumnNames = agentsColumns.rows.map(
-        (r: any) => r.column_name,
-      );
+      const agentColumnNames = agentsColumns.rows.map((r: any) => r.column_name);
 
       expect(agentColumnNames).toContain("server_id");
       expect(agentColumnNames).not.toContain("owner_id");
@@ -584,9 +575,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
 
     it("should disable RLS on other plugin tables during migration", async () => {
       // Enable RLS on twitter_posts
-      await db.execute(
-        sql`ALTER TABLE twitter_posts ENABLE ROW LEVEL SECURITY`,
-      );
+      await db.execute(sql`ALTER TABLE twitter_posts ENABLE ROW LEVEL SECURITY`);
 
       // Verify RLS is enabled
       const beforeRls = await db.execute(sql`
@@ -692,18 +681,14 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       expect(columnNames).not.toContain("agent_id");
 
       // Verify data is intact
-      const data = await db.execute(
-        sql`SELECT * FROM other_schema.custom_table`,
-      );
+      const data = await db.execute(sql`SELECT * FROM other_schema.custom_table`);
       expect(data.rows).toHaveLength(1);
       expect(data.rows[0].server_id).toBe(serverId);
     });
 
     it("should NOT disable RLS on tables in non-public schemas", async () => {
       // Enable RLS on other_schema.custom_table
-      await db.execute(
-        sql`ALTER TABLE other_schema.custom_table ENABLE ROW LEVEL SECURITY`,
-      );
+      await db.execute(sql`ALTER TABLE other_schema.custom_table ENABLE ROW LEVEL SECURITY`);
 
       // Verify RLS is enabled
       const beforeRls = await db.execute(sql`
@@ -759,12 +744,8 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
 
       // Create custom indexes on the analytics table
-      await db.execute(
-        sql`CREATE INDEX idx_analytics_event_type ON analytics_events(event_type)`,
-      );
-      await db.execute(
-        sql`CREATE INDEX idx_analytics_user_id ON analytics_events(user_id)`,
-      );
+      await db.execute(sql`CREATE INDEX idx_analytics_event_type ON analytics_events(event_type)`);
+      await db.execute(sql`CREATE INDEX idx_analytics_user_id ON analytics_events(user_id)`);
     });
 
     it("should drop ALL indexes in public schema including other plugins (current behavior)", async () => {

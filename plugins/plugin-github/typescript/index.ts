@@ -16,25 +16,20 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { allActions } from "./actions";
 import { allProviders } from "./providers";
-import { GitHubService, GITHUB_SERVICE_NAME } from "./service";
-
-// Re-export all types
-export * from "./types";
-
-// Re-export errors
-export * from "./error";
-
-// Re-export config
-export { GitHubPluginConfig, validateGitHubConfig } from "./config";
-
-// Re-export service
-export { GitHubService, GITHUB_SERVICE_NAME } from "./service";
+import { GitHubService } from "./service";
 
 // Re-export actions
 export * from "./actions";
-
+// Re-export config
+export { GitHubPluginConfig, validateGitHubConfig } from "./config";
+// Re-export errors
+export * from "./error";
 // Re-export providers
 export * from "./providers";
+// Re-export service
+export { GITHUB_SERVICE_NAME, GitHubService } from "./service";
+// Re-export all types
+export * from "./types";
 
 /**
  * GitHub Plugin
@@ -65,23 +60,23 @@ const githubPlugin: Plugin = {
     logger.info("╔══════════════════════════════════════════════════════════╗");
     logger.info("║                    GitHub Plugin                         ║");
     logger.info("╠══════════════════════════════════════════════════════════╣");
-    logger.info(`║  Token:    ${token ? "✓ Configured" : "✗ Not configured"}                             ║`);
-    logger.info(`║  Owner:    ${owner ?? "Not set"}`.padEnd(62) + "║");
-    logger.info(`║  Repo:     ${repo ?? "Not set"}`.padEnd(62) + "║");
-    logger.info(`║  Branch:   ${branch}`.padEnd(62) + "║");
+    logger.info(
+      `║  Token:    ${token ? "✓ Configured" : "✗ Not configured"}                             ║`
+    );
+    logger.info(`${`║  Owner:    ${owner ?? "Not set"}`.padEnd(62)}║`);
+    logger.info(`${`║  Repo:     ${repo ?? "Not set"}`.padEnd(62)}║`);
+    logger.info(`${`║  Branch:   ${branch}`.padEnd(62)}║`);
     logger.info("╚══════════════════════════════════════════════════════════╝");
 
     if (!token) {
       logger.warn(
-        "GitHub API Token not provided - GitHub plugin is loaded but will not be functional",
+        "GitHub API Token not provided - GitHub plugin is loaded but will not be functional"
       );
       logger.warn(
-        "To enable GitHub functionality, please provide GITHUB_API_TOKEN in your environment",
+        "To enable GitHub functionality, please provide GITHUB_API_TOKEN in your environment"
       );
     }
   },
 };
 
 export default githubPlugin;
-
-

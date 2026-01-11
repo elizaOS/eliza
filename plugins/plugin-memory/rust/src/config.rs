@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration for the Memory Plugin.
 
 use serde::{Deserialize, Serialize};

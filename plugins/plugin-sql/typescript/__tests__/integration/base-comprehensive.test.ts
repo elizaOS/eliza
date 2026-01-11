@@ -1,4 +1,3 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import type {
   AgentRuntime,
   ChannelType,
@@ -10,6 +9,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -162,7 +162,7 @@ describe("Base Adapter Comprehensive Tests", () => {
           createdAt: new Date(),
           metadata: { type: "test" },
         },
-        "memories",
+        "memories"
       );
 
       // Delete entity (should cascade delete memory)
@@ -216,8 +216,8 @@ describe("Base Adapter Comprehensive Tests", () => {
 
       expect(memories).toHaveLength(1);
       expect(memories[0].id).toBe(memoryId);
-      const memories0Metadata = memories[0].metadata as any;
-      expect(memories0Metadata && memories0Metadata.category).toBe("comprehensive");
+      const memories0Metadata = memories[0].metadata as Record<string, unknown>;
+      expect(memories0Metadata?.category).toBe("comprehensive");
 
       // Update memory
       await adapter.updateMemory({
@@ -233,10 +233,8 @@ describe("Base Adapter Comprehensive Tests", () => {
         tableName: "memories",
       });
       expect(updated[0].content.text).toBe("Updated memory");
-      const updated0Metadata = updated[0].metadata as any;
-      expect(updated0Metadata && updated0Metadata.category).toBe(
-        "comprehensive-updated",
-      );
+      const updated0Metadata = updated[0].metadata as Record<string, unknown>;
+      expect(updated0Metadata?.category).toBe("comprehensive-updated");
 
       // Delete memory
       await adapter.deleteMemory(memoryId);
@@ -290,9 +288,7 @@ describe("Base Adapter Comprehensive Tests", () => {
       });
 
       expect(results).toHaveLength(2);
-      expect(
-        results.every((m) => roomIds.slice(0, 2).includes(m.roomId!)),
-      ).toBe(true);
+      expect(results.every((m) => roomIds.slice(0, 2).includes(m.roomId!))).toBe(true);
     });
   });
 
@@ -334,10 +330,10 @@ describe("Base Adapter Comprehensive Tests", () => {
         testEntityId,
         "relationship",
         testWorldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(retrieved).toBeDefined();
-      expect(retrieved!.data.relationshipType).toBe("friend");
+      expect(retrieved?.data.relationshipType).toBe("friend");
 
       // Update component
       await adapter.updateComponent({
@@ -353,11 +349,11 @@ describe("Base Adapter Comprehensive Tests", () => {
         testEntityId,
         "relationship",
         testWorldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(updated).not.toBeNull();
-      expect(updated!.data.relationshipType).toBe("best_friend");
-      expect(updated!.data.strength).toBe(1.0);
+      expect(updated?.data.relationshipType).toBe("best_friend");
+      expect(updated?.data.strength).toBe(1.0);
 
       // Delete component
       await adapter.deleteComponent(component.id);
@@ -367,7 +363,7 @@ describe("Base Adapter Comprehensive Tests", () => {
         testEntityId,
         "relationship",
         testWorldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(deleted).toBeNull();
     });
@@ -395,8 +391,8 @@ describe("Base Adapter Comprehensive Tests", () => {
       expect(retrieved).toHaveLength(1);
       expect(retrieved).not.toBeNull();
       const retrieved0 = retrieved[0];
-      const retrieved0Metadata = retrieved0 && retrieved0.metadata;
-      expect(retrieved0Metadata && retrieved0Metadata.participants).toHaveLength(2);
+      const retrieved0Metadata = retrieved0?.metadata;
+      expect(retrieved0Metadata?.participants).toHaveLength(2);
 
       // Create participant
       const userId = uuidv4() as UUID;
@@ -432,18 +428,15 @@ describe("Base Adapter Comprehensive Tests", () => {
           createdAt: new Date(),
           metadata: { type: "embedding" },
         },
-        "memories",
+        "memories"
       );
 
       // Search by embedding
-      const results = await adapter.searchMemoriesByEmbedding(
-        Array.from(embedding),
-        {
-          tableName: "memories",
-          count: 5,
-          match_threshold: 0.5,
-        },
-      );
+      const results = await adapter.searchMemoriesByEmbedding(Array.from(embedding), {
+        tableName: "memories",
+        count: 5,
+        match_threshold: 0.5,
+      });
 
       expect(results.length).toBeGreaterThan(0);
       expect(results[0].id).toBe(memoryId);
@@ -495,7 +488,7 @@ describe("Base Adapter Comprehensive Tests", () => {
 
       const entities = await adapter.getEntitiesByIds([entityId]);
       expect(entities).not.toBeNull();
-      expect(entities[0] && entities[0].metadata).toEqual({});
+      expect(entities[0]?.metadata).toEqual({});
 
       // Memory with required entityId
       const memoryId = uuidv4() as UUID;
@@ -508,7 +501,7 @@ describe("Base Adapter Comprehensive Tests", () => {
           content: { text: "Memory with entity" } as Content,
           createdAt: new Date(),
         },
-        "memories",
+        "memories"
       );
 
       const memories = await adapter.getMemories({
@@ -518,7 +511,7 @@ describe("Base Adapter Comprehensive Tests", () => {
       });
       const memoryWithEntity = memories.find((m) => m.id === memoryId);
       expect(memoryWithEntity).toBeDefined();
-      expect(memoryWithEntity!.entityId).toBe(testEntityId);
+      expect(memoryWithEntity?.entityId).toBe(testEntityId);
     });
 
     it("should handle batch operations correctly", async () => {

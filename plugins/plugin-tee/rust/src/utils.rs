@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Utility functions for the TEE plugin.
 
 use crate::error::{Result, TeeError};
@@ -168,5 +169,10 @@ mod tests {
         assert!(get_tee_endpoint("INVALID").is_err());
     }
 }
+
+
+
+
+
 
 

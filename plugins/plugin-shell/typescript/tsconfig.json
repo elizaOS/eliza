@@ -23,5 +23,3 @@
   "include": ["./**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "__tests__"]
 }
-
-

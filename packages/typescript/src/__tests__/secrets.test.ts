@@ -1,6 +1,6 @@
-import {  afterEach, beforeEach, describe, expect, test  } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { hasCharacterSecrets, setDefaultSecretsFromEnv } from "../secrets";
 import type { Character } from "../types";
 
@@ -89,7 +89,7 @@ describe("SecretsManager", () => {
 
       // Should return true because process.env merge is enabled
       expect(result).toBe(true);
-      expect(character.settings && character.settings.secrets).toBeDefined();
+      expect(character.settings?.secrets).toBeDefined();
     });
 
     test("should return false when skipEnvMerge is true", async () => {
@@ -125,14 +125,18 @@ describe("SecretsManager", () => {
       });
 
       expect(result).toBe(true);
-      expect(character.settings && character.settings.secrets).toBeDefined();
+      expect(character.settings?.secrets).toBeDefined();
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>)
-          .TEST_OPENAI_API_KEY,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_OPENAI_API_KEY,
       ).toBe("test-key-123");
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>)
-          .TEST_ANTHROPIC_API_KEY,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_ANTHROPIC_API_KEY,
       ).toBe("test-key-456");
     });
 
@@ -160,12 +164,17 @@ describe("SecretsManager", () => {
       expect(result).toBe(true);
       // Character secret should override process.env
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>).TEST_OPENAI_KEY,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_OPENAI_KEY,
       ).toBe("character-override");
       // process.env secret should be added for non-conflicting keys
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>)
-          .TEST_ANTHROPIC_KEY,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_ANTHROPIC_KEY,
       ).toBe("env-key-456");
     });
 
@@ -195,20 +204,28 @@ describe("SecretsManager", () => {
 
       expect(result).toBe(true);
       // Existing character settings (non-secrets) should be preserved
-      expect(character.settings && character.settings.TEST_LOG_LEVEL).toBe("debug");
+      expect(character.settings?.TEST_LOG_LEVEL).toBe("debug");
       // process.env values should NOT be merged into settings root
-      expect(character.settings && character.settings.TEST_SERVER_PORT).toBeUndefined();
+      expect(character.settings?.TEST_SERVER_PORT).toBeUndefined();
       // process.env values should be merged into settings.secrets
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>)
-          .TEST_SERVER_PORT,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_SERVER_PORT,
       ).toBe("3000");
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>).TEST_LOG_LEVEL,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_LOG_LEVEL,
       ).toBe("info");
       // Character secret should override process.env
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>).TEST_OPENAI_KEY,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_OPENAI_KEY,
       ).toBe("character-override");
     });
 
@@ -235,10 +252,13 @@ describe("SecretsManager", () => {
         RUNTIME_SECRET: "must-not-be-touched",
       });
       // process.env should NOT be merged into root secrets
-      expect(character.secrets && character.secrets.TEST_SOME_KEY).toBeUndefined();
+      expect(character.secrets?.TEST_SOME_KEY).toBeUndefined();
       // But should be in settings.secrets
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>).TEST_SOME_KEY,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).TEST_SOME_KEY,
       ).toBe("from-env");
     });
 
@@ -264,17 +284,25 @@ describe("SecretsManager", () => {
 
       expect(result).toBe(true);
       // Existing settings should be preserved
-      expect(character.settings && character.settings.EXISTING_SETTING).toBe("should-be-preserved");
-      expect(character.settings && character.settings.ANOTHER_SETTING).toEqual({ nested: "object" });
+      expect(character.settings?.EXISTING_SETTING).toBe("should-be-preserved");
+      expect(character.settings?.ANOTHER_SETTING).toEqual({
+        nested: "object",
+      });
       // Env vars should NOT be in settings root
-      expect(character.settings && character.settings.ENV_VAR_1).toBeUndefined();
-      expect(character.settings && character.settings.ENV_VAR_2).toBeUndefined();
+      expect(character.settings?.ENV_VAR_1).toBeUndefined();
+      expect(character.settings?.ENV_VAR_2).toBeUndefined();
       // Env vars should ONLY be in settings.secrets
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>).ENV_VAR_1,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).ENV_VAR_1,
       ).toBe("env-value-1");
       expect(
-        (character.settings && character.settings.secrets as Record<string, string>).ENV_VAR_2,
+        (
+          character.settings &&
+          (character.settings.secrets as Record<string, string>)
+        ).ENV_VAR_2,
       ).toBe("env-value-2");
     });
   });

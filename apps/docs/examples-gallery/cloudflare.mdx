@@ -1,6 +1,6 @@
 ---
-title: 'Cloudflare Examples'
-description: 'Deploy elizaOS to Cloudflare Workers'
+title: "Cloudflare Examples"
+description: "Deploy elizaOS to Cloudflare Workers"
 ---
 
 Deploy AI agents to Cloudflare's global edge network.
@@ -14,11 +14,11 @@ wrangler deploy
 
 ## Available Implementations
 
-| Language | Directory | Features |
-|----------|-----------|----------|
-| TypeScript | `examples/cloudflare/src/` | Workers |
-| Python | `examples/cloudflare/python-worker/` | Python Workers |
-| Rust | `examples/cloudflare/rust-worker/` | WASM Workers |
+| Language   | Directory                            | Features       |
+| ---------- | ------------------------------------ | -------------- |
+| TypeScript | `examples/cloudflare/src/`           | Workers        |
+| Python     | `examples/cloudflare/python-worker/` | Python Workers |
+| Rust       | `examples/cloudflare/rust-worker/`   | WASM Workers   |
 
 ## Worker
 
@@ -129,5 +129,6 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 - **Unlimited free requests** (100K/day)
 - **Durable Objects** for state
 - **KV Storage** for persistence
+
 
 

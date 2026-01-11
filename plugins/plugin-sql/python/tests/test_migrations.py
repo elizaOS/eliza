@@ -11,7 +11,7 @@ import pytest
 from elizaos_plugin_sql.migration_service import MigrationService, derive_schema_name
 
 if TYPE_CHECKING:
-    from elizaos_plugin_sql.adapters.postgres import PostgresAdapter
+    pass
 
 
 class TestMigrationService:
@@ -189,9 +189,7 @@ class TestPluginSchemaNamespacing:
         assert derive_schema_name("MyPlugin") == "myplugin"
 
     @pytest.mark.asyncio
-    async def test_create_schema_for_plugin(
-        self, migration_service: MigrationService
-    ) -> None:
+    async def test_create_schema_for_plugin(self, migration_service: MigrationService) -> None:
         """Test creating a schema for a plugin."""
         schema_name = "test_custom_schema"
 
@@ -208,9 +206,7 @@ class TestPluginSchemaNamespacing:
         assert status["hasRun"] is True
 
     @pytest.mark.asyncio
-    async def test_invalid_schema_name_rejected(
-        self, migration_service: MigrationService
-    ) -> None:
+    async def test_invalid_schema_name_rejected(self, migration_service: MigrationService) -> None:
         """Test that invalid schema names are rejected."""
         # Schema names with special characters should be rejected
         with pytest.raises(ValueError, match="Invalid schema name"):
@@ -223,9 +219,7 @@ class TestPluginSchemaNamespacing:
             await migration_service.ensure_schema_exists("invalid/name")
 
     @pytest.mark.asyncio
-    async def test_public_schema_always_exists(
-        self, migration_service: MigrationService
-    ) -> None:
+    async def test_public_schema_always_exists(self, migration_service: MigrationService) -> None:
         """Test that public schema operation is a no-op."""
         # Should not raise any errors
         await migration_service.ensure_schema_exists("public")
@@ -294,9 +288,7 @@ class TestMigrationEdgeCases:
         assert last["hash"] == "hash_3"
 
     @pytest.mark.asyncio
-    async def test_get_expected_schema_name(
-        self, migration_service: MigrationService
-    ) -> None:
+    async def test_get_expected_schema_name(self, migration_service: MigrationService) -> None:
         """Test getting expected schema name for plugins."""
         schema = await migration_service.get_expected_schema_name("@elizaos/plugin-sql")
         assert schema == "public"

@@ -1,8 +1,8 @@
 """Type definitions for the Memory Plugin."""
 
-from enum import Enum
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
@@ -27,12 +27,12 @@ class LongTermMemory:
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, object] = field(default_factory=dict)
-    embedding: Optional[list[float]] = None
+    embedding: list[float] | None = None
     confidence: float = 1.0
-    source: Optional[str] = None
-    last_accessed_at: Optional[datetime] = None
+    source: str | None = None
+    last_accessed_at: datetime | None = None
     access_count: int = 0
-    similarity: Optional[float] = None
+    similarity: float | None = None
 
 
 @dataclass
@@ -49,10 +49,10 @@ class SessionSummary:
     end_time: datetime
     created_at: datetime
     updated_at: datetime
-    entity_id: Optional[UUID] = None
+    entity_id: UUID | None = None
     topics: list[str] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
-    embedding: Optional[list[float]] = None
+    embedding: list[float] | None = None
 
 
 @dataclass
@@ -94,5 +94,8 @@ class SummaryResult:
     summary: str
     topics: list[str]
     key_points: list[str]
+
+
+
 
 

@@ -1,6 +1,6 @@
 /**
  * Autonomy Types for elizaOS
- * 
+ *
  * Defines types for autonomous agent operation.
  */
 
@@ -31,4 +31,3 @@ export interface AutonomyConfig {
   /** Auto-start autonomy when enabled in settings */
   autoStart?: boolean;
 }
-

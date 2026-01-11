@@ -14,31 +14,24 @@ export class TwitterError extends Error {
   constructor(
     public type: TwitterErrorType,
     message: string,
-    public originalError?: any,
-    public details?: Record<string, any>,
+    public originalError?: unknown,
+    public details?: Record<string, unknown>
   ) {
     super(message);
     this.name = "TwitterError";
   }
 }
 
-export function getErrorType(error: any): TwitterErrorType {
-  const message = error?.message?.toLowerCase() || "";
-  const code = error?.code || error?.response?.status;
+export function getErrorType(error: unknown): TwitterErrorType {
+  const errorObj = error as { message?: string; code?: number; response?: { status?: number } };
+  const message = errorObj?.message?.toLowerCase() || "";
+  const code = errorObj?.code || errorObj?.response?.status;
 
-  if (
-    code === 401 ||
-    message.includes("unauthorized") ||
-    message.includes("authentication")
-  ) {
+  if (code === 401 || message.includes("unauthorized") || message.includes("authentication")) {
     return TwitterErrorType.AUTH;
   }
 
-  if (
-    code === 429 ||
-    message.includes("rate limit") ||
-    message.includes("too many requests")
-  ) {
+  if (code === 429 || message.includes("rate limit") || message.includes("too many requests")) {
     return TwitterErrorType.RATE_LIMIT;
   }
 
@@ -54,15 +47,11 @@ export function getErrorType(error: any): TwitterErrorType {
     return TwitterErrorType.MEDIA;
   }
 
-  if (
-    message.includes("invalid") ||
-    message.includes("missing") ||
-    message.includes("required")
-  ) {
+  if (message.includes("invalid") || message.includes("missing") || message.includes("required")) {
     return TwitterErrorType.VALIDATION;
   }
 
-  if (code >= 400 && code < 500) {
+  if (code !== undefined && code >= 400 && code < 500) {
     return TwitterErrorType.API;
   }
 
@@ -71,22 +60,20 @@ export function getErrorType(error: any): TwitterErrorType {
 
 export function handleTwitterError(
   context: string,
-  error: any,
-  throwError = false,
+  error: unknown,
+  throwError = false
 ): TwitterError | null {
   const errorType = getErrorType(error);
-  const errorMessage = error?.message || String(error);
+  const errorObj = error as { message?: string; response?: unknown };
+  const errorMessage = errorObj?.message || String(error);
 
-  const twitterError = new TwitterError(
-    errorType,
-    `${context}: ${errorMessage}`,
-    error,
-    {
-      context,
-      timestamp: new Date().toISOString(),
-      ...(error?.response && { response: error.response }),
-    },
-  );
+  const twitterError = new TwitterError(errorType, `${context}: ${errorMessage}`, error, {
+    context,
+    timestamp: new Date().toISOString(),
+    ...(errorObj?.response && typeof errorObj.response === "object" && errorObj.response !== null
+      ? { response: errorObj.response }
+      : {}),
+  });
 
   // Log based on error type
   switch (errorType) {
@@ -110,34 +97,24 @@ export function handleTwitterError(
   return twitterError;
 }
 
-export function isRetryableError(error: TwitterError | any): boolean {
+export function isRetryableError(error: TwitterError | unknown): boolean {
   if (error instanceof TwitterError) {
-    return [TwitterErrorType.RATE_LIMIT, TwitterErrorType.NETWORK].includes(
-      error.type,
-    );
+    return [TwitterErrorType.RATE_LIMIT, TwitterErrorType.NETWORK].includes(error.type);
   }
 
   const errorType = getErrorType(error);
-  return [TwitterErrorType.RATE_LIMIT, TwitterErrorType.NETWORK].includes(
-    errorType,
-  );
+  return [TwitterErrorType.RATE_LIMIT, TwitterErrorType.NETWORK].includes(errorType);
 }
 
-export function getRetryDelay(
-  error: TwitterError | any,
-  attempt: number,
-): number {
+export function getRetryDelay(error: TwitterError | unknown, attempt: number): number {
   const baseDelay = 1000; // 1 second
   const maxDelay = 60000; // 60 seconds
 
-  if (
-    error instanceof TwitterError ||
-    getErrorType(error) === TwitterErrorType.RATE_LIMIT
-  ) {
+  if (error instanceof TwitterError || getErrorType(error) === TwitterErrorType.RATE_LIMIT) {
     // For rate limits, use longer delays
-    return Math.min(baseDelay * Math.pow(2, attempt) * 5, maxDelay);
+    return Math.min(baseDelay * 2 ** attempt * 5, maxDelay);
   }
 
   // Exponential backoff for other errors
-  return Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  return Math.min(baseDelay * 2 ** attempt, maxDelay);
 }

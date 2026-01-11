@@ -7,26 +7,24 @@ description: "Build plugins for elizaOS in TypeScript, Python, or Rust"
 
 <Tabs>
   <Tab title="TypeScript">
-1. **Scaffold** - `elizaos create my-plugin --type plugin`
-2. **Build** - Add actions, providers, or services
-3. **Test** - `elizaos test`
+    1. **Scaffold** - `elizaos create my-plugin --type plugin` 2. **Build** -
+    Add actions, providers, or services 3. **Test** - `elizaos test`
   </Tab>
   <Tab title="Python">
-1. **Create** - `mkdir plugin-my-plugin && cd plugin-my-plugin`
-2. **Build** - Define your plugin with actions and providers
-3. **Test** - `pytest`
+    1. **Create** - `mkdir plugin-my-plugin && cd plugin-my-plugin` 2. **Build**
+    - Define your plugin with actions and providers 3. **Test** - `pytest`
   </Tab>
   <Tab title="Rust">
-1. **Create** - `cargo new plugin-my-plugin --lib`
-2. **Build** - Implement the Plugin trait
-3. **Test** - `cargo test`
+    1. **Create** - `cargo new plugin-my-plugin --lib` 2. **Build** - Implement
+    the Plugin trait 3. **Test** - `cargo test`
   </Tab>
 </Tabs>
 
 That's it. No complex setup, no boilerplate to maintain.
 
 <Tip>
-**30 minutes to your first plugin.** Focus on your logic, not infrastructure. elizaOS plugins work identically across TypeScript, Python, and Rust.
+  **30 minutes to your first plugin.** Focus on your logic, not infrastructure.
+  elizaOS plugins work identically across TypeScript, Python, and Rust.
 </Tip>
 
 ## Quick Start: Scaffolding Plugins with CLI
@@ -73,7 +71,7 @@ plugin-my-plugin/
 │       └── index.ts
 ├── package.json           # Pre-configured with elizaos deps
 ├── tsconfig.json          # TypeScript config
-├── tsup.config.ts         # Build configuration
+├── build.ts               # Build script using Bun.build
 └── README.md              # Plugin documentation
 ```
 
@@ -121,15 +119,17 @@ bun run build
 ```
 
 The scaffolded plugin includes:
+
 - ✅ Proper TypeScript configuration
-- ✅ Build setup with tsup (and Vite for full plugins)
+- ✅ Build setup with Bun.build (and Vite for full plugins)
 - ✅ Example action and provider to extend
 - ✅ Integration with `@elizaos/core`
 - ✅ Development scripts ready to use
 - ✅ Basic tests structure
 
 <Tip>
-The CLI templates follow all elizaOS conventions and best practices, making it easy to get started without worrying about configuration.
+  The CLI templates follow all elizaOS conventions and best practices, making it
+  easy to get started without worrying about configuration.
 </Tip>
 
 ## Manual Plugin Creation
@@ -151,7 +151,7 @@ bun init
 bun add @elizaos/core
 
 # Development dependencies
-bun add -d typescript tsup @types/node
+bun add -d typescript @types/node
 ```
 
 ### 3. Configure TypeScript
@@ -183,19 +183,70 @@ Create `tsconfig.json`:
 
 ### 4. Configure Build
 
-Create `tsup.config.ts`:
+Create `build.ts`:
 
 ```typescript
-import { defineConfig } from 'tsup';
+#!/usr/bin/env bun
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['esm'],
-  dts: true,
-  splitting: false,
-  sourcemap: true,
-  clean: true,
-  external: ['@elizaos/core'],
+/**
+ * Build script for your plugin
+ * Uses Bun.build for bundling
+ */
+
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+
+const externalDeps = ["@elizaos/core"];
+
+async function buildPlugin() {
+  console.log("🔨 Building plugin...\n");
+
+  // Clean dist directory
+  if (existsSync("dist")) {
+    await rm("dist", { recursive: true, force: true });
+  }
+
+  // Build with Bun
+  console.log("📦 Bundling with Bun...");
+  const buildResult = await Bun.build({
+    entrypoints: ["src/index.ts"],
+    outdir: "dist",
+    target: "node",
+    format: "esm",
+    sourcemap: "external",
+    minify: false,
+    external: externalDeps,
+  });
+
+  if (!buildResult.success) {
+    console.error("Build failed:");
+    for (const log of buildResult.logs) {
+      console.error(log);
+    }
+    process.exit(1);
+  }
+
+  console.log(`✅ Built ${buildResult.outputs.length} file(s)`);
+
+  // Generate type declarations with tsc
+  console.log("📝 Generating type declarations...");
+  const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  await tscProcess.exited;
+
+  if (tscProcess.exitCode !== 0) {
+    console.error("TypeScript declaration generation failed");
+    process.exit(1);
+  }
+
+  console.log("\n✅ Build complete!");
+}
+
+buildPlugin().catch((error) => {
+  console.error("Build failed:", error);
+  process.exit(1);
 });
 ```
 
@@ -206,26 +257,27 @@ export default defineConfig({
 Create `src/index.ts`:
 
 ```typescript
-import type { Plugin } from '@elizaos/core';
-import { myAction } from './actions/myAction';
-import { myProvider } from './providers/myProvider';
-import { MyService } from './services/myService';
+import type { Plugin } from "@elizaos/core";
+import { myAction } from "./actions/myAction";
+import { myProvider } from "./providers/myProvider";
+import { MyService } from "./services/myService";
 
 export const myPlugin: Plugin = {
-  name: 'my-custom-plugin',
-  description: 'A custom plugin for elizaOS',
-  
+  name: "my-custom-plugin",
+  description: "A custom plugin for elizaOS",
+
   actions: [myAction],
   providers: [myProvider],
   services: [MyService],
-  
+
   init: async (config, runtime) => {
-    console.log('Plugin initialized');
-  }
+    console.log("Plugin initialized");
+  },
 };
 
 export default myPlugin;
 ```
+
   </Tab>
   <Tab title="Python">
 Create `plugin.py`:
@@ -248,6 +300,7 @@ async def init(config, runtime):
 
 my_plugin.init = init
 ```
+
   </Tab>
   <Tab title="Rust">
 Create `src/lib.rs`:
@@ -275,6 +328,7 @@ pub fn create_my_plugin() -> Result<Plugin> {
     })
 }
 ```
+
   </Tab>
 </Tabs>
 
@@ -288,8 +342,8 @@ pub fn create_my_plugin() -> Result<Plugin> {
   "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
     "test": "bun test"
   }
 }
@@ -316,10 +370,10 @@ If developing within the elizaOS monorepo:
 3. Use the plugin in your project:
 
 ```typescript
-import { myPlugin } from '@yourorg/plugin-myplugin';
+import { myPlugin } from "@yourorg/plugin-myplugin";
 
 const agent = {
-  name: 'MyAgent',
+  name: "MyAgent",
   plugins: [myPlugin],
 };
 ```
@@ -356,7 +410,8 @@ bun link @yourorg/plugin-myplugin
 ```
 
 <Note>
-When using `bun link`, remember to rebuild your plugin (`bun run build`) after making changes for them to be reflected in your project.
+  When using `bun link`, remember to rebuild your plugin (`bun run build`) after
+  making changes for them to be reflected in your project.
 </Note>
 
 ## Testing Plugins
@@ -384,7 +439,15 @@ src/
 #### Base Test Imports
 
 ```typescript
-import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
+import {
+  describe,
+  expect,
+  it,
+  mock,
+  beforeEach,
+  afterEach,
+  spyOn,
+} from "bun:test";
 import {
   type IAgentRuntime,
   type Memory,
@@ -395,7 +458,7 @@ import {
   type Evaluator,
   ModelType,
   logger,
-} from '@elizaos/core';
+} from "@elizaos/core";
 ```
 
 ### Creating Test Utilities
@@ -403,14 +466,14 @@ import {
 Create a `test-utils.ts` file with reusable mocks:
 
 ```typescript
-import { mock } from 'bun:test';
+import { mock } from "bun:test";
 import {
   type IAgentRuntime,
   type Memory,
   type State,
   type Character,
   type UUID,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 // Mock Runtime Type
 export type MockRuntime = Partial<IAgentRuntime> & {
@@ -425,32 +488,34 @@ export type MockRuntime = Partial<IAgentRuntime> & {
 };
 
 // Create Mock Runtime
-export function createMockRuntime(overrides?: Partial<MockRuntime>): MockRuntime {
+export function createMockRuntime(
+  overrides?: Partial<MockRuntime>,
+): MockRuntime {
   return {
-    agentId: 'test-agent-123' as UUID,
+    agentId: "test-agent-123" as UUID,
     character: {
-      name: 'TestAgent',
-      bio: 'A test agent',
-      id: 'test-character' as UUID,
+      name: "TestAgent",
+      bio: "A test agent",
+      id: "test-character" as UUID,
       ...overrides?.character,
     },
     getSetting: mock((key: string) => {
       const settings: Record<string, string> = {
-        TEST_API_KEY: 'test-key-123',
+        TEST_API_KEY: "test-key-123",
         ...overrides?.settings,
       };
       return settings[key];
     }),
     useModel: mock(async () => ({
-      content: 'Mock response from LLM',
+      content: "Mock response from LLM",
       success: true,
     })),
     composeState: mock(async () => ({
-      values: { test: 'state' },
+      values: { test: "state" },
       data: {},
-      text: 'Composed state',
+      text: "Composed state",
     })),
-    createMemory: mock(async () => ({ id: 'memory-123' })),
+    createMemory: mock(async () => ({ id: "memory-123" })),
     getMemories: mock(async () => []),
     getService: mock(() => null),
     ...overrides,
@@ -460,11 +525,11 @@ export function createMockRuntime(overrides?: Partial<MockRuntime>): MockRuntime
 // Create Mock Message
 export function createMockMessage(overrides?: Partial<Memory>): Memory {
   return {
-    id: 'msg-123' as UUID,
-    entityId: 'entity-123' as UUID,
-    roomId: 'room-123' as UUID,
+    id: "msg-123" as UUID,
+    entityId: "entity-123" as UUID,
+    roomId: "room-123" as UUID,
     content: {
-      text: 'Test message',
+      text: "Test message",
       ...overrides?.content,
     },
     ...overrides,
@@ -475,11 +540,11 @@ export function createMockMessage(overrides?: Partial<Memory>): Memory {
 export function createMockState(overrides?: Partial<State>): State {
   return {
     values: {
-      test: 'value',
+      test: "value",
       ...overrides?.values,
     },
     data: overrides?.data || {},
-    text: overrides?.text || 'Test state',
+    text: overrides?.text || "Test state",
   } as State;
 }
 ```
@@ -487,39 +552,51 @@ export function createMockState(overrides?: Partial<State>): State {
 ### Testing Actions
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'bun:test';
-import { myAction } from '../src/actions/myAction';
-import { createMockRuntime, createMockMessage, createMockState } from './test-utils';
-import { ActionResult } from '@elizaos/core';
+import { describe, it, expect, beforeEach } from "bun:test";
+import { myAction } from "../src/actions/myAction";
+import {
+  createMockRuntime,
+  createMockMessage,
+  createMockState,
+} from "./test-utils";
+import { ActionResult } from "@elizaos/core";
 
-describe('MyAction', () => {
+describe("MyAction", () => {
   let mockRuntime: any;
   let mockMessage: Memory;
   let mockState: State;
 
   beforeEach(() => {
     mockRuntime = createMockRuntime({
-      settings: { MY_API_KEY: 'test-key' },
+      settings: { MY_API_KEY: "test-key" },
     });
-    mockMessage = createMockMessage({ content: { text: 'Do the thing' } });
+    mockMessage = createMockMessage({ content: { text: "Do the thing" } });
     mockState = createMockState();
   });
 
-  describe('validation', () => {
-    it('should validate when all requirements are met', async () => {
-      const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+  describe("validation", () => {
+    it("should validate when all requirements are met", async () => {
+      const isValid = await myAction.validate(
+        mockRuntime,
+        mockMessage,
+        mockState,
+      );
       expect(isValid).toBe(true);
     });
 
-    it('should not validate without required service', async () => {
+    it("should not validate without required service", async () => {
       mockRuntime.getService = mock(() => null);
-      const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+      const isValid = await myAction.validate(
+        mockRuntime,
+        mockMessage,
+        mockState,
+      );
       expect(isValid).toBe(false);
     });
   });
 
-  describe('handler', () => {
-    it('should return success ActionResult on successful execution', async () => {
+  describe("handler", () => {
+    it("should return success ActionResult on successful execution", async () => {
       const mockCallback = mock();
 
       const result = await myAction.handler(
@@ -527,34 +604,38 @@ describe('MyAction', () => {
         mockMessage,
         mockState,
         {},
-        mockCallback
+        mockCallback,
       );
 
       expect(result.success).toBe(true);
-      expect(result.text).toContain('completed');
-      expect(result.values).toHaveProperty('lastActionTime');
+      expect(result.text).toContain("completed");
+      expect(result.values).toHaveProperty("lastActionTime");
       expect(mockCallback).toHaveBeenCalled();
     });
 
-    it('should handle errors gracefully', async () => {
+    it("should handle errors gracefully", async () => {
       // Make service throw error
       mockRuntime.getService = mock(() => {
-        throw new Error('Service unavailable');
+        throw new Error("Service unavailable");
       });
 
-      const result = await myAction.handler(mockRuntime, mockMessage, mockState);
+      const result = await myAction.handler(
+        mockRuntime,
+        mockMessage,
+        mockState,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
-      expect(result.text).toContain('Failed');
+      expect(result.text).toContain("Failed");
     });
 
-    it('should access previous action results', async () => {
+    it("should access previous action results", async () => {
       const previousResults: ActionResult[] = [
         {
           success: true,
-          values: { previousData: 'test' },
-          data: { actionName: 'PREVIOUS_ACTION' },
+          values: { previousData: "test" },
+          data: { actionName: "PREVIOUS_ACTION" },
         },
       ];
 
@@ -562,7 +643,7 @@ describe('MyAction', () => {
         mockRuntime,
         mockMessage,
         mockState,
-        { context: { previousResults } }
+        { context: { previousResults } },
       );
 
       // Verify it used previous results
@@ -570,8 +651,8 @@ describe('MyAction', () => {
     });
   });
 
-  describe('examples', () => {
-    it('should have valid example structure', () => {
+  describe("examples", () => {
+    it("should have valid example structure", () => {
       expect(myAction.examples).toBeDefined();
       expect(Array.isArray(myAction.examples)).toBe(true);
 
@@ -581,8 +662,8 @@ describe('MyAction', () => {
 
         // Each message should have name and content
         for (const message of example) {
-          expect(message).toHaveProperty('name');
-          expect(message).toHaveProperty('content');
+          expect(message).toHaveProperty("name");
+          expect(message).toHaveProperty("content");
         }
       }
     });
@@ -593,11 +674,15 @@ describe('MyAction', () => {
 ### Testing Providers
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'bun:test';
-import { myProvider } from '../src/providers/myProvider';
-import { createMockRuntime, createMockMessage, createMockState } from './test-utils';
+import { describe, it, expect, beforeEach } from "bun:test";
+import { myProvider } from "../src/providers/myProvider";
+import {
+  createMockRuntime,
+  createMockMessage,
+  createMockState,
+} from "./test-utils";
 
-describe('MyProvider', () => {
+describe("MyProvider", () => {
   let mockRuntime: any;
   let mockMessage: Memory;
   let mockState: State;
@@ -608,24 +693,24 @@ describe('MyProvider', () => {
     mockState = createMockState();
   });
 
-  it('should return provider result with text and data', async () => {
+  it("should return provider result with text and data", async () => {
     const result = await myProvider.get(mockRuntime, mockMessage, mockState);
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('Current');
+    expect(result.text).toContain("Current");
     expect(result.data).toBeDefined();
     expect(result.values).toBeDefined();
   });
 
-  it('should handle errors gracefully', async () => {
+  it("should handle errors gracefully", async () => {
     // Mock service to throw error
     mockRuntime.getService = mock(() => {
-      throw new Error('Service error');
+      throw new Error("Service error");
     });
 
     const result = await myProvider.get(mockRuntime, mockMessage, mockState);
 
-    expect(result.text).toContain('Unable');
+    expect(result.text).toContain("Unable");
     expect(result.data?.error).toBeDefined();
   });
 });
@@ -634,18 +719,18 @@ describe('MyProvider', () => {
 ### Testing Services
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { MyService } from '../src/services/myService';
-import { createMockRuntime } from './test-utils';
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { MyService } from "../src/services/myService";
+import { createMockRuntime } from "./test-utils";
 
-describe('MyService', () => {
+describe("MyService", () => {
   let mockRuntime: any;
   let service: MyService;
 
   beforeEach(async () => {
     mockRuntime = createMockRuntime({
       settings: {
-        MY_API_KEY: 'test-api-key',
+        MY_API_KEY: "test-api-key",
       },
     });
   });
@@ -656,21 +741,21 @@ describe('MyService', () => {
     }
   });
 
-  it('should initialize successfully with valid config', async () => {
+  it("should initialize successfully with valid config", async () => {
     service = await MyService.start(mockRuntime);
     expect(service).toBeDefined();
     expect(service.capabilityDescription).toBeDefined();
   });
 
-  it('should throw error without API key', async () => {
+  it("should throw error without API key", async () => {
     mockRuntime.getSetting = mock(() => undefined);
-    
+
     expect(async () => {
       await MyService.start(mockRuntime);
-    }).toThrow('MY_API_KEY not configured');
+    }).toThrow("MY_API_KEY not configured");
   });
 
-  it('should clean up resources on stop', async () => {
+  it("should clean up resources on stop", async () => {
     service = await MyService.start(mockRuntime);
     await service.stop();
     // Verify cleanup happened
@@ -685,24 +770,24 @@ For integration testing with a live runtime:
 ```typescript
 // tests/e2e/myPlugin.e2e.ts
 export const myPluginE2ETests = {
-  name: 'MyPlugin E2E Tests',
+  name: "MyPlugin E2E Tests",
   tests: [
     {
-      name: 'should execute full plugin flow',
+      name: "should execute full plugin flow",
       fn: async (runtime: IAgentRuntime) => {
         // Create test message
         const message: Memory = {
           id: generateId(),
-          entityId: 'test-user',
+          entityId: "test-user",
           roomId: runtime.agentId,
           content: {
-            text: 'Please do the thing',
-            source: 'test',
+            text: "Please do the thing",
+            source: "test",
           },
         };
 
         // Store message
-        await runtime.createMemory(message, 'messages');
+        await runtime.createMemory(message, "messages");
 
         // Compose state
         const state = await runtime.composeState(message);
@@ -716,7 +801,7 @@ export const myPluginE2ETests = {
           async (response) => {
             // Verify callback responses
             expect(response.text).toBeDefined();
-          }
+          },
         );
 
         // Verify result
@@ -725,7 +810,7 @@ export const myPluginE2ETests = {
         // Verify side effects
         const memories = await runtime.getMemories({
           roomId: message.roomId,
-          tableName: 'action_results',
+          tableName: "action_results",
           count: 1,
         });
 
@@ -829,12 +914,12 @@ npm version major  # 0.1.0 -> 1.0.0
 ### Enable Debug Logging
 
 ```typescript
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
 
 // In your plugin
-logger.debug('Plugin initialized', { config });
-logger.info('Action executed', { result });
-logger.error('Failed to connect', { error });
+logger.debug("Plugin initialized", { config });
+logger.info("Action executed", { result });
+logger.error("Failed to connect", { error });
 ```
 
 ### VS Code Debug Configuration
@@ -883,21 +968,21 @@ Create `.vscode/launch.json`:
     Deep dive into Actions, Providers, Evaluators, and Services
   </Card>
 
-  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
-    Learn proven plugin development patterns
-  </Card>
+<Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+  Learn proven plugin development patterns
+</Card>
 
-  <Card title="Plugin Schemas" icon="list" href="/plugins/schemas">
-    Understand plugin configuration and validation
-  </Card>
+<Card title="Plugin Schemas" icon="list" href="/plugins/schemas">
+  Understand plugin configuration and validation
+</Card>
 
-  <Card title="Plugin Reference" icon="book" href="/plugins/reference">
-    Complete API reference for all interfaces
-  </Card>
+<Card title="Plugin Reference" icon="book" href="/plugins/reference">
+  Complete API reference for all interfaces
+</Card>
 
-  <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
-    Share your plugin with the community
-  </Card>
+<Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
+  Share your plugin with the community
+</Card>
 
   <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
     Ship your agent with plugins to production

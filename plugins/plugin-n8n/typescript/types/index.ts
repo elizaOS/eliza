@@ -76,12 +76,7 @@ export interface PluginSpecification {
 /**
  * Status of a plugin creation job.
  */
-export type JobStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 /**
  * Error that occurred during plugin creation.
@@ -150,5 +145,3 @@ export interface PluginRegistryData {
   }>;
   activeJobs: number;
 }
-
-

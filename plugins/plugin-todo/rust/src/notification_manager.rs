@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Notification manager for handling todo notifications.
 
 use crate::types::NotificationType;
@@ -21,6 +22,7 @@ pub struct NotificationPreferences {
     /// Quiet hours (start, end)
     pub quiet_hours: Option<(u8, u8)>,
 }
+
 
 impl Default for NotificationPreferences {
     fn default() -> Self {
@@ -73,6 +75,7 @@ pub struct NotificationManager {
     notification_tx: Option<mpsc::Sender<NotificationData>>,
     notification_rx: Option<mpsc::Receiver<NotificationData>>,
 }
+
 
 impl Default for NotificationManager {
     fn default() -> Self {
@@ -254,5 +257,10 @@ impl NotificationManager {
 }
 
 use chrono::Timelike;
+
+
+
+
+
 
 

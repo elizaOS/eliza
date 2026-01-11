@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Memory Plugin.
 
 use chrono::{DateTime, Utc};

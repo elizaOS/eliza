@@ -26,7 +26,7 @@ async def main():
         api_key="eliza_xxxxx",  # Get from https://www.elizacloud.ai/dashboard/api-keys
         base_url="https://www.elizacloud.ai/api/v1",
     )
-    
+
     async with ElizaCloudClient(config) as client:
         # Text generation
         text = await client.generate_text(
@@ -34,19 +34,19 @@ async def main():
             model_size="large",
         )
         print(f"Generated text: {text}")
-        
+
         # Embeddings
         embedding = await client.generate_embedding(
             TextEmbeddingParams(text="Hello, world!")
         )
         print(f"Embedding dimension: {len(embedding)}")
-        
+
         # Batch embeddings
         embeddings = await client.generate_embedding(
             TextEmbeddingParams(texts=["Hello", "World", "!"])
         )
         print(f"Batch embeddings: {len(embeddings)}")
-        
+
         # Image generation
         images = await client.generate_image(
             ImageGenerationParams(
@@ -71,17 +71,18 @@ asyncio.run(main())
 
 ## Configuration
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `api_key` | ElizaOS Cloud API key (required) | - |
-| `base_url` | Base URL for API requests | `https://www.elizacloud.ai/api/v1` |
-| `small_model` | Model for quick tasks | `gpt-4o-mini` |
-| `large_model` | Model for complex tasks | `gpt-4o` |
-| `embedding_model` | Model for embeddings | `text-embedding-3-small` |
-| `embedding_dimensions` | Embedding vector size | `1536` |
+| Setting                | Description                      | Default                            |
+| ---------------------- | -------------------------------- | ---------------------------------- |
+| `api_key`              | ElizaOS Cloud API key (required) | -                                  |
+| `base_url`             | Base URL for API requests        | `https://www.elizacloud.ai/api/v1` |
+| `small_model`          | Model for quick tasks            | `gpt-4o-mini`                      |
+| `large_model`          | Model for complex tasks          | `gpt-4o`                           |
+| `embedding_model`      | Model for embeddings             | `text-embedding-3-small`           |
+| `embedding_dimensions` | Embedding vector size            | `1536`                             |
 
 ## License
 
 MIT
+
 
 

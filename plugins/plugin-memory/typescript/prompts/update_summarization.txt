@@ -1,0 +1,36 @@
+# Task: Update and Condense Conversation Summary
+
+You are updating an existing conversation summary with new messages, while keeping the total summary concise.
+
+# Existing Summary
+{{existingSummary}}
+
+# Existing Topics
+{{existingTopics}}
+
+# New Messages Since Last Summary
+{{newMessages}}
+
+# Instructions
+Update the summary by:
+1. Merging the existing summary with insights from the new messages
+2. Removing redundant or less important details to stay under the token limit
+3. Keeping the most important context and decisions
+4. Adding new topics if they emerge
+5. **CRITICAL**: Keep the ENTIRE updated summary under 2500 tokens
+
+The goal is a rolling summary that captures the essence of the conversation without growing indefinitely.
+
+Respond in this XML format:
+<summary>
+  <text>Your updated and condensed summary here</text>
+  <topics>topic1, topic2, topic3</topics>
+  <keyPoints>
+    <point>First key point</point>
+    <point>Second key point</point>
+  </keyPoints>
+</summary>
+
+
+
+

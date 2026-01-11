@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
+
 /**
  * Local test script for the AWS Lambda handler using full elizaOS runtime
  * Run with: bun run test-local.ts
- * 
+ *
  * This uses the same elizaOS runtime as the chat demo.
  */
 
-import { handler } from "./handler";
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
+import { handler } from "./handler";
 
 // Mock Lambda context
 const mockContext: Context = {
@@ -29,7 +30,7 @@ const mockContext: Context = {
 function createEvent(
   method: string,
   path: string,
-  body?: string
+  body?: string,
 ): APIGatewayProxyEventV2 {
   return {
     version: "2.0",
@@ -83,7 +84,7 @@ async function runTests(): Promise<void> {
   const chatEvent = createEvent(
     "POST",
     "/chat",
-    JSON.stringify({ message: "Hello! What's 2 + 2?" })
+    JSON.stringify({ message: "Hello! What's 2 + 2?" }),
   );
 
   const startTime = Date.now();
@@ -108,7 +109,7 @@ async function runTests(): Promise<void> {
   const invalidEvent = createEvent(
     "POST",
     "/chat",
-    JSON.stringify({ message: "" })
+    JSON.stringify({ message: "" }),
   );
   const invalidResult = await handler(invalidEvent, mockContext);
   console.log(`   Status: ${invalidResult.statusCode}`);

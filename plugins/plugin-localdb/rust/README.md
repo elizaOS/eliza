@@ -61,18 +61,18 @@ async fn main() -> anyhow::Result<()> {
         "postgres://localhost/eliza",
         &agent_id
     ).await?;
-    
+
     adapter.init().await?;
-    
+
     // Create a memory
     let memory = Memory::message(
         UUID::new_v4(),
         UUID::new_v4(),
         "Hello, world!"
     );
-    
+
     let memory_id = adapter.create_memory(&memory, "messages", true).await?;
-    
+
     Ok(())
 }
 ```
@@ -80,8 +80,8 @@ async fn main() -> anyhow::Result<()> {
 ### JavaScript (WASM with PGLite)
 
 ```javascript
-import init, { WasmPgLiteAdapter } from '@elizaos/plugin-sql/rust';
-import { PGlite } from '@electric-sql/pglite';
+import init, { WasmPgLiteAdapter } from "@elizaos/plugin-sql/rust";
+import { PGlite } from "@electric-sql/pglite";
 
 // Initialize WASM module
 await init();
@@ -90,16 +90,19 @@ await init();
 const pglite = new PGlite();
 
 // Create adapter
-const adapter = await new WasmPgLiteAdapter('agent-id-uuid', null);
+const adapter = await new WasmPgLiteAdapter("agent-id-uuid", null);
 await adapter.init_with_pglite(pglite);
 await adapter.init();
 
 // Create a memory
-const memoryId = await adapter.create_memory(JSON.stringify({
-  entityId: 'entity-id',
-  roomId: 'room-id',
-  content: { text: 'Hello, world!' }
-}), 'messages');
+const memoryId = await adapter.create_memory(
+  JSON.stringify({
+    entityId: "entity-id",
+    roomId: "room-id",
+    content: { text: "Hello, world!" },
+  }),
+  "messages",
+);
 
 console.log(`Created memory: ${memoryId}`);
 ```
@@ -134,20 +137,20 @@ src/
 
 The schema is designed to be identical to the TypeScript Drizzle ORM schema:
 
-| Table | Description |
-|-------|-------------|
-| agents | Agent character configurations |
-| memories | Agent memories and messages |
-| embeddings | Vector embeddings for semantic search |
-| entities | User/entity accounts |
-| rooms | Channels and rooms |
-| worlds | Servers and worlds |
-| components | Entity components |
-| participants | Room participants |
-| relationships | Entity relationships |
-| tasks | Scheduled tasks |
-| logs | Activity logs |
-| cache | Key-value cache |
+| Table         | Description                           |
+| ------------- | ------------------------------------- |
+| agents        | Agent character configurations        |
+| memories      | Agent memories and messages           |
+| embeddings    | Vector embeddings for semantic search |
+| entities      | User/entity accounts                  |
+| rooms         | Channels and rooms                    |
+| worlds        | Servers and worlds                    |
+| components    | Entity components                     |
+| participants  | Room participants                     |
+| relationships | Entity relationships                  |
+| tasks         | Scheduled tasks                       |
+| logs          | Activity logs                         |
+| cache         | Key-value cache                       |
 
 ## Migration System
 
@@ -170,6 +173,7 @@ let schema_name = derive_schema_name("@your-org/plugin-name");
 ```
 
 Features:
+
 - Migration tracking tables (`migrations._migrations`, `migrations._journal`, `migrations._snapshots`)
 - Schema snapshot storage
 - Plugin schema namespacing for isolation
@@ -178,6 +182,7 @@ Features:
 ### Future: drizzle-rs Integration
 
 The [drizzle-rs fork](https://github.com/themixednuts/drizzle-rs) is vendored at `vendor/drizzle-rs` for future integration. When stable, it will provide:
+
 - Schema definition using Rust macros
 - Automatic SQL generation from schema diffs
 - Type-safe database queries
@@ -195,4 +200,3 @@ This implementation is designed to be 100% compatible with the TypeScript versio
 ## License
 
 MIT
-

@@ -21,11 +21,5 @@
     "migrations.ts",
     "runtime-migrator/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

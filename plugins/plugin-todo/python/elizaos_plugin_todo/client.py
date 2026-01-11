@@ -3,9 +3,14 @@ High-level client for the Todo Plugin.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
+from elizaos_plugin_todo.cache_manager import CacheManager
+from elizaos_plugin_todo.config import TodoConfig
+from elizaos_plugin_todo.data_service import TodoDataService, create_todo_data_service
+from elizaos_plugin_todo.errors import ValidationError
+from elizaos_plugin_todo.notification_manager import NotificationManager
+from elizaos_plugin_todo.reminder_service import ReminderService
 from elizaos_plugin_todo.types import (
     CreateTodoParams,
     Priority,
@@ -15,12 +20,6 @@ from elizaos_plugin_todo.types import (
     TodoMetadata,
     UpdateTodoParams,
 )
-from elizaos_plugin_todo.config import TodoConfig
-from elizaos_plugin_todo.data_service import TodoDataService, create_todo_data_service
-from elizaos_plugin_todo.reminder_service import ReminderService
-from elizaos_plugin_todo.notification_manager import NotificationManager
-from elizaos_plugin_todo.cache_manager import CacheManager
-from elizaos_plugin_todo.errors import ValidationError
 
 
 class TodoClient:
@@ -41,7 +40,7 @@ class TodoClient:
         ...     print(f"Created: {todo.name}")
     """
 
-    def __init__(self, config: Optional[TodoConfig] = None) -> None:
+    def __init__(self, config: TodoConfig | None = None) -> None:
         """
         Initialize the todo client.
 
@@ -49,10 +48,10 @@ class TodoClient:
             config: Optional configuration
         """
         self._config = config or TodoConfig.from_env()
-        self._data_service: Optional[TodoDataService] = None
-        self._reminder_service: Optional[ReminderService] = None
-        self._notification_manager: Optional[NotificationManager] = None
-        self._cache_manager: Optional[CacheManager] = None
+        self._data_service: TodoDataService | None = None
+        self._reminder_service: ReminderService | None = None
+        self._notification_manager: NotificationManager | None = None
+        self._cache_manager: CacheManager | None = None
         self._started = False
 
     async def __aenter__(self) -> "TodoClient":
@@ -72,7 +71,7 @@ class TodoClient:
         self._config.validate()
 
         self._data_service = create_todo_data_service()
-        
+
         self._cache_manager = CacheManager(
             max_size=self._config.cache_max_size,
             default_ttl_ms=self._config.cache_default_ttl_ms,
@@ -117,11 +116,11 @@ class TodoClient:
         world_id: UUID,
         room_id: UUID,
         entity_id: UUID,
-        description: Optional[str] = None,
-        priority: Optional[Priority] = None,
+        description: str | None = None,
+        priority: Priority | None = None,
         is_urgent: bool = False,
-        due_date: Optional[datetime] = None,
-        tags: Optional[list[str]] = None,
+        due_date: datetime | None = None,
+        tags: list[str] | None = None,
     ) -> Todo:
         """
         Create a new todo.
@@ -189,7 +188,7 @@ class TodoClient:
 
         return todo
 
-    async def get_todo(self, todo_id: UUID) -> Optional[Todo]:
+    async def get_todo(self, todo_id: UUID) -> Todo | None:
         """
         Get a todo by ID.
 
@@ -205,13 +204,13 @@ class TodoClient:
 
     async def get_todos(
         self,
-        agent_id: Optional[UUID] = None,
-        room_id: Optional[UUID] = None,
-        entity_id: Optional[UUID] = None,
-        task_type: Optional[TaskType] = None,
-        is_completed: Optional[bool] = None,
-        tags: Optional[list[str]] = None,
-        limit: Optional[int] = None,
+        agent_id: UUID | None = None,
+        room_id: UUID | None = None,
+        entity_id: UUID | None = None,
+        task_type: TaskType | None = None,
+        is_completed: bool | None = None,
+        tags: list[str] | None = None,
+        limit: int | None = None,
     ) -> list[Todo]:
         """
         Get todos with optional filters.
@@ -300,11 +299,11 @@ class TodoClient:
     async def update_todo(
         self,
         todo_id: UUID,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        priority: Optional[Priority] = None,
-        is_urgent: Optional[bool] = None,
-        due_date: Optional[datetime] = None,
+        name: str | None = None,
+        description: str | None = None,
+        priority: Priority | None = None,
+        is_urgent: bool | None = None,
+        due_date: datetime | None = None,
     ) -> Todo:
         """
         Update a todo.
@@ -355,8 +354,8 @@ class TodoClient:
 
     async def get_overdue_todos(
         self,
-        agent_id: Optional[UUID] = None,
-        room_id: Optional[UUID] = None,
+        agent_id: UUID | None = None,
+        room_id: UUID | None = None,
     ) -> list[Todo]:
         """
         Get overdue todos.
@@ -376,8 +375,8 @@ class TodoClient:
 
     async def reset_daily_todos(
         self,
-        agent_id: Optional[UUID] = None,
-        room_id: Optional[UUID] = None,
+        agent_id: UUID | None = None,
+        room_id: UUID | None = None,
     ) -> int:
         """
         Reset daily todos for a new day.
@@ -424,5 +423,8 @@ class TodoClient:
         self._ensure_started()
         assert self._data_service is not None
         return await self._data_service.remove_tags(todo_id, tags)
+
+
+
 
 

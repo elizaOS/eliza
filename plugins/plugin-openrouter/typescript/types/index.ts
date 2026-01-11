@@ -176,5 +176,3 @@ export interface OpenRouterModelInfo {
     completion: number;
   };
 }
-
-

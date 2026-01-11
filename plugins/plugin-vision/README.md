@@ -9,11 +9,11 @@ objects, and make decisions based on visual input.
 
 This plugin is implemented in multiple languages with complete feature parity:
 
-| Language | Directory | Status |
-|----------|-----------|--------|
-| TypeScript | `src/` | ✅ Production Ready |
-| Python | `python/` | ✅ Production Ready |
-| Rust | `rust/` | 🔄 In Development |
+| Language   | Directory | Status              |
+| ---------- | --------- | ------------------- |
+| TypeScript | `src/`    | ✅ Production Ready |
+| Python     | `python/` | ✅ Production Ready |
+| Rust       | `rust/`   | 🔄 In Development   |
 
 The TypeScript implementation is the primary and most feature-complete version.
 
@@ -251,9 +251,9 @@ Example autonomous behavior:
 
 ```typescript
 // Agent autonomously monitors environment
-'I notice someone just entered the room.';
-'The lighting has changed significantly.';
-'A new object has appeared on the desk.';
+"I notice someone just entered the room.";
+"The lighting has changed significantly.";
+"A new object has appeared on the desk.";
 ```
 
 ## Performance Considerations

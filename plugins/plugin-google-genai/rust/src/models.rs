@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Google GenAI model definitions.
 //!
 //! Provides strongly typed model constants and utilities.

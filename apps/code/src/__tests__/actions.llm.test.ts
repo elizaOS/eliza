@@ -1,17 +1,17 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
-import { ModelType, type IAgentRuntime, type Memory } from "@elizaos/core";
-import { getCwd, setCwd } from "../plugin/providers/cwd.js";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { type IAgentRuntime, type Memory, ModelType } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { askAction } from "../plugin/actions/ask.js";
-import { planAction } from "../plugin/actions/plan.js";
-import { generateAction } from "../plugin/actions/generate.js";
 import { explainAction } from "../plugin/actions/explain.js";
-import { reviewAction } from "../plugin/actions/review.js";
-import { refactorAction } from "../plugin/actions/refactor.js";
 import { fixAction } from "../plugin/actions/fix.js";
+import { generateAction } from "../plugin/actions/generate.js";
+import { planAction } from "../plugin/actions/plan.js";
+import { refactorAction } from "../plugin/actions/refactor.js";
+import { reviewAction } from "../plugin/actions/review.js";
 import { testAction } from "../plugin/actions/test.js";
+import { getCwd, setCwd } from "../plugin/providers/cwd.js";
 
 type UseModelParams = {
   prompt: string;
@@ -31,7 +31,7 @@ async function withTempDir(prefix: string): Promise<string> {
 
 function createMockRuntime(
   responseText: string,
-  options?: { hasReasoningModel?: boolean }
+  options?: { hasReasoningModel?: boolean },
 ): {
   runtime: IAgentRuntime;
   calls: Array<{ model: string; prompt: string }>;
@@ -69,7 +69,7 @@ describe("plugin actions: LLM-backed", () => {
     await fs.writeFile(
       path.join(tempDir, "sample.ts"),
       "export function add(a: number, b: number) { return a + b; }\n",
-      "utf-8"
+      "utf-8",
     );
   });
 
@@ -88,7 +88,10 @@ describe("plugin actions: LLM-backed", () => {
 
   test("ASK calls TEXT_LARGE and returns trimmed output", async () => {
     const { runtime, calls } = createMockRuntime("answer");
-    const result = await askAction.handler(runtime, createMemory("How do I write a for loop?"));
+    const result = await askAction.handler(
+      runtime,
+      createMemory("How do I write a for loop?"),
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("answer");
@@ -99,7 +102,10 @@ describe("plugin actions: LLM-backed", () => {
 
   test("PLAN falls back to TEXT_LARGE when reasoning model unavailable", async () => {
     const { runtime, calls } = createMockRuntime("plan");
-    const result = await planAction.handler(runtime, createMemory("plan how to add oauth"));
+    const result = await planAction.handler(
+      runtime,
+      createMemory("plan how to add oauth"),
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("plan");
@@ -109,8 +115,13 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("PLAN uses TEXT_REASONING_LARGE when available", async () => {
-    const { runtime, calls } = createMockRuntime("plan", { hasReasoningModel: true });
-    const result = await planAction.handler(runtime, createMemory("plan how to add oauth"));
+    const { runtime, calls } = createMockRuntime("plan", {
+      hasReasoningModel: true,
+    });
+    const result = await planAction.handler(
+      runtime,
+      createMemory("plan how to add oauth"),
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("plan");
@@ -121,13 +132,19 @@ describe("plugin actions: LLM-backed", () => {
 
   test("GENERATE does not trigger for explicit file paths (validate=false)", async () => {
     const { runtime } = createMockRuntime("code");
-    const valid = await generateAction.validate(runtime, createMemory("generate code in index.html"));
+    const valid = await generateAction.validate(
+      runtime,
+      createMemory("generate code in index.html"),
+    );
     expect(valid).toBe(false);
   });
 
   test("GENERATE calls TEXT_LARGE and returns trimmed output", async () => {
     const { runtime, calls } = createMockRuntime("generated");
-    const result = await generateAction.handler(runtime, createMemory("generate a quicksort function in typescript"));
+    const result = await generateAction.handler(
+      runtime,
+      createMemory("generate a quicksort function in typescript"),
+    );
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("generated");
@@ -160,11 +177,12 @@ describe("plugin actions: LLM-backed", () => {
 
   test("EXPLAIN fails with a helpful error for missing files", async () => {
     const { runtime } = createMockRuntime("unused");
-    const result = await explainAction.handler(runtime, createMemory("explain does-not-exist.ts"));
+    const result = await explainAction.handler(
+      runtime,
+      createMemory("explain does-not-exist.ts"),
+    );
 
     expect(result.success).toBe(false);
     expect(result.text.toLowerCase()).toContain("file not found");
   });
 });
-
-

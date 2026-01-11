@@ -51,7 +51,8 @@ export const actionsProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Descriptions are important for good action selection; keep them on by default.
     // Examples are mostly token-bloat; keep them off by default.
-    const includeDescriptions = process.env.ELIZA_CODE_ACTIONS_DESCRIPTIONS !== "0";
+    const includeDescriptions =
+      process.env.ELIZA_CODE_ACTIONS_DESCRIPTIONS !== "0";
     const includeExamples = process.env.ELIZA_CODE_ACTIONS_EXAMPLES === "1";
 
     // Get actions that validate for this message
@@ -95,11 +96,7 @@ export const actionsProvider: Provider = {
     };
 
     // Combine all text sections - now including actionsWithDescriptions
-    const text = [
-      actionNames,
-      actionsWithDescriptions,
-      actionExamples,
-    ]
+    const text = [actionNames, actionsWithDescriptions, actionExamples]
       .filter((s) => typeof s === "string" && s.length > 0)
       .join("\n\n");
 

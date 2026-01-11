@@ -51,8 +51,7 @@ export const taskTestTasks: Task[] = [
   {
     id: uuidv4() as UUID,
     name: "Special Test Task",
-    description:
-      "This is a special task with unique name for name search testing",
+    description: "This is a special task with unique name for name search testing",
     roomId: taskTestRoomId,
     worldId: taskTestWorldId,
     tags: ["test", "integration", "special"],

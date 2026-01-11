@@ -1,10 +1,10 @@
+#![allow(missing_docs)]
 //! Type definitions for plugin-inmemorydb
 //!
 //! Pure in-memory, ephemeral storage - no persistence.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// Error type for storage operations
@@ -24,6 +24,9 @@ pub enum StorageError {
 
 /// Result type for storage operations
 pub type StorageResult<T> = Result<T, StorageError>;
+
+/// Predicate function type for filtering
+pub type PredicateFn = Box<dyn Fn(&serde_json::Value) -> bool + Send + Sync + 'static>;
 
 /// Storage interface for in-memory data
 #[async_trait]
@@ -47,7 +50,7 @@ pub trait IStorage: Send + Sync {
     async fn get_where(
         &self,
         collection: &str,
-        predicate: Box<dyn Fn(&serde_json::Value) -> bool + Send>,
+        predicate: PredicateFn,
     ) -> StorageResult<Vec<serde_json::Value>>;
 
     /// Set an item in a collection
@@ -63,14 +66,14 @@ pub trait IStorage: Send + Sync {
     async fn delete_where(
         &self,
         collection: &str,
-        predicate: Box<dyn Fn(&serde_json::Value) -> bool + Send>,
+        predicate: PredicateFn,
     ) -> StorageResult<()>;
 
     /// Count items in a collection
     async fn count(
         &self,
         collection: &str,
-        predicate: Option<Box<dyn Fn(&serde_json::Value) -> bool + Send>>,
+        predicate: Option<PredicateFn>,
     ) -> StorageResult<usize>;
 
     /// Clear all data from all collections

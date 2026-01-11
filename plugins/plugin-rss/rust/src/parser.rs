@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! RSS/Atom Feed Parser
 //!
 //! XML parsing for RSS 2.0 and Atom feeds using quick-xml.

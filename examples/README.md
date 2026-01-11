@@ -6,9 +6,9 @@ This directory contains example applications demonstrating elizaOS in different 
 
 Each language directory contains two main examples:
 
-| Example | Description |
-|---------|-------------|
-| **chat** | Interactive CLI chat with an AI agent |
+| Example            | Description                                         |
+| ------------------ | --------------------------------------------------- |
+| **chat**           | Interactive CLI chat with an AI agent               |
 | **adventure-game** | Text adventure game with AI-powered decision making |
 
 ## Quick Start
@@ -16,6 +16,7 @@ Each language directory contains two main examples:
 ### Prerequisites
 
 1. Set your OpenAI API key:
+
    ```bash
    export OPENAI_API_KEY=your_key_here
    ```
@@ -87,11 +88,13 @@ cargo run
 ### Chat
 
 A simple interactive CLI chat application demonstrating:
+
 - AgentRuntime initialization with plugins
 - Message handling and response streaming
 - Basic conversation flow
 
 **APIs used:**
+
 - `AgentRuntime` / `runtime.initialize()`
 - `runtime.messageService.handleMessage()`
 - `createMessageMemory()` / `Memory`
@@ -99,16 +102,19 @@ A simple interactive CLI chat application demonstrating:
 ### Adventure Game
 
 A text adventure game where an AI agent explores a dungeon, making strategic decisions. Demonstrates:
+
 - AI decision making with `runtime.useModel()`
 - Game state management
 - Two modes: Watch AI play or Interactive mode
 
 **APIs used:**
+
 - `AgentRuntime` / `runtime.initialize()`
 - `runtime.useModel(ModelType.TEXT_SMALL, {...})`
 - Custom game engine integration
 
 **Game Features:**
+
 - Explore 7 dungeon rooms
 - Collect items (torch, sword, key, health potions)
 - Fight enemies (goblin, skeleton, dragon)
@@ -118,24 +124,24 @@ A text adventure game where an AI agent explores a dungeon, making strategic dec
 
 All examples use identical APIs across languages:
 
-| Operation | TypeScript | Python | Rust |
-|-----------|------------|--------|------|
-| Create runtime | `new AgentRuntime({...})` | `AgentRuntime(...)` | `AgentRuntime::new(...)` |
-| Initialize | `await runtime.initialize()` | `await runtime.initialize()` | `runtime.initialize().await` |
-| Use model | `runtime.useModel(ModelType.TEXT_SMALL, {...})` | `runtime.use_model("TEXT_SMALL", {...})` | `runtime.use_model("TEXT_SMALL", {...}).await` |
-| Stop | `await runtime.stop()` | `await runtime.stop()` | `runtime.stop().await` |
+| Operation      | TypeScript                                      | Python                                   | Rust                                           |
+| -------------- | ----------------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| Create runtime | `new AgentRuntime({...})`                       | `AgentRuntime(...)`                      | `AgentRuntime::new(...)`                       |
+| Initialize     | `await runtime.initialize()`                    | `await runtime.initialize()`             | `runtime.initialize().await`                   |
+| Use model      | `runtime.useModel(ModelType.TEXT_SMALL, {...})` | `runtime.use_model("TEXT_SMALL", {...})` | `runtime.use_model("TEXT_SMALL", {...}).await` |
+| Stop           | `await runtime.stop()`                          | `await runtime.stop()`                   | `runtime.stop().await`                         |
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | (required) | OpenAI API key |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API base URL |
-| `OPENAI_SMALL_MODEL` | `gpt-5-mini` | Model for TEXT_SMALL |
-| `OPENAI_LARGE_MODEL` | `gpt-5` | Model for TEXT_LARGE |
-| `LOG_LEVEL` | `info` | Set to `fatal` to suppress logs |
-| `PGLITE_DATA_DIR` | `memory://` | PGLite storage (TypeScript only) |
-| `POSTGRES_URL` | (optional) | PostgreSQL connection string |
+| Variable             | Default                     | Description                      |
+| -------------------- | --------------------------- | -------------------------------- |
+| `OPENAI_API_KEY`     | (required)                  | OpenAI API key                   |
+| `OPENAI_BASE_URL`    | `https://api.openai.com/v1` | API base URL                     |
+| `OPENAI_SMALL_MODEL` | `gpt-5-mini`                | Model for TEXT_SMALL             |
+| `OPENAI_LARGE_MODEL` | `gpt-5`                     | Model for TEXT_LARGE             |
+| `LOG_LEVEL`          | `info`                      | Set to `fatal` to suppress logs  |
+| `PGLITE_DATA_DIR`    | `memory://`                 | PGLite storage (TypeScript only) |
+| `POSTGRES_URL`       | (optional)                  | PostgreSQL connection string     |
 
 ## Architecture
 

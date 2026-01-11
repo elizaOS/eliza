@@ -5,7 +5,7 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
-import { FARCASTER_SOURCE, type Cast } from "../types";
+import { type Cast, FARCASTER_SOURCE } from "../types";
 
 export const MAX_CAST_LENGTH = 1024;
 
@@ -34,9 +34,9 @@ export function splitPostContent(content: string, maxLength: number = MAX_CAST_L
   for (const paragraph of paragraphs) {
     if (!paragraph) continue;
 
-    if ((currentCast + "\n\n" + paragraph).trim().length <= maxLength) {
+    if (`${currentCast}\n\n${paragraph}`.trim().length <= maxLength) {
       if (currentCast) {
-        currentCast += "\n\n" + paragraph;
+        currentCast += `\n\n${paragraph}`;
       } else {
         currentCast = paragraph;
       }
@@ -70,9 +70,9 @@ export function splitParagraph(paragraph: string, maxLength: number): string[] {
   let currentChunk = "";
 
   for (const sentence of sentences) {
-    if ((currentChunk + " " + sentence).trim().length <= maxLength) {
+    if (`${currentChunk} ${sentence}`.trim().length <= maxLength) {
       if (currentChunk) {
-        currentChunk += " " + sentence;
+        currentChunk += ` ${sentence}`;
       } else {
         currentChunk = sentence;
       }
@@ -86,9 +86,9 @@ export function splitParagraph(paragraph: string, maxLength: number): string[] {
         const words = sentence.split(" ");
         currentChunk = "";
         for (const word of words) {
-          if ((currentChunk + " " + word).trim().length <= maxLength) {
+          if (`${currentChunk} ${word}`.trim().length <= maxLength) {
             if (currentChunk) {
-              currentChunk += " " + word;
+              currentChunk += ` ${word}`;
             } else {
               currentChunk = word;
             }
@@ -196,5 +196,3 @@ export function formatCastTimestamp(timestamp: Date): string {
     day: "numeric",
   });
 }
-
-

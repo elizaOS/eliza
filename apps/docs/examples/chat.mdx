@@ -1,6 +1,6 @@
 ---
-title: 'Chat Examples'
-description: 'Interactive CLI chat applications in TypeScript, Python, and Rust'
+title: "Chat Examples"
+description: "Interactive CLI chat applications in TypeScript, Python, and Rust"
 ---
 
 Build interactive chat agents that run in your terminal. These examples demonstrate core elizaOS functionality: agent initialization, message handling, streaming responses, and conversation flow.
@@ -9,11 +9,11 @@ Build interactive chat agents that run in your terminal. These examples demonstr
 
 The chat example is the simplest way to understand elizaOS. It creates an agent, sends messages, and displays responses in real-time.
 
-| Language | File | Framework |
-|----------|------|-----------|
-| TypeScript | `examples/chat/typescript/chat.ts` | Node.js + Bun |
-| Python | `examples/chat/python/chat.py` | asyncio |
-| Rust | `examples/chat/rust/chat/src/main.rs` | tokio |
+| Language   | File                                  | Framework     |
+| ---------- | ------------------------------------- | ------------- |
+| TypeScript | `examples/chat/typescript/chat.ts`    | Node.js + Bun |
+| Python     | `examples/chat/python/chat.py`        | asyncio       |
+| Rust       | `examples/chat/rust/chat/src/main.rs` | tokio         |
 
 ---
 
@@ -34,6 +34,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e packages/typescript/python -e plugins/plugin-openai/python
 
 # Run
+
 export OPENAI_API_KEY="your-key"
 python examples/chat/python/chat.py
 ```
@@ -71,16 +72,16 @@ import * as readline from "readline";
 
 // Define the character
 const character: Character = {
-  name: "Eliza",
-  bio: "A helpful AI assistant.",
+name: "Eliza",
+bio: "A helpful AI assistant.",
 };
 
 console.log("🚀 Starting Eliza...\n");
 
 // Create runtime with plugins
 const runtime = new AgentRuntime({
-  character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+character,
+plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
 });
 await runtime.initialize();
 
@@ -90,27 +91,27 @@ const roomId = stringToUuid("chat-room");
 const worldId = stringToUuid("chat-world");
 
 await runtime.ensureConnection({
-  entityId: userId,
-  roomId,
-  worldId,
-  userName: "User",
-  source: "cli",
-  channelId: "chat",
-  serverId: "server",
-  type: ChannelType.DM,
+entityId: userId,
+roomId,
+worldId,
+userName: "User",
+source: "cli",
+channelId: "chat",
+serverId: "server",
+type: ChannelType.DM,
 });
 
 // Create readline interface
 const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
+input: process.stdin,
+output: process.stdout,
 });
 
 console.log("💬 Chat with Eliza (type 'exit' to quit)\n");
 
 const prompt = () => {
-  rl.question("You: ", async (input) => {
-    const text = input.trim();
+rl.question("You: ", async (input) => {
+const text = input.trim();
 
     if (text.toLowerCase() === "exit") {
       console.log("\n👋 Goodbye!");
@@ -150,11 +151,13 @@ const prompt = () => {
 
     console.log("\n");
     prompt();
-  });
+
+});
 };
 
 prompt();
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -229,7 +232,8 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -245,8 +249,8 @@ use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load environment variables from .env file
-    let _ = dotenvy::dotenv();
+// Load environment variables from .env file
+let \_ = dotenvy::dotenv();
 
     // Define the character
     let character = parse_character(r#"{
@@ -307,8 +311,10 @@ async fn main() -> Result<()> {
     runtime.stop().await?;
     println!("Goodbye! 👋");
     Ok(())
+
 }
-```
+
+````
   </Tab>
 </Tabs>
 
@@ -328,7 +334,8 @@ const character: Character = {
   bio: "A helpful AI assistant.",
   system: "You are helpful and concise.",  // Optional system prompt
 };
-```
+````
+
   </Tab>
   <Tab title="Python">
 ```python
@@ -400,17 +407,18 @@ const message = createMessageMemory({
 });
 
 await runtime.messageService!.handleMessage(
-  runtime,
-  message,
-  async (content) => {
-    // Streaming callback
-    if (content?.text) {
-      process.stdout.write(content.text);
-    }
-    return [];
-  }
+runtime,
+message,
+async (content) => {
+// Streaming callback
+if (content?.text) {
+process.stdout.write(content.text);
+}
+return [];
+}
 );
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -422,7 +430,8 @@ message = Memory(
 
 result = await runtime.message_service.handle_message(runtime, message)
 print(result.response_content.text)
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -433,14 +442,15 @@ let content = Content {
 let mut message = Memory::new(user_id.clone(), room_id.clone(), content);
 
 let result = runtime
-    .message_service()
-    .handle_message(&runtime, &mut message, None, None)
-    .await?;
+.message_service()
+.handle_message(&runtime, &mut message, None, None)
+.await?;
 
 if let Some(text) = result.response_content.and_then(|c| c.text) {
-    println!("{}", text);
+println!("{}", text);
 }
-```
+
+````
   </Tab>
 </Tabs>
 
@@ -462,7 +472,7 @@ result = await runtime.message_service.handle_message(
     message,
     callback=stream_callback,
 )
-```
+````
 
 ### Add Conversation Memory
 
@@ -501,5 +511,6 @@ let memories = runtime.get_memories(room_id, 10).await?;
     Run agents client-side in the browser
   </Card>
 </CardGroup>
+
 
 

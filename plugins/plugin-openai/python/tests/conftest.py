@@ -41,5 +41,3 @@ async def plugin(api_key: str) -> OpenAIPlugin:
     plugin = OpenAIPlugin(api_key=api_key)
     yield plugin
     await plugin.close()
-
-

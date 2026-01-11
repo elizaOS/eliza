@@ -2,15 +2,9 @@
  * Thread provider for Farcaster.
  */
 
-import {
-  type Provider,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  type ProviderResult,
-} from "@elizaos/core";
-import { FARCASTER_SOURCE, FARCASTER_SERVICE_NAME } from "../types";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { FarcasterService } from "../services/FarcasterService";
+import { FARCASTER_SERVICE_NAME, FARCASTER_SOURCE } from "../types";
 
 /**
  * Format timestamp for display.
@@ -29,11 +23,7 @@ export const farcasterThreadProvider: Provider = {
   description:
     "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
 
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     const source = (message.content as Record<string, unknown>)?.source;
 
     if (source !== FARCASTER_SOURCE) {
@@ -111,12 +101,8 @@ export const farcasterThreadProvider: Provider = {
         farcasterCastHash: castHash,
         farcasterCurrentCastText: threadMessages[threadMessages.length - 1]?.text ?? "",
         farcasterParentCastText:
-          threadMessages.length > 1
-            ? threadMessages[threadMessages.length - 2]?.text ?? ""
-            : "",
+          threadMessages.length > 1 ? (threadMessages[threadMessages.length - 2]?.text ?? "") : "",
       },
     };
   },
 };
-
-

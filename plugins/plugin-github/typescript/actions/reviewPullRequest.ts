@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { createReviewSchema, type CreateReviewParams } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type CreateReviewParams, createReviewSchema } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -63,11 +64,7 @@ export const reviewPullRequestAction: Action = {
   description:
     "Creates a review on a GitHub pull request. Can approve, request changes, or add comments.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
@@ -87,8 +84,8 @@ export const reviewPullRequestAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -98,7 +95,7 @@ export const reviewPullRequestAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
@@ -123,16 +120,19 @@ export const reviewPullRequestAction: Action = {
       }
 
       const params: CreateReviewParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        pullNumber: (state?.["pullNumber"] as number) ?? 0,
-        body: (state?.["body"] as string) ?? text,
-        event: (state?.["event"] as "APPROVE" | "REQUEST_CHANGES" | "COMMENT") ?? event,
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        pullNumber: (state?.pullNumber as number) ?? 0,
+        body: (state?.body as string) ?? text,
+        event: (state?.event as "APPROVE" | "REQUEST_CHANGES" | "COMMENT") ?? event,
       };
 
       const validation = createReviewSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid review parameters: ${errors}`);
@@ -141,7 +141,7 @@ export const reviewPullRequestAction: Action = {
             text: `I couldn't create the review due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       const review = await service.createReview(params);
@@ -161,10 +161,9 @@ export const reviewPullRequestAction: Action = {
         });
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to create review: ${errorMessage}`);
 
       if (callback) {
@@ -173,7 +172,7 @@ export const reviewPullRequestAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -181,5 +180,3 @@ export const reviewPullRequestAction: Action = {
 };
 
 export default reviewPullRequestAction;
-
-

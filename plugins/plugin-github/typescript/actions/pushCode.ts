@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { createCommitSchema, type CreateCommitParams, type FileChange } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type CreateCommitParams, createCommitSchema, type FileChange } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -52,22 +53,10 @@ const examples: ActionExample[][] = [
 
 export const pushCodeAction: Action = {
   name: "PUSH_GITHUB_CODE",
-  similes: [
-    "COMMIT_CODE",
-    "PUSH_CHANGES",
-    "COMMIT_FILES",
-    "PUSH_FILES",
-    "GIT_PUSH",
-    "SAVE_CODE",
-  ],
-  description:
-    "Creates a commit with file changes and pushes to a GitHub branch.",
+  similes: ["COMMIT_CODE", "PUSH_CHANGES", "COMMIT_FILES", "PUSH_FILES", "GIT_PUSH", "SAVE_CODE"],
+  description: "Creates a commit with file changes and pushes to a GitHub branch.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
@@ -87,8 +76,8 @@ export const pushCodeAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -98,28 +87,31 @@ export const pushCodeAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
       const content = message.content as Content;
       const text = content.text ?? "";
 
-      const files = (state?.["files"] as FileChange[]) ?? [];
+      const files = (state?.files as FileChange[]) ?? [];
 
       const params: CreateCommitParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        message: (state?.["message"] as string) ?? text.slice(0, 100),
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        message: (state?.message as string) ?? text.slice(0, 100),
         files,
-        branch: (state?.["branch"] as string) ?? service.getConfig().branch ?? "main",
-        authorName: state?.["authorName"] as string | undefined,
-        authorEmail: state?.["authorEmail"] as string | undefined,
+        branch: (state?.branch as string) ?? service.getConfig().branch ?? "main",
+        authorName: state?.authorName as string | undefined,
+        authorEmail: state?.authorEmail as string | undefined,
       };
 
       const validation = createCommitSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid commit parameters: ${errors}`);
@@ -128,7 +120,7 @@ export const pushCodeAction: Action = {
             text: `I couldn't push the code due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       const commit = await service.createCommit(params);
@@ -141,10 +133,9 @@ export const pushCodeAction: Action = {
         });
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to push code: ${errorMessage}`);
 
       if (callback) {
@@ -153,7 +144,7 @@ export const pushCodeAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -161,5 +152,3 @@ export const pushCodeAction: Action = {
 };
 
 export default pushCodeAction;
-
-

@@ -1,13 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import type { AgentRuntime, Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { entityTable } from "../../schema";
@@ -54,7 +47,7 @@ describe("Entity Integration Tests", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
-      expect(retrieved && retrieved[0] && retrieved[0].id).toBe(entityId);
+      expect(retrieved?.[0]?.id).toBe(entityId);
     });
 
     it("should return empty array when retrieving non-existent entities", async () => {
@@ -84,8 +77,10 @@ describe("Entity Integration Tests", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
-      expect(retrieved && retrieved[0] && retrieved[0].names).toEqual(["Updated Name"]);
-      expect(retrieved && retrieved[0] && retrieved[0].metadata).toEqual({ updated: "data" });
+      expect(retrieved?.[0]?.names).toEqual(["Updated Name"]);
+      expect(retrieved?.[0]?.metadata).toEqual({
+        updated: "data",
+      });
     });
 
     it("should handle multiple entities creation", async () => {
@@ -111,7 +106,7 @@ describe("Entity Integration Tests", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entity1Id, entity2Id]);
       expect(retrieved).not.toBeNull();
-      expect(retrieved && retrieved.length).toBe(2);
+      expect(retrieved?.length).toBe(2);
     });
 
     it("should handle entities with multiple names", async () => {
@@ -128,11 +123,7 @@ describe("Entity Integration Tests", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
-      expect(retrieved && retrieved[0] && retrieved[0].names).toEqual([
-        "Primary Name",
-        "Alias 1",
-        "Alias 2",
-      ]);
+      expect(retrieved?.[0]?.names).toEqual(["Primary Name", "Alias 1", "Alias 2"]);
     });
 
     it("should handle entities with no metadata", async () => {
@@ -148,7 +139,7 @@ describe("Entity Integration Tests", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
-      expect(retrieved && retrieved[0] && retrieved[0].metadata).toEqual({}); // Assuming default is an empty object
+      expect(retrieved?.[0]?.metadata).toEqual({}); // Assuming default is an empty object
     });
   });
 });

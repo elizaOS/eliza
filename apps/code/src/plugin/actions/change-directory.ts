@@ -1,11 +1,11 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import { getCwd, setCwd } from "../providers/cwd.js";
 
@@ -46,7 +46,10 @@ BEHAVIOR:
 - Validates that the target directory exists before changing
 - All subsequent file operations use the new CWD as base`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("cd ") ||
@@ -62,7 +65,7 @@ BEHAVIOR:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const targetPath = extractPath(message.content.text ?? "");
 
@@ -81,18 +84,30 @@ BEHAVIOR:
     } else {
       const msg = `Error: ${result.error}`;
       await callback?.({ text: msg });
-      return { success: false, text: result.error ?? "Failed to change directory" };
+      return {
+        success: false,
+        text: result.error ?? "Failed to change directory",
+      };
     }
   },
 
   examples: [
     [
       { name: "{{user1}}", content: { text: "cd src" } },
-      { name: "{{agent}}", content: { text: "Changing directory...", actions: ["CHANGE_DIRECTORY"] } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Changing directory...",
+          actions: ["CHANGE_DIRECTORY"],
+        },
+      },
     ],
     [
       { name: "{{user1}}", content: { text: "go to /home/user/projects" } },
-      { name: "{{agent}}", content: { text: "Navigating...", actions: ["CHANGE_DIRECTORY"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Navigating...", actions: ["CHANGE_DIRECTORY"] },
+      },
     ],
   ],
 };

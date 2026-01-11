@@ -297,7 +297,7 @@ export async function getWorldSettings(
   const worldId = createUniqueUuid(runtime, serverId);
   const world = await runtime.getWorld(worldId);
 
-  const settings = world && world.metadata && world.metadata.settings;
+  const settings = world?.metadata?.settings;
   if (!settings) {
     return null;
   }
@@ -319,7 +319,7 @@ export async function initializeOnboarding(
   config: OnboardingConfig,
 ): Promise<WorldSettings | null> {
   // Check if settings state already exists
-  const existingSettings = world.metadata && world.metadata.settings;
+  const existingSettings = world.metadata?.settings;
   if (existingSettings) {
     logger.debug(
       { src: "core:settings", serverId: world.messageServerId },
@@ -370,7 +370,7 @@ export function encryptedCharacter(character: Character): Character {
 
   // Encrypt character.settings.secrets if it exists
   const encryptedCharSettings = encryptedChar.settings;
-  const encryptedCharSettingsSecrets = encryptedCharSettings && encryptedCharSettings.secrets;
+  const encryptedCharSettingsSecrets = encryptedCharSettings?.secrets;
   if (encryptedCharSettingsSecrets) {
     encryptedChar.settings.secrets = encryptObjectValues(
       encryptedCharSettingsSecrets,
@@ -402,7 +402,7 @@ export function decryptedCharacter(
 
   // Decrypt character.settings.secrets if it exists
   const decryptedCharSettings = decryptedChar.settings;
-  const decryptedCharSettingsSecrets = decryptedCharSettings && decryptedCharSettings.secrets;
+  const decryptedCharSettingsSecrets = decryptedCharSettings?.secrets;
   if (decryptedCharSettingsSecrets) {
     decryptedChar.settings.secrets = decryptObjectValues(
       decryptedCharSettingsSecrets,

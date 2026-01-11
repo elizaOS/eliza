@@ -1,10 +1,5 @@
-import {  describe, expect, it  } from "vitest";
-import {
-  assertNonNull,
-  assertString,
-  assertNonEmptyString,
-  assertObject,
-} from "../../src/types";
+import { describe, expect, it } from "vitest";
+import { assertNonEmptyString, assertNonNull, assertObject, assertString } from "../../src/types";
 
 describe("Type Assertions", () => {
   describe("assertNonNull", () => {
@@ -71,5 +66,3 @@ describe("Type Assertions", () => {
     });
   });
 });
-
-

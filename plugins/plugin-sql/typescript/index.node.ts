@@ -1,11 +1,6 @@
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import {
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-  stringToUuid,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, type Plugin, stringToUuid } from "@elizaos/core";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
@@ -23,8 +18,7 @@ interface GlobalSingletons {
 }
 
 // Type assertion needed because globalThis doesn't include symbol keys in its type definition
-const globalSymbols = globalThis as typeof globalThis &
-  Record<symbol, GlobalSingletons>;
+const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }
@@ -35,7 +29,7 @@ export function createDatabaseAdapter(
     dataDir?: string;
     postgresUrl?: string;
   },
-  agentId: UUID,
+  agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
     // Determine RLS server_id if data isolation is enabled
@@ -47,7 +41,7 @@ export function createDatabaseAdapter(
       const rlsServerIdString = process.env.ELIZA_SERVER_ID;
       if (!rlsServerIdString) {
         throw new Error(
-          "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable",
+          "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable"
         );
       }
       rlsServerId = stringToUuid(rlsServerIdString);
@@ -58,7 +52,7 @@ export function createDatabaseAdapter(
           rlsServerId: rlsServerId.slice(0, 8),
           serverIdString: rlsServerIdString,
         },
-        "Using connection pool for RLS server",
+        "Using connection pool for RLS server"
       );
     }
 
@@ -72,7 +66,7 @@ export function createDatabaseAdapter(
     if (!manager) {
       logger.debug(
         { src: "plugin:sql", managerKey: managerKey.slice(0, 8) },
-        "Creating new connection pool",
+        "Creating new connection pool"
       );
       manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
       globalSingletons.postgresConnectionManagers.set(managerKey, manager);
@@ -91,22 +85,18 @@ export function createDatabaseAdapter(
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
-  return new PgliteDatabaseAdapter(
-    agentId,
-    globalSingletons.pgLiteClientManager,
-  );
+  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
 export const plugin: Plugin = {
   name: "@elizaos/plugin-sql",
-  description:
-    "A plugin for SQL database access with dynamic schema migrations",
+  description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
     runtime.logger.info(
       { src: "plugin:sql", agentId: runtime.agentId },
-      "plugin-sql (node) init starting",
+      "plugin-sql (node) init starting"
     );
 
     const adapterRegistered = await runtime
@@ -118,13 +108,13 @@ export const plugin: Plugin = {
           // Expected on first load before the adapter is created; not a warning condition
           runtime.logger.info(
             { src: "plugin:sql", agentId: runtime.agentId },
-            "No pre-registered database adapter detected; registering adapter",
+            "No pre-registered database adapter detected; registering adapter"
           );
         } else {
           // Unexpected readiness error - keep as a warning with details
           runtime.logger.warn(
             { src: "plugin:sql", agentId: runtime.agentId, error: message },
-            "Database adapter readiness check error; proceeding to register adapter",
+            "Database adapter readiness check error; proceeding to register adapter"
           );
         }
         return false;
@@ -132,7 +122,7 @@ export const plugin: Plugin = {
     if (adapterRegistered) {
       runtime.logger.info(
         { src: "plugin:sql", agentId: runtime.agentId },
-        "Database adapter already registered, skipping creation",
+        "Database adapter already registered, skipping creation"
       );
       return;
     }
@@ -146,13 +136,13 @@ export const plugin: Plugin = {
         dataDir: typeof dataDir === "string" ? dataDir : undefined,
         postgresUrl: typeof postgresUrl === "string" ? postgresUrl : undefined,
       },
-      runtime.agentId,
+      runtime.agentId
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
     runtime.logger.info(
       { src: "plugin:sql", agentId: runtime.agentId },
-      "Database adapter created and registered",
+      "Database adapter created and registered"
     );
   },
 };

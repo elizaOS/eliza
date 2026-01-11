@@ -1,15 +1,15 @@
+import type { Buffer } from "node:buffer";
 import {
-  IAgentRuntime,
-  Memory,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   MemoryType,
   ModelType,
-  UUID,
-  logger,
   splitChunks,
-} from '@elizaos/core';
-import { Buffer } from 'node:buffer';
-import { v4 as uuidv4 } from 'uuid';
-import { getProviderRateLimits, validateModelConfig } from './config.ts';
+  type UUID,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { getProviderRateLimits, validateModelConfig } from "./config.ts";
 import {
   DEFAULT_CHARS_PER_TOKEN,
   DEFAULT_CHUNK_OVERLAP_TOKENS,
@@ -19,9 +19,9 @@ import {
   getChunkWithContext,
   getContextualizationPrompt,
   getPromptForMimeType,
-} from './ctx-embeddings.ts';
-import { generateText } from './llm.ts';
-import { convertPdfToTextFromBuffer, extractTextFromFileBuffer } from './utils.ts';
+} from "./ctx-embeddings.ts";
+import { generateText } from "./llm.ts";
+import { convertPdfToTextFromBuffer, extractTextFromFileBuffer } from "./utils.ts";
 
 /**
  * Estimates token count for a text string (rough approximation)
@@ -41,21 +41,21 @@ function getCtxKnowledgeEnabled(runtime?: IAgentRuntime): boolean {
   let rawValue: string | undefined;
 
   if (runtime) {
-    const settingValue = runtime.getSetting('CTX_KNOWLEDGE_ENABLED');
-    rawValue = typeof settingValue === 'string' ? settingValue : settingValue?.toString();
+    const settingValue = runtime.getSetting("CTX_KNOWLEDGE_ENABLED");
+    rawValue = typeof settingValue === "string" ? settingValue : settingValue?.toString();
     // CRITICAL FIX: Use trim() and case-insensitive comparison
     const cleanValue = rawValue?.trim().toLowerCase();
-    result = cleanValue === 'true';
-    source = 'runtime.getSetting()';
+    result = cleanValue === "true";
+    source = "runtime.getSetting()";
   } else {
     rawValue = process.env.CTX_KNOWLEDGE_ENABLED;
     const cleanValue = rawValue?.toString().trim().toLowerCase();
-    result = cleanValue === 'true';
-    source = 'process.env';
+    result = cleanValue === "true";
+    source = "process.env";
   }
 
   // Only log when there's a mismatch or for initial debugging
-  if (process.env.NODE_ENV === 'development' && rawValue && !result) {
+  if (process.env.NODE_ENV === "development" && rawValue && !result) {
     logger.debug(`[Document Processor] CTX config mismatch - ${source}: '${rawValue}' → ${result}`);
   }
 
@@ -79,13 +79,13 @@ function shouldUseCustomLLM(): boolean {
 
   // Check for provider-specific API keys
   switch (textProvider.toLowerCase()) {
-    case 'openrouter':
+    case "openrouter":
       return !!process.env.OPENROUTER_API_KEY;
-    case 'openai':
+    case "openai":
       return !!process.env.OPENAI_API_KEY;
-    case 'anthropic':
+    case "anthropic":
       return !!process.env.ANTHROPIC_API_KEY;
-    case 'google':
+    case "google":
       return !!process.env.GOOGLE_API_KEY;
     default:
       return false;
@@ -130,7 +130,7 @@ export async function processFragmentsSynchronously({
   worldId?: UUID;
   documentTitle?: string;
 }): Promise<number> {
-  if (!fullDocumentText || fullDocumentText.trim() === '') {
+  if (!fullDocumentText || fullDocumentText.trim() === "") {
     logger.warn(`No text content available to chunk for document ${documentId}.`);
     return 0;
   }
@@ -231,7 +231,7 @@ export async function extractTextFromDocument(
   }
 
   try {
-    if (contentType === 'application/pdf') {
+    if (contentType === "application/pdf") {
       logger.debug(`Extracting text from PDF: ${originalFilename}`);
       return await convertPdfToTextFromBuffer(fileBuffer, originalFilename);
     } else {
@@ -239,13 +239,13 @@ export async function extractTextFromDocument(
 
       // For plain text files, try UTF-8 decoding first
       if (
-        contentType.includes('text/') ||
-        contentType.includes('application/json') ||
-        contentType.includes('application/xml')
+        contentType.includes("text/") ||
+        contentType.includes("application/json") ||
+        contentType.includes("application/xml")
       ) {
         try {
-          return fileBuffer.toString('utf8');
-        } catch (textError) {
+          return fileBuffer.toString("utf8");
+        } catch (_textError) {
           logger.warn(
             `Failed to decode ${originalFilename} as UTF-8, falling back to binary extraction`
           );
@@ -255,9 +255,10 @@ export async function extractTextFromDocument(
       // For other files, use general extraction
       return await extractTextFromFileBuffer(fileBuffer, contentType, originalFilename);
     }
-  } catch (error: any) {
-    logger.error(`Error extracting text from ${originalFilename}: ${error.message}`);
-    throw new Error(`Failed to extract text from ${originalFilename}: ${error.message}`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error extracting text from ${originalFilename}: ${errorMessage}`);
+    throw new Error(`Failed to extract text from ${originalFilename}: ${errorMessage}`);
   }
 }
 
@@ -287,8 +288,8 @@ export function createDocumentMemory({
   documentId?: UUID;
   customMetadata?: Record<string, unknown>;
 }): Memory {
-  const fileExt = originalFilename.split('.').pop()?.toLowerCase() || '';
-  const title = originalFilename.replace(`.${fileExt}`, '');
+  const fileExt = originalFilename.split(".").pop()?.toLowerCase() || "";
+  const title = originalFilename.replace(`.${fileExt}`, "");
 
   // Use the provided documentId or generate a new one
   const docId = documentId || (uuidv4() as UUID);
@@ -301,18 +302,18 @@ export function createDocumentMemory({
     entityId: agentId,
     content: { text },
     metadata: {
-      type: MemoryType.DOCUMENT,
+      type: MemoryType.CUSTOM,
       documentId: clientDocumentId,
       originalFilename,
       contentType,
       title,
       fileExt,
       fileSize,
-      source: 'rag-service-main-upload',
+      source: "rag-service-main-upload",
       timestamp: Date.now(),
       // Merge custom metadata if provided
       ...(customMetadata || {}),
-    },
+    } as unknown as Memory["metadata"],
   };
 }
 
@@ -448,11 +449,11 @@ async function processAndSaveFragments({
             documentId,
             position: originalChunkIndex,
             timestamp: Date.now(),
-            source: 'rag-service-fragment-sync',
+            source: "rag-service-fragment-sync",
           },
         };
 
-        await runtime.createMemory(fragmentMemory, 'knowledge');
+        await runtime.createMemory(fragmentMemory, "knowledge");
         // Log when all chunks for this document are processed
         if (originalChunkIndex === chunks.length - 1) {
           const docName = documentTitle || documentId.substring(0, 8);
@@ -461,10 +462,12 @@ async function processAndSaveFragments({
           );
         }
         savedCount++;
-      } catch (saveError: any) {
+      } catch (saveError) {
+        const errorMessage = saveError instanceof Error ? saveError.message : String(saveError);
+        const errorStack = saveError instanceof Error ? saveError.stack : undefined;
         logger.error(
-          `Error saving chunk ${originalChunkIndex} to database: ${saveError.message}`,
-          saveError.stack
+          `Error saving chunk ${originalChunkIndex} to database: ${errorMessage}`,
+          errorStack
         );
         failedCount++;
         failedChunks.push(originalChunkIndex);
@@ -486,12 +489,20 @@ const EMBEDDING_BATCH_SIZE = 100;
 /**
  * Generate embeddings for contextualized chunks using BATCH API
  * This sends multiple texts in ONE request, dramatically reducing API calls
- * 
+ *
  * @param runtime IAgentRuntime
  * @param contextualizedChunks Array of contextualized chunks
  * @param rateLimiter Rate limiter function
  * @returns Array of embedding results
  */
+interface EmbeddingResult {
+  embedding?: number[];
+  success: boolean;
+  index: number;
+  error?: Error;
+  text: string;
+}
+
 async function generateEmbeddingsForChunks(
   runtime: IAgentRuntime,
   contextualizedChunks: Array<{
@@ -500,18 +511,18 @@ async function generateEmbeddingsForChunks(
     success: boolean;
   }>,
   rateLimiter: (estimatedTokens?: number) => Promise<void>
-): Promise<Array<any>> {
+): Promise<Array<EmbeddingResult>> {
   // Separate valid and failed chunks
   const validChunks = contextualizedChunks.filter((chunk) => chunk.success);
   const failedChunks = contextualizedChunks.filter((chunk) => !chunk.success);
 
   // Prepare results array with failed chunks pre-populated
-  const results: Array<any> = [];
+  const results: Array<EmbeddingResult> = [];
   for (const chunk of failedChunks) {
     results.push({
       success: false,
       index: chunk.index,
-      error: new Error('Chunk processing failed'),
+      error: new Error("Chunk processing failed"),
       text: chunk.contextualizedText,
     });
   }
@@ -528,7 +539,9 @@ async function generateEmbeddingsForChunks(
     return await generateEmbeddingsBatch(runtime, validChunks, rateLimiter, results);
   } else {
     // Fallback to individual embeddings (slower but works with any provider)
-    logger.info(`[Document Processor] Using individual embeddings for ${validChunks.length} chunks`);
+    logger.info(
+      `[Document Processor] Using individual embeddings for ${validChunks.length} chunks`
+    );
     return await generateEmbeddingsIndividual(runtime, validChunks, rateLimiter, results);
   }
 }
@@ -539,8 +552,8 @@ async function generateEmbeddingsForChunks(
 function shouldUseBatchEmbeddings(runtime: IAgentRuntime): boolean {
   // Default to true - batch is more efficient
   // Set BATCH_EMBEDDINGS=false to disable
-  const setting = runtime.getSetting('BATCH_EMBEDDINGS') ?? process.env.BATCH_EMBEDDINGS;
-  if (setting === 'false' || setting === false) {
+  const setting = runtime.getSetting("BATCH_EMBEDDINGS") ?? process.env.BATCH_EMBEDDINGS;
+  if (setting === "false" || setting === false) {
     return false;
   }
   return true;
@@ -554,13 +567,13 @@ async function generateEmbeddingsBatch(
   runtime: IAgentRuntime,
   validChunks: Array<{ contextualizedText: string; index: number; success: boolean }>,
   rateLimiter: (estimatedTokens?: number) => Promise<void>,
-  results: Array<any>
-): Promise<Array<any>> {
+  results: Array<EmbeddingResult>
+): Promise<Array<EmbeddingResult>> {
   // Process in batches of EMBEDDING_BATCH_SIZE
   for (let batchStart = 0; batchStart < validChunks.length; batchStart += EMBEDDING_BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + EMBEDDING_BATCH_SIZE, validChunks.length);
     const batch = validChunks.slice(batchStart, batchEnd);
-    const batchTexts = batch.map(c => c.contextualizedText);
+    const batchTexts = batch.map((c) => c.contextualizedText);
 
     // Estimate tokens for rate limiting
     const totalTokens = batchTexts.reduce((sum, text) => sum + estimateTokens(text), 0);
@@ -568,7 +581,7 @@ async function generateEmbeddingsBatch(
 
     logger.info(
       `[Document Processor] Batch ${Math.floor(batchStart / EMBEDDING_BATCH_SIZE) + 1}/${Math.ceil(validChunks.length / EMBEDDING_BATCH_SIZE)}: ` +
-      `${batch.length} texts, ~${totalTokens} tokens`
+        `${batch.length} texts, ~${totalTokens} tokens`
     );
 
     try {
@@ -591,13 +604,14 @@ async function generateEmbeddingsBatch(
           results.push({
             success: false,
             index: chunk.index,
-            error: new Error('Empty or invalid embedding returned'),
+            error: new Error("Empty or invalid embedding returned"),
             text: chunk.contextualizedText,
           });
         }
       }
-    } catch (error: any) {
-      logger.error(`[Document Processor] Batch embedding error: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`[Document Processor] Batch embedding error: ${errorMessage}`);
       // Fall back to individual processing for this batch
       for (const chunk of batch) {
         try {
@@ -613,15 +627,16 @@ async function generateEmbeddingsBatch(
             results.push({
               success: false,
               index: chunk.index,
-              error: result.error || new Error('Embedding failed'),
+              error: result.error instanceof Error ? result.error : new Error("Embedding failed"),
               text: chunk.contextualizedText,
             });
           }
-        } catch (fallbackError: any) {
+        } catch (fallbackError) {
           results.push({
             success: false,
             index: chunk.index,
-            error: fallbackError,
+            error:
+              fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)),
             text: chunk.contextualizedText,
           });
         }
@@ -643,21 +658,23 @@ async function generateBatchEmbeddingsViaRuntime(
   texts: string[]
 ): Promise<number[][]> {
   // Call runtime.useModel with batch params { texts: string[] }
-  // Cast to any to bypass TypeScript - the actual handler supports this
-  const batchResult = await runtime.useModel(
-    ModelType.TEXT_EMBEDDING,
-    { texts } as any  // Handler supports { texts: string[] } for batch mode
-  );
-  
+  // Note: Some handlers support batch mode with { texts: string[] } even though
+  // the type definition only shows { text: string }
+  const batchResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, { texts } as {
+    text: string;
+  } & { texts: string[] });
+
   // Handle the response - should be number[][] for batch
   if (Array.isArray(batchResult) && Array.isArray(batchResult[0])) {
     return batchResult as unknown as number[][];
   }
-  
+
   // If handler returned single embedding (doesn't support batch), wrap it
   // This shouldn't happen if using plugin-elizacloud, but handle it gracefully
-  if (Array.isArray(batchResult) && typeof batchResult[0] === 'number') {
-    logger.warn('[Document Processor] Runtime returned single embedding for batch request - falling back to individual calls');
+  if (Array.isArray(batchResult) && typeof batchResult[0] === "number") {
+    logger.warn(
+      "[Document Processor] Runtime returned single embedding for batch request - falling back to individual calls"
+    );
     // Fallback: Process texts individually
     const embeddings: number[][] = await Promise.all(
       texts.map(async (text) => {
@@ -672,8 +689,8 @@ async function generateBatchEmbeddingsViaRuntime(
   }
 
   // Unknown format - try to extract embeddings
-  logger.error('[Document Processor] Unexpected batch result format:', typeof batchResult);
-  throw new Error('Unexpected batch embedding result format');
+  logger.error("[Document Processor] Unexpected batch result format:", typeof batchResult);
+  throw new Error("Unexpected batch embedding result format");
 }
 
 /**
@@ -683,8 +700,8 @@ async function generateEmbeddingsIndividual(
   runtime: IAgentRuntime,
   validChunks: Array<{ contextualizedText: string; index: number; success: boolean }>,
   rateLimiter: (estimatedTokens?: number) => Promise<void>,
-  results: Array<any>
-): Promise<Array<any>> {
+  results: Array<EmbeddingResult>
+): Promise<Array<EmbeddingResult>> {
   for (const chunk of validChunks) {
     const embeddingTokens = estimateTokens(chunk.contextualizedText);
     await rateLimiter(embeddingTokens);
@@ -714,12 +731,13 @@ async function generateEmbeddingsIndividual(
           text: chunk.contextualizedText,
         });
       }
-    } catch (error: any) {
-      logger.error(`Error generating embedding for chunk ${chunk.index}: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Error generating embedding for chunk ${chunk.index}: ${errorMessage}`);
       results.push({
         success: false,
         index: chunk.index,
-        error,
+        error: error instanceof Error ? error : new Error(String(error)),
         text: chunk.contextualizedText,
       });
     }
@@ -747,11 +765,11 @@ async function getContextualizedChunks(
 
   // Log configuration state once per document (not per batch)
   if (batchOriginalIndices[0] === 0) {
-    const docName = documentTitle || 'Document';
-    const provider = runtime?.getSetting('TEXT_PROVIDER') || process.env.TEXT_PROVIDER;
-    const model = runtime?.getSetting('TEXT_MODEL') || process.env.TEXT_MODEL;
+    const docName = documentTitle || "Document";
+    const provider = runtime?.getSetting("TEXT_PROVIDER") || process.env.TEXT_PROVIDER;
+    const model = runtime?.getSetting("TEXT_MODEL") || process.env.TEXT_MODEL;
     logger.info(
-      `[Document Processor] "${docName}": CTX enrichment ${ctxEnabled ? 'ENABLED' : 'DISABLED'}${ctxEnabled ? ` (${provider}/${model})` : ''}`
+      `[Document Processor] "${docName}": CTX enrichment ${ctxEnabled ? "ENABLED" : "DISABLED"}${ctxEnabled ? ` (${provider}/${model})` : ""}`
     );
   }
 
@@ -803,11 +821,11 @@ async function generateContextsInBatch(
 
   // Get active provider from validateModelConfig
   const config = validateModelConfig(runtime);
-  const isUsingOpenRouter = config.TEXT_PROVIDER === 'openrouter';
+  const isUsingOpenRouter = config.TEXT_PROVIDER === "openrouter";
   const isUsingCacheCapableModel =
     isUsingOpenRouter &&
-    (config.TEXT_MODEL?.toLowerCase().includes('claude') ||
-      config.TEXT_MODEL?.toLowerCase().includes('gemini'));
+    (config.TEXT_MODEL?.toLowerCase().includes("claude") ||
+      config.TEXT_MODEL?.toLowerCase().includes("gemini"));
 
   logger.debug(
     `[Document Processor] Contextualizing ${chunks.length} chunks with ${config.TEXT_PROVIDER}/${config.TEXT_MODEL} (cache: ${isUsingCacheCapableModel})`
@@ -834,52 +852,52 @@ async function generateContextsInBatch(
       }
 
       // Apply rate limiting before making API call
-      const llmTokens = estimateTokens(item.chunkText + (item.prompt || ''));
+      const llmTokens = estimateTokens(item.chunkText + (item.prompt || ""));
       await rateLimiter(llmTokens);
 
       try {
-        let llmResponse;
-
         const generateTextOperation = async () => {
           if (useCustomLLM) {
             // Use custom LLM with caching support
-            if (item.usesCaching) {
+            if (item.usesCaching && item.promptText) {
               // Use the newer caching approach with separate document
-              return await generateText(runtime, item.promptText!, item.systemPrompt, {
+              return await generateText(runtime, item.promptText, item.systemPrompt, {
                 cacheDocument: item.fullDocumentTextForContext,
-                cacheOptions: { type: 'ephemeral' },
+                cacheOptions: { type: "ephemeral" },
                 autoCacheContextualRetrieval: true,
               });
-            } else {
+            } else if (item.prompt) {
               // Original approach - document embedded in prompt
-              return await generateText(runtime, item.prompt!);
+              return await generateText(runtime, item.prompt);
             }
+            throw new Error("Missing prompt for text generation");
           } else {
             // Fall back to runtime.useModel (original behavior)
-            if (item.usesCaching) {
+            if (item.usesCaching && item.promptText) {
               // Use the newer caching approach - embed system prompt into main prompt
               // Note: runtime.useModel doesn't support separate system prompt
               const combinedPrompt = item.systemPrompt
-                ? `${item.systemPrompt}\n\n${item.promptText!}`
-                : item.promptText!;
+                ? `${item.systemPrompt}\n\n${item.promptText}`
+                : item.promptText;
               return await runtime.useModel(ModelType.TEXT_LARGE, {
                 prompt: combinedPrompt,
               });
-            } else {
+            } else if (item.prompt) {
               // Original approach - document embedded in prompt
               return await runtime.useModel(ModelType.TEXT_LARGE, {
-                prompt: item.prompt!,
+                prompt: item.prompt,
               });
             }
+            throw new Error("Missing prompt for text generation");
           }
         };
 
-        llmResponse = await withRateLimitRetry(
+        const llmResponse = await withRateLimitRetry(
           generateTextOperation,
           `context generation for chunk ${item.originalIndex}`
         );
 
-        const generatedContext = typeof llmResponse === 'string' ? llmResponse : llmResponse.text;
+        const generatedContext = typeof llmResponse === "string" ? llmResponse : llmResponse.text;
         const contextualizedText = getChunkWithContext(item.chunkText, generatedContext);
 
         // Track context generation progress without spam
@@ -887,7 +905,7 @@ async function generateContextsInBatch(
           (item.originalIndex + 1) % Math.max(1, Math.floor(chunks.length / 3)) === 0 ||
           item.originalIndex === chunks.length - 1
         ) {
-          const docName = documentTitle || 'Document';
+          const docName = documentTitle || "Document";
           logger.debug(
             `[Document Processor] "${docName}": Context added for ${item.originalIndex + 1}/${chunks.length} chunks`
           );
@@ -898,10 +916,12 @@ async function generateContextsInBatch(
           success: true,
           index: item.originalIndex,
         };
-      } catch (error: any) {
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
         logger.error(
-          `Error generating context for chunk ${item.originalIndex}: ${error.message}`,
-          error.stack
+          `Error generating context for chunk ${item.originalIndex}: ${errorMessage}`,
+          errorStack
         );
         return {
           contextualizedText: item.chunkText,
@@ -918,13 +938,24 @@ async function generateContextsInBatch(
 /**
  * Prepare prompts for contextualization
  */
+interface ContextPromptConfig {
+  valid: boolean;
+  originalIndex: number;
+  chunkText: string;
+  usesCaching: boolean;
+  prompt?: string | null;
+  systemPrompt?: string;
+  promptText?: string;
+  fullDocumentTextForContext?: string;
+}
+
 function prepareContextPrompts(
   chunks: string[],
   fullDocumentText: string,
   contentType?: string,
   batchIndices?: number[],
   isUsingCacheCapableModel = false
-): Array<any> {
+): Array<ContextPromptConfig> {
   return chunks.map((chunkText, idx) => {
     const originalIndex = batchIndices ? batchIndices[idx] : idx;
     try {
@@ -936,7 +967,7 @@ function prepareContextPrompts(
           : getCachingContextualizationPrompt(chunkText);
 
         // If there was an error in prompt generation
-        if (cachingPromptInfo.prompt.startsWith('Error:')) {
+        if (cachingPromptInfo.prompt.startsWith("Error:")) {
           logger.warn(
             `Skipping contextualization for chunk ${originalIndex} due to: ${cachingPromptInfo.prompt}`
           );
@@ -963,7 +994,7 @@ function prepareContextPrompts(
           ? getPromptForMimeType(contentType, fullDocumentText, chunkText)
           : getContextualizationPrompt(fullDocumentText, chunkText);
 
-        if (prompt.startsWith('Error:')) {
+        if (prompt.startsWith("Error:")) {
           logger.warn(`Skipping contextualization for chunk ${originalIndex} due to: ${prompt}`);
           return {
             prompt: null,
@@ -982,10 +1013,12 @@ function prepareContextPrompts(
           usesCaching: false,
         };
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       logger.error(
-        `Error preparing prompt for chunk ${originalIndex}: ${error.message}`,
-        error.stack
+        `Error preparing prompt for chunk ${originalIndex}: ${errorMessage}`,
+        errorStack
       );
       return {
         prompt: null,
@@ -1012,7 +1045,7 @@ async function generateEmbeddingWithValidation(
 ): Promise<{
   embedding: number[] | null;
   success: boolean;
-  error?: any;
+  error?: Error;
 }> {
   try {
     const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
@@ -1024,12 +1057,16 @@ async function generateEmbeddingWithValidation(
 
     if (!embedding || embedding.length === 0) {
       logger.warn(`Zero vector detected`);
-      return { embedding: null, success: false, error: new Error('Zero vector detected') };
+      return { embedding: null, success: false, error: new Error("Zero vector detected") };
     }
 
     return { embedding, success: true };
-  } catch (error: any) {
-    return { embedding: null, success: false, error };
+  } catch (error) {
+    return {
+      embedding: null,
+      success: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
   }
 }
 
@@ -1043,18 +1080,21 @@ async function withRateLimitRetry<T>(
 ): Promise<T> {
   try {
     return await operation();
-  } catch (error: any) {
-    if (error.status === 429) {
+  } catch (error) {
+    const errorWithStatus = error as { status?: number; headers?: { "retry-after"?: number } };
+    if (errorWithStatus.status === 429) {
       // Handle rate limiting with exponential backoff
-      const delay = retryDelay || error.headers?.['retry-after'] || 5;
+      const delay = retryDelay || errorWithStatus.headers?.["retry-after"] || 5;
       logger.warn(`Rate limit hit for ${errorContext}. Retrying after ${delay}s`);
       await new Promise((resolve) => setTimeout(resolve, delay * 1000));
 
       // Try one more time
       try {
         return await operation();
-      } catch (retryError: any) {
-        logger.error(`Failed after retry for ${errorContext}: ${retryError.message}`);
+      } catch (retryError) {
+        const retryErrorMessage =
+          retryError instanceof Error ? retryError.message : String(retryError);
+        logger.error(`Failed after retry for ${errorContext}: ${retryErrorMessage}`);
         throw retryError;
       }
     }
@@ -1101,7 +1141,7 @@ function createRateLimiter(
         timeToWait = Math.max(timeToWait, tokenUsage[0].timestamp + intervalMs - now);
       }
       if (timeToWait > 0) {
-        const reason = requestLimitExceeded ? 'request' : 'token';
+        const reason = requestLimitExceeded ? "request" : "token";
         if (timeToWait > 5000) {
           logger.info(`[Rate Limiter] Waiting ${Math.round(timeToWait / 1000)}s (${reason} limit)`);
         }
@@ -1119,6 +1159,15 @@ function createRateLimiter(
 /**
  * Logs a comprehensive summary of the knowledge generation process
  */
+interface ProviderLimits {
+  provider: string;
+  requestsPerMinute?: number;
+  tokensPerMinute?: number;
+  maxConcurrentRequests?: number;
+  rateLimitEnabled?: boolean;
+  batchDelayMs?: number;
+}
+
 function logKnowledgeGenerationSummary({
   totalChunks,
   savedCount,
@@ -1132,13 +1181,13 @@ function logKnowledgeGenerationSummary({
   failedCount: number;
   successRate: number;
   ctxEnabled: boolean;
-  providerLimits: any;
+  providerLimits: ProviderLimits;
 }) {
   // Only show summary for failed processing or debug mode
-  if (failedCount > 0 || process.env.NODE_ENV === 'development') {
-    const status = failedCount > 0 ? 'PARTIAL' : 'SUCCESS';
+  if (failedCount > 0 || process.env.NODE_ENV === "development") {
+    const status = failedCount > 0 ? "PARTIAL" : "SUCCESS";
     logger.info(
-      `[Document Processor] ${status}: ${savedCount}/${totalChunks} chunks, CTX: ${ctxEnabled ? 'ON' : 'OFF'}, Provider: ${providerLimits.provider}`
+      `[Document Processor] ${status}: ${savedCount}/${totalChunks} chunks, CTX: ${ctxEnabled ? "ON" : "OFF"}, Provider: ${providerLimits.provider}`
     );
   }
 

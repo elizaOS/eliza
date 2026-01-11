@@ -3,28 +3,29 @@ import {
   type ActionExample,
   type ActionResult,
   composePrompt,
+  type Entity,
+  formatMessages,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
   parseKeyValueXml,
   type State,
-  type UUID,
-  formatMessages,
-} from '@elizaos/core';
-import { createGoalDataService } from '../services/goalDataService.js';
-import { extractConfirmationTemplate } from '../generated/prompts/typescript/prompts.js';
+} from "@elizaos/core";
+import { extractConfirmationTemplate } from "../generated/prompts/typescript/prompts.js";
+import { createGoalDataService } from "../services/goalDataService.js";
 
 // Interface for confirmation data stored in state
 interface PendingGoalData {
   name: string;
   description?: string;
-  taskType: 'daily' | 'one-off' | 'aspirational';
+  taskType: "daily" | "one-off" | "aspirational";
   priority?: 1 | 2 | 3 | 4;
   urgent?: boolean;
   dueDate?: string;
-  recurring?: 'daily' | 'weekly' | 'monthly';
+  recurring?: "daily" | "weekly" | "monthly";
   tags?: string[];
   metadata?: Record<string, unknown>;
 }
@@ -51,22 +52,22 @@ async function extractConfirmationIntent(
     }
 
     const messageHistory = formatMessages({
-      messages: (state.data?.messages as any[]) || [],
-      entities: (state.data?.entities as any[]) || [],
+      messages: (state.data?.messages as Memory[]) || [],
+      entities: (state.data?.entities as Entity[]) || [],
     });
 
     const pendingTaskText = `
 Name: ${pendingTask.name}
 Type: ${pendingTask.taskType}
-${pendingTask.priority ? `Priority: ${pendingTask.priority}` : ''}
-${pendingTask.urgent ? 'Urgent: Yes' : ''}
-${pendingTask.dueDate ? `Due Date: ${pendingTask.dueDate}` : ''}
-${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ''}
+${pendingTask.priority ? `Priority: ${pendingTask.priority}` : ""}
+${pendingTask.urgent ? "Urgent: Yes" : ""}
+${pendingTask.dueDate ? `Due Date: ${pendingTask.dueDate}` : ""}
+${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ""}
 `;
 
     const prompt = composePrompt({
       state: {
-        text: message.content.text || '',
+        text: message.content.text || "",
         messageHistory,
         pendingTask: pendingTaskText,
       },
@@ -81,17 +82,17 @@ ${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ''}
     const parsedResult = parseKeyValueXml(result) as ConfirmationResponse | null;
 
     if (!parsedResult) {
-      logger.error('Failed to parse confirmation response');
+      logger.error("Failed to parse confirmation response");
       return { isConfirmation: false, shouldProceed: false };
     }
 
     return {
-      isConfirmation: String(parsedResult.isConfirmation) === 'true',
-      shouldProceed: String(parsedResult.shouldProceed) === 'true',
-      modifications: parsedResult.modifications === 'none' ? undefined : parsedResult.modifications,
+      isConfirmation: String(parsedResult.isConfirmation) === "true",
+      shouldProceed: String(parsedResult.shouldProceed) === "true",
+      modifications: parsedResult.modifications === "none" ? undefined : parsedResult.modifications,
     };
   } catch (error) {
-    logger.error('Error extracting confirmation intent:', error);
+    logger.error("Error extracting confirmation intent:", error);
     return { isConfirmation: false, shouldProceed: false };
   }
 }
@@ -100,11 +101,11 @@ ${pendingTask.recurring ? `Recurring: ${pendingTask.recurring}` : ''}
  * The CONFIRM_GOAL action handles the confirmation step of goal creation
  */
 export const confirmGoalAction: Action = {
-  name: 'CONFIRM_GOAL',
-  similes: ['CONFIRM_TASK', 'APPROVE_GOAL', 'APPROVE_TASK', 'GOAL_CONFIRM'],
-  description: 'Confirms or cancels a pending goal creation after user review.',
+  name: "CONFIRM_GOAL",
+  similes: ["CONFIRM_TASK", "APPROVE_GOAL", "APPROVE_TASK", "GOAL_CONFIRM"],
+  description: "Confirms or cancels a pending goal creation after user review.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State): Promise<boolean> => {
     // This action is only valid if there's a pending goal in the state
     const pendingGoal = state?.data?.pendingGoal as PendingGoalData | undefined;
     return !!pendingGoal;
@@ -114,19 +115,19 @@ export const confirmGoalAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    options: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
       if (!state) {
         if (callback) {
           await callback({
-            text: 'Unable to process confirmation without state context.',
-            actions: ['CONFIRM_GOAL_ERROR'],
+            text: "Unable to process confirmation without state context.",
+            actions: ["CONFIRM_GOAL_ERROR"],
             source: message.content.source,
           });
         }
-        return { success: false, error: 'No state context' };
+        return { success: false, error: "No state context" };
       }
 
       const pendingGoal = state.data?.pendingGoal as PendingGoalData | undefined;
@@ -134,22 +135,22 @@ export const confirmGoalAction: Action = {
         if (callback) {
           await callback({
             text: "I don't have a pending task to confirm. Would you like to create a new task?",
-            actions: ['CONFIRM_GOAL_NO_PENDING'],
+            actions: ["CONFIRM_GOAL_NO_PENDING"],
             source: message.content.source,
           });
         }
-        return { success: false, error: 'No pending task' };
+        return { success: false, error: "No pending task" };
       }
 
       if (!message.roomId || !message.entityId) {
         if (callback) {
           await callback({
-            text: 'I cannot confirm a goal without a room and entity context.',
-            actions: ['CONFIRM_GOAL_ERROR'],
+            text: "I cannot confirm a goal without a room and entity context.",
+            actions: ["CONFIRM_GOAL_ERROR"],
             source: message.content.source,
           });
         }
-        return { success: false, error: 'No room or entity context' };
+        return { success: false, error: "No room or entity context" };
       }
 
       // Extract confirmation intent
@@ -160,7 +161,7 @@ export const confirmGoalAction: Action = {
         if (callback) {
           await callback({
             text: `I'm still waiting for your confirmation on the task "${pendingGoal.name}". Would you like me to create it?`,
-            actions: ['CONFIRM_GOAL_WAITING'],
+            actions: ["CONFIRM_GOAL_WAITING"],
             source: message.content.source,
           });
         }
@@ -175,7 +176,7 @@ export const confirmGoalAction: Action = {
         if (callback) {
           await callback({
             text: "Okay, I've cancelled the task creation. Let me know if you'd like to create a different task.",
-            actions: ['CONFIRM_GOAL_CANCELLED'],
+            actions: ["CONFIRM_GOAL_CANCELLED"],
             source: message.content.source,
           });
         }
@@ -188,7 +189,7 @@ export const confirmGoalAction: Action = {
       // Check for duplicates one more time
       const existingGoals = await dataService.getGoals({
         ownerId: message.entityId,
-        ownerType: 'entity',
+        ownerType: "entity",
         isCompleted: false,
       });
 
@@ -199,7 +200,7 @@ export const confirmGoalAction: Action = {
         if (callback) {
           await callback({
             text: `It looks like you already have an active goal named "${pendingGoal.name}". I haven't added a duplicate.`,
-            actions: ['CONFIRM_GOAL_DUPLICATE'],
+            actions: ["CONFIRM_GOAL_DUPLICATE"],
             source: message.content.source,
           });
         }
@@ -209,7 +210,7 @@ export const confirmGoalAction: Action = {
       // Create the goal
       const createdGoalId = await dataService.createGoal({
         agentId: runtime.agentId,
-        ownerType: 'entity',
+        ownerType: "entity",
         ownerId: message.entityId,
         name: pendingGoal.name,
         description: pendingGoal.description || pendingGoal.name,
@@ -225,22 +226,22 @@ export const confirmGoalAction: Action = {
       });
 
       if (!createdGoalId) {
-        throw new Error('Failed to create goal');
+        throw new Error("Failed to create goal");
       }
 
       // Clear the pending goal from state
       delete state.data.pendingGoal;
 
       // Send success message
-      let successMessage = '';
-      if (pendingGoal.taskType === 'daily') {
+      let successMessage = "";
+      if (pendingGoal.taskType === "daily") {
         successMessage = `✅ Created daily task: "${pendingGoal.name}".`;
-      } else if (pendingGoal.taskType === 'one-off') {
+      } else if (pendingGoal.taskType === "one-off") {
         const priorityText = `Priority ${pendingGoal.priority || 3}`;
-        const urgentText = pendingGoal.urgent ? ', Urgent' : '';
+        const urgentText = pendingGoal.urgent ? ", Urgent" : "";
         const dueDateText = pendingGoal.dueDate
           ? `, Due: ${new Date(pendingGoal.dueDate).toLocaleDateString()}`
-          : '';
+          : "";
         successMessage = `✅ Created task: "${pendingGoal.name}" (${priorityText}${urgentText}${dueDateText})`;
       } else {
         successMessage = `✅ Created aspirational goal: "${pendingGoal.name}"`;
@@ -253,78 +254,81 @@ export const confirmGoalAction: Action = {
       if (callback) {
         await callback({
           text: successMessage,
-          actions: ['CONFIRM_GOAL_SUCCESS'],
+          actions: ["CONFIRM_GOAL_SUCCESS"],
           source: message.content.source,
         });
       }
       return { success: true, text: successMessage };
     } catch (error) {
-      logger.error('Error in confirmGoal handler:', error);
+      logger.error("Error in confirmGoal handler:", error);
       if (callback) {
         await callback({
-          text: 'I encountered an error while confirming your goal. Please try again.',
-          actions: ['CONFIRM_GOAL_ERROR'],
+          text: "I encountered an error while confirming your goal. Please try again.",
+          actions: ["CONFIRM_GOAL_ERROR"],
           source: message.content.source,
         });
       }
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Add a goal to finish my taxes by April 15',
+          text: "Add a goal to finish my taxes by April 15",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "I'll create a one-off goal: 'Finish taxes' with Priority 2, Due April 15.\n\nIs this correct?",
-          actions: ['CREATE_GOAL_PREVIEW'],
+          actions: ["CREATE_GOAL_PREVIEW"],
         },
       },
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Yes, that looks good',
+          text: "Yes, that looks good",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "✅ Created task: 'Finish taxes' (Priority 2, Due: 4/15/2024)",
-          actions: ['CONFIRM_GOAL_SUCCESS'],
+          actions: ["CONFIRM_GOAL_SUCCESS"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'I want to add a daily task to exercise',
+          text: "I want to add a daily task to exercise",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "I'll create a daily goal: 'Exercise'.\n\nIs this correct?",
-          actions: ['CREATE_GOAL_PREVIEW'],
+          actions: ["CREATE_GOAL_PREVIEW"],
         },
       },
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Actually, nevermind',
+          text: "Actually, nevermind",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "Okay, I've cancelled the task creation. Let me know if you'd like to create a different task.",
-          actions: ['CONFIRM_GOAL_CANCELLED'],
+          actions: ["CONFIRM_GOAL_CANCELLED"],
         },
       },
     ],

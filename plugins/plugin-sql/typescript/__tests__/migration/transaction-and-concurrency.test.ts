@@ -1,13 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import { sql } from "drizzle-orm";
 import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../runtime-migrator";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
@@ -18,13 +11,9 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
   let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
-    console.log(
-      "\n🔒 Testing Transaction Support and Concurrent Migration Handling...\n",
-    );
+    console.log("\n🔒 Testing Transaction Support and Concurrent Migration Handling...\n");
 
-    const testSetup = await createIsolatedTestDatabaseForMigration(
-      "transaction_concurrency_tests",
-    );
+    const testSetup = await createIsolatedTestDatabaseForMigration("transaction_concurrency_tests");
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
@@ -68,21 +57,21 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         DELETE FROM migrations._migrations 
         WHERE plugin_name LIKE '%transaction-test%' 
            OR plugin_name LIKE '%concurrent-test%'
-      `),
+      `)
       );
       await db.execute(
         sql.raw(`
         DELETE FROM migrations._journal 
         WHERE plugin_name LIKE '%transaction-test%'
            OR plugin_name LIKE '%concurrent-test%'
-      `),
+      `)
       );
       await db.execute(
         sql.raw(`
         DELETE FROM migrations._snapshots 
         WHERE plugin_name LIKE '%transaction-test%'
            OR plugin_name LIKE '%concurrent-test%'
-      `),
+      `)
       );
     } catch {
       // Ignore errors
@@ -113,32 +102,28 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public'
           AND table_name = 'test_transaction_success'
-        )`),
+        )`)
       );
 
-      expect(tableExists.rows[0] && tableExists.rows[0].exists).toBe(true);
+      expect(tableExists.rows[0]?.exists).toBe(true);
 
       // Verify migration was recorded
       const migrationRecorded = await db.execute(
         sql.raw(`SELECT COUNT(*) as count
                  FROM migrations._migrations
-                 WHERE plugin_name = '@elizaos/transaction-test-success'`),
+                 WHERE plugin_name = '@elizaos/transaction-test-success'`)
       );
 
-      expect(
-        parseInt(String((migrationRecorded.rows[0] as CountRow).count), 10),
-      ).toBe(1);
+      expect(parseInt(String((migrationRecorded.rows[0] as CountRow).count), 10)).toBe(1);
 
       // Verify journal was recorded
       const journalRecorded = await db.execute(
         sql.raw(`SELECT COUNT(*) as count
                  FROM migrations._journal
-                 WHERE plugin_name = '@elizaos/transaction-test-success'`),
+                 WHERE plugin_name = '@elizaos/transaction-test-success'`)
       );
 
-      expect(
-        parseInt(String((journalRecorded.rows[0] as CountRow).count), 10),
-      ).toBe(1);
+      expect(parseInt(String((journalRecorded.rows[0] as CountRow).count), 10)).toBe(1);
     });
 
     it("should rollback all changes when migration fails", async () => {
@@ -153,7 +138,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           id: uuid("id").primaryKey().defaultRandom(),
           // Reference to non-existent table will fail
           fake_ref: uuid("fake_ref").references(
-            () => (null as unknown as { id: ReturnType<typeof uuid> }).id,
+            () => (null as unknown as { id: ReturnType<typeof uuid> }).id
           ),
         }),
       };
@@ -177,47 +162,40 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public'
           AND table_name = 'test_partial_migration'
-        )`),
+        )`)
       );
 
-      expect(partialTableExists.rows[0] && partialTableExists.rows[0].exists).toBe(false);
+      expect(partialTableExists.rows[0]?.exists).toBe(false);
 
       // Verify no migration record was created for the failed migration
       const failedMigrationRecorded = await db.execute(
         sql.raw(`SELECT COUNT(*) as count
                  FROM migrations._migrations
-                 WHERE plugin_name = '@elizaos/transaction-test-fail'`),
+                 WHERE plugin_name = '@elizaos/transaction-test-fail'`)
       );
 
-      expect(
-        parseInt(
-          String((failedMigrationRecorded.rows[0] as CountRow).count),
-          10,
-        ),
-      ).toBe(0);
+      expect(parseInt(String((failedMigrationRecorded.rows[0] as CountRow).count), 10)).toBe(0);
 
       // Verify no journal entry was created for the failed migration
       const failedJournalRecorded = await db.execute(
         sql.raw(`SELECT COUNT(*) as count
                  FROM migrations._journal
-                 WHERE plugin_name = '@elizaos/transaction-test-fail'`),
+                 WHERE plugin_name = '@elizaos/transaction-test-fail'`)
       );
 
-      expect(
-        parseInt(String((failedJournalRecorded.rows[0] as CountRow).count), 10),
-      ).toBe(0);
+      expect(parseInt(String((failedJournalRecorded.rows[0] as CountRow).count), 10)).toBe(0);
     });
 
     it("should maintain consistent state across migration failures", async () => {
       // Get initial state
       const initialMigrationCount = await db.execute(
-        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations`),
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations`)
       );
 
       const initialTableCount = await db.execute(
         sql.raw(`SELECT COUNT(*) as count 
                  FROM information_schema.tables 
-                 WHERE table_schema = 'public'`),
+                 WHERE table_schema = 'public'`)
       );
 
       // Try an migration with invalid reference that will fail
@@ -228,16 +206,12 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
             id: uuid("id").primaryKey().defaultRandom(),
             // This will create invalid foreign key reference
             invalid_ref: uuid("invalid_ref").references(
-              () =>
-                (undefined as unknown as { id: ReturnType<typeof uuid> }).id,
+              () => (undefined as unknown as { id: ReturnType<typeof uuid> }).id
             ),
           }),
         };
 
-        await migrator.migrate(
-          "@elizaos/invalid-migration-test",
-          invalidSchema,
-        );
+        await migrator.migrate("@elizaos/invalid-migration-test", invalidSchema);
       } catch (_error) {
         errorOccurred = true;
       }
@@ -246,25 +220,21 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
 
       // Verify state is unchanged
       const finalMigrationCount = await db.execute(
-        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations`),
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations`)
       );
 
       const finalTableCount = await db.execute(
         sql.raw(`SELECT COUNT(*) as count 
                  FROM information_schema.tables 
-                 WHERE table_schema = 'public'`),
+                 WHERE table_schema = 'public'`)
       );
 
-      expect(
-        parseInt(String((finalMigrationCount.rows[0] as CountRow).count), 10),
-      ).toBe(
-        parseInt(String((initialMigrationCount.rows[0] as CountRow).count), 10),
+      expect(parseInt(String((finalMigrationCount.rows[0] as CountRow).count), 10)).toBe(
+        parseInt(String((initialMigrationCount.rows[0] as CountRow).count), 10)
       );
 
-      expect(
-        parseInt(String((finalTableCount.rows[0] as CountRow).count), 10),
-      ).toBe(
-        parseInt(String((initialTableCount.rows[0] as CountRow).count), 10),
+      expect(parseInt(String((finalTableCount.rows[0] as CountRow).count), 10)).toBe(
+        parseInt(String((initialTableCount.rows[0] as CountRow).count), 10)
       );
     });
   });
@@ -300,12 +270,8 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         ]);
 
         // One should succeed, one might fail due to locking or be ignored due to idempotency
-        const successCount = [result1, result2].filter(
-          (r) => r.status === "fulfilled",
-        ).length;
-        const failureCount = [result1, result2].filter(
-          (r) => r.status === "rejected",
-        ).length;
+        const successCount = [result1, result2].filter((r) => r.status === "fulfilled").length;
+        const failureCount = [result1, result2].filter((r) => r.status === "rejected").length;
 
         // Either both succeed (serialized by advisory lock) or one fails (locked)
         expect(successCount + failureCount).toBe(2);
@@ -314,23 +280,21 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         // Check final state - should have exactly one migration record
         const migrationCount = await db.execute(
           sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/concurrent-test-same-plugin'`),
+                 WHERE plugin_name = '@elizaos/concurrent-test-same-plugin'`)
         );
 
-        expect(
-          parseInt(String((migrationCount.rows[0] as CountRow).count), 10),
-        ).toBe(1);
+        expect(parseInt(String((migrationCount.rows[0] as CountRow).count), 10)).toBe(1);
 
         // Table should exist
         const tableExists = await db.execute(
           sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_concurrent_3'
-        )`),
+        )`)
         );
 
-        expect(tableExists.rows[0] && tableExists.rows[0].exists).toBe(true);
-      },
+        expect(tableExists.rows[0]?.exists).toBe(true);
+      }
     );
 
     it("should allow concurrent migrations for different plugins", async () => {
@@ -365,161 +329,130 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_concurrent_1'
-        )`),
+        )`)
       );
 
       const table2Exists = await db.execute(
         sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_concurrent_2'
-        )`),
+        )`)
       );
 
-      expect(table1Exists.rows[0] && table1Exists.rows[0].exists).toBe(true);
-      expect(table2Exists.rows[0] && table2Exists.rows[0].exists).toBe(true);
+      expect(table1Exists.rows[0]?.exists).toBe(true);
+      expect(table2Exists.rows[0]?.exists).toBe(true);
 
       // Verify both migrations were recorded
       const migration1Count = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/concurrent-test-1'`),
+                 WHERE plugin_name = '@elizaos/concurrent-test-1'`)
       );
 
       const migration2Count = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/concurrent-test-2'`),
+                 WHERE plugin_name = '@elizaos/concurrent-test-2'`)
       );
 
-      expect(
-        parseInt(String((migration1Count.rows[0] as CountRow).count), 10),
-      ).toBe(1);
-      expect(
-        parseInt(String((migration2Count.rows[0] as CountRow).count), 10),
-      ).toBe(1);
+      expect(parseInt(String((migration1Count.rows[0] as CountRow).count), 10)).toBe(1);
+      expect(parseInt(String((migration2Count.rows[0] as CountRow).count), 10)).toBe(1);
     });
 
-    testOrSkip(
-      "should use proper locking to prevent race conditions",
-      async () => {
-        // Create multiple migrators to simulate different processes
-        const migrator2 = new RuntimeMigrator(db);
-        const migrator3 = new RuntimeMigrator(db);
+    testOrSkip("should use proper locking to prevent race conditions", async () => {
+      // Create multiple migrators to simulate different processes
+      const migrator2 = new RuntimeMigrator(db);
+      const migrator3 = new RuntimeMigrator(db);
 
-        const testSchema = {
-          testTable: pgTable("test_lock_table", {
-            id: uuid("id").primaryKey().defaultRandom(),
-            process_id: text("process_id"),
-            created_at: timestamp("created_at").defaultNow(),
-          }),
-        };
+      const testSchema = {
+        testTable: pgTable("test_lock_table", {
+          id: uuid("id").primaryKey().defaultRandom(),
+          process_id: text("process_id"),
+          created_at: timestamp("created_at").defaultNow(),
+        }),
+      };
 
-        // Run migrations from multiple "processes" simultaneously
-        const results = await Promise.allSettled([
-          migrator.migrate(
-            "@elizaos/concurrent-test-locking",
-            testSchema,
-          ) as Promise<any>,
-          migrator2.migrate(
-            "@elizaos/concurrent-test-locking",
-            testSchema,
-          ) as Promise<any>,
-          migrator3.migrate(
-            "@elizaos/concurrent-test-locking",
-            testSchema,
-          ) as Promise<any>,
-        ]);
+      // Run migrations from multiple "processes" simultaneously
+      const results = await Promise.allSettled([
+        migrator.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<any>,
+        migrator2.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<any>,
+        migrator3.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<any>,
+      ]);
 
-        // Check results
-        const successfulMigrations = results.filter(
-          (r) => r.status === "fulfilled",
-        ).length;
-        const failedMigrations = results.filter(
-          (r) => r.status === "rejected",
-        ).length;
+      // Check results
+      const successfulMigrations = results.filter((r) => r.status === "fulfilled").length;
+      const failedMigrations = results.filter((r) => r.status === "rejected").length;
 
-        console.log(
-          `Concurrent migration results: ${successfulMigrations} successful, ${failedMigrations} failed`,
-        );
+      console.log(
+        `Concurrent migration results: ${successfulMigrations} successful, ${failedMigrations} failed`
+      );
 
-        // Should have exactly one successful migration due to advisory locking
-        expect(successfulMigrations).toBeGreaterThanOrEqual(1);
+      // Should have exactly one successful migration due to advisory locking
+      expect(successfulMigrations).toBeGreaterThanOrEqual(1);
 
-        // Verify only one migration record exists
-        const migrationCount = await db.execute(
-          sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/concurrent-test-locking'`),
-        );
+      // Verify only one migration record exists
+      const migrationCount = await db.execute(
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
+                 WHERE plugin_name = '@elizaos/concurrent-test-locking'`)
+      );
 
-        expect(
-          parseInt(String((migrationCount.rows[0] as CountRow).count), 10),
-        ).toBe(1);
+      expect(parseInt(String((migrationCount.rows[0] as CountRow).count), 10)).toBe(1);
 
-        // Verify table was created exactly once
-        const tableExists = await db.execute(
-          sql.raw(`SELECT EXISTS (
+      // Verify table was created exactly once
+      const tableExists = await db.execute(
+        sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_lock_table'
-        )`),
-        );
+        )`)
+      );
 
-        expect(tableExists.rows[0] && tableExists.rows[0].exists).toBe(true);
-      },
-    );
+      expect(tableExists.rows[0]?.exists).toBe(true);
+    });
 
-    testOrSkip(
-      "should release advisory locks after migration completion",
-      async () => {
-        // Run a migration
-        const testSchema = {
-          testTable: pgTable("test_lock_cleanup", {
-            id: uuid("id").primaryKey().defaultRandom(),
-            data: text("data"),
-          }),
-        };
+    testOrSkip("should release advisory locks after migration completion", async () => {
+      // Run a migration
+      const testSchema = {
+        testTable: pgTable("test_lock_cleanup", {
+          id: uuid("id").primaryKey().defaultRandom(),
+          data: text("data"),
+        }),
+      };
 
-        await migrator.migrate("@elizaos/concurrent-test-cleanup", testSchema);
+      await migrator.migrate("@elizaos/concurrent-test-cleanup", testSchema);
 
-        // Check if there are any advisory locks still held
-        // PostgreSQL advisory locks can be checked via pg_locks
-        const activeLocks = await db.execute(
-          sql.raw(`SELECT COUNT(*) as count FROM pg_locks 
+      // Check if there are any advisory locks still held
+      // PostgreSQL advisory locks can be checked via pg_locks
+      const activeLocks = await db.execute(
+        sql.raw(`SELECT COUNT(*) as count FROM pg_locks 
                  WHERE locktype = 'advisory' 
-                 AND granted = true`),
-        );
+                 AND granted = true`)
+      );
 
-        const lockCount = parseInt(
-          String((activeLocks.rows[0] as CountRow).count),
-          10,
-        );
+      const lockCount = parseInt(String((activeLocks.rows[0] as CountRow).count), 10);
 
-        // There might be some locks from other operations, but there shouldn't be
-        // an excessive number indicating leaked migration locks
-        expect(lockCount).toBeLessThan(10); // Reasonable threshold
+      // There might be some locks from other operations, but there shouldn't be
+      // an excessive number indicating leaked migration locks
+      expect(lockCount).toBeLessThan(10); // Reasonable threshold
 
-        // Try another migration to ensure no stale locks prevent it
-        const anotherSchema = {
-          testTable: pgTable("test_lock_cleanup_2", {
-            id: uuid("id").primaryKey().defaultRandom(),
-            data: text("data"),
-          }),
-        };
+      // Try another migration to ensure no stale locks prevent it
+      const anotherSchema = {
+        testTable: pgTable("test_lock_cleanup_2", {
+          id: uuid("id").primaryKey().defaultRandom(),
+          data: text("data"),
+        }),
+      };
 
-        // Should succeed without lock conflicts - migration completes without throwing
-        await migrator.migrate(
-          "@elizaos/concurrent-test-cleanup-2",
-          anotherSchema,
-        );
+      // Should succeed without lock conflicts - migration completes without throwing
+      await migrator.migrate("@elizaos/concurrent-test-cleanup-2", anotherSchema);
 
-        // Verify table was created
-        const tableExists = await db.execute(
-          sql.raw(`SELECT EXISTS (
+      // Verify table was created
+      const tableExists = await db.execute(
+        sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_lock_cleanup_2'
-        )`),
-        );
+        )`)
+      );
 
-        expect(tableExists.rows[0] && tableExists.rows[0].exists).toBe(true);
-      },
-    );
+      expect(tableExists.rows[0]?.exists).toBe(true);
+    });
 
     it("should handle high-concurrency scenarios with advisory locks", async () => {
       // Create many concurrent migrations
@@ -534,23 +467,17 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           }),
         };
 
-        migrationPromises.push(
-          migrator.migrate(`@elizaos/concurrent-test-high-${i}`, schema),
-        );
+        migrationPromises.push(migrator.migrate(`@elizaos/concurrent-test-high-${i}`, schema));
       }
 
       // Wait for all migrations to complete
       const results = await Promise.allSettled(migrationPromises);
 
       // Count successful migrations
-      const successfulCount = results.filter(
-        (r) => r.status === "fulfilled",
-      ).length;
+      const successfulCount = results.filter((r) => r.status === "fulfilled").length;
       const failedCount = results.filter((r) => r.status === "rejected").length;
 
-      console.log(
-        `High concurrency results: ${successfulCount} successful, ${failedCount} failed`,
-      );
+      console.log(`High concurrency results: ${successfulCount} successful, ${failedCount} failed`);
 
       // All should succeed since they're different plugins
       expect(successfulCount).toBe(10);
@@ -559,21 +486,25 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       // Verify all migration records exist
       const totalMigrations = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name LIKE '@elizaos/concurrent-test-high-%'`),
+                 WHERE plugin_name LIKE '@elizaos/concurrent-test-high-%'`)
       );
 
-      expect(parseInt((totalMigrations.rows[0] as any).count, 10)).toBe(10);
+      interface QueryRow {
+        count: string;
+      }
+      expect(parseInt((totalMigrations.rows[0] as QueryRow).count, 10)).toBe(10);
 
       // Verify all tables were created
       const createdTables = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM information_schema.tables 
                  WHERE table_schema = 'public' 
-                 AND table_name LIKE 'test_concurrent_%'`),
+                 AND table_name LIKE 'test_concurrent_%'`)
       );
 
-      expect(
-        parseInt((createdTables.rows[0] as any).count, 10),
-      ).toBeGreaterThanOrEqual(10);
+      interface QueryRow {
+        count: string;
+      }
+      expect(parseInt((createdTables.rows[0] as QueryRow).count, 10)).toBeGreaterThanOrEqual(10);
     });
 
     it("should handle errors in one migration without affecting others", async () => {
@@ -590,7 +521,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           id: uuid("id").primaryKey().defaultRandom(),
           // This will cause an error during migration due to invalid reference
           bad_ref: uuid("bad_ref").references(
-            () => (null as unknown as { id: ReturnType<typeof uuid> }).id,
+            () => (null as unknown as { id: ReturnType<typeof uuid> }).id
           ),
         }),
       };
@@ -612,33 +543,26 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_concurrent_4'
-        )`),
+        )`)
       );
 
-      expect(tableExists.rows[0] && tableExists.rows[0].exists).toBe(true);
+      expect(tableExists.rows[0]?.exists).toBe(true);
 
       // Verify valid migration was recorded
       const validMigrationExists = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/concurrent-test-valid'`),
+                 WHERE plugin_name = '@elizaos/concurrent-test-valid'`)
       );
 
-      expect(
-        parseInt(String((validMigrationExists.rows[0] as CountRow).count), 10),
-      ).toBe(1);
+      expect(parseInt(String((validMigrationExists.rows[0] as CountRow).count), 10)).toBe(1);
 
       // Verify invalid migration was NOT recorded
       const invalidMigrationExists = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/concurrent-test-invalid'`),
+                 WHERE plugin_name = '@elizaos/concurrent-test-invalid'`)
       );
 
-      expect(
-        parseInt(
-          String((invalidMigrationExists.rows[0] as CountRow).count),
-          10,
-        ),
-      ).toBe(0);
+      expect(parseInt(String((invalidMigrationExists.rows[0] as CountRow).count), 10)).toBe(0);
     });
   });
 
@@ -657,9 +581,9 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         interface TestableRuntimeMigrator extends RuntimeMigrator {
           getAdvisoryLockId(pluginName: string): bigint;
         }
-        const lockId = (
-          migrator as unknown as TestableRuntimeMigrator
-        ).getAdvisoryLockId(pluginName);
+        const lockId = (migrator as unknown as TestableRuntimeMigrator).getAdvisoryLockId(
+          pluginName
+        );
 
         // Verify it's a bigint
         expect(typeof lockId).toBe("bigint");
@@ -724,9 +648,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       // Invalid values (out of range)
       expect(validateBigInt(9223372036854775808n)).toBe(false); // MAX + 1
       expect(validateBigInt(-9223372036854775809n)).toBe(false); // MIN - 1
-      expect(validateBigInt(BigInt("99999999999999999999999999999"))).toBe(
-        false,
-      );
+      expect(validateBigInt(BigInt("99999999999999999999999999999"))).toBe(false);
     });
 
     it("should use CAST for type safety in advisory lock queries", async () => {
@@ -746,9 +668,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         getAdvisoryLockId(pluginName: string): bigint;
       }
       const testMigrator = migrator as unknown as TestableRuntimeMigrator;
-      const lockId = testMigrator.getAdvisoryLockId(
-        "@elizaos/lock-security-test",
-      );
+      const lockId = testMigrator.getAdvisoryLockId("@elizaos/lock-security-test");
 
       // Verify it's a valid bigint
       expect(typeof lockId).toBe("bigint");
@@ -767,8 +687,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         getAdvisoryLockId(pluginName: string): bigint;
       }
       const testMigrator = migrator as unknown as TestableRuntimeMigrator;
-      const originalGetLockId =
-        testMigrator.getAdvisoryLockId.bind(testMigrator);
+      const originalGetLockId = testMigrator.getAdvisoryLockId.bind(testMigrator);
 
       try {
         // Mock getAdvisoryLockId to return an invalid value
@@ -784,9 +703,9 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
         };
 
         // This should throw an error due to invalid lock ID
-        await expect(
-          migrator.migrate("@elizaos/invalid-lock-test", testSchema),
-        ).rejects.toThrow("Invalid advisory lock ID");
+        await expect(migrator.migrate("@elizaos/invalid-lock-test", testSchema)).rejects.toThrow(
+          "Invalid advisory lock ID"
+        );
       } finally {
         // Restore original method
         testMigrator.getAdvisoryLockId = originalGetLockId;
@@ -828,12 +747,10 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
           FROM information_schema.tables 
           WHERE table_schema = 'public' 
             AND table_name IN ('test_advisory_concurrent_1', 'test_advisory_concurrent_2')
-        `),
+        `)
       );
 
-      expect(
-        parseInt(String((tablesExist.rows[0] as CountRow).count), 10),
-      ).toBe(2);
+      expect(parseInt(String((tablesExist.rows[0] as CountRow).count), 10)).toBe(2);
     });
   });
 
@@ -849,87 +766,76 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
     // Skip this test for PGLite since it doesn't support advisory locks
     const testOrSkip = isRealPostgres ? it : it.skip;
 
-    testOrSkip(
-      "should handle race condition when lastMigration is initially null",
-      async () => {
-        // This test verifies the fix for the race condition where:
-        // 1. Process A checks and finds lastMigration = null
-        // 2. Process B completes a migration while A waits for lock
-        // 3. Process A must detect the completion via double-check
-        // Note: This only works with real PostgreSQL (advisory locks required)
+    testOrSkip("should handle race condition when lastMigration is initially null", async () => {
+      // This test verifies the fix for the race condition where:
+      // 1. Process A checks and finds lastMigration = null
+      // 2. Process B completes a migration while A waits for lock
+      // 3. Process A must detect the completion via double-check
+      // Note: This only works with real PostgreSQL (advisory locks required)
 
-        const pluginName = "@elizaos/test-race-condition-null-initial";
+      const pluginName = "@elizaos/test-race-condition-null-initial";
 
-        const schema1 = {
-          testTable: pgTable("test_race_null_initial", {
-            id: uuid("id").primaryKey().defaultRandom(),
-            data: text("data"),
-            version: integer("version").default(1),
-          }),
-        };
+      const schema1 = {
+        testTable: pgTable("test_race_null_initial", {
+          id: uuid("id").primaryKey().defaultRandom(),
+          data: text("data"),
+          version: integer("version").default(1),
+        }),
+      };
 
-        const schema2 = {
-          testTable: pgTable("test_race_null_initial", {
-            id: uuid("id").primaryKey().defaultRandom(),
-            data: text("data"),
-            version: integer("version").default(1), // Same version, should be idempotent
-          }),
-        };
+      const schema2 = {
+        testTable: pgTable("test_race_null_initial", {
+          id: uuid("id").primaryKey().defaultRandom(),
+          data: text("data"),
+          version: integer("version").default(1), // Same version, should be idempotent
+        }),
+      };
 
-        // Clean up any existing migration records for this test
-        await db.execute(
-          sql.raw(
-            `DELETE FROM migrations._migrations WHERE plugin_name = '${pluginName}'`,
-          ),
-        );
-        await db.execute(
-          sql.raw(
-            `DELETE FROM migrations._snapshots WHERE plugin_name = '${pluginName}'`,
-          ),
-        );
+      // Clean up any existing migration records for this test
+      await db.execute(
+        sql.raw(`DELETE FROM migrations._migrations WHERE plugin_name = '${pluginName}'`)
+      );
+      await db.execute(
+        sql.raw(`DELETE FROM migrations._snapshots WHERE plugin_name = '${pluginName}'`)
+      );
 
-        // Drop the table if it exists
-        await db.execute(
-          sql.raw(`DROP TABLE IF EXISTS test_race_null_initial`),
-        );
+      // Drop the table if it exists
+      await db.execute(sql.raw(`DROP TABLE IF EXISTS test_race_null_initial`));
 
-        // Create two migrators to simulate two processes
-        const migrator1 = new RuntimeMigrator(db);
-        const migrator2 = new RuntimeMigrator(db);
+      // Create two migrators to simulate two processes
+      const migrator1 = new RuntimeMigrator(db);
+      const migrator2 = new RuntimeMigrator(db);
 
-        // Run migrations concurrently - both should see no initial migration
-        // and both will try to acquire the lock
-        const [result1, result2] = await Promise.allSettled([
-          migrator1.migrate(pluginName, schema1),
-          migrator2.migrate(pluginName, schema2),
-        ]);
+      // Run migrations concurrently - both should see no initial migration
+      // and both will try to acquire the lock
+      const [result1, result2] = await Promise.allSettled([
+        migrator1.migrate(pluginName, schema1),
+        migrator2.migrate(pluginName, schema2),
+      ]);
 
-        // Both should succeed (one creates, one is skipped by double-check)
-        expect(result1.status).toBe("fulfilled");
-        expect(result2.status).toBe("fulfilled");
+      // Both should succeed (one creates, one is skipped by double-check)
+      expect(result1.status).toBe("fulfilled");
+      expect(result2.status).toBe("fulfilled");
 
-        // Should have exactly one migration record
-        const migrationCount = await db.execute(
-          sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '${pluginName}'`),
-        );
-        expect(
-          parseInt(String((migrationCount.rows[0] as CountRow).count), 10),
-        ).toBe(1);
+      // Should have exactly one migration record
+      const migrationCount = await db.execute(
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
+                 WHERE plugin_name = '${pluginName}'`)
+      );
+      expect(parseInt(String((migrationCount.rows[0] as CountRow).count), 10)).toBe(1);
 
-        // Table should exist
-        const tableExists = await db.execute(
-          sql.raw(`SELECT EXISTS (
+      // Table should exist
+      const tableExists = await db.execute(
+        sql.raw(`SELECT EXISTS (
           SELECT FROM information_schema.tables
           WHERE table_schema = 'public' AND table_name = 'test_race_null_initial'
-        )`),
-        );
-        expect(tableExists.rows[0] && tableExists.rows[0].exists).toBe(true);
+        )`)
+      );
+      expect(tableExists.rows[0]?.exists).toBe(true);
 
-        // Verify the double-check logic worked by checking logs
-        // (In a real scenario, we'd check that one process logged
-        // "Migration completed by another process")
-      },
-    );
+      // Verify the double-check logic worked by checking logs
+      // (In a real scenario, we'd check that one process logged
+      // "Migration completed by another process")
+    });
   });
 });

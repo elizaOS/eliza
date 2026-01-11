@@ -5,11 +5,11 @@
  * to the TypeScript implementation for all core types and operations.
  */
 
-import {  beforeAll, describe, expect, it  } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Character, Content, Memory } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
+import { beforeAll, describe, expect, it } from "vitest";
 
 // WASM module interface
 interface WasmModule {
@@ -99,7 +99,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       expect(rustObj.id).toBe(tsObj.id);
       expect(rustObj.entityId).toBe(tsObj.entityId);
       expect(rustObj.roomId).toBe(tsObj.roomId);
-      expect(rustObj.content && rustObj.content.text).toBe(tsObj.content && tsObj.content.text);
+      expect(rustObj.content?.text).toBe(tsObj.content?.text);
       expect(rustObj.createdAt).toBe(tsObj.createdAt);
     });
 
@@ -121,7 +121,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       // Required fields should be present
       expect(rustObj.entityId).toBe(minimalMemory.entityId);
       expect(rustObj.roomId).toBe(minimalMemory.roomId);
-      expect(rustObj.content && rustObj.content.text).toBe("test");
+      expect(rustObj.content?.text).toBe("test");
     });
 
     it("should pass round-trip test", () => {
@@ -277,7 +277,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
       const rustObj = JSON.parse(rustJson);
 
       expect(rustObj.name).toBe("DeepAgent");
-      expect(rustObj.settings && rustObj.settings.secrets && rustObj.settings.secrets.API_KEY).toBe("secret-value");
+      expect(rustObj.settings?.secrets?.API_KEY).toBe("secret-value");
     });
   });
 

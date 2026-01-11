@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! JSON file-based storage implementation for Rust.
 
 use anyhow::{Context, Result};

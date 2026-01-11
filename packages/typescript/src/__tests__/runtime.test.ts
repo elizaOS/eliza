@@ -1,15 +1,12 @@
-import { afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Helper type for vitest mocks with additional methods
 interface VitestMockFunction<T extends (...args: never[]) => unknown> {
   (...args: Parameters<T>): ReturnType<T>;
   mockResolvedValue: (value: Awaited<ReturnType<T>>) => VitestMockFunction<T>;
-  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => VitestMockFunction<T>;
+  mockResolvedValueOnce: (
+    value: Awaited<ReturnType<T>>,
+  ) => VitestMockFunction<T>;
   mock: {
     calls: Parameters<T>[][];
     results: ReturnType<T>[];
@@ -212,7 +209,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     // Reset readiness state between tests
     adapterReady = false;
 
-    agentId = mockCharacter.id!; // Use character's ID
+    agentId = mockCharacter.id ?? ("test-agent-id" as UUID); // Use character's ID
 
     // Instantiate runtime correctly, passing adapter in options object
     runtime = new AgentRuntime({
@@ -288,16 +285,15 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       // Mock adapter calls needed for initialize
-      const ensureAgentExistsSpy = vi.spyOn(
-        AgentRuntime.prototype,
-        "ensureAgentExists",
-      ).mockResolvedValue({
-        ...mockCharacter,
-        id: agentId, // ensureAgentExists should return the agent
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      });
+      const ensureAgentExistsSpy = vi
+        .spyOn(AgentRuntime.prototype, "ensureAgentExists")
+        .mockResolvedValue({
+          ...mockCharacter,
+          id: agentId, // ensureAgentExists should return the agent
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          enabled: true,
+        });
 
       (
         mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
@@ -346,21 +342,18 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
   });
 
   describe("Initialization", () => {
-    let ensureAgentExistsSpy: ReturnType<
-      typeof spyOn<AgentRuntime, "ensureAgentExists">
-    >;
+    let ensureAgentExistsSpy: ReturnType<typeof vi.spyOn>;
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
-      ensureAgentExistsSpy = vi.spyOn(
-        AgentRuntime.prototype,
-        "ensureAgentExists",
-      ).mockResolvedValue({
-        ...mockCharacter,
-        id: agentId, // ensureAgentExists should return the agent
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        enabled: true,
-      });
+      ensureAgentExistsSpy = vi
+        .spyOn(AgentRuntime.prototype, "ensureAgentExists")
+        .mockResolvedValue({
+          ...mockCharacter,
+          id: agentId, // ensureAgentExists should return the agent
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          enabled: true,
+        });
       (
         mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
@@ -491,7 +484,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       // Spy on runPluginMigrations
       const runMigrationsSpy = vi.spyOn(
         runtimeWithMigrations,
-        "runPluginMigrations" as keyof AgentRuntime,
+        "runPluginMigrations",
       );
 
       // Initialize with skipMigrations = true
@@ -509,10 +502,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       // Spy on runPluginMigrations
-      const runMigrationsSpy = vi.spyOn(
-        runtimeDefault,
-        "runPluginMigrations" as keyof AgentRuntime,
-      );
+      const runMigrationsSpy = vi.spyOn(runtimeDefault, "runPluginMigrations");
 
       // Initialize without skipMigrations option (default behavior)
       await runtimeDefault.initialize();
@@ -569,11 +559,15 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       // Check combined values includes provider outputs
       expect(state.values).toHaveProperty("providers"); // Check if the combined text is stored
       const stateData = state.data;
-      const stateDataProviders = stateData && stateData.providers;
-      const stateDataProvidersP1 = stateDataProviders && stateDataProviders.P1;
-      const stateDataProvidersP2 = stateDataProviders && stateDataProviders.P2;
-      expect(stateDataProvidersP1 && stateDataProvidersP1.values).toEqual({ p1_val: 1 }); // Check provider data cache
-      expect(stateDataProvidersP2 && stateDataProvidersP2.values).toEqual({ p2_val: 2 });
+      const stateDataProviders = stateData?.providers;
+      const stateDataProvidersP1 = stateDataProviders?.P1;
+      const stateDataProvidersP2 = stateDataProviders?.P2;
+      expect(stateDataProvidersP1?.values).toEqual({
+        p1_val: 1,
+      }); // Check provider data cache
+      expect(stateDataProvidersP2?.values).toEqual({
+        p2_val: 2,
+      });
     });
 
     it("should filter providers", async () => {
@@ -607,7 +601,14 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       const modelHandler = vi.fn().mockResolvedValue("success");
       const modelType = ModelType.TEXT_LARGE;
 
-      runtime.registerModel(modelType, modelHandler, "test-provider");
+      runtime.registerModel(
+        modelType,
+        modelHandler as (
+          runtime: IAgentRuntime,
+          params: Record<string, unknown>,
+        ) => Promise<unknown>,
+        "test-provider",
+      );
 
       const params = { prompt: "test prompt", someOption: true };
       const result = await runtime.useModel(modelType, params);
@@ -627,15 +628,18 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
     it("should throw if model type is not registered", async () => {
       const modelType = "UNREGISTERED_MODEL" as ModelTypeName;
-      const params = { prompt: "test" };
-      await expect(runtime.useModel(modelType, params)).rejects.toThrow(
-        /No handler found/,
-      );
+      const params: GenerateTextParams = { prompt: "test" };
+      await expect(
+        runtime.useModel(
+          modelType as keyof import("../types/model").ModelParamsMap,
+          params,
+        ),
+      ).rejects.toThrow(/No handler found/);
     });
   });
 
   describe("Action Processing", () => {
-    let mockActionHandler: ReturnType<typeof mock<Handler>>;
+    let mockActionHandler: ReturnType<typeof vi.fn<Handler>>;
     let testAction: Action;
     let message: Memory;
     let responseMemory: Memory;
@@ -870,8 +874,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
   describe("Event Emitter (on/emit/off)", () => {
     it("should register and emit events", () => {
       const handler = vi.fn();
-      const eventName = "testEvent";
-      const eventData = { info: "data" };
+      const eventName =
+        "testEvent" as keyof import("../types/events").EventPayloadMap;
+      const eventData = {
+        runtime,
+        source: "test",
+        info: "data",
+      } as unknown as import("../types/events").EventPayload;
 
       runtime.on(eventName, handler);
       runtime.emit(eventName, eventData);
@@ -882,11 +891,16 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
     it("should remove event handler with off", () => {
       const handler = vi.fn();
-      const eventName = "testEvent";
+      const eventName =
+        "testEvent" as keyof import("../types/events").EventPayloadMap;
 
       runtime.on(eventName, handler);
       runtime.off(eventName, handler);
-      runtime.emit(eventName, { info: "data" });
+      runtime.emit(eventName, {
+        runtime,
+        source: "test",
+        info: "data",
+      } as unknown as import("../types/events").EventPayload);
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -922,7 +936,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         );
 
         // Mock provider needed by composeState
-        const providerGet = vi.fn().mockResolvedValue({ text: "provider text" });
+        const providerGet = vi
+          .fn()
+          .mockResolvedValue({ text: "provider text" });
         runtime.registerProvider({ name: "TestProvider", get: providerGet });
 
         const state = await runtime.composeState(message);
@@ -975,19 +991,22 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         // Mock a model handler to capture params
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock<
-          ModelHandler<GenerateTextParams, string>["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "test response";
-          },
-        );
+        const mockHandler = vi
+          .fn<ModelHandler<GenerateTextParams, string>["handler"]>()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "test response";
+            },
+          );
 
         // Register the mock model
         runtimeWithSettings.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -996,11 +1015,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           prompt: "test prompt",
         });
 
-        expect(capturedParams.maxTokens).toBe(4096);
-        expect(capturedParams.temperature).toBe(0.5);
-        expect(capturedParams.frequencyPenalty).toBe(0.8);
-        expect(capturedParams.presencePenalty).toBe(0.9);
-        expect(capturedParams.prompt).toBe("test prompt");
+        expect(capturedParams).not.toBeNull();
+        const params = capturedParams!;
+        expect(params.maxTokens).toBe(4096);
+        expect(params.temperature).toBe(0.5);
+        expect(params.frequencyPenalty).toBe(0.8);
+        expect(params.presencePenalty).toBe(0.9);
+        expect(params.prompt).toBe("test prompt");
 
         // Test 2: Explicit parameters override character defaults
         await runtimeWithSettings.useModel(ModelType.TEXT_SMALL, {
@@ -1009,10 +1030,12 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           maxTokens: 2048,
         });
 
-        expect(capturedParams.temperature).toBe(0.2);
-        expect(capturedParams.maxTokens).toBe(2048);
-        expect(capturedParams.frequencyPenalty).toBe(0.8); // Still from character
-        expect(capturedParams.presencePenalty).toBe(0.9); // Still from character
+        expect(capturedParams).not.toBeNull();
+        const params2 = capturedParams!;
+        expect(params2.temperature).toBe(0.2);
+        expect(params2.maxTokens).toBe(2048);
+        expect(params2.frequencyPenalty).toBe(0.8); // Still from character
+        expect(params2.presencePenalty).toBe(0.9); // Still from character
 
         // Test 3: No settings configured - use only provided params
         const characterNoSettings: Character = {
@@ -1037,27 +1060,32 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           temperature: 0.7,
         });
 
-        expect(capturedParams.temperature).toBe(0.7);
-        expect(capturedParams.maxTokens).toBeUndefined();
-        expect(capturedParams.frequencyPenalty).toBeUndefined();
-        expect(capturedParams.presencePenalty).toBeUndefined();
+        expect(capturedParams).not.toBeNull();
+        const params3 = capturedParams!;
+        expect(params3.temperature).toBe(0.7);
+        expect(params3.maxTokens).toBeUndefined();
+        expect(params3.frequencyPenalty).toBeUndefined();
+        expect(params3.presencePenalty).toBeUndefined();
       });
 
       it("should preserve explicitly provided empty string for user parameter in useModel", async () => {
         // Mock a model handler to capture params
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock<
-          ModelHandler<GenerateTextParams, string>["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "test response";
-          },
-        );
+        const mockHandler = vi
+          .fn<ModelHandler<GenerateTextParams, string>["handler"]>()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "test response";
+            },
+          );
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1067,25 +1095,30 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           user: "",
         });
 
-        expect(capturedParams.user).toBe("");
-        expect(capturedParams.prompt).toBe("test prompt");
+        expect(capturedParams).not.toBeNull();
+        const params4 = capturedParams!;
+        expect(params4.user).toBe("");
+        expect(params4.prompt).toBe("test prompt");
       });
 
       it("should preserve explicitly provided null for user parameter in useModel", async () => {
         // Mock a model handler to capture params
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock<
-          ModelHandler<GenerateTextParams, string>["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "test response";
-          },
-        );
+        const mockHandler = vi
+          .fn<ModelHandler<GenerateTextParams, string>["handler"]>()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "test response";
+            },
+          );
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1095,25 +1128,30 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           user: null,
         });
 
-        expect(capturedParams.user).toBeNull();
-        expect(capturedParams.prompt).toBe("test prompt");
+        expect(capturedParams).not.toBeNull();
+        const params5 = capturedParams!;
+        expect(params5.user).toBeNull();
+        expect(params5.prompt).toBe("test prompt");
       });
 
       it("should auto-populate user from character name when not provided in useModel", async () => {
         // Mock a model handler to capture params
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock<
-          ModelHandler<GenerateTextParams, string>["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "test response";
-          },
-        );
+        const mockHandler = vi
+          .fn<ModelHandler<GenerateTextParams, string>["handler"]>()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "test response";
+            },
+          );
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1122,8 +1160,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           prompt: "test prompt",
         });
 
-        expect(capturedParams.user).toBe("Test Character");
-        expect(capturedParams.prompt).toBe("test prompt");
+        expect(capturedParams).not.toBeNull();
+        const params6 = capturedParams!;
+        expect(params6.user).toBe("Test Character");
+        expect(params6.prompt).toBe("test prompt");
       });
     });
 
@@ -1164,64 +1204,80 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         let capturedObjectSmall: ObjectGenerationParams | null = null;
         let capturedObjectLarge: ObjectGenerationParams | null = null;
 
-        const mockTextSmallHandler = mock<
-          ModelHandler<GenerateTextParams, string>["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedTextSmall = params;
-            return "text small response";
-          },
-        );
-        const mockTextLargeHandler = mock<
-          ModelHandler<GenerateTextParams, string>["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedTextLarge = params;
-            return "text large response";
-          },
-        );
-        const mockObjectSmallHandler = mock<
-          ModelHandler<
-            ObjectGenerationParams,
-            Record<string, unknown>
-          >["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-            capturedObjectSmall = params;
-            return { type: "small" };
-          },
-        );
-        const mockObjectLargeHandler = mock<
-          ModelHandler<
-            ObjectGenerationParams,
-            Record<string, unknown>
-          >["handler"]
-        >().mockImplementation(
-          async (_runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-            capturedObjectLarge = params;
-            return { type: "large" };
-          },
-        );
+        const mockTextSmallHandler = vi
+          .fn<ModelHandler<GenerateTextParams, string>["handler"]>()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedTextSmall = params;
+              return "text small response";
+            },
+          );
+        const mockTextLargeHandler = vi
+          .fn<ModelHandler<GenerateTextParams, string>["handler"]>()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedTextLarge = params;
+              return "text large response";
+            },
+          );
+        const mockObjectSmallHandler = vi
+          .fn<
+            ModelHandler<
+              ObjectGenerationParams,
+              Record<string, unknown>
+            >["handler"]
+          >()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: ObjectGenerationParams) => {
+              capturedObjectSmall = params;
+              return { type: "small" };
+            },
+          );
+        const mockObjectLargeHandler = vi
+          .fn<
+            ModelHandler<
+              ObjectGenerationParams,
+              Record<string, unknown>
+            >["handler"]
+          >()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: ObjectGenerationParams) => {
+              capturedObjectLarge = params;
+              return { type: "large" };
+            },
+          );
 
         // Register all models
         runtimeWithMixedSettings.registerModel(
           ModelType.TEXT_SMALL,
-          mockTextSmallHandler,
+          mockTextSmallHandler as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
         runtimeWithMixedSettings.registerModel(
           ModelType.TEXT_LARGE,
-          mockTextLargeHandler,
+          mockTextLargeHandler as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
         runtimeWithMixedSettings.registerModel(
           ModelType.OBJECT_SMALL,
-          mockObjectSmallHandler,
+          mockObjectSmallHandler as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
         runtimeWithMixedSettings.registerModel(
           ModelType.OBJECT_LARGE,
-          mockObjectLargeHandler,
+          mockObjectLargeHandler as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1230,40 +1286,46 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           prompt: "test text small",
         });
 
-        expect(capturedTextSmall.temperature).toBe(0.5); // Model-specific
-        expect(capturedTextSmall.maxTokens).toBe(1024); // Model-specific
-        expect(capturedTextSmall.frequencyPenalty).toBe(0.7); // Legacy fallback
-        expect(capturedTextSmall.presencePenalty).toBe(0.8); // Legacy fallback
+        expect(capturedTextSmall).not.toBeNull();
+        const textSmallParams = capturedTextSmall!;
+        expect(textSmallParams.temperature).toBe(0.5); // Model-specific
+        expect(textSmallParams.maxTokens).toBe(1024); // Model-specific
+        expect(textSmallParams.frequencyPenalty).toBe(0.7); // Legacy fallback
+        expect(textSmallParams.presencePenalty).toBe(0.8); // Legacy fallback
 
         // Test 2: TEXT_LARGE - mixed model-specific and defaults
         await runtimeWithMixedSettings.useModel(ModelType.TEXT_LARGE, {
           prompt: "test text large",
         });
 
-        expect(capturedTextLarge.temperature).toBe(0.8); // Model-specific
-        expect(capturedTextLarge.maxTokens).toBe(2048); // Default fallback
-        expect(capturedTextLarge.frequencyPenalty).toBe(0.5); // Model-specific
-        expect(capturedTextLarge.presencePenalty).toBe(0.8); // Legacy fallback
+        expect(capturedTextLarge).not.toBeNull();
+        const textLargeParams = capturedTextLarge!;
+        expect(textLargeParams.temperature).toBe(0.8); // Model-specific
+        expect(textLargeParams.maxTokens).toBe(2048); // Default fallback
+        expect(textLargeParams.frequencyPenalty).toBe(0.5); // Model-specific
+        expect(textLargeParams.presencePenalty).toBe(0.8); // Legacy fallback
 
         // Test 3: OBJECT_SMALL - some model-specific, rest from defaults/legacy
         await runtimeWithMixedSettings.useModel(ModelType.OBJECT_SMALL, {
           prompt: "test object small",
         });
 
-        expect(capturedObjectSmall.temperature).toBe(0.3); // Model-specific
-        expect(capturedObjectSmall.maxTokens).toBe(2048); // Default fallback
-        expect(capturedObjectSmall.frequencyPenalty).toBe(0.7); // Legacy fallback
-        expect(capturedObjectSmall.presencePenalty).toBe(0.8); // Legacy fallback
+        expect(capturedObjectSmall).not.toBeNull();
+        const objectSmallParams = capturedObjectSmall!;
+        expect(objectSmallParams.temperature).toBe(0.3); // Model-specific
+        expect(objectSmallParams.maxTokens).toBe(2048); // Default fallback
+        // ObjectGenerationParams doesn't have frequencyPenalty/presencePenalty
 
         // Test 4: OBJECT_LARGE - minimal model-specific settings
         await runtimeWithMixedSettings.useModel(ModelType.OBJECT_LARGE, {
           prompt: "test object large",
         });
 
-        expect(capturedObjectLarge.temperature).toBe(0.7); // Default fallback
-        expect(capturedObjectLarge.maxTokens).toBe(2048); // Default fallback
-        expect(capturedObjectLarge.frequencyPenalty).toBe(0.7); // Legacy fallback
-        expect(capturedObjectLarge.presencePenalty).toBe(0.6); // Model-specific
+        expect(capturedObjectLarge).not.toBeNull();
+        const objectLargeParams = capturedObjectLarge!;
+        expect(objectLargeParams.temperature).toBe(0.7); // Default fallback
+        expect(objectLargeParams.maxTokens).toBe(2048); // Default fallback
+        // ObjectGenerationParams doesn't have frequencyPenalty/presencePenalty
       });
 
       it("should allow direct params to override all configuration levels", async () => {
@@ -1283,16 +1345,21 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = vi.fn().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "response";
-          },
-        );
+        const mockHandler = vi
+          .fn()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "response";
+            },
+          );
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1302,7 +1369,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           temperature: 0.1, // This should win
         });
 
-        expect(capturedParams && capturedParams.temperature).toBe(0.1);
+        expect(capturedParams).not.toBeNull();
+        const params7 = capturedParams!;
+        expect(params7.temperature).toBe(0.1);
       });
 
       it("should handle models without specific configuration support", async () => {
@@ -1321,17 +1390,22 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = vi.fn().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "response";
-          },
-        );
+        const mockHandler = vi
+          .fn()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "response";
+            },
+          );
 
         // Register a model type that doesn't have specific configuration support
         runtime.registerModel(
           ModelType.TEXT_REASONING_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1340,8 +1414,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         // Should fall back to default settings
-        expect(capturedParams.temperature).toBe(0.7);
-        expect(capturedParams.maxTokens).toBeUndefined(); // No default for this
+        expect(capturedParams).not.toBeNull();
+        const params8 = capturedParams!;
+        expect(params8.temperature).toBe(0.7);
+        expect(params8.maxTokens).toBeUndefined(); // No default for this
       });
 
       it("should validate and ignore invalid numeric values at all configuration levels", async () => {
@@ -1365,16 +1441,21 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = vi.fn().mockImplementation(
-          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-            capturedParams = params;
-            return "response";
-          },
-        );
+        const mockHandler = vi
+          .fn()
+          .mockImplementation(
+            async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+              capturedParams = params;
+              return "response";
+            },
+          );
 
         runtime.registerModel(
           ModelType.TEXT_SMALL,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1383,10 +1464,12 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         // Valid values should be used, invalid ones ignored
-        expect(capturedParams.temperature).toBe(0.5); // Valid model-specific
-        expect(capturedParams.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
-        expect(capturedParams.frequencyPenalty).toBe(0.5); // Valid model-specific
-        expect(capturedParams.presencePenalty).toBe(0.8); // Valid legacy
+        expect(capturedParams).not.toBeNull();
+        const params9 = capturedParams!;
+        expect(params9.temperature).toBe(0.5); // Valid model-specific
+        expect(params9.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
+        expect(params9.frequencyPenalty).toBe(0.5); // Valid model-specific
+        expect(params9.presencePenalty).toBe(0.8); // Valid legacy
       });
     });
   });
@@ -1419,7 +1502,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const mockHandler = vi.fn().mockResolvedValue("Non-streaming response");
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1436,7 +1522,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const mockHandler = vi.fn().mockResolvedValue("Direct response");
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1476,7 +1565,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const mockHandler = vi.fn().mockResolvedValue(mockStreamResult);
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 
@@ -1544,7 +1636,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         runtime.registerModel(
           ModelType.TEXT_LARGE,
-          mockHandler,
+          mockHandler as unknown as (
+            runtime: IAgentRuntime,
+            params: Record<string, unknown>,
+          ) => Promise<unknown>,
           "test-provider",
         );
 

@@ -33,9 +33,7 @@ async function build(): Promise<void> {
     throw new Error("Node ESM build failed");
   }
 
-  console.log(
-    `✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`
-  );
+  console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
   // Browser ESM build
   const browserStart = Date.now();
@@ -56,9 +54,7 @@ async function build(): Promise<void> {
     throw new Error("Browser build failed");
   }
 
-  console.log(
-    `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`
-  );
+  console.log(`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
 
   // Node CJS build
   const cjsStart = Date.now();
@@ -88,9 +84,7 @@ async function build(): Promise<void> {
     console.warn("CJS rename step warning:", e);
   }
 
-  console.log(
-    `✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`
-  );
+  console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
   // TypeScript declarations
   const dtsStart = Date.now();
@@ -115,9 +109,7 @@ export { default } from '../index';
   await writeFile("dist/browser/index.d.ts", reexportDeclaration);
   await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
 
-  console.log(
-    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`
-  );
+  console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
 
   const totalTime = ((Date.now() - totalStart) / 1000).toFixed(2);
   console.log(`🎉 All builds finished in ${totalTime}s`);
@@ -127,5 +119,3 @@ build().catch((err) => {
   console.error("Build failed:", err);
   process.exit(1);
 });
-
-

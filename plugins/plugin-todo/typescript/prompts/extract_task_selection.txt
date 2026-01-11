@@ -1,0 +1,37 @@
+# Task: Extract Task Selection Information
+
+## User Message
+{{text}}
+
+## Available Tasks
+{{availableTasks}}
+
+## Instructions
+Parse the user's message to identify which task they want to update or modify.
+Match against the list of available tasks by name or description.
+If multiple tasks have similar names, choose the closest match.
+
+Return an XML object with:
+<response>
+  <taskId>ID of the task being updated, or 'null' if not found</taskId>
+  <taskName>Name of the task being updated, or 'null' if not found</taskName>
+  <isFound>'true' or 'false' indicating if a matching task was found</isFound>
+</response>
+
+## Example Output Format
+<response>
+  <taskId>123e4567-e89b-12d3-a456-426614174000</taskId>
+  <taskName>Finish report</taskName>
+  <isFound>true</isFound>
+</response>
+
+If no matching task was found:
+<response>
+  <taskId>null</taskId>
+  <taskName>null</taskName>
+  <isFound>false</isFound>
+</response>
+
+
+
+

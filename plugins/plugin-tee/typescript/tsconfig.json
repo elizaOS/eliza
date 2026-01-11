@@ -19,9 +19,8 @@
     "noFallthroughCasesInSwitch": false,
     "noImplicitAny": false,
     "noUncheckedIndexedAccess": false,
-    "types": ["node"]
+    "types": ["node", "bun-types"]
   },
   "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__"]
+  "exclude": ["node_modules", "dist", "__tests__", "build.ts"]
 }
-

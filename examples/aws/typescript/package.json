@@ -15,14 +15,14 @@
     "invoke:local": "sam local invoke ElizaWorkerFunction --event ../events/chat.json"
   },
   "dependencies": {
-    "@elizaos/core": "^1.0.0",
-    "@elizaos/plugin-openai": "^1.0.0",
-    "@elizaos/plugin-sql": "^1.0.0"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
-    "@types/node": "^22.10.0",
-    "typescript": "^5.6.3"
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=20.0.0"

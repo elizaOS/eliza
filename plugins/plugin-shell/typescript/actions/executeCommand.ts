@@ -2,22 +2,21 @@ import {
   type Action,
   type ActionExample,
   type Content,
+  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
-  type State,
-  composePromptFromState,
   parseJSONObjectFromText,
-  logger,
+  type State,
 } from "@elizaos/core";
-import { ShellService } from "../services/shellService";
-
 /**
  * Template for extracting command from user input
  * Auto-generated from prompts/command_extraction.txt
  */
-import { commandExtractionTemplate } from '../generated/prompts/typescript/prompts.js';
+import { commandExtractionTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { ShellService } from "../services/shellService";
 export { commandExtractionTemplate };
 
 /**
@@ -38,7 +37,9 @@ const extractCommand = async (
       prompt,
     });
 
-    const parsedResponse = parseJSONObjectFromText(response) as { command?: string } | null;
+    const parsedResponse = parseJSONObjectFromText(response) as {
+      command?: string;
+    } | null;
     if (parsedResponse?.command) {
       return { command: parsedResponse.command };
     }
@@ -65,11 +66,7 @@ export const executeCommand: Action = {
   ],
   description:
     "Execute ANY shell command in the terminal. Use this to run ANY command including: brew install, npm install, apt-get, system commands, file operations (create, write, delete), navigate directories, execute scripts, or perform any other shell operation. I CAN and SHOULD execute commands when asked. This includes brew, npm, git, ls, cd, echo, touch, cat, mkdir, system_profiler, and literally ANY other terminal command.",
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     // Check if shell service is available
     const shellService = runtime.getService<ShellService>("shell");
     if (!shellService) {
@@ -108,15 +105,12 @@ export const executeCommand: Action = {
     ];
 
     // Be very permissive - if any command-related keyword is found, this action is valid
-    const hasCommandKeyword = commandKeywords.some((keyword) =>
-      text.includes(keyword)
-    );
+    const hasCommandKeyword = commandKeywords.some((keyword) => text.includes(keyword));
 
     // Also check for direct commands
-    const hasDirectCommand =
-      /^(brew|npm|apt|git|ls|cd|echo|cat|touch|mkdir|rm|mv|cp)\s/i.test(
-        message.content.text || ""
-      );
+    const hasDirectCommand = /^(brew|npm|apt|git|ls|cd|echo|cat|touch|mkdir|rm|mv|cp)\s/i.test(
+      message.content.text || ""
+    );
 
     return hasCommandKeyword || hasDirectCommand;
   },
@@ -140,10 +134,7 @@ export const executeCommand: Action = {
     // Extract command from message
     const commandInfo = await extractCommand(runtime, message, state);
     if (!commandInfo?.command) {
-      logger.error(
-        "Failed to extract command from message:",
-        message.content.text
-      );
+      logger.error("Failed to extract command from message:", message.content.text);
       await callback({
         text: "I couldn't understand which command you want to execute. Please specify a shell command.",
         source: message.content.source,
@@ -159,10 +150,7 @@ export const executeCommand: Action = {
       const conversationId = message.roomId || message.agentId;
 
       // Execute the command with conversation tracking
-      const result = await shellService.executeCommand(
-        commandInfo.command,
-        conversationId
-      );
+      const result = await shellService.executeCommand(commandInfo.command, conversationId);
 
       // Format the response
       let responseText = "";
@@ -310,4 +298,3 @@ export const executeCommand: Action = {
 };
 
 export default executeCommand;
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Migration system for elizaOS plugin-sql (Rust).
 //!
 //! This module provides runtime migration capabilities similar to the TypeScript

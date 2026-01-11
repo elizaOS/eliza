@@ -8,7 +8,7 @@ Provides text generation and embedding capabilities.
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 from pydantic import BaseModel, Field
@@ -33,7 +33,7 @@ class GrokConfig(BaseModel):
     timeout: float = Field(default=60.0)
 
     @classmethod
-    def from_env(cls) -> "GrokConfig":
+    def from_env(cls) -> GrokConfig:
         """Create configuration from environment variables."""
         api_key = os.getenv("XAI_API_KEY")
         if not api_key:
@@ -112,7 +112,7 @@ class GrokClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "GrokClient":
+    async def __aenter__(self) -> GrokClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:

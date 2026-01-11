@@ -1,13 +1,6 @@
 import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
  * Represents a table for storing agent data.
@@ -18,13 +11,9 @@ export const agentTable = pgTable("agents", {
   id: uuid("id").primaryKey().defaultRandom(),
   enabled: boolean("enabled").default(true).notNull(),
   server_id: uuid("server_id"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
 
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
 
   // Character
   name: text("name").notNull(),
@@ -35,27 +24,18 @@ export const agentTable = pgTable("agents", {
     .$type<MessageExample[][]>()
     .default(sql`'[]'::jsonb`)
     .notNull(),
-  postExamples: jsonb("post_examples")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
+  postExamples: jsonb("post_examples").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   topics: jsonb("topics").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-  adjectives: jsonb("adjectives")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
+  adjectives: jsonb("adjectives").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   knowledge: jsonb("knowledge")
     .$type<(string | { path: string; shared?: boolean })[]>()
     .default(sql`'[]'::jsonb`)
     .notNull(),
-  plugins: jsonb("plugins")
-    .$type<string[]>()
-    .default(sql`'[]'::jsonb`)
-    .notNull(),
+  plugins: jsonb("plugins").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   settings: jsonb("settings")
     .$type<{
       secrets?: { [key: string]: string | boolean | number };
-      [key: string]: unknown;
+      [key: string]: string | boolean | number | Record<string, unknown> | undefined;
     }>()
     .default(sql`'{}'::jsonb`)
     .notNull(),

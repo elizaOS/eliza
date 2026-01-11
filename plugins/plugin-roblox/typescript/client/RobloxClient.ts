@@ -8,11 +8,11 @@
  */
 
 import type {
-  RobloxConfig,
-  RobloxUser,
-  RobloxExperienceInfo,
   DataStoreEntry,
   MessagingServiceMessage,
+  RobloxConfig,
+  RobloxExperienceInfo,
+  RobloxUser,
 } from "../types";
 
 const ROBLOX_API_BASE = "https://apis.roblox.com";
@@ -92,11 +92,7 @@ export class RobloxClient {
   /**
    * Publish a message to a topic via the Messaging Service
    */
-  async publishMessage(
-    topic: string,
-    data: unknown,
-    universeId?: string
-  ): Promise<void> {
+  async publishMessage(topic: string, data: unknown, universeId?: string): Promise<void> {
     if (this.config.dryRun) {
       console.log(`[DRY RUN] Would publish to topic "${topic}":`, data);
       return;
@@ -335,10 +331,7 @@ export class RobloxClient {
   /**
    * Get avatar thumbnail URL for a user
    */
-  async getAvatarUrl(
-    userId: number,
-    size: string = "150x150"
-  ): Promise<string | undefined> {
+  async getAvatarUrl(userId: number, size: string = "150x150"): Promise<string | undefined> {
     try {
       const response = await this.request<{
         data: Array<{ imageUrl: string }>;
@@ -418,4 +411,3 @@ export class RobloxClient {
     return this.config.dryRun;
   }
 }
-

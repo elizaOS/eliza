@@ -16,11 +16,11 @@ Comprehensive planning and execution plugin for elizaOS with REALM-Bench and API
 
 This plugin is implemented in three languages with full parity:
 
-| Language | Location | Build Command | Benchmarks |
-|----------|----------|---------------|------------|
-| TypeScript | `typescript/` | `bun run build:ts` | ✅ |
-| Python | `python/` | `pip install -e ./python` | ✅ |
-| Rust | `rust/` | `cargo build --release` | ❌ |
+| Language   | Location      | Build Command             | Benchmarks |
+| ---------- | ------------- | ------------------------- | ---------- |
+| TypeScript | `typescript/` | `bun run build:ts`        | ✅         |
+| Python     | `python/`     | `pip install -e ./python` | ✅         |
+| Rust       | `rust/`       | `cargo build --release`   | ❌         |
 
 ## Installation
 
@@ -131,12 +131,12 @@ python -m elizaos_plugin_planning.benchmarks.cli --all --output ./my_results
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `PLANNING_MAX_STEPS` | 10 | Maximum steps in a plan |
-| `PLANNING_TIMEOUT_MS` | 60000 | Default execution timeout |
-| `PLANNING_EXECUTION_MODEL` | sequential | Default execution model |
-| `PLANNING_ENABLE_ADAPTATION` | true | Enable plan adaptation |
+| Setting                      | Default    | Description               |
+| ---------------------------- | ---------- | ------------------------- |
+| `PLANNING_MAX_STEPS`         | 10         | Maximum steps in a plan   |
+| `PLANNING_TIMEOUT_MS`        | 60000      | Default execution timeout |
+| `PLANNING_EXECUTION_MODEL`   | sequential | Default execution model   |
+| `PLANNING_ENABLE_ADAPTATION` | true       | Enable plan adaptation    |
 
 ## Architecture
 
@@ -146,17 +146,17 @@ graph TD
     B --> C{Complexity?}
     C -->|Simple| D[Simple Plan]
     C -->|Complex| E[Comprehensive Plan]
-    
+
     D & E --> F[Plan Validation]
     F --> G{Valid?}
     G -->|No| H[Error]
     G -->|Yes| I[Plan Execution]
-    
+
     I --> J{Execution Model}
     J -->|Sequential| K[Execute Steps Serially]
     J -->|Parallel| L[Execute Steps Concurrently]
     J -->|DAG| M[Execute by Dependencies]
-    
+
     K & L & M --> N{Success?}
     N -->|No| O[Adapt Plan]
     O --> I

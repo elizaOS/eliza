@@ -25,10 +25,17 @@ export interface SessionIdentity {
 
 export type PartialSessionIdentity = Partial<SessionIdentity>;
 
-export function ensureSessionIdentity(input: PartialSessionIdentity = {}): SessionIdentity {
+export function ensureSessionIdentity(
+  input: PartialSessionIdentity = {},
+): SessionIdentity {
   const projectId =
-    input.projectId && isUuidString(input.projectId) ? input.projectId : (uuidv4() as UUID);
-  const userId = input.userId && isUuidString(input.userId) ? input.userId : (uuidv4() as UUID);
+    input.projectId && isUuidString(input.projectId)
+      ? input.projectId
+      : (uuidv4() as UUID);
+  const userId =
+    input.userId && isUuidString(input.userId)
+      ? input.userId
+      : (uuidv4() as UUID);
   const worldId =
     input.worldId && isUuidString(input.worldId)
       ? input.worldId
@@ -51,5 +58,3 @@ export function createRoomElizaId(identity: SessionIdentity): UUID {
 export function getMainRoomElizaId(identity: SessionIdentity): UUID {
   return stringToUuid(`eliza-code:room:${identity.projectId}:main`);
 }
-
-

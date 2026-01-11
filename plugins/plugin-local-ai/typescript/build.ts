@@ -48,9 +48,7 @@ async function build(): Promise<void> {
     throw new Error("Node ESM build failed");
   }
 
-  console.log(
-    `✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`
-  );
+  console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
   // Node CJS build
   const cjsStart = Date.now();
@@ -80,9 +78,7 @@ async function build(): Promise<void> {
     console.warn("CJS rename step warning:", e);
   }
 
-  console.log(
-    `✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`
-  );
+  console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
   // TypeScript declarations
   const dtsStart = Date.now();
@@ -91,12 +87,10 @@ async function build(): Promise<void> {
   try {
     const { $ } = await import("bun");
     await $`tsc --project tsconfig.build.json`.quiet();
-    console.log(
-      `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`
-    );
-  } catch (e) {
+    console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
+  } catch (_e) {
     console.warn("⚠️ TypeScript declaration generation had issues, creating basic declarations...");
-    
+
     // Create basic declaration files
     const basicDeclaration = `/**
  * @elizaos/plugin-local-ai
@@ -110,13 +104,13 @@ export declare const localAiPlugin: Plugin;
 export default localAiPlugin;
 `;
     await writeFile("dist/index.d.ts", basicDeclaration);
-    
+
     const reexportDeclaration = `export * from '../index';
 export { default } from '../index';
 `;
     await writeFile("dist/node/index.d.ts", reexportDeclaration);
     await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
-    
+
     console.log(`✅ Basic declarations created in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
   }
 

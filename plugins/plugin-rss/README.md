@@ -42,12 +42,12 @@ elizaos-plugin-rss = { path = "path/to/plugin-rss/rust" }
 
 Set these environment variables to configure the plugin:
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `RSS_FEEDS` | string | - | JSON array or comma-separated list of feed URLs to auto-subscribe |
-| `RSS_DISABLE_ACTIONS` | boolean | `false` | Set to `true` to disable subscription management actions |
-| `RSS_FEED_FORMAT` | string | `csv` | Output format: `csv` (compact) or `markdown` (readable) |
-| `RSS_CHECK_INTERVAL_MINUTES` | number | `15` | Interval in minutes between feed checks |
+| Variable                     | Type    | Default | Description                                                       |
+| ---------------------------- | ------- | ------- | ----------------------------------------------------------------- |
+| `RSS_FEEDS`                  | string  | -       | JSON array or comma-separated list of feed URLs to auto-subscribe |
+| `RSS_DISABLE_ACTIONS`        | boolean | `false` | Set to `true` to disable subscription management actions          |
+| `RSS_FEED_FORMAT`            | string  | `csv`   | Output format: `csv` (compact) or `markdown` (readable)           |
+| `RSS_CHECK_INTERVAL_MINUTES` | number  | `15`    | Interval in minutes between feed checks                           |
 
 ### Example Configuration
 
@@ -70,7 +70,7 @@ RSS_CHECK_INTERVAL_MINUTES=30
 ### TypeScript
 
 ```typescript
-import { rssPlugin } from '@elizaos/plugin-rss';
+import { rssPlugin } from "@elizaos/plugin-rss";
 
 // Add to your agent's plugins
 const agent = new AgentRuntime({
@@ -123,6 +123,7 @@ The plugin provides these actions:
 Download and parse an RSS/Atom feed from a URL.
 
 **Example:**
+
 ```
 User: Read https://news.ycombinator.com/rss
 Agent: [GET_NEWSFEED] Downloaded 30 articles from "Hacker News"
@@ -133,6 +134,7 @@ Agent: [GET_NEWSFEED] Downloaded 30 articles from "Hacker News"
 Subscribe to a feed for automatic monitoring.
 
 **Example:**
+
 ```
 User: Subscribe to https://news.ycombinator.com/rss
 Agent: [SUBSCRIBE_RSS_FEED] Subscribed to "Hacker News"
@@ -143,6 +145,7 @@ Agent: [SUBSCRIBE_RSS_FEED] Subscribed to "Hacker News"
 Unsubscribe from a feed.
 
 **Example:**
+
 ```
 User: Unsubscribe from https://news.ycombinator.com/rss
 Agent: [UNSUBSCRIBE_RSS_FEED] Unsubscribed from feed
@@ -153,6 +156,7 @@ Agent: [UNSUBSCRIBE_RSS_FEED] Unsubscribed from feed
 List all subscribed feeds.
 
 **Example:**
+
 ```
 User: What feeds am I subscribed to?
 Agent: [LIST_RSS_FEEDS] You have 3 subscribed feeds...

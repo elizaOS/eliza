@@ -33,11 +33,29 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/plugin-knowledge-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-planning-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
+    "@elizaos/plugin-s3-storage-root#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
+    },
     "lint": {
-      "outputs": [".eslintcache"]
+      "outputs": []
+    },
+    "@elizaos/interop#lint": {
+      "outputs": []
     },
     "lint:check": {
-      "outputs": [".eslintcache"]
+      "outputs": []
     },
     "typecheck": {
       "outputs": []
@@ -60,12 +78,7 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
-      "inputs": [
-        "src/**/*.ts",
-        "src/**/*.js",
-        "__tests__/**/*",
-        "*.test.*"
-      ]
+      "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*"]
     },
     "@elizaos/rust#test": {
       "outputs": [],

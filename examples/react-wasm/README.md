@@ -5,6 +5,7 @@ A React implementation of the classic ELIZA chatbot powered by **elizaOS Rust WA
 ## Overview
 
 This example demonstrates:
+
 - **Rust WASM Runtime**: Core agent logic runs in WebAssembly compiled from Rust
 - **Classic ELIZA Plugin**: Pattern matching model handler (no LLM required)
 - **LocalDB Storage**: Browser localStorage-based persistence via plugin-localdb
@@ -78,6 +79,7 @@ This example uses the Rust WASM elizaOS runtime:
 ### Rust WASM Runtime
 
 The core agent runtime is compiled from Rust to WebAssembly:
+
 - **WasmAgentRuntime**: Handles message processing, state management, and coordination
 - **Model handlers**: Registered from JavaScript and called by the Rust runtime
 - **Cross-language bridge**: JSON serialization for passing data between Rust and JavaScript
@@ -94,6 +96,7 @@ This implementation uses the original ELIZA pattern matching algorithm from Jose
 ### LocalDB Storage (plugin-localdb)
 
 Conversations are persisted using browser localStorage:
+
 - Messages are stored as JSON in localStorage
 - HNSW index for vector search (if embeddings are used)
 - No SQL database required
@@ -101,6 +104,7 @@ Conversations are persisted using browser localStorage:
 ### No LLM Required
 
 Unlike modern chatbots, classic ELIZA uses purely rule-based pattern matching. This makes it:
+
 - **Instant responses** (no API calls)
 - **Works offline** (all logic is client-side)
 - **Historically accurate** to the original 1966 program
@@ -127,6 +131,7 @@ examples/react-wasm/
 ## Styling
 
 The UI features:
+
 - VT323 and Fira Code fonts
 - Phosphor green (#39ff14) color scheme
 - CRT monitor bezel with LED indicators
@@ -157,16 +162,16 @@ You can add additional model handlers when initializing the runtime:
 // Register an LLM model handler
 runtime.registerModelHandler("TEXT_LARGE", async (paramsJson) => {
   const params = JSON.parse(paramsJson);
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json' 
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: 'gpt-4',
-      messages: [{ role: 'user', content: params.prompt }]
-    })
+      model: "gpt-4",
+      messages: [{ role: "user", content: params.prompt }],
+    }),
   });
   const data = await response.json();
   return data.choices[0].message.content;
@@ -190,6 +195,7 @@ const runtime = new AgentRuntime({
 ## About Classic ELIZA
 
 ELIZA was created by Joseph Weizenbaum at MIT in 1966. It simulates a Rogerian psychotherapist by:
+
 - Reflecting statements back as questions
 - Using keyword-based pattern matching
 - Creating the illusion of understanding through clever rephrasing
@@ -199,6 +205,7 @@ This "ELIZA effect" - where people attribute human-like understanding to simple 
 ## Why Rust WASM?
 
 Using the Rust WASM runtime provides:
+
 - **Type safety**: Rust's strong type system catches bugs at compile time
 - **Performance**: Native-like performance for message processing
 - **Cross-platform**: Same core runs in browser, Node.js, and native

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Order book actions for Polymarket
 
 use crate::client::ClobClient;
@@ -97,8 +98,10 @@ pub fn calculate_order_book_summary(
 
     let spread = match (best_bid, best_ask) {
         (Some(bid), Some(ask)) => {
-            let bid_f: f64 = bid.parse().unwrap_or(0.0);
-            let ask_f: f64 = ask.parse().unwrap_or(0.0);
+            let bid: &str = bid;
+            let ask: &str = ask;
+            let bid_f: f64 = bid.parse::<f64>().unwrap_or(0.0);
+            let ask_f: f64 = ask.parse::<f64>().unwrap_or(0.0);
             Some(ask_f - bid_f)
         }
         _ => None,
@@ -171,5 +174,7 @@ mod tests {
         assert_eq!(ask_depth, 0);
     }
 }
+
+
 
 

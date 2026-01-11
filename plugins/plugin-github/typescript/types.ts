@@ -317,12 +317,7 @@ export interface ListPullRequestsParams extends RepositoryRef {
 /**
  * Review state
  */
-export type ReviewState =
-  | "APPROVED"
-  | "CHANGES_REQUESTED"
-  | "COMMENTED"
-  | "DISMISSED"
-  | "PENDING";
+export type ReviewState = "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING";
 
 /**
  * GitHub pull request review
@@ -934,7 +929,7 @@ export const createReviewSchema = repositoryRefSchema.extend({
         side: z.enum(["LEFT", "RIGHT"]).optional(),
         startLine: z.number().optional(),
         startSide: z.enum(["LEFT", "RIGHT"]).optional(),
-      }),
+      })
     )
     .optional(),
 });
@@ -957,7 +952,7 @@ export const createCommitSchema = repositoryRefSchema.extend({
       content: z.string(),
       encoding: z.enum(["utf-8", "base64"]).optional(),
       operation: z.enum(["add", "modify", "delete"]).optional(),
-    }),
+    })
   ),
   branch: z.string().min(1, "Branch is required"),
   parentSha: z.string().optional(),
@@ -983,5 +978,3 @@ export const gitHubSettingsSchema = z.object({
   appPrivateKey: z.string().optional(),
   installationId: z.string().optional(),
 });
-
-

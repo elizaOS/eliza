@@ -3,8 +3,8 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { RobloxService } from "../services/RobloxService";
-import { ROBLOX_SERVICE_NAME } from "../types";
+import type { RobloxService } from "../services/RobloxService";
+import { ROBLOX_SERVICE_NAME, type RobloxExperienceInfo } from "../types";
 
 /**
  * Provider that supplies Roblox game state to the agent context
@@ -32,7 +32,7 @@ export const gameStateProvider: Provider = {
       const config = client.getConfig();
 
       // Try to get experience info
-      let experienceInfo;
+      let experienceInfo: RobloxExperienceInfo | null = null;
       try {
         experienceInfo = await client.getExperienceInfo();
       } catch {
@@ -58,7 +58,9 @@ export const gameStateProvider: Provider = {
         if (experienceInfo.visits !== undefined) {
           parts.push(`- **Total Visits**: ${experienceInfo.visits.toLocaleString()}`);
         }
-        parts.push(`- **Creator**: ${experienceInfo.creator.name} (${experienceInfo.creator.type})`);
+        parts.push(
+          `- **Creator**: ${experienceInfo.creator.name} (${experienceInfo.creator.type})`
+        );
       }
 
       parts.push(`- **Messaging Topic**: ${config.messagingTopic}`);
@@ -75,4 +77,3 @@ export const gameStateProvider: Provider = {
     }
   },
 };
-

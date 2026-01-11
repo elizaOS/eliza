@@ -1,4 +1,4 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Helper type for database query result rows
 interface MigrationRow {
@@ -22,13 +22,9 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
   let testAgentId: UUID;
 
   beforeAll(async () => {
-    console.log(
-      "\n🚀 Testing Runtime Migrator with Core + Plugin Schemas...\n",
-    );
+    console.log("\n🚀 Testing Runtime Migrator with Core + Plugin Schemas...\n");
 
-    const testSetup = await createIsolatedTestDatabaseForMigration(
-      "plugin_schema_tests",
-    );
+    const testSetup = await createIsolatedTestDatabaseForMigration("plugin_schema_tests");
     cleanup = testSetup.cleanup;
     testAgentId = testSetup.testAgentId;
     db = testSetup.db;
@@ -58,7 +54,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const tablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'public' 
-                 ORDER BY tablename`),
+                 ORDER BY tablename`)
       );
 
       const createdTables = tablesResult.rows.map((r: any) => r.tablename);
@@ -84,7 +80,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         sql.raw(`SELECT * FROM migrations._migrations 
                  WHERE plugin_name = '@elizaos/plugin-sql'
                  ORDER BY created_at DESC
-                 LIMIT 1`),
+                 LIMIT 1`)
       );
 
       expect(result.rows.length).toBeGreaterThan(0);
@@ -107,11 +103,11 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         sql.raw(`SELECT EXISTS (
           SELECT 1 FROM information_schema.schemata 
           WHERE schema_name = 'polymarket'
-        )`),
+        )`)
       );
 
       const schemaResultRows0 = schemaResult.rows[0];
-      expect(schemaResultRows0 && schemaResultRows0.exists).toBe(true);
+      expect(schemaResultRows0?.exists).toBe(true);
       console.log("✅ Polymarket schema created");
     });
 
@@ -120,19 +116,13 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const tablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'polymarket' 
-                 ORDER BY tablename`),
+                 ORDER BY tablename`)
       );
 
       const createdTables = tablesResult.rows.map((r: any) => r.tablename);
       console.log("Plugin tables created in polymarket schema:", createdTables);
 
-      const expectedPluginTables = [
-        "markets",
-        "tokens",
-        "rewards",
-        "prices",
-        "sync_status",
-      ];
+      const expectedPluginTables = ["markets", "tokens", "rewards", "prices", "sync_status"];
 
       for (const table of expectedPluginTables) {
         expect(createdTables).toContain(table);
@@ -144,7 +134,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const publicTablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'public' 
-                 AND tablename LIKE 'polymarket_%'`),
+                 AND tablename LIKE 'polymarket_%'`)
       );
 
       expect(publicTablesResult.rows.length).toBe(0);
@@ -156,7 +146,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         sql.raw(`SELECT * FROM migrations._migrations 
                  WHERE plugin_name = 'polymarket'
                  ORDER BY created_at DESC
-                 LIMIT 1`),
+                 LIMIT 1`)
       );
 
       expect(result.rows.length).toBeGreaterThan(0);
@@ -185,24 +175,20 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
           WHERE tc.constraint_type = 'FOREIGN KEY' 
             AND tc.table_schema = 'polymarket'
           ORDER BY tc.table_name, tc.constraint_name
-        `),
+        `)
       );
 
       const foreignKeys = fkResult.rows;
-      console.log(
-        `Found ${foreignKeys.length} foreign keys in polymarket schema`,
-      );
+      console.log(`Found ${foreignKeys.length} foreign keys in polymarket schema`);
 
       // Verify at least some expected foreign keys exist
       const tokensFk = foreignKeys.find(
-        (fk: any) =>
-          fk.table_name === "tokens" && fk.foreign_table_name === "markets",
+        (fk: any) => fk.table_name === "tokens" && fk.foreign_table_name === "markets"
       );
       expect(tokensFk).toBeDefined();
 
       const pricesFk = foreignKeys.find(
-        (fk: any) =>
-          fk.table_name === "prices" && fk.foreign_table_name === "markets",
+        (fk: any) => fk.table_name === "prices" && fk.foreign_table_name === "markets"
       );
       expect(pricesFk).toBeDefined();
     });
@@ -218,21 +204,19 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
           FROM pg_indexes
           WHERE schemaname = 'polymarket'
           ORDER BY tablename, indexname
-        `),
+        `)
       );
 
       const indexes = indexResult.rows;
       console.log(`Found ${indexes.length} indexes in polymarket schema`);
 
       // Verify some expected indexes exist
-      const marketIndexes = indexes.filter(
-        (idx: any) => idx.tablename === "markets",
-      );
+      const marketIndexes = indexes.filter((idx: any) => idx.tablename === "markets");
       expect(marketIndexes.length).toBeGreaterThan(0);
 
       // Check for specific index
       const conditionIdIdx = indexes.find(
-        (idx: any) => idx.indexname === "markets_condition_id_idx",
+        (idx: any) => idx.indexname === "markets_condition_id_idx"
       );
       expect(conditionIdIdx).toBeDefined();
     });
@@ -243,41 +227,33 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       console.log("\n🔄 Testing migration idempotency...\n");
 
       // Try to migrate core schema again
-      const _coreResult = await migrator.migrate(
-        "@elizaos/plugin-sql",
-        coreSchema,
-        {
-          verbose: true,
-        },
-      );
+      const _coreResult = await migrator.migrate("@elizaos/plugin-sql", coreSchema, {
+        verbose: true,
+      });
 
       // Check logs to verify it was skipped
       const coreMigrations = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
-                 WHERE plugin_name = '@elizaos/plugin-sql'`),
+                 WHERE plugin_name = '@elizaos/plugin-sql'`)
       );
 
       // Should only have 1 migration record
       const coreMigrationsRows0 = coreMigrations.rows[0];
-      expect(Number((coreMigrationsRows0 && coreMigrationsRows0.count) ?? 0)).toBe(1);
+      expect(Number(coreMigrationsRows0?.count ?? 0)).toBe(1);
 
       // Try to migrate plugin schema again
-      const _pluginResult = await migrator.migrate(
-        "polymarket",
-        testPolymarketSchema,
-        {
-          verbose: true,
-        },
-      );
+      const _pluginResult = await migrator.migrate("polymarket", testPolymarketSchema, {
+        verbose: true,
+      });
 
       const pluginMigrations = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations
-                 WHERE plugin_name = 'polymarket'`),
+                 WHERE plugin_name = 'polymarket'`)
       );
 
       // Should only have 1 migration record
       const pluginMigrationsRows0 = pluginMigrations.rows[0];
-      expect(Number((pluginMigrationsRows0 && pluginMigrationsRows0.count) ?? 0)).toBe(1);
+      expect(Number(pluginMigrationsRows0?.count ?? 0)).toBe(1);
     });
   });
 
@@ -287,7 +263,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const schemasResult = await db.execute(
         sql.raw(`SELECT schema_name FROM information_schema.schemata 
                  WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                 ORDER BY schema_name`),
+                 ORDER BY schema_name`)
       );
 
       const schemas = schemasResult.rows.map((r: any) => r.schema_name);
@@ -308,7 +284,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
           WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
           GROUP BY schemaname
           ORDER BY schemaname
-        `),
+        `)
       );
 
       const counts = tableCountsResult.rows.reduce((acc: any, row: any) => {
@@ -354,9 +330,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
   describe("Polymarket Schema Write/Read Operations", () => {
     it("should successfully insert and read data from polymarket.markets table", async () => {
-      console.log(
-        "\n🔍 Testing write/read operations on polymarket schema...\n",
-      );
+      console.log("\n🔍 Testing write/read operations on polymarket schema...\n");
 
       const testConditionId = `test_${testAgentId.slice(0, 8)}`;
       const testMarketId = testAgentId; // Use the test UUID
@@ -364,11 +338,8 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       // Direct insert using the polymarket schema tables
       try {
         // Import the actual schema tables
-        const {
-          polymarketMarketsTable,
-          polymarketTokensTable,
-          polymarketRewardsTable,
-        } = await import("../fixtures/test-plugin-schema");
+        const { polymarketMarketsTable, polymarketTokensTable, polymarketRewardsTable } =
+          await import("../fixtures/test-plugin-schema");
 
         // Test 1: Insert a market
         console.log("Inserting test market...");
@@ -390,9 +361,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
         // Verify the insert with raw SQL to confirm schema
         const marketCheck = await db.execute(
-          sql.raw(
-            `SELECT * FROM polymarket.markets WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`SELECT * FROM polymarket.markets WHERE condition_id = '${testConditionId}'`)
         );
         expect(marketCheck.rows.length).toBe(1);
         expect(marketCheck.rows[0].condition_id).toBe(testConditionId);
@@ -425,9 +394,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
         // Verify tokens
         const tokenCheck = await db.execute(
-          sql.raw(
-            `SELECT * FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`SELECT * FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`)
         );
         expect(tokenCheck.rows.length).toBe(2);
         console.log("✅ Tokens verified via raw SQL");
@@ -476,13 +443,9 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
         // Verify the update
         const updatedMarket = await db.execute(
-          sql.raw(
-            `SELECT * FROM polymarket.markets WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`SELECT * FROM polymarket.markets WHERE condition_id = '${testConditionId}'`)
         );
-        expect(updatedMarket.rows[0].question).toBe(
-          "Updated test market question?",
-        );
+        expect(updatedMarket.rows[0].question).toBe("Updated test market question?");
         expect(updatedMarket.rows[0].active).toBe(false);
         expect(updatedMarket.rows[0].closed).toBe(true);
         console.log("✅ Upsert verified");
@@ -490,19 +453,13 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         // Clean up test data
         console.log("Cleaning up test data...");
         await db.execute(
-          sql.raw(
-            `DELETE FROM polymarket.rewards WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`DELETE FROM polymarket.rewards WHERE condition_id = '${testConditionId}'`)
         );
         await db.execute(
-          sql.raw(
-            `DELETE FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`DELETE FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`)
         );
         await db.execute(
-          sql.raw(
-            `DELETE FROM polymarket.markets WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`DELETE FROM polymarket.markets WHERE condition_id = '${testConditionId}'`)
         );
         console.log("✅ Test data cleaned up");
       } catch (error) {
@@ -537,9 +494,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         });
 
         // If we get here, the foreign key constraint didn't work
-        throw new Error(
-          "Foreign key constraint should have prevented this insert",
-        );
+        throw new Error("Foreign key constraint should have prevented this insert");
       } catch (error: any) {
         // This is expected - foreign key violation
         console.log("✅ Foreign key constraint working correctly");
@@ -552,9 +507,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
           errorMessage.includes("violates foreign key constraint") ||
           (error.message.includes("Failed query") &&
             error.message.includes('insert into "polymarket"."tokens"') &&
-            !error.message.includes(
-              "Foreign key constraint should have prevented this insert",
-            ));
+            !error.message.includes("Foreign key constraint should have prevented this insert"));
 
         expect(isValidForeignKeyError).toBe(true);
       }
@@ -602,14 +555,10 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
         // Verify both inserts succeeded
         const marketResult = await db.execute(
-          sql.raw(
-            `SELECT * FROM polymarket.markets WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`SELECT * FROM polymarket.markets WHERE condition_id = '${testConditionId}'`)
         );
         const tokenResult = await db.execute(
-          sql.raw(
-            `SELECT * FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`SELECT * FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`)
         );
 
         expect(marketResult.rows.length).toBe(1);
@@ -619,14 +568,10 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
         // Clean up
         await db.execute(
-          sql.raw(
-            `DELETE FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`DELETE FROM polymarket.tokens WHERE condition_id = '${testConditionId}'`)
         );
         await db.execute(
-          sql.raw(
-            `DELETE FROM polymarket.markets WHERE condition_id = '${testConditionId}'`,
-          ),
+          sql.raw(`DELETE FROM polymarket.markets WHERE condition_id = '${testConditionId}'`)
         );
       } catch (error) {
         console.error("❌ Transaction test failed:", error);
@@ -638,9 +583,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       console.log("\n🔍 Testing schema qualification...\n");
 
       // Test that Drizzle generates correct SQL with schema prefix
-      const { polymarketMarketsTable } = await import(
-        "../fixtures/test-plugin-schema"
-      );
+      const { polymarketMarketsTable } = await import("../fixtures/test-plugin-schema");
 
       // Use Drizzle's query builder to verify it generates correct SQL
       const query = db

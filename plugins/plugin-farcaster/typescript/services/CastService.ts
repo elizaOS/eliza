@@ -2,11 +2,11 @@
  * Cast service for Farcaster operations.
  */
 
-import { type IAgentRuntime, type UUID, ModelType, createUniqueUuid } from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime, ModelType, type UUID } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
-import { getFarcasterFid } from "../utils/config";
+import { type Cast, FARCASTER_SOURCE } from "../types";
 import { castUuid, neynarCastToCast } from "../utils";
-import { FARCASTER_SOURCE, type Cast } from "../types";
+import { getFarcasterFid } from "../utils/config";
 
 interface FarcasterCast {
   id: string;
@@ -208,13 +208,13 @@ export class FarcasterCastService implements CastServiceInterface {
       const truncated = response as string;
 
       if (truncated.length > 320) {
-        return truncated.substring(0, 317) + "...";
+        return `${truncated.substring(0, 317)}...`;
       }
 
       return truncated;
     } catch (error) {
       this.runtime.logger.error(`Failed to truncate cast: ${JSON.stringify({ error })}`);
-      return text.substring(0, 317) + "...";
+      return `${text.substring(0, 317)}...`;
     }
   }
 
@@ -236,12 +236,22 @@ export class FarcasterCastService implements CastServiceInterface {
       };
 
       if (typeof (this.runtime as unknown as Record<string, unknown>).storeMemory === "function") {
-        await (this.runtime as unknown as Record<string, unknown> & { storeMemory: (m: unknown) => Promise<void> }).storeMemory(memory);
+        await (
+          this.runtime as unknown as Record<string, unknown> & {
+            storeMemory: (m: unknown) => Promise<void>;
+          }
+        ).storeMemory(memory);
       } else if (
         (this.runtime as unknown as Record<string, unknown>).memory &&
-        typeof ((this.runtime as unknown as Record<string, unknown>).memory as Record<string, unknown>).create === "function"
+        typeof (
+          (this.runtime as unknown as Record<string, unknown>).memory as Record<string, unknown>
+        ).create === "function"
       ) {
-        await ((this.runtime as unknown as Record<string, unknown>).memory as { create: (m: unknown) => Promise<void> }).create(memory);
+        await (
+          (this.runtime as unknown as Record<string, unknown>).memory as {
+            create: (m: unknown) => Promise<void>;
+          }
+        ).create(memory);
       } else {
         this.runtime.logger.warn("Memory storage method not available in runtime");
       }
@@ -270,4 +280,3 @@ export class FarcasterCastService implements CastServiceInterface {
     };
   }
 }
-

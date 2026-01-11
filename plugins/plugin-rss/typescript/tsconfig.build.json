@@ -6,15 +6,6 @@
     "declarationMap": true,
     "emitDeclarationOnly": true
   },
-  "include": [
-    "./**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "__tests__",
-    "build.ts"
-  ]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "build.ts"]
 }
-
-

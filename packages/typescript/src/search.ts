@@ -955,20 +955,23 @@ class Tokenizer {
    * cleanText("test©2023") // "test 2023"
    */
   cleanText(text: string): string {
-    return text
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "") // Control characters & zero-width spaces
-      .replace(/[\u0300-\u036f]/g, "") // Diacritical marks
-      .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "") // Emojis and pictographs
-      .replace(/[™®©℠‼]/g, "") // Common symbols
-      .replace(/[\p{P}]/gu, " ") // Unicode punctuation to space
-      .replace(
-        /[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu,
-        " ",
-      ) // Keep only latin, cjk, hangul, numbers, whitespace
-      .replace(/\s+/g, " ") // Collapse multiple spaces
-      .trim();
+    return (
+      text
+        .toLowerCase()
+        .normalize("NFKD")
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Intentionally matching control characters to remove them
+        .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "") // Control characters & zero-width spaces
+        .replace(/[\u0300-\u036f]/g, "") // Diacritical marks
+        .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "") // Emojis and pictographs
+        .replace(/[™®©℠‼]/g, "") // Common symbols
+        .replace(/[\p{P}]/gu, " ") // Unicode punctuation to space
+        .replace(
+          /[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu,
+          " ",
+        ) // Keep only latin, cjk, hangul, numbers, whitespace
+        .replace(/\s+/g, " ") // Collapse multiple spaces
+        .trim()
+    );
   }
 
   /**
@@ -1010,8 +1013,8 @@ class Tokenizer {
           } else {
             // If replacement is a function, it might need more specific arguments based on its definition.
             // Assuming it takes the matched substring and potentially other match groups.
-            stemmed = stemmed.replace(rule.pattern, (...args) =>
-              (rule.replacement as Function)(...args),
+            stemmed = stemmed.replace(rule.pattern, (...args: string[]) =>
+              (rule.replacement as (...args: string[]) => string)(...args),
             );
           }
           customRuleApplied = true; // Mark that a custom rule was (potentially) applied
@@ -1151,8 +1154,8 @@ export class BM25 {
     options: BM25Options = {},
   ) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
-    this.termFrequencySaturation = opts.k1!; // Non-null assertion as DEFAULT_OPTIONS provides it
-    this.lengthNormalizationFactor = opts.b!; // Non-null assertion
+    this.termFrequencySaturation = opts.k1 ?? 1.2;
+    this.lengthNormalizationFactor = opts.b ?? 0.75;
     this.tokenizer = new Tokenizer(opts);
     this.fieldBoosts = opts.fieldBoosts || {};
 
@@ -1224,7 +1227,7 @@ export class BM25 {
           if (!termToIndex.has(term)) {
             termToIndex.set(term, nextTermIndex++);
           }
-          const termIndexVal = termToIndex.get(term)!;
+          const termIndexVal = termToIndex.get(term) as number;
 
           // Track which documents contain the term
           if (!termDocs.has(term)) {
@@ -1260,8 +1263,10 @@ export class BM25 {
     // Calculate document frequency (DF) for each term
     const documentFrequency = new Uint32Array(termToIndex.size);
     termDocs.forEach((docsSet, term) => {
-      const termIndexVal = termToIndex.get(term)!;
-      documentFrequency[termIndexVal] = docsSet.size;
+      const termIndexVal = termToIndex.get(term);
+      if (termIndexVal !== undefined) {
+        documentFrequency[termIndexVal] = docsSet.size;
+      }
     });
 
     return {
@@ -1365,7 +1370,7 @@ export class BM25 {
       if (termIndex === undefined) return []; // Phrase cannot exist if any term is missing
 
       const termFrequenciesTermIndex = this.termFrequencies.get(termIndex);
-      const docsContainingTermIter = termFrequenciesTermIndex && termFrequenciesTermIndex.keys();
+      const docsContainingTermIter = termFrequenciesTermIndex?.keys();
       if (!docsContainingTermIter) return []; // Should not happen, but check
 
       const currentTermDocs = new Set(docsContainingTermIter);
@@ -1450,7 +1455,7 @@ export class BM25 {
 
       const idf = this.calculateIdf(termIndex);
       const termFrequenciesTermIndex = this.termFrequencies.get(termIndex);
-      const tf = (termFrequenciesTermIndex && termFrequenciesTermIndex.get(docIndex)) || 0;
+      const tf = termFrequenciesTermIndex?.get(docIndex) || 0;
       const docLength = this.documentLengths[docIndex];
 
       // Calculate the BM25 contribution of this single term
@@ -1519,7 +1524,10 @@ export class BM25 {
           // Initialize DF for new term (will be incremented below)
           this.documentFrequency[termIndexVal] = 0;
         } else {
-          termIndexVal = this.termToIndex.get(term)!;
+          const existingIndex = this.termToIndex.get(term);
+          if (existingIndex !== undefined) {
+            termIndexVal = existingIndex;
+          }
         }
 
         // Increment frequency for this term in this new document
@@ -1538,7 +1546,8 @@ export class BM25 {
       if (!this.termFrequencies.has(termIndexVal)) {
         this.termFrequencies.set(termIndexVal, new Map<number, number>());
       }
-      const termFrequenciesTermIndexVal = this.termFrequencies.get(termIndexVal);
+      const termFrequenciesTermIndexVal =
+        this.termFrequencies.get(termIndexVal);
       if (termFrequenciesTermIndexVal) {
         termFrequenciesTermIndexVal.set(docIndex, freq);
       }
@@ -1591,7 +1600,7 @@ export class BM25 {
    */
   getTermFrequency(termIndex: number, docIndex: number): number {
     const termFrequenciesTermIndex = this.termFrequencies.get(termIndex);
-    return (termFrequenciesTermIndex && termFrequenciesTermIndex.get(docIndex)) || 0;
+    return termFrequenciesTermIndex?.get(docIndex) || 0;
   }
 
   /**
@@ -1635,7 +1644,7 @@ export class BM25 {
    * This method processes documents sequentially in the main thread.
    * @param docs - An array of documents to add.
    */
-  async addDocuments(docs: Array<Record<string, unknown>>): Promise<void[]> {
-    return Promise.all(docs.map((doc) => this.addDocument(doc)));
+  async addDocuments(docs: Array<Record<string, unknown>>): Promise<void> {
+    await Promise.all(docs.map((doc) => this.addDocument(doc)));
   }
 }

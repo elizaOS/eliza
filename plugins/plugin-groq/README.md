@@ -17,11 +17,11 @@ This plugin provides Groq API integration for elizaOS agents, enabling ultra-fas
 
 This plugin is available for three languages:
 
-| Language | Package | Registry |
-|----------|---------|----------|
+| Language              | Package                | Registry                                                  |
+| --------------------- | ---------------------- | --------------------------------------------------------- |
 | TypeScript/JavaScript | `@elizaos/plugin-groq` | [npm](https://www.npmjs.com/package/@elizaos/plugin-groq) |
-| Python | `elizaos-plugin-groq` | [PyPI](https://pypi.org/project/elizaos-plugin-groq/) |
-| Rust | `elizaos-plugin-groq` | [crates.io](https://crates.io/crates/elizaos-plugin-groq) |
+| Python                | `elizaos-plugin-groq`  | [PyPI](https://pypi.org/project/elizaos-plugin-groq/)     |
+| Rust                  | `elizaos-plugin-groq`  | [crates.io](https://crates.io/crates/elizaos-plugin-groq) |
 
 ## Installation
 
@@ -50,7 +50,7 @@ cargo add elizaos-plugin-groq
 ### TypeScript
 
 ```typescript
-import { groqPlugin } from '@elizaos/plugin-groq';
+import { groqPlugin } from "@elizaos/plugin-groq";
 
 // Add to your agent's plugins
 const agent = new Agent({
@@ -78,12 +78,12 @@ use elizaos_plugin_groq::{GroqClient, GenerateTextParams};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let client = GroqClient::new("your-api-key", None)?;
-    
+
     let response = client.generate_text_large(GenerateTextParams {
         prompt: "What is the nature of reality?".to_string(),
         ..Default::default()
     }).await?;
-    
+
     println!("{}", response);
     Ok(())
 }
@@ -93,29 +93,29 @@ async fn main() -> anyhow::Result<()> {
 
 Set the following environment variables:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GROQ_API_KEY` | Yes | - | Your Groq API key |
-| `GROQ_BASE_URL` | No | `https://api.groq.com/openai/v1` | Custom API base URL |
-| `GROQ_SMALL_MODEL` | No | `llama-3.1-8b-instant` | Model for small tasks |
-| `GROQ_LARGE_MODEL` | No | `llama-3.3-70b-versatile` | Model for large tasks |
-| `GROQ_TTS_MODEL` | No | `playai-tts` | Text-to-speech model |
-| `GROQ_TTS_VOICE` | No | `Chip-PlayAI` | TTS voice name |
+| Variable           | Required | Default                          | Description           |
+| ------------------ | -------- | -------------------------------- | --------------------- |
+| `GROQ_API_KEY`     | Yes      | -                                | Your Groq API key     |
+| `GROQ_BASE_URL`    | No       | `https://api.groq.com/openai/v1` | Custom API base URL   |
+| `GROQ_SMALL_MODEL` | No       | `llama-3.1-8b-instant`           | Model for small tasks |
+| `GROQ_LARGE_MODEL` | No       | `llama-3.3-70b-versatile`        | Model for large tasks |
+| `GROQ_TTS_MODEL`   | No       | `playai-tts`                     | Text-to-speech model  |
+| `GROQ_TTS_VOICE`   | No       | `Chip-PlayAI`                    | TTS voice name        |
 
 ## Model Capabilities
 
 This plugin provides handlers for the following elizaOS model types:
 
-| Model Type | Description |
-|------------|-------------|
-| `TEXT_SMALL` | Fast text generation with smaller models |
-| `TEXT_LARGE` | High-quality text generation with larger models |
-| `OBJECT_SMALL` | JSON object generation (small) |
-| `OBJECT_LARGE` | JSON object generation (large) |
-| `TRANSCRIPTION` | Audio transcription with Whisper |
-| `TEXT_TO_SPEECH` | Speech synthesis with PlayAI |
-| `TEXT_TOKENIZER_ENCODE` | Tokenize text to tokens |
-| `TEXT_TOKENIZER_DECODE` | Detokenize tokens to text |
+| Model Type              | Description                                     |
+| ----------------------- | ----------------------------------------------- |
+| `TEXT_SMALL`            | Fast text generation with smaller models        |
+| `TEXT_LARGE`            | High-quality text generation with larger models |
+| `OBJECT_SMALL`          | JSON object generation (small)                  |
+| `OBJECT_LARGE`          | JSON object generation (large)                  |
+| `TRANSCRIPTION`         | Audio transcription with Whisper                |
+| `TEXT_TO_SPEECH`        | Speech synthesis with PlayAI                    |
+| `TEXT_TOKENIZER_ENCODE` | Tokenize text to tokens                         |
+| `TEXT_TOKENIZER_DECODE` | Detokenize tokens to text                       |
 
 ## Development
 

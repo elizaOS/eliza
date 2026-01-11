@@ -1,3 +1,1 @@
-export { messageClassifierProvider } from './message-classifier';
-
-
+export { messageClassifierProvider } from "./message-classifier";

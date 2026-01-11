@@ -8,7 +8,7 @@
  * Supabase Edge Functions (Deno runtime).
  */
 
-import { handleChat, handleHealth, jsonResponse, errorResponse, corsHeaders } from "./lib/runtime.ts";
+import { errorResponse, handleChat, handleHealth } from "./lib/runtime.ts";
 
 // Re-export corsHeaders for this file
 export { corsHeaders } from "./lib/types.ts";
@@ -29,40 +29,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+        "Access-Control-Allow-Headers":
+          "authorization, x-client-info, apikey, content-type",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Max-Age": "86400",
       },
     });
   }
 
-  try {
-    // Health check endpoint
-    // Matches: /eliza-chat/health, /functions/v1/eliza-chat/health, or just /health
-    if (path.endsWith("/health") && method === "GET") {
-      return handleHealth();
-    }
-
-    // Root health check (GET /)
-    if ((path === "/" || path.endsWith("/eliza-chat")) && method === "GET") {
-      return handleHealth();
-    }
-
-    // Chat endpoint (POST to root or /chat)
-    if (method === "POST") {
-      return await handleChat(req);
-    }
-
-    // Method not allowed
-    return errorResponse(`Method ${method} not allowed`, 405, "METHOD_NOT_ALLOWED");
-  } catch (error) {
-    console.error("[elizaOS] Unhandled error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return errorResponse(`Internal server error: ${errorMessage}`, 500, "INTERNAL_ERROR");
+  // Health check endpoint
+  // Matches: /eliza-chat/health, /functions/v1/eliza-chat/health, or just /health
+  if (path.endsWith("/health") && method === "GET") {
+    return handleHealth();
   }
+
+  // Root health check (GET /)
+  if ((path === "/" || path.endsWith("/eliza-chat")) && method === "GET") {
+    return handleHealth();
+  }
+
+  // Chat endpoint (POST to root or /chat)
+  if (method === "POST") {
+    return await handleChat(req);
+  }
+
+  // Method not allowed
+  return errorResponse(
+    `Method ${method} not allowed`,
+    405,
+    "METHOD_NOT_ALLOWED",
+  );
 });
-
-
-
-
-

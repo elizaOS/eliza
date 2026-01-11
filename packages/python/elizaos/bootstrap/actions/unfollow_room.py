@@ -41,7 +41,9 @@ class UnfollowRoomAction:
         "Use this when you no longer want to monitor a room's activity."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that room is currently being followed."""
         room_id = message.room_id
         if not room_id:

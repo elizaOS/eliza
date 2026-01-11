@@ -9,14 +9,13 @@
  * - Direct Messages (limited in v2)
  */
 
-export { Client } from "./client";
-export type { ClientOptions } from "./client";
-
+export * from "./api-types";
 export { TwitterAuth } from "./auth";
-
-export * from "./tweets";
+export type { ClientOptions } from "./client";
+export { Client } from "./client";
+export * from "./errors";
 export * from "./profile";
 export * from "./relationships";
 export * from "./search";
-export * from "./api-types";
-export * from "./errors";
+export * from "./tweets";
+export type { QueryProfilesResponse, QueryTweetsResponse } from "./types";

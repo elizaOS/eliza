@@ -17,29 +17,29 @@ async def get_issues(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             return ProviderResult(text="Linear service is not available")
-        
+
         # Get recent issues
         filters = LinearSearchFilters(limit=10)
         issues = await linear_service.search_issues(filters)
-        
+
         if not issues:
             return ProviderResult(text="No recent Linear issues found")
-        
+
         # Format issues for context
         issues_list = []
         for issue in issues:
             assignee = issue.get("assignee", {})
             state = issue.get("state", {})
-            
+
             assignee_name = assignee.get("name", "Unassigned") if assignee else "Unassigned"
             state_name = state.get("name", "Unknown") if state else "Unknown"
-            
+
             issues_list.append(
                 f"- {issue['identifier']}: {issue['title']} ({state_name}, {assignee_name})"
             )
-        
-        text = f"Recent Linear Issues:\n" + "\n".join(issues_list)
-        
+
+        text = "Recent Linear Issues:\n" + "\n".join(issues_list)
+
         return ProviderResult(
             text=text,
             data={
@@ -58,5 +58,8 @@ linear_issues_provider = Provider(
     description="Provides context about recent Linear issues",
     get=get_issues,
 )
+
+
+
 
 

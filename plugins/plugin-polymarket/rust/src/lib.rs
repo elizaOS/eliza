@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! # elizaOS Plugin Polymarket
 //!
 //! Rust implementation of the Polymarket prediction markets plugin for elizaOS.
@@ -57,5 +58,10 @@ pub use actions::*;
 pub const PLUGIN_NAME: &str = "polymarket";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Core types for the Ollama API.
 //!
 //! All types are strongly typed with explicit field requirements.
@@ -179,6 +180,7 @@ pub(crate) struct GenerateRequest {
 
 /// Response body from the Ollama generate API.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields are part of API response but not all are currently used
 pub(crate) struct GenerateResponse {
     pub model: String,
     pub created_at: String,
@@ -231,5 +233,7 @@ pub(crate) struct PullRequest {
     pub model: String,
     pub stream: bool,
 }
+
+
 
 

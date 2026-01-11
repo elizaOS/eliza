@@ -2,8 +2,8 @@
  * Helper to get the PluginCreationService from runtime.
  */
 
-import { IAgentRuntime } from "@elizaos/core";
-import { PluginCreationService } from "../services/plugin-creation-service";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { PluginCreationService } from "../services/plugin-creation-service";
 
 /**
  * Get the PluginCreationService from runtime.
@@ -14,9 +14,6 @@ export function getPluginCreationService(
   runtime: IAgentRuntime
 ): PluginCreationService | undefined {
   // Cast to bypass type check since we can't extend ServiceTypeRegistry
-  return runtime.services.get(
-    "plugin_creation" as keyof typeof runtime.services
-  ) as PluginCreationService | undefined;
+  const services = runtime.services as Map<string, unknown>;
+  return services.get("plugin_creation") as PluginCreationService | undefined;
 }
-
-

@@ -1,13 +1,6 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
-import {
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
@@ -26,7 +19,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
 
   beforeEach(async () => {
     const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
-      "schema_evolution_index_evolution_test",
+      "schema_evolution_index_evolution_test"
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
@@ -118,23 +111,20 @@ describe("Schema Evolution Test: Index Evolution", () => {
         // Multi-column expression index for fragments
         index("idx_fragments_order").on(
           sql`(metadata->>'documentId')`,
-          sql`((metadata->>'position')::int)`,
+          sql`((metadata->>'position')::int)`
         ),
 
         // Partial index with WHERE clause
         index("idx_conversation_memories")
           .on(table.type, table.agentId)
           .where(sql`type = 'conversation'`),
-      ],
+      ]
     );
 
     const schemaV2 = { memories: memoryTableV2 };
 
     console.log("\n🔍 Checking index additions...");
-    const check = await migrator.checkMigration(
-      "@elizaos/index-test-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/index-test-v1", schemaV2);
 
     if (check) {
       expect(check.hasDataLoss).toBe(false);
@@ -151,7 +141,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
           FROM pg_indexes 
           WHERE tablename = 'memories' 
           AND indexname != 'memories_pkey'
-          ORDER BY indexname`,
+          ORDER BY indexname`
     );
 
     console.log("\n📊 Created indexes:");
@@ -180,7 +170,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
         index("idx_col1").on(table.col1),
         index("idx_col2").on(table.col2),
         index("idx_composite").on(table.col1, table.col2),
-      ],
+      ]
     );
 
     const schemaV1 = { test_index_changes: testTableV1 };
@@ -216,16 +206,13 @@ describe("Schema Evolution Test: Index Evolution", () => {
         // New indexes added
         index("idx_col3").on(table.col3),
         index("idx_metadata_key").on(sql`(metadata->>'key')`),
-      ],
+      ]
     );
 
     const schemaV2 = { test_index_changes: testTableV2 };
 
     console.log("\n🔍 Checking index modifications...");
-    const check = await migrator.checkMigration(
-      "@elizaos/index-change-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/index-change-v1", schemaV2);
 
     if (check) {
       expect(check.hasDataLoss).toBe(false);
@@ -246,7 +233,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
           FROM pg_indexes 
           WHERE tablename = 'test_index_changes' 
           AND indexname != 'test_index_changes_pkey'
-          ORDER BY indexname`,
+          ORDER BY indexname`
     );
 
     const indexNames = indexes.rows.map((r: any) => r.indexname);
@@ -260,9 +247,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
     expect(indexNames).toContain("idx_metadata_key"); // Should be added
 
     // Verify data is intact
-    const dataCount = await db.execute(
-      sql`SELECT COUNT(*) as count FROM test_index_changes`,
-    );
+    const dataCount = await db.execute(sql`SELECT COUNT(*) as count FROM test_index_changes`);
     expect(Number((dataCount.rows[0] as CountRow).count)).toBe(3);
     console.log("\n✅ All data preserved during index changes");
   });
@@ -314,11 +299,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
       },
       (table) => [
         // Covering index for common queries
-        index("idx_status_priority_created").on(
-          table.status,
-          table.priority,
-          table.createdAt,
-        ),
+        index("idx_status_priority_created").on(table.status, table.priority, table.createdAt),
 
         // Partial indexes for specific status values
         index("idx_pending")
@@ -336,22 +317,17 @@ describe("Schema Evolution Test: Index Evolution", () => {
         index("idx_data_gin").using("gin", table.data),
 
         // Text search index
-        index("idx_search_vector").on(
-          sql`to_tsvector('english', search_vector)`,
-        ),
+        index("idx_search_vector").on(sql`to_tsvector('english', search_vector)`),
 
         // Descending index for reverse chronological queries
         index("idx_created_desc").on(sql`created_at DESC`),
-      ],
+      ]
     );
 
     const schemaV2 = { complex_indexes: tableV2 };
 
     console.log("\n📦 Creating complex indexing strategy...");
-    const check = await migrator.checkMigration(
-      "@elizaos/complex-index-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/complex-index-v1", schemaV2);
 
     if (check) {
       expect(check.hasDataLoss).toBe(false);
@@ -376,7 +352,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
           FROM pg_indexes 
           WHERE tablename = 'complex_indexes'
           AND indexname != 'complex_indexes_pkey'
-          ORDER BY indexname`,
+          ORDER BY indexname`
     );
 
     console.log("\n📊 Complex indexes created:");
@@ -390,13 +366,13 @@ describe("Schema Evolution Test: Index Evolution", () => {
 
     // Test partial index usage
     const _explainPending = await db.execute(
-      sql`EXPLAIN SELECT * FROM complex_indexes WHERE status = 'pending' ORDER BY created_at`,
+      sql`EXPLAIN SELECT * FROM complex_indexes WHERE status = 'pending' ORDER BY created_at`
     );
     console.log("  ✅ Partial index for pending status can be used");
 
     // Test covering index
     const _explainCovering = await db.execute(
-      sql`EXPLAIN SELECT status, priority, created_at FROM complex_indexes WHERE status = 'active'`,
+      sql`EXPLAIN SELECT status, priority, created_at FROM complex_indexes WHERE status = 'active'`
     );
     console.log("  ✅ Covering index can satisfy query without table access");
 
@@ -412,7 +388,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
         field1: text("field1"),
         field2: text("field2"),
       },
-      (table) => [index("my_index").on(table.field1)],
+      (table) => [index("my_index").on(table.field1)]
     );
 
     const schemaV1 = { test_conflicts: tableV1 };
@@ -430,7 +406,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
       },
       (table) => [
         index("my_index").on(table.field2), // Same name, different column!
-      ],
+      ]
     );
 
     const schemaV2 = { test_conflicts: tableV2 };
@@ -442,7 +418,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
     const indexDef = await db.execute(
       sql`SELECT indexdef FROM pg_indexes 
           WHERE tablename = 'test_conflicts' 
-          AND indexname = 'my_index'`,
+          AND indexname = 'my_index'`
     );
 
     const definition = (indexDef.rows[0] as IndexDefRow).indexdef;

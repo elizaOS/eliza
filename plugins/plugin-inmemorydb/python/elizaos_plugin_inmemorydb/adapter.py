@@ -668,3 +668,8 @@ class InMemoryDatabaseAdapter:
         """Delete a log."""
         await self._storage.delete(COLLECTIONS.LOGS, log_id)
 
+
+
+
+
+

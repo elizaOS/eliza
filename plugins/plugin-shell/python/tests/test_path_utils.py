@@ -1,11 +1,12 @@
 """Tests for path utilities."""
 
 import pytest
+
 from elizaos_plugin_shell.path_utils import (
-    validate_path,
-    is_safe_command,
     extract_base_command,
     is_forbidden_command,
+    is_safe_command,
+    validate_path,
 )
 
 
@@ -100,5 +101,8 @@ class TestIsForbiddenCommand:
     def test_case_insensitive(self, forbidden: list[str]) -> None:
         assert is_forbidden_command("RM -RF /", forbidden) is True
         assert is_forbidden_command("SHUTDOWN", forbidden) is True
+
+
+
 
 

@@ -7,7 +7,6 @@ Handles communication with the Neynar API for Farcaster operations.
 from __future__ import annotations
 
 from datetime import datetime
-from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -228,9 +227,7 @@ class FarcasterClient:
 
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After")
-                raise RateLimitError(
-                    retry_after=int(retry_after) if retry_after else None
-                )
+                raise RateLimitError(retry_after=int(retry_after) if retry_after else None)
 
             if response.status_code >= 400:
                 error_data = response.json() if response.content else {}

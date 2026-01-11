@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the EVM plugin
 //!
 //! This module provides strongly typed definitions for all EVM operations.

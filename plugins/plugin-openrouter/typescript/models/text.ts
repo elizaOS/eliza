@@ -2,13 +2,13 @@
  * Text generation model handlers for OpenRouter.
  */
 
-import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from '@elizaos/core';
-import { logger, ModelType } from '@elizaos/core';
-import { generateText, streamText } from 'ai';
+import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { generateText, streamText } from "ai";
 
-import { createOpenRouterProvider } from '../providers';
-import { getSmallModel, getLargeModel } from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
+import { createOpenRouterProvider } from "../providers";
+import { getLargeModel, getSmallModel } from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
 
 /**
  * Build common generation parameters for both streaming and non-streaming modes.
@@ -30,7 +30,7 @@ function buildGenerateParams(
   const openrouter = createOpenRouterProvider(runtime);
   const modelName =
     modelType === ModelType.TEXT_SMALL ? getSmallModel(runtime) : getLargeModel(runtime);
-  const modelLabel = modelType === ModelType.TEXT_SMALL ? 'TEXT_SMALL' : 'TEXT_LARGE';
+  const modelLabel = modelType === ModelType.TEXT_SMALL ? "TEXT_SMALL" : "TEXT_LARGE";
 
   const generateParams = {
     model: openrouter.chat(modelName),
@@ -102,7 +102,9 @@ async function generateTextWithModel(
   }
 
   // Non-streaming mode
-  const response = await generateText(generateParams as unknown as Parameters<typeof generateText>[0]);
+  const response = await generateText(
+    generateParams as unknown as Parameters<typeof generateText>[0]
+  );
 
   if (response.usage) {
     emitModelUsageEvent(runtime, modelType, prompt, response.usage);

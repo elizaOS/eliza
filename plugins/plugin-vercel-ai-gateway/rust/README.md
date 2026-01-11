@@ -29,25 +29,25 @@ use futures::StreamExt;
 async fn main() -> anyhow::Result<()> {
     let config = GatewayConfig::new("your-api-key");
     let plugin = GatewayPlugin::new(config)?;
-    
+
     // Text generation
     let response = plugin.generate_text("What is quantum computing?").await?;
     println!("{}", response);
-    
+
     // Streaming text generation
     let params = TextGenerationParams::new("Tell me a story about a robot");
     let mut stream = plugin.stream_text(&params).await?;
-    
+
     print!("Story: ");
     while let Some(chunk) = stream.next().await {
         print!("{}", chunk?);
     }
     println!();
-    
+
     // Embeddings
     let embedding = plugin.create_embedding("Hello, world!").await?;
     println!("Embedding dimensions: {}", embedding.len());
-    
+
     Ok(())
 }
 ```
@@ -121,4 +121,3 @@ cargo clippy
 ## License
 
 MIT
-

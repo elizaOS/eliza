@@ -40,9 +40,7 @@ describe("PhalaRemoteAttestationProvider", () => {
     });
 
     it("should throw error for invalid mode", () => {
-      expect(() => new PhalaRemoteAttestationProvider("INVALID_MODE")).toThrow(
-        "Invalid TEE_MODE"
-      );
+      expect(() => new PhalaRemoteAttestationProvider("INVALID_MODE")).toThrow("Invalid TEE_MODE");
     });
   });
 
@@ -89,5 +87,3 @@ describe("PhalaRemoteAttestationProvider", () => {
     });
   });
 });
-
-

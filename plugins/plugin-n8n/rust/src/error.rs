@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the N8n Plugin.
 
 use thiserror::Error;
@@ -147,5 +148,10 @@ impl N8nError {
         }
     }
 }
+
+
+
+
+
 
 

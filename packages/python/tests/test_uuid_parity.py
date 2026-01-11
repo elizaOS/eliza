@@ -50,6 +50,3 @@ class TestStringToUuidParity:
 
         # Also ensure Python's uuid parser accepts it
         uuid_module.UUID(uuid_str)
-
-
-

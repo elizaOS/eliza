@@ -19,9 +19,9 @@ import {
   type TextChannel,
 } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
+import { leaveChannelTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
 import type { VoiceManager } from "../voice";
-import { leaveChannelTemplate } from "../generated/prompts/typescript/prompts.js";
 
 // Re-export for backwards compatibility
 export { leaveChannelTemplate };
@@ -36,7 +36,7 @@ export { leaveChannelTemplate };
 const getLeaveChannelInfo = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{ channelIdentifier: string; isVoiceChannel: boolean } | null> => {
   const prompt = composePromptFromState({
     state,
@@ -53,7 +53,7 @@ const getLeaveChannelInfo = async (
       isVoiceChannel: boolean;
     } | null;
 
-    if (parsedResponse && parsedResponse.channelIdentifier) {
+    if (parsedResponse?.channelIdentifier) {
       return parsedResponse;
     }
   }
@@ -74,7 +74,7 @@ const findChannel = async (
   identifier: string,
   currentChannelId?: string,
   currentServerId?: string,
-  isVoiceChannel?: boolean,
+  isVoiceChannel?: boolean
 ): Promise<TextChannel | BaseGuildVoiceChannel | null> => {
   if (!discordService.client) {
     return null;
@@ -83,15 +83,10 @@ const findChannel = async (
   // Handle "current" channel
   if (identifier === "current" && currentChannelId) {
     try {
-      const channel =
-        await discordService.client.channels.fetch(currentChannelId);
+      const channel = await discordService.client.channels.fetch(currentChannelId);
       if (isVoiceChannel && channel && channel.type === DiscordChannelType.GuildVoice) {
         return channel as BaseGuildVoiceChannel;
-      } else if (
-        !isVoiceChannel &&
-        channel && channel.isTextBased() &&
-        !channel.isVoiceBased()
-      ) {
+      } else if (!isVoiceChannel && channel && channel.isTextBased() && !channel.isVoiceBased()) {
         return channel as TextChannel;
       }
     } catch (_e) {
@@ -109,11 +104,7 @@ const findChannel = async (
         const channel = await discordService.client.channels.fetch(cleanId);
         if (isVoiceChannel && channel && channel.type === DiscordChannelType.GuildVoice) {
           return channel as BaseGuildVoiceChannel;
-        } else if (
-          !isVoiceChannel &&
-          channel && channel.isTextBased() &&
-          !channel.isVoiceBased()
-        ) {
+        } else if (!isVoiceChannel && channel && channel.isTextBased() && !channel.isVoiceBased()) {
           return channel as TextChannel;
         }
       } catch (_e) {
@@ -129,8 +120,8 @@ const findChannel = async (
       // Search by channel name
       const channel = channels.find((ch) => {
         const nameMatch =
-          (ch && ch.name && ch.name.toLowerCase()) === identifier.toLowerCase() ||
-          (ch && ch.name && ch.name.toLowerCase().replace(/[^a-z0-9 ]/g, "")) ===
+          ch?.name?.toLowerCase() === identifier.toLowerCase() ||
+          ch?.name?.toLowerCase().replace(/[^a-z0-9 ]/g, "") ===
             identifier.toLowerCase().replace(/[^a-z0-9 ]/g, "");
 
         if (isVoiceChannel) {
@@ -152,8 +143,8 @@ const findChannel = async (
         const channels = await guild.channels.fetch();
         const channel = channels.find((ch) => {
           const nameMatch =
-            (ch && ch.name && ch.name.toLowerCase()) === identifier.toLowerCase() ||
-            (ch && ch.name && ch.name.toLowerCase().replace(/[^a-z0-9 ]/g, "")) ===
+            ch?.name?.toLowerCase() === identifier.toLowerCase() ||
+            ch?.name?.toLowerCase().replace(/[^a-z0-9 ]/g, "") ===
               identifier.toLowerCase().replace(/[^a-z0-9 ]/g, "");
 
           if (isVoiceChannel) {
@@ -200,11 +191,7 @@ export const leaveChannel = {
   ],
   description:
     "Leave a Discord channel - either text (stop monitoring messages) or voice (disconnect from voice chat). Use this when asked to leave, exit, or disconnect from any Discord channel.",
-  validate: async (
-    _runtime: IAgentRuntime,
-    message: Memory,
-    _state: State,
-  ): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     if (message.content.source !== "discord") {
       return false;
     }
@@ -214,12 +201,10 @@ export const leaveChannel = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ): Promise<undefined | ActionResult | undefined> => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       runtime.logger.error(
@@ -227,7 +212,7 @@ export const leaveChannel = {
           src: "plugin:discord:action:leave-channel",
           agentId: runtime.agentId,
         },
-        "Discord service not found or not initialized",
+        "Discord service not found or not initialized"
       );
       await callback({
         text: "Discord service is not available.",
@@ -240,24 +225,21 @@ export const leaveChannel = {
 
     try {
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
-      const currentServerId = room && room.messageServerId;
-      const currentChannelId = room && room.channelId;
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
+      const currentServerId = room?.messageServerId;
+      const currentChannelId = room?.channelId;
 
       // Check if trying to leave voice without specifying channel
       const messageContentText = message.content.text;
-      const messageText = (messageContentText && messageContentText.toLowerCase()) || "";
+      const messageText = messageContentText?.toLowerCase() || "";
       const isVoiceRequest =
-        (channelInfo && channelInfo.isVoiceChannel) ||
+        channelInfo?.isVoiceChannel ||
         messageText.includes("voice") ||
         messageText.includes("vc") ||
         messageText.includes("call");
 
       // If it's a generic voice leave request, handle current voice channel
-      if (
-        isVoiceRequest &&
-        (!channelInfo || channelInfo.channelIdentifier === "current")
-      ) {
+      if (isVoiceRequest && (!channelInfo || channelInfo.channelIdentifier === "current")) {
         const voiceManager = discordService.voiceManager as VoiceManager;
 
         if (!voiceManager) {
@@ -270,15 +252,12 @@ export const leaveChannel = {
 
         if (currentServerId) {
           const guild = discordService.client.guilds.cache.get(currentServerId);
-          const guildMembers = guild && guild.members;
-          const guildMembersMe = guildMembers && guildMembers.me;
-          const guildMembersMeVoice = guildMembersMe && guildMembersMe.voice;
-          const voiceChannel = guildMembersMeVoice && guildMembersMeVoice.channel;
+          const guildMembers = guild?.members;
+          const guildMembersMe = guildMembers?.me;
+          const guildMembersMeVoice = guildMembersMe?.voice;
+          const voiceChannel = guildMembersMeVoice?.channel;
 
-          if (
-            !voiceChannel ||
-            !(voiceChannel instanceof BaseGuildVoiceChannel)
-          ) {
+          if (!voiceChannel || !(voiceChannel instanceof BaseGuildVoiceChannel)) {
             await callback({
               text: "I'm not currently in a voice channel.",
               source: "discord",
@@ -311,7 +290,7 @@ export const leaveChannel = {
                 type: MemoryType.CUSTOM,
               },
             },
-            "messages",
+            "messages"
           );
 
           await callback({
@@ -328,7 +307,7 @@ export const leaveChannel = {
             src: "plugin:discord:action:leave-channel",
             agentId: runtime.agentId,
           },
-          "Could not parse channel information from message",
+          "Could not parse channel information from message"
         );
         await callback({
           text: "I couldn't understand which channel you want me to leave. Please specify the channel name or ID.",
@@ -344,14 +323,14 @@ export const leaveChannel = {
             channelInfo.channelIdentifier,
             currentChannelId,
             currentServerId,
-            true,
+            true
           )
         : await findChannel(
             discordService,
             channelInfo.channelIdentifier,
             currentChannelId,
             currentServerId,
-            false,
+            false
           );
 
       // If not found, try the opposite type
@@ -362,14 +341,14 @@ export const leaveChannel = {
               channelInfo.channelIdentifier,
               currentChannelId,
               currentServerId,
-              false,
+              false
             )
           : await findChannel(
               discordService,
               channelInfo.channelIdentifier,
               currentChannelId,
               currentServerId,
-              true,
+              true
             );
       }
 
@@ -395,14 +374,11 @@ export const leaveChannel = {
         }
 
         const guild = voiceChannel.guild;
-        const guildMembersMe = guild.members && guild.members.me;
-        const guildMembersMeVoice = guildMembersMe && guildMembersMe.voice;
-        const currentVoiceChannel = guildMembersMeVoice && guildMembersMeVoice.channel;
+        const guildMembersMe = guild.members?.me;
+        const guildMembersMeVoice = guildMembersMe?.voice;
+        const currentVoiceChannel = guildMembersMeVoice?.channel;
 
-        if (
-          !currentVoiceChannel ||
-          currentVoiceChannel.id !== voiceChannel.id
-        ) {
+        if (!currentVoiceChannel || currentVoiceChannel.id !== voiceChannel.id) {
           await callback({
             text: `I'm not currently in the voice channel ${voiceChannel.name}.`,
             source: "discord",
@@ -426,7 +402,7 @@ export const leaveChannel = {
               type: MemoryType.CUSTOM,
             },
           },
-          "messages",
+          "messages"
         );
 
         const response: Content = {
@@ -476,7 +452,7 @@ export const leaveChannel = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error leaving channel",
+        "Error leaving channel"
       );
       await callback({
         text: "I encountered an error while trying to leave the channel. Please try again.",

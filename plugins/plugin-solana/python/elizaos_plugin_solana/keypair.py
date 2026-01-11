@@ -2,7 +2,6 @@
 
 import base64
 import re
-from typing import Optional
 
 import base58
 from solders.keypair import Keypair
@@ -87,7 +86,7 @@ class KeypairUtils:
             return False
 
     @staticmethod
-    def is_on_curve(pubkey_str: str) -> Optional[bool]:
+    def is_on_curve(pubkey_str: str) -> bool | None:
         """Validate a public key and check if it's on the Ed25519 curve.
 
         On-curve keys are typically user wallets, while off-curve keys
@@ -174,5 +173,3 @@ class KeypairUtils:
                 pass
 
         return results
-
-

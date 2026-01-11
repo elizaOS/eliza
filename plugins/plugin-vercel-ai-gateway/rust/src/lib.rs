@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Vercel AI Gateway Plugin
 //!
 //! This crate provides Vercel AI Gateway integration for elizaOS agents.

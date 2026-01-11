@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin SQL - Rust Implementation
 //!
 //! This crate provides database adapters for elizaOS, supporting both PGLite (for WASM/browser)

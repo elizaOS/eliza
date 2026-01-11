@@ -36,7 +36,7 @@ export function extname(path: string): string {
 }
 
 export function resolve(...paths: string[]): string {
-  return "/" + join(...paths);
+  return `/${join(...paths)}`;
 }
 
 export function isAbsolute(path: string): boolean {
@@ -70,8 +70,4 @@ export default {
   sep,
   delimiter,
 };
-
-
-
-
 

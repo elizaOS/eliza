@@ -1,5 +1,5 @@
-import type { IAgentRuntime, Memory, State } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Creates a mock memory object for testing
@@ -11,8 +11,8 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
     roomId: `room-${uuidv4()}` as `${string}-${string}-${string}-${string}-${string}`,
     agentId: `agent-${uuidv4()}` as `${string}-${string}-${string}-${string}-${string}`,
     content: {
-      text: 'test message',
-      source: 'test',
+      text: "test message",
+      source: "test",
     },
     createdAt: Date.now(),
     ...overrides,
@@ -26,7 +26,7 @@ export function createMockState(overrides: Partial<State> = {}): State {
   return {
     values: {},
     data: {},
-    text: '',
+    text: "",
     ...overrides,
   } as State;
 }

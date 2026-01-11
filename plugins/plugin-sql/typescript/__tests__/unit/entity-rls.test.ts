@@ -1,5 +1,5 @@
-import {  describe, expect, it  } from "vitest";
 import { stringToUuid } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 /**
  * Entity RLS Unit Tests
@@ -122,14 +122,7 @@ describe("Entity RLS Column Detection", () => {
   describe("Table Schema Detection", () => {
     it("should detect memories table as room-based", () => {
       // memories table schema
-      const tableColumns = [
-        "id",
-        "entity_id",
-        "agent_id",
-        "room_id",
-        "content",
-        "created_at",
-      ];
+      const tableColumns = ["id", "entity_id", "agent_id", "room_id", "content", "created_at"];
 
       const has_room_id = tableColumns.includes("room_id");
       const has_entity_id = tableColumns.includes("entity_id");
@@ -207,8 +200,7 @@ describe("Entity RLS Policy Types", () => {
     });
 
     it("should use channel_id from participants table", () => {
-      const subquery =
-        "SELECT channel_id FROM participants WHERE entity_id = current_entity_id()";
+      const subquery = "SELECT channel_id FROM participants WHERE entity_id = current_entity_id()";
 
       expect(subquery).toContain("channel_id");
       expect(subquery).not.toContain("room_id"); // participants use channel_id
@@ -252,9 +244,7 @@ describe("Entity RLS Function Names", () => {
 
     expect(functions.currentEntityId).toBe("current_entity_id");
     expect(functions.addEntityIsolation).toBe("add_entity_isolation");
-    expect(functions.applyEntityRlsToAllTables).toBe(
-      "apply_entity_rls_to_all_tables",
-    );
+    expect(functions.applyEntityRlsToAllTables).toBe("apply_entity_rls_to_all_tables");
   });
 
   it("should use different function names than Server RLS", () => {
@@ -269,12 +259,8 @@ describe("Entity RLS Function Names", () => {
     };
 
     // Should be different to avoid conflicts
-    expect(entityFunctions.currentEntityId).not.toBe(
-      serverFunctions.currentServerId,
-    );
-    expect(entityFunctions.addEntityIsolation).not.toBe(
-      serverFunctions.addServerIsolation,
-    );
+    expect(entityFunctions.currentEntityId).not.toBe(serverFunctions.currentServerId);
+    expect(entityFunctions.addEntityIsolation).not.toBe(serverFunctions.addServerIsolation);
   });
 });
 
@@ -361,11 +347,9 @@ describe("Entity RLS Security Properties", () => {
 
       // Both should be valid UUIDs
       expect(aliceEntityId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
       );
-      expect(bobEntityId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+      expect(bobEntityId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("should generate consistent entity IDs from platform usernames", () => {
@@ -394,12 +378,12 @@ describe("Entity RLS Security Properties", () => {
 
       // Alice should see messages from room-123
       const aliceCanSee = participants.some(
-        (p) => p.entity_id === aliceEntityId && p.channel_id === "room-123",
+        (p) => p.entity_id === aliceEntityId && p.channel_id === "room-123"
       );
 
       // Agent should see messages from room-123
       const agentCanSee = participants.some(
-        (p) => p.entity_id === agentEntityId && p.channel_id === "room-123",
+        (p) => p.entity_id === agentEntityId && p.channel_id === "room-123"
       );
 
       expect(aliceCanSee).toBe(true);
@@ -417,7 +401,7 @@ describe("Entity RLS Security Properties", () => {
 
       // Bob should NOT see messages from room-123
       const bobCanSee = participants.some(
-        (p) => p.entity_id === bobEntityId && p.channel_id === "room-123",
+        (p) => p.entity_id === bobEntityId && p.channel_id === "room-123"
       );
 
       expect(bobCanSee).toBe(false);
@@ -482,10 +466,7 @@ describe("Entity RLS Integration", () => {
   describe("elizaOS Integration Point", () => {
     it("should check for withEntityContext method availability", () => {
       const postgresAdapter = {
-        withEntityContext: async (
-          _entityId: string,
-          callback: () => Promise<any>,
-        ) => {
+        withEntityContext: async (_entityId: string, callback: () => Promise<any>) => {
           return callback();
         },
       };
@@ -511,9 +492,7 @@ describe("Entity RLS Integration", () => {
       const entityId = userMessage.entityId;
 
       expect(entityId).toBeDefined();
-      expect(entityId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+      expect(entityId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
   });
 });
@@ -561,10 +540,7 @@ describe("Entity RLS Backward Compatibility", () => {
     it("should not modify existing API interfaces", () => {
       // withEntityContext is OPTIONAL
       interface IDatabaseAdapter {
-        withEntityContext?(
-          entityId: string | null,
-          callback: () => Promise<any>,
-        ): Promise<any>;
+        withEntityContext?(entityId: string | null, callback: () => Promise<any>): Promise<any>;
       }
 
       const adapter: IDatabaseAdapter = {

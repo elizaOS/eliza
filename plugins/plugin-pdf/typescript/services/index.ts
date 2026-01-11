@@ -1,3 +1,1 @@
-export { PdfService, default } from "./pdf";
-
-
+export { default, PdfService } from "./pdf";

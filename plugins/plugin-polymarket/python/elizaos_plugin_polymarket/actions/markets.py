@@ -4,15 +4,15 @@ Market retrieval actions for Polymarket.
 
 from typing import Protocol
 
+from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_clob_client
 from elizaos_plugin_polymarket.types import (
     Market,
-    SimplifiedMarket,
     MarketFilters,
     MarketsResponse,
+    SimplifiedMarket,
     SimplifiedMarketsResponse,
 )
-from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 
 
 class RuntimeProtocol(Protocol):
@@ -59,10 +59,7 @@ async def get_markets(
         # Apply client-side filters if provided
         if filters:
             if filters.category:
-                markets = [
-                    m for m in markets
-                    if m.category.lower() == filters.category.lower()
-                ]
+                markets = [m for m in markets if m.category.lower() == filters.category.lower()]
             if filters.active is not None:
                 markets = [m for m in markets if m.active == filters.active]
             if filters.limit:
@@ -216,5 +213,8 @@ async def get_sampling_markets(
             f"Failed to fetch sampling markets: {e}",
             cause=e,
         ) from e
+
+
+
 
 

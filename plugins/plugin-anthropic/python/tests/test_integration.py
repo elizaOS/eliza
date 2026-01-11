@@ -21,7 +21,7 @@ class TestTextGeneration:
     """Tests for text generation."""
 
     @pytest.mark.asyncio
-    async def test_text_generation_small(self, client: "AnthropicClient") -> None:
+    async def test_text_generation_small(self, client: AnthropicClient) -> None:
         """Test text generation with small model."""
         from elizaos_plugin_anthropic import TextGenerationParams
 
@@ -38,7 +38,7 @@ class TestTextGeneration:
         assert response.usage.total_tokens() > 0, "Should have token usage"
 
     @pytest.mark.asyncio
-    async def test_text_generation_large(self, client: "AnthropicClient") -> None:
+    async def test_text_generation_large(self, client: AnthropicClient) -> None:
         """Test text generation with large model."""
         from elizaos_plugin_anthropic import TextGenerationParams
 
@@ -54,7 +54,7 @@ class TestTextGeneration:
         assert "paris" in response.text.lower(), f"Response should contain 'Paris': {response.text}"
 
     @pytest.mark.asyncio
-    async def test_text_generation_with_system(self, client: "AnthropicClient") -> None:
+    async def test_text_generation_with_system(self, client: AnthropicClient) -> None:
         """Test text generation with system prompt."""
         from elizaos_plugin_anthropic import TextGenerationParams
 
@@ -70,14 +70,14 @@ class TestTextGeneration:
         assert response.text, "Response text should not be empty"
 
     @pytest.mark.asyncio
-    async def test_text_generation_string_prompt(self, client: "AnthropicClient") -> None:
+    async def test_text_generation_string_prompt(self, client: AnthropicClient) -> None:
         """Test text generation with just a string prompt."""
         response = await client.generate_text_small("Say hello in one word.")
 
         assert response.text, "Response text should not be empty"
 
     @pytest.mark.asyncio
-    async def test_top_p_sampling(self, client: "AnthropicClient") -> None:
+    async def test_top_p_sampling(self, client: AnthropicClient) -> None:
         """Test text generation with top_p sampling."""
         from elizaos_plugin_anthropic import TextGenerationParams
 
@@ -96,7 +96,7 @@ class TestObjectGeneration:
     """Tests for object generation."""
 
     @pytest.mark.asyncio
-    async def test_object_generation_small(self, client: "AnthropicClient") -> None:
+    async def test_object_generation_small(self, client: AnthropicClient) -> None:
         """Test object generation with small model."""
         from elizaos_plugin_anthropic import ObjectGenerationParams
 
@@ -112,7 +112,7 @@ class TestObjectGeneration:
         assert "active" in response.object, "Should have 'active' field"
 
     @pytest.mark.asyncio
-    async def test_object_generation_large(self, client: "AnthropicClient") -> None:
+    async def test_object_generation_large(self, client: AnthropicClient) -> None:
         """Test object generation with large model."""
         from elizaos_plugin_anthropic import ObjectGenerationParams
 
@@ -128,7 +128,7 @@ class TestObjectGeneration:
         assert "roles" in response.object, "Should have 'roles' field"
 
     @pytest.mark.asyncio
-    async def test_object_generation_string_prompt(self, client: "AnthropicClient") -> None:
+    async def test_object_generation_string_prompt(self, client: AnthropicClient) -> None:
         """Test object generation with just a string prompt."""
         response = await client.generate_object_small(
             "Create a JSON object with a 'message' field saying 'hello'"
@@ -138,7 +138,7 @@ class TestObjectGeneration:
         assert "message" in response.object, "Should have 'message' field"
 
     @pytest.mark.asyncio
-    async def test_complex_object_generation(self, client: "AnthropicClient") -> None:
+    async def test_complex_object_generation(self, client: AnthropicClient) -> None:
         """Test complex nested object generation."""
         from elizaos_plugin_anthropic import ObjectGenerationParams
 
@@ -175,7 +175,7 @@ class TestErrorHandling:
     """Tests for error handling."""
 
     @pytest.mark.asyncio
-    async def test_invalid_temperature_top_p(self, client: "AnthropicClient") -> None:
+    async def test_invalid_temperature_top_p(self, client: AnthropicClient) -> None:
         """Test error when both temperature and top_p are specified."""
         from elizaos_plugin_anthropic import TextGenerationParams
         from elizaos_plugin_anthropic.errors import InvalidParameterError
@@ -230,5 +230,3 @@ class TestConfiguration:
         sonnet = Model(Model.CLAUDE_SONNET_4)
         assert sonnet.size == ModelSize.LARGE
         assert sonnet.is_large()
-
-

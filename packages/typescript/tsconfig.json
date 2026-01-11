@@ -3,13 +3,14 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./",
+    "baseUrl": "../../",
     "types": ["node", "bun"],
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
-      "@elizaos/core": ["packages/typescript/src/index.ts"],
-      "@elizaos/core/*": ["packages/typescript/src/*"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"]
+      "@elizaos/core": ["./packages/typescript/src/index.ts"],
+      "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/plugin-sql": ["./plugins/plugin-sql/typescript/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],

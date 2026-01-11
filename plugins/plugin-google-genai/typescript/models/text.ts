@@ -1,26 +1,21 @@
-import type { IAgentRuntime, GenerateTextParams } from '@elizaos/core';
-import { logger, ModelType } from '@elizaos/core';
+import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import {
   createGoogleGenAI,
+  getLargeModel,
   getSafetySettings,
   getSmallModel,
-  getLargeModel,
-} from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
-import { countTokens } from '../utils/tokenization';
+} from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
+import { countTokens } from "../utils/tokenization";
 
 export async function handleTextSmall(
   runtime: IAgentRuntime,
-  {
-    prompt,
-    stopSequences = [],
-    maxTokens = 8192,
-    temperature = 0.7,
-  }: GenerateTextParams
+  { prompt, stopSequences = [], maxTokens = 8192, temperature = 0.7 }: GenerateTextParams
 ): Promise<string> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
-    throw new Error('Google Generative AI client not initialized');
+    throw new Error("Google Generative AI client not initialized");
   }
 
   const modelName = getSmallModel(runtime);
@@ -44,7 +39,7 @@ export async function handleTextSmall(
       },
     });
 
-    const text = response.text || '';
+    const text = response.text || "";
 
     // Count tokens for usage tracking
     const promptTokens = await countTokens(prompt);
@@ -66,16 +61,11 @@ export async function handleTextSmall(
 
 export async function handleTextLarge(
   runtime: IAgentRuntime,
-  {
-    prompt,
-    stopSequences = [],
-    maxTokens = 8192,
-    temperature = 0.7,
-  }: GenerateTextParams
+  { prompt, stopSequences = [], maxTokens = 8192, temperature = 0.7 }: GenerateTextParams
 ): Promise<string> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
-    throw new Error('Google Generative AI client not initialized');
+    throw new Error("Google Generative AI client not initialized");
   }
 
   const modelName = getLargeModel(runtime);
@@ -99,7 +89,7 @@ export async function handleTextLarge(
       },
     });
 
-    const text = response.text || '';
+    const text = response.text || "";
 
     // Count tokens for usage tracking
     const promptTokens = await countTokens(prompt);
@@ -118,5 +108,3 @@ export async function handleTextLarge(
     throw error;
   }
 }
-
-

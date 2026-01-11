@@ -3,21 +3,19 @@ import path from "node:path";
 import type { Media } from "@elizaos/core";
 import {
   type Content,
-  type Memory,
-  type UUID,
   createUniqueUuid,
   logger,
+  type Memory,
   truncateToCompleteSentence,
+  type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
-
-import type { ActionResponse, MediaData } from "./types";
 import { TWEET_MAX_LENGTH } from "./constants";
+import type { ActionResponse, MediaData, TweetResponse } from "./types";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
-  const waitTime =
-    Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+  const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
   return new Promise((resolve) => setTimeout(resolve, waitTime));
 };
 
@@ -28,9 +26,7 @@ export const isValidTweet = (tweet: Tweet): boolean => {
   const dollarSignCount = (tweet.text?.match(/\$/g) || []).length;
   const totalCount = hashtagCount + atCount + dollarSignCount;
 
-  return (
-    hashtagCount <= 1 && atCount <= 2 && dollarSignCount <= 1 && totalCount <= 3
-  );
+  return hashtagCount <= 1 && atCount <= 2 && dollarSignCount <= 1 && totalCount <= 3;
 };
 
 /**
@@ -39,9 +35,7 @@ export const isValidTweet = (tweet: Tweet): boolean => {
  * @param attachments Array of Media objects containing URLs or file paths to fetch media from
  * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
  */
-export async function fetchMediaData(
-  attachments: Media[],
-): Promise<MediaData[]> {
+export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
@@ -52,20 +46,16 @@ export async function fetchMediaData(
         }
         const mediaBuffer = Buffer.from(await response.arrayBuffer());
         const mediaType = attachment.contentType || "image/png";
-        return { data: mediaBuffer, mediaType };
+        return { data: mediaBuffer, type: mediaType };
       }
       if (fs.existsSync(attachment.url)) {
         // Handle local file paths
-        const mediaBuffer = await fs.promises.readFile(
-          path.resolve(attachment.url),
-        );
+        const mediaBuffer = await fs.promises.readFile(path.resolve(attachment.url));
         const mediaType = attachment.contentType || "image/png";
-        return { data: mediaBuffer, mediaType };
+        return { data: mediaBuffer, type: mediaType };
       }
-      throw new Error(
-        `File not found: ${attachment.url}. Make sure the path is correct.`,
-      );
-    }),
+      throw new Error(`File not found: ${attachment.url}. Make sure the path is correct.`);
+    })
   );
 }
 
@@ -79,27 +69,24 @@ export async function fetchMediaData(
  * @returns {Promise<Object>} - The result of the note tweet operation.
  * @throws {Error} - If the note tweet operation fails.
  */
-async function handleNoteTweet(
+async function _handleNoteTweet(
   client: ClientBase,
   content: string,
   tweetId?: string,
-  mediaData?: MediaData[],
+  mediaData?: MediaData[]
 ) {
   // Twitter API v2 handles long tweets automatically
   // Just use the regular sendTweet method
-  const result = await client.twitterClient.sendTweet(
-    content,
-    tweetId,
-    mediaData,
-  );
+  const convertedMediaData = mediaData?.map((m) => ({
+    data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
+    mediaType: m.type,
+  }));
+  const result = await client.twitterClient.sendTweet(content, tweetId, convertedMediaData);
 
   // Check if the result was successful
   if (!result || !result.ok) {
     // Tweet failed. Falling back to truncated Tweet.
-    const truncateContent = truncateToCompleteSentence(
-      content,
-      TWEET_MAX_LENGTH,
-    );
+    const truncateContent = truncateToCompleteSentence(content, TWEET_MAX_LENGTH);
     return await sendStandardTweet(client, truncateContent, tweetId);
   }
 
@@ -114,12 +101,16 @@ export async function sendStandardTweet(
   client: ClientBase,
   content: string,
   tweetId?: string,
-  mediaData?: MediaData[],
+  mediaData?: MediaData[]
 ) {
+  const convertedMediaData = mediaData?.map((m) => ({
+    data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
+    mediaType: m.type,
+  }));
   const standardTweetResult = await client.twitterClient.sendTweet(
     content,
     tweetId,
-    mediaData,
+    convertedMediaData
   );
 
   // The result is already the response object
@@ -130,24 +121,22 @@ export async function sendTweet(
   client: ClientBase,
   text: string,
   mediaData: MediaData[] = [],
-  tweetToReplyTo?: string,
-): Promise<any> {
+  tweetToReplyTo?: string
+): Promise<TweetResponse | null> {
   const isNoteTweet = text.length > TWEET_MAX_LENGTH;
-  const postText = isNoteTweet
-    ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH)
-    : text;
+  const postText = isNoteTweet ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH) : text;
 
-  let result;
+  let result: { data?: { data?: { id?: string } }; id?: string } | undefined;
 
   try {
-    result = await client.twitterClient.sendTweet(
-      postText,
-      tweetToReplyTo,
-      mediaData,
-    );
+    const convertedMediaData = mediaData.map((m) => ({
+      data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
+      mediaType: m.type,
+    }));
+    result = await client.twitterClient.sendTweet(postText, tweetToReplyTo, convertedMediaData);
     logger.log("Successfully posted Tweet");
   } catch (error) {
-    logger.error("Error posting Tweet:", error);
+    logger.error("Error posting Tweet:", error instanceof Error ? error.message : String(error));
     throw error;
   }
 
@@ -155,25 +144,41 @@ export async function sendTweet(
     // The result from sendTweet should have the tweet data
     const tweetData = result?.data || result;
 
-    // Extract the tweet ID and other data
-    const tweetResult = tweetData?.data || tweetData;
+    // Extract the tweet ID and other data - parse to match TweetResponse structure
+    const rawResult = (tweetData?.data || tweetData) as
+      | { id?: string; text?: string; data?: { id?: string; data?: { id?: string } } }
+      | undefined;
 
     // if we have a response
-    if (tweetResult && tweetResult.id) {
-      if (client.lastCheckedTweetId < BigInt(tweetResult.id)) {
-        client.lastCheckedTweetId = BigInt(tweetResult.id);
+    const tweetId = rawResult && ("id" in rawResult ? rawResult.id : rawResult.data?.id);
+    if (tweetId) {
+      if (client.lastCheckedTweetId && client.lastCheckedTweetId < BigInt(tweetId)) {
+        client.lastCheckedTweetId = BigInt(tweetId);
+      } else if (!client.lastCheckedTweetId) {
+        client.lastCheckedTweetId = BigInt(tweetId);
       }
       await client.cacheLatestCheckedTweetId();
 
-      // Cache the tweet
-      await client.cacheTweet(tweetResult);
+      // Cache the tweet - ensure it has all required fields
+      const tweetText = rawResult && ("text" in rawResult ? rawResult.text : undefined);
+      if (tweetId && tweetText) {
+        await client.cacheTweet({ id: tweetId, text: tweetText, ...rawResult } as Tweet);
+      }
 
-      logger.log("Successfully posted a tweet", tweetResult.id);
+      logger.log("Successfully posted a tweet", tweetId);
 
+      // Return as TweetResponse format
+      const tweetResult: TweetResponse = {
+        id: rawResult.id,
+        data: rawResult.data,
+      };
       return tweetResult;
     }
   } catch (error) {
-    logger.error("Error parsing tweet response:", error);
+    logger.error(
+      "Error parsing tweet response:",
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 
@@ -196,16 +201,20 @@ export async function sendChunkedTweet(
   content: Content,
   roomId: UUID,
   twitterUsername: string,
-  inReplyTo: string,
+  inReplyTo: string
 ): Promise<Memory[]> {
   const messages: Memory[] = [];
+  if (!content.text) {
+    logger.warn("Cannot split tweet content: text is undefined");
+    return [];
+  }
   const chunks = splitTweetContent(content.text, TWEET_MAX_LENGTH);
 
   let previousTweetId = inReplyTo;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
-    const isLastChunk = i === chunks.length - 1;
+    const _isLastChunk = i === chunks.length - 1;
 
     // Add the tweet number to the beginning of each chunk
     const tweetContent = `${chunk}`;
@@ -219,21 +228,17 @@ export async function sendChunkedTweet(
         mediaData = await fetchMediaData(content.attachments);
       }
 
-      const result = await sendTweet(
-        client,
-        tweetContent,
-        mediaData,
-        previousTweetId,
-      );
+      const result = await sendTweet(client, tweetContent, mediaData, previousTweetId);
 
-      const body = typeof result === "object" ? result : await result.json();
+      if (!result) {
+        throw new Error("Failed to send tweet - no result returned");
+      }
 
-      // Twitter API v2 response format
-      const tweetResult = body?.data || body;
+      // Extract tweet ID from the TweetResponse structure
+      const tweetId = result.id || result.data?.id || result.data?.data?.id;
 
       // if we have a response
-      if (tweetResult && tweetResult.id) {
-        const tweetId = tweetResult.id;
+      if (tweetId) {
         const permanentUrl = `https://x.com/${twitterUsername}/status/${tweetId}`;
 
         const memory: Memory = {
@@ -252,9 +257,10 @@ export async function sendChunkedTweet(
         messages.push(memory);
         previousTweetId = tweetId;
       }
-    } catch (error) {
-      logger.error(`Error sending chunk ${i + 1}:`, error);
-      throw error;
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`Error sending chunk ${i + 1}:`, err.message);
+      throw err;
     }
   }
 
@@ -397,7 +403,7 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
  * @param {string} paragraph - The input paragraph containing mentions.
  * @returns {string} - The paragraph with deduplicated mentions.
  */
-function deduplicateMentions(paragraph: string) {
+function _deduplicateMentions(paragraph: string) {
   // Regex to match mentions at the beginning of the string
   const mentionRegex = /^@(\w+)(?:\s+@(\w+))*(\s+|$)/;
 
@@ -431,10 +437,7 @@ function deduplicateMentions(paragraph: string) {
  * @param {Map<string, string>} placeholderMap - Map with placeholder URLs as keys and original URLs as values.
  * @returns {string[]} - Array of strings with original URLs restored in each chunk.
  */
-function restoreUrls(
-  chunks: string[],
-  placeholderMap: Map<string, string>,
-): string[] {
+function restoreUrls(chunks: string[], placeholderMap: Map<string, string>): string[] {
   return chunks.map((chunk) => {
     // Replace all <<URL_CONSIDERER_23_>> in chunk back to original URLs using regex
     return chunk.replace(/<<URL_CONSIDERER_23_(\d+)>>/g, (match) => {
@@ -456,10 +459,7 @@ function splitParagraph(paragraph: string, maxLength: number): string[] {
   const { textWithPlaceholders, placeholderMap } = extractUrls(paragraph);
 
   // 2) Use first section's logic to split by sentences first, then do secondary split
-  const splittedChunks = splitSentencesAndWords(
-    textWithPlaceholders,
-    maxLength,
-  );
+  const splittedChunks = splitSentencesAndWords(textWithPlaceholders, maxLength);
 
   // 3) Replace placeholders back to original URLs
   const restoredChunks = restoreUrls(splittedChunks, placeholderMap);
@@ -473,10 +473,10 @@ function splitParagraph(paragraph: string, maxLength: number): string[] {
  * @param {string} text - The text to parse actions from.
  * @returns {{ actions: ActionResponse }} The parsed actions with boolean values indicating if each action is present in the text.
  */
-export const parseActionResponseFromText = (
-  text: string,
-): { actions: ActionResponse } => {
+export const parseActionResponseFromText = (text: string): { actions: ActionResponse } => {
   const actions: ActionResponse = {
+    text: "",
+    actions: [],
     like: false,
     retweet: false,
     quote: false,

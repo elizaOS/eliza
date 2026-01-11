@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import shutil
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 
@@ -45,5 +44,3 @@ async def memory_server_client(
     await client.connect()
     yield client
     await client.close()
-
-

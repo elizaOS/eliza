@@ -5,6 +5,7 @@ A React implementation of the classic ELIZA chatbot powered by **elizaOS**, feat
 ## Overview
 
 This example demonstrates:
+
 - **elizaOS Integration**: Full AgentRuntime with plugin architecture
 - **Classic ELIZA Plugin**: Pattern matching model handler (no LLM required)
 - **PGLite Database**: In-browser PostgreSQL-compatible storage
@@ -97,6 +98,7 @@ When the AgentRuntime calls `runtime.useModel(ModelType.TEXT_LARGE, { prompt })`
 ### No LLM Required
 
 Unlike modern chatbots, classic ELIZA uses purely rule-based pattern matching. This makes it:
+
 - **Instant responses** (no API calls)
 - **Works offline** (all logic is client-side)
 - **Historically accurate** to the original 1966 program
@@ -121,6 +123,7 @@ examples/react/
 ## Styling
 
 The UI features:
+
 - VT323 and Fira Code fonts
 - Phosphor green (#39ff14) color scheme
 - CRT monitor bezel with LED indicators
@@ -177,6 +180,7 @@ Note: The bootstrap plugin may require Node.js polyfills in the browser.
 ## About Classic ELIZA
 
 ELIZA was created by Joseph Weizenbaum at MIT in 1966. It simulates a Rogerian psychotherapist by:
+
 - Reflecting statements back as questions
 - Using keyword-based pattern matching
 - Creating the illusion of understanding through clever rephrasing

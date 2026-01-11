@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       crate:
-        description: 'Crate to release'
+        description: "Crate to release"
         required: true
         type: choice
         options:
@@ -31,7 +31,7 @@ on:
           - elizaos-plugin-openai
           - elizaos-plugin-solana
       dry_run:
-        description: 'Dry run (do not publish)'
+        description: "Dry run (do not publish)"
         required: false
         type: boolean
         default: false
@@ -372,7 +372,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: build-core
-    
+
     strategy:
       fail-fast: false
       matrix:
@@ -456,7 +456,7 @@ jobs:
       - name: Run tests
         if: steps.check.outputs.should_publish == 'true'
         working-directory: ${{ matrix.path }}
-        run: cargo test || true  # Allow test failures for plugins without full test suites
+        run: cargo test || true # Allow test failures for plugins without full test suites
 
       - name: Build release
         if: steps.check.outputs.should_publish == 'true'

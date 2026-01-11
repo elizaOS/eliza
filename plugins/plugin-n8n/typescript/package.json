@@ -20,57 +20,40 @@
         "default": "./dist/node/index.js"
       },
       "default": "./dist/node/index.js"
-    },
-    "./rust": {
-      "node": {
-        "import": "../rust/pkg/node/elizaos_plugin_n8n.js",
-        "default": "../rust/pkg/node/elizaos_plugin_n8n.js"
-      },
-      "default": "../rust/pkg/node/elizaos_plugin_n8n.js"
     }
   },
   "files": [
-    "dist",
-    "../rust/pkg"
+    "dist"
   ],
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "fs-extra": "^11.2.0",
-    "zod": "3.24.2"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.1",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^25.0.3",
-    "dotenv": "16.4.5",
-    "prettier": "3.5.3",
-    "tsup": "8.4.0",
-    "typescript": "5.8.2",
-    "vitest": "3.1.4"
+    "dotenv": "^17.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch",
-    "clean": "rm -rf dist .turbo node_modules rust/target",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo node_modules ",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
     "test:unit": "bun test __tests__/unit/",
     "test:integration": "bun test __tests__/integration/",
     "test:watch": "bun test --watch",
-    "build:rust": "cd ../rust && cargo build --release",
-    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
-    "test:rust": "cd ../rust && cargo test",
-    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
-    "lint:python": "cd ../python && ruff check . && ruff format --check .",
-    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
-    "test:python": "cd ../python && pytest",
-    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_n8n",
-    "build:all": "npm run build && npm run build:rust",
-    "test:all": "npm run test && npm run test:rust && npm run test:python",
-    "lint:all": "npm run format:check && npm run lint:rust && npm run lint:python"
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
   },
   "publishConfig": {
     "access": "public"

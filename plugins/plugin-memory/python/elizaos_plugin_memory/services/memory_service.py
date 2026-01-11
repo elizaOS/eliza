@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Protocol, Optional
+from typing import Protocol
 from uuid import UUID, uuid4
 
 from elizaos_plugin_memory.types import (
@@ -28,8 +28,8 @@ class DatabaseAdapter(Protocol):
         self,
         table: str,
         conditions: dict[str, object],
-        order_by: Optional[list[tuple[str, str]]] = None,
-        limit: Optional[int] = None,
+        order_by: list[tuple[str, str]] | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
         """Select records from the database."""
         ...
@@ -48,7 +48,7 @@ class DatabaseAdapter(Protocol):
 class CacheAdapter(Protocol):
     """Protocol for cache operations."""
 
-    async def get(self, key: str) -> Optional[object]:
+    async def get(self, key: str) -> object | None:
         """Get a value from cache."""
         ...
 
@@ -71,10 +71,10 @@ class MemoryService:
 
     def __init__(
         self,
-        config: Optional[MemoryConfig] = None,
-        agent_id: Optional[UUID] = None,
-        db: Optional[DatabaseAdapter] = None,
-        cache: Optional[CacheAdapter] = None,
+        config: MemoryConfig | None = None,
+        agent_id: UUID | None = None,
+        db: DatabaseAdapter | None = None,
+        cache: CacheAdapter | None = None,
     ) -> None:
         """Initialize the memory service."""
         self.config = config or MemoryConfig()
@@ -156,9 +156,7 @@ class MemoryService:
         """Generate cache key for extraction checkpoints."""
         return f"memory:extraction:{entity_id}:{room_id}"
 
-    async def get_last_extraction_checkpoint(
-        self, entity_id: UUID, room_id: UUID
-    ) -> int:
+    async def get_last_extraction_checkpoint(self, entity_id: UUID, room_id: UUID) -> int:
         """Get the last extraction checkpoint for an entity in a room."""
         key = self._get_extraction_key(entity_id, room_id)
 
@@ -229,9 +227,9 @@ class MemoryService:
         category: LongTermMemoryCategory,
         content: str,
         confidence: float = 1.0,
-        source: Optional[str] = None,
-        metadata: Optional[dict[str, object]] = None,
-        embedding: Optional[list[float]] = None,
+        source: str | None = None,
+        metadata: dict[str, object] | None = None,
+        embedding: list[float] | None = None,
     ) -> LongTermMemory:
         """Store a long-term memory."""
         now = datetime.now()
@@ -277,7 +275,7 @@ class MemoryService:
     async def get_long_term_memories(
         self,
         entity_id: UUID,
-        category: Optional[LongTermMemoryCategory] = None,
+        category: LongTermMemoryCategory | None = None,
         limit: int = 10,
     ) -> list[LongTermMemory]:
         """Retrieve long-term memories for an entity."""
@@ -310,9 +308,15 @@ class MemoryService:
                 embedding=list(row["embedding"]) if row.get("embedding") else None,
                 confidence=float(row.get("confidence", 1.0)),
                 source=str(row["source"]) if row.get("source") else None,
-                created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
-                updated_at=row["updated_at"] if isinstance(row["updated_at"], datetime) else datetime.now(),
-                last_accessed_at=row.get("last_accessed_at") if isinstance(row.get("last_accessed_at"), datetime) else None,
+                created_at=row["created_at"]
+                if isinstance(row["created_at"], datetime)
+                else datetime.now(),
+                updated_at=row["updated_at"]
+                if isinstance(row["updated_at"], datetime)
+                else datetime.now(),
+                last_accessed_at=row.get("last_accessed_at")
+                if isinstance(row.get("last_accessed_at"), datetime)
+                else None,
                 access_count=int(row.get("access_count", 0)),
             )
             for row in results
@@ -330,7 +334,14 @@ class MemoryService:
 
         update_data: dict[str, object] = {"updated_at": datetime.now()}
 
-        for key in ["content", "metadata", "confidence", "embedding", "last_accessed_at", "access_count"]:
+        for key in [
+            "content",
+            "metadata",
+            "confidence",
+            "embedding",
+            "last_accessed_at",
+            "access_count",
+        ]:
             if key in updates:
                 update_data[key] = updates[key]
 
@@ -362,9 +373,7 @@ class MemoryService:
 
         logger.info("Deleted long-term memory: %s for entity %s", memory_id, entity_id)
 
-    async def get_current_session_summary(
-        self, room_id: UUID
-    ) -> Optional[SessionSummary]:
+    async def get_current_session_summary(self, room_id: UUID) -> SessionSummary | None:
         """Get the current session summary for a room."""
         if not self._db or not self.agent_id:
             return None
@@ -391,13 +400,19 @@ class MemoryService:
             summary=str(row["summary"]),
             message_count=int(row["message_count"]),
             last_message_offset=int(row.get("last_message_offset", 0)),
-            start_time=row["start_time"] if isinstance(row["start_time"], datetime) else datetime.now(),
+            start_time=row["start_time"]
+            if isinstance(row["start_time"], datetime)
+            else datetime.now(),
             end_time=row["end_time"] if isinstance(row["end_time"], datetime) else datetime.now(),
             topics=list(row.get("topics", [])) if row.get("topics") else [],
             metadata=dict(row.get("metadata", {})) if row.get("metadata") else {},
             embedding=list(row["embedding"]) if row.get("embedding") else None,
-            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
-            updated_at=row["updated_at"] if isinstance(row["updated_at"], datetime) else datetime.now(),
+            created_at=row["created_at"]
+            if isinstance(row["created_at"], datetime)
+            else datetime.now(),
+            updated_at=row["updated_at"]
+            if isinstance(row["updated_at"], datetime)
+            else datetime.now(),
         )
 
     async def store_session_summary(
@@ -409,10 +424,10 @@ class MemoryService:
         last_message_offset: int,
         start_time: datetime,
         end_time: datetime,
-        entity_id: Optional[UUID] = None,
-        topics: Optional[list[str]] = None,
-        metadata: Optional[dict[str, object]] = None,
-        embedding: Optional[list[float]] = None,
+        entity_id: UUID | None = None,
+        topics: list[str] | None = None,
+        metadata: dict[str, object] | None = None,
+        embedding: list[float] | None = None,
     ) -> SessionSummary:
         """Store a session summary."""
         now = datetime.now()
@@ -442,7 +457,9 @@ class MemoryService:
                     "id": str(session_summary.id),
                     "agent_id": str(session_summary.agent_id),
                     "room_id": str(session_summary.room_id),
-                    "entity_id": str(session_summary.entity_id) if session_summary.entity_id else None,
+                    "entity_id": str(session_summary.entity_id)
+                    if session_summary.entity_id
+                    else None,
                     "summary": session_summary.summary,
                     "message_count": session_summary.message_count,
                     "last_message_offset": session_summary.last_message_offset,
@@ -471,7 +488,15 @@ class MemoryService:
 
         update_data: dict[str, object] = {"updated_at": datetime.now()}
 
-        for key in ["summary", "message_count", "last_message_offset", "end_time", "topics", "metadata", "embedding"]:
+        for key in [
+            "summary",
+            "message_count",
+            "last_message_offset",
+            "end_time",
+            "topics",
+            "metadata",
+            "embedding",
+        ]:
             if key in updates:
                 update_data[key] = updates[key]
 
@@ -487,9 +512,7 @@ class MemoryService:
 
         logger.info("Updated session summary: %s for room %s", summary_id, room_id)
 
-    async def get_session_summaries(
-        self, room_id: UUID, limit: int = 5
-    ) -> list[SessionSummary]:
+    async def get_session_summaries(self, room_id: UUID, limit: int = 5) -> list[SessionSummary]:
         """Get session summaries for a room."""
         if not self._db or not self.agent_id:
             return []
@@ -513,13 +536,21 @@ class MemoryService:
                 summary=str(row["summary"]),
                 message_count=int(row["message_count"]),
                 last_message_offset=int(row.get("last_message_offset", 0)),
-                start_time=row["start_time"] if isinstance(row["start_time"], datetime) else datetime.now(),
-                end_time=row["end_time"] if isinstance(row["end_time"], datetime) else datetime.now(),
+                start_time=row["start_time"]
+                if isinstance(row["start_time"], datetime)
+                else datetime.now(),
+                end_time=row["end_time"]
+                if isinstance(row["end_time"], datetime)
+                else datetime.now(),
                 topics=list(row.get("topics", [])) if row.get("topics") else [],
                 metadata=dict(row.get("metadata", {})) if row.get("metadata") else {},
                 embedding=list(row["embedding"]) if row.get("embedding") else None,
-                created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
-                updated_at=row["updated_at"] if isinstance(row["updated_at"], datetime) else datetime.now(),
+                created_at=row["created_at"]
+                if isinstance(row["created_at"], datetime)
+                else datetime.now(),
+                updated_at=row["updated_at"]
+                if isinstance(row["updated_at"], datetime)
+                else datetime.now(),
             )
             for row in results
         ]
@@ -544,5 +575,8 @@ class MemoryService:
             sections.append(f"**{category_name}**:\n{items}")
 
         return "\n\n".join(sections)
+
+
+
 
 

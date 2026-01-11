@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! TEE Service for elizaOS.
 
 use tracing::{debug, info};
@@ -145,5 +146,10 @@ impl TEEService {
         self.provider.raw_derive_key(path, subject).await
     }
 }
+
+
+
+
+
 
 

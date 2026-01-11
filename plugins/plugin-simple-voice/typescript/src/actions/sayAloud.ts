@@ -1,7 +1,14 @@
-import type { Action, ActionResult, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { SamTTSService } from '../services/SamTTSService';
-import { SPEECH_TRIGGERS, VOCALIZATION_PATTERNS, type SamTTSOptions } from '../types';
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { SamTTSService } from "../services/SamTTSService";
+import { type SamTTSOptions, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS } from "../types";
 
 /**
  * Extract text to speak from user message
@@ -35,9 +42,9 @@ function extractTextToSpeak(messageText: string): string {
     const match = text.match(pattern);
     if (match) {
       return match[1]
-        .replace(/\s+out loud$/, '')
-        .replace(/\s+aloud$/, '')
-        .replace(/\s+please$/, '')
+        .replace(/\s+out loud$/, "")
+        .replace(/\s+aloud$/, "")
+        .replace(/\s+please$/, "")
         .trim();
     }
   }
@@ -53,24 +60,28 @@ function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
   const options: Partial<SamTTSOptions> = {};
 
   // Pitch
-  if (text.includes('higher voice') || text.includes('high pitch') || text.includes('squeaky')) {
+  if (text.includes("higher voice") || text.includes("high pitch") || text.includes("squeaky")) {
     options.pitch = 100;
-  } else if (text.includes('lower voice') || text.includes('low pitch') || text.includes('deep voice')) {
+  } else if (
+    text.includes("lower voice") ||
+    text.includes("low pitch") ||
+    text.includes("deep voice")
+  ) {
     options.pitch = 30;
   }
 
   // Speed
-  if (text.includes('faster') || text.includes('quickly') || text.includes('speed up')) {
+  if (text.includes("faster") || text.includes("quickly") || text.includes("speed up")) {
     options.speed = 120;
-  } else if (text.includes('slower') || text.includes('slowly') || text.includes('slow down')) {
+  } else if (text.includes("slower") || text.includes("slowly") || text.includes("slow down")) {
     options.speed = 40;
   }
 
   // Voice character
-  if (text.includes('robotic') || text.includes('robot voice')) {
+  if (text.includes("robotic") || text.includes("robot voice")) {
     options.throat = 200;
     options.mouth = 50;
-  } else if (text.includes('smooth') || text.includes('natural')) {
+  } else if (text.includes("smooth") || text.includes("natural")) {
     options.throat = 100;
     options.mouth = 150;
   }
@@ -84,21 +95,39 @@ function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
  * Speaks text aloud using the SAM speech synthesizer.
  */
 export const sayAloudAction: Action = {
-  name: 'SAY_ALOUD',
-  description: 'Speak text aloud using SAM retro speech synthesizer',
+  name: "SAY_ALOUD",
+  description: "Speak text aloud using SAM retro speech synthesizer",
 
   examples: [
     [
-      { name: '{{user1}}', content: { text: 'Can you say hello out loud?' } },
-      { name: '{{agent}}', content: { text: "I'll say hello using my SAM voice.", action: 'SAY_ALOUD' } },
+      { name: "{{user1}}", content: { text: "Can you say hello out loud?" } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll say hello using my SAM voice.",
+          action: "SAY_ALOUD",
+        },
+      },
     ],
     [
-      { name: '{{user1}}', content: { text: 'Please read this message aloud: Welcome to ElizaOS' } },
-      { name: '{{agent}}', content: { text: "I'll read that message aloud for you now.", action: 'SAY_ALOUD' } },
+      {
+        name: "{{user1}}",
+        content: { text: "Please read this message aloud: Welcome to ElizaOS" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll read that message aloud for you now.",
+          action: "SAY_ALOUD",
+        },
+      },
     ],
     [
-      { name: '{{user1}}', content: { text: 'Speak in a higher voice' } },
-      { name: '{{agent}}', content: { text: "I'll speak in a higher pitch.", action: 'SAY_ALOUD' } },
+      { name: "{{user1}}", content: { text: "Speak in a higher voice" } },
+      {
+        name: "{{agent}}",
+        content: { text: "I'll speak in a higher pitch.", action: "SAY_ALOUD" },
+      },
     ],
   ],
 
@@ -121,9 +150,9 @@ export const sayAloudAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    logger.info('[SAY_ALOUD] Processing speech request');
+    logger.info("[SAY_ALOUD] Processing speech request");
 
-    const samService = runtime.getService('SAM_TTS') as SamTTSService;
+    const samService = runtime.getService("SAM_TTS") as SamTTSService;
 
     const textToSpeak = extractTextToSpeak(message.content.text);
     const voiceOptions = extractVoiceOptions(message.content.text);
@@ -134,10 +163,10 @@ export const sayAloudAction: Action = {
 
     callback?.({
       text: `I spoke: "${textToSpeak}"`,
-      action: 'SAY_ALOUD',
+      action: "SAY_ALOUD",
       audioData: Array.from(audioBuffer),
     });
-    
+
     return { success: true, text: `Spoke: "${textToSpeak}"` };
   },
 };

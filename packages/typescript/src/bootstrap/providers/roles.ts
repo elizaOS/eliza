@@ -69,7 +69,7 @@ export const roleProvider: Provider = {
     // Get world data
     const world = await runtime.getWorld(worldId);
 
-    if (!world || !(world.metadata && world.metadata.ownership && world.metadata.ownership.ownerId)) {
+    if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
         {
           src: "plugin:bootstrap:provider:roles",
@@ -132,9 +132,9 @@ export const roleProvider: Provider = {
       // get the user from the database
       const user = await runtime.getEntityById(entityId);
 
-      const name = (user && user.metadata && user.metadata.name) as string;
-      const username = (user && user.metadata && user.metadata.username) as string;
-      const names = (user && user.names) as string[];
+      const name = user?.metadata?.name as string;
+      const username = user?.metadata?.username as string;
+      const names = user?.names as string[];
 
       // Skip duplicates (we store both UUID and original ID)
       if (

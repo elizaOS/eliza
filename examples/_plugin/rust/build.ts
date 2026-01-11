@@ -2,16 +2,16 @@
 
 /**
  * Build script for rust-plugin-starter
- * 
+ *
  * This script:
  * 1. Builds the Rust plugin to WASM
  * 2. Uses wasm-bindgen to generate JavaScript bindings
  * 3. Compiles TypeScript
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { $ } from "bun";
-import { existsSync } from "fs";
-import { join } from "path";
 
 const projectRoot = import.meta.dir;
 const distDir = join(projectRoot, "dist");
@@ -38,7 +38,9 @@ try {
 // Step 2: Build Rust to WASM
 console.log("🦀 Building Rust to WASM...");
 try {
-  await $`cargo build --target ${wasmTarget} --release --features wasm`.cwd(projectRoot);
+  await $`cargo build --target ${wasmTarget} --release --features wasm`.cwd(
+    projectRoot,
+  );
   console.log("✅ Rust build complete");
 } catch (error) {
   console.error("❌ Failed to build Rust:", error);
@@ -47,7 +49,10 @@ try {
 
 // Step 3: Generate WASM bindings
 console.log("🔗 Generating WASM bindings...");
-const wasmFile = join(projectRoot, `target/${wasmTarget}/release/elizaos_plugin_starter.wasm`);
+const wasmFile = join(
+  projectRoot,
+  `target/${wasmTarget}/release/elizaos_plugin_starter.wasm`,
+);
 
 if (!existsSync(wasmFile)) {
   console.error(`❌ WASM file not found: ${wasmFile}`);
@@ -61,11 +66,15 @@ try {
   }
 
   // Use wasm-bindgen to generate bindings for web target
-  await $`wasm-bindgen ${wasmFile} --out-dir ${distDir} --target web --no-typescript`.cwd(projectRoot);
+  await $`wasm-bindgen ${wasmFile} --out-dir ${distDir} --target web --no-typescript`.cwd(
+    projectRoot,
+  );
   console.log("✅ WASM bindings generated");
 } catch (error) {
   console.error("❌ Failed to generate WASM bindings:", error);
-  console.error("   Make sure wasm-bindgen-cli is installed: cargo install wasm-bindgen-cli");
+  console.error(
+    "   Make sure wasm-bindgen-cli is installed: cargo install wasm-bindgen-cli",
+  );
   process.exit(1);
 }
 
@@ -82,4 +91,3 @@ try {
 console.log("✅ Build complete!");
 console.log(`   WASM file: ${distDir}/elizaos_plugin_starter_bg.wasm`);
 console.log(`   JS bindings: ${distDir}/elizaos_plugin_starter.js`);
-

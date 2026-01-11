@@ -2,10 +2,10 @@
  * Version command
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import pc from "picocolors";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,7 +24,13 @@ export function version(): void {
     packageJson = JSON.parse(content) as PackageJson;
   } catch {
     // Fallback for when running from dist
-    const distPackagePath = path.join(__dirname, "..", "..", "..", "package.json");
+    const distPackagePath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "package.json",
+    );
     const content = fs.readFileSync(distPackagePath, "utf-8");
     packageJson = JSON.parse(content) as PackageJson;
   }
@@ -40,4 +46,3 @@ export function version(): void {
   console.log(pc.dim("  Run 'elizaos --help' for available commands."));
   console.log();
 }
-

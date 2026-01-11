@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { mergePullRequestSchema, type MergePullRequestParams } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type MergePullRequestParams, mergePullRequestSchema } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -52,21 +53,10 @@ const examples: ActionExample[][] = [
 
 export const mergePullRequestAction: Action = {
   name: "MERGE_GITHUB_PULL_REQUEST",
-  similes: [
-    "MERGE_PR",
-    "SQUASH_MERGE",
-    "REBASE_MERGE",
-    "COMPLETE_PR",
-    "ACCEPT_PR",
-  ],
-  description:
-    "Merges a GitHub pull request using merge, squash, or rebase strategy.",
+  similes: ["MERGE_PR", "SQUASH_MERGE", "REBASE_MERGE", "COMPLETE_PR", "ACCEPT_PR"],
+  description: "Merges a GitHub pull request using merge, squash, or rebase strategy.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
@@ -81,8 +71,8 @@ export const mergePullRequestAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -92,7 +82,7 @@ export const mergePullRequestAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
@@ -108,17 +98,20 @@ export const mergePullRequestAction: Action = {
       }
 
       const params: MergePullRequestParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        pullNumber: (state?.["pullNumber"] as number) ?? 0,
-        commitTitle: state?.["commitTitle"] as string | undefined,
-        commitMessage: state?.["commitMessage"] as string | undefined,
-        mergeMethod: (state?.["mergeMethod"] as "merge" | "squash" | "rebase") ?? mergeMethod,
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        pullNumber: (state?.pullNumber as number) ?? 0,
+        commitTitle: state?.commitTitle as string | undefined,
+        commitMessage: state?.commitMessage as string | undefined,
+        mergeMethod: (state?.mergeMethod as "merge" | "squash" | "rebase") ?? mergeMethod,
       };
 
       const validation = mergePullRequestSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid merge parameters: ${errors}`);
@@ -127,7 +120,7 @@ export const mergePullRequestAction: Action = {
             text: `I couldn't merge the pull request due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       const result = await service.mergePullRequest(params);
@@ -139,7 +132,7 @@ export const mergePullRequestAction: Action = {
             text: `Successfully merged pull request #${params.pullNumber}.\n\nMerge commit: ${result.sha.slice(0, 7)}\nMethod: ${params.mergeMethod}`,
           });
         }
-        return true;
+        return { success: true };
       } else {
         logger.warn(`Pull request #${params.pullNumber} was not merged: ${result.message}`);
         if (callback) {
@@ -147,11 +140,10 @@ export const mergePullRequestAction: Action = {
             text: `Could not merge pull request #${params.pullNumber}: ${result.message}`,
           });
         }
-        return false;
+        return { success: false };
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to merge pull request: ${errorMessage}`);
 
       if (callback) {
@@ -160,7 +152,7 @@ export const mergePullRequestAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -168,5 +160,3 @@ export const mergePullRequestAction: Action = {
 };
 
 export default mergePullRequestAction;
-
-

@@ -1,6 +1,6 @@
 ---
-title: 'Supabase Examples'
-description: 'Deploy elizaOS to Supabase Edge Functions'
+title: "Supabase Examples"
+description: "Deploy elizaOS to Supabase Edge Functions"
 ---
 
 Deploy AI agents to Supabase's Deno-based edge functions.
@@ -15,10 +15,10 @@ supabase functions deploy eliza-chat
 
 ## Available Implementations
 
-| Language | Directory | Features |
-|----------|-----------|----------|
-| TypeScript (Deno) | `examples/supabase/functions/eliza-chat/` | Native Deno |
-| Rust WASM | `examples/supabase/functions/eliza-chat-wasm/` | WASM runtime |
+| Language          | Directory                                      | Features     |
+| ----------------- | ---------------------------------------------- | ------------ |
+| TypeScript (Deno) | `examples/supabase/functions/eliza-chat/`      | Native Deno  |
+| Rust WASM         | `examples/supabase/functions/eliza-chat-wasm/` | WASM runtime |
 
 ## Edge Function
 
@@ -105,10 +105,12 @@ import init, { WasmAgentRuntime } from "./lib/elizaos_bg.wasm";
 
 await init();
 
-const runtime = await new WasmAgentRuntime(JSON.stringify({
-  name: "Eliza",
-  bio: "A helpful AI assistant.",
-}));
+const runtime = await new WasmAgentRuntime(
+  JSON.stringify({
+    name: "Eliza",
+    bio: "A helpful AI assistant.",
+  }),
+);
 
 await runtime.initialize();
 
@@ -127,7 +129,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
 // Store conversation
@@ -144,5 +146,6 @@ await supabase.from("conversations").insert({
 - **Integrated with Supabase** Auth, Database, Storage
 - **Deno runtime** for modern JavaScript
 - **500K free invocations**/month
+
 
 

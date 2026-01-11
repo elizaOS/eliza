@@ -30,32 +30,32 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { FarcasterService } from "./services/FarcasterService";
 // Test suite import removed for type checking
 // import { FarcasterTestSuite } from "./__tests__/suite";
 import { farcasterActions } from "./actions";
 import { farcasterProviders } from "./providers";
 import { farcasterWebhookRoutes } from "./routes/webhook";
+import { FarcasterService } from "./services/FarcasterService";
 
+export { FarcasterClient } from "./client/FarcasterClient";
 // Export types and utilities for external use
 export {
   EmbedManager,
-  isEmbedUrl,
   isEmbedCast,
+  isEmbedUrl,
   type ProcessedEmbed,
 } from "./managers/EmbedManager";
+export { FarcasterService } from "./services/FarcasterService";
 export type {
   Cast,
   CastEmbed,
   CastId,
-  Profile,
   FarcasterConfig,
-  FidRequest,
-  FarcasterMessageType,
   FarcasterEventTypes,
+  FarcasterMessageType,
+  FidRequest,
+  Profile,
 } from "./types";
-export { FarcasterClient } from "./client/FarcasterClient";
-export { FarcasterService } from "./services/FarcasterService";
 
 /**
  * Farcaster plugin for elizaOS.
@@ -73,4 +73,3 @@ export const farcasterPlugin: Plugin = {
 };
 
 export default farcasterPlugin;
-

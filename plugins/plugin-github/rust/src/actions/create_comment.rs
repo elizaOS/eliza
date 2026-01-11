@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Create Comment Action
 
 use async_trait::async_trait;
@@ -79,5 +80,10 @@ impl GitHubAction for CreateCommentAction {
         ))
     }
 }
+
+
+
+
+
 
 

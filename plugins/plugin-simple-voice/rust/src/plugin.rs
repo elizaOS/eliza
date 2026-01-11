@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Simple Voice Plugin - Retro TTS using SAM Speech Synthesizer.
 
 use crate::actions::SayAloudAction;
@@ -27,6 +28,7 @@ impl SimpleVoicePlugin {
         SamTTSService::default()
     }
 }
+
 
 impl Default for SimpleVoicePlugin {
     fn default() -> Self {

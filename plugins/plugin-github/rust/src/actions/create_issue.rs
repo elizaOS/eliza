@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Create Issue Action
 
 use async_trait::async_trait;
@@ -123,5 +124,10 @@ mod tests {
         assert!(!action.validate(&context).await.unwrap());
     }
 }
+
+
+
+
+
 
 

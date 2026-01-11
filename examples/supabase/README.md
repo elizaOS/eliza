@@ -20,10 +20,10 @@ All handlers use the full **elizaOS runtime** with OpenAI as the LLM provider, p
 
 ## Supported Languages
 
-| Language   | Support Level | Notes |
-|------------|---------------|-------|
-| TypeScript | ✅ Native     | Full Deno runtime support |
-| Rust       | ✅ via WASM   | Compile to WebAssembly |
+| Language   | Support Level    | Notes                                    |
+| ---------- | ---------------- | ---------------------------------------- |
+| TypeScript | ✅ Native        | Full Deno runtime support                |
+| Rust       | ✅ via WASM      | Compile to WebAssembly                   |
 | Python     | ❌ Not supported | Supabase Edge Functions use Deno runtime |
 
 > **Note**: Unlike AWS Lambda, Supabase Edge Functions run on the Deno runtime, which only natively supports TypeScript/JavaScript. Python is not supported. Rust can be used via WebAssembly compilation.
@@ -150,10 +150,10 @@ Send a message to the elizaOS agent.
 
 **Headers:**
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | Yes | `Bearer YOUR_ANON_KEY` or `Bearer YOUR_SERVICE_ROLE_KEY` |
-| `Content-Type` | Yes | `application/json` |
+| Header          | Required | Description                                              |
+| --------------- | -------- | -------------------------------------------------------- |
+| `Authorization` | Yes      | `Bearer YOUR_ANON_KEY` or `Bearer YOUR_SERVICE_ROLE_KEY` |
+| `Content-Type`  | Yes      | `application/json`                                       |
 
 ### GET /functions/v1/eliza-chat/health
 
@@ -173,14 +173,14 @@ Health check endpoint.
 
 ### Environment Variables / Secrets
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | - | Your OpenAI API key |
-| `OPENAI_SMALL_MODEL` | No | `gpt-5-mini` | Small model to use |
-| `OPENAI_LARGE_MODEL` | No | `gpt-5` | Large model to use |
-| `CHARACTER_NAME` | No | `Eliza` | Agent's name |
-| `CHARACTER_BIO` | No | `A helpful AI assistant.` | Agent's bio |
-| `CHARACTER_SYSTEM` | No | (default) | System prompt |
+| Variable             | Required | Default                   | Description         |
+| -------------------- | -------- | ------------------------- | ------------------- |
+| `OPENAI_API_KEY`     | Yes      | -                         | Your OpenAI API key |
+| `OPENAI_SMALL_MODEL` | No       | `gpt-5-mini`              | Small model to use  |
+| `OPENAI_LARGE_MODEL` | No       | `gpt-5`                   | Large model to use  |
+| `CHARACTER_NAME`     | No       | `Eliza`                   | Agent's name        |
+| `CHARACTER_BIO`      | No       | `A helpful AI assistant.` | Agent's bio         |
+| `CHARACTER_SYSTEM`   | No       | (default)                 | System prompt       |
 
 ### Setting Secrets
 
@@ -203,15 +203,15 @@ import { handleChat, handleHealth } from "./lib/runtime.ts";
 
 serve(async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
-  
+
   if (url.pathname.endsWith("/health")) {
     return handleHealth();
   }
-  
+
   if (req.method === "POST") {
     return await handleChat(req);
   }
-  
+
   return new Response("Method not allowed", { status: 405 });
 });
 ```
@@ -234,6 +234,7 @@ supabase functions deploy eliza-chat-wasm
 ### Cold Starts
 
 Supabase Edge Functions typically have faster cold starts than traditional Lambda:
+
 - **Cold start**: 50-200ms (vs 2-5s for Lambda)
 - **Warm invocation**: 5-20ms
 
@@ -256,31 +257,34 @@ supabase functions logs eliza-chat
 ### Supabase Dashboard
 
 View metrics and logs in:
+
 - Project → Edge Functions → Select function → Logs
 
 ## Cost
 
 Supabase Edge Functions pricing (as of 2025):
+
 - **Free tier**: 500K invocations/month
 - **Pro tier**: 2M invocations included, then $2 per 1M
 - **No duration-based billing** (unlike Lambda)
 
 ## Comparison with AWS Lambda
 
-| Feature | Supabase Edge Functions | AWS Lambda |
-|---------|------------------------|------------|
-| Runtime | Deno (TS/JS) | Node, Python, Rust, etc. |
-| Cold Start | 50-200ms | 2-5s |
-| Global Edge | ✅ Built-in | Via Lambda@Edge |
-| Supabase Integration | ✅ Native | Manual |
-| Python Support | ❌ | ✅ |
-| Rust Support | Via WASM | Native |
+| Feature              | Supabase Edge Functions | AWS Lambda               |
+| -------------------- | ----------------------- | ------------------------ |
+| Runtime              | Deno (TS/JS)            | Node, Python, Rust, etc. |
+| Cold Start           | 50-200ms                | 2-5s                     |
+| Global Edge          | ✅ Built-in             | Via Lambda@Edge          |
+| Supabase Integration | ✅ Native               | Manual                   |
+| Python Support       | ❌                      | ✅                       |
+| Rust Support         | Via WASM                | Native                   |
 
 ## Troubleshooting
 
 ### "Function not found" Error
 
 Ensure the function is deployed:
+
 ```bash
 supabase functions list
 supabase functions deploy eliza-chat
@@ -289,6 +293,7 @@ supabase functions deploy eliza-chat
 ### "Unauthorized" Error
 
 Check your authorization header:
+
 ```bash
 # Get your anon key from Supabase Dashboard
 curl -H "Authorization: Bearer YOUR_ANON_KEY" ...
@@ -297,6 +302,7 @@ curl -H "Authorization: Bearer YOUR_ANON_KEY" ...
 ### "OpenAI API key not found"
 
 Set the secret:
+
 ```bash
 supabase secrets set OPENAI_API_KEY=your-key
 ```
@@ -321,8 +327,6 @@ supabase secrets unset OPENAI_API_KEY
 - [Supabase Edge Functions Docs](https://supabase.com/docs/guides/functions)
 - [Deno Documentation](https://deno.land/manual)
 - [AWS Lambda Example](../aws/README.md) - Same pattern for AWS
-
-
 
 
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the N8n Plugin.
 
 use chrono::{DateTime, Utc};
@@ -352,5 +353,10 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+
+
+
+
 
 

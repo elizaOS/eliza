@@ -2,7 +2,7 @@
  * Tests for WASM Plugin Loader
  */
 
-import {  describe, expect, test  } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { PluginManifest, WasmPluginExports } from "../types";
 
 // We need to test the loader logic without actual WASM files
@@ -33,8 +33,8 @@ describe("WASM Loader", () => {
 
       expect(manifest.name).toBe("test-rust-plugin");
       expect(manifest.language).toBe("rust");
-      expect(manifest.actions && manifest.actions.length).toBe(1);
-      expect(manifest.actions && manifest.actions[0] && manifest.actions[0].name).toBe("RUST_ACTION");
+      expect(manifest.actions?.length).toBe(1);
+      expect(manifest.actions?.[0]?.name).toBe("RUST_ACTION");
     });
   });
 
@@ -227,14 +227,16 @@ describe("WASM Loader", () => {
         validate_action: (action, memory, _state) => {
           const memObj = JSON.parse(memory);
           return (
-            action === "VALID_ACTION" && memObj.content && memObj.content.text !== undefined
+            action === "VALID_ACTION" &&
+            memObj.content &&
+            memObj.content.text !== undefined
           );
         },
         invoke_action: (action, memory, _state, _options) => {
           const memObj = JSON.parse(memory);
           return JSON.stringify({
             success: true,
-            text: `Executed ${action} with: ${memObj.content && memObj.content.text ? memObj.content.text : ""}`,
+            text: `Executed ${action} with: ${memObj.content?.text ? memObj.content.text : ""}`,
           });
         },
       };
@@ -248,9 +250,9 @@ describe("WASM Loader", () => {
       expect(mockExports.validate_action("VALID_ACTION", memory, state)).toBe(
         true,
       );
-      expect(
-        mockExports.validate_action("INVALID_ACTION", memory, state),
-      ).toBe(false);
+      expect(mockExports.validate_action("INVALID_ACTION", memory, state)).toBe(
+        false,
+      );
 
       if (!mockExports.invoke_action) {
         throw new Error("invoke_action not defined");

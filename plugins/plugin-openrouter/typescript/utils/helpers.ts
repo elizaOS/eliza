@@ -2,7 +2,7 @@
  * Helper utilities for the OpenRouter plugin.
  */
 
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
 
 /**
  * Get a JSON repair function for fixing malformed JSON.
@@ -11,7 +11,7 @@ import { logger } from '@elizaos/core';
  */
 export function getJsonRepairFunction(): ((text: string) => string) | undefined {
   try {
-    const { jsonrepair } = require('jsonrepair');
+    const { jsonrepair } = require("jsonrepair");
     return jsonrepair;
   } catch {
     return undefined;
@@ -58,7 +58,7 @@ export function extractJsonFromText(text: string): Record<string, unknown> {
   const codeBlockMatch = text.match(/```\w*\s*([\s\S]*?)\s*```/);
   if (codeBlockMatch?.[1]) {
     const content = codeBlockMatch[1].trim();
-    if (content.startsWith('{') && content.endsWith('}')) {
+    if (content.startsWith("{") && content.endsWith("}")) {
       try {
         return JSON.parse(content) as Record<string, unknown>;
       } catch {

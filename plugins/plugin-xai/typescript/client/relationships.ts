@@ -1,12 +1,38 @@
-import { Headers } from "headers-polyfill";
 import type { TwitterAuth } from "./auth";
-import { type Profile } from "./profile";
-import type { QueryProfilesResponse } from "./api-types";
+import type { Profile } from "./profile";
+import type { QueryProfilesResponse } from "./types";
+
+/** Twitter API v2 user data shape */
+interface TwitterV2User {
+  id: string;
+  username: string;
+  name: string;
+  profile_image_url?: string;
+  description?: string;
+  public_metrics?: {
+    followers_count?: number;
+    following_count?: number;
+    tweet_count?: number;
+    like_count?: number;
+    listed_count?: number;
+  };
+  protected?: boolean;
+  verified?: boolean;
+  verified_type?: string;
+  location?: string;
+  pinned_tweet_id?: string;
+  created_at?: string;
+  entities?: {
+    url?: {
+      urls?: Array<{ expanded_url?: string }>;
+    };
+  };
+}
 
 /**
  * Convert Twitter API v2 user data to Profile format
  */
-function parseV2UserToProfile(user: any): Profile {
+function parseV2UserToProfile(user: TwitterV2User): Profile {
   return {
     avatar: user.profile_image_url?.replace("_normal", ""),
     biography: user.description,
@@ -40,7 +66,7 @@ function parseV2UserToProfile(user: any): Profile {
 export async function* getFollowing(
   userId: string,
   maxProfiles: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Profile, void> {
   if (!auth) {
     throw new Error("Not authenticated");
@@ -102,7 +128,7 @@ export async function* getFollowing(
 export async function* getFollowers(
   userId: string,
   maxProfiles: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Profile, void> {
   if (!auth) {
     throw new Error("Not authenticated");
@@ -166,7 +192,7 @@ export async function fetchProfileFollowing(
   userId: string,
   maxProfiles: number,
   auth: TwitterAuth,
-  cursor?: string,
+  cursor?: string
 ): Promise<QueryProfilesResponse> {
   if (!auth) {
     throw new Error("Not authenticated");
@@ -221,7 +247,7 @@ export async function fetchProfileFollowers(
   userId: string,
   maxProfiles: number,
   auth: TwitterAuth,
-  cursor?: string,
+  cursor?: string
 ): Promise<QueryProfilesResponse> {
   if (!auth) {
     throw new Error("Not authenticated");
@@ -270,10 +296,7 @@ export async function fetchProfileFollowers(
  * @param {TwitterAuth} auth - The authentication credentials
  * @returns {Promise<Response>} Response from the API
  */
-export async function followUser(
-  username: string,
-  auth: TwitterAuth,
-): Promise<Response> {
+export async function followUser(username: string, auth: TwitterAuth): Promise<Response> {
   if (!auth) {
     throw new Error("Not authenticated");
   }
@@ -294,15 +317,12 @@ export async function followUser(
     }
 
     // Follow the user
-    const result = await client.v2.follow(
-      meResponse.data.id,
-      userResponse.data.id,
-    );
+    const result = await client.v2.follow(meResponse.data.id, userResponse.data.id);
 
     // Return a Response-like object for compatibility
     return new Response(JSON.stringify(result), {
       status: result.data?.following ? 200 : 400,
-      headers: new Headers({ "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Error following user:", error);

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Default ELIZA patterns.
 
 use crate::types::{ElizaPattern, ElizaRule};
@@ -357,6 +358,11 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
         },
     ]
 }
+
+
+
+
+
 
 
 

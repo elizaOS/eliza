@@ -1,13 +1,46 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ChannelType, Client, Collection } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ChannelType,
+  Client,
+  Collection,
+  type Attachment as DiscordAttachment,
+  type Message as DiscordMessage,
+  type User as DiscordUser,
+} from "discord.js";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { MessageManager } from "../src/messages";
+import type { DiscordSettings, IDiscordService } from "../types";
+
+interface MockMessage extends Partial<DiscordMessage> {
+  content: string;
+  author: { id: string; username: string; bot: boolean };
+  guild: unknown;
+  channel: {
+    id: string;
+    type: ChannelType;
+    send: ReturnType<typeof vi.fn>;
+    guild: unknown;
+    client: { user: DiscordUser | null };
+    permissionsFor: ReturnType<typeof vi.fn>;
+    isThread: ReturnType<typeof vi.fn>;
+  };
+  id: string;
+  createdTimestamp: number;
+  mentions: {
+    users: { has: ReturnType<typeof vi.fn> };
+    repliedUser: { id: string } | null;
+  };
+  reference: { messageId: string } | null;
+  attachments: Collection<string, DiscordAttachment>;
+  embeds: unknown[];
+  url: string;
+}
 
 describe("Discord MessageManager", () => {
   let mockRuntime: IAgentRuntime;
   let mockClient: Client;
-  let mockDiscordClient: { client: Client; runtime: IAgentRuntime };
-  let mockMessage: any;
+  let mockDiscordService: IDiscordService;
+  let mockMessage: MockMessage;
   let messageManager: MessageManager;
 
   beforeEach(() => {
@@ -52,13 +85,14 @@ describe("Discord MessageManager", () => {
     } as unknown as IAgentRuntime;
 
     mockClient = new Client({ intents: [] });
-    mockClient.user = { id: "mock-bot-id", username: "MockBot" } as any;
+    mockClient.user = { id: "mock-bot-id", username: "MockBot" } as DiscordUser;
 
-    mockDiscordClient = { client: mockClient, runtime: mockRuntime };
-    messageManager = new MessageManager(mockDiscordClient);
-    (messageManager as any).getChannelType = vi
-      .fn()
-      .mockResolvedValue(ChannelType.GuildText);
+    const getChannelTypeMock = vi.fn().mockResolvedValue(ChannelType.GuildText);
+    mockDiscordService = {
+      client: mockClient,
+      getChannelType: getChannelTypeMock,
+    } as IDiscordService;
+    messageManager = new MessageManager(mockDiscordService, mockRuntime);
 
     const guild = {
       fetch: vi.fn().mockReturnValue({
@@ -82,9 +116,7 @@ describe("Discord MessageManager", () => {
         send: vi.fn(),
         guild,
         client: { user: mockClient.user },
-        permissionsFor: vi
-          .fn()
-          .mockReturnValue({ has: vi.fn().mockReturnValue(true) }),
+        permissionsFor: vi.fn().mockReturnValue({ has: vi.fn().mockReturnValue(true) }),
         isThread: vi.fn().mockReturnValue(false),
       },
       id: "mock-message-id",
@@ -134,9 +166,9 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       const messageService = mockRuntime.messageService;
-      expect(messageService && messageService.handleMessage).toHaveBeenCalled();
-      const handleCall = (messageService && messageService.handleMessage as any).mock
-        .calls[0];
+      expect(messageService?.handleMessage).toHaveBeenCalled();
+      const handleMessageMock = messageService?.handleMessage as Mock;
+      const handleCall = handleMessageMock.mock.calls[0];
       const message = handleCall[1];
 
       expect(message.content.mentionContext).toEqual({
@@ -155,9 +187,9 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       const messageService = mockRuntime.messageService;
-      expect(messageService && messageService.handleMessage).toHaveBeenCalled();
-      const handleCall = (messageService && messageService.handleMessage as any).mock
-        .calls[0];
+      expect(messageService?.handleMessage).toHaveBeenCalled();
+      const handleMessageMock = messageService?.handleMessage as Mock;
+      const handleCall = handleMessageMock.mock.calls[0];
       const message = handleCall[1];
 
       expect(message.content.mentionContext).toEqual({
@@ -186,9 +218,9 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       const messageService = mockRuntime.messageService;
-      expect(messageService && messageService.handleMessage).toHaveBeenCalled();
-      const handleCall = (messageService && messageService.handleMessage as any).mock
-        .calls[0];
+      expect(messageService?.handleMessage).toHaveBeenCalled();
+      const handleMessageMock = messageService?.handleMessage as Mock;
+      const handleCall = handleMessageMock.mock.calls[0];
       const message = handleCall[1];
 
       expect(message.content.mentionContext.isThread).toBe(true);
@@ -197,14 +229,15 @@ describe("Discord MessageManager", () => {
     it("should set mentionType=none when no mention", async () => {
       // Set natural mode to test this
       const characterSettings = mockRuntime.character.settings;
-      const discordSettings = characterSettings && characterSettings.discord as any;
+      const discordSettings = characterSettings?.discord as DiscordSettings | undefined;
       if (discordSettings) {
         discordSettings.shouldRespondOnlyToMentions = false;
       }
       messageManager = new MessageManager(mockDiscordClient);
-      (messageManager as any).getChannelType = vi
-        .fn()
-        .mockResolvedValue(ChannelType.GuildText);
+      vi.spyOn(
+        messageManager as unknown as { getChannelType: () => Promise<ChannelType> },
+        "getChannelType"
+      ).mockResolvedValue(ChannelType.GuildText);
 
       mockMessage.mentions.users.has = vi.fn().mockReturnValue(false);
       mockMessage.reference = null;
@@ -213,9 +246,9 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       const messageService = mockRuntime.messageService;
-      expect(messageService && messageService.handleMessage).toHaveBeenCalled();
-      const handleCall = (messageService && messageService.handleMessage as any).mock
-        .calls[0];
+      expect(messageService?.handleMessage).toHaveBeenCalled();
+      const handleMessageMock = messageService?.handleMessage as Mock;
+      const handleCall = handleMessageMock.mock.calls[0];
       const message = handleCall[1];
 
       expect(message.content.mentionContext).toEqual({
@@ -262,14 +295,15 @@ describe("Discord MessageManager", () => {
     it("should always process DMs regardless of strict mode", async () => {
       // Temporarily disable shouldIgnoreDirectMessages for this test
       const characterSettings = mockRuntime.character.settings;
-      const discordSettings = characterSettings && characterSettings.discord as any;
+      const discordSettings = characterSettings?.discord as DiscordSettings | undefined;
       if (discordSettings) {
         discordSettings.shouldIgnoreDirectMessages = false;
       }
       messageManager = new MessageManager(mockDiscordClient);
-      (messageManager as any).getChannelType = vi
-        .fn()
-        .mockResolvedValue(ChannelType.DM);
+      vi.spyOn(
+        messageManager as unknown as { getChannelType: () => Promise<ChannelType> },
+        "getChannelType"
+      ).mockResolvedValue(ChannelType.DM);
 
       mockMessage.channel.type = ChannelType.DM;
       mockMessage.mentions.users.has = vi.fn().mockReturnValue(false);
@@ -286,14 +320,15 @@ describe("Discord MessageManager", () => {
   describe("natural mode (shouldRespondOnlyToMentions=false)", () => {
     beforeEach(() => {
       const characterSettings = mockRuntime.character.settings;
-      const discordSettings = characterSettings && characterSettings.discord as any;
+      const discordSettings = characterSettings?.discord as DiscordSettings | undefined;
       if (discordSettings) {
         discordSettings.shouldRespondOnlyToMentions = false;
       }
       messageManager = new MessageManager(mockDiscordClient);
-      (messageManager as any).getChannelType = vi
-        .fn()
-        .mockResolvedValue(ChannelType.GuildText);
+      vi.spyOn(
+        messageManager as unknown as { getChannelType: () => Promise<ChannelType> },
+        "getChannelType"
+      ).mockResolvedValue(ChannelType.GuildText);
     });
 
     it("should send all messages to bootstrap for analysis", async () => {
@@ -336,7 +371,7 @@ describe("Discord MessageManager", () => {
       attachments: [],
     });
 
-    const mockAttachments = new Collection<string, any>([
+    const mockAttachments = new Collection<string, DiscordAttachment>([
       [
         "mock-attachment-id",
         {

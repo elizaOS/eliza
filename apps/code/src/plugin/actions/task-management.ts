@@ -4,16 +4,18 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { CodeTaskService } from "../services/code-task.js";
+import type { CodeTaskService } from "../services/code-task.js";
 
 function getTaskService(runtime: IAgentRuntime): CodeTaskService {
   const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
   if (!service) {
-    throw new Error("CodeTaskService not found. Is the eliza-code plugin loaded?");
+    throw new Error(
+      "CodeTaskService not found. Is the eliza-code plugin loaded?",
+    );
   }
   return service;
 }
@@ -39,7 +41,10 @@ DO NOT USE WHEN:
 
 OUTPUT: Tasks grouped by status (running, pending, paused, completed, failed, cancelled) with progress percentages.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("list task") ||
@@ -55,7 +60,7 @@ OUTPUT: Tasks grouped by status (running, pending, paused, completed, failed, ca
     _message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const service = getTaskService(runtime);
@@ -81,7 +86,9 @@ OUTPUT: Tasks grouped by status (running, pending, paused, completed, failed, ca
 
       for (const [status, statusTasks] of Object.entries(byStatus)) {
         if (statusTasks.length === 0) continue;
-        lines.push(`${getStatusSymbol(status)} ${capitalize(status)} (${statusTasks.length}):`);
+        lines.push(
+          `${getStatusSymbol(status)} ${capitalize(status)} (${statusTasks.length}):`,
+        );
         for (const task of statusTasks) {
           const current = task.id === currentId ? " (current)" : "";
           lines.push(`- ${task.name} (${task.metadata.progress}%)${current}`);
@@ -102,11 +109,17 @@ OUTPUT: Tasks grouped by status (running, pending, paused, completed, failed, ca
   examples: [
     [
       { name: "{{user1}}", content: { text: "show me my tasks" } },
-      { name: "{{agent}}", content: { text: "Here are your tasks:", actions: ["LIST_TASKS"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Here are your tasks:", actions: ["LIST_TASKS"] },
+      },
     ],
     [
       { name: "{{user1}}", content: { text: "what tasks are running?" } },
-      { name: "{{agent}}", content: { text: "Let me check...", actions: ["LIST_TASKS"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Let me check...", actions: ["LIST_TASKS"] },
+      },
     ],
   ],
 };
@@ -135,14 +148,18 @@ BEHAVIOR:
 - If multiple matches found, asks for clarification
 - Sets the matched task as current context`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("switch to task") ||
       text.includes("select task") ||
       text.includes("go to task") ||
       text.includes("show task") ||
-      (text.includes("task") && (text.includes("switch") || text.includes("select")))
+      (text.includes("task") &&
+        (text.includes("switch") || text.includes("select")))
     );
   },
 
@@ -151,7 +168,7 @@ BEHAVIOR:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const service = getTaskService(runtime);
@@ -207,7 +224,13 @@ BEHAVIOR:
   examples: [
     [
       { name: "{{user1}}", content: { text: "switch to the auth task" } },
-      { name: "{{agent}}", content: { text: "Switching to auth task...", actions: ["SWITCH_TASK"] } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Switching to auth task...",
+          actions: ["SWITCH_TASK"],
+        },
+      },
     ],
   ],
 };
@@ -233,7 +256,10 @@ DO NOT USE WHEN:
 
 OUTPUT: List of matching tasks with status and progress.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("search task") ||
@@ -248,7 +274,7 @@ OUTPUT: List of matching tasks with status and progress.`,
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const service = getTaskService(runtime);
@@ -271,7 +297,9 @@ OUTPUT: List of matching tasks with status and progress.`,
       const lines = [`Found ${matches.length} task(s) matching "${query}":\n`];
       for (const task of matches.slice(0, 10)) {
         const m = task.metadata;
-        lines.push(`- ${getStatusSymbol(m.status)} ${task.name} (${m.status}, ${m.progress}%)`);
+        lines.push(
+          `- ${getStatusSymbol(m.status)} ${task.name} (${m.status}, ${m.progress}%)`,
+        );
       }
 
       const result = lines.join("\n");
@@ -287,8 +315,14 @@ OUTPUT: List of matching tasks with status and progress.`,
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "find tasks about authentication" } },
-      { name: "{{agent}}", content: { text: "Searching...", actions: ["SEARCH_TASKS"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "find tasks about authentication" },
+      },
+      {
+        name: "{{agent}}",
+        content: { text: "Searching...", actions: ["SEARCH_TASKS"] },
+      },
     ],
   ],
 };
@@ -317,9 +351,17 @@ BEHAVIOR:
 - Only works on tasks with "running" status
 - Task can be resumed later with RESUME_TASK`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
-    return (text.includes("pause") || text.includes("stop") || text.includes("halt")) && text.includes("task");
+    return (
+      (text.includes("pause") ||
+        text.includes("stop") ||
+        text.includes("halt")) &&
+      text.includes("task")
+    );
   },
 
   handler: async (
@@ -327,14 +369,16 @@ BEHAVIOR:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const service = getTaskService(runtime);
       const query = extractTaskQuery(message.content.text ?? "");
 
       // If no query, pause current task
-      let task = query ? (await service.searchTasks(query))[0] : await service.getCurrentTask();
+      const task = query
+        ? (await service.searchTasks(query))[0]
+        : await service.getCurrentTask();
 
       if (!task) {
         const msg = "No task to pause. Specify a task or select one first.";
@@ -370,7 +414,10 @@ BEHAVIOR:
   examples: [
     [
       { name: "{{user1}}", content: { text: "pause the current task" } },
-      { name: "{{agent}}", content: { text: "Pausing...", actions: ["PAUSE_TASK"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Pausing...", actions: ["PAUSE_TASK"] },
+      },
     ],
   ],
 };
@@ -399,16 +446,29 @@ BEHAVIOR:
 - Updates status to running and starts background execution
 - Works on paused or pending tasks`,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     if (!text.includes("task")) return false;
 
-    if (text.includes("resume") || text.includes("restart") || text.includes("continue")) {
+    if (
+      text.includes("resume") ||
+      text.includes("restart") ||
+      text.includes("continue")
+    ) {
       return true;
     }
 
     // Treat "start/run/begin task <name>" as a restart ONLY if it matches an existing task.
-    if (!(text.includes("start") || text.includes("run") || text.includes("begin"))) {
+    if (
+      !(
+        text.includes("start") ||
+        text.includes("run") ||
+        text.includes("begin")
+      )
+    ) {
       return false;
     }
 
@@ -427,13 +487,15 @@ BEHAVIOR:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const service = getTaskService(runtime);
       const query = extractTaskQuery(message.content.text ?? "");
 
-      let task = query ? (await service.searchTasks(query))[0] : await service.getCurrentTask();
+      let task = query
+        ? (await service.searchTasks(query))[0]
+        : await service.getCurrentTask();
 
       // If no current task, get first pending
       if (!task) {
@@ -474,7 +536,10 @@ BEHAVIOR:
   examples: [
     [
       { name: "{{user1}}", content: { text: "resume the paused task" } },
-      { name: "{{agent}}", content: { text: "Resuming...", actions: ["RESUME_TASK"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Resuming...", actions: ["RESUME_TASK"] },
+      },
     ],
   ],
 };
@@ -503,10 +568,15 @@ BEHAVIOR:
 - Marks task as cancelled (record kept for history)
 - Cannot be undone - use PAUSE_TASK for temporary stops`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
-      (text.includes("cancel") || text.includes("delete") || text.includes("remove")) &&
+      (text.includes("cancel") ||
+        text.includes("delete") ||
+        text.includes("remove")) &&
       text.includes("task")
     );
   },
@@ -516,7 +586,7 @@ BEHAVIOR:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const service = getTaskService(runtime);
@@ -558,7 +628,10 @@ BEHAVIOR:
   examples: [
     [
       { name: "{{user1}}", content: { text: "cancel the api task" } },
-      { name: "{{agent}}", content: { text: "Cancelling...", actions: ["CANCEL_TASK"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Cancelling...", actions: ["CANCEL_TASK"] },
+      },
     ],
   ],
 };
@@ -574,7 +647,7 @@ function extractTaskQuery(text: string): string {
     .toLowerCase()
     .replace(
       /\b(switch|select|go|change|search|find|pause|stop|halt|resume|restart|continue|start|run|begin|cancel|delete|remove)\b/g,
-      ""
+      "",
     )
     // Common filler words in natural language queries
     .replace(/\b(about|for|named|called|with)\b/g, "")
@@ -608,4 +681,3 @@ function getStatusSymbol(status: string): string {
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-

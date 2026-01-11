@@ -8,8 +8,8 @@
 import type { Plugin } from "@elizaos/core";
 import { PdfService } from "./services/pdf";
 
-export * from "./types";
 export * from "./services";
+export * from "./types";
 
 /**
  * PDF Plugin for elizaOS.
@@ -22,5 +22,3 @@ export const pdfPlugin: Plugin = {
 };
 
 export default pdfPlugin;
-
-

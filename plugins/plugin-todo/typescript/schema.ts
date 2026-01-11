@@ -1,52 +1,48 @@
-import { relations, sql } from 'drizzle-orm';
+import { relations, sql } from "drizzle-orm";
 import {
+  boolean,
+  index,
+  integer,
+  jsonb,
   pgTable,
   text,
-  integer,
-  index,
-  uniqueIndex,
   timestamp,
-  boolean,
-  jsonb,
+  uniqueIndex,
   uuid,
-} from 'drizzle-orm/pg-core';
+} from "drizzle-orm/pg-core";
 
 /**
  * Todos table - stores the main todo items
  */
 export const todosTable = pgTable(
-  'todos',
+  "todos",
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    agentId: uuid('agent_id').notNull(),
-    worldId: uuid('world_id').notNull(),
-    roomId: uuid('room_id').notNull(),
-    entityId: uuid('entity_id').notNull(), // User who created the todo
-    name: text('name').notNull(),
-    description: text('description'),
-    type: text('type').notNull(), // 'daily', 'one-off', 'aspirational'
-    priority: integer('priority').default(4), // 1-4, where 1 is highest
-    isUrgent: boolean('is_urgent').default(false),
-    isCompleted: boolean('is_completed').default(false),
-    dueDate: timestamp('due_date'),
-    completedAt: timestamp('completed_at'),
-    createdAt: timestamp('created_at')
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp('updated_at')
-      .default(sql`now()`)
-      .notNull(),
-    metadata: jsonb('metadata').default('{}').notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id").notNull(),
+    worldId: uuid("world_id").notNull(),
+    roomId: uuid("room_id").notNull(),
+    entityId: uuid("entity_id").notNull(), // User who created the todo
+    name: text("name").notNull(),
+    description: text("description"),
+    type: text("type").notNull(), // 'daily', 'one-off', 'aspirational'
+    priority: integer("priority").default(4), // 1-4, where 1 is highest
+    isUrgent: boolean("is_urgent").default(false),
+    isCompleted: boolean("is_completed").default(false),
+    dueDate: timestamp("due_date"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+    metadata: jsonb("metadata").default("{}").notNull(),
   },
   (table) => ({
-    agentIdIndex: index('idx_todos_agent').on(table.agentId),
-    worldIdIndex: index('idx_todos_world').on(table.worldId),
-    roomIdIndex: index('idx_todos_room').on(table.roomId),
-    entityIdIndex: index('idx_todos_entity').on(table.entityId),
-    typeIndex: index('idx_todos_type').on(table.type),
-    completedIndex: index('idx_todos_completed').on(table.isCompleted),
-    dueDateIndex: index('idx_todos_due_date').on(table.dueDate),
-    createdAtIndex: index('idx_todos_created_at').on(table.createdAt),
+    agentIdIndex: index("idx_todos_agent").on(table.agentId),
+    worldIdIndex: index("idx_todos_world").on(table.worldId),
+    roomIdIndex: index("idx_todos_room").on(table.roomId),
+    entityIdIndex: index("idx_todos_entity").on(table.entityId),
+    typeIndex: index("idx_todos_type").on(table.type),
+    completedIndex: index("idx_todos_completed").on(table.isCompleted),
+    dueDateIndex: index("idx_todos_due_date").on(table.dueDate),
+    createdAtIndex: index("idx_todos_created_at").on(table.createdAt),
   })
 );
 
@@ -54,23 +50,21 @@ export const todosTable = pgTable(
  * Todo tags table - stores tags associated with todos
  */
 export const todoTagsTable = pgTable(
-  'todo_tags',
+  "todo_tags",
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    todoId: uuid('todo_id')
+    id: uuid("id").primaryKey().defaultRandom(),
+    todoId: uuid("todo_id")
       .references(() => todosTable.id, {
-        onDelete: 'cascade',
+        onDelete: "cascade",
       })
       .notNull(),
-    tag: text('tag').notNull(),
-    createdAt: timestamp('created_at')
-      .default(sql`now()`)
-      .notNull(),
+    tag: text("tag").notNull(),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   },
   (table) => ({
-    todoIdIndex: index('idx_todo_tags_todo').on(table.todoId),
-    tagIndex: index('idx_todo_tags_tag').on(table.tag),
-    uniqueTodoTag: uniqueIndex('unique_todo_tag').on(table.todoId, table.tag),
+    todoIdIndex: index("idx_todo_tags_todo").on(table.todoId),
+    tagIndex: index("idx_todo_tags_tag").on(table.tag),
+    uniqueTodoTag: uniqueIndex("unique_todo_tag").on(table.todoId, table.tag),
   })
 );
 

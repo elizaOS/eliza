@@ -1,0 +1,43 @@
+# Task: Extract Todo Information
+
+## User Message
+{{text}}
+
+## Message History
+{{messageHistory}}
+
+## Instructions
+Parse the user's message (within the context of the message history) to extract information for creating a new todo/task. Don't write a program or any code, just generate and return the XML object.
+Identify whether this is a daily recurring task, a one-off task with a due date, or an aspirational goal.
+
+**IMPORTANT:** If the user message appears to be a simple confirmation (e.g., "yes", "confirm", "ok", "looks good", "do it"), and NOT a description of a new task, return an empty response like <response></response> or a response with a clear indication like <is_confirmation>true</is_confirmation> instead of trying to extract task details.
+
+Return an XML object with these fields:
+<response>
+  <name>A concise name for the task</name>
+  <description>Optional detailed description</description>
+  <taskType>One of "daily", "one-off", "aspirational"</taskType>
+  <priority>For one-off tasks, a number from 1-4 (1=highest, 4=lowest), default to 3 if not specified</priority>
+  <urgent>For one-off tasks, 'true' or 'false' indicating if urgent, default 'false'</urgent>
+  <dueDate>For one-off tasks with due dates, ISO date string (YYYY-MM-DD)</dueDate>
+  <recurring>For daily tasks, frequency ("daily", "weekly", "monthly"), default to "daily"</recurring>
+</response>
+
+Use only the information provided by the user. Do not invent details.
+If task type is unspecified, assume it's a one-off task.
+If priority is unspecified, use 3 (medium priority).
+Do not write code. Just return the XML object.
+
+## Example Output Format
+<response>
+  <name>Finish my taxes</name>
+  <description>Get all the documents together and file online</description>
+  <taskType>one-off</taskType>
+  <priority>2</priority>
+  <urgent>false</urgent>
+  <dueDate>2024-04-15</dueDate>
+</response>
+
+
+
+

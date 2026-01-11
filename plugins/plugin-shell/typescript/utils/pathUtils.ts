@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 import { logger } from "@elizaos/core";
 
 /**
@@ -102,10 +102,7 @@ export function extractBaseCommand(fullCommand: string): string {
  * @param forbiddenCommands List of forbidden commands/patterns
  * @returns true if the command is forbidden
  */
-export function isForbiddenCommand(
-  command: string,
-  forbiddenCommands: string[]
-): boolean {
+export function isForbiddenCommand(command: string, forbiddenCommands: string[]): boolean {
   const normalizedCommand = command.trim().toLowerCase();
 
   // Check each forbidden pattern
@@ -128,5 +125,3 @@ export function isForbiddenCommand(
     return false;
   });
 }
-
-

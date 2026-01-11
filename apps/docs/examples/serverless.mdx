@@ -1,19 +1,19 @@
 ---
-title: 'Serverless Examples'
-description: 'Deploy elizaOS agents to AWS Lambda, GCP, Vercel, Cloudflare, and Supabase'
+title: "Serverless Examples"
+description: "Deploy elizaOS agents to AWS Lambda, GCP, Vercel, Cloudflare, and Supabase"
 ---
 
 Deploy AI agents as serverless functions. These examples show how to run elizaOS on major cloud platforms with automatic scaling and pay-per-use pricing.
 
 ## Overview
 
-| Platform | Languages | Directory | Cold Start |
-|----------|-----------|-----------|------------|
-| AWS Lambda | TS, Python, Rust | `examples/aws/` | 2-5s |
-| GCP Cloud Functions | TS, Python, Rust | `examples/gcp/` | 2-5s |
-| Vercel Edge | TS, Python, Rust | `examples/vercel/` | <1s |
-| Cloudflare Workers | TS, Python, Rust | `examples/cloudflare/` | <1s |
-| Supabase Edge | TS (Deno), Rust WASM | `examples/supabase/` | <1s |
+| Platform            | Languages            | Directory              | Cold Start |
+| ------------------- | -------------------- | ---------------------- | ---------- |
+| AWS Lambda          | TS, Python, Rust     | `examples/aws/`        | 2-5s       |
+| GCP Cloud Functions | TS, Python, Rust     | `examples/gcp/`        | 2-5s       |
+| Vercel Edge         | TS, Python, Rust     | `examples/vercel/`     | <1s        |
+| Cloudflare Workers  | TS, Python, Rust     | `examples/cloudflare/` | <1s        |
+| Supabase Edge       | TS (Deno), Rust WASM | `examples/supabase/`   | <1s        |
 
 ---
 
@@ -45,6 +45,7 @@ bun install
 bun run build
 
 # Deploy
+
 export OPENAI_API_KEY="your-key"
 sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
 ```
@@ -55,6 +56,7 @@ cd examples/aws/python
 pip install -r requirements.txt
 
 # Deploy
+
 export OPENAI_API_KEY="your-key"
 sam deploy --guided --parameter-overrides RuntimeLanguage=python OpenAIApiKey=$OPENAI_API_KEY
 ```
@@ -65,6 +67,7 @@ cd examples/aws/rust
 cargo lambda build --release
 
 # Deploy
+
 export OPENAI_API_KEY="your-key"
 sam deploy --guided --parameter-overrides RuntimeLanguage=rust OpenAIApiKey=$OPENAI_API_KEY
 ```
@@ -83,18 +86,18 @@ import { openaiPlugin } from "@elizaos/plugin-openai";
 let runtime: AgentRuntime | null = null;
 
 async function getRuntime() {
-  if (runtime) return runtime;
+if (runtime) return runtime;
 
-  runtime = new AgentRuntime({
-    character: {
-      name: process.env.CHARACTER_NAME || "Eliza",
-      bio: process.env.CHARACTER_BIO || "A helpful AI assistant.",
-    },
-    plugins: [bootstrapPlugin, openaiPlugin],
-  });
+runtime = new AgentRuntime({
+character: {
+name: process.env.CHARACTER_NAME || "Eliza",
+bio: process.env.CHARACTER_BIO || "A helpful AI assistant.",
+},
+plugins: [bootstrapPlugin, openaiPlugin],
+});
 
-  await runtime.initialize();
-  return runtime;
+await runtime.initialize();
+return runtime;
 }
 
 export async function handler(
@@ -103,25 +106,26 @@ export async function handler(
   const runtime = await getRuntime();
   const body = JSON.parse(event.body || "{}");
 
-  if (event.path === "/health") {
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ status: "healthy" }),
-    };
-  }
-
-  const { message } = body;
-  const response = await runtime.useModel("TEXT_LARGE", { prompt: message });
-
-  return {
-    statusCode: 200,
-    body: JSON.stringify({
-      response: String(response),
-      timestamp: new Date().toISOString(),
-    }),
-  };
+if (event.path === "/health") {
+return {
+statusCode: 200,
+body: JSON.stringify({ status: "healthy" }),
+};
 }
-```
+
+const { message } = body;
+const response = await runtime.useModel("TEXT_LARGE", { prompt: message });
+
+return {
+statusCode: 200,
+body: JSON.stringify({
+response: String(response),
+timestamp: new Date().toISOString(),
+}),
+};
+}
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -169,7 +173,8 @@ async def handler(event, context):
             "timestamp": datetime.now().isoformat(),
         }),
     }
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -183,23 +188,23 @@ use serde_json::json;
 static RUNTIME: OnceCell<AgentRuntime> = OnceCell::new();
 
 async fn get_runtime() -> &'static AgentRuntime {
-    RUNTIME.get_or_init(|| {
-        let character = parse_character(r#"{"name": "Eliza", "bio": "A helpful AI."}"#).unwrap();
-        let rt = AgentRuntime::new(RuntimeOptions {
-            character: Some(character),
-            plugins: vec![create_openai_plugin().unwrap()],
-            ..Default::default()
-        }).await.unwrap();
-        rt.initialize().await.unwrap();
-        rt
-    })
+RUNTIME.get_or_init(|| {
+let character = parse_character(r#"{"name": "Eliza", "bio": "A helpful AI."}"#).unwrap();
+let rt = AgentRuntime::new(RuntimeOptions {
+character: Some(character),
+plugins: vec![create_openai_plugin().unwrap()],
+..Default::default()
+}).await.unwrap();
+rt.initialize().await.unwrap();
+rt
+})
 }
 
 async fn handler(event: LambdaEvent<ApiGatewayProxyRequest>) -> Result<ApiGatewayProxyResponse, Error> {
-    let runtime = get_runtime().await;
-    let body: serde_json::Value = serde_json::from_str(
-        event.payload.body.as_deref().unwrap_or("{}")
-    )?;
+let runtime = get_runtime().await;
+let body: serde_json::Value = serde_json::from_str(
+event.payload.body.as_deref().unwrap_or("{}")
+)?;
 
     let message = body["message"].as_str().unwrap_or("");
     let response = runtime.use_model("TEXT_LARGE", message).await?;
@@ -209,13 +214,15 @@ async fn handler(event: LambdaEvent<ApiGatewayProxyRequest>) -> Result<ApiGatewa
         body: Some(json!({ "response": response }).to_string()),
         ..Default::default()
     })
+
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    lambda_runtime::run(service_fn(handler)).await
+lambda_runtime::run(service_fn(handler)).await
 }
-```
+
+````
   </Tab>
 </Tabs>
 
@@ -232,7 +239,7 @@ cd examples/vercel
 bun install
 vercel dev  # Local testing
 vercel      # Deploy
-```
+````
 
 ### Edge Function
 
@@ -392,28 +399,31 @@ serve(async (req) => {
 
 ## Performance Comparison
 
-| Platform | Cold Start | Warm Latency | Max Timeout | Free Tier |
-|----------|------------|--------------|-------------|-----------|
-| AWS Lambda | 2-5s | 50-100ms | 15min | 1M requests |
-| GCP Functions | 2-5s | 50-100ms | 9min | 2M invocations |
-| Vercel Edge | <50ms | <50ms | 30s | 100K requests |
-| Cloudflare | <10ms | <10ms | 30s | 100K requests |
-| Supabase | <100ms | <50ms | 60s | 500K invocations |
+| Platform      | Cold Start | Warm Latency | Max Timeout | Free Tier        |
+| ------------- | ---------- | ------------ | ----------- | ---------------- |
+| AWS Lambda    | 2-5s       | 50-100ms     | 15min       | 1M requests      |
+| GCP Functions | 2-5s       | 50-100ms     | 9min        | 2M invocations   |
+| Vercel Edge   | <50ms      | <50ms        | 30s         | 100K requests    |
+| Cloudflare    | <10ms      | <10ms        | 30s         | 100K requests    |
+| Supabase      | <100ms     | <50ms        | 60s         | 500K invocations |
 
 ---
 
 ## Cost Estimation
 
 **AWS Lambda** (512MB, 2s avg, 10K requests/month):
+
 - Requests: $0.002
 - Duration: $0.17
 - **Total: ~$0.20/month**
 
 **Vercel Edge** (10K requests/month):
+
 - Free tier covers it
 - **Total: $0/month**
 
 **Cloudflare Workers** (10K requests/month):
+
 - Free tier covers it
 - **Total: $0/month**
 
@@ -429,5 +439,6 @@ serve(async (req) => {
     Complete deployment documentation
   </Card>
 </CardGroup>
+
 
 

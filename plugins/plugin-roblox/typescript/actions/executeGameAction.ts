@@ -5,13 +5,14 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { RobloxService } from "../services/RobloxService";
+import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
 const executeGameActionExamples: ActionExample[][] = [
@@ -139,13 +140,7 @@ function parseGameAction(
  */
 const executeGameAction: Action = {
   name: "EXECUTE_ROBLOX_ACTION",
-  similes: [
-    "ROBLOX_ACTION",
-    "GAME_ACTION",
-    "DO_IN_GAME",
-    "TRIGGER_EVENT",
-    "RUN_GAME_COMMAND",
-  ],
+  similes: ["ROBLOX_ACTION", "GAME_ACTION", "DO_IN_GAME", "TRIGGER_EVENT", "RUN_GAME_COMMAND"],
   description:
     "Execute a custom action in a Roblox game, such as spawning entities, giving rewards, or triggering events.",
   examples: executeGameActionExamples,
@@ -162,7 +157,7 @@ const executeGameAction: Action = {
     state: State | undefined,
     _options: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     try {
       const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
@@ -173,14 +168,15 @@ const executeGameAction: Action = {
             action: "EXECUTE_ROBLOX_ACTION",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "Roblox service not found",
+        };
       }
 
       // Extract action details from state or message
       const messageContent =
-        (state?.message as string) ||
-        (message.content as { text?: string }).text ||
-        "";
+        (state?.message as string) || (message.content as { text?: string }).text || "";
 
       const parsedAction = parseGameAction(messageContent);
 
@@ -192,29 +188,22 @@ const executeGameAction: Action = {
             action: "EXECUTE_ROBLOX_ACTION",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "Could not parse game action from message",
+        };
       }
 
       const { actionName, parameters } = parsedAction;
 
       // Extract target player IDs if applicable
       const playerIdMatch = messageContent.match(/player\s*(\d+)/i);
-      const targetPlayerIds = playerIdMatch
-        ? [parseInt(playerIdMatch[1], 10)]
-        : undefined;
+      const targetPlayerIds = playerIdMatch ? [parseInt(playerIdMatch[1], 10)] : undefined;
 
       // Execute the action
-      await service.executeAction(
-        runtime.agentId,
-        actionName,
-        parameters,
-        targetPlayerIds
-      );
+      await service.executeAction(runtime.agentId, actionName, parameters, targetPlayerIds);
 
-      logger.info(
-        { actionName, parameters, targetPlayerIds },
-        "Executed Roblox game action"
-      );
+      logger.info({ actionName, parameters, targetPlayerIds }, "Executed Roblox game action");
 
       if (callback) {
         callback({
@@ -223,20 +212,30 @@ const executeGameAction: Action = {
         });
       }
 
-      return true;
+      return {
+        success: true,
+        text: `Executed "${actionName}" action in the game`,
+        data: {
+          actionName,
+          parameters: parameters as Record<string, string | number | boolean | null | undefined>,
+          targetPlayerIds: targetPlayerIds || undefined,
+        },
+      };
     } catch (error) {
       logger.error({ error }, "Failed to execute Roblox action");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       if (callback) {
         callback({
           text: "I encountered an error executing the action in the game. Please try again.",
           action: "EXECUTE_ROBLOX_ACTION",
         });
       }
-      return false;
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
   },
 };
 
 export default executeGameAction;
-
-

@@ -6,7 +6,7 @@ from elizaos_plugin_discord.error import InvalidArgumentError
 from elizaos_plugin_discord.types import Snowflake
 
 if TYPE_CHECKING:
-    from elizaos_plugin_discord.actions import ActionContext, ActionResult, DiscordAction
+    from elizaos_plugin_discord.actions import ActionContext, ActionResult
     from elizaos_plugin_discord.service import DiscordService
 
 

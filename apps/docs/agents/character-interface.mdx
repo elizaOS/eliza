@@ -1,6 +1,6 @@
 ---
-title: 'Character Interface'
-description: 'Define your agent personality, knowledge, and behavior in TypeScript, Python, or Rust'
+title: "Character Interface"
+description: "Define your agent personality, knowledge, and behavior in TypeScript, Python, or Rust"
 ---
 
 ## Your First Character (2 minutes)
@@ -24,10 +24,11 @@ export const character: Character = {
 from elizaos import Character
 
 character = Character(
-    name="Chef Mario",
-    bio="A passionate Italian chef who loves sharing recipes and cooking tips.",
+name="Chef Mario",
+bio="A passionate Italian chef who loves sharing recipes and cooking tips.",
 )
-```
+
+````
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -37,14 +38,16 @@ let character = parse_character(r#"{
     "name": "Chef Mario",
     "bio": "A passionate Italian chef who loves sharing recipes and cooking tips."
 }"#)?;
-```
+````
+
   </Tab>
 </Tabs>
 
 That's it. Your agent now has a name, personality, and can chat. Everything else is optional.
 
 <Tip>
-**Start minimal, add complexity later.** Most fields have sensible defaults. Only add what you need.
+  **Start minimal, add complexity later.** Most fields have sensible defaults.
+  Only add what you need.
 </Tip>
 
 ---
@@ -62,23 +65,23 @@ Think of a Character as a blueprint and an Agent as the living instance built fr
 
 The complete interface for character configuration (identical across all languages):
 
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `name` | string | ✅ | Agent's display name |
-| `bio` | string \| string[] | ✅ | Background/personality description |
-| `id` | UUID | ❌ | Unique identifier (auto-generated if not provided) |
-| `username` | string | ❌ | Social media username |
-| `system` | string | ❌ | System prompt override |
-| `templates` | object | ❌ | Custom prompt templates |
-| `adjectives` | string[] | ❌ | Character traits (e.g., "helpful", "creative") |
-| `topics` | string[] | ❌ | Conversation topics the agent knows |
-| `knowledge` | array | ❌ | Facts, files, or directories of knowledge |
-| `messageExamples` | array[][] | ❌ | Example conversations (2D array) |
-| `postExamples` | string[] | ❌ | Example social media posts |
-| `style` | object | ❌ | Writing style for different contexts |
-| `plugins` | string[] | ❌ | Enabled plugin packages |
-| `settings` | object | ❌ | Configuration values |
-| `secrets` | object | ❌ | Sensitive configuration |
+| Property          | Type               | Required | Description                                        |
+| ----------------- | ------------------ | -------- | -------------------------------------------------- |
+| `name`            | string             | ✅       | Agent's display name                               |
+| `bio`             | string \| string[] | ✅       | Background/personality description                 |
+| `id`              | UUID               | ❌       | Unique identifier (auto-generated if not provided) |
+| `username`        | string             | ❌       | Social media username                              |
+| `system`          | string             | ❌       | System prompt override                             |
+| `templates`       | object             | ❌       | Custom prompt templates                            |
+| `adjectives`      | string[]           | ❌       | Character traits (e.g., "helpful", "creative")     |
+| `topics`          | string[]           | ❌       | Conversation topics the agent knows                |
+| `knowledge`       | array              | ❌       | Facts, files, or directories of knowledge          |
+| `messageExamples` | array[][]          | ❌       | Example conversations (2D array)                   |
+| `postExamples`    | string[]           | ❌       | Example social media posts                         |
+| `style`           | object             | ❌       | Writing style for different contexts               |
+| `plugins`         | string[]           | ❌       | Enabled plugin packages                            |
+| `settings`        | object             | ❌       | Configuration values                               |
+| `secrets`         | object             | ❌       | Sensitive configuration                            |
 
 ---
 
@@ -106,17 +109,18 @@ export const character: Character = {
 from elizaos import Character
 from uuid import UUID
 
-character = Character(
-    # Required: The agent's display name
-    name="TechHelper",
-    
+character = Character( # Required: The agent's display name
+name="TechHelper",
+
     # Optional: Username for social platforms
     username="tech_helper_bot",
-    
+
     # Optional: Unique ID (auto-generated from name if not provided)
     id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+
 )
-```
+
+````
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -125,7 +129,8 @@ let character = parse_character(r#"{
     "username": "tech_helper_bot",
     "id": "550e8400-e29b-41d4-a716-446655440000"
 }"#)?;
-```
+````
+
   </Tab>
 </Tabs>
 
@@ -144,15 +149,16 @@ const simpleCharacter: Character = {
 
 // Array bio for detailed personalities
 const detailedCharacter: Character = {
-  name: "DetailedBot",
-  bio: [
-    "A senior software engineer with 15 years of experience.",
-    "Specializes in distributed systems and cloud architecture.",
-    "Known for patient explanations and thorough code reviews.",
-    "Believes in clean code and comprehensive documentation.",
-  ],
+name: "DetailedBot",
+bio: [
+"A senior software engineer with 15 years of experience.",
+"Specializes in distributed systems and cloud architecture.",
+"Known for patient explanations and thorough code reviews.",
+"Believes in clean code and comprehensive documentation.",
+],
 };
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -172,7 +178,8 @@ detailed_character = Character(
         "Believes in clean code and comprehensive documentation.",
     ],
 )
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -184,14 +191,15 @@ let simple = parse_character(r#"{
 
 // Array bio for detailed personalities
 let detailed = parse_character(r#"{
-    "name": "DetailedBot",
-    "bio": [
-        "A senior software engineer with 15 years of experience.",
-        "Specializes in distributed systems and cloud architecture.",
-        "Known for patient explanations and thorough code reviews."
-    ]
+"name": "DetailedBot",
+"bio": [
+"A senior software engineer with 15 years of experience.",
+"Specializes in distributed systems and cloud architecture.",
+"Known for patient explanations and thorough code reviews."
+]
 }"#)?;
-```
+
+````
   </Tab>
 </Tabs>
 
@@ -210,7 +218,8 @@ Always provide production-ready code with proper error handling.
 Never use 'any' type. Prefer strict typing.
 Include JSDoc comments for all public functions.`,
 };
-```
+````
+
   </Tab>
   <Tab title="Python">
 ```python
@@ -599,14 +608,15 @@ const character: Character = {
 import os
 
 character = Character(
-    name="SecureBot",
-    bio="A secure assistant.",
-    secrets={
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-        "DATABASE_URL": os.environ.get("DATABASE_URL"),
-    },
+name="SecureBot",
+bio="A secure assistant.",
+secrets={
+"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+"DATABASE_URL": os.environ.get("DATABASE_URL"),
+},
 )
-```
+
+````
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -619,12 +629,14 @@ let character = parse_character(&format!(r#"{{
         "OPENAI_API_KEY": "{}"
     }}
 }}"#, env::var("OPENAI_API_KEY").unwrap_or_default()))?;
-```
+````
+
   </Tab>
 </Tabs>
 
 <Warning>
-Never commit secrets to version control. Use environment variables or a secrets manager.
+  Never commit secrets to version control. Use environment variables or a
+  secrets manager.
 </Warning>
 
 ---
@@ -686,39 +698,40 @@ import os
 from elizaos import Character
 
 character = Character(
-    name="DevHelper",
-    username="devhelper",
-    bio=[
-        "A senior software engineer specializing in web development.",
-        "Expert in Python, FastAPI, and Django.",
-        "Passionate about clean code and best practices.",
-    ],
-    system="""You are DevHelper, a senior software engineer.
+name="DevHelper",
+username="devhelper",
+bio=[
+"A senior software engineer specializing in web development.",
+"Expert in Python, FastAPI, and Django.",
+"Passionate about clean code and best practices.",
+],
+system="""You are DevHelper, a senior software engineer.
 Provide production-ready code with proper error handling.
 Explain complex concepts in simple terms.
 Always suggest best practices and potential improvements.""",
-    adjectives=["helpful", "thorough", "patient", "technical"],
-    topics=[
-        "Python",
-        "FastAPI",
-        "Django",
-        "testing",
-        "architecture",
-        "performance",
-    ],
-    style={
-        "all": ["Be concise", "Use code examples"],
-        "chat": ["Be friendly", "Ask clarifying questions"],
-    },
-    settings={
-        "model": "gpt-4o",
-        "temperature": 0.7,
-    },
-    secrets={
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-    },
+adjectives=["helpful", "thorough", "patient", "technical"],
+topics=[
+"Python",
+"FastAPI",
+"Django",
+"testing",
+"architecture",
+"performance",
+],
+style={
+"all": ["Be concise", "Use code examples"],
+"chat": ["Be friendly", "Ask clarifying questions"],
+},
+settings={
+"model": "gpt-4o",
+"temperature": 0.7,
+},
+secrets={
+"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+},
 )
-```
+
+````
   </Tab>
   <Tab title="Rust">
 ```rust
@@ -750,7 +763,8 @@ let character_json = format!(r#"{{
 }}"#, env::var("OPENAI_API_KEY").unwrap_or_default());
 
 let character = parse_character(&character_json)?;
-```
+````
+
   </Tab>
 </Tabs>
 
@@ -765,12 +779,13 @@ import { AgentRuntime } from '@elizaos/core';
 import { character } from './character';
 
 const runtime = new AgentRuntime({
-  character,
-  plugins: [/* your plugins */],
+character,
+plugins: [/* your plugins */],
 });
 
 await runtime.initialize();
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -783,19 +798,21 @@ runtime = AgentRuntime(
 )
 
 await runtime.initialize()
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
 use elizaos::{AgentRuntime, RuntimeOptions};
 
 let runtime = AgentRuntime::new(RuntimeOptions {
-    character: Some(character),
-    plugins: vec![],
-    ..Default::default()
+character: Some(character),
+plugins: vec![],
+..Default::default()
 }).await?;
 
 runtime.initialize().await?;
+
 ```
   </Tab>
 </Tabs>
@@ -818,3 +835,4 @@ runtime.initialize().await?;
     Working code in all languages
   </Card>
 </CardGroup>
+```

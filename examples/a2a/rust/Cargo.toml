@@ -6,7 +6,7 @@ description = "elizaOS A2A (Agent-to-Agent) Server - HTTP API for agent communic
 license = "MIT"
 
 [dependencies]
-elizaos = { path = "../../../packages/typescript/rust" }
+elizaos = { path = "../../../packages/rust" }
 elizaos_plugin_openai = { path = "../../../plugins/plugin-openai/rust" }
 tokio = { version = "1.0", features = ["full"] }
 axum = { version = "0.7", features = ["macros"] }

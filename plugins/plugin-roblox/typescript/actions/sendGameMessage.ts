@@ -5,13 +5,14 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { RobloxService } from "../services/RobloxService";
+import type { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
 const sendGameMessageExamples: ActionExample[][] = [
@@ -52,13 +53,7 @@ const sendGameMessageExamples: ActionExample[][] = [
  */
 const sendGameMessage: Action = {
   name: "SEND_ROBLOX_MESSAGE",
-  similes: [
-    "ROBLOX_MESSAGE",
-    "GAME_MESSAGE",
-    "SEND_TO_GAME",
-    "BROADCAST_MESSAGE",
-    "TELL_PLAYERS",
-  ],
+  similes: ["ROBLOX_MESSAGE", "GAME_MESSAGE", "SEND_TO_GAME", "BROADCAST_MESSAGE", "TELL_PLAYERS"],
   description:
     "Send a message to players in a Roblox game. Can target all players or specific player IDs.",
   examples: sendGameMessageExamples,
@@ -75,7 +70,7 @@ const sendGameMessage: Action = {
     state: State | undefined,
     _options: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     try {
       const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
@@ -86,14 +81,15 @@ const sendGameMessage: Action = {
             action: "SEND_ROBLOX_MESSAGE",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "Roblox service not found",
+        };
       }
 
       // Extract message content from state or message
       const messageContent =
-        (state?.message as string) ||
-        (message.content as { text?: string }).text ||
-        "";
+        (state?.message as string) || (message.content as { text?: string }).text || "";
 
       if (!messageContent) {
         logger.warn("No message content to send");
@@ -103,7 +99,10 @@ const sendGameMessage: Action = {
             action: "SEND_ROBLOX_MESSAGE",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "No message content to send",
+        };
       }
 
       // Extract target player IDs if specified in the message
@@ -128,16 +127,27 @@ const sendGameMessage: Action = {
         });
       }
 
-      return true;
+      return {
+        success: true,
+        text: `Sent message ${targetPlayerIds && targetPlayerIds.length > 0 ? `to ${targetPlayerIds.length} specific player(s)` : "to all players"} in the game`,
+        data: {
+          targetPlayerIds,
+          messageLength: messageContent.length,
+        },
+      };
     } catch (error) {
       logger.error({ error }, "Failed to send Roblox message");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       if (callback) {
         callback({
           text: "I encountered an error sending the message to the game. Please try again.",
           action: "SEND_ROBLOX_MESSAGE",
         });
       }
-      return false;
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
   },
 };
@@ -158,5 +168,3 @@ function extractPlayerIds(message: string): number[] | undefined {
 }
 
 export default sendGameMessage;
-
-

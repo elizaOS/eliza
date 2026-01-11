@@ -1,7 +1,7 @@
 //! Integration tests for Vercel AI Gateway plugin.
 
 use elizaos_plugin_gateway::{
-    get_gateway_plugin, EmbeddingParams, GatewayConfig, GatewayPlugin, TextGenerationParams,
+    get_gateway_plugin, GatewayConfig, GatewayPlugin, TextGenerationParams,
 };
 use futures::StreamExt;
 
@@ -108,15 +108,17 @@ async fn test_streaming_text_generation() {
     let plugin = GatewayPlugin::new(config).expect("Failed to create plugin");
 
     let params = TextGenerationParams::new("Count from 1 to 5, one number per line.");
-    let mut stream = plugin
-        .stream_text(&params)
-        .await
-        .expect("Failed to start streaming");
+    let mut stream = Box::pin(
+        plugin
+            .stream_text(&params)
+            .await
+            .expect("Failed to start streaming"),
+    );
 
     let mut chunks: Vec<String> = Vec::new();
     let mut full_response = String::new();
 
-    while let Some(chunk) = stream.next().await {
+    while let Some(chunk) = stream.as_mut().next().await {
         match chunk {
             Ok(text) => {
                 chunks.push(text.clone());
@@ -145,13 +147,15 @@ async fn test_streaming_simple() {
     let config = GatewayConfig::new(&api_key);
     let plugin = GatewayPlugin::new(config).expect("Failed to create plugin");
 
-    let mut stream = plugin
-        .stream_text_simple("Say hello!")
-        .await
-        .expect("Failed to start streaming");
+    let mut stream = Box::pin(
+        plugin
+            .stream_text_simple("Say hello!")
+            .await
+            .expect("Failed to start streaming"),
+    );
 
     let mut received_any = false;
-    while let Some(chunk) = stream.next().await {
+    while let Some(chunk) = stream.as_mut().next().await {
         if let Ok(text) = chunk {
             print!("{}", text);
             received_any = true;

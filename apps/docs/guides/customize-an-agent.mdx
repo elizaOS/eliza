@@ -1,10 +1,11 @@
 ---
-title: 'Customize an Agent'
-description: 'As a jumping-off point, we will create a custom Shakespeare elizaOS agent with a custom personality and Discord integration'
+title: "Customize an Agent"
+description: "As a jumping-off point, we will create a custom Shakespeare elizaOS agent with a custom personality and Discord integration"
 ---
 
 <Note>
-This guide assumes you have an elizaOS project set up. If you don't, follow the [quickstart guide](/quickstart)
+  This guide assumes you have an elizaOS project set up. If you don't, follow
+  the [quickstart guide](/quickstart)
 </Note>
 
 ## Step 1: Customize the personality
@@ -190,32 +191,37 @@ elizaos dev
 ```
 
 <Note>
-`elizaos dev` is like `elizaos start` but with enhanced logging and hot reload, perfect for debugging and testing changes in real-time.
+  `elizaos dev` is like `elizaos start` but with enhanced logging and hot
+  reload, perfect for debugging and testing changes in real-time.
 </Note>
 
 Go to `http://localhost:3000` in your browser and start chatting with Shakespeare. You should now get eloquent, Shakespearean responses instead of the default Eliza personality.
 
 <Note>
-To use a different port, run `elizaos dev --port 8080` (or any port number).
+  To use a different port, run `elizaos dev --port 8080` (or any port number).
 </Note>
 
-<img src="/images/shakespeare-screenshot.jpeg" alt="Shakespeare agent responding in Shakespearean style in the elizaOS web interface" />
+<img
+  src="/images/shakespeare-screenshot.jpeg"
+  alt="Shakespeare agent responding in Shakespearean style in the elizaOS web interface"
+/>
 
 <Note>
-You can also modify agent settings using the rightmost panel in the GUI, but these changes are runtime-only and won't persist after restarting the server.
+  You can also modify agent settings using the rightmost panel in the GUI, but
+  these changes are runtime-only and won't persist after restarting the server.
 </Note>
 
-As you can see, Shakespeare now responds in Shakespeare-like manner. 
+As you can see, Shakespeare now responds in Shakespeare-like manner.
 
 ### Additional character parameters
 
 Your agent has exciting additional customization options we haven't covered yet, including properties like:
 
 - **`knowledge`**: Add facts, files, or directories of information to your agent
-- **`templates`**: Create custom prompt templates  
+- **`templates`**: Create custom prompt templates
 - **`username`**: Set social media usernames
 
-For the complete Character interface, see the [Agent Interface documentation](/agents/character-interface). 
+For the complete Character interface, see the [Agent Interface documentation](/agents/character-interface).
 
 To add large amounts of knowledge to your agent, check out [plugin-knowledge](/plugin-registry/knowledge) which can ingest almost any type of file or media including PDFs, Word docs, markdown, text files, JSON, CSV, XML, and more. It can handle entire document collections, websites, and knowledge bases.
 
@@ -247,12 +253,13 @@ Need Discord credentials? Follow these steps:
 6. Click the "Bot" tab
 7. Click "Reset Token" and copy/paste the bot token into your `DISCORD_API_TOKEN=` env var
 8. Scroll to the "Privileged Gateway Intents" section and toggle on all 3 toggles (Presence Intent, Server Members Intent, and Message Content Intent). Save your changes!
-9. Click the "OAuth2" tab  
+9. Click the "OAuth2" tab
 10. Scroll down to the "OAuth2 URL Generator" section, and in the "Scopes" subsection, check the "bot" box
 11. Go down to the generated URL section, copy/paste that into your browser, and select the Discord server where you want to add Shakespeare
 
 <Warning>
-Follow these Discord setup steps exactly as written. Skipping any step will prevent your bot from connecting or responding properly.
+  Follow these Discord setup steps exactly as written. Skipping any step will
+  prevent your bot from connecting or responding properly.
 </Warning>
 
 ### Start your agent
@@ -265,14 +272,21 @@ elizaos start
 
 Your Shakespeare bot is now live! Invite it to your Discord server and try chatting.
 
-<img src="/images/shakespeare-discord-screenshot.jpeg" alt="Shakespeare bot responding in Discord with Shakespearean language" />
+<img
+  src="/images/shakespeare-discord-screenshot.jpeg"
+  alt="Shakespeare bot responding in Discord with Shakespearean language"
+/>
 
 ## See Also
 
 Here are some logical next-steps to continue your agent dev journey:
 
 <CardGroup cols={2}>
-  <Card title="Add Multiple Agents" icon="users" href="/guides/add-multiple-agents">
+  <Card
+    title="Add Multiple Agents"
+    icon="users"
+    href="/guides/add-multiple-agents"
+  >
     Run multiple specialized agents that work together in coordinated workflows
   </Card>
   <Card title="Test a Project" icon="flask" href="/guides/test-a-project">
@@ -287,7 +301,11 @@ Here are some logical next-steps to continue your agent dev journey:
   <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
     Master all elizaOS CLI commands for efficient agent development
   </Card>
-  <Card title="Plugin Registry" icon="puzzle-piece" href="/plugin-registry/overview">
+  <Card
+    title="Plugin Registry"
+    icon="puzzle-piece"
+    href="/plugin-registry/overview"
+  >
     Discover plugins for Twitter, image generation, voice synthesis, and more
   </Card>
 </CardGroup>

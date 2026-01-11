@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for OpenAI plugin.
 
 use thiserror::Error;

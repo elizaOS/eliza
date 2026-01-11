@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Shell service for executing commands within a restricted directory.
 
 use std::collections::HashMap;

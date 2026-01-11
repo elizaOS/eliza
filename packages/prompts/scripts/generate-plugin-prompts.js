@@ -2,20 +2,20 @@
 
 /**
  * Plugin Prompt Generator Script
- * 
+ *
  * Generates native code from .txt prompt templates for plugins.
  * Can be used by any plugin to generate TypeScript, Python, and Rust exports.
- * 
+ *
  * Usage:
  *   node generate-plugin-prompts.js <prompts-dir> <output-base-dir> [--target typescript|python|rust|all]
- * 
+ *
  * Example:
  *   node generate-plugin-prompts.js ./prompts ./dist --target all
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,8 +25,8 @@ const __dirname = path.dirname(__filename);
  * e.g., "should_respond.txt" -> "SHOULD_RESPOND_TEMPLATE"
  */
 function fileToConstName(filename) {
-  const name = path.basename(filename, '.txt');
-  return name.toUpperCase().replace(/-/g, '_') + '_TEMPLATE';
+  const name = path.basename(filename, ".txt");
+  return `${name.toUpperCase().replace(/-/g, "_")}_TEMPLATE`;
 }
 
 /**
@@ -34,9 +34,16 @@ function fileToConstName(filename) {
  * e.g., "should_respond.txt" -> "shouldRespondTemplate"
  */
 function fileToCamelCase(filename) {
-  const name = path.basename(filename, '.txt');
-  const parts = name.split('_');
-  return parts[0] + parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('') + 'Template';
+  const name = path.basename(filename, ".txt");
+  const parts = name.split("_");
+  return (
+    parts[0] +
+    parts
+      .slice(1)
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join("") +
+    "Template"
+  );
 }
 
 /**
@@ -44,18 +51,16 @@ function fileToCamelCase(filename) {
  */
 function escapeTypeScript(content) {
   return content
-    .replace(/\\/g, '\\\\')
-    .replace(/`/g, '\\`')
-    .replace(/\$\{/g, '\\${');
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${");
 }
 
 /**
  * Escape a string for use in Python triple-quoted string
  */
 function escapePython(content) {
-  return content
-    .replace(/\\/g, '\\\\')
-    .replace(/"""/g, '\\"\\"\\"');
+  return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
 }
 
 /**
@@ -65,7 +70,7 @@ function escapePython(content) {
 function escapeRust(content) {
   // Check if content contains "# - if so, we need more # in our delimiter
   let hashCount = 1;
-  while (content.includes('"' + '#'.repeat(hashCount))) {
+  while (content.includes(`"${"#".repeat(hashCount)}`)) {
     hashCount++;
   }
   return { content, hashCount };
@@ -82,13 +87,13 @@ function loadPrompts(promptsDir) {
 
   const prompts = [];
   const files = fs.readdirSync(promptsDir);
-  
+
   for (const file of files) {
-    if (!file.endsWith('.txt')) continue;
-    
+    if (!file.endsWith(".txt")) continue;
+
     const filepath = path.join(promptsDir, file);
-    const content = fs.readFileSync(filepath, 'utf-8');
-    
+    const content = fs.readFileSync(filepath, "utf-8");
+
     prompts.push({
       filename: file,
       constName: fileToConstName(file),
@@ -96,7 +101,7 @@ function loadPrompts(promptsDir) {
       content: content.trim(),
     });
   }
-  
+
   return prompts.sort((a, b) => a.constName.localeCompare(b.constName));
 }
 
@@ -104,11 +109,13 @@ function loadPrompts(promptsDir) {
  * Generate TypeScript output
  */
 function generateTypeScript(prompts, outputBaseDir, sourcePath) {
-  const outputDir = path.join(outputBaseDir, 'typescript');
+  const outputDir = path.join(outputBaseDir, "typescript");
   fs.mkdirSync(outputDir, { recursive: true });
-  
-  const relativeSourcePath = path.relative(outputDir, sourcePath).replace(/\\/g, '/');
-  
+
+  const relativeSourcePath = path
+    .relative(outputDir, sourcePath)
+    .replace(/\\/g, "/");
+
   let output = `/**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ${relativeSourcePath}/*.txt
@@ -129,8 +136,8 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
     output += `export const ${prompt.constName} = ${prompt.camelName};\n\n`;
   }
 
-  fs.writeFileSync(path.join(outputDir, 'prompts.ts'), output);
-  
+  fs.writeFileSync(path.join(outputDir, "prompts.ts"), output);
+
   // Also generate a simple .d.ts file
   let dts = `/**
  * Auto-generated type definitions for prompts
@@ -141,9 +148,9 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
     dts += `export declare const ${prompt.camelName}: string;\n`;
     dts += `export declare const ${prompt.constName}: string;\n`;
   }
-  
-  fs.writeFileSync(path.join(outputDir, 'prompts.d.ts'), dts);
-  
+
+  fs.writeFileSync(path.join(outputDir, "prompts.d.ts"), dts);
+
   console.log(`Generated TypeScript output: ${outputDir}/prompts.ts`);
 }
 
@@ -151,11 +158,13 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
  * Generate Python output
  */
 function generatePython(prompts, outputBaseDir, sourcePath) {
-  const outputDir = path.join(outputBaseDir, 'python');
+  const outputDir = path.join(outputBaseDir, "python");
   fs.mkdirSync(outputDir, { recursive: true });
-  
-  const relativeSourcePath = path.relative(outputDir, sourcePath).replace(/\\/g, '/');
-  
+
+  const relativeSourcePath = path
+    .relative(outputDir, sourcePath)
+    .replace(/\\/g, "/");
+
   let output = `"""
 Auto-generated prompt templates
 DO NOT EDIT - Generated from ${relativeSourcePath}/*.txt
@@ -182,8 +191,8 @@ from __future__ import annotations
   }
   output += `]\n`;
 
-  fs.writeFileSync(path.join(outputDir, 'prompts.py'), output);
-  
+  fs.writeFileSync(path.join(outputDir, "prompts.py"), output);
+
   console.log(`Generated Python output: ${outputDir}/prompts.py`);
 }
 
@@ -191,11 +200,13 @@ from __future__ import annotations
  * Generate Rust output
  */
 function generateRust(prompts, outputBaseDir, sourcePath) {
-  const outputDir = path.join(outputBaseDir, 'rust');
+  const outputDir = path.join(outputBaseDir, "rust");
   fs.mkdirSync(outputDir, { recursive: true });
-  
-  const relativeSourcePath = path.relative(outputDir, sourcePath).replace(/\\/g, '/');
-  
+
+  const relativeSourcePath = path
+    .relative(outputDir, sourcePath)
+    .replace(/\\/g, "/");
+
   let output = `//! Auto-generated prompt templates
 //! DO NOT EDIT - Generated from ${relativeSourcePath}/*.txt
 //!
@@ -208,12 +219,12 @@ function generateRust(prompts, outputBaseDir, sourcePath) {
 
   for (const prompt of prompts) {
     const { content, hashCount } = escapeRust(prompt.content);
-    const delimiter = '#'.repeat(hashCount);
+    const delimiter = "#".repeat(hashCount);
     output += `pub const ${prompt.constName}: &str = r${delimiter}"${content}"${delimiter};\n\n`;
   }
 
-  fs.writeFileSync(path.join(outputDir, 'prompts.rs'), output);
-  
+  fs.writeFileSync(path.join(outputDir, "prompts.rs"), output);
+
   console.log(`Generated Rust output: ${outputDir}/prompts.rs`);
 }
 
@@ -222,23 +233,25 @@ function generateRust(prompts, outputBaseDir, sourcePath) {
  */
 function main() {
   const args = process.argv.slice(2);
-  
+
   if (args.length < 2) {
-    console.error('Usage: generate-plugin-prompts.js <prompts-dir> <output-base-dir> [--target typescript|python|rust|all]');
+    console.error(
+      "Usage: generate-plugin-prompts.js <prompts-dir> <output-base-dir> [--target typescript|python|rust|all]",
+    );
     process.exit(1);
   }
 
   const promptsDir = path.resolve(args[0]);
   const outputBaseDir = path.resolve(args[1]);
-  const targetIndex = args.indexOf('--target');
-  const target = targetIndex !== -1 ? args[targetIndex + 1] : 'all';
+  const targetIndex = args.indexOf("--target");
+  const target = targetIndex !== -1 ? args[targetIndex + 1] : "all";
 
   console.log(`Loading prompts from: ${promptsDir}`);
   const prompts = loadPrompts(promptsDir);
   console.log(`Found ${prompts.length} prompt templates`);
 
   if (prompts.length === 0) {
-    console.warn('No prompts found. Exiting.');
+    console.warn("No prompts found. Exiting.");
     return;
   }
 
@@ -246,16 +259,15 @@ function main() {
   fs.mkdirSync(outputBaseDir, { recursive: true });
 
   switch (target) {
-    case 'typescript':
+    case "typescript":
       generateTypeScript(prompts, outputBaseDir, promptsDir);
       break;
-    case 'python':
+    case "python":
       generatePython(prompts, outputBaseDir, promptsDir);
       break;
-    case 'rust':
+    case "rust":
       generateRust(prompts, outputBaseDir, promptsDir);
       break;
-    case 'all':
     default:
       generateTypeScript(prompts, outputBaseDir, promptsDir);
       generatePython(prompts, outputBaseDir, promptsDir);
@@ -263,9 +275,8 @@ function main() {
       break;
   }
 
-  console.log('Done!');
+  console.log("Done!");
 }
 
 main();
-
 

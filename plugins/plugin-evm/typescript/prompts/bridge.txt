@@ -1,0 +1,28 @@
+Given the recent messages and wallet information below:
+
+{{recentMessages}}
+
+{{chainBalances}}
+
+Extract the following information about the requested token bridge:
+- Token symbol or address to bridge
+- Source chain
+- Destination chain
+- Amount to bridge: Must be a string representing the amount in ether (only number without coin symbol, e.g., "0.1")
+- Destination address (if specified)
+
+Respond with an XML block containing only the extracted values. Use empty tags for any values that cannot be determined.
+
+<response>
+    <token>string | null</token>
+    <fromChain>{{supportedChains}} | null</fromChain>
+    <toChain>{{supportedChains}} | null</toChain>
+    <amount>string | null</amount>
+    <toAddress>string | null</toAddress>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
+
+
+
+

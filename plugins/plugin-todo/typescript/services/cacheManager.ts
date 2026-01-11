@@ -1,4 +1,4 @@
-import { logger, type UUID } from '@elizaos/core';
+import { logger, type UUID } from "@elizaos/core";
 
 export interface CacheEntry<T> {
   data: T;
@@ -23,7 +23,7 @@ export interface CacheStats {
  * High-performance caching manager with LRU eviction and TTL support
  */
 export class CacheManager {
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  private cache: Map<string, CacheEntry<unknown>> = new Map();
   private readonly maxSize: number;
   private readonly defaultTTL: number;
   private stats = {
@@ -42,7 +42,7 @@ export class CacheManager {
   private initialize(): void {
     // Start cleanup timer
     setInterval(() => this.cleanup(), 60000); // Cleanup every minute
-    logger.info('CacheManager initialized');
+    logger.info("CacheManager initialized");
   }
 
   // ====== Core Cache Operations ======
@@ -145,7 +145,7 @@ export class CacheManager {
     }
   }
 
-  async getByPattern(pattern: RegExp): Promise<Map<string, any>> {
+  async getByPattern(pattern: RegExp): Promise<Map<string, unknown>> {
     const results = new Map();
 
     for (const [key, entry] of this.cache) {
@@ -172,7 +172,7 @@ export class CacheManager {
 
   // ====== Cache Management ======
 
-  private isExpired(entry: CacheEntry<any>): boolean {
+  private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() - entry.timestamp > entry.ttl;
   }
 
@@ -194,7 +194,7 @@ export class CacheManager {
   }
 
   private cleanup(): void {
-    const now = Date.now();
+    const _now = Date.now();
     const keysToDelete: string[] = [];
 
     for (const [key, entry] of this.cache) {
@@ -229,12 +229,8 @@ export class CacheManager {
       newestEntry = Math.max(newestEntry, entry.timestamp);
 
       // Rough memory estimation
-      try {
-        const serialized = JSON.stringify(entry.data);
-        memoryEstimate += serialized.length * 2; // UTF-16 characters
-      } catch {
-        memoryEstimate += 1000; // Fallback estimate
-      }
+      const serialized = JSON.stringify(entry.data);
+      memoryEstimate += serialized.length * 2; // UTF-16 characters
     }
 
     return {
@@ -260,81 +256,77 @@ export class CacheManager {
 
   // ====== Specialized Todo Cache Methods ======
 
-  async cacheEntity(entityId: UUID, entity: any, ttl: number = 5 * 60 * 1000): Promise<void> {
+  async cacheEntity(entityId: UUID, entity: unknown, ttl: number = 5 * 60 * 1000): Promise<void> {
     await this.set(`entity:${entityId}`, entity, ttl);
   }
 
-  async getCachedEntity(entityId: UUID): Promise<any | null> {
+  async getCachedEntity(entityId: UUID): Promise<unknown> {
     return await this.get(`entity:${entityId}`);
   }
 
   async cacheUserBehavior(
     userId: UUID,
-    behavior: any,
+    behavior: unknown,
     ttl: number = 30 * 60 * 1000
   ): Promise<void> {
     await this.set(`behavior:${userId}`, behavior, ttl);
   }
 
-  async getCachedUserBehavior(userId: UUID): Promise<any | null> {
+  async getCachedUserBehavior(userId: UUID): Promise<unknown> {
     return await this.get(`behavior:${userId}`);
   }
 
   async cacheReminderRecommendation(
     todoId: UUID,
-    recommendation: any,
+    recommendation: unknown,
     ttl: number = 10 * 60 * 1000
   ): Promise<void> {
     await this.set(`recommendation:${todoId}`, recommendation, ttl);
   }
 
-  async getCachedReminderRecommendation(todoId: UUID): Promise<any | null> {
+  async getCachedReminderRecommendation(todoId: UUID): Promise<unknown> {
     return await this.get(`recommendation:${todoId}`);
   }
 
   async cacheServiceHealth(
     serviceName: string,
-    health: any,
+    health: unknown,
     ttl: number = 30 * 1000
   ): Promise<void> {
     await this.set(`health:${serviceName}`, health, ttl);
   }
 
-  async getCachedServiceHealth(serviceName: string): Promise<any | null> {
+  async getCachedServiceHealth(serviceName: string): Promise<unknown> {
     return await this.get(`health:${serviceName}`);
   }
 
   // ====== Cache Warming ======
 
   async warmUpCache(): Promise<void> {
-    logger.info('Starting cache warm-up process...');
+    logger.info("Starting cache warm-up process...");
 
     try {
       // Pre-load frequently accessed data
       const entityIds = await this.getFrequentlyAccessedEntities();
-      const serviceNames = ['TODO_REMINDER', 'TODO_INTEGRATION_BRIDGE', 'NOTIFICATION'];
+      const serviceNames = ["TODO_REMINDER", "TODO_INTEGRATION_BRIDGE", "NOTIFICATION"];
 
       // Warm up entity cache
       for (const entityId of entityIds) {
-        try {
-          await this.warmUpEntity(entityId);
-        } catch (error) {
-          logger.debug(`Failed to warm up entity ${entityId}:`, error);
-        }
+        await this.warmUpEntity(entityId);
       }
 
       // Warm up service health cache
       for (const serviceName of serviceNames) {
-        try {
-          await this.warmUpServiceHealth(serviceName);
-        } catch (error) {
-          logger.debug(`Failed to warm up service health ${serviceName}:`, error);
-        }
+        await this.warmUpServiceHealth(serviceName);
       }
 
-      logger.info('Cache warm-up completed');
+      logger.info("Cache warm-up completed");
     } catch (error) {
-      logger.error('Error during cache warm-up:', error);
+      logger.error(
+        "Error during cache warm-up:",
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
     }
   }
 
@@ -354,7 +346,7 @@ export class CacheManager {
     // This would typically check actual service health
     // For now, just create a placeholder entry
     await this.cacheServiceHealth(serviceName, {
-      status: 'unknown',
+      status: "unknown",
       warmedUp: true,
       timestamp: Date.now(),
     });
@@ -363,7 +355,7 @@ export class CacheManager {
   // ====== Memory Management ======
 
   async optimize(): Promise<void> {
-    logger.info('Optimizing cache...');
+    logger.info("Optimizing cache...");
 
     // Remove expired entries
     this.cleanup();
@@ -401,6 +393,6 @@ export class CacheManager {
 
   async stop(): Promise<void> {
     await this.clear();
-    logger.info('CacheManager stopped');
+    logger.info("CacheManager stopped");
   }
 }

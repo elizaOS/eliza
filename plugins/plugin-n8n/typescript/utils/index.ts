@@ -3,7 +3,5 @@
  */
 
 export { getPluginCreationService } from "./get-plugin-creation-service";
-export { validatePrompt, isValidJsonSpecification } from "./validation";
 export * from "./plugin-templates";
-
-
+export { isValidJsonSpecification, validatePrompt } from "./validation";

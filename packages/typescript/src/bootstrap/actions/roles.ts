@@ -303,7 +303,8 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       }
 
       // Cast entityId to UUID type for role lookup
-      const entityIdAsUuid = assignment.entityId as `${string}-${string}-${string}-${string}-${string}`;
+      const entityIdAsUuid =
+        assignment.entityId as `${string}-${string}-${string}-${string}-${string}`;
       const currentRole = world.metadata.roles[entityIdAsUuid];
 
       // Validate role modification permissions

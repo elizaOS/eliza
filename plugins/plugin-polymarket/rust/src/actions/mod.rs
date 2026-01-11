@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Polymarket actions module
 //!
 //! Provides action functions for interacting with Polymarket.
@@ -9,5 +10,10 @@ mod orders;
 pub use markets::*;
 pub use orderbook::*;
 pub use orders::*;
+
+
+
+
+
 
 

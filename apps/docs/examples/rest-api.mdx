@@ -1,25 +1,26 @@
 ---
-title: 'REST API Examples'
-description: 'Build HTTP endpoints for elizaOS agents using 8 different web frameworks'
+title: "REST API Examples"
+description: "Build HTTP endpoints for elizaOS agents using 8 different web frameworks"
 ---
 
 Create REST APIs for your elizaOS agents using your favorite web framework. These examples work **without API keys** using the classic ELIZA pattern-matching algorithm.
 
 ## Overview
 
-| Framework | Language | Directory | Port |
-|-----------|----------|-----------|------|
-| Express | TypeScript | `examples/rest-api/express/` | 3000 |
-| Hono | TypeScript | `examples/rest-api/hono/` | 3000 |
-| Elysia | TypeScript | `examples/rest-api/elysia/` | 3000 |
-| FastAPI | Python | `examples/rest-api/fastapi/` | 3000 |
-| Flask | Python | `examples/rest-api/flask/` | 3000 |
-| Actix Web | Rust | `examples/rest-api/actix/` | 3000 |
-| Axum | Rust | `examples/rest-api/axum/` | 3000 |
-| Rocket | Rust | `examples/rest-api/rocket/` | 3000 |
+| Framework | Language   | Directory                    | Port |
+| --------- | ---------- | ---------------------------- | ---- |
+| Express   | TypeScript | `examples/rest-api/express/` | 3000 |
+| Hono      | TypeScript | `examples/rest-api/hono/`    | 3000 |
+| Elysia    | TypeScript | `examples/rest-api/elysia/`  | 3000 |
+| FastAPI   | Python     | `examples/rest-api/fastapi/` | 3000 |
+| Flask     | Python     | `examples/rest-api/flask/`   | 3000 |
+| Actix Web | Rust       | `examples/rest-api/actix/`   | 3000 |
+| Axum      | Rust       | `examples/rest-api/axum/`    | 3000 |
+| Rocket    | Rust       | `examples/rest-api/rocket/`  | 3000 |
 
 <Note>
-  **No API keys required!** These examples use `plugin-eliza-classic` for pattern-matching responses and `plugin-localdb` for local storage.
+  **No API keys required!** These examples use `plugin-eliza-classic` for
+  pattern-matching responses and `plugin-localdb` for local storage.
 </Note>
 
 ---
@@ -28,32 +29,17 @@ Create REST APIs for your elizaOS agents using your favorite web framework. Thes
 
 <Tabs>
   <Tab title="Express (TS)">
-```bash
-cd examples/rest-api/express
-bun install
-bun run start
-```
+    ```bash cd examples/rest-api/express bun install bun run start ```
   </Tab>
   <Tab title="Hono (TS)">
-```bash
-cd examples/rest-api/hono
-bun install
-bun run start
-```
+    ```bash cd examples/rest-api/hono bun install bun run start ```
   </Tab>
   <Tab title="FastAPI (Py)">
-```bash
-cd examples/rest-api/fastapi
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python server.py
-```
+    ```bash cd examples/rest-api/fastapi python -m venv venv && source
+    venv/bin/activate pip install -r requirements.txt python server.py ```
   </Tab>
   <Tab title="Actix (Rust)">
-```bash
-cd examples/rest-api/actix
-cargo run --release
-```
+    ```bash cd examples/rest-api/actix cargo run --release ```
   </Tab>
 </Tabs>
 
@@ -72,6 +58,7 @@ curl http://localhost:3000/
 ```
 
 **Response:**
+
 ```json
 {
   "name": "Eliza",
@@ -89,6 +76,7 @@ curl http://localhost:3000/health
 ```
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -108,6 +96,7 @@ curl -X POST http://localhost:3000/chat \
 ```
 
 **Response:**
+
 ```json
 {
   "response": "How do you do. Please state your problem.",
@@ -134,62 +123,64 @@ app.use(express.json());
 
 // Character definition
 const character = {
-  name: 'Eliza',
-  bio: 'A Rogerian psychotherapist simulation created at MIT in 1966.',
+name: 'Eliza',
+bio: 'A Rogerian psychotherapist simulation created at MIT in 1966.',
 };
 
 // Initialize runtime
 const runtime = new AgentRuntime({
-  character,
-  plugins: [localdbPlugin, elizaClassicPlugin],
+character,
+plugins: [localdbPlugin, elizaClassicPlugin],
 });
 
 await runtime.initialize();
 
 // Routes
 app.get('/', (req, res) => {
-  res.json({
-    name: character.name,
-    bio: character.bio,
-    status: 'ready',
-  });
+res.json({
+name: character.name,
+bio: character.bio,
+status: 'ready',
+});
 });
 
 app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    runtime: 'elizaos-typescript',
-    uptime: process.uptime(),
-  });
+res.json({
+status: 'healthy',
+runtime: 'elizaos-typescript',
+uptime: process.uptime(),
+});
 });
 
 app.post('/chat', async (req, res) => {
-  const { message, userId = uuidv4() } = req.body;
+const { message, userId = uuidv4() } = req.body;
 
-  if (!message) {
-    return res.status(400).json({ error: 'Message is required' });
-  }
+if (!message) {
+return res.status(400).json({ error: 'Message is required' });
+}
 
-  try {
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: message,
-    });
+try {
+const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+prompt: message,
+});
 
     res.json({
       response: String(response),
       character: character.name,
       userId,
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to process message' });
-  }
+
+} catch (error) {
+res.status(500).json({ error: 'Failed to process message' });
+}
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Eliza API running on http://localhost:${PORT}`);
+console.log(`Eliza API running on http://localhost:${PORT}`);
 });
-```
+
+````
   </Tab>
   <Tab title="FastAPI (Python)">
 ```python
@@ -268,7 +259,8 @@ async def chat(request: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=3000)
-```
+````
+
   </Tab>
   <Tab title="Actix Web (Rust)">
 ```rust
@@ -282,62 +274,60 @@ use uuid::Uuid;
 
 #[derive(Deserialize)]
 struct ChatRequest {
-    message: String,
-    #[serde(rename = "userId")]
-    user_id: Option<String>,
+message: String, #[serde(rename = "userId")]
+user_id: Option<String>,
 }
 
 #[derive(Serialize)]
 struct ChatResponse {
-    response: String,
-    character: String,
-    #[serde(rename = "userId")]
-    user_id: String,
+response: String,
+character: String, #[serde(rename = "userId")]
+user_id: String,
 }
 
 #[derive(Serialize)]
 struct InfoResponse {
-    name: String,
-    bio: String,
-    status: String,
+name: String,
+bio: String,
+status: String,
 }
 
 #[derive(Serialize)]
 struct HealthResponse {
-    status: String,
-    runtime: String,
-    uptime: f64,
+status: String,
+runtime: String,
+uptime: f64,
 }
 
 struct AppState {
-    runtime: Arc<AgentRuntime>,
-    character_name: String,
-    character_bio: String,
-    start_time: Instant,
+runtime: Arc<AgentRuntime>,
+character_name: String,
+character_bio: String,
+start_time: Instant,
 }
 
 async fn root(data: web::Data<AppState>) -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().json(InfoResponse {
-        name: data.character_name.clone(),
-        bio: data.character_bio.clone(),
-        status: "ready".to_string(),
-    }))
+Ok(HttpResponse::Ok().json(InfoResponse {
+name: data.character_name.clone(),
+bio: data.character_bio.clone(),
+status: "ready".to_string(),
+}))
 }
 
 async fn health(data: web::Data<AppState>) -> Result<HttpResponse> {
-    Ok(HttpResponse::Ok().json(HealthResponse {
-        status: "healthy".to_string(),
-        runtime: "elizaos-rust".to_string(),
-        uptime: data.start_time.elapsed().as_secs_f64(),
-    }))
+Ok(HttpResponse::Ok().json(HealthResponse {
+status: "healthy".to_string(),
+runtime: "elizaos-rust".to_string(),
+uptime: data.start_time.elapsed().as_secs_f64(),
+}))
 }
 
 async fn chat(
-    data: web::Data<AppState>,
-    req: web::Json<ChatRequest>,
+data: web::Data<AppState>,
+req: web::Json<ChatRequest>,
 ) -> Result<HttpResponse> {
-    let user_id = req.user_id.clone()
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+let user_id = req.user_id.clone()
+.unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let response = data.runtime
         .use_model("TEXT_LARGE", &req.message)
@@ -349,14 +339,15 @@ async fn chat(
         character: data.character_name.clone(),
         user_id,
     }))
+
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let character = parse_character(r#"{
-        "name": "Eliza",
-        "bio": "A Rogerian psychotherapist simulation created at MIT in 1966."
-    }"#).unwrap();
+let character = parse_character(r#"{
+"name": "Eliza",
+"bio": "A Rogerian psychotherapist simulation created at MIT in 1966."
+}"#).unwrap();
 
     let runtime = AgentRuntime::new(RuntimeOptions {
         character: Some(character.clone()),
@@ -385,8 +376,10 @@ async fn main() -> std::io::Result<()> {
     .bind("0.0.0.0:3000")?
     .run()
     .await
+
 }
-```
+
+````
   </Tab>
 </Tabs>
 
@@ -419,7 +412,7 @@ curl -X POST http://localhost:3000/chat \
 
 # Expected response:
 # {"response": "I am sorry to hear that you are feeling that way.", ...}
-```
+````
 
 ---
 
@@ -446,10 +439,11 @@ import { openaiPlugin } from '@elizaos/plugin-openai';
 import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
 const runtime = new AgentRuntime({
-  character,
-  plugins: [sqlPlugin, openaiPlugin],  // Replace elizaClassicPlugin
+character,
+plugins: [sqlPlugin, openaiPlugin], // Replace elizaClassicPlugin
 });
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -459,17 +453,19 @@ runtime = AgentRuntime(
     character=character,
     plugins=[get_openai_plugin()],
 )
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
 use elizaos_plugin_openai::create_openai_plugin;
 
 let runtime = AgentRuntime::new(RuntimeOptions {
-    character: Some(character),
-    plugins: vec![create_openai_plugin()?],
-    ..Default::default()
+character: Some(character),
+plugins: vec![create_openai_plugin()?],
+..Default::default()
 }).await?;
+
 ```
   </Tab>
 </Tabs>
@@ -490,5 +486,9 @@ let runtime = AgentRuntime::new(RuntimeOptions {
     Deploy to AWS, GCP, Vercel, or Cloudflare
   </Card>
 </CardGroup>
+
+
+```
+
 
 

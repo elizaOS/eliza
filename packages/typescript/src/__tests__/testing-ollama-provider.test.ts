@@ -2,11 +2,11 @@
  * @fileoverview Tests for Ollama provider
  */
 
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createOllamaModelHandlers,
   isOllamaAvailable,
   listOllamaModels,
-  createOllamaModelHandlers,
 } from "../testing/ollama-provider";
 import { ModelType } from "../types";
 
@@ -59,7 +59,11 @@ describe("Ollama Provider", () => {
       } as Response);
 
       const models = await listOllamaModels();
-      expect(models).toEqual(["llama3.2:1b", "llama3.2:3b", "nomic-embed-text"]);
+      expect(models).toEqual([
+        "llama3.2:1b",
+        "llama3.2:3b",
+        "nomic-embed-text",
+      ]);
     });
 
     it("should return empty array when no models", async () => {
@@ -89,7 +93,9 @@ describe("Ollama Provider", () => {
         json: async () => "not an object",
       } as Response);
 
-      await expect(listOllamaModels()).rejects.toThrow("Invalid Ollama response");
+      await expect(listOllamaModels()).rejects.toThrow(
+        "Invalid Ollama response",
+      );
     });
   });
 
@@ -119,14 +125,16 @@ describe("Ollama Provider", () => {
           character: { system: "You are a test agent" },
         };
 
-        const result = await handler!(mockRuntime as never, { prompt: "Hello" });
+        const result = await handler?.(mockRuntime as never, {
+          prompt: "Hello",
+        });
         expect(result).toBe("Hello, I am a test response");
 
         // Verify the fetch was called with correct params
         expect(mockFetch).toHaveBeenCalledTimes(1);
         const callArgs = mockFetch.mock.calls[0];
         expect(callArgs[0]).toContain("/api/generate");
-        
+
         const body = JSON.parse(callArgs[1].body);
         expect(body.prompt).toBe("Hello");
         expect(body.system).toBe("You are a test agent");
@@ -145,8 +153,10 @@ describe("Ollama Provider", () => {
         const handler = handlers[ModelType.TEXT_EMBEDDING];
 
         const mockRuntime = { character: {} };
-        const result = await handler!(mockRuntime as never, { text: "Test text" });
-        
+        const result = await handler?.(mockRuntime as never, {
+          text: "Test text",
+        });
+
         expect(result).toEqual(embedding);
       });
 
@@ -161,8 +171,10 @@ describe("Ollama Provider", () => {
         const handler = handlers[ModelType.TEXT_EMBEDDING];
 
         const mockRuntime = { character: {} };
-        const result = await handler!(mockRuntime as never, { text: "Test text" });
-        
+        const result = await handler?.(mockRuntime as never, {
+          text: "Test text",
+        });
+
         expect(result).toEqual(embedding);
       });
 
@@ -177,7 +189,7 @@ describe("Ollama Provider", () => {
 
         const mockRuntime = { character: {} };
         await expect(
-          handler!(mockRuntime as never, { text: "Test text" }),
+          handler?.(mockRuntime as never, { text: "Test text" }),
         ).rejects.toThrow("No embeddings returned from Ollama");
       });
     });
@@ -195,10 +207,10 @@ describe("Ollama Provider", () => {
         const handler = handlers[ModelType.OBJECT_SMALL];
 
         const mockRuntime = { character: {} };
-        const result = await handler!(mockRuntime as never, {
+        const result = await handler?.(mockRuntime as never, {
           prompt: "Generate JSON",
         });
-        
+
         expect(result).toEqual({ name: "test", value: 42 });
       });
 
@@ -215,7 +227,7 @@ describe("Ollama Provider", () => {
 
         const mockRuntime = { character: {} };
         await expect(
-          handler!(mockRuntime as never, { prompt: "Generate JSON" }),
+          handler?.(mockRuntime as never, { prompt: "Generate JSON" }),
         ).rejects.toThrow("Failed to parse JSON from Ollama response");
       });
 
@@ -230,7 +242,7 @@ describe("Ollama Provider", () => {
         const handler = handlers[ModelType.OBJECT_SMALL];
 
         const mockRuntime = { character: {} };
-        await handler!(mockRuntime as never, { prompt: "Generate JSON" });
+        await handler?.(mockRuntime as never, { prompt: "Generate JSON" });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(body.options.temperature).toBe(0.3);
@@ -238,8 +250,3 @@ describe("Ollama Provider", () => {
     });
   });
 });
-
-
-
-
-

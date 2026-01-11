@@ -54,12 +54,12 @@ memories = await service.get_long_term_memories(user_id)
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MEMORY_SUMMARIZATION_THRESHOLD` | 16 | Messages before summarization |
-| `MEMORY_RETAIN_RECENT` | 6 | Recent messages to keep |
-| `MEMORY_LONG_TERM_ENABLED` | true | Enable long-term extraction |
-| `MEMORY_CONFIDENCE_THRESHOLD` | 0.85 | Minimum confidence to store |
+| Setting                          | Default | Description                   |
+| -------------------------------- | ------- | ----------------------------- |
+| `MEMORY_SUMMARIZATION_THRESHOLD` | 16      | Messages before summarization |
+| `MEMORY_RETAIN_RECENT`           | 6       | Recent messages to keep       |
+| `MEMORY_LONG_TERM_ENABLED`       | true    | Enable long-term extraction   |
+| `MEMORY_CONFIDENCE_THRESHOLD`    | 0.85    | Minimum confidence to store   |
 
 ## Development
 
@@ -80,5 +80,6 @@ ruff check .
 ## License
 
 MIT
+
 
 

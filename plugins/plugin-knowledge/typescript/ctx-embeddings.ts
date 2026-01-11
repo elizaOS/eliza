@@ -48,24 +48,24 @@ export const CONTEXT_TARGETS = {
  * This system prompt is more concise and focused on the specific task.
  */
 export const SYSTEM_PROMPT =
-  'You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.';
+  "You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.";
 
 /**
  * System prompts optimized for different content types with caching support
  */
 export const SYSTEM_PROMPTS = {
   DEFAULT:
-    'You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.',
+    "You are a precision text augmentation tool. Your task is to expand a given text chunk with its direct context from a larger document. You must: 1) Keep the original chunk intact; 2) Add critical context from surrounding text; 3) Never summarize or rephrase the original chunk; 4) Create contextually rich output for improved semantic retrieval.",
 
-  CODE: 'You are a precision code augmentation tool. Your task is to expand a given code chunk with necessary context from the larger codebase. You must: 1) Keep the original code chunk intact with exact syntax and indentation; 2) Add relevant imports, function signatures, or class definitions; 3) Include critical surrounding code context; 4) Create contextually rich output that maintains correct syntax.',
+  CODE: "You are a precision code augmentation tool. Your task is to expand a given code chunk with necessary context from the larger codebase. You must: 1) Keep the original code chunk intact with exact syntax and indentation; 2) Add relevant imports, function signatures, or class definitions; 3) Include critical surrounding code context; 4) Create contextually rich output that maintains correct syntax.",
 
   PDF: "You are a precision document augmentation tool. Your task is to expand a given PDF text chunk with its direct context from the larger document. You must: 1) Keep the original chunk intact; 2) Add section headings, references, or figure captions; 3) Include text that immediately precedes and follows the chunk; 4) Create contextually rich output that maintains the document's original structure.",
 
   MATH_PDF:
-    'You are a precision mathematical content augmentation tool. Your task is to expand a given mathematical text chunk with essential context. You must: 1) Keep original mathematical notations and expressions exactly as they appear; 2) Add relevant definitions, theorems, or equations from elsewhere in the document; 3) Preserve all LaTeX or mathematical formatting; 4) Create contextually rich output for improved mathematical comprehension.',
+    "You are a precision mathematical content augmentation tool. Your task is to expand a given mathematical text chunk with essential context. You must: 1) Keep original mathematical notations and expressions exactly as they appear; 2) Add relevant definitions, theorems, or equations from elsewhere in the document; 3) Preserve all LaTeX or mathematical formatting; 4) Create contextually rich output for improved mathematical comprehension.",
 
   TECHNICAL:
-    'You are a precision technical documentation augmentation tool. Your task is to expand a technical document chunk with critical context. You must: 1) Keep the original chunk intact including all technical terminology; 2) Add relevant configuration examples, parameter definitions, or API references; 3) Include any prerequisite information; 4) Create contextually rich output that maintains technical accuracy.',
+    "You are a precision technical documentation augmentation tool. Your task is to expand a technical document chunk with critical context. You must: 1) Keep the original chunk intact including all technical terminology; 2) Add relevant configuration examples, parameter definitions, or API references; 3) Include any prerequisite information; 4) Create contextually rich output that maintains technical accuracy.",
 };
 
 /**
@@ -281,8 +281,8 @@ export function getContextualizationPrompt(
   promptTemplate = CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE
 ): string {
   if (!docContent || !chunkContent) {
-    console.warn('Document content or chunk content is missing for contextualization.');
-    return 'Error: Document or chunk content missing.';
+    console.warn("Document content or chunk content is missing for contextualization.");
+    return "Error: Document or chunk content missing.";
   }
 
   // Estimate if the chunk is already large relative to our target size
@@ -296,10 +296,10 @@ export function getContextualizationPrompt(
   }
 
   return promptTemplate
-    .replace('{doc_content}', docContent)
-    .replace('{chunk_content}', chunkContent)
-    .replace('{min_tokens}', minTokens.toString())
-    .replace('{max_tokens}', maxTokens.toString());
+    .replace("{doc_content}", docContent)
+    .replace("{chunk_content}", chunkContent)
+    .replace("{min_tokens}", minTokens.toString())
+    .replace("{max_tokens}", maxTokens.toString());
 }
 
 /**
@@ -319,9 +319,9 @@ export function getCachingContextualizationPrompt(
   maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS
 ): { prompt: string; systemPrompt: string } {
   if (!chunkContent) {
-    console.warn('Chunk content is missing for contextualization.');
+    console.warn("Chunk content is missing for contextualization.");
     return {
-      prompt: 'Error: Chunk content missing.',
+      prompt: "Error: Chunk content missing.",
       systemPrompt: SYSTEM_PROMPTS.DEFAULT,
     };
   }
@@ -342,16 +342,16 @@ export function getCachingContextualizationPrompt(
 
   if (contentType) {
     if (
-      contentType.includes('javascript') ||
-      contentType.includes('typescript') ||
-      contentType.includes('python') ||
-      contentType.includes('java') ||
-      contentType.includes('c++') ||
-      contentType.includes('code')
+      contentType.includes("javascript") ||
+      contentType.includes("typescript") ||
+      contentType.includes("python") ||
+      contentType.includes("java") ||
+      contentType.includes("c++") ||
+      contentType.includes("code")
     ) {
       promptTemplate = CACHED_CODE_CHUNK_PROMPT_TEMPLATE;
       systemPrompt = SYSTEM_PROMPTS.CODE;
-    } else if (contentType.includes('pdf')) {
+    } else if (contentType.includes("pdf")) {
       if (containsMathematicalContent(chunkContent)) {
         promptTemplate = CACHED_MATH_PDF_PROMPT_TEMPLATE;
         systemPrompt = SYSTEM_PROMPTS.MATH_PDF;
@@ -359,8 +359,8 @@ export function getCachingContextualizationPrompt(
         systemPrompt = SYSTEM_PROMPTS.PDF;
       }
     } else if (
-      contentType.includes('markdown') ||
-      contentType.includes('text/html') ||
+      contentType.includes("markdown") ||
+      contentType.includes("text/html") ||
       isTechnicalDocumentation(chunkContent)
     ) {
       promptTemplate = CACHED_TECHNICAL_PROMPT_TEMPLATE;
@@ -369,9 +369,9 @@ export function getCachingContextualizationPrompt(
   }
 
   const formattedPrompt = promptTemplate
-    .replace('{chunk_content}', chunkContent)
-    .replace('{min_tokens}', minTokens.toString())
-    .replace('{max_tokens}', maxTokens.toString());
+    .replace("{chunk_content}", chunkContent)
+    .replace("{min_tokens}", minTokens.toString())
+    .replace("{max_tokens}", maxTokens.toString());
 
   return {
     prompt: formattedPrompt,
@@ -397,34 +397,34 @@ export function getPromptForMimeType(
   let promptTemplate = CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE;
 
   // Determine document type and apply appropriate settings
-  if (mimeType.includes('pdf')) {
+  if (mimeType.includes("pdf")) {
     // Check if PDF contains mathematical content
     if (containsMathematicalContent(docContent)) {
       minTokens = CONTEXT_TARGETS.MATH_PDF.MIN_TOKENS;
       maxTokens = CONTEXT_TARGETS.MATH_PDF.MAX_TOKENS;
       promptTemplate = MATH_PDF_PROMPT_TEMPLATE;
-      console.debug('Using mathematical PDF prompt template');
+      console.debug("Using mathematical PDF prompt template");
     } else {
       minTokens = CONTEXT_TARGETS.PDF.MIN_TOKENS;
       maxTokens = CONTEXT_TARGETS.PDF.MAX_TOKENS;
-      console.debug('Using standard PDF settings');
+      console.debug("Using standard PDF settings");
     }
   } else if (
-    mimeType.includes('javascript') ||
-    mimeType.includes('typescript') ||
-    mimeType.includes('python') ||
-    mimeType.includes('java') ||
-    mimeType.includes('c++') ||
-    mimeType.includes('code')
+    mimeType.includes("javascript") ||
+    mimeType.includes("typescript") ||
+    mimeType.includes("python") ||
+    mimeType.includes("java") ||
+    mimeType.includes("c++") ||
+    mimeType.includes("code")
   ) {
     minTokens = CONTEXT_TARGETS.CODE.MIN_TOKENS;
     maxTokens = CONTEXT_TARGETS.CODE.MAX_TOKENS;
     promptTemplate = CODE_PROMPT_TEMPLATE;
-    console.debug('Using code prompt template');
+    console.debug("Using code prompt template");
   } else if (
     isTechnicalDocumentation(docContent) ||
-    mimeType.includes('markdown') ||
-    mimeType.includes('text/html')
+    mimeType.includes("markdown") ||
+    mimeType.includes("text/html")
   ) {
     minTokens = CONTEXT_TARGETS.TECHNICAL.MIN_TOKENS;
     maxTokens = CONTEXT_TARGETS.TECHNICAL.MAX_TOKENS;
@@ -451,7 +451,7 @@ export function getCachingPromptForMimeType(
   let maxTokens = CONTEXT_TARGETS.DEFAULT.MAX_TOKENS;
 
   // Determine appropriate token targets based on content type
-  if (mimeType.includes('pdf')) {
+  if (mimeType.includes("pdf")) {
     if (containsMathematicalContent(chunkContent)) {
       minTokens = CONTEXT_TARGETS.MATH_PDF.MIN_TOKENS;
       maxTokens = CONTEXT_TARGETS.MATH_PDF.MAX_TOKENS;
@@ -460,19 +460,19 @@ export function getCachingPromptForMimeType(
       maxTokens = CONTEXT_TARGETS.PDF.MAX_TOKENS;
     }
   } else if (
-    mimeType.includes('javascript') ||
-    mimeType.includes('typescript') ||
-    mimeType.includes('python') ||
-    mimeType.includes('java') ||
-    mimeType.includes('c++') ||
-    mimeType.includes('code')
+    mimeType.includes("javascript") ||
+    mimeType.includes("typescript") ||
+    mimeType.includes("python") ||
+    mimeType.includes("java") ||
+    mimeType.includes("c++") ||
+    mimeType.includes("code")
   ) {
     minTokens = CONTEXT_TARGETS.CODE.MIN_TOKENS;
     maxTokens = CONTEXT_TARGETS.CODE.MAX_TOKENS;
   } else if (
     isTechnicalDocumentation(chunkContent) ||
-    mimeType.includes('markdown') ||
-    mimeType.includes('text/html')
+    mimeType.includes("markdown") ||
+    mimeType.includes("text/html")
   ) {
     minTokens = CONTEXT_TARGETS.TECHNICAL.MIN_TOKENS;
     maxTokens = CONTEXT_TARGETS.TECHNICAL.MAX_TOKENS;
@@ -528,18 +528,18 @@ function containsMathematicalContent(content: string): boolean {
 
   // Keyword analysis
   const mathKeywords = [
-    'theorem',
-    'lemma',
-    'proof',
-    'equation',
-    'function',
-    'derivative',
-    'integral',
-    'matrix',
-    'vector',
-    'algorithm',
-    'constraint',
-    'coefficient',
+    "theorem",
+    "lemma",
+    "proof",
+    "equation",
+    "function",
+    "derivative",
+    "integral",
+    "matrix",
+    "vector",
+    "algorithm",
+    "constraint",
+    "coefficient",
   ];
 
   const contentLower = content.toLowerCase();
@@ -605,8 +605,8 @@ function isTechnicalDocumentation(content: string): boolean {
  * @returns The enriched chunk, or the original chunkContent if the enrichment is empty.
  */
 export function getChunkWithContext(chunkContent: string, generatedContext: string): string {
-  if (!generatedContext || generatedContext.trim() === '') {
-    console.warn('Generated context is empty. Falling back to original chunk content.');
+  if (!generatedContext || generatedContext.trim() === "") {
+    console.warn("Generated context is empty. Falling back to original chunk content.");
     return chunkContent;
   }
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! SAM TTS Service - Retro text-to-speech using SAM.
 
 use std::sync::Arc;
@@ -90,6 +91,7 @@ impl SamTTSService {
         "SAM TTS: Retro 1980s text-to-speech synthesis"
     }
 }
+
 
 impl Default for SamTTSService {
     fn default() -> Self {

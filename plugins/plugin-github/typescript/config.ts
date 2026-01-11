@@ -80,7 +80,10 @@ export class GitHubPluginConfig {
     const result = configSchema.safeParse(rawConfig);
 
     if (!result.success) {
-      const errors = result.error.errors
+      const zodError = result.error as unknown as {
+        issues?: Array<{ path: (string | number)[]; message: string }>;
+      };
+      const errors = (zodError.issues || [])
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join(", ");
       throw new ConfigError(errors);
@@ -103,7 +106,10 @@ export class GitHubPluginConfig {
     });
 
     if (!result.success) {
-      const errors = result.error.errors
+      const zodError = result.error as unknown as {
+        issues?: Array<{ path: (string | number)[]; message: string }>;
+      };
+      const errors = (zodError.issues || [])
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join(", ");
       throw new ConfigError(errors);
@@ -120,7 +126,7 @@ export class GitHubPluginConfig {
    * @throws ConfigError if configuration is invalid
    */
   static fromEnv(): GitHubPluginConfig {
-    const apiToken = process.env["GITHUB_API_TOKEN"];
+    const apiToken = process.env.GITHUB_API_TOKEN;
 
     if (!apiToken) {
       throw new MissingSettingError("GITHUB_API_TOKEN");
@@ -128,19 +134,22 @@ export class GitHubPluginConfig {
 
     const rawConfig = {
       apiToken,
-      owner: process.env["GITHUB_OWNER"],
-      repo: process.env["GITHUB_REPO"],
-      branch: process.env["GITHUB_BRANCH"] ?? "main",
-      webhookSecret: process.env["GITHUB_WEBHOOK_SECRET"],
-      appId: process.env["GITHUB_APP_ID"],
-      appPrivateKey: process.env["GITHUB_APP_PRIVATE_KEY"],
-      installationId: process.env["GITHUB_INSTALLATION_ID"],
+      owner: process.env.GITHUB_OWNER,
+      repo: process.env.GITHUB_REPO,
+      branch: process.env.GITHUB_BRANCH ?? "main",
+      webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
+      appId: process.env.GITHUB_APP_ID,
+      appPrivateKey: process.env.GITHUB_APP_PRIVATE_KEY,
+      installationId: process.env.GITHUB_INSTALLATION_ID,
     };
 
     const result = configSchema.safeParse(rawConfig);
 
     if (!result.success) {
-      const errors = result.error.errors
+      const zodError = result.error as unknown as {
+        issues?: Array<{ path: (string | number)[]; message: string }>;
+      };
+      const errors = (zodError.issues || [])
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join(", ");
       throw new ConfigError(errors);
@@ -157,10 +166,7 @@ export class GitHubPluginConfig {
    * @returns Repository reference
    * @throws MissingSettingError if neither override nor default is available
    */
-  getRepositoryRef(
-    owner?: string,
-    repo?: string,
-  ): { owner: string; repo: string } {
+  getRepositoryRef(owner?: string, repo?: string): { owner: string; repo: string } {
     const resolvedOwner = owner ?? this.owner;
     const resolvedRepo = repo ?? this.repo;
 
@@ -188,22 +194,22 @@ export class GitHubPluginConfig {
    * @throws ConfigError if configuration is invalid
    */
   validate(): void {
-    if (!this.apiToken.startsWith("ghp_") && 
-        !this.apiToken.startsWith("gho_") && 
-        !this.apiToken.startsWith("ghu_") &&
-        !this.apiToken.startsWith("ghs_") &&
-        !this.apiToken.startsWith("ghr_") &&
-        !this.apiToken.startsWith("github_pat_")) {
+    if (
+      !this.apiToken.startsWith("ghp_") &&
+      !this.apiToken.startsWith("gho_") &&
+      !this.apiToken.startsWith("ghu_") &&
+      !this.apiToken.startsWith("ghs_") &&
+      !this.apiToken.startsWith("ghr_") &&
+      !this.apiToken.startsWith("github_pat_")
+    ) {
       // May be a fine-grained PAT or classic token
       // Just log a warning instead of throwing
-      console.warn(
-        "GitHub API token format not recognized. Ensure it is a valid token.",
-      );
+      console.warn("GitHub API token format not recognized. Ensure it is a valid token.");
     }
 
     if (this.hasAppAuth() && !this.installationId) {
       throw new ConfigError(
-        "GITHUB_INSTALLATION_ID is required when using GitHub App authentication",
+        "GITHUB_INSTALLATION_ID is required when using GitHub App authentication"
       );
     }
   }
@@ -231,12 +237,8 @@ export class GitHubPluginConfig {
  * @param runtime - The agent runtime
  * @returns Validated configuration
  */
-export function validateGitHubConfig(
-  runtime: IAgentRuntime,
-): GitHubPluginConfig {
+export function validateGitHubConfig(runtime: IAgentRuntime): GitHubPluginConfig {
   const config = GitHubPluginConfig.fromRuntime(runtime);
   config.validate();
   return config;
 }
-
-
