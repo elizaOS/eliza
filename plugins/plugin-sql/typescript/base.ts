@@ -1094,8 +1094,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(gte(memoryTable.createdAt, new Date(start)));
       }
 
-      // Note: entityId WHERE filter removed - RLS handles access control
-      // This allows seeing ALL messages in accessible rooms (user + agent responses)
+      // RLS handles access control - no explicit entityId filter needed
 
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
@@ -1521,7 +1520,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
     // Use withEntityContext for RLS only when entityId is provided
     // Without entityId, bypass RLS to see all logs (for non-RLS mode)
-    // Note: No WHERE filter on entityId - RLS handles access control automatically
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const result = await tx
         .select()
@@ -1575,8 +1573,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         sql`${logTable.body} ? 'runId'`,
         eq(roomTable.agentId, this.agentId),
       ];
-
-      // Note: No WHERE filter on entityId - RLS handles access control automatically
 
       if (params.roomId) {
         conditions.push(eq(logTable.roomId, params.roomId));
@@ -3127,8 +3123,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (task.worldId !== undefined) updateValues.worldId = task.worldId;
         if (task.tags !== undefined) updateValues.tags = task.tags;
 
-        // Always update the updatedAt timestamp as a Date
-        // Note: Task interface uses number for updatedAt, but database schema uses Date
+        // Always update the updatedAt timestamp as a Date (schema uses Date, not number)
         interface TaskUpdateValues extends Partial<typeof taskTable.$inferInsert> {
           updatedAt?: Date;
         }
@@ -3357,9 +3352,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   /**
-   * Gets a message server by RLS server_id
-   * Note: server_id column only exists when RLS is enabled (added dynamically by RLS setup)
-   * This is used to find the message_server linked to a specific RLS server instance
+   * Gets a message server by RLS server_id.
+   * The server_id column is added dynamically when RLS is enabled.
    */
   async getMessageServerByRlsServerId(rlsServerId: UUID): Promise<{
     id: UUID;

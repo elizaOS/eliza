@@ -1,11 +1,11 @@
 import { TwitterApi } from "twitter-api-v2";
-import type { TwitterAuthProvider, TwitterOAuth1Provider } from "./auth-providers/types";
+import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
 import type { Profile } from "./profile";
 
 /**
- * Twitter API v2 authentication using developer credentials
+ * X API v2 authentication using developer credentials
  */
-export class TwitterAuth {
+export class XAuth {
   private v2Client: TwitterApi | null = null;
   private authenticated = false;
   private profile?: Profile;
@@ -13,7 +13,7 @@ export class TwitterAuth {
 
   private lastAccessToken?: string;
 
-  constructor(private readonly provider: TwitterAuthProvider) {
+  constructor(private readonly provider: XAuthProvider) {
     // Backward-compatible behavior: legacy OAuth1 provider is considered authenticated immediately,
     // matching previous eager client initialization semantics.
     if ("getOAuth1Credentials" in provider && typeof provider.getOAuth1Credentials === "function") {
@@ -21,13 +21,13 @@ export class TwitterAuth {
     }
   }
 
-  private isOAuth1Provider(p: TwitterAuthProvider): p is TwitterOAuth1Provider {
+  private isOAuth1Provider(p: XAuthProvider): p is XOAuth1Provider {
     return "getOAuth1Credentials" in p && typeof p.getOAuth1Credentials === "function";
   }
 
   private async ensureClientInitialized(): Promise<void> {
     if (this.loggedOut) {
-      throw new Error("Twitter API client not initialized");
+      throw new Error("X API client not initialized");
     }
     if (this.isOAuth1Provider(this.provider)) {
       if (this.v2Client) return;
@@ -53,12 +53,12 @@ export class TwitterAuth {
   }
 
   /**
-   * Get the Twitter API v2 client
+   * Get the X API v2 client
    */
   async getV2Client(): Promise<TwitterApi> {
     await this.ensureClientInitialized();
     if (!this.v2Client) {
-      throw new Error("Twitter API client not initialized");
+      throw new Error("X API client not initialized");
     }
     return this.v2Client;
   }

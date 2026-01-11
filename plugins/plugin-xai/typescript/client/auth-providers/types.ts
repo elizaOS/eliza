@@ -1,16 +1,16 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
-export type TwitterAuthMode = "env" | "oauth" | "broker";
+export type XAuthMode = "env" | "oauth" | "broker";
 
 /**
- * Primary abstraction: obtain a valid access token for Twitter/X API calls.
+ * Primary abstraction: obtain a valid access token for X API calls.
  *
  * - For OAuth2 PKCE mode, this is the OAuth2 user access token (Bearer).
  * - For env mode (legacy OAuth1.0a), this returns the OAuth1 access token string
  *   (and the provider may expose additional fields via `getOAuth1Credentials()`).
  */
-export interface TwitterAuthProvider {
-  readonly mode: TwitterAuthMode;
+export interface XAuthProvider {
+  readonly mode: XAuthMode;
 
   /**
    * Returns a valid access token string.
@@ -30,11 +30,11 @@ export interface OAuth1Credentials {
  * Optional capability used to keep full backward compatibility with the existing OAuth1.0a flow.
  * Consumers should not depend on this unless they need OAuth1 signing.
  */
-export interface TwitterOAuth1Provider extends TwitterAuthProvider {
+export interface XOAuth1Provider extends XAuthProvider {
   getOAuth1Credentials(): Promise<OAuth1Credentials>;
 }
 
-export interface TwitterAuthProviderFactoryOptions {
+export interface XAuthProviderFactoryOptions {
   runtime: IAgentRuntime;
   state?: Record<string, unknown>;
 }
