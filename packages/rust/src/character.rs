@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for loading, parsing, and validating character files.
 
-use crate::types::{Character, CharacterSettings};
+use crate::types::agent::{Character, CharacterSettings};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 
@@ -192,7 +192,7 @@ fn has_x_config(env: &HashMap<String, String>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Bio;
+    use crate::types::agent::Bio;
 
     #[test]
     fn test_parse_character_basic() {

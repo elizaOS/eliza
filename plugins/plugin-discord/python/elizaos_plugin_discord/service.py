@@ -155,10 +155,10 @@ class DiscordService:
             await self._client.start(self._config.token)
         except discord.LoginFailure as e:
             self._is_running = False
-            raise ConnectionFailedError(str(e))
+            raise ConnectionFailedError(str(e)) from e
         except Exception as e:
             self._is_running = False
-            raise ConnectionFailedError(str(e))
+            raise ConnectionFailedError(str(e)) from e
 
     async def stop(self) -> None:
         """Stop the Discord service."""
@@ -221,10 +221,12 @@ class DiscordService:
                     return
 
             # Check if bot is mentioned (if respond only to mentions)
-            if self._config.should_respond_only_to_mentions:
-                if self._client.user not in message.mentions:
-                    logger.debug("Ignoring message without bot mention")
-                    return
+            if (
+                self._config.should_respond_only_to_mentions
+                and self._client.user not in message.mentions
+            ):
+                logger.debug("Ignoring message without bot mention")
+                return
 
             # Build payload
             payload = DiscordMessagePayload(
@@ -348,7 +350,7 @@ class DiscordService:
         @self._client.event
         async def on_voice_state_update(
             member: Member,
-            before: VoiceState,
+            _before: VoiceState,
             after: VoiceState,
         ) -> None:
             payload = DiscordVoiceStatePayload(

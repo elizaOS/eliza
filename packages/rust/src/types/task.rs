@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Metadata, UUID};
+use super::primitives::{Metadata, UUID};
 
 /// Task status
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

@@ -34,9 +34,6 @@ import { RobloxService } from "./services/RobloxService";
 
 export { RobloxApiError, RobloxClient } from "./client/RobloxClient";
 export { RobloxService } from "./services/RobloxService";
-// Re-export types and utilities for external use
-export * from "./types";
-export { hasRobloxEnabled, validateRobloxConfig } from "./utils/config";
 
 /**
  * Roblox plugin for elizaOS.

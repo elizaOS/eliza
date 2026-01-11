@@ -9,14 +9,3 @@
  *   npm run build:prompts
  */
 
-// Import generated prompts
-import {
-  bridgeTemplate,
-  executeProposalTemplate,
-  proposeTemplate,
-  queueProposalTemplate,
-  swapTemplate,
-  transferTemplate,
-  voteTemplate,
-} from "../generated/prompts/typescript/prompts.js";
-

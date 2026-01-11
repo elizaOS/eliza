@@ -16,4 +16,3 @@ export const simpleVoicePlugin: Plugin = {
 };
 
 export default simpleVoicePlugin;
-

@@ -17,7 +17,6 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { reactToMessageTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
 
-
 /**
  * Extracts emoji tokens from a string in the order they appear.
  *

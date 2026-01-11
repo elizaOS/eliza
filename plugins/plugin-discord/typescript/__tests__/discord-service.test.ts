@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   DISCORD_SERVICE_NAME,
+  DiscordApiError,
+  DiscordClientNotAvailableError,
+  DiscordConfigurationError,
   DiscordEventTypes,
   DiscordPluginError,
   DiscordServiceNotInitializedError,
-  DiscordClientNotAvailableError,
-  DiscordConfigurationError,
-  DiscordApiError,
-  validateSnowflake,
-  isValidSnowflake,
   type DiscordSettings,
-  type DiscordSnowflake,
+  isValidSnowflake,
+  validateSnowflake,
 } from "../types";
 
 /**
@@ -54,7 +53,9 @@ describe("Discord Service Types", () => {
     });
 
     it("should have permission audit events", () => {
-      expect(DiscordEventTypes.CHANNEL_PERMISSIONS_CHANGED).toBe("DISCORD_CHANNEL_PERMISSIONS_CHANGED");
+      expect(DiscordEventTypes.CHANNEL_PERMISSIONS_CHANGED).toBe(
+        "DISCORD_CHANNEL_PERMISSIONS_CHANGED"
+      );
       expect(DiscordEventTypes.ROLE_PERMISSIONS_CHANGED).toBe("DISCORD_ROLE_PERMISSIONS_CHANGED");
       expect(DiscordEventTypes.MEMBER_ROLES_CHANGED).toBe("DISCORD_MEMBER_ROLES_CHANGED");
       expect(DiscordEventTypes.ROLE_CREATED).toBe("DISCORD_ROLE_CREATED");

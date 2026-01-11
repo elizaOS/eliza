@@ -7,6 +7,7 @@ import type { Post as ClientPost } from "./client";
 
 // Re-export Post type
 export type { Post } from "./client";
+
 type Post = ClientPost;
 
 export type XServiceStatus = "idle" | "active" | "error";
@@ -152,7 +153,6 @@ export interface IXClient {
   timeline?: XTimelineClient;
   discovery?: XDiscoveryClient;
 }
-
 
 /**
  * X API response structure - can have nested data structures

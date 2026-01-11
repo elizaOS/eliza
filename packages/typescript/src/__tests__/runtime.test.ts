@@ -1015,7 +1015,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params = capturedParams;
         expect(params.maxTokens).toBe(4096);
         expect(params.temperature).toBe(0.5);
@@ -1031,7 +1032,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params2 = capturedParams;
         expect(params2.temperature).toBe(0.2);
         expect(params2.maxTokens).toBe(2048);
@@ -1062,7 +1064,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params3 = capturedParams;
         expect(params3.temperature).toBe(0.7);
         expect(params3.maxTokens).toBeUndefined();
@@ -1098,7 +1101,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params4 = capturedParams;
         expect(params4.user).toBe("");
         expect(params4.prompt).toBe("test prompt");
@@ -1132,7 +1136,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params5 = capturedParams;
         expect(params5.user).toBeNull();
         expect(params5.prompt).toBe("test prompt");
@@ -1165,7 +1170,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params6 = capturedParams;
         expect(params6.user).toBe("Test Character");
         expect(params6.prompt).toBe("test prompt");
@@ -1292,7 +1298,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedTextSmall).not.toBeNull();
-        if (!capturedTextSmall) throw new Error("Expected capturedTextSmall to be defined");
+        if (!capturedTextSmall)
+          throw new Error("Expected capturedTextSmall to be defined");
         const textSmallParams = capturedTextSmall;
         expect(textSmallParams.temperature).toBe(0.5); // Model-specific
         expect(textSmallParams.maxTokens).toBe(1024); // Model-specific
@@ -1305,7 +1312,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedTextLarge).not.toBeNull();
-        if (!capturedTextLarge) throw new Error("Expected capturedTextLarge to be defined");
+        if (!capturedTextLarge)
+          throw new Error("Expected capturedTextLarge to be defined");
         const textLargeParams = capturedTextLarge;
         expect(textLargeParams.temperature).toBe(0.8); // Model-specific
         expect(textLargeParams.maxTokens).toBe(2048); // Default fallback
@@ -1318,7 +1326,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedObjectSmall).not.toBeNull();
-        if (!capturedObjectSmall) throw new Error("Expected capturedObjectSmall to be defined");
+        if (!capturedObjectSmall)
+          throw new Error("Expected capturedObjectSmall to be defined");
         const objectSmallParams = capturedObjectSmall;
         expect(objectSmallParams.temperature).toBe(0.3); // Model-specific
         expect(objectSmallParams.maxTokens).toBe(2048); // Default fallback
@@ -1330,7 +1339,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedObjectLarge).not.toBeNull();
-        if (!capturedObjectLarge) throw new Error("Expected capturedObjectLarge to be defined");
+        if (!capturedObjectLarge)
+          throw new Error("Expected capturedObjectLarge to be defined");
         const objectLargeParams = capturedObjectLarge;
         expect(objectLargeParams.temperature).toBe(0.7); // Default fallback
         expect(objectLargeParams.maxTokens).toBe(2048); // Default fallback
@@ -1379,7 +1389,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params7 = capturedParams;
         expect(params7.temperature).toBe(0.1);
       });
@@ -1425,7 +1436,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         // Should fall back to default settings
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params8 = capturedParams;
         expect(params8.temperature).toBe(0.7);
         expect(params8.maxTokens).toBeUndefined(); // No default for this
@@ -1476,7 +1488,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
         // Valid values should be used, invalid ones ignored
         expect(capturedParams).not.toBeNull();
-        if (!capturedParams) throw new Error("Expected capturedParams to be defined");
+        if (!capturedParams)
+          throw new Error("Expected capturedParams to be defined");
         const params9 = capturedParams;
         expect(params9.temperature).toBe(0.5); // Valid model-specific
         expect(params9.maxTokens).toBe(2048); // Valid default (model-specific was invalid)

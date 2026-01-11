@@ -28,10 +28,10 @@ class HNSWNode:
 class HNSWConfig:
     """HNSW configuration parameters."""
 
-    M: int = 16  # Max connections per layer
+    M: int = 16  # Max connections per layer  # noqa: N815
     ef_construction: int = 200  # Size of dynamic candidate list during construction
     ef_search: int = 50  # Size of dynamic candidate list during search
-    mL: float = field(default=0.0)  # Level multiplier (1/ln(M))
+    mL: float = field(default=0.0)  # Level multiplier (1/ln(M))  # noqa: N815
 
     def __post_init__(self) -> None:
         if self.mL == 0.0:
@@ -127,8 +127,8 @@ class EphemeralHNSW(IVectorStorage):
             neighbors = self._search_layer(vector, current_node, self._config.ef_construction, lvl)
 
             # Connect to M closest neighbors
-            M = self._config.M
-            selected_neighbors = neighbors[:M]
+            max_neighbors = self._config.M
+            selected_neighbors = neighbors[:max_neighbors]
 
             for neighbor in selected_neighbors:
                 new_node.neighbors[lvl].add(neighbor["id"])
@@ -140,7 +140,7 @@ class EphemeralHNSW(IVectorStorage):
                     neighbor_node.neighbors[lvl].add(id_)
 
                     # Prune if over limit
-                    if len(neighbor_node.neighbors[lvl]) > M:
+                    if len(neighbor_node.neighbors[lvl]) > max_neighbors:
                         to_keep = self._select_best_neighbors(
                             neighbor_node.vector, neighbor_node.neighbors[lvl], M
                         )
@@ -212,9 +212,9 @@ class EphemeralHNSW(IVectorStorage):
         return results
 
     def _select_best_neighbors(
-        self, node_vector: list[float], neighbor_ids: set[str], M: int
+        self, node_vector: list[float], neighbor_ids: set[str], max_neighbors: int
     ) -> list[dict[str, float | str]]:
-        """Select the M best neighbors by distance."""
+        """Select the best neighbors by distance."""
         neighbors: list[dict[str, float | str]] = []
 
         for id_ in neighbor_ids:
@@ -223,7 +223,7 @@ class EphemeralHNSW(IVectorStorage):
                 neighbors.append({"id": id_, "distance": cosine_distance(node_vector, node.vector)})
 
         neighbors.sort(key=lambda x: x["distance"])
-        return neighbors[:M]
+        return neighbors[:max_neighbors]
 
     async def remove(self, id_: str) -> None:
         """Remove a vector by id."""

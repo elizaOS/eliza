@@ -53,7 +53,7 @@ class HttpTransport(Transport):
         except httpx.HTTPError as e:
             # Connection closed or error - expected during shutdown
             if self._connected:
-                raise McpError.connection_error("http", str(e))
+                raise McpError.connection_error("http", str(e)) from e
 
     async def _handle_message(self, message: dict[str, Any]) -> None:
         """Handle an incoming message from the SSE stream."""
@@ -111,9 +111,9 @@ class HttpTransport(Transport):
                 future,
                 timeout=self._config.timeout_ms / 1000,
             )
-        except TimeoutError:
+        except TimeoutError as e:
             self._pending_responses.pop(request_id, None)
-            raise McpError.timeout_error(f"Request {request_id}")
+            raise McpError.timeout_error(f"Request {request_id}") from e
 
     async def close(self) -> None:
         """Close the HTTP connection."""

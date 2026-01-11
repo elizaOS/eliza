@@ -7,8 +7,9 @@ Pure in-memory, ephemeral storage - no persistence.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -106,7 +107,7 @@ class IVectorStorage(ABC):
     @abstractmethod
     async def search(
         self, query: list[float], k: int, threshold: float = 0.5
-    ) -> list["VectorSearchResult"]:
+    ) -> list[VectorSearchResult]:
         """Search for nearest neighbors."""
         ...
 

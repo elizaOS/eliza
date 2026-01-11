@@ -2,7 +2,7 @@
 //!
 //! Contains Entity, Room, World, Component, Relationship, and related types.
 
-use super::{Metadata, UUID};
+use super::primitives::{Metadata, UUID};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

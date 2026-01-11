@@ -221,32 +221,32 @@ def build_xml_response(data: dict) -> str:
 # =============================================================================
 
 
-def test_extract_simple_tag():
+def test_extract_simple_tag() -> None:
     xml = "<response><name>John</name></response>"
     assert extract_xml_tag(xml, "name") == "John"
 
 
-def test_extract_cdata():
+def test_extract_cdata() -> None:
     xml = "<response><code><![CDATA[<script>alert('hello')</script>]]></code></response>"
     assert extract_xml_tag(xml, "code") == "<script>alert('hello')</script>"
 
 
-def test_extract_nested_tags():
+def test_extract_nested_tags() -> None:
     xml = "<response><outer><inner>value</inner></outer></response>"
     outer = extract_xml_tag(xml, "outer")
     assert outer is not None
     assert "<inner>value</inner>" in outer
 
 
-def test_escape_xml():
+def test_escape_xml() -> None:
     assert escape_xml("<test>") == "&lt;test&gt;"
 
 
-def test_unescape_xml():
+def test_unescape_xml() -> None:
     assert unescape_xml("&lt;test&gt;") == "<test>"
 
 
-def test_unescape_numeric_entities():
+def test_unescape_numeric_entities() -> None:
     # Decimal entity
     assert unescape_xml("&#60;") == "<"
     assert unescape_xml("&#62;") == ">"
@@ -257,17 +257,17 @@ def test_unescape_numeric_entities():
     assert unescape_xml("&#60;test&#62;") == "<test>"
 
 
-def test_wrap_in_cdata():
+def test_wrap_in_cdata() -> None:
     assert wrap_in_cdata("<code>") == "<![CDATA[<code>]]>"
     assert wrap_in_cdata("plain text") == "plain text"
 
 
-def test_wrap_nested_cdata():
+def test_wrap_nested_cdata() -> None:
     # Nested CDATA should be escaped
     assert wrap_in_cdata("data]]>more") == "<![CDATA[data]]]]><![CDATA[>more]]>"
 
 
-def test_parse_simple_xml():
+def test_parse_simple_xml() -> None:
     xml = "<response><thought>thinking...</thought><text>Hello world</text></response>"
     result = parse_simple_xml(xml)
     assert result is not None
@@ -275,7 +275,7 @@ def test_parse_simple_xml():
     assert result.get("text") == "Hello world"
 
 
-def test_parse_list_fields():
+def test_parse_list_fields() -> None:
     xml = "<response><actions>action1, action2, action3</actions></response>"
     result = parse_simple_xml(xml)
     assert result is not None
@@ -283,7 +283,7 @@ def test_parse_list_fields():
     assert actions == ["action1", "action2", "action3"]
 
 
-def test_parse_boolean_fields():
+def test_parse_boolean_fields() -> None:
     xml = "<response><success>true</success><error>false</error></response>"
     result = parse_simple_xml(xml)
     assert result is not None
@@ -291,12 +291,12 @@ def test_parse_boolean_fields():
     assert result.get("error") is False
 
 
-def test_self_closing_tag():
+def test_self_closing_tag() -> None:
     xml = "<response><empty/></response>"
     assert extract_xml_tag(xml, "empty") == ""
 
 
-def test_code_in_cdata():
+def test_code_in_cdata() -> None:
     xml = """<response>
 <code><![CDATA[
 function test() {

@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::Metadata;
+use super::primitives::Metadata;
 
 /// Represents an agent's registration details within a TEE context.
 #[derive(Clone, Debug, Serialize, Deserialize)]

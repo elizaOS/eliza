@@ -295,7 +295,6 @@ class EVMWalletProvider:
             The transaction hash.
         """
         client = await self.get_client(chain)
-        address = self._account.address
 
         # Create contract instance
         checksum_token = client.to_checksum_address(token_address)

@@ -33,6 +33,11 @@ pub mod config;
 pub mod error;
 pub mod types;
 
+// Re-export commonly used types for convenience
+pub use client::RobloxClient;
+pub use config::RobloxConfig;
+pub use error::{Result, RobloxError};
+
 #[cfg(feature = "native")]
 pub mod service;
 

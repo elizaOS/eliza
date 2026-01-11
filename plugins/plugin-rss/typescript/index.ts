@@ -28,7 +28,6 @@ import { feedItemsProvider } from "./providers";
 // Service
 import { RssService } from "./service";
 
-
 // Check if subscription actions should be disabled
 const actionsDisabled = process.env.RSS_DISABLE_ACTIONS === "true";
 

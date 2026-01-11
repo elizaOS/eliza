@@ -84,7 +84,7 @@ class TestMessageOperations:
     @pytest.mark.asyncio
     @pytest.mark.skipif(not integration_configured(), reason="Requires Discord credentials")
     async def test_send_message_validation(
-        self, discord_service: DiscordService
+        self, discord_service: DiscordService  # noqa: ARG002
     ) -> None:
         """Test message sending validation (without actually sending)."""
         # This test validates the request would be valid

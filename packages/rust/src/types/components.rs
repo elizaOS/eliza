@@ -9,7 +9,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use super::{Content, Memory, State};
+use super::memory::Memory;
+use super::primitives::Content;
+use super::state::State;
 
 /// Example content with associated user for demonstration
 #[derive(Clone, Debug, Serialize, Deserialize)]
