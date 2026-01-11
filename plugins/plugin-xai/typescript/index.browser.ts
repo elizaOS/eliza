@@ -8,9 +8,9 @@
 // Export types that work in browser
 export type {
   ActionResponse,
-  ITwitterClient,
+  IXClient,
   IXClient,
   MediaData,
-  Tweet,
-  TwitterConfig,
+  Post,
+  XConfig,
 } from "./types";

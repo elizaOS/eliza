@@ -40,7 +40,7 @@ export * from "./utils";
 export * from "./utils/buffer";
 // Export environment utilities
 export * from "./utils/environment";
-// Export path utilities - these are Node.js specific but needed for backward compatibility
+// Export path utilities - these are Node.js specific
 // Browser builds will handle this through conditional exports in package.json
 export * from "./utils/paths";
 // Export streaming utilities

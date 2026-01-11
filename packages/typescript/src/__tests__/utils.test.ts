@@ -653,7 +653,7 @@ describe("Utils Comprehensive Tests", () => {
           createdAt: Date.now() - 3600000,
           content: {
             text: "First message",
-            source: "twitter",
+            source: "x",
           } as Content,
         },
         {
@@ -663,7 +663,7 @@ describe("Utils Comprehensive Tests", () => {
           createdAt: Date.now(),
           content: {
             text: "Second message",
-            source: "twitter",
+            source: "x",
           } as Content,
         },
       ];
@@ -675,7 +675,7 @@ describe("Utils Comprehensive Tests", () => {
       expect(result).toContain("Name: Alice");
       expect(result).toContain("First message");
       expect(result).toContain("Second message");
-      expect(result).toContain("Source: twitter");
+      expect(result).toContain("Source: x");
     });
 
     it("should include reply information", () => {

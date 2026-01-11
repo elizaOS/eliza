@@ -27,7 +27,7 @@ export interface OAuth1Credentials {
 }
 
 /**
- * Optional capability used to keep full backward compatibility with the existing OAuth1.0a flow.
+ * Optional capability for OAuth1.0a flow.
  * Consumers should not depend on this unless they need OAuth1 signing.
  */
 export interface XOAuth1Provider extends XAuthProvider {

@@ -93,7 +93,7 @@ export function mergeCharacterDefaults(char: Partial<Character>): Character {
  * 1. Core plugins (@elizaos/plugin-sql)
  * 2. Text-only LLM plugins (no embedding support)
  * 3. Embedding-capable LLM plugins
- * 4. Platform plugins (Discord, Twitter, Telegram)
+ * 4. Platform plugins (Discord, X, Telegram)
  * 5. Bootstrap plugin (unless IGNORE_BOOTSTRAP is set)
  * 6. Ollama fallback (only if no other LLM providers configured)
  *
@@ -126,7 +126,7 @@ export function buildCharacterPlugins(
     env.TWITTER_ACCESS_TOKEN.trim() &&
     env.TWITTER_ACCESS_TOKEN_SECRET &&
     env.TWITTER_ACCESS_TOKEN_SECRET.trim()
-      ? ["@elizaos/plugin-twitter"]
+      ? ["@elizaos/plugin-x"]
       : []),
     ...(env.TELEGRAM_BOT_TOKEN?.trim() ? ["@elizaos/plugin-telegram"] : []),
 

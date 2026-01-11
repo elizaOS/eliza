@@ -8,14 +8,14 @@ import { FileTokenStore, RuntimeCacheTokenStore } from "../auth-providers/token-
 describe("token-store", () => {
   describe("FileTokenStore", () => {
     it("roundtrips save/load", async () => {
-      const path = join(tmpdir(), `twitter-oauth2-tokens-${Date.now()}.json`);
+      const path = join(tmpdir(), `x-oauth2-tokens-${Date.now()}.json`);
       const store = new FileTokenStore(path);
 
       const tokens = {
         access_token: "access",
         refresh_token: "refresh",
         expires_at: Date.now() + 60_000,
-        scope: "tweet.read",
+        scope: "post.read",
         token_type: "bearer",
       };
 
@@ -29,7 +29,7 @@ describe("token-store", () => {
     });
 
     it("returns null for corrupted json", async () => {
-      const path = join(tmpdir(), `twitter-oauth2-tokens-${Date.now()}-bad.json`);
+      const path = join(tmpdir(), `x-oauth2-tokens-${Date.now()}-bad.json`);
       await fs.writeFile(path, "{ not json", "utf-8");
 
       const store = new FileTokenStore(path);

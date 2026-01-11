@@ -1,6 +1,3 @@
-// - vote(): Blockchain transaction errors - KEEP (external API)
-// - handler: Action execution with proper error response - KEEP (API boundary)
-
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { type Address, encodeFunctionData, type Hex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";

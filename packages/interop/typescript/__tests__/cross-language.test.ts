@@ -1,5 +1,3 @@
-// - beforeAll Python availability check - KEEP (conditional test execution)
-
 /**
  * Cross-language interop tests for elizaOS
  *

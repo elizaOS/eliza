@@ -2,7 +2,7 @@ import { stringToUuid } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "../../base";
 import { SearchMode } from "../../client";
-import { TwitterPostService } from "../PostService";
+import { XPostService } from "../PostService";
 
 // Mock the dependencies
 vi.mock("@elizaos/core", async () => {
@@ -29,20 +29,20 @@ interface MockClient {
     id: string;
     username: string;
   } | null;
-  fetchSearchTweets: ReturnType<typeof vi.fn>;
+  fetchSearchPosts: ReturnType<typeof vi.fn>;
   fetchHomeTimeline: ReturnType<typeof vi.fn>;
-  twitterClient: {
-    sendTweet: ReturnType<typeof vi.fn>;
-    deleteTweet: ReturnType<typeof vi.fn>;
-    getTweet: ReturnType<typeof vi.fn>;
-    getUserTweets: ReturnType<typeof vi.fn>;
-    likeTweet: ReturnType<typeof vi.fn>;
-    retweet: ReturnType<typeof vi.fn>;
+  xClient: {
+    sendPost: ReturnType<typeof vi.fn>;
+    deletePost: ReturnType<typeof vi.fn>;
+    getPost: ReturnType<typeof vi.fn>;
+    getUserPosts: ReturnType<typeof vi.fn>;
+    likePost: ReturnType<typeof vi.fn>;
+    repost: ReturnType<typeof vi.fn>;
   };
 }
 
-describe("TwitterPostService", () => {
-  let service: TwitterPostService;
+describe("XPostService", () => {
+  let service: XPostService;
   let mockClient: MockClient;
 
   beforeEach(() => {
@@ -55,36 +55,36 @@ describe("TwitterPostService", () => {
         id: "user-123",
         username: "testuser",
       },
-      fetchSearchTweets: vi.fn(),
+      fetchSearchPosts: vi.fn(),
       fetchHomeTimeline: vi.fn(),
-      twitterClient: {
-        sendTweet: vi.fn(),
-        deleteTweet: vi.fn(),
-        getTweet: vi.fn(),
-        getUserTweets: vi.fn(),
-        likeTweet: vi.fn(),
-        retweet: vi.fn(),
+      xClient: {
+        sendPost: vi.fn(),
+        deletePost: vi.fn(),
+        getPost: vi.fn(),
+        getUserPosts: vi.fn(),
+        likePost: vi.fn(),
+        repost: vi.fn(),
       },
     };
 
-    service = new TwitterPostService(mockClient as unknown as ClientBase);
+    service = new XPostService(mockClient as unknown as ClientBase);
   });
 
   describe("createPost", () => {
     it("should create a new post", async () => {
       const mockResult = {
         data: {
-          create_tweet: {
-            tweet_results: {
+          create_post: {
+            post_results: {
               result: {
-                rest_id: "tweet-123",
+                rest_id: "post-123",
               },
             },
           },
         },
       };
 
-      mockClient.twitterClient.sendTweet.mockResolvedValue(mockResult);
+      mockClient.xClient.sendPost.mockResolvedValue(mockResult);
 
       const options = {
         agentId: TEST_AGENT_ID,
@@ -94,10 +94,10 @@ describe("TwitterPostService", () => {
 
       const post = await service.createPost(options);
 
-      expect(mockClient.twitterClient.sendTweet).toHaveBeenCalledWith("Hello World!", undefined);
+      expect(mockClient.xClient.sendPost).toHaveBeenCalledWith("Hello World!", undefined);
 
       expect(post).toEqual({
-        id: "tweet-123",
+        id: "post-123",
         agentId: TEST_AGENT_ID,
         roomId: TEST_ROOM_ID,
         userId: "user-123",
@@ -120,8 +120,8 @@ describe("TwitterPostService", () => {
       });
     });
 
-    it("should not consume a Response-like body when extracting tweet id (uses clone)", async () => {
-      const body = { id: "tweet-999" };
+    it("should not consume a Response-like body when extracting post id (uses clone)", async () => {
+      const body = { id: "post-999" };
       interface ResponseLike {
         bodyUsed: boolean;
         clone: () => { json: () => Promise<typeof body> };
@@ -135,7 +135,7 @@ describe("TwitterPostService", () => {
         json: vi.fn(async () => body), // would consume in real Response; here we ensure clone() path is used
       };
 
-      mockClient.twitterClient.sendTweet.mockResolvedValue(responseLike);
+      mockClient.xClient.sendPost.mockResolvedValue(responseLike);
 
       const options = {
         agentId: TEST_AGENT_ID,
@@ -144,39 +144,39 @@ describe("TwitterPostService", () => {
       };
 
       const post = await service.createPost(options);
-      expect(post.id).toBe("tweet-999");
+      expect(post.id).toBe("post-999");
       expect(responseLike.clone).toHaveBeenCalled();
       expect(responseLike.json).not.toHaveBeenCalled();
     });
 
     it("should create a reply post", async () => {
-      const mockResult = { id: "tweet-456" };
+      const mockResult = { id: "post-456" };
 
-      mockClient.twitterClient.sendTweet.mockResolvedValue(mockResult);
+      mockClient.xClient.sendPost.mockResolvedValue(mockResult);
 
       const options = {
         agentId: TEST_AGENT_ID,
         roomId: TEST_ROOM_ID,
         text: "This is a reply",
-        inReplyTo: "tweet-789",
+        inReplyTo: "post-789",
       };
 
       const post = await service.createPost(options);
 
-      expect(mockClient.twitterClient.sendTweet).toHaveBeenCalledWith(
+      expect(mockClient.xClient.sendPost).toHaveBeenCalledWith(
         "This is a reply",
-        "tweet-789"
+        "post-789"
       );
 
-      expect(post.inReplyTo).toBe("tweet-789");
+      expect(post.inReplyTo).toBe("post-789");
     });
 
     it("should warn about media uploads", async () => {
       const { logger } = await import("@elizaos/core");
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
-      const mockResult = { id: "tweet-123" };
-      mockClient.twitterClient.sendTweet.mockResolvedValue(mockResult);
+      const mockResult = { id: "post-123" };
+      mockClient.xClient.sendPost.mockResolvedValue(mockResult);
 
       const options = {
         agentId: TEST_AGENT_ID,
@@ -188,7 +188,7 @@ describe("TwitterPostService", () => {
       await service.createPost(options);
 
       expect(warnSpy).toHaveBeenCalledWith(
-        "Media upload not currently supported with Twitter API v2"
+        "Media upload not currently supported with X API v2"
       );
 
       warnSpy.mockRestore();
@@ -197,42 +197,42 @@ describe("TwitterPostService", () => {
 
   describe("deletePost", () => {
     it("should delete a post", async () => {
-      await service.deletePost("tweet-123", TEST_AGENT_ID);
+      await service.deletePost("post-123", TEST_AGENT_ID);
 
-      expect(mockClient.twitterClient.deleteTweet).toHaveBeenCalledWith("tweet-123");
+      expect(mockClient.xClient.deletePost).toHaveBeenCalledWith("post-123");
     });
 
     it("should throw error on failure", async () => {
-      mockClient.twitterClient.deleteTweet.mockRejectedValue(new Error("Delete failed"));
+      mockClient.xClient.deletePost.mockRejectedValue(new Error("Delete failed"));
 
-      await expect(service.deletePost("tweet-123", TEST_AGENT_ID)).rejects.toThrow("Delete failed");
+      await expect(service.deletePost("post-123", TEST_AGENT_ID)).rejects.toThrow("Delete failed");
     });
   });
 
   describe("getPost", () => {
     it("should fetch a single post", async () => {
-      const mockTweet = {
-        id: "tweet-123",
+      const mockPost = {
+        id: "post-123",
         userId: "user-456",
         username: "someuser",
         text: "Hello World",
         timestamp: 1234567890,
         likes: 10,
-        retweets: 5,
+        reposts: 5,
         replies: 3,
         quotes: 2,
         views: 100,
         photos: [{ id: "photo-1", url: "https://example.com/photo.jpg" }],
         conversationId: "conv-123",
-        permanentUrl: "https://twitter.com/someuser/status/tweet-123",
+        permanentUrl: "https://x.com/someuser/status/post-123",
       };
 
-      mockClient.twitterClient.getTweet.mockResolvedValue(mockTweet);
+      mockClient.xClient.getPost.mockResolvedValue(mockPost);
 
-      const post = await service.getPost("tweet-123", TEST_AGENT_ID);
+      const post = await service.getPost("post-123", TEST_AGENT_ID);
 
       expect(post).toEqual({
-        id: "tweet-123",
+        id: "post-123",
         agentId: TEST_AGENT_ID,
         roomId: "uuid-conv-123",
         userId: "user-456",
@@ -255,15 +255,15 @@ describe("TwitterPostService", () => {
         ],
         metadata: {
           conversationId: "conv-123",
-          permanentUrl: "https://twitter.com/someuser/status/tweet-123",
+          permanentUrl: "https://x.com/someuser/status/post-123",
         },
       });
     });
 
     it("should return null if post not found", async () => {
-      mockClient.twitterClient.getTweet.mockResolvedValue(null);
+      mockClient.xClient.getPost.mockResolvedValue(null);
 
-      const post = await service.getPost("tweet-123", TEST_AGENT_ID);
+      const post = await service.getPost("post-123", TEST_AGENT_ID);
 
       expect(post).toBeNull();
     });
@@ -271,33 +271,33 @@ describe("TwitterPostService", () => {
 
   describe("getPosts", () => {
     it("should fetch posts from a specific user", async () => {
-      const mockTweets = [
+      const mockPosts = [
         {
-          id: "tweet-1",
+          id: "post-1",
           userId: "user-456",
           username: "someuser",
-          text: "Tweet 1",
+          text: "Post 1",
           timestamp: 1234567890,
           likes: 5,
-          retweets: 2,
+          reposts: 2,
           replies: 1,
           views: 50,
         },
         {
-          id: "tweet-2",
+          id: "post-2",
           userId: "user-456",
           username: "someuser",
-          text: "Tweet 2",
+          text: "Post 2",
           timestamp: 1234567891,
           likes: 10,
-          retweets: 3,
+          reposts: 3,
           replies: 2,
           views: 100,
         },
       ];
 
-      mockClient.twitterClient.getUserTweets.mockResolvedValue({
-        tweets: mockTweets,
+      mockClient.xClient.getUserPosts.mockResolvedValue({
+        posts: mockPosts,
       });
 
       const options = {
@@ -308,31 +308,31 @@ describe("TwitterPostService", () => {
 
       const posts = await service.getPosts(options);
 
-      expect(mockClient.twitterClient.getUserTweets).toHaveBeenCalledWith(
+      expect(mockClient.xClient.getUserPosts).toHaveBeenCalledWith(
         "user-456",
         10,
         undefined
       );
 
       expect(posts).toHaveLength(2);
-      expect(posts[0].id).toBe("tweet-1");
-      expect(posts[1].id).toBe("tweet-2");
+      expect(posts[0].id).toBe("post-1");
+      expect(posts[1].id).toBe("post-2");
     });
 
     it("should fetch home timeline when no userId specified", async () => {
-      const mockTweets = [
+      const mockPosts = [
         {
-          id: "tweet-1",
+          id: "post-1",
           userId: "user-789",
           username: "anotheruser",
-          text: "Timeline tweet",
+          text: "Timeline post",
           timestamp: 1234567890,
           conversationId: "conv-1",
-          permanentUrl: "https://twitter.com/anotheruser/status/tweet-1",
+          permanentUrl: "https://x.com/anotheruser/status/post-1",
         },
       ];
 
-      mockClient.fetchHomeTimeline.mockResolvedValue(mockTweets);
+      mockClient.fetchHomeTimeline.mockResolvedValue(mockPosts);
 
       const options = {
         agentId: TEST_AGENT_ID,
@@ -360,57 +360,57 @@ describe("TwitterPostService", () => {
 
   describe("likePost", () => {
     it("should like a post", async () => {
-      await service.likePost("tweet-123", TEST_AGENT_ID);
+      await service.likePost("post-123", TEST_AGENT_ID);
 
-      expect(mockClient.twitterClient.likeTweet).toHaveBeenCalledWith("tweet-123");
+      expect(mockClient.xClient.likePost).toHaveBeenCalledWith("post-123");
     });
 
     it("should throw error on failure", async () => {
-      mockClient.twitterClient.likeTweet.mockRejectedValue(new Error("Like failed"));
+      mockClient.xClient.likePost.mockRejectedValue(new Error("Like failed"));
 
-      await expect(service.likePost("tweet-123", TEST_AGENT_ID)).rejects.toThrow("Like failed");
+      await expect(service.likePost("post-123", TEST_AGENT_ID)).rejects.toThrow("Like failed");
     });
   });
 
   describe("repost", () => {
-    it("should repost a tweet", async () => {
-      await service.repost("tweet-123", TEST_AGENT_ID);
+    it("should repost a post", async () => {
+      await service.repost("post-123", TEST_AGENT_ID);
 
-      expect(mockClient.twitterClient.retweet).toHaveBeenCalledWith("tweet-123");
+      expect(mockClient.xClient.repost).toHaveBeenCalledWith("post-123");
     });
 
     it("should throw error on failure", async () => {
-      mockClient.twitterClient.retweet.mockRejectedValue(new Error("Retweet failed"));
+      mockClient.xClient.repost.mockRejectedValue(new Error("Repost failed"));
 
-      await expect(service.repost("tweet-123", TEST_AGENT_ID)).rejects.toThrow("Retweet failed");
+      await expect(service.repost("post-123", TEST_AGENT_ID)).rejects.toThrow("Repost failed");
     });
   });
 
   describe("getMentions", () => {
     it("should fetch mentions", async () => {
-      const mockTweets = [
+      const mockPosts = [
         {
-          id: "tweet-1",
+          id: "post-1",
           userId: "user-456",
           username: "otheruser",
           text: "@testuser mentioned you",
           timestamp: 1234567890,
           likes: 5,
-          retweets: 2,
+          reposts: 2,
           replies: 1,
           views: 50,
           conversationId: "conv-1",
-          permanentUrl: "https://twitter.com/otheruser/status/tweet-1",
+          permanentUrl: "https://x.com/otheruser/status/post-1",
         },
       ];
 
-      mockClient.fetchSearchTweets.mockResolvedValue({
-        tweets: mockTweets,
+      mockClient.fetchSearchPosts.mockResolvedValue({
+        posts: mockPosts,
       });
 
       const posts = await service.getMentions(TEST_AGENT_ID);
 
-      expect(mockClient.fetchSearchTweets).toHaveBeenCalledWith(
+      expect(mockClient.fetchSearchPosts).toHaveBeenCalledWith(
         "@testuser",
         20,
         SearchMode.Latest,

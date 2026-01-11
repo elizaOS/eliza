@@ -1,8 +1,8 @@
 /**
  * xAI (Grok) Model Integration
  *
- * Provides model handlers for xAI's Grok models, available with Twitter/X premium.
- * This enables AI-powered tweet generation, content analysis, and more.
+ * Provides model handlers for xAI's Grok models, available with X premium.
+ * This enables AI-powered post generation, content analysis, and more.
  */
 
 import {

@@ -268,6 +268,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <p align="center">
   <a href="https://github.com/elizaos/eliza">⭐ Star us on GitHub</a> •
-  <a href="https://twitter.com/elizaos">🐦 Follow on Twitter</a> •
+  <a href="https://x.com/elizaos">🐦 Follow on X</a> •
   <a href="https://discord.gg/elizaos">💬 Join our Discord</a>
 </p>

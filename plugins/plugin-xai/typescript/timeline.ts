@@ -11,11 +11,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
-import type { Client, Tweet } from "./client/index";
-import { quoteTweetTemplate, replyTweetTemplate, twitterActionTemplate } from "./templates";
+import type { Client, Post } from "./client/index";
+import { quotePostTemplate, replyPostTemplate, xActionTemplate } from "./templates";
 import type { ActionResponse } from "./types";
-import { parseActionResponseFromText, sendTweet } from "./utils";
-import { createMemorySafe, ensureTwitterContext, isTweetProcessed } from "./utils/memory";
+import { parseActionResponseFromText, sendPost } from "./utils";
+import { createMemorySafe, ensureXContext, isPostProcessed } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
@@ -24,9 +24,9 @@ enum TIMELINE_TYPE {
   Following = "following",
 }
 
-export class TwitterTimelineClient {
+export class XTimelineClient {
   client: ClientBase;
-  twitterClient: Client;
+  xClient: Client;
   runtime: IAgentRuntime;
   isDryRun: boolean;
   timelineType: TIMELINE_TYPE;
@@ -35,7 +35,7 @@ export class TwitterTimelineClient {
 
   constructor(client: ClientBase, runtime: IAgentRuntime, state: Record<string, unknown>) {
     this.client = client;
-    this.twitterClient = client.twitterClient;
+    this.xClient = client.xClient;
     this.runtime = runtime;
     this.state = state;
 
@@ -56,12 +56,12 @@ export class TwitterTimelineClient {
   }
 
   async start() {
-    logger.info("Starting Twitter timeline client...");
+    logger.info("Starting X timeline client...");
     this.isRunning = true;
 
-    const handleTwitterTimelineLoop = () => {
+    const handleXTimelineLoop = () => {
       if (!this.isRunning) {
-        logger.info("Twitter timeline client stopped, exiting loop");
+        logger.info("X timeline client stopped, exiting loop");
         return;
       }
 
@@ -82,71 +82,71 @@ export class TwitterTimelineClient {
       this.handleTimeline();
 
       if (this.isRunning) {
-        setTimeout(handleTwitterTimelineLoop, actionInterval);
+        setTimeout(handleXTimelineLoop, actionInterval);
       }
     };
-    handleTwitterTimelineLoop();
+    handleXTimelineLoop();
   }
 
   async stop() {
-    logger.info("Stopping Twitter timeline client...");
+    logger.info("Stopping X timeline client...");
     this.isRunning = false;
   }
 
-  async getTimeline(count: number): Promise<Tweet[]> {
-    const twitterUsername = this.client.profile?.username;
+  async getTimeline(count: number): Promise<Post[]> {
+    const xUsername = this.client.profile?.username;
     const homeTimeline =
       this.timelineType === TIMELINE_TYPE.Following
-        ? await this.twitterClient.fetchFollowingTimeline(count, [])
-        : await this.twitterClient.fetchHomeTimeline(count, []);
+        ? await this.xClient.fetchFollowingTimeline(count, [])
+        : await this.xClient.fetchHomeTimeline(count, []);
 
-    // The timeline methods now return Tweet objects directly from v2 API
-    return homeTimeline.filter((tweet) => tweet.username !== twitterUsername); // do not perform action on self-tweets
+    // The timeline methods now return Post objects directly from v2 API
+    return homeTimeline.filter((post) => post.username !== xUsername); // do not perform action on self-posts
   }
 
-  createTweetId(runtime: IAgentRuntime, tweet: Tweet) {
-    if (!tweet.id) {
-      throw new Error("Tweet ID is required");
+  createPostId(runtime: IAgentRuntime, post: Post) {
+    if (!post.id) {
+      throw new Error("Post ID is required");
     }
-    return createUniqueUuid(runtime, tweet.id);
+    return createUniqueUuid(runtime, post.id);
   }
 
-  formMessage(runtime: IAgentRuntime, tweet: Tweet) {
-    if (!tweet.id || !tweet.userId || !tweet.conversationId) {
-      throw new Error("Tweet missing required fields: id, userId, or conversationId");
+  formMessage(runtime: IAgentRuntime, post: Post) {
+    if (!post.id || !post.userId || !post.conversationId) {
+      throw new Error("Post missing required fields: id, userId, or conversationId");
     }
     return {
-      id: this.createTweetId(runtime, tweet),
+      id: this.createPostId(runtime, post),
       agentId: runtime.agentId,
       content: {
-        text: tweet.text,
-        url: tweet.permanentUrl,
-        imageUrls: tweet.photos?.map((photo) => photo.url) || [],
-        inReplyTo: tweet.inReplyToStatusId
-          ? createUniqueUuid(runtime, tweet.inReplyToStatusId)
+        text: post.text,
+        url: post.permanentUrl,
+        imageUrls: post.photos?.map((photo) => photo.url) || [],
+        inReplyTo: post.inReplyToStatusId
+          ? createUniqueUuid(runtime, post.inReplyToStatusId)
           : undefined,
-        source: "twitter",
+        source: "x",
         channelType: ChannelType.GROUP,
-        tweet: {
-          id: tweet.id,
-          text: tweet.text,
-          userId: tweet.userId,
-          username: tweet.username,
-          timestamp: tweet.timestamp,
-          conversationId: tweet.conversationId,
+        post: {
+          id: post.id,
+          text: post.text,
+          userId: post.userId,
+          username: post.username,
+          timestamp: post.timestamp,
+          conversationId: post.conversationId,
         } as Record<string, string | number | boolean | null | undefined>,
       },
-      entityId: createUniqueUuid(runtime, tweet.userId),
-      roomId: createUniqueUuid(runtime, tweet.conversationId),
-      createdAt: getEpochMs(tweet.timestamp),
+      entityId: createUniqueUuid(runtime, post.userId),
+      roomId: createUniqueUuid(runtime, post.conversationId),
+      createdAt: getEpochMs(post.timestamp),
     };
   }
 
   async handleTimeline() {
-    logger.info("Starting Twitter timeline processing...");
+    logger.info("Starting X timeline processing...");
 
-    const tweets = await this.getTimeline(20);
-    logger.info(`Fetched ${tweets.length} tweets from timeline`);
+    const posts = await this.getTimeline(20);
+    logger.info(`Fetched ${posts.length} posts from timeline`);
 
     // Use max engagements per run from environment
     const maxActionsPerCycle = parseInt(
@@ -156,32 +156,32 @@ export class TwitterTimelineClient {
       10
     );
 
-    const tweetDecisions: Array<{
-      tweet: Tweet;
+    const postDecisions: Array<{
+      post: Post;
       actionResponse: ActionResponse;
-      tweetState: State;
+      postState: State;
       roomId: UUID;
     }> = [];
-    for (const tweet of tweets) {
+    for (const post of posts) {
       try {
         // Check if already processed using utility
-        if (!tweet.id) {
-          logger.warn("Skipping tweet with no ID");
+        if (!post.id) {
+          logger.warn("Skipping post with no ID");
           continue;
         }
-        const isProcessed = await isTweetProcessed(this.runtime, tweet.id);
+        const isProcessed = await isPostProcessed(this.runtime, post.id);
         if (isProcessed) {
-          logger.log(`Already processed tweet ID: ${tweet.id}`);
+          logger.log(`Already processed post ID: ${post.id}`);
           continue;
         }
 
-        if (!tweet.conversationId) {
-          logger.warn("Skipping tweet with no conversationId");
+        if (!post.conversationId) {
+          logger.warn("Skipping post with no conversationId");
           continue;
         }
-        const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
+        const roomId = createUniqueUuid(this.runtime, post.conversationId);
 
-        const message = this.formMessage(this.runtime, tweet);
+        const message = this.formMessage(this.runtime, post);
 
         const state = await this.runtime.composeState(message);
 
@@ -189,15 +189,15 @@ export class TwitterTimelineClient {
           composePromptFromState({
             state,
             template:
-              this.runtime.character.templates?.twitterActionTemplate || twitterActionTemplate,
+              this.runtime.character.templates?.xActionTemplate || xActionTemplate,
           }) +
           `
-Tweet:
-${tweet.text}
+Post:
+${post.text}
 
 # Respond with qualifying action tags only.
 
-Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
+Choose any combination of [LIKE], [REPOST], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
 
         const actionResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt: actionRespondPrompt,
@@ -206,29 +206,29 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
 
         // Ensure a valid action response was generated
         if (!parsedResponse || !parsedResponse.actions) {
-          logger.debug(`No action response generated for tweet ${tweet.id}`);
+          logger.debug(`No action response generated for post ${post.id}`);
           continue;
         }
 
-        tweetDecisions.push({
-          tweet,
+        postDecisions.push({
+          post,
           actionResponse: parsedResponse.actions,
-          tweetState: state,
+          postState: state,
           roomId,
         });
 
         // Limit the number of actions per cycle
-        if (tweetDecisions.length >= maxActionsPerCycle) break;
+        if (postDecisions.length >= maxActionsPerCycle) break;
       } catch (error) {
         logger.error(
-          `Error processing tweet ${tweet.id}:`,
+          `Error processing post ${post.id}:`,
           error instanceof Error ? error.message : String(error)
         );
       }
     }
 
     // Rank by the quality of the response
-    const rankByActionRelevance = (arr: typeof tweetDecisions) => {
+    const rankByActionRelevance = (arr: typeof postDecisions) => {
       return arr.sort((a, b) => {
         const countTrue = (obj: typeof a.actionResponse) =>
           Object.values(obj).filter(Boolean).length;
@@ -251,88 +251,88 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       });
     };
     // Sort the timeline based on the action decision score,
-    const prioritizedTweets = rankByActionRelevance(tweetDecisions);
+    const prioritizedPosts = rankByActionRelevance(postDecisions);
 
-    logger.info(`Processing ${prioritizedTweets.length} tweets with actions`);
-    if (prioritizedTweets.length > 0) {
-      const actionSummary = prioritizedTweets.map((td: (typeof tweetDecisions)[0]) => {
+    logger.info(`Processing ${prioritizedPosts.length} posts with actions`);
+    if (prioritizedPosts.length > 0) {
+      const actionSummary = prioritizedPosts.map((td: (typeof postDecisions)[0]) => {
         const actions = [];
         if (td.actionResponse.like) actions.push("LIKE");
-        if (td.actionResponse.retweet) actions.push("RETWEET");
+        if (td.actionResponse.repost) actions.push("REPOST");
         if (td.actionResponse.quote) actions.push("QUOTE");
         if (td.actionResponse.reply) actions.push("REPLY");
-        return `Tweet ${td.tweet.id}: ${actions.join(", ")}`;
+        return `Post ${td.post.id}: ${actions.join(", ")}`;
       });
       logger.info(`Actions to execute:\n${actionSummary.join("\n")}`);
     }
 
-    await this.processTimelineActions(prioritizedTweets);
+    await this.processTimelineActions(prioritizedPosts);
     logger.info("Timeline processing complete");
   }
 
   private async processTimelineActions(
-    tweetDecisions: {
-      tweet: Tweet;
+    postDecisions: {
+      post: Post;
       actionResponse: ActionResponse;
-      tweetState: State;
+      postState: State;
       roomId: UUID;
     }[]
   ): Promise<
     {
-      tweetId: string;
+      postId: string;
       actionResponse: ActionResponse;
       executedActions: string[];
     }[]
   > {
     const results = [];
 
-    for (const { tweet, actionResponse, tweetState: _tweetState, roomId } of tweetDecisions) {
-      const tweetId = this.createTweetId(this.runtime, tweet);
+    for (const { post, actionResponse, postState: _postState, roomId } of postDecisions) {
+      const postId = this.createPostId(this.runtime, post);
       const executedActions = [];
 
       // Ensure room exists before creating memory
       await this.runtime.ensureRoomExists({
         id: roomId,
-        name: `Twitter conversation ${tweet.conversationId}`,
-        source: "twitter",
+        name: `X conversation ${post.conversationId}`,
+        source: "x",
         type: ChannelType.GROUP,
-        channelId: tweet.conversationId,
-        serverId: createUniqueUuid(this.runtime, tweet.userId || ""),
-        worldId: createUniqueUuid(this.runtime, tweet.userId || ""),
+        channelId: post.conversationId,
+        serverId: createUniqueUuid(this.runtime, post.userId || ""),
+        worldId: createUniqueUuid(this.runtime, post.userId || ""),
       });
 
-      // Update memory with processed tweet using safe method
-      if (!tweet.userId) {
-        logger.warn("Skipping tweet with no userId");
+      // Update memory with processed post using safe method
+      if (!post.userId) {
+        logger.warn("Skipping post with no userId");
         continue;
       }
-      const tweetMemory: Memory = {
-        id: tweetId,
-        entityId: createUniqueUuid(this.runtime, tweet.userId),
+      const postMemory: Memory = {
+        id: postId,
+        entityId: createUniqueUuid(this.runtime, post.userId),
         content: {
-          text: tweet.text,
-          url: tweet.permanentUrl,
-          source: "twitter",
+          text: post.text,
+          url: post.permanentUrl,
+          source: "x",
           channelType: ChannelType.GROUP,
-          tweet: {
-            id: tweet.id,
-            text: tweet.text,
-            userId: tweet.userId,
-            username: tweet.username,
-            timestamp: tweet.timestamp,
-            conversationId: tweet.conversationId,
+          post: {
+            id: post.id,
+            text: post.text,
+            userId: post.userId,
+            username: post.username,
+            timestamp: post.timestamp,
+            conversationId: post.conversationId,
           } as Record<string, string | number | boolean | null | undefined>,
         },
         agentId: this.runtime.agentId,
         roomId,
-        createdAt: getEpochMs(tweet.timestamp),
+        createdAt: getEpochMs(post.timestamp),
       };
 
-      await createMemorySafe(this.runtime, tweetMemory, "messages");
+      await createMemorySafe(this.runtime, postMemory, "messages");
 
       try {
         // ensure world and rooms, connections, and worlds are created
-        const userId = tweet.userId;
+        const userId = post.userId;
         if (!userId) {
           logger.warn("Cannot create world/entity: userId is undefined");
           continue;
@@ -340,34 +340,34 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         const worldId = createUniqueUuid(this.runtime, userId);
         const entityId = createUniqueUuid(this.runtime, userId);
 
-        await this.ensureTweetWorldContext(tweet, roomId, worldId, entityId);
+        await this.ensurePostWorldContext(post, roomId, worldId, entityId);
 
         if (actionResponse.like) {
-          await this.handleLikeAction(tweet);
+          await this.handleLikeAction(post);
           executedActions.push("like");
         }
 
-        if (actionResponse.retweet) {
-          await this.handleRetweetAction(tweet);
-          executedActions.push("retweet");
+        if (actionResponse.repost) {
+          await this.handleRepostAction(post);
+          executedActions.push("repost");
         }
 
         if (actionResponse.quote) {
-          await this.handleQuoteAction(tweet);
+          await this.handleQuoteAction(post);
           executedActions.push("quote");
         }
 
         if (actionResponse.reply) {
-          await this.handleReplyAction(tweet);
+          await this.handleReplyAction(post);
           executedActions.push("reply");
         }
 
-        if (tweet.id) {
-          results.push({ tweetId: tweet.id, actionResponse, executedActions });
+        if (post.id) {
+          results.push({ postId: post.id, actionResponse, executedActions });
         }
       } catch (error) {
         logger.error(
-          `Error processing actions for tweet ${tweet.id}:`,
+          `Error processing actions for post ${post.id}:`,
           error instanceof Error ? error.message : String(error)
         );
       }
@@ -376,87 +376,87 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     return results;
   }
 
-  private async ensureTweetWorldContext(
-    tweet: Tweet,
+  private async ensurePostWorldContext(
+    post: Post,
     _roomId: UUID,
     _worldId: UUID,
     _entityId: UUID
   ) {
     try {
       // Use the utility function for consistency
-      if (!tweet.userId || !tweet.username || !tweet.conversationId) {
-        logger.warn("Cannot ensure context: missing required tweet fields");
+      if (!post.userId || !post.username || !post.conversationId) {
+        logger.warn("Cannot ensure context: missing required post fields");
         return;
       }
-      await ensureTwitterContext(this.runtime, {
-        userId: tweet.userId,
-        username: tweet.username,
-        name: tweet.name,
-        conversationId: tweet.conversationId,
+      await ensureXContext(this.runtime, {
+        userId: post.userId,
+        username: post.username,
+        name: post.name,
+        conversationId: post.conversationId,
       });
     } catch (error) {
       logger.error(
-        `Failed to ensure context for tweet ${tweet.id}:`,
+        `Failed to ensure context for post ${post.id}:`,
         error instanceof Error ? error.message : String(error)
       );
       // Don't fail the entire timeline processing
     }
   }
 
-  async handleLikeAction(tweet: Tweet) {
+  async handleLikeAction(post: Post) {
     try {
       if (this.isDryRun) {
-        logger.log(`[DRY RUN] Would have liked tweet ${tweet.id}`);
+        logger.log(`[DRY RUN] Would have liked post ${post.id}`);
         return;
       }
-      if (!tweet.id) {
-        logger.warn("Cannot like tweet: missing tweet ID");
+      if (!post.id) {
+        logger.warn("Cannot like post: missing post ID");
         return;
       }
-      await this.twitterClient.likeTweet(tweet.id);
-      logger.log(`Liked tweet ${tweet.id}`);
+      await this.xClient.likePost(post.id);
+      logger.log(`Liked post ${post.id}`);
     } catch (error) {
       logger.error(
-        `Error liking tweet ${tweet.id}:`,
+        `Error liking post ${post.id}:`,
         error instanceof Error ? error.message : String(error)
       );
     }
   }
 
-  async handleRetweetAction(tweet: Tweet) {
+  async handleRepostAction(post: Post) {
     try {
       if (this.isDryRun) {
-        logger.log(`[DRY RUN] Would have retweeted tweet ${tweet.id}`);
+        logger.log(`[DRY RUN] Would have reposted post ${post.id}`);
         return;
       }
-      if (!tweet.id) {
-        logger.warn("Cannot retweet: missing tweet ID");
+      if (!post.id) {
+        logger.warn("Cannot repost: missing post ID");
         return;
       }
-      await this.twitterClient.retweet(tweet.id);
-      logger.log(`Retweeted tweet ${tweet.id}`);
+      await this.xClient.repost(post.id);
+      logger.log(`Reposted post ${post.id}`);
     } catch (error) {
       logger.error(
-        `Error retweeting tweet ${tweet.id}:`,
+        `Error reposting post ${post.id}:`,
         error instanceof Error ? error.message : String(error)
       );
     }
   }
 
-  async handleQuoteAction(tweet: Tweet) {
+  async handleQuoteAction(post: Post) {
     try {
-      const message = this.formMessage(this.runtime, tweet);
+      const message = this.formMessage(this.runtime, post);
 
       const state = await this.runtime.composeState(message);
 
       const quotePrompt =
         composePromptFromState({
           state,
-          template: this.runtime.character.templates?.quoteTweetTemplate || quoteTweetTemplate,
+          template: this.runtime.character.templates?.quotePostTemplate || quotePostTemplate,
         }) +
         `
-You are responding to this tweet:
-${tweet.text}`;
+You are responding to this post:
+${post.text}`;
 
       const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: quotePrompt,
@@ -466,38 +466,38 @@ ${tweet.text}`;
       const postText = responseObject?.post;
       if (postText && typeof postText === "string") {
         if (this.isDryRun) {
-          logger.log(`[DRY RUN] Would have quoted tweet ${tweet.id} with: ${postText}`);
+          logger.log(`[DRY RUN] Would have quoted post ${post.id} with: ${postText}`);
           return;
         }
 
-        if (!tweet.id) {
-          logger.error("Cannot send quote tweet: tweet.id is undefined");
+        if (!post.id) {
+          logger.error("Cannot send quote post: post.id is undefined");
           return;
         }
         const postTextValue = postText; // Capture for closure
-        const tweetIdValue = tweet.id; // Capture for closure
+        const postIdValue = post.id; // Capture for closure
         const result = await this.client.requestQueue.add(
-          async () => await this.twitterClient.sendQuoteTweet(postTextValue, tweetIdValue)
+          async () => await this.xClient.sendQuotePost(postTextValue, postIdValue)
         );
 
         const body = (await result.json()) as {
           data?: {
-            create_tweet?: { tweet_results?: { result?: { id?: string } } };
+            create_post?: { post_results?: { result?: { id?: string } } };
           };
           id?: string;
         };
 
-        const tweetResult = body?.data?.create_tweet?.tweet_results?.result || body?.data || body;
-        if (tweetResult) {
-          logger.log("Successfully posted quote tweet");
+        const postResult = body?.data?.create_post?.post_results?.result || body?.data || body;
+        if (postResult) {
+          logger.log("Successfully posted quote");
         } else {
-          logger.error("Quote tweet creation failed:", body);
+          logger.error("Quote post creation failed:", body);
         }
 
         // Create memory for our response
-        const tweetResultWithId = tweetResult as { id?: string };
-        const tweetId = tweetResultWithId?.id || Date.now().toString();
-        const responseId = createUniqueUuid(this.runtime, tweetId);
+        const postResultWithId = postResult as { id?: string };
+        const postId = postResultWithId?.id || Date.now().toString();
+        const responseId = createUniqueUuid(this.runtime, postId);
         const responseMemory: Memory = {
           id: responseId,
           entityId: this.runtime.agentId,
@@ -515,26 +515,26 @@ ${tweet.text}`;
       }
     } catch (error) {
       logger.error(
-        "Error in quote tweet generation:",
+        "Error in quote post generation:",
         error instanceof Error ? error.message : String(error)
       );
     }
   }
 
-  async handleReplyAction(tweet: Tweet) {
+  async handleReplyAction(post: Post) {
     try {
-      const message = this.formMessage(this.runtime, tweet);
+      const message = this.formMessage(this.runtime, post);
 
       const state = await this.runtime.composeState(message);
 
       const replyPrompt =
         composePromptFromState({
           state,
-          template: this.runtime.character.templates?.replyTweetTemplate || replyTweetTemplate,
+          template: this.runtime.character.templates?.replyPostTemplate || replyPostTemplate,
         }) +
         `
-You are replying to this tweet:
-${tweet.text}`;
+You are replying to this post:
+${post.text}`;
 
       const replyResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: replyPrompt,
@@ -544,19 +544,19 @@ ${tweet.text}`;
       if (responseObject?.post && typeof responseObject.post === "string") {
         if (this.isDryRun) {
           logger.log(
-            `[DRY RUN] Would have replied to tweet ${tweet.id} with: ${responseObject.post}`
+            `[DRY RUN] Would have replied to post ${post.id} with: ${responseObject.post}`
           );
           return;
         }
 
-        const result = await sendTweet(this.client, responseObject.post as string, [], tweet.id);
+        const result = await sendPost(this.client, responseObject.post as string, [], post.id);
 
         if (result) {
-          logger.log("Successfully posted reply tweet");
+          logger.log("Successfully posted reply");
 
           // Create memory for our response
-          const replyTweetId = result.id || result.data?.id || Date.now().toString();
-          const responseId = createUniqueUuid(this.runtime, replyTweetId);
+          const replyPostId = result.id || result.data?.id || Date.now().toString();
+          const responseId = createUniqueUuid(this.runtime, replyPostId);
           const responseMemory: Memory = {
             id: responseId,
             entityId: this.runtime.agentId,
@@ -575,9 +575,10 @@ ${tweet.text}`;
       }
     } catch (error) {
       logger.error(
-        "Error in reply tweet generation:",
+        "Error in reply generation:",
         error instanceof Error ? error.message : String(error)
       );
     }
   }
 }
+

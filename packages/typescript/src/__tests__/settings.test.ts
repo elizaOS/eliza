@@ -1,5 +1,3 @@
-// Error handling is via expect().toThrow() patterns.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as entities from "../entities";
 import * as logger_module from "../logger";

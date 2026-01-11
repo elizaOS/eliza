@@ -9,7 +9,7 @@ const stringToUuid = (id: string): UUID => id as UUID;
  * Test suite to verify agent UUID identification behavior.
  * - Agents are uniquely identified by UUID
  * - Multiple agents with the same name are allowed when they have explicit different UUIDs
- * - For backward compatibility, agents without explicit IDs get deterministic UUIDs from their names
+ * - Agents without explicit IDs get deterministic UUIDs from their names
  */
 describe("Agent UUID Identification", () => {
   let mockAdapter: IDatabaseAdapter;
@@ -199,7 +199,7 @@ describe("Agent UUID Identification", () => {
     expect(agent2?.name).toBe(sharedName);
   });
 
-  it("should generate deterministic UUIDs from character names for backward compatibility", async () => {
+  it("should generate deterministic UUIDs from character names", async () => {
     const sharedName = "TestAgent";
 
     // Simulate what happens when a character without ID is processed
@@ -224,7 +224,7 @@ describe("Agent UUID Identification", () => {
       adapter: mockAdapter,
     });
 
-    // Verify same UUIDs were generated for same name (backward compatibility)
+    // Verify same UUIDs were generated for same name
     expect(runtime1.agentId).toBe(runtime2.agentId);
 
     await runtime1.initialize();

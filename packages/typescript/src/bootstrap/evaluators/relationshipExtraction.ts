@@ -64,12 +64,12 @@ export const relationshipExtractionEvaluator: Evaluator = {
           name: "{{name1}}",
           content: {
             type: "text",
-            text: "Hi, I'm Sarah Chen. You can find me on Twitter @sarahchen_dev",
+            text: "Hi, I'm Sarah Chen. You can find me on X @sarahchen_dev",
           },
         },
       ],
       outcome:
-        "Extracts Twitter handle and creates entity with platform identity",
+        "Extracts X handle and creates entity with platform identity",
     },
   ],
 
@@ -172,14 +172,14 @@ export const relationshipExtractionEvaluator: Evaluator = {
 function extractPlatformIdentities(text: string): PlatformIdentity[] {
   const identities: PlatformIdentity[] = [];
 
-  // Twitter handles
-  const twitterMatches = text.match(/@[\w]+/g);
-  if (twitterMatches) {
-    for (const handle of twitterMatches) {
+  // X handles
+  const xMatches = text.match(/@[\w]+/g);
+  if (xMatches) {
+    for (const handle of xMatches) {
       if (!handle.match(/@(here|everyone|channel)/)) {
         // Skip Discord mentions
         identities.push({
-          platform: "twitter",
+          platform: "x",
           handle: handle,
           verified: false,
           confidence: 0.7,

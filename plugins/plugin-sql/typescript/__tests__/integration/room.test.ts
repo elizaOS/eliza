@@ -125,7 +125,7 @@ describe("Room Integration Tests", () => {
       expect(retrieved).toEqual([]);
     });
 
-    it("should map messageServerId to serverId for backward compatibility", async () => {
+    it("should store and retrieve messageServerId", async () => {
       const roomId = uuidv4() as UUID;
       const messageServerId = uuidv4() as UUID;
       const room: Room = {
@@ -144,8 +144,6 @@ describe("Room Integration Tests", () => {
       expect(retrieved).toHaveLength(1);
       if (!retrieved || !retrieved[0]) throw new Error("Room should exist");
       expect(retrieved[0].messageServerId).toBe(messageServerId);
-      // Verify backward compatibility: serverId should be mapped to messageServerId
-      expect(retrieved[0].serverId).toBe(messageServerId);
     });
   });
 });

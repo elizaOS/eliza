@@ -42,7 +42,7 @@ describe("Logger", () => {
       expect(typeof logger.debug).toBe("function");
     });
 
-    it("should export elizaLogger as alias for backward compatibility", () => {
+    it("should export elizaLogger as alias", () => {
       expect(elizaLogger).toBeDefined();
       expect(elizaLogger).toBe(logger);
     });

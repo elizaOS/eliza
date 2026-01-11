@@ -56,7 +56,7 @@ flowchart TD
 ### Key Components
 
 1. **Direct Connection**: Socket.IO connects directly to the Eliza server (default: `http://localhost:3000`)
-2. **Channel-Based Communication**: Messages are organized by channels (or rooms for backward compatibility)
+2. **Channel-Based Communication**: Messages are organized by channels
 3. **Message Filtering**: Clients filter incoming broadcasts by channel/room ID
 
 ## Socket.IO Events and Message Types
@@ -543,7 +543,7 @@ class SocketIOService extends Service {
     // Broadcast to all in room
     this.io.to(roomId).emit("messageBroadcast", {
       roomId: roomId,
-      channelId: roomId, // For backward compatibility
+      channelId: roomId,
       senderName: response.agentName,
       text: response.text,
       metadata: response.metadata,

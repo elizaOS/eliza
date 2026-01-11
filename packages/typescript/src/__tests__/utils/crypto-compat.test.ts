@@ -3,8 +3,6 @@
  * Verifies cross-platform cryptographic operations work correctly
  */
 
-// - Wrong key decryption test: Testing crypto error handling - KEEP
-
 import { describe, expect, it } from "vitest";
 import { BufferUtils } from "../../utils/buffer";
 import {

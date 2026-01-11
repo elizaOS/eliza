@@ -63,7 +63,7 @@ describe("Prompts", () => {
 
     it("postCreationTemplate should contain required placeholders and examples", () => {
       expect(postCreationTemplate).toContain("{{agentName}}");
-      expect(postCreationTemplate).toContain("{{twitterUserName}}");
+      expect(postCreationTemplate).toContain("{{xUserName}}");
       expect(postCreationTemplate).toContain("{{providers}}");
       expect(postCreationTemplate).toContain("{{adjective}}");
       expect(postCreationTemplate).toContain("{{topic}}");

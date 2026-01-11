@@ -543,10 +543,3 @@ describe('${componentName}${componentType}', () => {
 `;
 };
 
-// Legacy exports for backward compatibility
-export const actionTemplate = generateActionCode;
-export const providerTemplate = generateProviderCode;
-export const serviceTemplate = generateServiceCode;
-export const evaluatorTemplate = generateEvaluatorCode;
-export const pluginIndexTemplate = generatePluginIndex;
-export const testTemplate = generateTestCode;

@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let result = grok.generate_text(&TextGenerationParams::new("Hello"), false).await?;
     println!("{}", result.text);
 
-    // X (Twitter) integration
+    // X (X) integration
     let mut x = XClient::new(XConfig::from_env()?)?;
     let me = x.me().await?;
     println!("@{}", me.username);

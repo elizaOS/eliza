@@ -6,36 +6,38 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
-import type { Tweet as ClientTweet } from "../client";
+import type { Post as ClientPost } from "../client";
 
 /**
- * Options for ensuring Twitter context exists
+ * Options for ensuring X context exists
  */
-export interface TwitterContextOptions {
-  tweet?: ClientTweet;
+export interface XContextOptions {
+  post?: ClientPost;
   userId: string;
   username: string;
   name?: string;
   conversationId?: string;
 }
 
+
 /**
- * Result of ensuring Twitter context
+ * Result of ensuring X context
  */
-export interface TwitterContextResult {
+export interface XContextResult {
   worldId: UUID;
   roomId: UUID;
   entityId: UUID;
 }
 
+
 /**
- * Ensures that the world, room, and entity exist for a Twitter interaction
+ * Ensures that the world, room, and entity exist for an X interaction
  * with proper error handling and retry logic
  */
-export async function ensureTwitterContext(
+export async function ensureXContext(
   runtime: IAgentRuntime,
-  options: TwitterContextOptions
-): Promise<TwitterContextResult> {
+  options: XContextOptions
+): Promise<XContextResult> {
   const { userId, username, name = username, conversationId = userId } = options;
 
   const worldId = createUniqueUuid(runtime, userId);
@@ -46,12 +48,12 @@ export async function ensureTwitterContext(
     // Ensure world exists
     await runtime.ensureWorldExists({
       id: worldId,
-      name: `${username}'s Twitter`,
+      name: `${username}'s X`,
       agentId: runtime.agentId,
       serverId: createUniqueUuid(runtime, `server-${userId}`),
       metadata: {
         ownership: { ownerId: userId },
-        twitter: {
+        x: {
           username: username,
           id: userId,
         },
@@ -61,8 +63,8 @@ export async function ensureTwitterContext(
     // Ensure room exists
     await runtime.ensureRoomExists({
       id: roomId,
-      name: `Twitter conversation ${conversationId}`,
-      source: "twitter",
+      name: `X conversation ${conversationId}`,
+      source: "x",
       type: ChannelType.FEED,
       channelId: conversationId,
       serverId: createUniqueUuid(runtime, `server-${userId}`),
@@ -75,7 +77,7 @@ export async function ensureTwitterContext(
       roomId,
       userName: username,
       name: name,
-      source: "twitter",
+      source: "x",
       type: ChannelType.FEED,
       worldId: worldId,
     });
@@ -87,10 +89,11 @@ export async function ensureTwitterContext(
     };
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.error("Failed to ensure Twitter context:", err.message);
-    throw new Error(`Failed to create Twitter context for user ${username}: ${err.message}`);
+    logger.error("Failed to ensure X context:", err.message);
+    throw new Error(`Failed to create X context for user ${username}: ${err.message}`);
   }
 }
+
 
 /**
  * Creates a memory with error handling and retry logic
@@ -136,30 +139,30 @@ export async function createMemorySafe(
 }
 
 /**
- * Checks if a tweet has already been processed
+ * Checks if a post has already been processed
  */
-export async function isTweetProcessed(runtime: IAgentRuntime, tweetId: string): Promise<boolean> {
+export async function isPostProcessed(runtime: IAgentRuntime, postId: string): Promise<boolean> {
   try {
-    const memoryId = createUniqueUuid(runtime, tweetId);
+    const memoryId = createUniqueUuid(runtime, postId);
     const memory = await runtime.getMemoryById(memoryId);
     return !!memory;
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.debug(`Error checking if tweet ${tweetId} is processed:`, err.message);
+    logger.debug(`Error checking if post ${postId} is processed:`, err.message);
     return false;
   }
 }
 
 /**
- * Gets recent tweets to check for duplicates
+ * Gets recent posts to check for duplicates
  */
-export async function getRecentTweets(
+export async function getRecentPosts(
   runtime: IAgentRuntime,
   username: string,
   _count: number = 10
 ): Promise<string[]> {
   try {
-    const cacheKey = `twitter/${username}/recentTweets`;
+    const cacheKey = `x/${username}/recentPosts`;
     const cached = await runtime.getCache<string[]>(cacheKey);
 
     if (cached && Array.isArray(cached)) {
@@ -170,60 +173,60 @@ export async function getRecentTweets(
     return [];
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.debug("Error getting recent tweets from cache:", err.message);
+    logger.debug("Error getting recent posts from cache:", err.message);
     return [];
   }
 }
 
 /**
- * Adds a tweet to the recent tweets cache
+ * Adds a post to the recent posts cache
  */
-export async function addToRecentTweets(
+export async function addToRecentPosts(
   runtime: IAgentRuntime,
   username: string,
-  tweetText: string,
+  postText: string,
   maxRecent: number = 10
 ): Promise<void> {
   try {
-    const cacheKey = `twitter/${username}/recentTweets`;
-    const recent = await getRecentTweets(runtime, username, maxRecent);
+    const cacheKey = `x/${username}/recentPosts`;
+    const recent = await getRecentPosts(runtime, username, maxRecent);
 
-    // Add new tweet to the beginning
-    recent.unshift(tweetText);
+    // Add new post to the beginning
+    recent.unshift(postText);
 
-    // Keep only the most recent tweets
+    // Keep only the most recent posts
     const trimmed = recent.slice(0, maxRecent);
 
     await runtime.setCache(cacheKey, trimmed);
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.debug("Error updating recent tweets cache:", err.message);
+    logger.debug("Error updating recent posts cache:", err.message);
   }
 }
 
 /**
- * Checks if a tweet text is a duplicate of recent tweets
+ * Checks if a post text is a duplicate of recent posts
  */
-export async function isDuplicateTweet(
+export async function isDuplicatePost(
   runtime: IAgentRuntime,
   username: string,
-  tweetText: string,
+  postText: string,
   _similarityThreshold: number = 0.9
 ): Promise<boolean> {
   try {
-    const recentTweets = await getRecentTweets(runtime, username);
+    const recentPosts = await getRecentPosts(runtime, username);
 
     // Exact match check
-    if (recentTweets.includes(tweetText)) {
+    if (recentPosts.includes(postText)) {
       return true;
     }
 
     // Similarity check (simple for now, could use embeddings later)
-    const normalizedNew = tweetText.toLowerCase().trim();
-    for (const recent of recentTweets) {
+    const normalizedNew = postText.toLowerCase().trim();
+    for (const recent of recentPosts) {
       const normalizedRecent = recent.toLowerCase().trim();
 
-      // Check if tweets are very similar (e.g., only differ by punctuation)
+      // Check if posts are very similar (e.g., only differ by punctuation)
       if (normalizedNew === normalizedRecent) {
         return true;
       }
@@ -237,7 +240,7 @@ export async function isDuplicateTweet(
     return false;
   } catch (error: unknown) {
     const err = error instanceof Error ? error : new Error(String(error));
-    logger.debug("Error checking for duplicate tweets:", err.message);
+    logger.debug("Error checking for duplicate posts:", err.message);
     return false;
   }
 }

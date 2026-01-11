@@ -169,7 +169,7 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
     1. Core plugins (@elizaos/plugin-sql)
     2. Text-only LLM plugins (no embedding support)
     3. Embedding-capable LLM plugins
-    4. Platform plugins (Discord, Twitter, Telegram)
+    4. Platform plugins (Discord, X, Telegram)
     5. Bootstrap plugin (unless IGNORE_BOOTSTRAP is set)
     6. Ollama fallback (only if no other LLM providers configured)
 
@@ -217,7 +217,7 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
             "TWITTER_ACCESS_TOKEN_SECRET",
         ]
     ):
-        plugins.append("@elizaos/plugin-twitter")
+        plugins.append("@elizaos/plugin-x")
     if get_env("TELEGRAM_BOT_TOKEN"):
         plugins.append("@elizaos/plugin-telegram")
 

@@ -82,7 +82,7 @@ class PlatformPrefix(str, Enum):
 
     DISCORD = "DISCORD"
     TELEGRAM = "TELEGRAM"
-    TWITTER = "TWITTER"
+    X = "X"
 
 
 class EventPayload(BaseModel):

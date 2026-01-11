@@ -104,8 +104,8 @@ pub enum PlatformPrefix {
     Discord,
     /// Telegram platform
     Telegram,
-    /// Twitter platform
-    Twitter,
+    /// X platform
+    X,
 }
 
 /// Base payload interface for all events

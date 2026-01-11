@@ -1,6 +1,3 @@
-// - beforeAll WASM module loading - KEEP (conditional test execution)
-// - Wrong key decryption test - KEEP (testing error handling behavior)
-
 /**
  * @fileoverview WASM Bindings Tests
  *

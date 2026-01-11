@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-//! X (Twitter) API v2 Client
+//! X (X) API v2 Client
 //!
 //! Async HTTP client for X API v2 interactions using reqwest.
 
@@ -19,7 +19,7 @@ use tracing::debug;
 use crate::error::{Result, XAIError};
 use crate::types::*;
 
-/// X (Twitter) API v2 client.
+/// X (X) API v2 client.
 pub struct XClient {
     client: Client,
     config: XConfig,
@@ -27,7 +27,7 @@ pub struct XClient {
 }
 
 impl XClient {
-    const API_BASE: &'static str = "https://api.twitter.com/2";
+    const API_BASE: &'static str = "https://api.x.com/2";
 
     /// Create a new X client.
     pub fn new(config: XConfig) -> Result<Self> {
@@ -190,7 +190,7 @@ impl XClient {
             protected: user["protected"].as_bool().unwrap_or(false),
             followers_count: metrics["followers_count"].as_u64().unwrap_or(0),
             following_count: metrics["following_count"].as_u64().unwrap_or(0),
-            post_count: metrics["tweet_count"].as_u64().unwrap_or(0),
+            post_count: metrics["post_count"].as_u64().unwrap_or(0),
             listed_count: metrics["listed_count"].as_u64().unwrap_or(0),
             created_at: user["created_at"]
                 .as_str()
@@ -233,7 +233,7 @@ impl XClient {
             protected: user["protected"].as_bool().unwrap_or(false),
             followers_count: metrics["followers_count"].as_u64().unwrap_or(0),
             following_count: metrics["following_count"].as_u64().unwrap_or(0),
-            post_count: metrics["tweet_count"].as_u64().unwrap_or(0),
+            post_count: metrics["post_count"].as_u64().unwrap_or(0),
             listed_count: metrics["listed_count"].as_u64().unwrap_or(0),
             created_at: user["created_at"]
                 .as_str()
@@ -266,7 +266,7 @@ impl XClient {
             protected: user["protected"].as_bool().unwrap_or(false),
             followers_count: metrics["followers_count"].as_u64().unwrap_or(0),
             following_count: metrics["following_count"].as_u64().unwrap_or(0),
-            post_count: metrics["tweet_count"].as_u64().unwrap_or(0),
+            post_count: metrics["post_count"].as_u64().unwrap_or(0),
             listed_count: metrics["listed_count"].as_u64().unwrap_or(0),
             created_at: user["created_at"]
                 .as_str()
@@ -348,12 +348,12 @@ impl XClient {
         }
 
         // Parse referenced posts
-        let refs = post_data["referenced_tweets"].as_array();
+        let refs = post_data["referenced_posts"].as_array();
         let is_reply = refs
             .map(|arr| arr.iter().any(|r| r["type"].as_str() == Some("replied_to")))
             .unwrap_or(false);
         let is_repost = refs
-            .map(|arr| arr.iter().any(|r| r["type"].as_str() == Some("retweeted")))
+            .map(|arr| arr.iter().any(|r| r["type"].as_str() == Some("reposted")))
             .unwrap_or(false);
         let is_quote = refs
             .map(|arr| arr.iter().any(|r| r["type"].as_str() == Some("quoted")))
@@ -378,7 +378,7 @@ impl XClient {
         let reposted_id = refs
             .and_then(|arr| {
                 arr.iter()
-                    .find(|r| r["type"].as_str() == Some("retweeted"))
+                    .find(|r| r["type"].as_str() == Some("reposted"))
                     .and_then(|r| r["id"].as_str())
             })
             .map(String::from);
@@ -440,7 +440,7 @@ impl XClient {
                 .to_string(),
             metrics: PostMetrics {
                 like_count: metrics["like_count"].as_u64().unwrap_or(0),
-                repost_count: metrics["retweet_count"].as_u64().unwrap_or(0),
+                repost_count: metrics["repost_count"].as_u64().unwrap_or(0),
                 reply_count: metrics["reply_count"].as_u64().unwrap_or(0),
                 quote_count: metrics["quote_count"].as_u64().unwrap_or(0),
                 impression_count: metrics["impression_count"].as_u64().unwrap_or(0),
@@ -467,7 +467,7 @@ impl XClient {
 
     /// Get a single post by ID.
     pub async fn get_post(&self, post_id: &str) -> Result<Option<Post>> {
-        let url = self.url(&format!("/tweets/{}", post_id));
+        let url = self.url(&format!("/posts/{}", post_id));
         let headers = self.get_headers("GET", &url);
 
         let response = self
@@ -475,10 +475,10 @@ impl XClient {
             .get(&url)
             .headers(headers)
             .query(&[
-                ("tweet.fields", "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments,geo,lang,possibly_sensitive"),
+                ("post.fields", "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments,geo,lang,possibly_sensitive"),
                 ("user.fields", "id,name,username,profile_image_url"),
                 ("media.fields", "url,preview_image_url,type,variants,alt_text"),
-                ("expansions", "author_id,attachments.media_keys,referenced_tweets.id"),
+                ("expansions", "author_id,attachments.media_keys,referenced_posts.id"),
             ])
             .send()
             .await?;
@@ -507,7 +507,7 @@ impl XClient {
             });
         }
 
-        let url = self.url("/tweets");
+        let url = self.url("/posts");
         let headers = self.get_headers("POST", &url);
 
         let body = serde_json::json!({ "text": text });
@@ -539,13 +539,13 @@ impl XClient {
             });
         }
 
-        let url = self.url("/tweets");
+        let url = self.url("/posts");
         let headers = self.get_headers("POST", &url);
 
         let body = serde_json::json!({
             "text": text,
             "reply": {
-                "in_reply_to_tweet_id": reply_to_id
+                "in_reply_to_post_id": reply_to_id
             }
         });
 
@@ -573,7 +573,7 @@ impl XClient {
             return Ok(true);
         }
 
-        let url = self.url(&format!("/tweets/{}", post_id));
+        let url = self.url(&format!("/posts/{}", post_id));
         let headers = self.get_headers("DELETE", &url);
 
         let response = self.client.delete(&url).headers(headers).send().await?;
@@ -594,7 +594,7 @@ impl XClient {
         let url = self.url(&format!("/users/{}/likes", me.id));
         let headers = self.get_headers("POST", &url);
 
-        let body = serde_json::json!({ "tweet_id": post_id });
+        let body = serde_json::json!({ "post_id": post_id });
 
         let response = self
             .client
@@ -618,10 +618,10 @@ impl XClient {
         }
 
         let me = self.me().await?;
-        let url = self.url(&format!("/users/{}/retweets", me.id));
+        let url = self.url(&format!("/users/{}/reposts", me.id));
         let headers = self.get_headers("POST", &url);
 
-        let body = serde_json::json!({ "tweet_id": post_id });
+        let body = serde_json::json!({ "post_id": post_id });
 
         let response = self
             .client
@@ -634,7 +634,7 @@ impl XClient {
         let response = self.check_response(response).await?;
         let data: serde_json::Value = response.json().await?;
 
-        Ok(data["data"]["retweeted"].as_bool().unwrap_or(false))
+        Ok(data["data"]["reposted"].as_bool().unwrap_or(false))
     }
 
     /// Unlike a post.
@@ -663,14 +663,14 @@ impl XClient {
         }
 
         let me = self.me().await?;
-        let url = self.url(&format!("/users/{}/retweets/{}", me.id, post_id));
+        let url = self.url(&format!("/users/{}/reposts/{}", me.id, post_id));
         let headers = self.get_headers("DELETE", &url);
 
         let response = self.client.delete(&url).headers(headers).send().await?;
         let response = self.check_response(response).await?;
         let data: serde_json::Value = response.json().await?;
 
-        Ok(!data["data"]["retweeted"].as_bool().unwrap_or(true))
+        Ok(!data["data"]["reposted"].as_bool().unwrap_or(true))
     }
 
     /// Follow a user.
@@ -802,10 +802,10 @@ impl XClient {
 
         let mut query: Vec<(&str, String)> = vec![
             ("max_results", max_results.min(100).to_string()),
-            ("tweet.fields", "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments".to_string()),
+            ("post.fields", "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments".to_string()),
             ("user.fields", "id,name,username,profile_image_url".to_string()),
             ("media.fields", "url,preview_image_url,type".to_string()),
-            ("expansions", "author_id,attachments.media_keys,referenced_tweets.id".to_string()),
+            ("expansions", "author_id,attachments.media_keys,referenced_posts.id".to_string()),
         ];
 
         if let Some(token) = pagination_token {
@@ -842,16 +842,16 @@ impl XClient {
         max_results: u32,
         pagination_token: Option<&str>,
     ) -> Result<QueryPostsResponse> {
-        let url = self.url(&format!("/users/{}/tweets", user_id));
+        let url = self.url(&format!("/users/{}/posts", user_id));
         let headers = self.get_headers("GET", &url);
 
         let mut query: Vec<(&str, String)> = vec![
             ("max_results", max_results.min(100).to_string()),
-            ("exclude", "retweets,replies".to_string()),
-            ("tweet.fields", "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments".to_string()),
+            ("exclude", "reposts,replies".to_string()),
+            ("post.fields", "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments".to_string()),
             ("user.fields", "id,name,username,profile_image_url".to_string()),
             ("media.fields", "url,preview_image_url,type".to_string()),
-            ("expansions", "author_id,attachments.media_keys,referenced_tweets.id".to_string()),
+            ("expansions", "author_id,attachments.media_keys,referenced_posts.id".to_string()),
         ];
 
         if let Some(token) = pagination_token {
@@ -892,17 +892,17 @@ impl XClient {
         max_results: u32,
         sort_order: Option<&str>,
     ) -> Result<QueryPostsResponse> {
-        let url = self.url("/tweets/search/recent");
+        let url = self.url("/posts/search/recent");
         let headers = self.get_headers("GET", &url);
 
         let query_params: Vec<(&str, String)> = vec![
             ("query", query.to_string()),
             ("max_results", max_results.min(100).to_string()),
             ("sort_order", sort_order.unwrap_or("relevancy").to_string()),
-            ("tweet.fields", "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments".to_string()),
+            ("post.fields", "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments".to_string()),
             ("user.fields", "id,name,username,profile_image_url".to_string()),
             ("media.fields", "url,preview_image_url,type".to_string()),
-            ("expansions", "author_id,attachments.media_keys,referenced_tweets.id".to_string()),
+            ("expansions", "author_id,attachments.media_keys,referenced_posts.id".to_string()),
         ];
 
         let response = self.client.get(&url).headers(headers).query(&query_params).send().await?;

@@ -384,7 +384,7 @@ ${currentSummary.trim()}
       {
         name: "{{name1}}",
         content: {
-          text: "can you read my blog post and give me a detailed breakdown of the key points I made, and then suggest a handful of tweets to promote it?",
+          text: "can you read my blog post and give me a detailed breakdown of the key points I made, and then suggest a handful of posts to promote it?",
         },
       },
       {

@@ -1,5 +1,3 @@
-// - beforeAll WASM module loading - KEEP (conditional test execution)
-
 /**
  * @fileoverview Interop Equivalence Tests
  *

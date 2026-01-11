@@ -20,8 +20,6 @@ export function getXAuthMode(
   return normalizeMode(mode ?? "env");
 }
 
-// Keep backward compatibility alias
-export const getTwitterAuthMode = getXAuthMode;
 
 export function createXAuthProvider(
   runtime: IAgentRuntime,
@@ -38,5 +36,3 @@ export function createXAuthProvider(
   }
 }
 
-// Keep backward compatibility alias
-export const createTwitterAuthProvider = createXAuthProvider;
