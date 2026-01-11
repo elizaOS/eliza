@@ -1,8 +1,6 @@
 /**
- * Browser entry point for @elizaos/plugin-s3-storage
- *
- * Note: Full S3 functionality requires Node.js.
- * This module exports types and a limited browser-compatible API.
+ * Browser entry point for @elizaos/plugin-s3-storage.
+ * Full S3 functionality requires Node.js - exports types and limited browser-compatible API.
  */
 
 export * from "./types";
@@ -12,9 +10,7 @@ import type { Plugin } from "@elizaos/core";
 
 /**
  * S3 Storage Plugin for elizaOS (browser version).
- *
- * Note: File system operations are not available in the browser.
- * Use the Node.js version for full functionality.
+ * File system operations unavailable - use Node.js version for full functionality.
  */
 export const storageS3Plugin: Plugin = {
   name: "storage-s3",

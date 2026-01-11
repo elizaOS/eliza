@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
 // - queue(): Blockchain transaction errors - KEEP (external API)
 // - handler: Action execution with proper error response - KEEP (API boundary)
 

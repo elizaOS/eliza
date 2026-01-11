@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
 // - mockInit: Registration error handling in test utility - KEEP (test robustness)
 
 import { EventType, type IAgentRuntime } from "@elizaos/core";
@@ -227,7 +226,7 @@ describe("Message Event Handlers", () => {
       const eventTypes = Object.keys(events);
 
       // Check for event types that actually exist in the bootstrapPlugin.events
-      // Note: MESSAGE_RECEIVED is now handled via runtime.messageService, not as a plugin event
+      // MESSAGE_RECEIVED is handled via runtime.messageService, not as a plugin event
       expect(eventTypes).toContain(EventType.WORLD_JOINED);
       expect(eventTypes).toContain(EventType.ENTITY_JOINED);
 
@@ -293,7 +292,7 @@ describe("Plugin Module Structure", () => {
 
   it("should have correct folder structure", () => {
     // Verify that the exported providers match expected naming conventions
-    // Note: FACTS is now an extended capability, not included by default
+    // FACTS is an extended capability, not included by default
     const providerNames = (bootstrapPlugin.providers || []).map((p) => p.name);
     expect(providerNames).toContain("TIME");
     expect(providerNames).toContain("RECENT_MESSAGES");

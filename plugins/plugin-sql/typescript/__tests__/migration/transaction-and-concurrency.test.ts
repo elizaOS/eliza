@@ -652,9 +652,8 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
     });
 
     it("should use CAST for type safety in advisory lock queries", async () => {
-      // Note: This test is primarily for verification that our SQL generation
-      // uses proper parameterization. Since PGLite doesn't support advisory locks,
-      // we're testing the internal logic rather than actual execution.
+      // Verifying SQL generation uses proper parameterization.
+      // PGLite doesn't support advisory locks, so testing internal logic only.
 
       const _simpleSchema = {
         testTable: pgTable("test_lock_security", {
@@ -771,7 +770,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
       // 1. Process A checks and finds lastMigration = null
       // 2. Process B completes a migration while A waits for lock
       // 3. Process A must detect the completion via double-check
-      // Note: This only works with real PostgreSQL (advisory locks required)
+      // Requires real PostgreSQL (advisory locks not available in PGLite)
 
       const pluginName = "@elizaos/test-race-condition-null-initial";
 

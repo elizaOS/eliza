@@ -68,8 +68,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
 
     if (dataIsolationEnabled) {
       // RLS should stay enabled - no need to disable/re-enable cycle
-      // Note: migration-service.ts will ensure RLS is properly configured after this
-      // via applyRLSToNewTables() and applyEntityRLSToAllTables() which are idempotent
+      // migration-service.ts ensures RLS is properly configured via idempotent calls
       logger.debug("[Migration] ⊘ Schema already migrated, RLS enabled - nothing to do");
       return;
     }

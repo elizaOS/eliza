@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - cleanupTestRuntime: Ignore runtime.stop() errors - KEEP (test cleanup robustness)
-
 /**
  * @fileoverview Test Utilities for Bootstrap Plugin Tests
  *

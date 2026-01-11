@@ -123,7 +123,7 @@ const findUser = async (
 
     return null;
   } catch (_error) {
-    // Note: Using global logger here as this is a standalone function without runtime context
+    // Standalone function - error handled by caller
     return null;
   }
 };

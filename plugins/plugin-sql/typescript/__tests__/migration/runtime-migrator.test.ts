@@ -612,7 +612,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       expect(exists).toBe(true);
 
       // Also verify the server_id column was not dropped by RuntimeMigrator
-      // (Note: migrations.ts might drop it, but RuntimeMigrator should not)
+      // (migrations.ts might drop it, but RuntimeMigrator should not)
       const columnExists = await db.execute(
         sql`SELECT EXISTS (
           SELECT 1 FROM information_schema.columns
@@ -622,7 +622,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         ) as exists`
       );
 
-      // Note: The column might be dropped by migrations.ts (which runs before RuntimeMigrator)
+      // The column might be dropped by migrations.ts (runs before RuntimeMigrator)
       // but RuntimeMigrator itself should not touch this table
       const _serverIdExists = (columnExists.rows[0] as ExistsRow).exists;
 

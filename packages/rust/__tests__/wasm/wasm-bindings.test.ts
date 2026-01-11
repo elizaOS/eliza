@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
 // - beforeAll WASM module loading - KEEP (conditional test execution)
 // - Wrong key decryption test - KEEP (testing error handling behavior)
 
@@ -8,7 +7,7 @@
  * Tests the Rust WASM bindings to ensure they work correctly from TypeScript.
  * These tests verify that the WASM module can be loaded and used properly.
  *
- * Note: These tests require the WASM module to be built first:
+ * These tests require the WASM module to be built first:
  *   cd packages/rust && ./build-wasm.sh
  */
 

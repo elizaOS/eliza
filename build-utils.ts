@@ -133,7 +133,7 @@ export async function createElizaBuildConfig(
     outdir,
     target: target === "node" ? "node" : target,
     format,
-    // Note: 'splitting' option removed as it's not part of Bun's BuildConfig type
+    // 'splitting' option removed - not part of Bun's BuildConfig type
     // splitting: format === 'esm' && entrypoints.length > 1,
     sourcemap,
     minify,

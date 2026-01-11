@@ -14,7 +14,7 @@ import { generateElizaResponse } from "@/lib/eliza-classic";
 
 // Character configuration (same as chat.ts)
 // Pass environment variables via character.secrets so getSetting() can find them
-// Note: Without POSTGRES_URL, plugin-sql will use PGLite automatically
+// Without POSTGRES_URL, plugin-sql will use PGLite automatically
 const character: Character = {
   name: "Eliza",
   bio: "A helpful AI assistant.",

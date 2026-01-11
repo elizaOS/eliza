@@ -217,9 +217,7 @@ describe.skipIf(shouldSkip)("Anthropic Integration Tests", () => {
       const runtime = createMockRuntime();
       const anthropic = createAnthropicClientWithTopPSupport(runtime as never);
       const modelName = getSmallModel(runtime as never);
-
-      // Note: The AI SDK or our wrapper should handle this
-      // This test verifies the behavior
+      // AI SDK or wrapper should handle this - test verifies the behavior
       try {
         await generateText({
           model: anthropic(modelName),

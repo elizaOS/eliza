@@ -1,7 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - encryptStringValue: Already-encrypted format detection - KEEP (input validation)
-// - decryptStringValue: Cryptographic error handling - KEEP (critical for data integrity)
-
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
 import type {

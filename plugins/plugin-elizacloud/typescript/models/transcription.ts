@@ -32,7 +32,7 @@ export async function handleTranscription(
     const detectedMimeType = detectAudioMimeType(input);
     logger.debug(`Auto-detected audio MIME type: ${detectedMimeType}`);
     // Cast to any to satisfy TypeScript's strict ArrayBufferLike typing
-    // Note: Blob constructor creates a copy of the buffer data
+    // Blob constructor creates a copy of the buffer data
     blob = new Blob([input] as never, { type: detectedMimeType });
   } else if (
     typeof input === "object" &&
@@ -61,7 +61,7 @@ export async function handleTranscription(
         logger.debug(`Using provided MIME type: ${mimeType}`);
       }
       // Cast to any to satisfy TypeScript's strict ArrayBufferLike typing
-      // Note: Blob constructor creates a copy of the buffer data
+      // Blob constructor creates a copy of the buffer data
       blob = new Blob([params.audio] as never, { type: mimeType });
     } else {
       blob = params.audio as Blob;

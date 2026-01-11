@@ -42,7 +42,7 @@ export enum DiscordEventTypes {
   WORLD_CONNECTED = "DISCORD_SERVER_CONNECTED",
 
   // User/Entity events
-  // Note: ENTITY_JOINED is emitted when a user joins a Discord guild (server).
+  // ENTITY_JOINED is emitted when a user joins a Discord guild (server).
   // This is different from the core EventType.ENTITY_JOINED which requires a roomId.
   // In Discord terms: guild membership != channel membership. Users join the "world"
   // (guild) but only join specific "rooms" (channels) when they first interact there.
@@ -343,7 +343,7 @@ export interface DiscordSlashCommand {
    * Use this for utility commands that should work everywhere regardless of
    * channel restrictions (e.g., help, export, diagnostics).
    *
-   * Note: This is an ElizaOS-specific feature, not a Discord native feature.
+   * This is an ElizaOS-specific feature, not a Discord native feature.
    * Discord handles this via Server Settings > Integrations UI, but we provide
    * programmatic control for better developer experience.
    */

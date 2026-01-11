@@ -35,8 +35,7 @@ describe("Logger", () => {
       expect(logger).toBeDefined();
       expect(typeof logger.info).toBe("function");
       expect(typeof logger.error).toBe("function");
-      // Note: warn and debug methods exist on the pino logger instance
-      // but may not be enumerable. Test their functionality instead.
+      // warn and debug methods exist on pino logger but may not be enumerable
       expect(logger.warn).toBeDefined();
       expect(logger.debug).toBeDefined();
       expect(typeof logger.warn).toBe("function");
@@ -382,7 +381,6 @@ describe("Logger", () => {
       process.env.LOG_JSON_FORMAT = "false";
 
       // Force a new logger creation which might use async path
-      // Note: vitest doesn't have resetModules equivalent
       const { createLogger: asyncLogger } = await import("../logger");
 
       const logger = asyncLogger();
@@ -397,8 +395,7 @@ describe("Logger", () => {
     });
 
     it("should handle pino-pretty module not having default export", async () => {
-      // Mock pino-pretty without default export
-      // Note: vitest has different module mocking behavior
+      // Mock pino-pretty without default export (vitest has different mocking behavior)
       const { createLogger: testLogger } = await import("../logger");
 
       const logger = testLogger();

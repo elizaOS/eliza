@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
 // - Test assertions for ServerHealthError properties - KEEP (testing error types)
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

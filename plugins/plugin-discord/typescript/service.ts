@@ -263,7 +263,7 @@ export class DiscordService extends Service implements IDiscordService {
       });
 
       this.setupEventListeners();
-      // Note: send handler is registered automatically by runtime via registerSendHandlers() static method
+      // Send handler registered via runtime.registerSendHandlers()
     } catch (error) {
       runtime.logger.error(
         `Error initializing Discord client: ${error instanceof Error ? error.message : String(error)}`
@@ -1474,8 +1474,8 @@ export class DiscordService extends Service implements IDiscordService {
         let targetedCommandsFailed = 0;
 
         // 1. Register global commands globally (for DM access)
-        // Why? DMs require global registration - there's no guild context.
-        // Note: Global commands take up to 1 hour to propagate (Discord limitation),
+        // DMs require global registration - there's no guild context.
+        // Global commands take up to 1 hour to propagate (Discord limitation),
         // but we also register them per-guild below for instant availability.
         // Always call .set() even with empty array to clear stale global commands
         // (e.g., when all commands become guild-only).
@@ -1699,7 +1699,7 @@ export class DiscordService extends Service implements IDiscordService {
     };
 
     // Transform contexts and guildOnly to Discord's contexts array
-    // Note: contexts overrides guildOnly if provided (as documented)
+    // contexts overrides guildOnly if provided (as documented)
     // Discord contexts: 0=Guild, 1=BotDM, 2=PrivateChannel
     if (cmd.contexts) {
       // Allow raw contexts for advanced use cases - takes precedence over guildOnly
@@ -1730,8 +1730,8 @@ export class DiscordService extends Service implements IDiscordService {
    * - `contexts: [0]` is set (Discord's native format, where 0 = Guild only)
    * - `guildOnly: true` is set AND no contexts override is provided
    *
-   * Note: `contexts` takes precedence over `guildOnly` to be consistent with
-   * `transformCommandToDiscordApi`. This means { guildOnly: true, contexts: [0, 1] }
+   * `contexts` takes precedence over `guildOnly` to be consistent with
+   * `transformCommandToDiscordApi`. { guildOnly: true, contexts: [0, 1] }
    * will correctly enable DM access (not be treated as guild-only).
    *
    * @param {DiscordSlashCommand} cmd - The command to check
@@ -2162,9 +2162,8 @@ export class DiscordService extends Service implements IDiscordService {
             "Cleared selections for message"
           );
 
-          // Note: The fallback timeout will acknowledge the interaction if the handler doesn't
-          // Handlers that need to show modals must do so immediately (within 3 seconds)
-          // Handlers that don't need modals can rely on the fallback or acknowledge themselves
+          // Fallback timeout acknowledges interaction if handler doesn't.
+          // Modal handlers must respond within 3 seconds.
         }
       } catch (error) {
         this.runtime.logger.error(
@@ -2523,9 +2522,8 @@ export class DiscordService extends Service implements IDiscordService {
               "[DiscordService] Command registered with allowAllChannels bypass (deprecated - use bypassChannelWhitelist instead)"
             );
           }
-          // Note: We intentionally ignore shouldBypass === false here.
-          // The deprecated allowAllChannels API should not remove bypasses set by
-          // bypassChannelWhitelist on the command definition (which is authoritative).
+          // Intentionally ignoring shouldBypass === false - deprecated allowAllChannels API
+          // should not remove bypasses set by bypassChannelWhitelist (authoritative).
         }
       }
     );
@@ -2536,9 +2534,7 @@ export class DiscordService extends Service implements IDiscordService {
       auditLogSettingForInvite !== "false" && auditLogSettingForInvite !== false;
 
     // Generate invite URL using centralized permission tiers (MODERATOR_VOICE is recommended default)
-    // Note: If audit log tracking is enabled (DISCORD_AUDIT_LOG_ENABLED), you may need to manually
-    // grant ViewAuditLog permission to the bot role after it joins, as this is an elevated permission
-    // that should be granted per-server rather than requested in the OAuth invite.
+    // If DISCORD_AUDIT_LOG_ENABLED, manually grant ViewAuditLog permission per-server after joining.
     const readyClientUser = readyClient.user;
     const inviteUrl = readyClientUser?.id
       ? generateInviteUrl(readyClientUser.id, "MODERATOR_VOICE")
@@ -3048,8 +3044,8 @@ export class DiscordService extends Service implements IDiscordService {
       };
 
       // Emit appropriate events based on type (both Discord-specific and core events)
-      // Note: New core only has EventType.REACTION_RECEIVED (no REACTION_REMOVED).
-      // one core has both. For forward compat, removals only emit Discord-specific event.
+      // New core only has REACTION_RECEIVED (no REACTION_REMOVED).
+      // For forward compat, removals only emit Discord-specific event.
       const events =
         type === "add"
           ? [DiscordEventTypes.REACTION_RECEIVED, EventType.REACTION_RECEIVED]

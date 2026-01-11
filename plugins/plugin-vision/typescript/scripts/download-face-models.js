@@ -103,7 +103,7 @@ function downloadFile(modelInfo) {
 
 async function downloadAllModels() {
   console.log("Downloading face-api.js models...\n");
-  console.log("Note: These models are required for face recognition functionality.\n");
+  console.log("These models are required for face recognition functionality.\n");
 
   try {
     for (const model of models) {

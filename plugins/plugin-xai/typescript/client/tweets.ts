@@ -12,12 +12,12 @@ import type {
   TweetV2,
   UserV2,
 } from "twitter-api-v2";
-import type { TwitterAuth } from "./auth";
+import type { XAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
 import type { QueryTweetsResponse } from "./types";
 
 /**
- * Default options for Twitter API v2 request parameters.
+ * Default options for X API v2 request parameters.
  * @typedef {Object} defaultOptions
  * @property {TTweetv2Expansion[]} expansions - List of expansions to include in the request.
  * @property {TTweetv2TweetField[]} tweetFields - List of tweet fields to include in the request.
@@ -204,45 +204,45 @@ export interface PollOption {
  * A parsed Tweet object.
  */
 /**
- * Represents a Tweet on Twitter.
+ * Represents a Post on X.
  * @typedef { Object } Tweet
  * @property { number } [bookmarkCount] - The number of times this Tweet has been bookmarked.
  * @property { string } [conversationId] - The ID of the conversation this Tweet is a part of.
  * @property {string[]} hashtags - An array of hashtags mentioned in the Tweet.
  * @property { string } [html] - The HTML content of the Tweet.
  * @property { string } [id] - The unique ID of the Tweet.
- * @property { Tweet } [inReplyToStatus] - The Tweet that this Tweet is in reply to.
- * @property { string } [inReplyToStatusId] - The ID of the Tweet that this Tweet is in reply to.
- * @property { boolean } [isQuoted] - Indicates if this Tweet is a quote of another Tweet.
- * @property { boolean } [isPin] - Indicates if this Tweet is pinned.
- * @property { boolean } [isReply] - Indicates if this Tweet is a reply to another Tweet.
- * @property { boolean } [isRetweet] - Indicates if this Tweet is a retweet.
- * @property { boolean } [isSelfThread] - Indicates if this Tweet is part of a self thread.
- * @property { string } [language] - The language of the Tweet.
- * @property { number } [likes] - The number of likes on the Tweet.
- * @property { string } [name] - The name associated with the Tweet.
- * @property {Mention[]} mentions - An array of mentions in the Tweet.
- * @property { string } [permanentUrl] - The permanent URL of the Tweet.
- * @property {Photo[]} photos - An array of photos attached to the Tweet.
- * @property { PlaceRaw } [place] - The place associated with the Tweet.
- * @property { Tweet } [quotedStatus] - The quoted Tweet.
- * @property { string } [quotedStatusId] - The ID of the quoted Tweet.
- * @property { number } [quotes] - The number of times this Tweet has been quoted.
- * @property { number } [replies] - The number of replies to the Tweet.
- * @property { number } [retweets] - The number of retweets on the Tweet.
- * @property { Tweet } [retweetedStatus] - The status that was retweeted.
- * @property { string } [retweetedStatusId] - The ID of the retweeted status.
- * @property { string } [text] - The text content of the Tweet.
- * @property {Tweet[]} thread - An array representing a Twitter thread.
- * @property { Date } [timeParsed] - The parsed timestamp of the Tweet.
- * @property { number } [timestamp] - The timestamp of the Tweet.
- * @property {string[]} urls - An array of URLs mentioned in the Tweet.
- * @property { string } [userId] - The ID of the user who posted the Tweet.
- * @property { string } [username] - The username of the user who posted the Tweet.
- * @property {Video[]} videos - An array of videos attached to the Tweet.
- * @property { number } [views] - The number of views on the Tweet.
- * @property { boolean } [sensitiveContent] - Indicates if the Tweet contains sensitive content.
- * @property {PollV2 | null} [poll] - The poll attached to the Tweet, if any.
+ * @property { Tweet } [inReplyToStatus] - The Post that this Post is in reply to.
+ * @property { string } [inReplyToStatusId] - The ID of the Post that this Post is in reply to.
+ * @property { boolean } [isQuoted] - Indicates if this Post is a quote of another Post.
+ * @property { boolean } [isPin] - Indicates if this Post is pinned.
+ * @property { boolean } [isReply] - Indicates if this Post is a reply to another Post.
+ * @property { boolean } [isRetweet] - Indicates if this Post is a repost.
+ * @property { boolean } [isSelfThread] - Indicates if this Post is part of a self thread.
+ * @property { string } [language] - The language of the Post.
+ * @property { number } [likes] - The number of likes on the Post.
+ * @property { string } [name] - The name associated with the Post.
+ * @property {Mention[]} mentions - An array of mentions in the Post.
+ * @property { string } [permanentUrl] - The permanent URL of the Post.
+ * @property {Photo[]} photos - An array of photos attached to the Post.
+ * @property { PlaceRaw } [place] - The place associated with the Post.
+ * @property { Tweet } [quotedStatus] - The quoted Post.
+ * @property { string } [quotedStatusId] - The ID of the quoted Post.
+ * @property { number } [quotes] - The number of times this Post has been quoted.
+ * @property { number } [replies] - The number of replies to the Post.
+ * @property { number } [retweets] - The number of reposts on the Post.
+ * @property { Tweet } [retweetedStatus] - The status that was reposted.
+ * @property { string } [retweetedStatusId] - The ID of the reposted status.
+ * @property { string } [text] - The text content of the Post.
+ * @property {Tweet[]} thread - An array representing an X thread.
+ * @property { Date } [timeParsed] - The parsed timestamp of the Post.
+ * @property { number } [timestamp] - The timestamp of the Post.
+ * @property {string[]} urls - An array of URLs mentioned in the Post.
+ * @property { string } [userId] - The ID of the user who posted the Post.
+ * @property { string } [username] - The username of the user who posted the Post.
+ * @property {Video[]} videos - An array of videos attached to the Post.
+ * @property { number } [views] - The number of views on the Post.
+ * @property { boolean } [sensitiveContent] - Indicates if the Post contains sensitive content.
+ * @property {PollV2 | null} [poll] - The poll attached to the Post, if any.
  */
 export interface Tweet {
   bookmarkCount?: number;
@@ -297,7 +297,7 @@ export async function fetchTweets(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -343,7 +343,7 @@ export async function fetchTweetsAndReplies(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -386,7 +386,7 @@ export async function fetchTweetsAndReplies(
 
 export async function createCreateTweetRequestV2(
   text: string,
-  auth: TwitterAuth,
+  auth: XAuth,
   tweetId?: string,
   options?: {
     poll?: PollData;
@@ -460,7 +460,7 @@ export function parseTweetV2ToV1(tweetV2: TweetV2, includes?: ApiV2Includes): Tw
     timestamp: tweetV2.created_at
       ? new Date(tweetV2.created_at).getTime() / 1000
       : Date.now() / 1000,
-    permanentUrl: `https://twitter.com/i/status/${tweetV2.id}`,
+    permanentUrl: `https://x.com/i/status/${tweetV2.id}`,
     // Check for referenced tweets
     isReply: tweetV2.referenced_tweets?.some((ref) => ref.type === "replied_to") ?? false,
     isRetweet: tweetV2.referenced_tweets?.some((ref) => ref.type === "retweeted") ?? false,
@@ -533,7 +533,7 @@ export function parseTweetV2ToV1(tweetV2: TweetV2, includes?: ApiV2Includes): Tw
 
 export async function createCreateTweetRequest(
   text: string,
-  auth: TwitterAuth,
+  auth: XAuth,
   tweetId?: string,
   mediaData?: { data: Buffer; mediaType: string }[],
   _hideLinkPreview = false
@@ -554,8 +554,7 @@ export async function createCreateTweetRequest(
 
     // Handle media uploads if provided
     if (mediaData && mediaData.length > 0) {
-      // TODO: Implement Twitter API v1.1 Media Upload endpoint for media attachments
-      console.warn("Media upload requires Twitter API v1.1 Media Upload endpoint");
+      console.warn("Media upload requires X API v1.1 Media Upload endpoint");
     }
 
     // Handle reply
@@ -580,11 +579,11 @@ export async function createCreateTweetRequest(
 
 export async function createCreateNoteTweetRequest(
   text: string,
-  auth: TwitterAuth,
+  auth: XAuth,
   tweetId?: string,
   mediaData?: { data: Buffer; mediaType: string }[]
 ) {
-  // Twitter API v2 doesn't have a separate endpoint for "note tweets"
+  // X API v2 doesn't have a separate endpoint for "note posts"
   // Long tweets are handled automatically by the v2 tweet endpoint
   return createCreateTweetRequest(text, auth, tweetId, mediaData);
 }
@@ -593,7 +592,7 @@ export async function fetchListTweets(
   listId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -634,7 +633,7 @@ export async function fetchListTweets(
   }
 }
 
-export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
+export async function deleteTweet(tweetId: string, auth: XAuth) {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -657,7 +656,7 @@ export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
 export async function* getTweets(
   user: string,
   maxTweets: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
 
@@ -687,7 +686,7 @@ export async function* getTweets(
 export async function* getTweetsByUserId(
   userId: string,
   maxTweets: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
   let totalFetched = 0;
@@ -709,7 +708,7 @@ export async function* getTweetsByUserId(
 export async function* getTweetsAndReplies(
   user: string,
   maxTweets: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
 
@@ -739,7 +738,7 @@ export async function* getTweetsAndReplies(
 export async function* getTweetsAndRepliesByUserId(
   userId: string,
   maxTweets: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
   let totalFetched = 0;
@@ -762,7 +761,7 @@ export async function fetchLikedTweets(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<QueryTweetsResponse> {
   const client = await auth.getV2Client();
 
@@ -848,7 +847,7 @@ export async function getLatestTweet(
   user: string,
   includeRetweets: boolean,
   max: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<Tweet | null | undefined> {
   const timeline = getTweets(user, max, auth);
 
@@ -860,7 +859,7 @@ export async function getLatestTweet(
 
 // TweetResultByRestId interface removed - no longer used with v2 API
 
-export async function getTweet(id: string, auth: TwitterAuth): Promise<Tweet | null> {
+export async function getTweet(id: string, auth: XAuth): Promise<Tweet | null> {
   const client = await auth.getV2Client();
 
   try {
@@ -901,7 +900,7 @@ export async function getTweet(id: string, auth: TwitterAuth): Promise<Tweet | n
 
 export async function getTweetV2(
   id: string,
-  auth: TwitterAuth,
+  auth: XAuth,
   options: {
     expansions?: TTweetv2Expansion[];
     tweetFields?: TTweetv2TweetField[];
@@ -943,7 +942,7 @@ export async function getTweetV2(
 
 export async function getTweetsV2(
   ids: string[],
-  auth: TwitterAuth,
+  auth: XAuth,
   options: {
     expansions?: TTweetv2Expansion[];
     tweetFields?: TTweetv2TweetField[];
@@ -981,28 +980,28 @@ export async function getTweetsV2(
   }
 }
 
-export async function getTweetAnonymous(id: string, auth: TwitterAuth): Promise<Tweet | null> {
-  // Twitter API v2 doesn't support anonymous access
+export async function getTweetAnonymous(id: string, auth: XAuth): Promise<Tweet | null> {
+  // X API v2 doesn't support anonymous access
   // Use the regular getTweet method
   return getTweet(id, auth);
 }
 
 async function _uploadMedia(
   _mediaData: Buffer,
-  _auth: TwitterAuth,
+  _auth: XAuth,
   _mediaType: string
 ): Promise<string> {
-  // Twitter API v2 media upload is not yet fully implemented in twitter-api-v2 library
+  // X API v2 media upload is not yet fully implemented in twitter-api-v2 library
   // This would require using the v1.1 media upload endpoint with proper OAuth
-  console.warn("Media upload not yet implemented for Twitter API v2");
-  throw new Error("Media upload not yet implemented for Twitter API v2");
+  console.warn("Media upload not yet implemented for X API v2");
+  throw new Error("Media upload not yet implemented for X API v2");
 }
 
 // Function to create a quote tweet
 export async function createQuoteTweetRequest(
   text: string,
   quotedTweetId: string,
-  auth: TwitterAuth,
+  auth: XAuth,
   _mediaData?: { data: Buffer; mediaType: string }[]
 ) {
   const v2client = await auth.getV2Client();
@@ -1011,8 +1010,8 @@ export async function createQuoteTweetRequest(
   }
 
   try {
-    // Quote tweets in v2 are created by including the tweet URL in the text
-    const quotedTweetUrl = `https://twitter.com/i/status/${quotedTweetId}`;
+    // Quote posts in v2 are created by including the post URL in the text
+    const quotedTweetUrl = `https://x.com/i/status/${quotedTweetId}`;
     const fullText = `${text} ${quotedTweetUrl}`;
 
     const result = await v2client.v2.tweet({
@@ -1031,12 +1030,12 @@ export async function createQuoteTweetRequest(
 }
 
 /**
- * Likes a tweet with the given tweet ID.
- * @param tweetId The ID of the tweet to like.
+ * Likes a post with the given post ID.
+ * @param tweetId The ID of the post to like.
  * @param auth The authentication object.
- * @returns A promise that resolves when the tweet is liked.
+ * @returns A promise that resolves when the post is liked.
  */
-export async function likeTweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+export async function likeTweet(tweetId: string, auth: XAuth): Promise<void> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -1054,12 +1053,12 @@ export async function likeTweet(tweetId: string, auth: TwitterAuth): Promise<voi
 }
 
 /**
- * Retweets a tweet with the given tweet ID.
- * @param tweetId The ID of the tweet to retweet.
+ * Reposts a post with the given post ID.
+ * @param tweetId The ID of the post to repost.
  * @param auth The authentication object.
- * @returns A promise that resolves when the tweet is retweeted.
+ * @returns A promise that resolves when the post is reposted.
  */
-export async function retweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+export async function retweet(tweetId: string, auth: XAuth): Promise<void> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -1077,12 +1076,12 @@ export async function retweet(tweetId: string, auth: TwitterAuth): Promise<void>
 }
 
 /**
- * Unlikes a tweet with the given tweet ID.
- * @param tweetId The ID of the tweet to unlike.
+ * Unlikes a post with the given post ID.
+ * @param tweetId The ID of the post to unlike.
  * @param auth The authentication object.
- * @returns A promise that resolves when the tweet is unliked.
+ * @returns A promise that resolves when the post is unliked.
  */
-export async function unlikeTweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+export async function unlikeTweet(tweetId: string, auth: XAuth): Promise<void> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -1100,12 +1099,12 @@ export async function unlikeTweet(tweetId: string, auth: TwitterAuth): Promise<v
 }
 
 /**
- * Removes a retweet of a tweet with the given tweet ID.
- * @param tweetId The ID of the tweet to unretweet.
+ * Removes a repost of a post with the given post ID.
+ * @param tweetId The ID of the post to unrepost.
  * @param auth The authentication object.
- * @returns A promise that resolves when the retweet is removed.
+ * @returns A promise that resolves when the repost is removed.
  */
-export async function unretweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+export async function unretweet(tweetId: string, auth: XAuth): Promise<void> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
     throw new Error("V2 client is not initialized");
@@ -1124,16 +1123,16 @@ export async function unretweet(tweetId: string, auth: TwitterAuth): Promise<voi
 
 export async function createCreateLongTweetRequest(
   text: string,
-  auth: TwitterAuth,
+  auth: XAuth,
   tweetId?: string,
   mediaData?: { data: Buffer; mediaType: string }[]
 ) {
-  // Twitter API v2 handles long tweets automatically
+  // X API v2 handles long posts automatically
   // Just use the regular tweet creation endpoint
   return createCreateTweetRequest(text, auth, tweetId, mediaData);
 }
 
-// getArticle function removed - Twitter API v2 doesn't have a separate article endpoint
+// getArticle function removed - X API v2 doesn't have a separate article endpoint
 
 /**
  * Fetches a single page of retweeters for a given tweet, collecting both bottom and top cursors.
@@ -1142,7 +1141,7 @@ export async function createCreateLongTweetRequest(
  */
 export async function fetchRetweetersPage(
   _tweetId: string,
-  _auth: TwitterAuth,
+  _auth: XAuth,
   _cursor?: string,
   _count = 40
 ): Promise<{
@@ -1150,9 +1149,9 @@ export async function fetchRetweetersPage(
   bottomCursor?: string;
   topCursor?: string;
 }> {
-  // Twitter API v2 does not provide an endpoint to fetch retweeters
+  // X API v2 does not provide an endpoint to fetch reposters
   // This functionality would require the API v2 retweeted_by endpoint
-  console.warn("Fetching retweeters not implemented for Twitter API v2");
+  console.warn("Fetching reposters not implemented for X API v2");
   return {
     retweeters: [],
     bottomCursor: undefined,
@@ -1161,12 +1160,12 @@ export async function fetchRetweetersPage(
 }
 
 /**
- * Retrieves *all* retweeters by chaining requests until no next cursor is found.
- * @param tweetId The ID of the tweet.
- * @param auth The TwitterAuth object for authentication.
- * @returns A list of all users that retweeted the tweet.
+ * Retrieves *all* reposters by chaining requests until no next cursor is found.
+ * @param tweetId The ID of the post.
+ * @param auth The XAuth object for authentication.
+ * @returns A list of all users that reposted the post.
  */
-export async function getAllRetweeters(tweetId: string, auth: TwitterAuth): Promise<Retweeter[]> {
+export async function getAllRetweeters(tweetId: string, auth: XAuth): Promise<Retweeter[]> {
   let allRetweeters: Retweeter[] = [];
   let cursor: string | undefined;
 

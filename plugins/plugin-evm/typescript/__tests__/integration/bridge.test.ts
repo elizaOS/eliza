@@ -350,9 +350,7 @@ describe("Bridge Action", () => {
           expect(result.from).toBe(fundedWp.getAddress());
 
           console.log(`Funded bridge successful: ${result.hash}`);
-
-          // Note: Cross-chain bridges take time to complete
-          // In a real test, you might want to wait and check the destination chain
+          // Cross-chain bridges take time - check destination chain for completion
           console.log("Bridge initiated - check destination chain for completion");
         } catch (error) {
           console.warn("Funded bridge failed:", error);

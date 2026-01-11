@@ -7,7 +7,7 @@
  * - dist/cjs/index.node.cjs (CommonJS for Node.js)
  * - dist/*.d.ts (TypeScript declarations)
  *
- * Note: This plugin is Node.js only (no browser support) due to native dependencies
+ * Node.js only (no browser support) due to native dependencies.
  */
 
 const externalDeps = [

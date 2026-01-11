@@ -12,7 +12,6 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
 // - reactionReceivedHandler duplicate error test - KEEP
 // - entityLeftHandler error test - KEEP
 // NOTE: entityLeftHandler in index.ts lacks internal try-catch; test assumes no throw
@@ -30,7 +29,6 @@ describe("Message Handler Logic", () => {
   let _mockCallback: HandlerCallback;
 
   beforeEach(() => {
-    // Note: vitest has vi.useFakeTimers() available, but skipping timer mocking for this test
 
     // Use shared setupActionTest instead of manually creating mocks
     const setup = setupActionTest({
@@ -111,7 +109,6 @@ describe("Message Handler Logic", () => {
   });
 
   afterEach(() => {
-    // Note: vitest has vi.useRealTimers() available, but skipping for this test
     vi.clearAllMocks();
   });
 
@@ -120,7 +117,7 @@ describe("Message Handler Logic", () => {
     expect(bootstrapPlugin.events).toBeDefined();
 
     // Check for mandatory event handlers
-    // Note: Removed events now handled directly via runtime.messageService:
+    // Removed events now handled directly via runtime.messageService:
     // - MESSAGE_RECEIVED -> deprecated (kept for logging only)
     // - VOICE_MESSAGE_RECEIVED -> runtime.messageService.handleMessage()
     // - MESSAGE_DELETED -> runtime.messageService.deleteMessage()
@@ -141,8 +138,7 @@ describe("Message Handler Logic", () => {
     });
   });
 
-  // Note: MESSAGE_RECEIVED handler is now deprecated and only logs debug messages
-  // The actual message handling is done via runtime.messageService.handleMessage() directly
+  // MESSAGE_RECEIVED handler is deprecated - actual handling via runtime.messageService
   // Tests for message handling are now in packages/typescript/src/__tests__/message-service.test.ts
 });
 

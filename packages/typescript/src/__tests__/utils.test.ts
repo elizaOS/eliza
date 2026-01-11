@@ -143,14 +143,14 @@ describe("Utils Comprehensive Tests", () => {
       const text =
         'Here is some JSON:\n```json\n{"key": "value", "number": 42}\n```';
       const result = parseJSONObjectFromText(text);
-      // Note: normalizeJsonString converts numbers to strings
+      // normalizeJsonString converts numbers to strings
       expect(result).toEqual({ key: "value", number: "42" });
     });
 
     it("should parse direct JSON without code blocks", () => {
       const text = '{"name": "Alice", "age": 30}';
       const result = parseJSONObjectFromText(text);
-      // Note: normalizeJsonString converts numbers to strings
+      // normalizeJsonString converts numbers to strings
       expect(result).toEqual({ name: "Alice", age: "30" });
     });
 
@@ -175,7 +175,7 @@ describe("Utils Comprehensive Tests", () => {
 
   describe("normalizeJsonString", () => {
     it("should remove extra spaces after { and before }", () => {
-      // Note: normalizeJsonString doesn't handle unquoted keys
+      // normalizeJsonString doesn't handle unquoted keys
       expect(normalizeJsonString('{  "key": "value"  }')).toBe(
         '{"key": "value"}',
       );

@@ -779,7 +779,6 @@ export class SolanaService extends Service {
   }
 
   async getCirculatingSupplies(mints: string[]) {
-    // TODO: Consider using batchGetMultipleAccountsInfo for better efficiency
     return Promise.all(mints.map((m) => this.getCirculatingSupply(m)));
   }
 
@@ -880,7 +879,6 @@ export class SolanaService extends Service {
     return metadataPDA;
   }
 
-  // TODO: Add caching for token symbols
   public async getTokenSymbol(mint: PublicKey): Promise<string | null> {
     const metadataAddress = await this.getMetadataAddress(mint);
     console.log("getTokenSymbol - getAccountInfo");

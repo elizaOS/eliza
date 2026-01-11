@@ -1,4 +1,3 @@
-<!-- TODO: Try-catch review completed 2026-01-11. This is a README file. No code to review. -->
 
 # Bootstrap Plugin Test Suite
 

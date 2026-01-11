@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. No try-catch blocks to review.
 // Error handling is via expect().toThrow() patterns.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
