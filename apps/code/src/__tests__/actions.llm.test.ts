@@ -113,7 +113,8 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("PLAN falls back to TEXT_LARGE when reasoning model unavailable", async () => {
-    const { runtime, calls } = createLLMTestRuntime("plan");
+    const { runtime, calls } = await createLLMTestRuntime("plan");
+    runtimesToCleanup.push(runtime);
     const result = await planAction.handler(
       runtime,
       createMemory("plan how to add oauth"),
@@ -127,9 +128,10 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("PLAN uses TEXT_REASONING_LARGE when available", async () => {
-    const { runtime, calls } = createLLMTestRuntime("plan", {
+    const { runtime, calls } = await createLLMTestRuntime("plan", {
       hasReasoningModel: true,
     });
+    runtimesToCleanup.push(runtime);
     const result = await planAction.handler(
       runtime,
       createMemory("plan how to add oauth"),
@@ -143,7 +145,8 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("GENERATE does not trigger for explicit file paths (validate=false)", async () => {
-    const { runtime } = createLLMTestRuntime("code");
+    const { runtime } = await createLLMTestRuntime("code");
+    runtimesToCleanup.push(runtime);
     const valid = await generateAction.validate(
       runtime,
       createMemory("generate code in index.html"),
@@ -152,7 +155,8 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("GENERATE calls TEXT_LARGE and returns trimmed output", async () => {
-    const { runtime, calls } = createLLMTestRuntime("generated");
+    const { runtime, calls } = await createLLMTestRuntime("generated");
+    runtimesToCleanup.push(runtime);
     const result = await generateAction.handler(
       runtime,
       createMemory("generate a quicksort function in typescript"),
@@ -175,7 +179,8 @@ describe("plugin actions: LLM-backed", () => {
     ] as const;
 
     for (const { action, input } of actions) {
-      const { runtime, calls } = createLLMTestRuntime("ok");
+      const { runtime, calls } = await createLLMTestRuntime("ok");
+      runtimesToCleanup.push(runtime);
       const result = await action.handler(runtime, createMemory(input));
 
       expect(result!.success).toBe(true);
@@ -188,7 +193,8 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("EXPLAIN fails with a helpful error for missing files", async () => {
-    const { runtime } = createLLMTestRuntime("unused");
+    const { runtime } = await createLLMTestRuntime("unused");
+    runtimesToCleanup.push(runtime);
     const result = await explainAction.handler(
       runtime,
       createMemory("explain does-not-exist.ts"),

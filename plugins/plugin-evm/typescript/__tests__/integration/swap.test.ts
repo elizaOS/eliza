@@ -6,6 +6,7 @@ import { SwapAction } from "../actions/swap";
 import { WalletProvider } from "../providers/wallet";
 import type { SupportedChain } from "../types";
 import { getTestChains } from "./custom-chain";
+import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 
 // Test environment - use funded wallet for integration tests
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
@@ -19,36 +20,44 @@ const SEPOLIA_TOKENS = {
   ETH: "0x0000000000000000000000000000000000000000" as `0x${string}`, // Native ETH
 };
 
-// Create a mock runtime for testing
-function createMockRuntime(): IAgentRuntime {
-  return {
-    agentId: "test-agent-id" as IAgentRuntime["agentId"],
-    getCache: vi.fn().mockResolvedValue(null),
-    setCache: vi.fn().mockResolvedValue(undefined),
-    getSetting: vi.fn().mockReturnValue(null),
-    setSetting: vi.fn(),
-    getService: vi.fn().mockReturnValue(null),
-    registerService: vi.fn(),
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      log: vi.fn(),
-    },
-  } as IAgentRuntime;
+// Store runtimes for cleanup
+let runtimesToCleanup: IAgentRuntime[] = [];
+
+/**
+ * Creates a real AgentRuntime with spied methods for EVM testing.
+ */
+async function createEVMTestRuntime(): Promise<IAgentRuntime> {
+  const runtime = await createTestRuntime();
+  runtimesToCleanup.push(runtime);
+
+  // Spy on methods used by WalletProvider
+  vi.spyOn(runtime, "getCache").mockResolvedValue(null);
+  vi.spyOn(runtime, "setCache").mockResolvedValue(true);
+  vi.spyOn(runtime, "getSetting").mockReturnValue(null);
+  vi.spyOn(runtime, "setSetting").mockImplementation(() => {});
+  vi.spyOn(runtime, "getService").mockReturnValue(null);
+  vi.spyOn(runtime, "registerService").mockResolvedValue(undefined);
+
+  // Spy on logger methods
+  vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+  vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+  vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+  vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+
+  return runtime;
 }
 
 describe("Swap Action", () => {
   let wp: WalletProvider;
   let testChains: Record<string, Chain>;
+  let runtime: IAgentRuntime;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
-    const agentRuntime = createMockRuntime();
+    runtime = await createEVMTestRuntime();
 
     // Initialize with Sepolia and Base Sepolia for testing
     const customChains = {
@@ -56,7 +65,15 @@ describe("Swap Action", () => {
       baseSepolia: testChains.baseSepolia,
     };
 
-    wp = new WalletProvider(pk, agentRuntime, customChains);
+    wp = new WalletProvider(pk, runtime, customChains);
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    for (const rt of runtimesToCleanup) {
+      await cleanupTestRuntime(rt);
+    }
+    runtimesToCleanup = [];
   });
 
   afterEach(() => {
@@ -226,9 +243,10 @@ describe("Swap Action", () => {
       }
 
       // Create wallet provider with funded wallet
+      const fundedRuntime = await createEVMTestRuntime();
       const fundedWp = new WalletProvider(
         FUNDED_TEST_WALLET as `0x${string}`,
-        createMockRuntime(),
+        fundedRuntime,
         { sepolia: testChains.sepolia }
       );
       const fundedSwapAction = new SwapAction(fundedWp);
