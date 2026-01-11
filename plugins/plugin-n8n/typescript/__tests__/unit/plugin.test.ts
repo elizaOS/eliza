@@ -1,9 +1,10 @@
 /**
  * Unit tests for the N8n Plugin.
+ * Uses REAL AgentRuntime - NO MOCKS.
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelPluginCreationAction,
   checkPluginCreationStatusAction,
@@ -15,25 +16,62 @@ import {
   pluginCreationStatusProvider,
 } from "../../providers/plugin-creation-providers";
 
-const createMockRuntime = (): IAgentRuntime => {
-  return {
-    getSetting: vi.fn(),
-    services: new Map(),
-    providers: new Map(),
-    actions: new Map(),
-    evaluators: new Map(),
-  } as unknown as IAgentRuntime;
-};
+// Test utilities for creating real runtime
+async function createTestRuntime(): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
 
-const createMockMemory = (text: string): Memory =>
-  ({
-    id: crypto.randomUUID(),
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
+function createTestMemory(text: string, agentId: string): Memory {
+  return {
+    id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
     content: { text },
-    userId: "test-user",
-    roomId: "test-room",
-    entityId: "test-entity",
+    userId: "test-user" as `${string}-${string}-${string}-${string}-${string}`,
+    roomId: "test-room" as `${string}-${string}-${string}-${string}-${string}`,
+    entityId: "test-entity" as `${string}-${string}-${string}-${string}-${string}`,
+    agentId: agentId as `${string}-${string}-${string}-${string}-${string}`,
     createdAt: Date.now(),
-  }) as Memory;
+  } as Memory;
+}
 
 describe("n8nPlugin", () => {
   it("should be properly defined", () => {
@@ -62,13 +100,18 @@ describe("n8nPlugin", () => {
 });
 
 describe("createPluginAction", () => {
-  let _mockRuntime: IAgentRuntime;
-  let _mockState: State;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
-  beforeEach(() => {
-    _mockRuntime = createMockRuntime();
-    _mockState = { values: {}, data: {}, text: "" };
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should be properly defined", () => {
@@ -88,11 +131,18 @@ describe("createPluginAction", () => {
 });
 
 describe("checkPluginCreationStatusAction", () => {
-  let _mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
-  beforeEach(() => {
-    _mockRuntime = createMockRuntime();
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should be properly defined", () => {
@@ -102,11 +152,18 @@ describe("checkPluginCreationStatusAction", () => {
 });
 
 describe("cancelPluginCreationAction", () => {
-  let _mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
-  beforeEach(() => {
-    _mockRuntime = createMockRuntime();
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should be properly defined", () => {
@@ -116,13 +173,20 @@ describe("cancelPluginCreationAction", () => {
 });
 
 describe("pluginCreationStatusProvider", () => {
-  let mockRuntime: IAgentRuntime;
-  let mockState: State;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testState: State;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime();
-    mockState = { values: {}, data: {}, text: "" };
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+    testState = { values: {}, data: {}, text: "" };
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should be properly defined", () => {
@@ -131,20 +195,27 @@ describe("pluginCreationStatusProvider", () => {
   });
 
   it("should return service not available when no service", async () => {
-    const message = createMockMemory("test");
-    const result = await pluginCreationStatusProvider.get(mockRuntime, message, mockState);
+    const message = createTestMemory("test", runtime.agentId);
+    const result = await pluginCreationStatusProvider.get(runtime, message, testState);
     expect(result.text).toContain("not available");
   });
 });
 
 describe("pluginCreationCapabilitiesProvider", () => {
-  let mockRuntime: IAgentRuntime;
-  let mockState: State;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testState: State;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime();
-    mockState = { values: {}, data: {}, text: "" };
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+    testState = { values: {}, data: {}, text: "" };
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should be properly defined", () => {
@@ -153,8 +224,8 @@ describe("pluginCreationCapabilitiesProvider", () => {
   });
 
   it("should return service not available when no service", async () => {
-    const message = createMockMemory("test");
-    const result = await pluginCreationCapabilitiesProvider.get(mockRuntime, message, mockState);
+    const message = createTestMemory("test", runtime.agentId);
+    const result = await pluginCreationCapabilitiesProvider.get(runtime, message, testState);
     expect(result.text).toContain("not available");
   });
 });

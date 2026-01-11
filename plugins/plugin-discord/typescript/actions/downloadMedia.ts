@@ -13,6 +13,7 @@ import {
   MemoryType,
   ModelType,
   parseJSONObjectFromText,
+  Service,
   ServiceType,
   type State,
 } from "@elizaos/core";
@@ -76,14 +77,12 @@ export const downloadMedia: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     // Define the expected video service interface
-    interface VideoServiceInterface {
+    interface VideoServiceInterface extends Service {
       fetchVideoInfo: (url: string) => Promise<{ title: string; description: string }>;
       downloadVideo: (videoInfo: { title: string; description: string }) => Promise<string>;
     }
 
-    const videoService = runtime.getService(
-      ServiceType.VIDEO
-    ) as unknown as VideoServiceInterface | null;
+    const videoService = runtime.getService<VideoServiceInterface>(ServiceType.VIDEO);
 
     if (!videoService) {
       runtime.logger.error(

@@ -383,43 +383,90 @@ export default ${pluginClassName};
 };
 
 /**
- * Generate test code.
+ * Generate test code using REAL AgentRuntime - NO MOCKS.
  */
 export const generateTestCode = (componentName: string, componentType: string): string => {
   const camelCaseName = componentName.charAt(0).toLowerCase() + componentName.slice(1);
   const typeLower = componentType.toLowerCase();
 
-  return `import { describe, it, expect, beforeEach, vi } from 'vitest';
+  return `import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ${camelCaseName}${componentType} } from '../${typeLower}s/${componentName}';
-import { IAgentRuntime, Memory, State } from '@elizaos/core';
+import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 
-const createMockRuntime = (): IAgentRuntime => {
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import('@elizaos/plugin-sql');
+  const { AgentRuntime } = await import('@elizaos/core');
+  const { v4: uuidv4 } = await import('uuid');
+
+  const agentId = uuidv4();
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ':memory:' }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: 'Test Agent',
+      bio: ['A test agent'],
+      system: 'You are a helpful assistant.',
+      plugins: [],
+      settings: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: ['testing'],
+      adjectives: ['helpful'],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
+function createTestMemory(text: string, agentId: string): Memory {
   return {
-    getSetting: vi.fn(),
-    services: new Map(),
-    providers: new Map(),
-    actions: new Map(),
-    evaluators: new Map()
-  } as unknown as IAgentRuntime;
-};
-
-const createMockMemory = (text: string): Memory => ({
-  id: crypto.randomUUID(),
-  content: { text },
-  userId: 'test-user',
-  roomId: 'test-room',
-  entityId: 'test-entity',
-  createdAt: Date.now()
-} as Memory);
+    id: crypto.randomUUID(),
+    content: { text },
+    userId: 'test-user',
+    roomId: 'test-room',
+    entityId: 'test-entity',
+    agentId,
+    createdAt: Date.now()
+  } as Memory;
+}
 
 describe('${componentName}${componentType}', () => {
-  let mockRuntime: IAgentRuntime;
-  let mockState: State;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testState: State;
   
-  beforeEach(() => {
-    mockRuntime = createMockRuntime();
-    mockState = { values: {}, data: {}, text: "" };
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+    testState = { values: {}, data: {}, text: "" };
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
   
   it('should be properly defined', () => {
@@ -432,22 +479,22 @@ describe('${componentName}${componentType}', () => {
       ? `
   describe('validate', () => {
     it('should validate valid input', async () => {
-      const message = createMockMemory('test input');
-      const result = await ${camelCaseName}${componentType}.validate(mockRuntime, message, mockState);
+      const message = createTestMemory('test input', runtime.agentId);
+      const result = await ${camelCaseName}${componentType}.validate(runtime, message, testState);
       expect(result).toBe(true);
     });
     
     it('should reject empty input', async () => {
-      const message = createMockMemory('');
-      const result = await ${camelCaseName}${componentType}.validate(mockRuntime, message, mockState);
+      const message = createTestMemory('', runtime.agentId);
+      const result = await ${camelCaseName}${componentType}.validate(runtime, message, testState);
       expect(result).toBe(false);
     });
   });
   
   describe('handler', () => {
     it('should handle valid request', async () => {
-      const message = createMockMemory('test request');
-      const result = await ${camelCaseName}${componentType}.handler(mockRuntime, message, mockState);
+      const message = createTestMemory('test request', runtime.agentId);
+      const result = await ${camelCaseName}${componentType}.handler(runtime, message, testState);
       expect(result).toContain('Successfully');
     });
   });
@@ -460,8 +507,8 @@ describe('${componentName}${componentType}', () => {
       ? `
   describe('get', () => {
     it('should provide data', async () => {
-      const message = createMockMemory('test');
-      const result = await ${camelCaseName}${componentType}.get(mockRuntime, message, mockState);
+      const message = createTestMemory('test', runtime.agentId);
+      const result = await ${camelCaseName}${componentType}.get(runtime, message, testState);
       expect(result).toBeDefined();
       expect(result.text).toBeDefined();
       expect(result.data).toBeDefined();
@@ -476,16 +523,16 @@ describe('${componentName}${componentType}', () => {
       ? `
   describe('validate', () => {
     it('should validate when appropriate', async () => {
-      const message = createMockMemory('test evaluation');
-      const result = await ${camelCaseName}${componentType}.validate(mockRuntime, message, mockState);
+      const message = createTestMemory('test evaluation', runtime.agentId);
+      const result = await ${camelCaseName}${componentType}.validate(runtime, message, testState);
       expect(typeof result).toBe('boolean');
     });
   });
   
   describe('handler', () => {
     it('should evaluate messages', async () => {
-      const message = createMockMemory('test evaluation');
-      const result = await ${camelCaseName}${componentType}.handler(mockRuntime, message, mockState);
+      const message = createTestMemory('test evaluation', runtime.agentId);
+      const result = await ${camelCaseName}${componentType}.handler(runtime, message, testState);
       expect(result).toContain('evaluation');
     });
   });
