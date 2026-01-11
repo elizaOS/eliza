@@ -15,9 +15,7 @@ const mockCallLLMWithTimeout = callLLMWithTimeout as Mock;
 /**
  * Creates a REAL AgentRuntime for testing - NO MOCKS.
  */
-async function createTestRuntime(
-  settings: Record<string, string | undefined> = {}
-): Promise<{
+async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
 }> {
@@ -316,13 +314,7 @@ describe("getSimplifiedMarketsAction", () => {
         error: "No pagination cursor requested. Fetching first page.",
       });
 
-      await getSimplifiedMarketsAction.handler(
-        runtime,
-        testMemory,
-        testState,
-        {},
-        mockCallback
-      );
+      await getSimplifiedMarketsAction.handler(runtime, testMemory, testState, {}, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith(
         expect.objectContaining({

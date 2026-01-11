@@ -5,15 +5,82 @@
  * 1. Service is initialized WITHOUT a wallet
  * 2. Wallet is added later via runtime.setSetting()
  * 3. Service can load the wallet on-demand after reloadKeys()
+ *
+ * Uses REAL AgentRuntime - NO MOCKS for the runtime itself.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SolanaService } from "../../service";
 
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(
+  settings: Record<string, string | undefined> = {}
+): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
+
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent for Solana"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {
+        secrets: settings,
+      },
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
 describe("SolanaService Lazy Loading - Core Scenario", () => {
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+
+  beforeEach(async () => {
+    // Create runtime without wallet initially
+    const result = await createTestRuntime({});
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
   it("should work: no wallet initially, then add via setSetting", async () => {
     // Generate test wallet
     const testKeypair = Keypair.generate();
@@ -31,73 +98,9 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
       console.log("🔇 Mocked updateWalletData (no network call)");
     });
 
-    // Create mock runtime WITHOUT wallet
-    const mockRuntime: IAgentRuntime = {
-      agentId: "test-agent",
-      serverUrl: "http://localhost:3000",
-      databaseAdapter: {} as unknown as IAgentRuntime["databaseAdapter"],
-      token: "test-token",
-      character: {
-        name: "Test Agent",
-        settings: {
-          secrets: {}, // NO WALLET HERE!
-          voice: { model: "en_US-male-medium" },
-        },
-      } as unknown as IAgentRuntime["character"],
-      providers: [],
-      actions: [],
-      evaluators: [],
-      plugins: [],
-      messageManager: {} as unknown as IAgentRuntime["messageManager"],
-      descriptionManager: {} as unknown as IAgentRuntime["descriptionManager"],
-      documentsManager: {} as unknown as IAgentRuntime["documentsManager"],
-      knowledgeManager: {} as unknown as IAgentRuntime["knowledgeManager"],
-      loreManager: {} as unknown as IAgentRuntime["loreManager"],
-      cacheManager: {} as unknown as IAgentRuntime["cacheManager"],
-      services: new Map(),
-      getSetting: vi.fn((key: string) => {
-        // Support both SOLANA_* and WALLET_* prefixes
-        const character = mockRuntime.character;
-        const characterSettings = character?.settings;
-        const characterSettingsSecrets = characterSettings?.secrets;
-        if (key === "WALLET_PRIVATE_KEY" || key === "SOLANA_PRIVATE_KEY") {
-          return characterSettingsSecrets?.[key];
-        }
-        if (key === "WALLET_PUBLIC_KEY" || key === "SOLANA_PUBLIC_KEY") {
-          return characterSettingsSecrets?.[key];
-        }
-        return undefined;
-      }),
-      setSetting: vi.fn((key: string, value: string) => {
-        const character = mockRuntime.character;
-        const characterSettings = character?.settings;
-        if (!characterSettings || !characterSettings.secrets) {
-          if (mockRuntime.character.settings) {
-            mockRuntime.character.settings.secrets = {};
-          }
-        }
-        const characterSettingsSecrets = mockRuntime.character.settings?.secrets;
-        if (characterSettingsSecrets) {
-          characterSettingsSecrets[key] = value;
-        }
-      }),
-      getServiceLoadPromise: vi.fn(() => Promise.resolve(undefined)),
-      getService: vi.fn(() => null),
-      getCache: vi.fn(() => null),
-      setCache: vi.fn(() => {}),
-      logger: {
-        debug: vi.fn(() => {}),
-        info: vi.fn(() => {}),
-        log: vi.fn(() => {}),
-        warn: vi.fn(() => {}),
-        error: vi.fn(() => {}),
-        success: vi.fn(() => {}),
-      },
-    } as unknown as IAgentRuntime;
-
     // Step 1: Create service WITHOUT wallet
     console.log("📝 Step 1: Creating SolanaService without wallet...");
-    const service = new SolanaService(mockRuntime);
+    const service = new SolanaService(runtime);
 
     // Step 2: Verify no wallet is available
     console.log("📝 Step 2: Verifying wallet is not available...");
@@ -105,11 +108,13 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
     expect(initialPublicKey).toBeNull();
     console.log("✅ Wallet correctly returns null");
 
-    // Step 3: Add wallet via setSetting (simulating wallet creation)
-    console.log("📝 Step 3: Adding wallet via runtime.setSetting...");
-    if (mockRuntime.character.settings) {
-      mockRuntime.character.settings.secrets = {
-        WALLET_PRIVATE_KEY: testPrivateKey, // Note: must use WALLET_PRIVATE_KEY or SOLANA_PRIVATE_KEY
+    // Step 3: Add wallet via character settings (simulating wallet creation)
+    console.log("📝 Step 3: Adding wallet via runtime character settings...");
+    
+    // Use the real runtime's character settings
+    if (runtime.character.settings) {
+      runtime.character.settings.secrets = {
+        WALLET_PRIVATE_KEY: testPrivateKey,
         WALLET_PUBLIC_KEY: testPublicKey.toBase58(),
       };
     }
