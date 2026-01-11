@@ -1,3 +1,9 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - processQueue: try-finally for isProcessing flag - KEEP (state management)
+// - Batch processing map: Individual item error handling with retry - KEEP (retry logic)
+// - generateEmbedding: runtime.useModel call - KEEP (external API, re-throws for retry)
+// - stop(): High-priority item processing during shutdown - KEEP (cleanup)
+
 import type { EmbeddingGenerationPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";

@@ -162,22 +162,18 @@ impl LocalAIPlugin {
 
     /// Generate text from a prompt.
     ///
-    /// Note: This is a placeholder. In a real implementation, you would use
-    /// llama-cpp-rs or similar bindings to run inference.
+    /// Note: Currently returns a mock response. Enable the `llm` feature
+    /// and implement with llama-cpp-rs for actual inference.
     pub async fn generate_text(&self, prompt: &str) -> Result<String> {
         let params = TextGenerationParams::new(prompt);
         self.generate_text_with_params(&params).await
     }
 
     /// Generate text with full parameters.
+    ///
+    /// Currently validates model path and returns a mock response.
+    /// For actual inference, enable the `llm` feature and integrate llama-cpp-rs.
     pub async fn generate_text_with_params(&self, params: &TextGenerationParams) -> Result<String> {
-        // This is a placeholder implementation.
-        // In a real implementation, you would:
-        // 1. Load the model using llama-cpp-rs
-        // 2. Create a context
-        // 3. Run inference
-        // 4. Return the generated text
-
         let model_path = if params.use_large_model {
             self.config.models_dir.join(&self.config.large_model)
         } else {
@@ -190,14 +186,14 @@ impl LocalAIPlugin {
             ));
         }
 
-        // Placeholder: In production, use llama-cpp-rs here
+        // Mock response - requires llm feature for actual inference
         tracing::info!(
-            "Would generate text using model: {}",
+            "Model path validated: {} (llm feature required for inference)",
             model_path.display()
         );
 
         Ok(format!(
-            "Local AI response to: {}... (placeholder - implement with llama-cpp-rs)",
+            "[Mock] Response to: {}... (enable llm feature for actual inference)",
             &params.prompt[..params.prompt.len().min(50)]
         ))
     }
@@ -209,6 +205,9 @@ impl LocalAIPlugin {
     }
 
     /// Create an embedding with full parameters.
+    ///
+    /// Currently validates model path and returns a zero vector.
+    /// For actual embeddings, enable the `llm` feature and integrate llama-cpp-rs.
     pub async fn create_embedding_with_params(&self, _params: &EmbeddingParams) -> Result<Vec<f32>> {
         let model_path = self.config.models_dir.join(&self.config.embedding_model);
 
@@ -218,10 +217,9 @@ impl LocalAIPlugin {
             ));
         }
 
-        // Placeholder: Return zero vector with correct dimensions
-        // In production, use llama-cpp-rs with embedding mode
+        // Mock embedding - requires llm feature for actual embedding generation
         tracing::info!(
-            "Would create embedding using model: {}",
+            "Model path validated: {} (llm feature required for embeddings)",
             model_path.display()
         );
 

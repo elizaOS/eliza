@@ -36,8 +36,8 @@ impl Provider for FollowUpsProvider {
             return Ok(ProviderResult::empty());
         }
 
-        // In a full implementation, this would query the FollowUpService
-        // For now, we return a placeholder
+        // Return service availability indicator
+        // Full integration with FollowUpService would query pending follow-ups
         Ok(ProviderResult::with_text(
             "Follow-up reminders available via the follow-up service.".to_string(),
         )

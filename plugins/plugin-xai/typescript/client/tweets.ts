@@ -1076,6 +1076,52 @@ export async function retweet(tweetId: string, auth: TwitterAuth): Promise<void>
   }
 }
 
+/**
+ * Unlikes a tweet with the given tweet ID.
+ * @param tweetId The ID of the tweet to unlike.
+ * @param auth The authentication object.
+ * @returns A promise that resolves when the tweet is unliked.
+ */
+export async function unlikeTweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+  const v2client = await auth.getV2Client();
+  if (!v2client) {
+    throw new Error("V2 client is not initialized");
+  }
+
+  try {
+    await v2client.v2.unlike(
+      (await v2client.v2.me()).data.id, // Current user ID
+      tweetId
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to unlike tweet: ${message}`);
+  }
+}
+
+/**
+ * Removes a retweet of a tweet with the given tweet ID.
+ * @param tweetId The ID of the tweet to unretweet.
+ * @param auth The authentication object.
+ * @returns A promise that resolves when the retweet is removed.
+ */
+export async function unretweet(tweetId: string, auth: TwitterAuth): Promise<void> {
+  const v2client = await auth.getV2Client();
+  if (!v2client) {
+    throw new Error("V2 client is not initialized");
+  }
+
+  try {
+    await v2client.v2.unretweet(
+      (await v2client.v2.me()).data.id, // Current user ID
+      tweetId
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to unretweet: ${message}`);
+  }
+}
+
 export async function createCreateLongTweetRequest(
   text: string,
   auth: TwitterAuth,
