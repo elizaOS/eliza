@@ -27,5 +27,4 @@ export interface FetchTransformOptions {
   response: (response: Response) => Response | Promise<Response>;
 }
 
-// Note: QueryTweetsResponse and QueryProfilesResponse are exported from types.ts
-// Import them directly from "./types" to avoid circular dependencies
+// QueryTweetsResponse and QueryProfilesResponse are in types.ts - import from there

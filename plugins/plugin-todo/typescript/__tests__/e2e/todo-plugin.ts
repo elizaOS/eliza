@@ -188,8 +188,7 @@ export const TodoPluginE2ETestSuite: TestSuite = {
           }
           return [];
         };
-
-        // Note: In a real test, we'd need to mock state and handle the full flow
+        // In a real test, we'd need to mock state and handle the full flow
         logger.info("✅ CREATE_TODO action test completed");
       },
     },

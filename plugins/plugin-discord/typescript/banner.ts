@@ -132,7 +132,7 @@ function line(content: string): string {
  * compatibility, a legacy `discordInviteLink` may be used when the permissions-based info is unavailable.
  *
  * @param options - Configuration for the banner, including `settings`, the `runtime` used to emit the banner,
- *                  and optional Discord invite data (`applicationId`, `discordPermissions`). Note: `discordInviteLink`
+ *                  and optional Discord invite data (`applicationId`, `discordPermissions`). `discordInviteLink`
  *                  is deprecated and retained only for backwards compatibility.
  */
 export function printBanner(options: BannerOptions): void {

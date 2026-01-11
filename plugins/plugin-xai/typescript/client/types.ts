@@ -1,8 +1,7 @@
 /**
- * Common types for Twitter plugin API responses
- *
- * Note: These types use type-only imports to avoid circular dependencies.
- * The actual Profile and Tweet interfaces are defined in profile.ts and tweets.ts.
+ * Common types for X plugin API responses.
+ * Uses type-only imports to avoid circular dependencies.
+ * Profile and Tweet interfaces are defined in profile.ts and tweets.ts.
  */
 
 import type { Profile } from "./profile";

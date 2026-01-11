@@ -57,8 +57,7 @@ describe("Plugin Configuration", () => {
       await starterPlugin.init(config, runtime);
     }
 
-    // Note: registerService is not called in init, services are registered later
-    // This is handled by the runtime during plugin loading
+    // registerService not called in init - services registered later by runtime
     expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe("test-value");
   });
 
@@ -540,9 +539,7 @@ describe("API Routes", () => {
 
 describe("Event Handlers", () => {
   beforeEach(() => {
-    // Clear logger spy calls
-    // Note: logger methods are mocked in test setup, vitest exposes .mock.calls
-    // These assignments are for compatibility with test setup
+    // Clear logger spy calls (logger methods mocked in test setup via vitest)
     if ("calls" in logger.debug) {
       (logger.debug as Mock).mockClear();
     }

@@ -192,7 +192,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
 
       // Fetch the post to verify it was liked
       const likedPost = await postService.getPost(post.id, runtime.agentId);
-      // Note: The like count might not update immediately due to Twitter's eventual consistency
+      // Like count may not update immediately due to X's eventual consistency
       console.log("Post metrics after like:", likedPost?.metrics);
     });
 

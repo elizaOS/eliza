@@ -235,8 +235,7 @@ describe("checkShouldRespond Settings", () => {
     });
 
     it("should handle string 'false' character settings", () => {
-      // Note: Due to how getSetting uses || chains, a boolean false in settings
-      // would be treated as falsy and skipped. Use string "false" for reliable behavior.
+      // getSetting uses || chains so boolean false would be skipped - use string "false"
       const runtime = new AgentRuntime({
         character: createTestCharacter({
           settings: { CHECK_SHOULD_RESPOND: "false" },

@@ -806,8 +806,8 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
   console.log(`[elizaOS] Rust WASM Core v${wasm.getVersion()}`);
 
   // Initialize LocalDB storage
-  // Note: In browser, createDatabaseAdapter expects { prefix?: string }
-  // TypeScript resolves to node types which expect { dataDir?: string }
+  // In browser, createDatabaseAdapter expects { prefix?: string }
+  // TypeScript resolves to node types expecting { dataDir?: string }
   const agentId = wasm.stringToUuid(elizaCharacter.name) as `${string}-${string}-${string}-${string}-${string}`;
   dbAdapter = createDatabaseAdapter(
     { prefix: "elizaos-wasm" } as { dataDir?: string },

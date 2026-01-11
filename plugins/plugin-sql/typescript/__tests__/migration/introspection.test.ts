@@ -378,8 +378,7 @@ describe("Database Introspection Tests", () => {
       `);
 
       const columnNames = result.rows.map((row) => row.column_name);
-      // Note: The created_at column might not be added if the schema doesn't match
-      // This is expected behavior when using pgSchema
+      // created_at column may not be added if schema doesn't match (expected with pgSchema)
       expect(columnNames).toHaveLength(3); // id, key, value
     });
   });

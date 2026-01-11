@@ -260,7 +260,7 @@ Examples:
   # Quick test run with limited tests
   npm run benchmark -- --max-tests 20 --timeout 30000
 
-Note: If benchmark data paths are not provided, the script will look for them in:
+If benchmark data paths are not provided, the script will look for them in:
   - ./benchmark-data/realm-bench/
   - ./benchmark-data/api-bank/
 `);

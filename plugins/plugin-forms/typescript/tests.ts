@@ -1,9 +1,6 @@
 /**
- * Test exports for the forms plugin
- * This file exports the test suite so it can be included in the plugin build
- *
- * Note: The actual test file is in __tests__/e2e/forms-plugin.test.ts
- * and is run separately by the test runner.
+ * Test exports for the forms plugin.
+ * Actual test file is __tests__/e2e/forms-plugin.test.ts (run separately by test runner).
  */
 
 import type { TestSuite } from "@elizaos/core";

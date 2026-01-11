@@ -112,10 +112,9 @@ export async function* searchTweets(
 }
 
 /**
- * Search for users using Twitter API v2
- *
- * Note: User search is limited in the standard Twitter API v2.
- * This searches for users mentioned in tweets matching the query.
+ * Search for users using X API v2.
+ * User search is limited in standard X API v2 -
+ * searches for users mentioned in posts matching the query.
  *
  * @param query Search query
  * @param maxProfiles Maximum number of profiles to return

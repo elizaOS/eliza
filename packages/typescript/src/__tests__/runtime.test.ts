@@ -908,8 +908,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
   // --- Tests from original suite ---
   describe("Original Suite Tests", () => {
-    // Note: These might need slight adaptation if they relied on Jest specifics
-    // or different mock setups.
+    // Tests may need adaptation if they relied on Jest specifics.
 
     // Copied from your original suite:
     describe("model provider management", () => {
@@ -1614,7 +1613,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const context3Chunks: string[] = [];
 
         // Create mock handlers that return different streams for each call
-        // Note: The runtime uses XmlTextStreamExtractor which extracts content from <text> tags
+        // Runtime uses XmlTextStreamExtractor which extracts content from <text> tags
         let callCount = 0;
         const mockHandler = vi.fn().mockImplementation(() => {
           callCount++;

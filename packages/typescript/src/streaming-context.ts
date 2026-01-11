@@ -1,8 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - StackContextManager.run(): try-finally for stack management - KEEP
-// - createContextManager(): AsyncLocalStorage import fallback - KEEP (cross-platform)
-// - getOrCreateContextManager .catch(): Async initialization fallback - KEEP
-
 /**
  * Streaming context management for automatic streaming in useModel calls.
  *

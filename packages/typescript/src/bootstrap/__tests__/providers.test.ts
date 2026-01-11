@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
 // - beforeAll plugin-sql import - KEEP (conditional test execution)
 
 /**

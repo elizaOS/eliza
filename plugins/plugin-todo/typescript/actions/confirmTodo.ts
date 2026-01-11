@@ -243,7 +243,7 @@ export const confirmTodoAction: Action = {
     }
 
     if (confirmation.modifications) {
-      successMessage += `\n\nNote: I created the task as originally described. The modifications you mentioned ("${confirmation.modifications}") weren't applied. You can use UPDATE_TODO to make changes.`;
+      successMessage += `\n\nI created the task as originally described. The modifications you mentioned ("${confirmation.modifications}") weren't applied. You can use UPDATE_TODO to make changes.`;
     }
 
     if (callback) {

@@ -67,7 +67,7 @@ export const gameStateProvider: Provider = {
 
       if (config.dryRun) {
         parts.push("");
-        parts.push("*Note: Dry run mode is enabled - actions are simulated*");
+        parts.push("*Dry run mode is enabled - actions are simulated*");
       }
 
       return { text: parts.join("\n"), data: {}, values: {} };

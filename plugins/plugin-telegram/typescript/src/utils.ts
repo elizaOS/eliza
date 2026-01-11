@@ -58,8 +58,7 @@ function escapeUrl(url: string): string {
  * In addition to processing code blocks, inline code, links, bold, strikethrough, and italic,
  * it converts any header lines (those starting with one or more `#`) to bold text.
  *
- * Note: This solution uses a sequence of regex‐replacements and placeholders.
- * It makes assumptions about non–nested formatting and does not cover every edge case.
+ * Uses regex replacements with placeholders. Assumes non-nested formatting.
  */
 export function convertMarkdownToTelegram(markdown: string): string {
   // We will temporarily replace recognized markdown tokens with placeholders.

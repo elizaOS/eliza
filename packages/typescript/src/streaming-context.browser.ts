@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - run(): try-finally for context stack management - KEEP (ensures stack cleanup)
-
 /**
  * Browser-specific streaming context manager using a simple stack.
  *

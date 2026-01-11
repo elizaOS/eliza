@@ -1,4 +1,3 @@
-// TODO: Try-catch review completed - All try-catch in test assertions KEEP
 
 import {
   ChannelType,
@@ -10,7 +9,6 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-// TODO: Try-catch review completed 2026-01-11. No try-catch blocks to remove.
 // Test assertions use expect().rejects.toThrow() and try-catch within custom handlers.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1239,8 +1237,7 @@ describe("Send Message Action (Extended)", () => {
         });
 
         if (targetDetails.targetType === "room") {
-          // Look up room by name
-          // Note: getRooms only accepts UUID, but test is checking error handling
+          // Look up room by name (getRooms only accepts UUID - testing error handling)
           const stateData = state.data;
           const stateDataRoom = stateData?.room;
           const worldId = (stateDataRoom?.worldId || "") as unknown as UUID;
@@ -1343,8 +1340,7 @@ describe("Send Message Action (Extended)", () => {
         });
 
         if (targetDetails.targetType === "room") {
-          // Look up room by name
-          // Note: getRooms only accepts UUID, but test is checking error handling
+          // Look up room by name (getRooms only accepts UUID - testing error handling)
           const stateData = state.data;
           const stateDataRoom = stateData?.room;
           const rooms = await runtime.getRooms(

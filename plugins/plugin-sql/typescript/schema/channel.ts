@@ -13,7 +13,7 @@ export const channelTable = pgTable("channels", {
   sourceId: text("source_id"),
   topic: text("topic"),
   metadata: jsonb("metadata"),
-  // Note: server_id is added dynamically by RLS setup, not defined in schema
+  // server_id is added dynamically by RLS setup
   createdAt: timestamp("created_at", { mode: "date" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

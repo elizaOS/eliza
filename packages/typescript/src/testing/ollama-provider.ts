@@ -1,7 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - isOllamaAvailable: Network error handling - KEEP (external service check)
-// - extractJsonFromResponse: JSON.parse for LLM output - KEEP (external data parsing)
-
 /**
  * @fileoverview Ollama Model Provider for Integration Testing
  *

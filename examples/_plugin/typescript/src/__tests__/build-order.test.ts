@@ -37,7 +37,7 @@ describe("Build Order Integration Test", () => {
     expect(distFilesAfterPluginBuild.some((file) => file === "index.js")).toBe(
       true,
     );
-    // Note: .d.ts files may not always be generated if there are type errors
+    // .d.ts files may not be generated if there are type errors
 
     // Then run vite build to generate frontend assets (should coexist with plugin outputs)
     await $`cd ${rootDir} && bunx vite build`.quiet();

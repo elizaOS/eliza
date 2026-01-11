@@ -495,7 +495,7 @@ export interface ApiKey {
 
 /**
  * Response structure for the /api-keys endpoint from our local type.
- * Note: @polymarket/clob-client returns ApiKeysResponse with apiKeys (camelCase) array of ApiKeyCreds
+ * @polymarket/clob-client returns ApiKeysResponse with apiKeys (camelCase) array of ApiKeyCreds
  */
 export interface ApiKeysResponse {
   api_keys: ApiKey[];

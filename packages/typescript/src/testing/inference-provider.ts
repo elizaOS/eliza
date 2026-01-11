@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - safeCheckOllama: Network error handling - KEEP (external service detection)
-
 /**
  * @fileoverview Inference Provider Detection and Validation
  *

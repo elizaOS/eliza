@@ -146,7 +146,7 @@ const findChannel = async (
 
     return null;
   } catch (_error) {
-    // Note: Standalone function without runtime context - error handled by caller
+    // Standalone function - error handled by caller
     return null;
   }
 };

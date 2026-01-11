@@ -182,7 +182,7 @@ async function main(): Promise<void> {
   );
 
   // Handle tool listing
-  // Note: Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
+  // Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
   server.setRequestHandler(
     ListToolsRequestSchema as unknown as Parameters<typeof server.setRequestHandler>[0],
     async (): Promise<ListToolsResult> => ({
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
   );
 
   // Handle tool calls
-  // Note: Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
+  // Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
   server.setRequestHandler(
     CallToolRequestSchema as unknown as Parameters<typeof server.setRequestHandler>[0],
     async (request: CallToolRequest): Promise<CallToolResult> => {

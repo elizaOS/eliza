@@ -109,7 +109,7 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
     console.log("📝 Step 3: Adding wallet via runtime.setSetting...");
     if (mockRuntime.character.settings) {
       mockRuntime.character.settings.secrets = {
-        WALLET_PRIVATE_KEY: testPrivateKey, // Note: must use WALLET_PRIVATE_KEY or SOLANA_PRIVATE_KEY
+        WALLET_PRIVATE_KEY: testPrivateKey, // must use WALLET_PRIVATE_KEY or SOLANA_PRIVATE_KEY
         WALLET_PUBLIC_KEY: testPublicKey.toBase58(),
       };
     }

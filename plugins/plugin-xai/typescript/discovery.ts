@@ -226,7 +226,7 @@ export class TwitterDiscoveryClient {
     const allTweets: ScoredTweet[] = [];
     const allAccounts = new Map<string, ScoredAccount>();
 
-    // Note: Twitter API v2 doesn't support trends, so we skip trend-based discovery
+    // X API v2 doesn't support trends - using topic-based discovery only
 
     // 1. Discover from topic searches (primary discovery method)
     try {
@@ -291,8 +291,7 @@ export class TwitterDiscoveryClient {
         // Sanitize topic for search query
         const searchTopic = this.sanitizeTopic(topic);
 
-        // Strategy 1: Popular tweets in topic
-        // Note: min_faves is not supported in Twitter API v2, we'll filter after retrieval
+        // Strategy 1: Popular posts in topic (min_faves filter applied post-retrieval)
         const popularQuery = `${searchTopic} -is:retweet -is:reply lang:en`;
 
         logger.debug(`Searching popular tweets for topic: ${topic}`);
@@ -399,8 +398,7 @@ export class TwitterDiscoveryClient {
     const accounts = new Map<string, ScoredAccount>();
 
     // Search for viral conversations in our topics
-    // Note: Twitter API v2 doesn't support min_replies or min_faves operators
-    // We'll search for popular conversations and filter by engagement in scoring
+    // X API v2 doesn't support min_replies/min_faves - filter by engagement in scoring
     const topicQuery = this.config.topics
       .slice(0, 3)
       .map((t) => this.sanitizeTopic(t))
@@ -466,9 +464,8 @@ export class TwitterDiscoveryClient {
         // Sanitize topic for search query
         const searchTopic = this.sanitizeTopic(topic);
 
-        // Find tweets from accounts with high engagement
-        // Note: Twitter API v2 doesn't support min_faves or min_retweets in search
-        // We'll search for general high-quality content
+        // Find posts from accounts with high engagement
+        // X API v2 doesn't support min_faves/min_retweets - filter post-retrieval
         const influencerQuery = `${searchTopic} -is:retweet lang:en`;
 
         logger.debug(`Searching for influencers in topic: ${topic}`);
@@ -563,8 +560,7 @@ export class TwitterDiscoveryClient {
       relevanceScore += Math.min(topicMatches * 0.15, 0.3); // Increased from 0.1
     }
 
-    // Bonus for verified accounts (if available in tweet data)
-    // Note: isBlueVerified might not be available in all tweet responses
+    // Bonus for verified accounts (isBlueVerified may not be in all responses)
 
     // Normalize score
     relevanceScore = Math.min(relevanceScore, 1);

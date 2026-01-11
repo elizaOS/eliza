@@ -1351,7 +1351,7 @@ export class BM25 {
   /**
    * Searches for an exact phrase within the indexed documents.
    * Ranks documents containing the exact sequence of tokens higher.
-   * Note: This is a basic implementation. More sophisticated phrase search might consider proximity.
+   * Basic implementation - proximity-based phrase search could improve results.
    *
    * @param phrase - The exact phrase to search for.
    * @param topK - The maximum number of results to return. Defaults to 10.
@@ -1476,7 +1476,7 @@ export class BM25 {
   /**
    * Adds a single new document to the index.
    * Updates all internal index structures incrementally.
-   * Note: For adding many documents, `addDocumentsParallel` is generally more efficient.
+   * For bulk additions, prefer `addDocumentsParallel` for better performance.
    *
    * @param doc - The document object (with string fields) to add.
    * @throws {Error} If the document is null or undefined.

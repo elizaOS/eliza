@@ -93,7 +93,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    * and releasing connections for each query. This avoids race conditions that
    * could occur with manual client management and shared state.
    *
-   * Note: The this.db instance is set once in the constructor from manager.getDatabase()
+   * The db instance is set once in constructor from manager.getDatabase()
    * and is backed by a connection pool, so concurrent operations are safe.
    *
    * @template T
