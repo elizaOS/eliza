@@ -47,19 +47,15 @@ pub mod client;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::TodoClient;
-pub use config::TodoConfig;
-pub use error::{TodoError, Result};
-pub use types::{
-    Todo, TodoMetadata, CreateTodoParams, UpdateTodoParams, TodoFilters,
-    TaskType, Priority, RecurringPattern, NotificationType,
-    ReminderMessage, TaskSelection, TaskUpdate, ConfirmationResponse,
-};
-pub use data_service::TodoDataService;
-pub use cache_manager::CacheManager;
-pub use notification_manager::NotificationManager;
-pub use reminder_service::ReminderService;
+// Import directly from submodules:
+// - client::TodoClient
+// - config::TodoConfig
+// - error::{TodoError, Result}
+// - types::{Todo, TodoMetadata, CreateTodoParams, TaskType, Priority, etc.}
+// - data_service::TodoDataService
+// - cache_manager::CacheManager
+// - notification_manager::NotificationManager
+// - reminder_service::ReminderService
 
 /// Create a TodoClient from environment variables.
 ///

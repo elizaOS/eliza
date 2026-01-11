@@ -9,38 +9,14 @@ mod types;
 mod path_utils;
 mod service;
 
-pub use error::{ShellError, Result};
-pub use types::{
-    CommandResult,
-    CommandHistoryEntry,
-    FileOperation,
-    FileOperationType,
-    ShellConfig,
-    ShellConfigBuilder,
-};
-pub use path_utils::{
-    validate_path,
-    is_safe_command,
-    extract_base_command,
-    is_forbidden_command,
-    DEFAULT_FORBIDDEN_COMMANDS,
-};
-pub use service::ShellService;
+// Import directly from submodules:
+// - error::{ShellError, Result}
+// - types::{CommandResult, CommandHistoryEntry, FileOperation, etc.}
+// - path_utils::{validate_path, is_safe_command, etc.}
+// - service::ShellService
 
-/// Re-export for convenience
-pub mod prelude {
-    pub use crate::{
-        ShellConfig,
-        ShellConfigBuilder,
-        ShellService,
-        CommandResult,
-        CommandHistoryEntry,
-        FileOperation,
-        FileOperationType,
-        ShellError,
-        Result,
-    };
-}
+/// Prelude module - import directly from specific modules
+pub mod prelude {}
 
 
 

@@ -32,13 +32,6 @@ import { getApiKeyOptional } from "./utils/config";
 
 export { BlueSkyClient } from "./client";
 export { BlueSkyService } from "./services/bluesky";
-// Re-export types for consumers
-export * from "./types";
-export {
-  BlueSkyConfig,
-  hasBlueSkyEnabled,
-  validateBlueSkyConfig,
-} from "./utils/config";
 
 /**
  * Plugin configuration object structure

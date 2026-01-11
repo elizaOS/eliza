@@ -21,7 +21,7 @@ import type { XApiErrorRaw } from "./errors";
  * @property {string} [name] - The user's name.
  * @property {string} location - The user's location.
  * @property {boolean} [geo_enabled] - Indicates if geo locations are enabled.
- * @property {string[]} [pinned_post_ids_str] - Array of pinned post IDs as strings.
+ * @property {string[]} [pinned_tweet_ids_str] - Array of pinned post IDs as strings.
  * @property {string} [profile_background_color] - The background color of the user's profile.
  * @property {string} [profile_banner_url] - The URL of the user's profile banner.
  * @property {string} [profile_image_url_https] - The URL of the user's profile image (HTTPS).
@@ -53,7 +53,7 @@ export interface LegacyUserRaw {
   name?: string;
   location: string;
   geo_enabled?: boolean;
-  pinned_post_ids_str?: string[];
+  pinned_tweet_ids_str?: string[];
   profile_background_color?: string;
   profile_banner_url?: string;
   profile_image_url_https?: string;
@@ -156,7 +156,7 @@ export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Pro
     listedCount: user.listed_count,
     location: user.location,
     name: user.name,
-    pinnedPostIds: user.pinned_post_ids_str,
+    pinnedPostIds: user.pinned_tweet_ids_str,
     postsCount: user.statuses_count,
     url: `https://x.com/${user.screen_name}`,
     userId: user.id_str,
@@ -177,7 +177,7 @@ export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Pro
   return profile;
 }
 
-import type { UserV2 } from "x-api-v2";
+import type { UserV2 } from "twitter-api-v2";
 
 /**
  * Convert X API v2 user data to Profile format
@@ -189,14 +189,14 @@ function parseV2Profile(user: UserV2): Profile {
     followersCount: user.public_metrics?.followers_count,
     followingCount: user.public_metrics?.following_count,
     friendsCount: user.public_metrics?.following_count,
-    postsCount: user.public_metrics?.post_count,
+    postsCount: user.public_metrics?.tweet_count,
     isPrivate: user.protected ?? false,
     isVerified: user.verified ?? false,
     likesCount: user.public_metrics?.like_count,
     listedCount: user.public_metrics?.listed_count,
     location: user.location || "",
     name: user.name,
-    pinnedPostIds: user.pinned_post_id ? [user.pinned_post_id] : [],
+    pinnedPostIds: user.pinned_tweet_id ? [user.pinned_tweet_id] : [],
     url: `https://x.com/${user.username}`,
     userId: user.id,
     username: user.username,
@@ -236,7 +236,7 @@ export async function getProfile(
         "description",
         "entities",
         "location",
-        "pinned_post_id",
+        "pinned_tweet_id",
         "profile_image_url",
         "protected",
         "public_metrics",

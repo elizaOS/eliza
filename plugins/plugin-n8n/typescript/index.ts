@@ -36,8 +36,6 @@ import {
 } from "./providers";
 import { PluginCreationService } from "./services/plugin-creation-service";
 
-// Re-export types for consumers
-export * from "./types";
 
 /**
  * Plugin configuration object structure

@@ -4,9 +4,9 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SwapAction } from "../actions/swap";
 import { WalletProvider } from "../providers/wallet";
+import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 import type { SupportedChain } from "../types";
 import { getTestChains } from "./custom-chain";
-import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 
 // Test environment - use funded wallet for integration tests
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
@@ -244,11 +244,9 @@ describe("Swap Action", () => {
 
       // Create wallet provider with funded wallet
       const fundedRuntime = await createEVMTestRuntime();
-      const fundedWp = new WalletProvider(
-        FUNDED_TEST_WALLET as `0x${string}`,
-        fundedRuntime,
-        { sepolia: testChains.sepolia }
-      );
+      const fundedWp = new WalletProvider(FUNDED_TEST_WALLET as `0x${string}`, fundedRuntime, {
+        sepolia: testChains.sepolia,
+      });
       const fundedSwapAction = new SwapAction(fundedWp);
 
       const balance = await fundedWp.getWalletBalanceForChain("sepolia");

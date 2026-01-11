@@ -10,18 +10,12 @@ pub mod providers;
 pub mod service;
 pub mod types;
 
-pub use error::{LinearError, Result};
-pub use service::LinearService;
-pub use types::*;
-
-// Re-export action and provider functions
-pub use actions::{
-    create_issue, get_issue, update_issue, delete_issue, search_issues,
-    create_comment, list_teams, list_projects, get_activity, clear_activity,
-};
-pub use providers::{
-    get_issues_context, get_teams_context, get_projects_context, get_activity_context,
-};
+// Import directly from submodules:
+// - error::{LinearError, Result}
+// - service::LinearService
+// - types::*
+// - actions::{create_issue, get_issue, update_issue, etc.}
+// - providers::{get_issues_context, get_teams_context, etc.}
 
 /// Plugin definition for ElizaOS
 pub struct LinearPlugin {

@@ -17,7 +17,3 @@ export const simpleVoicePlugin: Plugin = {
 
 export default simpleVoicePlugin;
 
-// Re-export components
-export { sayAloudAction } from "./actions/sayAloud";
-export { SamTTSService } from "./services/SamTTSService";
-export * from "./types";

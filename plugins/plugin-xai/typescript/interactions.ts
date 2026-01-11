@@ -602,7 +602,7 @@ Response (YES/NO):`;
           id: worldId,
           name: `${username}'s X`,
           agentId: this.runtime.agentId,
-          serverId: userId as `${string}-${string}-${string}-${string}-${string}`,
+          messageServerId: userId as `${string}-${string}-${string}-${string}-${string}`,
           metadata: {
             ownership: { ownerId: userId || "" },
             x: {
@@ -631,7 +631,7 @@ Response (YES/NO):`;
           source: "x",
           type: ChannelType.FEED,
           channelId: conversationId,
-          serverId: createUniqueUuid(this.runtime, userId),
+          messageServerId: createUniqueUuid(this.runtime, userId),
           worldId: worldId,
         });
 

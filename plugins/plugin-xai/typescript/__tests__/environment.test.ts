@@ -87,7 +87,7 @@ describe("Environment Configuration", () => {
     });
 
     it("should throw error when required credentials are missing", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(undefined);
+      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(null);
 
       await expect(validateXConfig(mockRuntime)).rejects.toThrow("X env auth requires");
     });
@@ -208,7 +208,7 @@ describe("Environment Configuration", () => {
     });
 
     it("should handle zod validation errors", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(undefined);
+      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(null);
 
       // Create a scenario that will fail zod validation
       await expect(validateXConfig(mockRuntime)).rejects.toThrow();

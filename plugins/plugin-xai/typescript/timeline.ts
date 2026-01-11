@@ -293,7 +293,7 @@ Choose any combination of [LIKE], [REPOST], [QUOTE], and [REPLY] that are approp
         source: "x",
         type: ChannelType.GROUP,
         channelId: post.conversationId,
-        serverId: createUniqueUuid(this.runtime, post.userId || ""),
+        messageServerId: createUniqueUuid(this.runtime, post.userId || ""),
         worldId: createUniqueUuid(this.runtime, post.userId || ""),
       });
 

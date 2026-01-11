@@ -16,19 +16,19 @@ pub mod room;
 pub mod task;
 pub mod world;
 
-// Re-export all schemas
-pub use agent::*;
-pub use cache::*;
-pub use component::*;
-pub use embedding::*;
-pub use entity::*;
-pub use log::*;
-pub use memory::*;
-pub use participant::*;
-pub use relationship::*;
-pub use room::*;
-pub use task::*;
-pub use world::*;
+// Import directly from submodules:
+// - agent::* for agent schemas
+// - cache::* for cache schemas
+// - component::* for component schemas
+// - embedding::* for embedding schemas
+// - entity::* for entity schemas
+// - log::* for log schemas
+// - memory::* for memory schemas
+// - participant::* for participant schemas
+// - relationship::* for relationship schemas
+// - room::* for room schemas
+// - task::* for task schemas
+// - world::* for world schemas
 
 /// Table names used in the database
 pub mod table_names {

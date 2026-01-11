@@ -48,7 +48,7 @@ export async function ensureXContext(
       id: worldId,
       name: `${username}'s X`,
       agentId: runtime.agentId,
-      serverId: createUniqueUuid(runtime, `server-${userId}`),
+      messageServerId: createUniqueUuid(runtime, `server-${userId}`),
       metadata: {
         ownership: { ownerId: userId },
         x: {
@@ -65,7 +65,7 @@ export async function ensureXContext(
       source: "x",
       type: ChannelType.FEED,
       channelId: conversationId,
-      serverId: createUniqueUuid(runtime, `server-${userId}`),
+      messageServerId: createUniqueUuid(runtime, `server-${userId}`),
       worldId: worldId,
     });
 

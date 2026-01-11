@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
-//! X (X) API v2 Client
+//! Twitter API v2 Client
 //!
-//! Async HTTP client for X API v2 interactions using reqwest.
+//! Async HTTP client for X platform using Twitter API v2 with reqwest.
 
 use base64::Engine;
 use chrono::{DateTime, Utc};
@@ -19,18 +19,18 @@ use tracing::debug;
 use crate::error::{Result, XAIError};
 use crate::types::*;
 
-/// X (X) API v2 client.
-pub struct XClient {
+/// Twitter API v2 client for X platform.
+pub struct TwitterClient {
     client: Client,
-    config: XConfig,
+    config: TwitterConfig,
     me: Option<Profile>,
 }
 
-impl XClient {
+impl TwitterClient {
     const API_BASE: &'static str = "https://api.x.com/2";
 
-    /// Create a new X client.
-    pub fn new(config: XConfig) -> Result<Self> {
+    /// Create a new Twitter API client.
+    pub fn new(config: TwitterConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()?;
@@ -144,7 +144,7 @@ impl XClient {
             .and_then(|v| v["detail"].as_str().or(v["title"].as_str()).map(String::from))
             .unwrap_or(text);
 
-        Err(XAIError::XApiError { status, message })
+        Err(XAIError::TwitterApiError { status, message })
     }
 
     fn url(&self, endpoint: &str) -> String {
@@ -492,7 +492,7 @@ impl XClient {
                 let includes = &data["includes"];
                 Ok(Some(self.parse_post(&data["data"], includes)))
             }
-            Err(XAIError::XApiError { status: 404, .. }) => Ok(None),
+            Err(XAIError::TwitterApiError { status: 404, .. }) => Ok(None),
             Err(e) => Err(e),
         }
     }

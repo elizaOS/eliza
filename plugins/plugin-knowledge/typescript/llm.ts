@@ -29,9 +29,6 @@ interface TextGenerationResult {
 import { validateModelConfig } from "./config";
 import type { ModelConfig, TextGenerationOptions } from "./types";
 
-// Re-export for backwards compatibility
-export { getProviderRateLimits, validateModelConfig } from "./config";
-export type { ModelConfig, ProviderRateLimits } from "./types";
 
 /**
  * Generates text embeddings using the configured provider

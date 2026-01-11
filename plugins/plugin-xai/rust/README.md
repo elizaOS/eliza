@@ -12,7 +12,7 @@ elizaos-plugin-xai = "1.0"
 ## Usage
 
 ```rust
-use elizaos_plugin_xai::{GrokClient, GrokConfig, XClient, XConfig, TextGenerationParams};
+use elizaos_plugin_xai::{GrokClient, GrokConfig, TwitterClient, TwitterConfig, TextGenerationParams};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,8 +21,8 @@ async fn main() -> anyhow::Result<()> {
     let result = grok.generate_text(&TextGenerationParams::new("Hello"), false).await?;
     println!("{}", result.text);
 
-    // X (X) integration
-    let mut x = XClient::new(XConfig::from_env()?)?;
+    // X (formerly Twitter) integration
+    let mut x = TwitterClient::new(TwitterConfig::from_env()?)?;
     let me = x.me().await?;
     println!("@{}", me.username);
 

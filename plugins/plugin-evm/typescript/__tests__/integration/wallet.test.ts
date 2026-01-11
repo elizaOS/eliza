@@ -72,7 +72,7 @@ describe("Wallet Provider", () => {
   });
 
   describe("Constructor", () => {
-    it("should set wallet address correctly", () => {
+    it("should set wallet address correctly", async () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
       const agentRuntime = await createEVMTestRuntime();
@@ -82,7 +82,7 @@ describe("Wallet Provider", () => {
       expect(walletProvider.getAddress()).toBe(expectedAddress);
     });
 
-    it("should initialize with empty chains when no chains provided", () => {
+    it("should initialize with empty chains when no chains provided", async () => {
       const agentRuntime = await createEVMTestRuntime();
       walletProvider = new WalletProvider(pk, agentRuntime);
 
@@ -94,7 +94,7 @@ describe("Wallet Provider", () => {
       expect(supportedChains.includes("mainnet" as SupportedChain)).toBe(false);
     });
 
-    it("should initialize with custom testnet chains", () => {
+    it("should initialize with custom testnet chains", async () => {
       const customChains = {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
@@ -109,7 +109,7 @@ describe("Wallet Provider", () => {
   });
 
   describe("Public and Wallet Clients", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       const customChains = {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
@@ -123,7 +123,7 @@ describe("Wallet Provider", () => {
       expect(client.chain.testnet).toBe(true);
     });
 
-    it("should generate public client with custom RPC URL", () => {
+    it("should generate public client with custom RPC URL", async () => {
       const chain = WalletProvider.genChainFromName("sepolia", TEST_RPC_URLS.sepolia);
       const wp = new WalletProvider(pk, await createEVMTestRuntime(), {
         sepolia: chain,
@@ -146,7 +146,7 @@ describe("Wallet Provider", () => {
       expect(client.chain?.id).toEqual(sepolia.id);
     });
 
-    it("should generate wallet client with custom RPC URL", () => {
+    it("should generate wallet client with custom RPC URL", async () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
       const chain = WalletProvider.genChainFromName("sepolia", TEST_RPC_URLS.sepolia);
@@ -165,7 +165,7 @@ describe("Wallet Provider", () => {
   });
 
   describe("Balance Operations", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       const customChains = {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
@@ -207,7 +207,7 @@ describe("Wallet Provider", () => {
   });
 
   describe("Chain Management", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       walletProvider = new WalletProvider(pk, await createEVMTestRuntime());
     });
 
@@ -266,7 +266,7 @@ describe("Wallet Provider", () => {
   });
 
   describe("Network Connectivity", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       const customChains = {
         sepolia: testChains.sepolia,
       };
@@ -301,8 +301,12 @@ describe("Wallet Provider", () => {
   describe("Local Anvil Tests (Funded)", () => {
     let anvilProvider: WalletProvider;
 
-    beforeEach(() => {
-      anvilProvider = new WalletProvider(ANVIL_PRIVATE_KEY, await createEVMTestRuntime(), getAnvilChain());
+    beforeEach(async () => {
+      anvilProvider = new WalletProvider(
+        ANVIL_PRIVATE_KEY,
+        await createEVMTestRuntime(),
+        getAnvilChain()
+      );
     });
 
     it("should connect to local Anvil node", async () => {

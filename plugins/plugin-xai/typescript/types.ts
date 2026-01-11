@@ -3,7 +3,11 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { Post } from "./client";
+import type { Post as ClientPost } from "./client";
+
+// Re-export Post type
+export type { Post } from "./client";
+type Post = ClientPost;
 
 export type XServiceStatus = "idle" | "active" | "error";
 
@@ -149,11 +153,6 @@ export interface IXClient {
   discovery?: XDiscoveryClient;
 }
 
-// Re-export Post type for convenience
-export type { Post } from "./client";
-
-// Re-export XConfig from environment
-export type { XConfig } from "./environment";
 
 /**
  * X API response structure - can have nested data structures

@@ -11,15 +11,15 @@ pip install elizaos-plugin-xai
 ## Usage
 
 ```python
-from elizaos_plugin_xai import GrokClient, GrokConfig, XClient, XConfig
+from elizaos_plugin_xai import GrokClient, GrokConfig, TwitterClient, TwitterConfig
 
 # Grok text generation
 grok = GrokClient(GrokConfig.from_env())
 result = await grok.generate_text(TextGenerationParams(prompt="Hello world"))
 print(result.text)
 
-# X (X) integration
-x = XClient(XConfig.from_env())
+# X (formerly Twitter) integration
+x = TwitterClient(TwitterConfig.from_env())
 me = await x.me()
 print(f"@{me.username}")
 ```

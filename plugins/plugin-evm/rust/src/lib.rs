@@ -52,14 +52,14 @@ pub mod error;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use types::*;
-pub use constants::*;
-pub use error::{EVMError, EVMErrorCode};
-pub use providers::wallet::{WalletProvider, WalletProviderConfig, GeneratedKey, generate_private_key};
-pub use actions::transfer::{TransferAction, TransferParams};
-pub use actions::swap::{SwapAction, SwapParams, SwapQuote};
-pub use actions::bridge::{BridgeAction, BridgeParams, BridgeStatus};
+// Import directly from submodules:
+// - types::* for all types
+// - constants::* for constants
+// - error::{EVMError, EVMErrorCode}
+// - providers::wallet::{WalletProvider, WalletProviderConfig, etc.}
+// - actions::transfer::{TransferAction, TransferParams}
+// - actions::swap::{SwapAction, SwapParams, SwapQuote}
+// - actions::bridge::{BridgeAction, BridgeParams, BridgeStatus}
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "evm";

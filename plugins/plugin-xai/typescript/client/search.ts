@@ -49,19 +49,19 @@ export async function* searchPosts(
   try {
     const searchIterator = await client.v2.search(finalQuery, {
       max_results: Math.min(maxPosts, 100),
-      "post.fields": [
+      "tweet.fields": [
         "id",
         "text",
         "created_at",
         "author_id",
-        "referenced_posts",
+        "referenced_tweets",
         "entities",
         "public_metrics",
         "attachments",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
     });
 
     let count = 0;
@@ -90,14 +90,14 @@ export async function* searchPosts(
         thread: [],
         urls: post.entities?.urls?.map((u) => u.expanded_url || u.url) || [],
         videos: [],
-        isRepost: post.referenced_posts?.some((rt) => rt.type === "reposted") || false,
-        isReply: post.referenced_posts?.some((rt) => rt.type === "replied_to") || false,
-        isQuoted: post.referenced_posts?.some((rt) => rt.type === "quoted") || false,
+        isRepost: post.referenced_tweets?.some((rt) => rt.type === "retweeted") || false,
+        isReply: post.referenced_tweets?.some((rt) => rt.type === "replied_to") || false,
+        isQuoted: post.referenced_tweets?.some((rt) => rt.type === "quoted") || false,
         isPin: false,
         sensitiveContent: false,
         likes: post.public_metrics?.like_count || undefined,
         replies: post.public_metrics?.reply_count || undefined,
-        reposts: post.public_metrics?.repost_count || undefined,
+        reposts: post.public_metrics?.retweet_count || undefined,
         views: post.public_metrics?.impression_count || undefined,
         quotes: post.public_metrics?.quote_count || undefined,
       };
@@ -134,7 +134,7 @@ export async function* searchProfiles(
     // Search for posts and extract unique user IDs
     const searchIterator = await client.v2.search(query, {
       max_results: Math.min(maxProfiles * 2, 100), // Get more posts to find more users
-      "post.fields": ["author_id"],
+      "tweet.fields": ["author_id"],
       "user.fields": [
         "id",
         "name",

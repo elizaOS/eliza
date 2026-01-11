@@ -23,8 +23,6 @@ import {
   attachmentSummarizationTemplate as summarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
-// Re-export for backwards compatibility
-export { summarizationTemplate, attachmentIdsTemplate };
 
 /**
  * Retrieves attachment IDs from a model using a prompt generated from the current state and a template.

@@ -19,8 +19,6 @@ import {
 } from "@elizaos/core";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 
-// Re-export for backwards compatibility
-export { mediaUrlTemplate };
 
 /**
  * Get a media URL from the user through text input using the provided runtime and state.

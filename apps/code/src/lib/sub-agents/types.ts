@@ -67,5 +67,3 @@ export interface SubAgent {
   cancel(): void;
 }
 
-// Re-export types used by tools
-export type { CodeTask, TaskResult, ProgressUpdate };

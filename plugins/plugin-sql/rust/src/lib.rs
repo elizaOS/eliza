@@ -41,17 +41,11 @@ pub mod pglite;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export core types
-pub use elizaos::types::*;
-
-// Re-export adapters
-pub use base::DatabaseAdapter;
-
-#[cfg(feature = "native")]
-pub use postgres::PostgresAdapter;
-
-#[cfg(feature = "wasm")]
-pub use pglite::PgLiteAdapter;
+// Import directly from submodules:
+// - elizaos::types::* for core types
+// - base::DatabaseAdapter
+// - postgres::PostgresAdapter (with "native" feature)
+// - pglite::PgLiteAdapter (with "wasm" feature)
 
 /// Plugin definition for elizaOS
 pub fn plugin() -> elizaos::Plugin {

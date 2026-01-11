@@ -3,9 +3,7 @@
  * Full S3 functionality requires Node.js - exports types and limited browser-compatible API.
  */
 
-export * from "./types";
-
-// Re-export plugin definition without Node.js-specific service
+// Plugin definition without Node.js-specific service
 import type { Plugin } from "@elizaos/core";
 
 /**
