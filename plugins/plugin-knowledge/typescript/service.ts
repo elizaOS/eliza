@@ -497,7 +497,7 @@ export class KnowledgeService extends Service {
       query: message.content.text,
       ...filterScope,
       count: 20,
-      match_threshold: 0.1, // TODO: Make configurable
+      match_threshold: 0.1,
     });
 
     return fragments
@@ -753,7 +753,7 @@ export class KnowledgeService extends Service {
   async _internalAddKnowledge(
     item: KnowledgeItem, // item.id here is expected to be the ID of the "document"
     options = {
-      targetTokens: 1500, // TODO: Make these configurable, perhaps from plugin config
+      targetTokens: 1500,
       overlap: 200,
       modelContextSize: 4096,
     },
@@ -856,8 +856,6 @@ export class KnowledgeService extends Service {
     }
 
     const text = document.content.text;
-    // TODO: Consider using DEFAULT_CHUNK_TOKEN_SIZE and DEFAULT_CHUNK_OVERLAP_TOKENS from ctx-embeddings
-    // For now, using passed in values or defaults from _internalAddKnowledge.
     const chunks = await splitChunks(text, targetTokens, overlap);
 
     return chunks.map((chunk, index) => {

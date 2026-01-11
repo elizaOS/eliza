@@ -134,27 +134,75 @@ export class FarcasterCastService implements CastServiceInterface {
   }
 
   async likeCast(params: { agentId: UUID; castHash: string }): Promise<void> {
-    this.runtime.logger.info(
-      `Like functionality not yet implemented for cast: ${JSON.stringify({ castHash: params.castHash })}`
-    );
+    try {
+      const result = await this.client.publishReaction({
+        reactionType: "like",
+        target: params.castHash,
+      });
+
+      if (!result.success) {
+        throw new Error(`Failed to like cast: ${params.castHash}`);
+      }
+
+      this.runtime.logger.info(`Liked cast: ${params.castHash}`);
+    } catch (error) {
+      this.runtime.logger.error(`Failed to like cast: ${JSON.stringify({ params, error })}`);
+      throw error;
+    }
   }
 
   async unlikeCast(params: { agentId: UUID; castHash: string }): Promise<void> {
-    this.runtime.logger.info(
-      `Unlike functionality not yet implemented for cast: ${JSON.stringify({ castHash: params.castHash })}`
-    );
+    try {
+      const result = await this.client.deleteReaction({
+        reactionType: "like",
+        target: params.castHash,
+      });
+
+      if (!result.success) {
+        throw new Error(`Failed to unlike cast: ${params.castHash}`);
+      }
+
+      this.runtime.logger.info(`Unliked cast: ${params.castHash}`);
+    } catch (error) {
+      this.runtime.logger.error(`Failed to unlike cast: ${JSON.stringify({ params, error })}`);
+      throw error;
+    }
   }
 
   async recast(params: { agentId: UUID; castHash: string }): Promise<void> {
-    this.runtime.logger.info(
-      `Recast functionality not yet implemented for cast: ${JSON.stringify({ castHash: params.castHash })}`
-    );
+    try {
+      const result = await this.client.publishReaction({
+        reactionType: "recast",
+        target: params.castHash,
+      });
+
+      if (!result.success) {
+        throw new Error(`Failed to recast: ${params.castHash}`);
+      }
+
+      this.runtime.logger.info(`Recasted: ${params.castHash}`);
+    } catch (error) {
+      this.runtime.logger.error(`Failed to recast: ${JSON.stringify({ params, error })}`);
+      throw error;
+    }
   }
 
   async unrecast(params: { agentId: UUID; castHash: string }): Promise<void> {
-    this.runtime.logger.info(
-      `Remove recast functionality not yet implemented for cast: ${JSON.stringify({ castHash: params.castHash })}`
-    );
+    try {
+      const result = await this.client.deleteReaction({
+        reactionType: "recast",
+        target: params.castHash,
+      });
+
+      if (!result.success) {
+        throw new Error(`Failed to remove recast: ${params.castHash}`);
+      }
+
+      this.runtime.logger.info(`Removed recast: ${params.castHash}`);
+    } catch (error) {
+      this.runtime.logger.error(`Failed to remove recast: ${JSON.stringify({ params, error })}`);
+      throw error;
+    }
   }
 
   async getMentions(params: { agentId: UUID; limit?: number }): Promise<FarcasterCast[]> {

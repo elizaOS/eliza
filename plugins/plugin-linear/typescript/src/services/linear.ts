@@ -425,6 +425,24 @@ export class LinearService extends Service {
     return user;
   }
 
+  async getUserTeams(): Promise<Team[]> {
+    const viewer = await this.client.viewer;
+    const teams = await viewer.teams();
+    const teamList = await teams.nodes;
+
+    this.logActivity(
+      "list_user_teams",
+      "team",
+      viewer.id,
+      {
+        count: teamList.length,
+      },
+      true
+    );
+
+    return teamList;
+  }
+
   // Label operations
   async getLabels(teamId?: string): Promise<IssueLabel[]> {
     const query = this.client.issueLabels({

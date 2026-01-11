@@ -2,6 +2,10 @@
  * @fileoverview Tests for integration runtime factory
  */
 
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - skipInferenceCheck test: Verifying no specific error thrown - KEEP
+// - cleanup-on-throw test: Verifying cleanup behavior - KEEP
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createIntegrationTestRuntime,

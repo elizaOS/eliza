@@ -136,6 +136,24 @@ export const queueAction = {
         },
       },
     ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Queue the passed proposal for execution on governor 0xabcdef1234567890abcdef1234567890abcdef12 on Base",
+          action: "QUEUE_PROPOSAL",
+        },
+      },
+    ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Add proposal 789 to the timelock queue on the DAO at 0x9876543210987654321098765432109876543210 on Arbitrum",
+          action: "QUEUE_PROPOSAL",
+        },
+      },
+    ],
   ],
   similes: ["QUEUE_PROPOSAL", "GOVERNANCE_QUEUE"],
-}; // TODO: add more examples
+};

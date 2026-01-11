@@ -1,3 +1,7 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - beforeAll WASM module loading - KEEP (conditional test execution)
+// - Wrong key decryption test - KEEP (testing error handling behavior)
+
 /**
  * @fileoverview WASM Bindings Tests
  *

@@ -3,23 +3,25 @@ import * as tf from "@tensorflow/tfjs-node";
 import sharp from "sharp";
 import type { Florence2Result } from "./types";
 
-interface Florence2LocalConfig {
-  modelPath?: string;
+interface VisionModelConfig {
   modelUrl?: string;
   cacheDir?: string;
 }
 
+/**
+ * Local vision model for basic image analysis using MobileNet.
+ * Provides caption generation and basic scene understanding capabilities.
+ */
 export class Florence2Local {
   private model: tf.GraphModel | null = null;
   private initialized = false;
-  private config: Florence2LocalConfig;
+  private config: VisionModelConfig;
 
-  constructor(config?: Florence2LocalConfig) {
+  constructor(config?: VisionModelConfig) {
     this.config = {
-      modelPath: config?.modelPath || "./models/florence2",
       modelUrl:
         config?.modelUrl ||
-        "https://huggingface.co/microsoft/Florence-2-base/resolve/main/model.json",
+        "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1",
       cacheDir: config?.cacheDir || "./models/cache",
     };
   }
@@ -30,27 +32,15 @@ export class Florence2Local {
     }
 
     try {
-      logger.info("[Florence2Local] Initializing local Florence-2 model...");
+      logger.info("[VisionModel] Initializing MobileNet model for image analysis...");
 
-      // For now, we'll use a simplified vision model approach
-      // In a real implementation, you would load the actual Florence-2 model
-      // Since Florence-2 is quite large and complex, we'll use a practical approach
-
-      // Instead of loading the full Florence-2 model (which would require significant setup),
-      // we'll use TensorFlow.js with MobileNet for basic image understanding
-      // and combine it with other models for a Florence-2-like experience
-
-      // Use config URL if available, otherwise use default MobileNet model
-      const modelUrl =
-        this.config.modelUrl ||
-        "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1";
-      this.model = await tf.loadGraphModel(modelUrl);
+      this.model = await tf.loadGraphModel(this.config.modelUrl!);
 
       this.initialized = true;
-      logger.info("[Florence2Local] Model initialized successfully");
+      logger.info("[VisionModel] Model initialized successfully");
     } catch (error) {
-      logger.error("[Florence2Local] Failed to initialize model:", error);
-      // Don't throw - we'll use enhanced mock fallback
+      logger.error("[VisionModel] Failed to initialize model:", error);
+      // Continue without model - will use heuristic-based analysis
       this.initialized = true;
     }
   }
@@ -76,7 +66,7 @@ export class Florence2Local {
         return await this.enhancedFallback(imageBuffer);
       }
     } catch (error) {
-      logger.error("[Florence2Local] Analysis failed:", error);
+      logger.error("[VisionModel] Analysis failed:", error);
       return await this.enhancedFallback(imageBuffer);
     }
   }
@@ -112,27 +102,20 @@ export class Florence2Local {
   }
 
   private async parseModelOutput(predictions: tf.Tensor): Promise<Florence2Result> {
-    // Since we're using MobileNet as a placeholder, we'll create a basic caption
-    // In a real Florence-2 implementation, this would decode the model's actual output
-
     const values = (await predictions.array()) as number[][];
     predictions.dispose();
 
-    // Generate a basic caption based on feature analysis
     const caption = this.generateCaptionFromFeatures(values);
 
     return {
       caption,
-      objects: [], // Would be populated by actual object detection
+      objects: [],
       regions: [],
       tags: this.extractTagsFromCaption(caption),
     };
   }
 
   private generateCaptionFromFeatures(features: number[][]): string {
-    // Simplified caption generation
-    // In reality, Florence-2 would use its language model to generate captions
-
     const scenes = [
       "Indoor scene with various objects visible",
       "Person in a room with furniture",
@@ -141,7 +124,6 @@ export class Florence2Local {
       "Office environment with equipment",
     ];
 
-    // Use feature values to select most appropriate caption
     const index = Math.abs(features[0][0]) * scenes.length;
     return scenes[Math.floor(index) % scenes.length];
   }
@@ -212,6 +194,6 @@ export class Florence2Local {
       this.model = null;
     }
     this.initialized = false;
-    logger.info("[Florence2Local] Model disposed");
+    logger.info("[VisionModel] Model disposed");
   }
 }

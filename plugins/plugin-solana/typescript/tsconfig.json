@@ -17,7 +17,8 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"]
+    "typeRoots": ["../../../node_modules/@types"],
+    "types": ["node", "bun"]
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]

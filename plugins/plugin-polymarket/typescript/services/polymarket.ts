@@ -279,7 +279,6 @@ export class PolymarketService extends Service {
 
     try {
       // Get USDC balance from Polymarket
-      // Note: This would integrate with plugin-evm's balance checking
       const walletData: PolymarketWalletData = {
         address: this.walletAddress,
         chainId: POLYGON_CHAIN_ID,

@@ -148,4 +148,4 @@ export const voteAction = {
     ],
   ],
   similes: ["VOTE", "GOVERNANCE_VOTE", "CAST_VOTE"],
-}; // TODO: add more examples
+};

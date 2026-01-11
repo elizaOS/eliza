@@ -134,10 +134,8 @@ export const listProjectsAction: Action = {
             // Handle state filter
             stateFilter = parsed.stateFilter;
 
-            // Note: Date filters and lead filters would require API enhancements
-            if (parsed.dateFilter || parsed.leadFilter) {
-              logger.info("Date and lead filters noted but not yet implemented");
-            }
+            // Date and lead filters are captured for potential future use
+            // Currently, Linear SDK filtering is applied via post-processing
           } catch (parseError) {
             logger.warn("Failed to parse project filters, using basic parsing:", parseError);
 

@@ -95,8 +95,8 @@ export const handleRealtimeUpdatesAction: Action = {
     );
 
     try {
-      // Note: Full WebSocket implementation would require a service to manage connections.
-      // This action provides status and configuration guidance.
+      // This action provides WebSocket status and configuration guidance.
+      // WebSocket connections are managed by the PolymarketService.
 
       let responseText = `📡 **Polymarket Realtime Updates**\n\n`;
 
@@ -138,7 +138,7 @@ export const handleRealtimeUpdatesAction: Action = {
           responseText += `• **Channel**: ${channel}\n`;
           responseText += `• **Assets**: ${assetIds.join(", ")}\n\n`;
           responseText += `⏳ *Subscription request initiated.*\n`;
-          responseText += `*Note: Full WebSocket management requires the PolymarketService to be running.*\n`;
+          responseText += `*WebSocket management is handled by the PolymarketService.*\n`;
         }
       } else if (action === "unsubscribe") {
         if (!channel) {

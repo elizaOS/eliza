@@ -4,6 +4,7 @@
     "outDir": "./dist",
     "rootDir": "./",
     "baseUrl": "../../",
+    "typeRoots": ["../../node_modules/@types"],
     "types": ["node", "bun"],
     "noEmit": true,
     "skipLibCheck": true,

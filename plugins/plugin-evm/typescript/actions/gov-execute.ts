@@ -138,6 +138,24 @@ export const executeAction = {
         },
       },
     ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Execute the passed proposal on governor 0xabcdef1234567890abcdef1234567890abcdef12 on Base",
+          action: "EXECUTE_PROPOSAL",
+        },
+      },
+    ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Run the execution for proposal ID 456 on the DAO governor at 0x9876543210987654321098765432109876543210 on Arbitrum",
+          action: "EXECUTE_PROPOSAL",
+        },
+      },
+    ],
   ],
   similes: ["EXECUTE_PROPOSAL", "GOVERNANCE_EXECUTE"],
-}; // TODO: add more examples
+};

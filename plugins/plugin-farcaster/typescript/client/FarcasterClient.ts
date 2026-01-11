@@ -205,4 +205,54 @@ export class FarcasterClient {
     profileCache.clear();
     castCache.clear();
   }
+
+  /**
+   * Publish a reaction (like or recast) to a cast.
+   */
+  async publishReaction(params: {
+    reactionType: "like" | "recast";
+    target: string;
+  }): Promise<{ success: boolean }> {
+    try {
+      const result = await this.neynar.publishReaction({
+        signerUuid: this.signerUuid,
+        reactionType: params.reactionType,
+        target: params.target,
+      });
+
+      return { success: result.success };
+    } catch (err) {
+      if (isApiErrorResponse(err)) {
+        elizaLogger.error(`Neynar error publishing reaction: ${JSON.stringify(err.response.data)}`);
+        throw err.response.data;
+      }
+      elizaLogger.error(`Error publishing reaction: ${JSON.stringify(err)}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Delete a reaction (unlike or remove recast) from a cast.
+   */
+  async deleteReaction(params: {
+    reactionType: "like" | "recast";
+    target: string;
+  }): Promise<{ success: boolean }> {
+    try {
+      const result = await this.neynar.deleteReaction({
+        signerUuid: this.signerUuid,
+        reactionType: params.reactionType,
+        target: params.target,
+      });
+
+      return { success: result.success };
+    } catch (err) {
+      if (isApiErrorResponse(err)) {
+        elizaLogger.error(`Neynar error deleting reaction: ${JSON.stringify(err.response.data)}`);
+        throw err.response.data;
+      }
+      elizaLogger.error(`Error deleting reaction: ${JSON.stringify(err)}`);
+      throw err;
+    }
+  }
 }

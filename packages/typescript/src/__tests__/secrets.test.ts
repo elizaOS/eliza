@@ -1,5 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - afterEach cleanup: fs.rmSync error ignore - KEEP (test cleanup robustness)
+// - try-finally for cwd restoration and cleanup - KEEP (test isolation)
+
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { hasCharacterSecrets, setDefaultSecretsFromEnv } from "../secrets";
 import type { Character } from "../types";

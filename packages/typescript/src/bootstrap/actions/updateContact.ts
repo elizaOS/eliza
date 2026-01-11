@@ -1,3 +1,6 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - handler: Entire handler wrapping LLM and service calls - KEEP
+
 import {
   type Action,
   type ActionResult,
