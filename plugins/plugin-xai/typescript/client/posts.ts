@@ -3,18 +3,27 @@ import type {
   MediaObjectV2,
   PlaceV2,
   PollV2,
-  PostV2,
-  TPostv2Expansion,
-  TPostv2MediaField,
-  TPostv2PlaceField,
-  TPostv2PollField,
-  TPostv2PostField,
-  TPostv2UserField,
+  TweetV2,
+  TTweetv2Expansion,
+  TTweetv2MediaField,
+  TTweetv2PlaceField,
+  TTweetv2PollField,
+  TTweetv2TweetField,
+  TTweetv2UserField,
   UserV2,
-} from "x-api-v2";
+} from "twitter-api-v2";
 import type { XAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
 import type { QueryPostsResponse } from "./types";
+
+// Type aliases to bridge Post naming to Tweet naming used by twitter-api-v2
+type PostV2 = TweetV2;
+type TPostv2Expansion = TTweetv2Expansion;
+type TPostv2PostField = TTweetv2TweetField;
+type TPostv2PollField = TTweetv2PollField;
+type TPostv2MediaField = TTweetv2MediaField;
+type TPostv2UserField = TTweetv2UserField;
+type TPostv2PlaceField = TTweetv2PlaceField;
 
 /**
  * Default options for X API v2 request parameters.

@@ -1,11 +1,3 @@
-import type {
-  TPostv2Expansion,
-  TPostv2MediaField,
-  TPostv2PlaceField,
-  TPostv2PollField,
-  TPostv2PostField,
-  TPostv2UserField,
-} from "x-api-v2";
 import type { FetchTransformOptions, RequestApiResult } from "./api-types";
 import { XAuth } from "./auth";
 import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
