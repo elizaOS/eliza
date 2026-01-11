@@ -468,27 +468,35 @@ ElizaOS provides two types of tests for validating webhook functionality: compon
 
 #### Component Tests
 
-Component tests verify route handler logic in isolation:
+Component tests verify route handler logic using a real runtime. All tests use PGLite for in-memory database operations:
 
 ```typescript src/__tests__/webhook-routes.test.ts
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createTestRuntimeWithCleanup } from "./test-utils";
 import { webhookPlugin } from "../index";
+import type { IAgentRuntime } from "@elizaos/core";
 
 describe("Webhook Plugin Routes", () => {
-  let runtime: any;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
-  beforeEach(() => {
-    runtime = {
-      agentId: "test-agent-123",
-      character: { name: "TestAgent" },
-      getSetting: (key: string) => {
-        const settings: Record<string, string> = {
-          GITHUB_NOTIFICATION_CHANNEL: "test-channel-123",
-          SERVER_URL: "http://localhost:3000",
-        };
-        return settings[key];
-      },
-    };
+  beforeEach(async () => {
+    const result = await createTestRuntimeWithCleanup();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+
+    // Spy on getSetting if you need specific values
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      const settings: Record<string, string> = {
+        GITHUB_NOTIFICATION_CHANNEL: "test-channel-123",
+        SERVER_URL: "http://localhost:3000",
+      };
+      return settings[key];
+    });
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should handle GitHub webhook and return success", async () => {
@@ -511,9 +519,9 @@ describe("Webhook Plugin Routes", () => {
       },
     };
 
-    let responseData: any = null;
+    let responseData: Record<string, unknown> | null = null;
     const mockRes = {
-      json: (data: any) => {
+      json: (data: Record<string, unknown>) => {
         responseData = data;
       },
       status: (code: number) => mockRes,
@@ -548,10 +556,10 @@ describe("Webhook Plugin Routes", () => {
       body: {}, // Missing required fields
     };
 
-    let responseData: any = null;
+    let responseData: Record<string, unknown> | null = null;
     let statusCode: number = 200;
     const mockRes = {
-      json: (data: any) => {
+      json: (data: Record<string, unknown>) => {
         responseData = data;
       },
       status: (code: number) => {

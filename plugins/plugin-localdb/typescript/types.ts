@@ -6,6 +6,11 @@
  * Storage interface for JSON-based persistence
  */
 export interface IStorage {
+  /** Save raw data (for HNSW index) */
+  saveRaw(filename: string, data: string): Promise<void>;
+
+  /** Load raw data (for HNSW index) */
+  loadRaw(filename: string): Promise<string | null>;
   /** Initialize the storage */
   init(): Promise<void>;
 
@@ -34,15 +39,15 @@ export interface IStorage {
   deleteMany(collection: string, ids: string[]): Promise<void>;
 
   /** Delete all items in a collection matching a predicate */
-  deleteWhere(
+  deleteWhere<T = Record<string, unknown>>(
     collection: string,
-    predicate: (item: Record<string, unknown>) => boolean
+    predicate: (item: T) => boolean
   ): Promise<void>;
 
   /** Count items in a collection */
-  count(
+  count<T = Record<string, unknown>>(
     collection: string,
-    predicate?: (item: Record<string, unknown>) => boolean
+    predicate?: (item: T) => boolean
   ): Promise<number>;
 }
 

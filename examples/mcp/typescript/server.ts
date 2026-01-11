@@ -16,15 +16,33 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   type Tool,
+  type ListToolsResult,
+  type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { v4 as uuidv4 } from "uuid";
+
+// ============================================================================
+// Tool Argument Types
+// ============================================================================
+
+interface ChatToolArgs {
+  message: string;
+  userId?: string;
+}
+
+interface CallToolRequest {
+  params: {
+    name: string;
+    arguments?: Record<string, unknown>;
+  };
+}
 
 // ============================================================================
 // Configuration
@@ -122,7 +140,7 @@ async function handleChat(message: string, userId?: string): Promise<string> {
   // Process message and collect response
   let response = "";
 
-  await rt.messageService.handleMessage(rt, messageMemory, async (content) => {
+  await rt.messageService!.handleMessage(rt, messageMemory, async (content) => {
     if (content?.text) {
       response += content.text;
     }
@@ -133,9 +151,11 @@ async function handleChat(message: string, userId?: string): Promise<string> {
 }
 
 function getAgentInfo(): { name: string; bio: string; capabilities: string[] } {
+  const bio = CHARACTER.bio;
+  const bioStr = Array.isArray(bio) ? bio.join(" ") : (bio ?? "An AI assistant");
   return {
     name: CHARACTER.name,
-    bio: CHARACTER.bio ?? "An AI assistant",
+    bio: bioStr,
     capabilities: [
       "Natural language conversation",
       "Helpful responses",
@@ -162,56 +182,64 @@ async function main(): Promise<void> {
   );
 
   // Handle tool listing
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS,
-  }));
+  // Note: Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
+  server.setRequestHandler(
+    ListToolsRequestSchema as unknown as Parameters<typeof server.setRequestHandler>[0],
+    async (): Promise<ListToolsResult> => ({
+      tools: TOOLS,
+    }),
+  );
 
   // Handle tool calls
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+  // Note: Type assertion via unknown needed due to Zod version incompatibility between MCP SDK and project
+  server.setRequestHandler(
+    CallToolRequestSchema as unknown as Parameters<typeof server.setRequestHandler>[0],
+    async (request: CallToolRequest): Promise<CallToolResult> => {
+      const { name, arguments: args } = request.params;
 
-    try {
-      switch (name) {
-        case "chat": {
-          const message = (args as { message: string; userId?: string })
-            .message;
-          const userId = (args as { message: string; userId?: string }).userId;
+      try {
+        switch (name) {
+          case "chat": {
+            const chatArgs = args as ChatToolArgs | undefined;
+            const message = chatArgs?.message;
+            const userId = chatArgs?.userId;
 
-          if (!message || typeof message !== "string") {
+            if (!message || typeof message !== "string") {
+              return {
+                content: [{ type: "text", text: "Error: message is required" }],
+                isError: true,
+              };
+            }
+
+            const response = await handleChat(message, userId);
             return {
-              content: [{ type: "text", text: "Error: message is required" }],
-              isError: true,
+              content: [{ type: "text", text: response }],
             };
           }
 
-          const response = await handleChat(message, userId);
-          return {
-            content: [{ type: "text", text: response }],
-          };
-        }
+          case "get_agent_info": {
+            const info = getAgentInfo();
+            return {
+              content: [{ type: "text", text: JSON.stringify(info, null, 2) }],
+            };
+          }
 
-        case "get_agent_info": {
-          const info = getAgentInfo();
-          return {
-            content: [{ type: "text", text: JSON.stringify(info, null, 2) }],
-          };
+          default:
+            return {
+              content: [{ type: "text", text: `Unknown tool: ${name}` }],
+              isError: true,
+            };
         }
-
-        default:
-          return {
-            content: [{ type: "text", text: `Unknown tool: ${name}` }],
-            isError: true,
-          };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: `Error: ${errorMessage}` }],
+          isError: true,
+        };
       }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      return {
-        content: [{ type: "text", text: `Error: ${errorMessage}` }],
-        isError: true,
-      };
-    }
-  });
+    },
+  );
 
   // Start server with stdio transport
   const transport = new StdioServerTransport();

@@ -64,8 +64,9 @@ async function generateObjectByModelType(
 
   // Use chat() instead of languageModel() to use the Chat Completions API
   // Note: gpt-5 models don't support temperature parameter - use defaults
+  const model = openai.chat(modelName);
   const { object, usage } = await generateObject({
-    model: openai.chat(modelName) as unknown as Parameters<typeof generateObject>[0]["model"],
+    model,
     output: "no-schema",
     prompt: params.prompt,
     experimental_repairText: getJsonRepairFunction(),

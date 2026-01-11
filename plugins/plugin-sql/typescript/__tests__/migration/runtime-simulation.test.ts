@@ -28,6 +28,11 @@ interface MigrationOrderRow {
   [key: string]: unknown;
 }
 
+interface TableInfoRow {
+  tablename: string;
+  [key: string]: unknown;
+}
+
 import { sql } from "drizzle-orm";
 import { RuntimeMigrator } from "../../runtime-migrator";
 import * as coreSchema from "../../schema";
@@ -79,7 +84,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       WHERE schemaname = 'migrations'
       ORDER BY tablename
     `);
-    const migrationTables = tablesResult.rows.map((r: any) => r.tablename);
+    const migrationTables = tablesResult.rows.map((r: TableInfoRow) => r.tablename);
     console.log("Migration tables:", migrationTables);
     expect(migrationTables).toContain("_migrations");
     expect(migrationTables).toContain("_snapshots");
@@ -124,7 +129,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       WHERE schemaname = 'public' 
       ORDER BY tablename
     `);
-    const coreTableNames = publicTables.rows.map((r: any) => r.tablename);
+    const coreTableNames = publicTables.rows.map((r: TableInfoRow) => r.tablename);
     console.log(`\n📦 Core tables in public schema: ${coreTableNames.length}`);
     console.log("Tables:", coreTableNames.join(", "));
 
@@ -182,7 +187,7 @@ describe("Runtime Simulation - Full Migration Flow", () => {
       WHERE schemaname = 'polymarket' 
       ORDER BY tablename
     `);
-    const polymarketTableNames = polymarketTables.rows.map((r: any) => r.tablename);
+    const polymarketTableNames = polymarketTables.rows.map((r: TableInfoRow) => r.tablename);
     console.log(`📦 Polymarket tables: ${polymarketTableNames.length}`);
     console.log("Tables:", polymarketTableNames.join(", "));
 

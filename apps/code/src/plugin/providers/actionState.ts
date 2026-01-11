@@ -20,6 +20,41 @@ interface WorkingMemoryEntry {
 }
 
 /**
+ * Action plan step
+ */
+interface ActionPlanStep {
+  action: string;
+  status: "pending" | "completed" | "failed";
+  error?: string;
+  result?: {
+    text?: string;
+  };
+}
+
+/**
+ * Action plan from state
+ */
+interface ActionPlan {
+  thought: string;
+  currentStep: number;
+  totalSteps: number;
+  steps: ActionPlanStep[];
+}
+
+/**
+ * Action result from execution
+ */
+interface ActionResultEntry {
+  success: boolean;
+  text?: string;
+  error?: Error | string;
+  values?: Record<string, JsonValue>;
+  data?: {
+    actionName?: string;
+  };
+}
+
+/**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
  */
@@ -31,9 +66,9 @@ export const actionStateProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get action results, plan, and working memory from the incoming state
     const stateData = state.data as Record<string, JsonValue> | undefined;
-    const actionResults = stateData?.actionResults || [];
-    const actionPlan = stateData?.actionPlan || null;
-    const workingMemory = stateData?.workingMemory || {};
+    const actionResults = (stateData?.actionResults || []) as unknown as ActionResultEntry[];
+    const actionPlan = stateData?.actionPlan as unknown as ActionPlan | null;
+    const workingMemory = (stateData?.workingMemory || {}) as Record<string, JsonValue>;
 
     // Format action plan for display
     let planText = "";
@@ -175,9 +210,9 @@ export const actionStateProvider: Provider = {
       recentActionMemories = recentMessages.filter(
         (msg) =>
           msg.content &&
-          msg.content.type === "action_result" &&
+          (msg.content.type as string) === "action_result" &&
           msg.metadata &&
-          msg.metadata.type === "action_result",
+          (msg.metadata.type as string) === "action_result",
       );
     } catch {
       // If we can't get memories, continue without them

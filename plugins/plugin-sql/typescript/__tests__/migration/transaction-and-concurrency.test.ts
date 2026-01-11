@@ -372,9 +372,9 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
 
       // Run migrations from multiple "processes" simultaneously
       const results = await Promise.allSettled([
-        migrator.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<any>,
-        migrator2.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<any>,
-        migrator3.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<any>,
+        migrator.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<void>,
+        migrator2.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<void>,
+        migrator3.migrate("@elizaos/concurrent-test-locking", testSchema) as Promise<void>,
       ]);
 
       // Check results
@@ -456,7 +456,7 @@ describe("Runtime Migrator - Transaction Support & Concurrency Tests", () => {
 
     it("should handle high-concurrency scenarios with advisory locks", async () => {
       // Create many concurrent migrations
-      const migrationPromises: Promise<any>[] = [];
+      const migrationPromises: Promise<void>[] = [];
 
       for (let i = 0; i < 10; i++) {
         const schema = {

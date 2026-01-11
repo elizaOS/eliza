@@ -2,11 +2,13 @@ import fs from "node:fs";
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   ContentType,
   composePromptFromState,
   getEntityDetails,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Media,
@@ -197,7 +199,7 @@ const getDateRange = async (
  * @property {Function} handler - Asynchronous function to handle the action.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
-export const summarize = {
+export const summarize: Action = {
   name: "SUMMARIZE_CONVERSATION",
   similes: [
     "RECAP",
@@ -208,7 +210,7 @@ export const summarize = {
     "CONVERSATION_SUMMARY",
   ],
   description: "Summarizes the conversation and attachments.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (message.content.source !== "discord") {
       return false;
     }
@@ -257,10 +259,20 @@ export const summarize = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
+    }
+
     const callbackData: Content = {
       text: "", // fill in later
       actions: ["SUMMARIZATION_RESPONSE"],
@@ -295,7 +307,7 @@ export const summarize = {
         },
         "messages"
       );
-      return;
+      return { success: false, error: "Could not get date range from message" };
     }
 
     const { objective, start, end } = dateRange;
@@ -388,7 +400,7 @@ export const summarize = {
         },
         "messages"
       );
-      return;
+      return { success: false, error: "Could not summarize conversation" };
     }
 
     callbackData.text = currentSummary.trim();
@@ -403,7 +415,10 @@ export const summarize = {
 ${currentSummary.trim()}
 \`\`\`
 `;
-      await callback(callbackData);
+      if (callback) {
+        await callback(callbackData);
+      }
+      return { success: true, text: callbackData.text };
     } else if (currentSummary.trim()) {
       const summaryDir = "cache";
       const summaryFilename = `${summaryDir}/conversation_summary_${Date.now()}`;
@@ -412,20 +427,23 @@ ${currentSummary.trim()}
 
       await fs.promises.writeFile(summaryFilename, currentSummary, "utf8");
       // save the summary to a file
-      await callback({
-        ...callbackData,
-        text: `I've attached the summary of the conversation from \`${new Date(start).toString()}\` to \`${new Date(end).toString()}\` as a text file.`,
-        attachments: [
-          ...(callbackData.attachments || []),
-          {
-            id: summaryFilename,
-            url: summaryFilename,
-            title: "Conversation Summary",
-            source: "discord",
-            contentType: ContentType.DOCUMENT,
-          } as Media,
-        ],
-      });
+      if (callback) {
+        await callback({
+          ...callbackData,
+          text: `I've attached the summary of the conversation from \`${new Date(start).toString()}\` to \`${new Date(end).toString()}\` as a text file.`,
+          attachments: [
+            ...(callbackData.attachments || []),
+            {
+              id: summaryFilename,
+              url: summaryFilename,
+              title: "Conversation Summary",
+              source: "discord",
+              contentType: ContentType.DOCUMENT,
+            } as Media,
+          ],
+        });
+      }
+      return { success: true, text: `Summary saved to ${summaryFilename}` };
     } else {
       runtime.logger.warn(
         {
@@ -434,9 +452,8 @@ ${currentSummary.trim()}
         },
         "Empty response from summarize conversation action"
       );
+      return { success: false, error: "Empty response from summarize conversation action" };
     }
-
-    return callbackData;
   },
   examples: [
     [
@@ -506,6 +523,6 @@ ${currentSummary.trim()}
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default summarize;

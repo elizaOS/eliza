@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -45,20 +47,20 @@ const getMessageRef = async (
   return null;
 };
 
-export const pinMessage = {
+export const pinMessage: Action = {
   name: "PIN_MESSAGE",
   similes: ["PIN_MESSAGE", "PIN_MSG", "PIN_THIS", "PIN_THAT", "MAKE_PINNED", "ADD_PIN"],
   description: "Pin an important message in a Discord channel.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
@@ -256,6 +258,6 @@ export const pinMessage = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default pinMessage;

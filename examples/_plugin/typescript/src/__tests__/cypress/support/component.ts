@@ -21,7 +21,7 @@ declare global {
        * Custom command to mount React components
        * @example cy.mount(<Component />)
        */
-      mount(component: React.ReactElement): Chainable<any>;
+      mount(component: React.ReactElement): Chainable<unknown>;
     }
   }
 }

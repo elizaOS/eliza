@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -45,56 +47,74 @@ const getMessageRef = async (
   return null;
 };
 
-export const unpinMessage = {
+export const unpinMessage: Action = {
   name: "UNPIN_MESSAGE",
   similes: ["UNPIN_MESSAGE", "UNPIN_MSG", "UNPIN_THIS", "UNPIN_THAT", "REMOVE_PIN", "DELETE_PIN"],
   description: "Unpin a message in a Discord channel.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
-        text: "Discord service is not available.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "Discord service is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Discord service is not available" };
+    }
+
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
     }
 
     const messageInfo = await getMessageRef(runtime, message, state);
     if (!messageInfo) {
-      await callback({
-        text: "I couldn't understand which message you want to unpin. Please be more specific.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "I couldn't understand which message you want to unpin. Please be more specific.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Could not parse message reference" };
     }
 
     try {
       const room = state.data?.room || (await runtime.getRoom(message.roomId));
       if (!room?.channelId) {
-        await callback({
-          text: "I couldn't determine the current channel.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I couldn't determine the current channel.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Could not determine current channel" };
       }
 
       const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
-        await callback({
-          text: "I can only unpin messages in text channels.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I can only unpin messages in text channels.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Channel is not a text channel" };
       }
 
       const textChannel = channel as TextChannel;
@@ -105,11 +125,13 @@ export const unpinMessage = {
       if (botMember) {
         const permissions = textChannel.permissionsFor(botMember);
         if (permissions && !permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-          await callback({
-            text: "I don't have permission to unpin messages in this channel. I need the 'Manage Messages' permission.",
-            source: "discord",
-          });
-          return;
+          if (callback) {
+            await callback({
+              text: "I don't have permission to unpin messages in this channel. I need the 'Manage Messages' permission.",
+              source: "discord",
+            });
+          }
+          return { success: false, error: "Missing ManageMessages permission" };
         }
       }
 
@@ -119,11 +141,13 @@ export const unpinMessage = {
       const pinnedMessages = await textChannel.messages.fetchPinned();
 
       if (pinnedMessages.size === 0) {
-        await callback({
-          text: "There are no pinned messages in this channel.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "There are no pinned messages in this channel.",
+            source: "discord",
+          });
+        }
+        return { success: true, text: "No pinned messages in channel" };
       }
 
       // Find the target message
@@ -148,11 +172,13 @@ export const unpinMessage = {
       }
 
       if (!targetMessage) {
-        await callback({
-          text: "I couldn't find a pinned message matching your description.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I couldn't find a pinned message matching your description.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Could not find matching pinned message" };
       }
 
       // Unpin the message
@@ -164,7 +190,10 @@ export const unpinMessage = {
           source: message.content.source,
         };
 
-        await callback(response);
+        if (callback) {
+          await callback(response);
+        }
+        return { success: true, text: response.text };
       } catch (error) {
         runtime.logger.error(
           {
@@ -174,10 +203,13 @@ export const unpinMessage = {
           },
           "Failed to unpin message"
         );
-        await callback({
-          text: "I couldn't unpin that message. Please try again.",
-          source: "discord",
-        });
+        if (callback) {
+          await callback({
+            text: "I couldn't unpin that message. Please try again.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
     } catch (error) {
       runtime.logger.error(
@@ -188,10 +220,13 @@ export const unpinMessage = {
         },
         "Error unpinning message"
       );
-      await callback({
-        text: "I encountered an error while trying to unpin the message. Please make sure I have the necessary permissions.",
-        source: "discord",
-      });
+      if (callback) {
+        await callback({
+          text: "I encountered an error while trying to unpin the message. Please make sure I have the necessary permissions.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
   examples: [
@@ -241,6 +276,6 @@ export const unpinMessage = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default unpinMessage;

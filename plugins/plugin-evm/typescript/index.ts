@@ -37,7 +37,7 @@ export * from "./templates";
 export * from "./types";
 
 // Import for plugin definition
-import type { Plugin, Service } from "@elizaos/core";
+import type { Plugin, ServiceClass } from "@elizaos/core";
 import { bridgeAction } from "./actions/bridge";
 import { executeAction } from "./actions/gov-execute";
 import { proposeAction } from "./actions/gov-propose";
@@ -64,7 +64,7 @@ export const evmPlugin: Plugin = {
   description: "EVM blockchain integration plugin",
   providers: [evmWalletProvider, tokenBalanceProvider],
   evaluators: [],
-  services: [EVMService as unknown as typeof Service],
+  services: [EVMService] as ServiceClass[],
   actions: [
     transferAction,
     bridgeAction,

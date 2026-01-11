@@ -307,6 +307,8 @@ IMPORTANT:
         steps: Array.isArray(parsed.steps) ? parsed.steps : [],
       };
     }
+    // Fallback if no JSON found in response
+    return parseTaskRequest(stripTaskContext(currentMessage).trim() || conversationContext.trim());
   } catch {
     // Fallback to simple parsing if LLM fails
     const context = conversationContext.trim();

@@ -220,9 +220,9 @@ describe("PostgresConnectionManager", () => {
       const manager = new PostgresConnectionManager(connectionUrl);
       const db = manager.getDatabase();
 
-      let executedQuery: any = null;
+      let executedQuery: unknown = null;
       const mockTx = {
-        execute: vi.fn((query: any) => {
+        execute: vi.fn((query: unknown) => {
           executedQuery = query;
           return Promise.resolve({ rows: [] });
         }),

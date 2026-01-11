@@ -65,7 +65,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun run test:ts && bun run test:rust && bun run test:python",
     "test:ts": "vitest run",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts"
   },

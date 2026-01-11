@@ -53,7 +53,7 @@ export async function handleTextEmbedding(
         value: embeddingText,
       };
 
-      const { embedding } = await embed(embedParams as unknown as Parameters<typeof embed>[0]);
+      const { embedding } = await embed(embedParams);
       return embedding;
     } catch (embeddingError) {
       logger.error({ error: embeddingError }, "Error generating embedding");

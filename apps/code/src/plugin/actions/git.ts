@@ -166,7 +166,6 @@ INTELLIGENT PARSING:
       const error = err as Error & { code?: number; stderr?: string };
       const gitError = createGitError(
         command,
-        error.code ?? 1,
         error.stderr ?? error.message,
       );
       const errorMsg = formatErrorForDisplay(gitError);

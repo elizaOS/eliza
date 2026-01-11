@@ -52,7 +52,7 @@
   "scripts": {
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist   .turbo node_modules",
     "format": "bunx @biomejs/biome format --write .",

@@ -34,6 +34,17 @@ interface ColumnRow {
   [key: string]: unknown;
 }
 
+interface TableInfoRow {
+  tablename: string;
+  [key: string]: unknown;
+}
+
+interface ConstraintRow {
+  table_name: string;
+  constraint_name: string;
+  [key: string]: unknown;
+}
+
 import { sql } from "drizzle-orm";
 import { RuntimeMigrator } from "../../runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
@@ -154,7 +165,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             ORDER BY tablename`
       );
 
-      const createdTables = tablesResult.rows.map((r: any) => r.tablename);
+      const createdTables = tablesResult.rows.map((r: TableInfoRow) => r.tablename);
       console.log(`\n📋 Tables created: ${createdTables.length}`);
 
       // Expected tables from schema
@@ -320,7 +331,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
         // Check specific unique constraint on agents.name
         const hasAgentNameUnique = result.rows.some(
-          (r: any) => r.table_name === "agents" && r.constraint_name === "name_unique"
+          (r: ConstraintRow) => r.table_name === "agents" && r.constraint_name === "name_unique"
         );
 
         if (hasAgentNameUnique) {

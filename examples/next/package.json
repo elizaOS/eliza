@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "bunx @biomejs/biome check --write ."
+    "lint": "bunx @biomejs/biome check --write --unsafe ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

@@ -70,15 +70,15 @@ export class MemoryStorage implements IStorage {
     }
   }
 
-  async deleteWhere(
+  async deleteWhere<T = Record<string, unknown>>(
     collection: string,
-    predicate: (item: Record<string, unknown>) => boolean
+    predicate: (item: T) => boolean
   ): Promise<void> {
     const col = this.getCollection(collection);
     const toDelete: string[] = [];
 
     for (const [id, item] of col) {
-      if (predicate(item as Record<string, unknown>)) {
+      if (predicate(item as T)) {
         toDelete.push(id);
       }
     }
@@ -88,9 +88,9 @@ export class MemoryStorage implements IStorage {
     }
   }
 
-  async count(
+  async count<T = Record<string, unknown>>(
     collection: string,
-    predicate?: (item: Record<string, unknown>) => boolean
+    predicate?: (item: T) => boolean
   ): Promise<number> {
     const col = this.getCollection(collection);
 
@@ -100,7 +100,7 @@ export class MemoryStorage implements IStorage {
 
     let count = 0;
     for (const item of col.values()) {
-      if (predicate(item as Record<string, unknown>)) {
+      if (predicate(item as T)) {
         count++;
       }
     }

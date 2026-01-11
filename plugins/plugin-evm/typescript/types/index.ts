@@ -629,10 +629,9 @@ export function assertChainConfigured(
  * Format Zod error for display
  */
 function formatZodError(error: z.ZodError<unknown>): string {
-  // Cast to access the issues array which exists on ZodError but TypeScript doesn't recognize
-  const errorObj = error as unknown as { issues?: Array<{ message?: string }> };
-  if (Array.isArray(errorObj.issues) && errorObj.issues.length > 0) {
-    return errorObj.issues[0]?.message ?? "Validation failed";
+  // ZodError has an issues array with validation errors
+  if (error.issues.length > 0) {
+    return error.issues[0].message;
   }
   return "Validation failed";
 }

@@ -1,6 +1,7 @@
 import {
   type Content,
   createUniqueUuid,
+  type CustomMetadata,
   type FragmentMetadata,
   type IAgentRuntime,
   type KnowledgeItem,
@@ -539,19 +540,21 @@ export class KnowledgeService extends Service {
       }
 
       // Add RAG metadata to the memory
-      const updatedMetadata = {
-        ...existingMemory.metadata,
+      // Serialize ragUsage as JSON string since CustomMetadata only allows primitive types
+      const ragUsageData = {
+        retrievedFragments: ragMetadata.retrievedFragments,
+        queryText: ragMetadata.queryText,
+        totalFragments: ragMetadata.totalFragments,
+        retrievalTimestamp: ragMetadata.retrievalTimestamp,
+        usedInResponse: true,
+      };
+      const updatedMetadata: CustomMetadata = {
+        ...(existingMemory.metadata as CustomMetadata),
         knowledgeUsed: true, // Simple flag for UI to detect RAG usage
-        ragUsage: {
-          retrievedFragments: ragMetadata.retrievedFragments,
-          queryText: ragMetadata.queryText,
-          totalFragments: ragMetadata.totalFragments,
-          retrievalTimestamp: ragMetadata.retrievalTimestamp,
-          usedInResponse: true,
-        },
-        timestamp: existingMemory.metadata?.timestamp || Date.now(),
+        ragUsage: JSON.stringify(ragUsageData),
+        timestamp: existingMemory.metadata?.timestamp ?? Date.now(),
         type: MemoryType.CUSTOM,
-      } as unknown as Memory["metadata"];
+      };
 
       // Update the memory
       await this.runtime.updateMemory({
@@ -694,8 +697,8 @@ export class KnowledgeService extends Service {
           `KnowledgeService: Processing character knowledge for ${this.runtime.character?.name} - ${item.slice(0, 100)}`
         );
 
-        let metadata: MemoryMetadata = {
-          type: MemoryType.DOCUMENT, // Character knowledge often represents a doc/fact.
+        let metadata: CustomMetadata = {
+          type: MemoryType.CUSTOM, // Character knowledge with custom properties
           timestamp: Date.now(),
           source: "character", // Indicate the source
         };
@@ -714,7 +717,7 @@ export class KnowledgeService extends Service {
             title: title,
             fileType: `text/${extension || "plain"}`, // Assume text if not specified
             fileSize: item.length,
-          } as unknown as Memory["metadata"];
+          };
         }
 
         // Using _internalAddKnowledge for character knowledge
@@ -773,6 +776,13 @@ export class KnowledgeService extends Service {
     // and it's not a binary file needing Knowledge plugin's special handling for extraction.
     // This path is for already-textual content like character knowledge or direct text additions.
 
+    const documentMetadata: CustomMetadata = {
+      ...(item.metadata ?? {}), // Spread existing metadata
+      type: MemoryType.CUSTOM, // Use CUSTOM to allow extra fields
+      documentId: item.id, // Ensure metadata.documentId is set to the item's ID
+      timestamp: item.metadata?.timestamp ?? Date.now(),
+    };
+
     const documentMemory: Memory = {
       id: item.id, // This ID should be the unique ID for the document being added.
       agentId: this.runtime.agentId,
@@ -780,12 +790,7 @@ export class KnowledgeService extends Service {
       worldId: finalScope.worldId,
       entityId: finalScope.entityId,
       content: item.content,
-      metadata: {
-        ...(item.metadata || {}), // Spread existing metadata
-        type: MemoryType.CUSTOM, // Use CUSTOM to allow extra fields
-        documentId: item.id, // Ensure metadata.documentId is set to the item's ID
-        timestamp: item.metadata?.timestamp || Date.now(),
-      } as unknown as Memory["metadata"],
+      metadata: documentMetadata,
       createdAt: Date.now(),
     };
 

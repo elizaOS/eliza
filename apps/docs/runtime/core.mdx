@@ -357,7 +357,7 @@ interface IAgentRuntime extends IDatabaseAdapter {
   getModel(modelType: ModelTypeName): ModelHandler | undefined;
   
   // Event system
-  emit(eventType: EventType, data: any): Promise<void>;
+  emit(eventType: EventType, data: EventPayload): Promise<void>;
   on(eventType: EventType, handler: EventHandler): void;
 }
 ```

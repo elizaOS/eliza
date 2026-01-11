@@ -13,6 +13,7 @@ import {
   EventType,
   getLocalServerUrl,
   type IAgentRuntime,
+  type IMessageBusService,
   type InvokePayload,
   imageDescriptionTemplate,
   logger,
@@ -39,7 +40,7 @@ import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { FollowUpService } from "../services/followUp.ts";
 import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
-import type { Service } from "../types/service.ts";
+import type { ServiceClass } from "../types/plugin.ts";
 import * as actions from "./actions/index.ts";
 import * as autonomy from "./autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";
@@ -1123,24 +1124,9 @@ const events: PluginEvents = {
       // Only notify for client_chat messages
       const payloadContent = payload.content;
       if (payloadContent && payloadContent.source === "client_chat") {
-        interface MessageBusServiceWithNotify {
-          notifyActionStart: (
-            roomId: UUID,
-            worldId: UUID,
-            content: Content,
-            messageId?: UUID,
-          ) => Promise<void>;
-          notifyActionUpdate: (
-            roomId: UUID,
-            worldId: UUID,
-            content: Content,
-            messageId?: UUID,
-          ) => Promise<void>;
-        }
-        const messageBusService = payload.runtime.getService(
-          "message-bus-service",
-        ) as unknown as MessageBusServiceWithNotify | null;
-        if (messageBusService) {
+        const messageBusService =
+          payload.runtime.getService<IMessageBusService>("message-bus-service");
+        if (messageBusService?.notifyActionStart) {
           await messageBusService.notifyActionStart(
             payload.roomId,
             payload.world,
@@ -1186,24 +1172,9 @@ const events: PluginEvents = {
       // Only notify for client_chat messages
       const payloadContent = payload.content;
       if (payloadContent && payloadContent.source === "client_chat") {
-        interface MessageBusServiceWithNotify {
-          notifyActionStart: (
-            roomId: UUID,
-            worldId: UUID,
-            content: Content,
-            messageId?: UUID,
-          ) => Promise<void>;
-          notifyActionUpdate: (
-            roomId: UUID,
-            worldId: UUID,
-            content: Content,
-            messageId?: UUID,
-          ) => Promise<void>;
-        }
-        const messageBusService = payload.runtime.getService(
-          "message-bus-service",
-        ) as unknown as MessageBusServiceWithNotify | null;
-        if (messageBusService) {
+        const messageBusService =
+          payload.runtime.getService<IMessageBusService>("message-bus-service");
+        if (messageBusService?.notifyActionUpdate) {
           await messageBusService.notifyActionUpdate(
             payload.roomId,
             payload.world,
@@ -1386,10 +1357,7 @@ const basic = {
   ],
   actions: [actions.replyAction, actions.ignoreAction, actions.noneAction],
   evaluators: [],
-  services: [
-    TaskService,
-    EmbeddingGenerationService,
-  ] as unknown as (typeof Service)[],
+  services: [TaskService, EmbeddingGenerationService] as ServiceClass[],
 };
 
 // Extended capabilities - opt-in
@@ -1426,7 +1394,7 @@ const extended = {
     evaluators.reflectionEvaluator,
     evaluators.relationshipExtractionEvaluator,
   ],
-  services: [RolodexService, FollowUpService] as unknown as (typeof Service)[],
+  services: [RolodexService, FollowUpService] as ServiceClass[],
 };
 
 // Autonomy capabilities - opt-in
@@ -1435,7 +1403,7 @@ const autonomyCapabilities = {
   providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
   actions: [autonomy.sendToAdminAction],
   evaluators: [],
-  services: [autonomy.AutonomyService] as unknown as (typeof Service)[],
+  services: [autonomy.AutonomyService] as ServiceClass[],
   routes: autonomy.autonomyRoutes,
 };
 

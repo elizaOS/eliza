@@ -70,7 +70,7 @@ interface Content {
   text?: string; // Text content
   actions?: string[]; // Associated actions
   inReplyTo?: UUID; // Reference to previous memory
-  metadata?: any; // Custom metadata
+  metadata?: Record<string, unknown>; // Custom metadata
 }
 ```
 
@@ -381,11 +381,20 @@ async function getKnowledge(runtime: IAgentRuntime, topic: string) {
 Best practices for memory creation:
 
 ```typescript
+interface MemoryContext {
+  userId: UUID;
+  roomId: UUID;
+  replyTo?: UUID;
+  source: string;
+  platform: string;
+  actions?: string[];
+}
+
 // Complete memory creation with all metadata
 async function createRichMemory(
   runtime: IAgentRuntime,
   content: string,
-  context: any,
+  context: MemoryContext,
 ): Promise<UUID> {
   const memory: CreateMemory = {
     agentId: runtime.agentId,

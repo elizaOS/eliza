@@ -6,7 +6,6 @@ import {
   type Memory,
   type Provider,
   type ProviderResult,
-  type ProviderValue,
   type State,
 } from "@elizaos/core";
 
@@ -45,7 +44,7 @@ export const worldProvider: Provider = {
         data: {
           world: {
             info: "Unable to retrieve world information - room not found",
-          } as unknown as ProviderValue,
+          },
         },
         values: {},
         text: "Unable to retrieve world information - room not found",
@@ -78,7 +77,7 @@ export const worldProvider: Provider = {
         data: {
           world: {
             info: "Unable to retrieve world information - world ID not found",
-          } as unknown as ProviderValue,
+          },
         },
         values: {},
         text: "Unable to retrieve world information - world ID not found",
@@ -100,7 +99,7 @@ export const worldProvider: Provider = {
         data: {
           world: {
             info: "Unable to retrieve world information - world not found",
-          } as unknown as ProviderValue,
+          },
         },
         values: {},
         text: "Unable to retrieve world information - world not found",
@@ -264,7 +263,7 @@ export const worldProvider: Provider = {
 
     return {
       data: {
-        world: data.world as unknown as ProviderValue,
+        world: data.world,
       },
       values,
       text: formattedText,

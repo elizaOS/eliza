@@ -36,15 +36,15 @@ export interface IStorage {
   deleteMany(collection: string, ids: string[]): Promise<void>;
 
   /** Delete all items in a collection matching a predicate */
-  deleteWhere(
+  deleteWhere<T = Record<string, unknown>>(
     collection: string,
-    predicate: (item: Record<string, unknown>) => boolean
+    predicate: (item: T) => boolean
   ): Promise<void>;
 
   /** Count items in a collection */
-  count(
+  count<T = Record<string, unknown>>(
     collection: string,
-    predicate?: (item: Record<string, unknown>) => boolean
+    predicate?: (item: T) => boolean
   ): Promise<number>;
 
   /** Clear all data from all collections */

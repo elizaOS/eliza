@@ -20,7 +20,7 @@ export interface Plugin {
   ) => Promise<void>;
 
   // Configuration
-  config?: { [key: string]: any }; // Plugin-specific configuration
+  config?: { [key: string]: string | number | boolean }; // Plugin-specific configuration
 
   // Core Components
   actions?: Action[]; // Tasks agents can perform
@@ -32,7 +32,7 @@ export interface Plugin {
   adapter?: IDatabaseAdapter; // Database adapter
   models?: {
     // Model handlers
-    [key: string]: (...args: any[]) => Promise<any>;
+    [key: string]: ModelHandler;
   };
   events?: PluginEvents; // Event handlers
   routes?: Route[]; // HTTP endpoints
@@ -41,14 +41,14 @@ export interface Plugin {
     // Custom component types
     name: string;
     schema: Record<string, unknown>;
-    validator?: (data: any) => boolean;
+    validator?: (data: unknown) => boolean;
   }[];
 
   // Dependencies
   dependencies?: string[]; // Required plugins
   testDependencies?: string[]; // Test-only dependencies
   priority?: number; // Loading priority
-  schema?: any; // Database schema
+  schema?: Record<string, unknown>; // Database schema
 }
 ```
 
@@ -88,8 +88,8 @@ export type HandlerCallback = (response: Content) => Promise<Memory[]>;
 export interface ActionResult {
   success: boolean; // Required - whether action succeeded
   text?: string; // Optional text description
-  values?: Record<string, any>; // Values to merge into state
-  data?: Record<string, any>; // Data payload
+  values?: Record<string, unknown>; // Values to merge into state
+  data?: Record<string, unknown>; // Data payload
   error?: string | Error; // Error information if failed
 }
 
@@ -124,8 +124,8 @@ export interface Provider {
 
 // ProviderResult interface
 export interface ProviderResult {
-  values?: { [key: string]: any }; // Key-value pairs for state
-  data?: { [key: string]: any }; // Structured data
+  values?: { [key: string]: unknown }; // Key-value pairs for state
+  data?: { [key: string]: unknown }; // Structured data
   text?: string; // Natural language context
 }
 ```
@@ -212,7 +212,7 @@ export interface Content {
   url?: string;
   attachments?: Attachment[];
   actions?: string[];
-  [key: string]: any;
+  [key: string]: unknown;
 }
 ```
 
@@ -220,8 +220,8 @@ export interface Content {
 
 ```typescript
 export interface State {
-  values: { [key: string]: any };
-  data?: { [key: string]: any };
+  values: { [key: string]: unknown };
+  data?: { [key: string]: unknown };
   text: string;
 }
 ```
@@ -247,7 +247,7 @@ export interface Character {
   plugins?: string[];
   settings?: {
     secrets?: { [key: string]: string };
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 ```
@@ -278,7 +278,7 @@ export type Route = {
 export type PluginEvents = {
   [K in keyof EventPayloadMap]?: EventHandler<K>[];
 } & {
-  [key: string]: ((params: any) => Promise<any>)[];
+  [key: string]: ((params: EventPayload) => Promise<void>)[];
 };
 
 export type EventHandler<K extends keyof EventPayloadMap> = (
@@ -336,7 +336,7 @@ export enum EventType {
 ```typescript
 export interface IDatabaseAdapter {
   // Core database property
-  db: any;
+  db: DatabaseConnection;
 
   // Agent methods
   createAgent(agent: Agent): Promise<void>;
@@ -429,8 +429,8 @@ export enum ModelType {
 export type ModelHandler = (params: {
   prompt: string;
   runtime: IAgentRuntime;
-  [key: string]: any;
-}) => Promise<any>;
+  [key: string]: unknown;
+}) => Promise<ModelResponse>;
 ```
 
 ## Utility Types
@@ -444,7 +444,7 @@ export type UUID = string & { __uuid: true };
 ### Metadata Type
 
 ```typescript
-export type Metadata = Record<string, any>;
+export type Metadata = Record<string, unknown>;
 ```
 
 ### TestSuite Interface
@@ -491,11 +491,11 @@ export interface IAgentRuntime {
   ): Promise<State>;
 
   // Model usage
-  useModel(type: ModelType, params: any): Promise<any>;
+  useModel<T = ModelResponse>(type: ModelType, params: ModelParams): Promise<T>;
 
   // Memory management
   createMemory(memory: Memory, tableName?: string): Promise<void>;
-  getMemories(params: any): Promise<Memory[]>;
+  getMemories(params: GetMemoriesParams): Promise<Memory[]>;
 
   // Participant management
   getParticipantUserState(roomId: UUID, userId: UUID): Promise<string | null>;
@@ -509,7 +509,7 @@ export interface IAgentRuntime {
   getAction(name: string): Action | undefined;
 
   // Completion
-  completion(params: { messages: any[]; [key: string]: any }): Promise<any>;
+  completion(params: { messages: Message[]; [key: string]: unknown }): Promise<CompletionResponse>;
 }
 ```
 
@@ -557,14 +557,14 @@ export enum ServiceType {
 export function composePromptFromState(params: {
   state: State;
   template: string;
-  additionalContext?: Record<string, any>;
+  additionalContext?: Record<string, unknown>;
 }): string;
 ```
 
 ### parseKeyValueXml
 
 ```typescript
-export function parseKeyValueXml(xml: string): Record<string, any>;
+export function parseKeyValueXml(xml: string): Record<string, string>;
 ```
 
 ### generateId

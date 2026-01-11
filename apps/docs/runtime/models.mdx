@@ -143,7 +143,7 @@ const modelPlugin: Plugin = {
 ### Model Handler Interface
 
 ```typescript
-type ModelHandler<T = any, R = any> = (
+type ModelHandler<T = ModelParams, R = ModelResponse> = (
   runtime: IAgentRuntime,
   params: T,
 ) => Promise<R>;
@@ -226,7 +226,7 @@ await runtime.useModel(ModelType.TEXT_LARGE, params);
 ```typescript
 // Automatic fallback on failure
 class ModelRouter {
-  async useModel(type: ModelType, params: any, preferredProvider?: string) {
+  async useModel(type: ModelType, params: ModelParams, preferredProvider?: string) {
     const providers = this.getProvidersByPriority(type, preferredProvider);
 
     for (const provider of providers) {
@@ -465,7 +465,7 @@ class CostOptimizedModelRouter {
     ollama: { [ModelType.TEXT_LARGE]: 0, [ModelType.TEXT_EMBEDDING]: 0 },
   };
 
-  async useModel(type: ModelType, params: any, maxCost?: number) {
+  async useModel(type: ModelType, params: ModelParams, maxCost?: number) {
     const providers = this.getProvidersByCost(type, maxCost);
 
     for (const provider of providers) {
@@ -503,14 +503,14 @@ class CostOptimizedModelRouter {
 
 ```typescript
 class ModelCache {
-  private cache = new Map<string, { result: any; timestamp: number }>();
+  private cache = new Map<string, { result: ModelResponse; timestamp: number }>();
   private ttl = 60 * 60 * 1000; // 1 hour
 
-  getCacheKey(type: ModelType, params: any): string {
+  getCacheKey(type: ModelType, params: ModelParams): string {
     return `${type}:${JSON.stringify(params)}`;
   }
 
-  get(type: ModelType, params: any): any | null {
+  get(type: ModelType, params: ModelParams): ModelResponse | null {
     const key = this.getCacheKey(type, params);
     const cached = this.cache.get(key);
 
@@ -524,7 +524,7 @@ class ModelCache {
     return cached.result;
   }
 
-  set(type: ModelType, params: any, result: any) {
+  set(type: ModelType, params: ModelParams, result: ModelResponse) {
     const key = this.getCacheKey(type, params);
     this.cache.set(key, {
       result,
@@ -539,7 +539,7 @@ const cache = new ModelCache();
 async function cachedModelCall(
   runtime: IAgentRuntime,
   type: ModelType,
-  params: any,
+  params: ModelParams,
 ) {
   // Check cache
   const cached = cache.get(type, params);
@@ -577,8 +577,8 @@ class ModelMonitor {
   async trackUsage(
     provider: string,
     type: ModelType,
-    params: any,
-    result: any,
+    params: ModelParams,
+    result: ModelResponse,
     duration: number,
   ) {
     const key = `${provider}:${type}`;
@@ -631,7 +631,7 @@ class ModelMonitor {
 async function modelCallWithRetry(
   runtime: IAgentRuntime,
   type: ModelType,
-  params: any,
+  params: ModelParams,
   maxRetries = 3,
 ) {
   let lastError: Error;

@@ -7,7 +7,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
 import { ConfigError, MissingSettingError } from "./error";
-import type { GitHubSettings } from "./types";
+import { formatZodErrors, type GitHubSettings } from "./types";
 
 /**
  * GitHub configuration schema
@@ -80,13 +80,7 @@ export class GitHubPluginConfig {
     const result = configSchema.safeParse(rawConfig);
 
     if (!result.success) {
-      const zodError = result.error as unknown as {
-        issues?: Array<{ path: (string | number)[]; message: string }>;
-      };
-      const errors = (zodError.issues || [])
-        .map((e) => `${e.path.join(".")}: ${e.message}`)
-        .join(", ");
-      throw new ConfigError(errors);
+      throw new ConfigError(formatZodErrors(result.error));
     }
 
     return new GitHubPluginConfig(result.data);
@@ -106,13 +100,7 @@ export class GitHubPluginConfig {
     });
 
     if (!result.success) {
-      const zodError = result.error as unknown as {
-        issues?: Array<{ path: (string | number)[]; message: string }>;
-      };
-      const errors = (zodError.issues || [])
-        .map((e) => `${e.path.join(".")}: ${e.message}`)
-        .join(", ");
-      throw new ConfigError(errors);
+      throw new ConfigError(formatZodErrors(result.error));
     }
 
     return new GitHubPluginConfig(result.data);
@@ -146,13 +134,7 @@ export class GitHubPluginConfig {
     const result = configSchema.safeParse(rawConfig);
 
     if (!result.success) {
-      const zodError = result.error as unknown as {
-        issues?: Array<{ path: (string | number)[]; message: string }>;
-      };
-      const errors = (zodError.issues || [])
-        .map((e) => `${e.path.join(".")}: ${e.message}`)
-        .join(", ");
-      throw new ConfigError(errors);
+      throw new ConfigError(formatZodErrors(result.error));
     }
 
     return new GitHubPluginConfig(result.data);

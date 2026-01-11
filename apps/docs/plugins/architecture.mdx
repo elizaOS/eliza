@@ -158,7 +158,7 @@ routes: [
     name: "hello-world-route",
     path: "/helloworld",
     type: "GET",
-    handler: async (_req: any, res: any) => {
+    handler: async (_req: RouteRequest, res: RouteResponse) => {
       res.json({ message: "Hello World!" });
     },
   },
@@ -188,7 +188,7 @@ Standard events include:
 export type PluginEvents = {
   [K in keyof EventPayloadMap]?: EventHandler<K>[];
 } & {
-  [key: string]: ((params: any) => Promise<any>)[];
+  [key: string]: ((params: EventPayloadMap[keyof EventPayloadMap]) => Promise<void>)[];
 };
 ```
 

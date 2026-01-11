@@ -105,9 +105,9 @@ export class BrowserStorage implements IStorage {
     }
   }
 
-  async deleteWhere(
+  async deleteWhere<T = Record<string, unknown>>(
     collection: string,
-    predicate: (item: Record<string, unknown>) => boolean
+    predicate: (item: T) => boolean
   ): Promise<void> {
     const keys = this.getAllKeysForCollection(collection);
 
@@ -115,7 +115,7 @@ export class BrowserStorage implements IStorage {
       try {
         const data = localStorage.getItem(key);
         if (data) {
-          const item = JSON.parse(data) as Record<string, unknown>;
+          const item = JSON.parse(data) as T;
           if (predicate(item)) {
             localStorage.removeItem(key);
           }
@@ -126,15 +126,15 @@ export class BrowserStorage implements IStorage {
     }
   }
 
-  async count(
+  async count<T = Record<string, unknown>>(
     collection: string,
-    predicate?: (item: Record<string, unknown>) => boolean
+    predicate?: (item: T) => boolean
   ): Promise<number> {
     if (!predicate) {
       return this.getAllKeysForCollection(collection).length;
     }
 
-    const items = await this.getAll<Record<string, unknown>>(collection);
+    const items = await this.getAll<T>(collection);
     return items.filter(predicate).length;
   }
 

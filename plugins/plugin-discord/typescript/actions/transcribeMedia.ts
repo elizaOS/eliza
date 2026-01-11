@@ -1,10 +1,12 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   ContentType,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Media,
   type Memory,
@@ -66,7 +68,7 @@ const getMediaAttachmentId = async (
  * @property {Function} handler - Handler function for the action.
  * @property {ActionExample[][]} examples - Examples demonstrating the action.
  */
-export const transcribeMedia = {
+export const transcribeMedia: Action = {
   name: "TRANSCRIBE_MEDIA",
   similes: [
     "TRANSCRIBE_AUDIO",
@@ -76,7 +78,7 @@ export const transcribeMedia = {
     "AUDIO_TRANSCRIPT",
   ],
   description: "Transcribe the full text of an audio or video file that the user has attached.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (message.content.source !== "discord") {
       return false;
     }
@@ -105,10 +107,10 @@ export const transcribeMedia = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const callbackData: Content = {
       text: "", // fill in later
       actions: ["TRANSCRIBE_MEDIA_RESPONSE"],
@@ -235,7 +237,7 @@ ${mediaTranscript?.trim() || ""}
       );
     }
 
-    return callbackData;
+    return { success: true, text: callbackData.text };
   },
   examples: [
     [
@@ -269,6 +271,6 @@ ${mediaTranscript?.trim() || ""}
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default transcribeMedia;

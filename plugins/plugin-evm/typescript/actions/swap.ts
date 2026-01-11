@@ -219,11 +219,12 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      fromTokenDecimals = (await publicClient.readContract({
+      fromTokenDecimals = Number(// @ts-expect-error - viem type narrowing issue
+    await publicClient.readContract({
         address: params.fromToken as Address,
         abi: decimalsAbi,
         functionName: "decimals",
-      } as unknown as Parameters<typeof publicClient.readContract>[0])) as number;
+      } as unknown as Parameters<typeof publicClient.readContract>[0]));
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
@@ -409,7 +410,8 @@ export class SwapAction {
       );
     }
 
-    const hash = await walletClient.sendTransaction({
+    const hash = // @ts-expect-error - viem type narrowing issue
+    await walletClient.sendTransaction({
       account: walletClient.account,
       to: txRequest.to as Address,
       value: BigInt(txRequest.value ?? "0"),
@@ -421,7 +423,7 @@ export class SwapAction {
       gasPrice: txRequest.gasPrice
         ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
         : undefined,
-    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
+    });
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
@@ -468,7 +470,8 @@ export class SwapAction {
       );
     }
 
-    const hash = await walletClient.sendTransaction({
+    const hash = // @ts-expect-error - viem type narrowing issue
+    await walletClient.sendTransaction({
       account: walletClient.account,
       to: bebopRoute.to,
       value: BigInt(bebopRoute.value),
@@ -508,12 +511,13 @@ export class SwapAction {
 
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
 
-    const allowance = (await publicClient.readContract({
+    const allowance = (// @ts-expect-error - viem type narrowing issue
+    await publicClient.readContract({
       address: tokenAddress,
       abi: allowanceAbi,
       functionName: "allowance",
       args: [walletClient.account.address, spenderAddress],
-    } as unknown as Parameters<typeof publicClient.readContract>[0])) as bigint;
+    })) as bigint;
 
     if (allowance >= requiredAmount) {
       return;
@@ -527,13 +531,14 @@ export class SwapAction {
       args: [spenderAddress, requiredAmount],
     });
 
-    const approvalTx = await walletClient.sendTransaction({
+    const approvalTx = // @ts-expect-error - viem type narrowing issue
+    await walletClient.sendTransaction({
       account: walletClient.account,
       to: tokenAddress,
       value: 0n,
       data: approvalData,
       chain: walletClient.chain,
-    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
+    });
 
     logger.info(`Waiting for approval confirmation...`);
 

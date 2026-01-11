@@ -196,16 +196,36 @@ export interface Evaluator {
 }
 
 /**
- * Value types allowed in provider results
+ * JSON-serializable primitive values.
+ * These are the basic types that can be serialized to JSON.
+ */
+export type JsonPrimitive = string | number | boolean | null;
+
+/**
+ * Value types allowed in provider results.
+ *
+ * This type accepts:
+ * - Primitive JSON values (string, number, boolean, null, undefined)
+ * - Arrays of values
+ * - Any object (Record<string, unknown>)
+ *
+ * The broad object type (Record<string, unknown>) ensures that domain types
+ * like Memory[], Character, Content, etc. are accepted without requiring
+ * unsafe 'as unknown as' casts, while still maintaining JSON-serializable
+ * semantics at runtime.
  */
 export type ProviderValue =
-  | string
-  | number
-  | boolean
-  | null
+  | JsonPrimitive
   | undefined
-  | ProviderValue[]
-  | { [key: string]: ProviderValue | undefined };
+  | readonly unknown[]
+  | Record<string, unknown>;
+
+/**
+ * Data record type that accepts any JSON-serializable values.
+ * This is broader than ProviderValue to accommodate domain types
+ * like Memory[], Character, Content without requiring casts.
+ */
+export type ProviderDataRecord = Record<string, unknown>;
 
 /**
  * Result returned by a provider
@@ -217,8 +237,12 @@ export interface ProviderResult {
   /** Key-value pairs for template variable substitution */
   values?: Record<string, ProviderValue>;
 
-  /** Structured data for programmatic access by other components */
-  data?: Record<string, ProviderValue>;
+  /**
+   * Structured data for programmatic access by other components.
+   * Accepts any JSON-serializable object values including domain types
+   * like Memory[], Character, Content, etc.
+   */
+  data?: ProviderDataRecord;
 }
 
 /**
@@ -266,8 +290,11 @@ export interface ActionResult {
   /** Values to merge into the state */
   values?: Record<string, ProviderValue>;
 
-  /** Data payload containing action-specific results */
-  data?: Record<string, ProviderValue>;
+  /**
+   * Data payload containing action-specific results.
+   * Accepts any JSON-serializable object values including domain types.
+   */
+  data?: ProviderDataRecord;
 
   /** Error information if the action failed */
   error?: string | Error;

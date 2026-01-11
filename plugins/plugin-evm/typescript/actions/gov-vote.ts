@@ -34,13 +34,14 @@ export class VoteAction {
       // Log current block before sending transaction
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = await walletClient.sendTransaction({
+      const hash = // @ts-expect-error - viem type narrowing issue
+    await walletClient.sendTransaction({
         account: walletClient.account,
         to: params.governor,
         value: BigInt(0),
         data: txData as Hex,
         chain: chainConfig,
-      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
+      });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,

@@ -978,3 +978,16 @@ export const gitHubSettingsSchema = z.object({
   appPrivateKey: z.string().optional(),
   installationId: z.string().optional(),
 });
+
+/**
+ * Helper to format ZodError issues into a readable string.
+ * Uses proper Zod types to avoid `as unknown as` casts.
+ */
+export function formatZodErrors(error: z.ZodError): string {
+  const flattened = error.flatten();
+  const fieldErrors = Object.entries(flattened.fieldErrors)
+    .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(", ") : String(messages)}`)
+    .join("; ");
+  const formErrors = flattened.formErrors.join(", ");
+  return [fieldErrors, formErrors].filter(Boolean).join("; ");
+}

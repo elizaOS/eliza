@@ -1,10 +1,4 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderValue,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { addHeader, ChannelType } from "@elizaos/core";
 
 /**
@@ -234,14 +228,14 @@ export const characterProvider: Provider = {
     return {
       values,
       data: {
-        bio: data.bio as ProviderValue,
-        adjective: data.adjective as ProviderValue,
-        topic: data.topic as ProviderValue,
-        topics: data.topics as ProviderValue,
-        character: data.character as unknown as ProviderValue,
-        directions: data.directions as ProviderValue,
-        examples: data.examples as ProviderValue,
-        system: data.system as ProviderValue,
+        bio: data.bio,
+        adjective: data.adjective,
+        topic: data.topic,
+        topics: data.topics,
+        character: data.character,
+        directions: data.directions,
+        examples: data.examples,
+        system: data.system,
       },
       text,
     };

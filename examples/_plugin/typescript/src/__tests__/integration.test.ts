@@ -1,8 +1,10 @@
 import type {
+  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   Service,
+  ServiceTypeName,
   State,
   UUID,
 } from "@elizaos/core";
@@ -83,9 +85,10 @@ describe("Integration: HelloWorld Action with StarterService", () => {
     };
 
     // Create a mock callback to capture the response
-    const callbackCalls: any[] = [];
-    const callbackFn = (...args: any[]) => {
-      callbackCalls.push(args);
+    const callbackCalls: [Content][] = [];
+    const callbackFn: HandlerCallback = async (content: Content) => {
+      callbackCalls.push([content]);
+      return [];
     };
 
     // Execute the action
@@ -95,7 +98,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
         mockMessage,
         mockState,
         {},
-        callbackFn as HandlerCallback,
+        callbackFn,
         [],
       );
     }
@@ -121,8 +124,8 @@ describe("Integration: Plugin initialization and service registration", () => {
     const mockRuntime = createMockRuntime();
 
     // Create and install a mock registerService
-    const registerServiceCalls: any[] = [];
-    mockRuntime.registerService = (service: any) => {
+    const registerServiceCalls: { service: typeof Service }[] = [];
+    mockRuntime.registerService = (service: typeof Service) => {
       registerServiceCalls.push({ service });
       return Promise.resolve();
     };

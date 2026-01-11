@@ -21,8 +21,7 @@ import {
   elizaClassicPlugin,
   getElizaGreeting,
 } from "@elizaos/plugin-eliza-classic";
-// @ts-expect-error - plugin-sql types not properly exported for browser builds
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserPGlite } from "./pglite-browser";
 

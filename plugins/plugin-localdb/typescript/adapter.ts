@@ -8,6 +8,7 @@
 import {
   type Agent,
   type Component,
+  type Content,
   DatabaseAdapter,
   type Entity,
   type Log,
@@ -15,6 +16,7 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
+  type MemoryTypeAlias,
   type Participant,
   type Relationship,
   type Room,
@@ -24,12 +26,6 @@ import {
 } from "@elizaos/core";
 import { SimpleHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
-
-// Extended storage interface for raw file access
-interface ExtendedStorage extends IStorage {
-  saveRaw(filename: string, data: string): Promise<void>;
-  loadRaw(filename: string): Promise<string | null>;
-}
 
 // Internal storage types (different from core types for storage purposes)
 interface StoredParticipant {
@@ -44,7 +40,7 @@ interface StoredMemory {
   entityId: string;
   agentId?: string;
   createdAt?: number;
-  content: { text?: string; [key: string]: unknown };
+  content: Content;
   embedding?: number[];
   roomId: string;
   worldId?: string;
@@ -57,7 +53,7 @@ interface StoredMemory {
     scope?: string;
     timestamp?: number;
     tags?: string[];
-    [key: string]: unknown;
+    [key: string]: string | number | boolean | null | undefined | string[] | UUID;
   };
 }
 
@@ -71,16 +67,43 @@ interface StoredRelationship {
 }
 
 /**
+ * Convert StoredMemory to Memory type
+ * This explicit conversion is safer than type casts
+ */
+function toMemory(stored: StoredMemory): Memory {
+  return {
+    id: stored.id as UUID | undefined,
+    entityId: stored.entityId as UUID,
+    agentId: stored.agentId as UUID | undefined,
+    createdAt: stored.createdAt,
+    content: stored.content,
+    embedding: stored.embedding,
+    roomId: stored.roomId as UUID,
+    worldId: stored.worldId as UUID | undefined,
+    unique: stored.unique,
+    similarity: stored.similarity,
+    metadata: stored.metadata as MemoryMetadata | undefined,
+  };
+}
+
+/**
+ * Convert array of StoredMemory to Memory array
+ */
+function toMemories(stored: StoredMemory[]): Memory[] {
+  return stored.map(toMemory);
+}
+
+/**
  * Local JSON-based database adapter
  */
-export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
-  private storage: ExtendedStorage;
+export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
+  private storage: IStorage;
   private vectorIndex: SimpleHNSW;
   private embeddingDimension = 384;
   private ready = false;
   private agentId: UUID;
 
-  constructor(storage: ExtendedStorage, agentId: UUID) {
+  constructor(storage: IStorage, agentId: UUID) {
     super();
     this.storage = storage;
     this.agentId = agentId;
@@ -137,7 +160,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     logger.info({ src: "plugin:localdb" }, "Local database closed");
   }
 
-  async getConnection(): Promise<ExtendedStorage> {
+  async getConnection(): Promise<IStorage> {
     return this.storage;
   }
 
@@ -307,7 +330,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       memories = memories.slice(0, params.count);
     }
 
-    return memories as unknown as Memory[];
+    return toMemories(memories);
   }
 
   async getMemoriesByRoomIds(params: {
@@ -325,9 +348,9 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
     if (params.limit) {
-      return memories.slice(0, params.limit) as unknown as Memory[];
+      return toMemories(memories.slice(0, params.limit));
     }
-    return memories as unknown as Memory[];
+    return toMemories(memories);
   }
 
   async getMemoryById(id: UUID): Promise<Memory | null> {
@@ -340,7 +363,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (memory) {
         if (tableName && memory.metadata?.type !== tableName) continue;
-        memories.push(memory as unknown as Memory);
+        memories.push(toMemory(memory));
       }
     }
     return memories;
@@ -366,9 +389,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       if (!memory.embedding) continue;
 
       // Simple string matching score (not true Levenshtein)
-      const content = String(
-        (memory as unknown as Record<string, unknown>)[params.query_field_name] ?? ""
-      );
+      // Access the content property dynamically based on query_field_name
+      const memoryRecord = memory as StoredMemory & Record<string, unknown>;
+      const fieldValue = memoryRecord[params.query_field_name];
+      const content = String(fieldValue ?? "");
       const score = this.simpleStringScore(params.query_input, content);
 
       if (score <= params.query_threshold) {
@@ -466,7 +490,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       if (params.unique && !memory.unique) continue;
 
       memories.push({
-        ...(memory as unknown as Memory),
+        ...toMemory(memory),
         similarity: result.similarity,
       });
     }
@@ -486,7 +510,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       createdAt: memory.createdAt ?? now,
       metadata: {
         ...(memory.metadata as Record<string, unknown>),
-        type: tableName,
+        type: tableName as MemoryTypeAlias,
       },
     };
 
@@ -547,8 +571,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
   }
 
   async countMemories(roomId: UUID, unique = false, tableName?: string): Promise<number> {
-    return this.storage.count(COLLECTIONS.MEMORIES, (m: Record<string, unknown>) => {
-      const memory = m as unknown as StoredMemory;
+    return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (memory) => {
       if (memory.roomId !== roomId) return false;
       if (unique && !memory.unique) return false;
       if (tableName && memory.metadata?.type !== tableName) return false;
@@ -571,9 +594,9 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
     if (params.count) {
-      return memories.slice(0, params.count) as unknown as Memory[];
+      return toMemories(memories.slice(0, params.count));
     }
-    return memories as unknown as Memory[];
+    return toMemories(memories);
   }
 
   // ==================== World Methods ====================
@@ -625,15 +648,12 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.ROOMS, roomId);
     // Also delete participants for this room
-    await this.storage.deleteWhere(
+    await this.storage.deleteWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
-      (p) => (p as unknown as StoredParticipant).roomId === roomId
+      (p) => p.roomId === roomId
     );
     // Delete memories for this room
-    await this.storage.deleteWhere(
-      COLLECTIONS.MEMORIES,
-      (m) => (m as unknown as StoredMemory).roomId === roomId
-    );
+    await this.storage.deleteWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => m.roomId === roomId);
   }
 
   async deleteRoomsByWorldId(worldId: UUID): Promise<void> {

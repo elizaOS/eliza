@@ -52,7 +52,7 @@ export const pluginRegistryProvider: Provider = {
 
     return {
       text: `Plugin Registry: ${createdPlugins.length} plugins created, ${registryData.activeJobs} active jobs`,
-      data: registryData as unknown as Record<string, import("@elizaos/core").ProviderValue>,
+      data: { registry: registryData },
     };
   },
 };

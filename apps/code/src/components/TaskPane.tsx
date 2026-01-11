@@ -253,7 +253,7 @@ export function TaskPane({
           taskService
             .resumeTask(currentTask.id)
             .then(() =>
-              taskService.startTaskExecution(currentTask.id).catch(() => {}),
+              taskService.startTaskExecution(currentTask.id!).catch(() => {}),
             )
             .catch(() => {});
         }

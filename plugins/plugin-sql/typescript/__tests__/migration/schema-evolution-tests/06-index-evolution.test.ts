@@ -236,7 +236,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
           ORDER BY indexname`
     );
 
-    const indexNames = indexes.rows.map((r: any) => r.indexname);
+    const indexNames = indexes.rows.map((r) => (r as { indexname: string }).indexname);
     console.log("\n📊 Final indexes:");
     indexNames.forEach((name) => console.log(`  - ${name}`));
 

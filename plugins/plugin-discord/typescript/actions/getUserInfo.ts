@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -82,7 +84,7 @@ const formatUserInfo = (member: GuildMember, detailed: boolean = false): string 
   return basicInfo.join("\n");
 };
 
-export const getUserInfo = {
+export const getUserInfo: Action = {
   name: "GET_USER_INFO",
   similes: [
     "GET_USER_INFO",
@@ -95,44 +97,60 @@ export const getUserInfo = {
   ],
   description:
     "Get detailed information about a Discord user including their roles, join date, and permissions.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
-        text: "Discord service is not available.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "Discord service is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Discord service is not available" };
+    }
+
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
     }
 
     const userInfo = await getUserIdentifier(runtime, message, state);
     if (!userInfo) {
-      await callback({
-        text: "I couldn't understand which user you want information about. Please specify a username or mention.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "I couldn't understand which user you want information about. Please specify a username or mention.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Could not parse user identifier" };
     }
 
     try {
       const room = state.data?.room || (await runtime.getRoom(message.roomId));
       const serverId = room?.messageServerId;
       if (!serverId) {
-        await callback({
-          text: "I couldn't determine the current server.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I couldn't determine the current server.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Could not determine current server" };
       }
 
       const guild = await discordService.client.guilds.fetch(serverId);
@@ -180,11 +198,13 @@ export const getUserInfo = {
       }
 
       if (!member) {
-        await callback({
-          text: `I couldn't find a user with the identifier "${userInfo.userIdentifier}" in this server.`,
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: `I couldn't find a user with the identifier "${userInfo.userIdentifier}" in this server.`,
+            source: "discord",
+          });
+        }
+        return { success: false, error: `User not found: ${userInfo.userIdentifier}` };
       }
 
       const infoText = formatUserInfo(member, userInfo.detailed);
@@ -194,7 +214,10 @@ export const getUserInfo = {
         source: message.content.source,
       };
 
-      await callback(response);
+      if (callback) {
+        await callback(response);
+      }
+      return { success: true, text: response.text };
     } catch (error) {
       runtime.logger.error(
         {
@@ -204,10 +227,13 @@ export const getUserInfo = {
         },
         "Error getting user info"
       );
-      await callback({
-        text: "I encountered an error while getting user information. Please try again.",
-        source: "discord",
-      });
+      if (callback) {
+        await callback({
+          text: "I encountered an error while getting user information. Please try again.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
   examples: [
@@ -257,6 +283,6 @@ export const getUserInfo = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default getUserInfo;

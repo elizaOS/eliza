@@ -16,7 +16,12 @@ import {
   type State,
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
-import { type CreateCommitParams, createCommitSchema, type FileChange } from "../types";
+import {
+  type CreateCommitParams,
+  createCommitSchema,
+  type FileChange,
+  formatZodErrors,
+} from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -108,12 +113,7 @@ export const pushCodeAction: Action = {
 
       const validation = createCommitSchema.safeParse(params);
       if (!validation.success) {
-        const zodError = validation.error as unknown as {
-          issues?: Array<{ path: (string | number)[]; message: string }>;
-        };
-        const errors = (zodError.issues || [])
-          .map((e) => `${e.path.join(".")}: ${e.message}`)
-          .join(", ");
+        const errors = formatZodErrors(validation.error);
         logger.error(`Invalid commit parameters: ${errors}`);
         if (callback) {
           await callback({

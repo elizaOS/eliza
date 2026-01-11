@@ -392,7 +392,7 @@ impl PluginCreationClient {
             "scripts": {
                 "build": "tsc",
                 "test": "vitest run",
-                "lint": "bunx @biomejs/biome check --write .",
+                "lint": "bunx @biomejs/biome check --write --unsafe .",
                 "lint:check": "bunx @biomejs/biome check ."
             },
             "devDependencies": {

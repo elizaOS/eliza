@@ -369,7 +369,7 @@ Plugins can hook into various lifecycle events:
 ```typescript
 interface Plugin {
   // Initialization - called when plugin is loaded
-  init?: (config: any, runtime: IAgentRuntime) => Promise<void>;
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
 
   // Start - called when runtime starts
   start?: (runtime: IAgentRuntime) => Promise<void>;
@@ -393,7 +393,7 @@ interface Plugin {
   ) => Promise<boolean>;
   afterAction?: (
     action: Action,
-    result: any,
+    result: ActionResult,
     runtime: IAgentRuntime,
   ) => Promise<void>;
 }
@@ -721,9 +721,9 @@ class WebSocketService extends Service {
     this.status = ServiceStatus.STOPPED;
   }
 
-  private async handleMessage(data: any) {
+  private async handleMessage(data: string) {
     // Process incoming websocket messages
-    const message = JSON.parse(data);
+    const message = JSON.parse(data) as Memory;
     await this.runtime.processMessage(message);
   }
 }

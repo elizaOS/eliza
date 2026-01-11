@@ -2,11 +2,13 @@ import fs from "node:fs";
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   ChannelType,
   type Content,
   ContentType,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Media,
   type Memory,
@@ -70,7 +72,7 @@ const getAttachmentIds = async (
  * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
  */
 
-export const chatWithAttachments = {
+export const chatWithAttachments: Action = {
   name: "CHAT_WITH_ATTACHMENTS",
   similes: [
     "CHAT_WITH_ATTACHMENT",
@@ -91,7 +93,7 @@ export const chatWithAttachments = {
   ],
   description:
     "Answer a user request informed by specific attachments based on their IDs. If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const room = await _runtime.getRoom(message.roomId);
 
     // Only validate for Discord GROUP channels - this action is Discord-specific
@@ -133,10 +135,19 @@ export const chatWithAttachments = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
+    }
     const callbackData: Content = {
       text: "", // fill in later
       actions: ["CHAT_WITH_ATTACHMENTS_RESPONSE"],
@@ -170,7 +181,7 @@ export const chatWithAttachments = {
         },
         "messages"
       );
-      return;
+      return { success: false, error: "Could not get attachment IDs from message" };
     }
 
     const { objective, attachmentIds } = attachmentData;
@@ -253,7 +264,7 @@ export const chatWithAttachments = {
         },
         "messages"
       );
-      return;
+      return { success: false, error: "No summary found" };
     }
 
     callbackData.text = currentSummary.trim();
@@ -268,7 +279,10 @@ export const chatWithAttachments = {
 ${currentSummary.trim()}
 \`\`\`
 `;
-      await callback(callbackData);
+      if (callback) {
+        await callback(callbackData);
+      }
+      return { success: true, text: callbackData.text };
     } else if (currentSummary.trim()) {
       const summaryDir = "cache";
       const summaryFilename = `${summaryDir}/summary_${Date.now()}.md`;
@@ -281,20 +295,23 @@ ${currentSummary.trim()}
         // Then cache it
         await runtime.setCache<string>(summaryFilename, currentSummary);
 
-        await callback({
-          ...callbackData,
-          text: "I've attached the summary of the requested attachments as a text file.",
-          attachments: [
-            ...(callbackData.attachments || []),
-            {
-              id: summaryFilename,
-              url: summaryFilename,
-              title: "Summary",
-              source: "discord",
-              contentType: ContentType.DOCUMENT,
-            } as Media,
-          ],
-        });
+        if (callback) {
+          await callback({
+            ...callbackData,
+            text: "I've attached the summary of the requested attachments as a text file.",
+            attachments: [
+              ...(callbackData.attachments || []),
+              {
+                id: summaryFilename,
+                url: summaryFilename,
+                title: "Summary",
+                source: "discord",
+                contentType: ContentType.DOCUMENT,
+              } as Media,
+            ],
+          });
+        }
+        return { success: true, text: `Summary saved to ${summaryFilename}` };
       } catch (error) {
         runtime.logger.error(
           {
@@ -304,7 +321,7 @@ ${currentSummary.trim()}
           },
           "Error in file/cache process"
         );
-        throw error;
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
     } else {
       runtime.logger.warn(
@@ -314,9 +331,8 @@ ${currentSummary.trim()}
         },
         "Empty response from chat with attachments action"
       );
+      return { success: false, error: "Empty response from chat with attachments action" };
     }
-
-    return callbackData;
   },
   examples: [
     [
@@ -380,6 +396,6 @@ ${currentSummary.trim()}
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default chatWithAttachments;

@@ -16,7 +16,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -120,9 +120,9 @@ function parseRequestBody(body: string | undefined): ChatRequest {
 /**
  * Create a JSON response with proper headers
  */
-function jsonResponse<T extends Record<string, unknown>>(
+function jsonResponse(
   statusCode: number,
-  body: T,
+  body: object,
 ): APIGatewayProxyResultV2 {
   return {
     statusCode,

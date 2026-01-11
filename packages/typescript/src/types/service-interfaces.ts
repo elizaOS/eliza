@@ -8,8 +8,46 @@
  * Plugin developers should implement these interfaces to provide their service functionality.
  */
 
-import type { Metadata, UUID } from "./primitives";
+import type { Content, Metadata, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
+
+// ============================================================================
+// Message Bus Service Interface
+// ============================================================================
+
+/**
+ * Interface for the message bus service that provides action notifications.
+ * This is an optional service that may be registered by plugins.
+ */
+export interface IMessageBusService extends Service {
+  /**
+   * Notify that an action has started.
+   * @param roomId The room where the action is occurring.
+   * @param worldId The world ID.
+   * @param content The action content.
+   * @param messageId Optional message ID for tracking.
+   */
+  notifyActionStart(
+    roomId: UUID,
+    worldId: UUID,
+    content: Content,
+    messageId?: UUID,
+  ): Promise<void>;
+
+  /**
+   * Notify that an action has been updated/completed.
+   * @param roomId The room where the action is occurring.
+   * @param worldId The world ID.
+   * @param content The action content.
+   * @param messageId Optional message ID for tracking.
+   */
+  notifyActionUpdate(
+    roomId: UUID,
+    worldId: UUID,
+    content: Content,
+    messageId?: UUID,
+  ): Promise<void>;
+}
 
 // ============================================================================
 // Token & Wallet Interfaces

@@ -143,7 +143,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     expect(afterData[0].content).toContain("{"); // Should be JSON string
 
     // Try to parse it back to verify it's valid JSON string
-    let _parsed: any;
+    let _parsed: unknown;
     try {
       _parsed = JSON.parse(afterData[0].content as string);
       console.log("  ✅ Content is valid JSON string, can be parsed back");

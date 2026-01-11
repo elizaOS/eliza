@@ -126,7 +126,7 @@ interface MessagePayload {
 interface WorldPayload {
   runtime: IAgentRuntime;
   world: World;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Entity event payload
@@ -143,7 +143,7 @@ interface ActionPayload {
   action: Action;
   message: Memory;
   state: State;
-  result?: any;
+  result?: ActionResult;
   error?: Error;
 }
 
@@ -152,8 +152,8 @@ interface ModelPayload {
   runtime: IAgentRuntime;
   modelType: ModelTypeName;
   provider: string;
-  params: any;
-  result?: any;
+  params: Record<string, unknown>;
+  result?: unknown;
   error?: Error;
   duration: number;
 }
@@ -242,7 +242,7 @@ await runtime.emit(EventType.MESSAGE_RECEIVED, {
 
 // Emit from a service
 class CustomService extends Service {
-  async processData(data: any) {
+  async processData(data: Record<string, unknown>) {
     await this.runtime.emit(EventType.CUSTOM_EVENT, {
       runtime: this.runtime,
       data,
@@ -312,7 +312,7 @@ runtime.removeAllListeners();
 
 ```typescript
 // Emit event and wait for response
-async function requestWithResponse(runtime: IAgentRuntime, data: any) {
+async function requestWithResponse(runtime: IAgentRuntime, data: Record<string, unknown>) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error("Response timeout"));
@@ -382,7 +382,7 @@ const workflowPlugin: Plugin = {
 ```typescript
 // Aggregate multiple events
 class EventAggregator {
-  private events: Map<string, any[]> = new Map();
+  private events: Map<string, EventHandler[]> = new Map();
   private flushInterval: NodeJS.Timer;
 
   constructor(private runtime: IAgentRuntime) {
@@ -456,7 +456,7 @@ declare module "@elizaos/core" {
 // Define custom payload
 interface CustomDataPayload {
   runtime: IAgentRuntime;
-  data: any;
+  data: Record<string, unknown>;
   source: string;
   timestamp: number;
 }
@@ -508,7 +508,7 @@ const customPlugin: Plugin = {
 
 ```typescript
 // Middleware to log all events
-function loggingMiddleware(eventType: EventType, payload: any) {
+function loggingMiddleware(eventType: EventType, payload: EventPayload) {
   console.log(`[Event] ${eventType}:`, {
     timestamp: new Date().toISOString(),
     type: eventType,
@@ -518,9 +518,9 @@ function loggingMiddleware(eventType: EventType, payload: any) {
 
 // Middleware to filter events
 function filterMiddleware(allowedEvents: EventType[]) {
-  return (eventType: EventType, payload: any, next: Function) => {
+  return (eventType: EventType, payload: EventPayload, next: () => void) => {
     if (allowedEvents.includes(eventType)) {
-      next(payload);
+      next();
     }
   };
 }
@@ -528,8 +528,8 @@ function filterMiddleware(allowedEvents: EventType[]) {
 // Middleware to transform payload
 function transformMiddleware(
   eventType: EventType,
-  payload: any,
-  next: Function,
+  payload: EventPayload,
+  next: (transformed: EventPayload) => void,
 ) {
   const transformed = {
     ...payload,
@@ -546,7 +546,7 @@ function transformMiddleware(
 
 ```typescript
 // Global error handler for events
-runtime.on("error", (error: Error, eventType: EventType, payload: any) => {
+runtime.on("error", (error: Error, eventType: EventType, payload: EventPayload) => {
   console.error(`Error in event ${eventType}:`, error);
 
   // Log to monitoring service
@@ -559,7 +559,7 @@ runtime.on("error", (error: Error, eventType: EventType, payload: any) => {
 });
 
 // Handler with error handling
-async function safeEventHandler(payload: any) {
+async function safeEventHandler(payload: MessagePayload) {
   try {
     await riskyOperation(payload);
   } catch (error) {
@@ -581,7 +581,7 @@ async function safeEventHandler(payload: any) {
 
 ```typescript
 class EventBatcher {
-  private batch: Map<EventType, any[]> = new Map();
+  private batch: Map<EventType, EventPayload[]> = new Map();
   private batchSize = 100;
   private flushInterval = 1000;
   private timer: NodeJS.Timer;
@@ -590,7 +590,7 @@ class EventBatcher {
     this.timer = setInterval(() => this.flush(), this.flushInterval);
   }
 
-  add(eventType: EventType, payload: any) {
+  add(eventType: EventType, payload: EventPayload) {
     if (!this.batch.has(eventType)) {
       this.batch.set(eventType, []);
     }
@@ -636,10 +636,10 @@ class EventBatcher {
 // Throttle high-frequency events
 function throttleEvents(eventType: EventType, delay: number) {
   let lastEmit = 0;
-  let pending: any = null;
-  let timer: NodeJS.Timeout;
+  let pending: EventPayload | null = null;
+  let timer: NodeJS.Timeout | null = null;
 
-  return (payload: any) => {
+  return (payload: EventPayload) => {
     const now = Date.now();
 
     if (now - lastEmit >= delay) {

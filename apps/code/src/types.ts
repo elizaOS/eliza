@@ -34,6 +34,7 @@ export interface TaskStep {
   description: string;
   status: TaskStatus;
   output?: string;
+  [key: string]: JsonValue | undefined;
 }
 
 export interface TaskResult {
@@ -50,12 +51,14 @@ export type TaskTraceStatus = "paused" | "resumed" | "cancelled";
 export interface TaskTraceBase {
   ts: number;
   seq: number;
+  [key: string]: JsonValue | undefined;
 }
 
 export interface TaskTraceNoteEvent extends TaskTraceBase {
   kind: "note";
   level: TaskTraceLevel;
   message: string;
+  [key: string]: JsonValue | undefined;
 }
 
 export interface TaskTraceLlmEvent extends TaskTraceBase {
@@ -65,6 +68,7 @@ export interface TaskTraceLlmEvent extends TaskTraceBase {
   response: string;
   responsePreview: string;
   prompt?: string;
+  [key: string]: JsonValue | undefined;
 }
 
 export interface TaskTraceToolCallEvent extends TaskTraceBase {
@@ -72,6 +76,7 @@ export interface TaskTraceToolCallEvent extends TaskTraceBase {
   iteration: number;
   name: string;
   args: Record<string, string>;
+  [key: string]: JsonValue | undefined;
 }
 
 export interface TaskTraceToolResultEvent extends TaskTraceBase {
@@ -81,12 +86,14 @@ export interface TaskTraceToolResultEvent extends TaskTraceBase {
   success: boolean;
   output: string;
   outputPreview: string;
+  [key: string]: JsonValue | undefined;
 }
 
 export interface TaskTraceStatusEvent extends TaskTraceBase {
   kind: "status";
   status: TaskTraceStatus;
   message?: string;
+  [key: string]: JsonValue | undefined;
 }
 
 export type TaskTraceEvent =
@@ -126,8 +133,10 @@ export interface CodeTaskMetadata {
   completedAt?: number;
   error?: string;
   updateInterval?: number;
-  /** Additional plugin-specific metadata (must be JSON-serializable). */
-  [key: string]: JsonValue | undefined;
+  /** Optional items for UI state selections */
+  options?: Array<{ name: string; description: string }>;
+  /** Additional plugin-specific metadata. */
+  [key: string]: unknown;
 }
 
 /** Code task - uses core Task with typed metadata */

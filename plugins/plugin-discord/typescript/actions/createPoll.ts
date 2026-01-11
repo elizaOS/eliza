@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -56,7 +58,7 @@ const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6�
 const letterEmojis = ["🇦", "🇧", "🇨", "🇩", "🇪", "🇫", "🇬", "🇭", "🇮", "🇯"];
 const yesNoEmojis = ["✅", "❌"];
 
-export const createPoll = {
+export const createPoll: Action = {
   name: "CREATE_POLL",
   similes: [
     "CREATE_POLL",
@@ -68,53 +70,71 @@ export const createPoll = {
     "CREATE_SURVEY",
   ],
   description: "Create a poll in Discord with emoji reactions for voting.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
-        text: "Discord service is not available.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "Discord service is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Discord service is not available" };
+    }
+
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
     }
 
     const pollInfo = await getPollInfo(runtime, message, state);
     if (!pollInfo) {
-      await callback({
-        text: "I couldn't understand the poll details. Please specify a question and at least 2 options.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "I couldn't understand the poll details. Please specify a question and at least 2 options.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Could not parse poll details" };
     }
 
     try {
       const stateData = state.data;
       const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
-        await callback({
-          text: "I couldn't determine the current channel.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I couldn't determine the current channel.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Could not determine current channel" };
       }
 
       const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
-        await callback({
-          text: "I can only create polls in text channels.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I can only create polls in text channels.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Channel is not a text channel" };
       }
 
       const textChannel = channel as TextChannel;
@@ -169,7 +189,10 @@ export const createPoll = {
         source: message.content.source,
       };
 
-      await callback(response);
+      if (callback) {
+        await callback(response);
+      }
+      return { success: true, text: response.text };
     } catch (error) {
       runtime.logger.error(
         {
@@ -179,10 +202,13 @@ export const createPoll = {
         },
         "Error creating poll"
       );
-      await callback({
-        text: "I encountered an error while creating the poll. Please make sure I have permission to send messages and add reactions.",
-        source: "discord",
-      });
+      if (callback) {
+        await callback({
+          text: "I encountered an error while creating the poll. Please make sure I have permission to send messages and add reactions.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
   examples: [
@@ -232,6 +258,6 @@ export const createPoll = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default createPoll;

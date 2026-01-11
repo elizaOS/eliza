@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -126,7 +128,7 @@ const findUser = async (
   }
 };
 
-export const sendDM = {
+export const sendDM: Action = {
   name: "SEND_DM",
   similes: [
     "SEND_DIRECT_MESSAGE",
@@ -138,19 +140,16 @@ export const sendDM = {
     "SEND_MESSAGE_TO_USER",
   ],
   description: "Sends a direct message to a specific Discord user.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-    if (message.content.source !== "discord") {
-      return false;
-    }
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
@@ -158,7 +157,17 @@ export const sendDM = {
         { src: "plugin:discord:action:send-dm", agentId: runtime.agentId },
         "Discord service not found or not initialized"
       );
-      return;
+      return { success: false, error: "Discord service is not available" };
+    }
+
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
     }
 
     const dmInfo = await getDMInfo(runtime, message, state);
@@ -167,11 +176,13 @@ export const sendDM = {
         { src: "plugin:discord:action:send-dm", agentId: runtime.agentId },
         "Could not parse DM information from message"
       );
-      await callback({
-        text: "I couldn't understand who you want me to message or what to send. Please specify the recipient and the message content.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "I couldn't understand who you want me to message or what to send. Please specify the recipient and the message content.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Could not parse DM information" };
     }
 
     try {
@@ -186,20 +197,24 @@ export const sendDM = {
       );
 
       if (!targetUser) {
-        await callback({
-          text: `I couldn't find a user with the identifier "${dmInfo.recipientIdentifier}". Please make sure the username or ID is correct.`,
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: `I couldn't find a user with the identifier "${dmInfo.recipientIdentifier}". Please make sure the username or ID is correct.`,
+            source: "discord",
+          });
+        }
+        return { success: false, error: `User not found: ${dmInfo.recipientIdentifier}` };
       }
 
       // Check if we can send DMs to this user
       if (targetUser.bot) {
-        await callback({
-          text: "I cannot send direct messages to other bots.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I cannot send direct messages to other bots.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Cannot send DMs to bots" };
       }
 
       // Create or get DM channel
@@ -214,7 +229,10 @@ export const sendDM = {
         source: message.content.source,
       };
 
-      await callback(response);
+      if (callback) {
+        await callback(response);
+      }
+      return { success: true, text: response.text };
     } catch (error) {
       runtime.logger.error(
         {
@@ -228,17 +246,22 @@ export const sendDM = {
       // Handle specific Discord API errors
       if (error instanceof Error) {
         if (error.message.includes("Cannot send messages to this user")) {
-          await callback({
-            text: "I couldn't send a message to that user. They may have DMs disabled or we don't share a server.",
-            source: "discord",
-          });
+          if (callback) {
+            await callback({
+              text: "I couldn't send a message to that user. They may have DMs disabled or we don't share a server.",
+              source: "discord",
+            });
+          }
         } else {
-          await callback({
-            text: "I encountered an error while trying to send the direct message. Please make sure I have the necessary permissions.",
-            source: "discord",
-          });
+          if (callback) {
+            await callback({
+              text: "I encountered an error while trying to send the direct message. Please make sure I have the necessary permissions.",
+              source: "discord",
+            });
+          }
         }
       }
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
   examples: [
@@ -288,6 +311,6 @@ export const sendDM = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default sendDM;

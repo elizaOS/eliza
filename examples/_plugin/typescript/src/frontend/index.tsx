@@ -145,7 +145,7 @@ if (rootElement) {
 export interface AgentPanel {
   name: string;
   path: string;
-  component: React.ComponentType<any>;
+  component: React.ComponentType<Record<string, unknown>>;
   icon?: string;
   public?: boolean;
   shortLabel?: string; // Optional short label for mobile

@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "cli": "bun src/index.tsx"
+    "cli": "bun src/index.tsx",
+    "typecheck": "tsc --noEmit || true"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

@@ -61,12 +61,13 @@ describe("Entity Methods Integration Tests", () => {
       const entityId = uuidv4() as UUID;
 
       // Simulate a case where names might accidentally be a string
-      const entity: any = {
+      // Use type assertion to test edge case where names is a string (not conforming to Entity type)
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: "username123", // String instead of array
         metadata: { web: { userName: "username123" } },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -102,12 +103,13 @@ describe("Entity Methods Integration Tests", () => {
       await adapter.createEntities([entity]);
 
       // Update with string instead of array (simulating the bug scenario)
-      const updatedEntity: any = {
+      // Use type assertion to test edge case where names is a string (not conforming to Entity type)
+      const updatedEntity = {
         id: entityId,
         agentId: testAgentId,
         names: "updated-username", // String instead of array
         metadata: { updated: true },
-      };
+      } as unknown as Entity;
 
       await adapter.updateEntity(updatedEntity);
 
@@ -131,7 +133,8 @@ describe("Entity Methods Integration Tests", () => {
      * consistent behavior across different input types.
      */
     it("should properly handle Set, string, and array types in batch", async () => {
-      const entities: any[] = [
+      // Use type assertion to test edge cases with non-standard inputs
+      const entities = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
@@ -150,7 +153,7 @@ describe("Entity Methods Integration Tests", () => {
           names: ["proper", "array"], // Array should stay as is
           metadata: { type: "array" },
         },
-      ];
+      ] as unknown as Entity[];
 
       const result = await adapter.createEntities(entities);
       expect(result).toBe(true);
@@ -215,12 +218,13 @@ describe("Entity Methods Integration Tests", () => {
     it("should handle number as names by converting to string array", async () => {
       const entityId = uuidv4() as UUID;
 
-      const entity: any = {
+      // Use type assertion to test edge case where names is a number
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: 42, // Number (non-iterable)
         metadata: { type: "number" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -243,12 +247,13 @@ describe("Entity Methods Integration Tests", () => {
     it("should handle boolean as names by converting to string array", async () => {
       const entityId = uuidv4() as UUID;
 
-      const entity: any = {
+      // Use type assertion to test edge case where names is a boolean
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: true, // Boolean (non-iterable)
         metadata: { type: "boolean" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -272,12 +277,13 @@ describe("Entity Methods Integration Tests", () => {
     it("should handle plain object as names by converting to string array", async () => {
       const entityId = uuidv4() as UUID;
 
-      const entity: any = {
+      // Use type assertion to test edge case where names is an object
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: { foo: "bar" }, // Plain object (non-iterable)
         metadata: { type: "object" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -301,7 +307,8 @@ describe("Entity Methods Integration Tests", () => {
      * to empty arrays [].
      */
     it("should handle null and undefined names gracefully", async () => {
-      const entities: any[] = [
+      // Use type assertion to test edge cases with null/undefined
+      const entities = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
@@ -314,7 +321,7 @@ describe("Entity Methods Integration Tests", () => {
           names: undefined,
           metadata: { type: "undefined" },
         },
-      ];
+      ] as unknown as Entity[];
 
       const result = await adapter.createEntities(entities);
       expect(result).toBe(true);
@@ -356,12 +363,13 @@ describe("Entity Methods Integration Tests", () => {
       await adapter.createEntities([entity]);
 
       // Update with non-iterable value (number)
-      const updatedEntity: any = {
+      // Use type assertion to test edge case where names is a number
+      const updatedEntity = {
         id: entityId,
         agentId: testAgentId,
         names: 999, // Number
         metadata: { updated: true },
-      };
+      } as unknown as Entity;
 
       await adapter.updateEntity(updatedEntity);
 
@@ -391,12 +399,13 @@ describe("Entity Methods Integration Tests", () => {
         ["key2", "value2"],
       ]);
 
-      const entity: any = {
+      // Use type assertion to test edge case where names is a Map
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: namesMap, // Map (iterable that yields tuples)
         metadata: { type: "map" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -425,12 +434,13 @@ describe("Entity Methods Integration Tests", () => {
     it("should convert all array elements to strings, even if non-string", async () => {
       const entityId = uuidv4() as UUID;
 
-      const entity: any = {
+      // Use type assertion to test edge case where names array has mixed types
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: ["string", 123, true, { foo: "bar" }, null], // Mixed types
         metadata: { type: "mixed-array" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -467,12 +477,13 @@ describe("Entity Methods Integration Tests", () => {
 
       const namesSet = new Set([123, "test", true, 456]);
 
-      const entity: any = {
+      // Use type assertion to test edge case where names is a Set with mixed types
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: namesSet, // Set with mixed types
         metadata: { type: "mixed-set" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -515,12 +526,13 @@ describe("Entity Methods Integration Tests", () => {
         },
       };
 
-      const entity: any = {
+      // Use type assertion to test edge case where names is a custom iterable
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: customIterable, // Custom iterable yielding numbers
         metadata: { type: "custom-iterable" },
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -563,12 +575,13 @@ describe("Entity Methods Integration Tests", () => {
         ["another", "name2"],
       ]);
 
-      const updatedEntity: any = {
+      // Use type assertion to test edge case where names is a Map
+      const updatedEntity = {
         id: entityId,
         agentId: testAgentId,
         names: namesMap,
         metadata: { updated: true },
-      };
+      } as unknown as Entity;
 
       await adapter.updateEntity(updatedEntity);
 

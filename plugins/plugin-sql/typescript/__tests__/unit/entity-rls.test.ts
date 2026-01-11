@@ -466,7 +466,7 @@ describe("Entity RLS Integration", () => {
   describe("elizaOS Integration Point", () => {
     it("should check for withEntityContext method availability", () => {
       const postgresAdapter = {
-        withEntityContext: async (_entityId: string, callback: () => Promise<any>) => {
+        withEntityContext: async <T>(_entityId: string, callback: () => Promise<T>) => {
           return callback();
         },
       };
@@ -540,7 +540,7 @@ describe("Entity RLS Backward Compatibility", () => {
     it("should not modify existing API interfaces", () => {
       // withEntityContext is OPTIONAL
       interface IDatabaseAdapter {
-        withEntityContext?(entityId: string | null, callback: () => Promise<any>): Promise<any>;
+        withEntityContext?<T>(entityId: string | null, callback: () => Promise<T>): Promise<T>;
       }
 
       const adapter: IDatabaseAdapter = {

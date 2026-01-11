@@ -95,18 +95,18 @@ export const recentMessagesProvider: Provider = {
     const actionResultMessages = recentMessagesData.filter(
       (msg) =>
         msg.content &&
-        msg.content.type === "action_result" &&
+        (msg.content.type as string) === "action_result" &&
         msg.metadata &&
-        msg.metadata.type === "action_result",
+        (msg.metadata.type as string) === "action_result",
     );
 
     const dialogueMessages = recentMessagesData.filter(
       (msg) =>
         !(
           msg.content &&
-          msg.content.type === "action_result" &&
+          (msg.content.type as string) === "action_result" &&
           msg.metadata &&
-          msg.metadata.type === "action_result"
+          (msg.metadata.type as string) === "action_result"
         ),
     );
 

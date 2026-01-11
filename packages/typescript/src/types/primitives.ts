@@ -195,7 +195,16 @@ export enum ContentType {
 }
 
 /**
- * Allowed value types for metadata (JSON-serializable)
+ * Allowed value types for metadata (JSON-serializable).
+ *
+ * This type is intentionally broad to accept:
+ * - Primitive JSON values (string, number, boolean, null)
+ * - Arrays of metadata values
+ * - Complex domain objects with UUID fields (template literal strings)
+ *
+ * The Record<string, unknown> union member ensures that domain types like
+ * ContactInfo, RelationshipData, etc. are accepted without requiring
+ * unsafe 'as unknown as' casts.
  */
 export type MetadataValue =
   | string
@@ -204,9 +213,11 @@ export type MetadataValue =
   | null
   | undefined
   | MetadataValue[]
-  | { [key: string]: MetadataValue | undefined };
+  | { readonly [key: string]: MetadataValue | undefined }
+  | Record<string, unknown>;
 
 /**
  * A type for metadata objects with JSON-serializable values.
+ * Accepts any object shape that can be serialized to JSON.
  */
 export type Metadata = Record<string, MetadataValue>;

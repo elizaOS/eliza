@@ -806,22 +806,30 @@ class MCPService extends Service {
 
 ## Service Testing
 
-### Unit Testing
+### Testing with Real Runtime
 
-Test services in isolation:
+Test services with a real AgentRuntime instance. All tests use PGLite for in-memory database operations:
 
 ```typescript
+import { createTestRuntimeWithCleanup } from "./test-utils";
+
 describe("SearchService", () => {
   let service: SearchService;
-  let runtime: MockRuntime;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    runtime = createMockRuntime();
+    // Create real runtime with PGLite database
+    const result = await createTestRuntimeWithCleanup();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+    
     service = await SearchService.start(runtime);
   });
 
   afterEach(async () => {
     await service.stop();
+    await cleanup();
   });
 
   it("should cache search results", async () => {

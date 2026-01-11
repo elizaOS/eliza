@@ -3,6 +3,7 @@ import type {
   ActionResult,
   GenerateTextParams,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -68,7 +69,7 @@ const helloWorldAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: any,
+    _options: HandlerOptions | undefined,
     callback?: HandlerCallback,
     _responses?: Memory[],
   ): Promise<ActionResult> => {
@@ -175,7 +176,7 @@ export const starterPlugin: Plugin = {
 
       // Set all environment variables at once
       for (const [key, value] of Object.entries(validatedConfig)) {
-        if (value) process.env[key] = value;
+        if (value) process.env[key] = String(value);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {

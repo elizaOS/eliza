@@ -52,7 +52,25 @@ export class SessionManager {
     const env = process.env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL";
 
     // Create Stagehand configuration
-    const config: any = {
+    interface StagehandConfig {
+      env: "BROWSERBASE" | "LOCAL";
+      headless: boolean;
+      apiKey?: string;
+      projectId?: string;
+      browserbaseSessionCreateParams?: {
+        projectId: string;
+        browserSettings: {
+          blockAds: boolean;
+          viewport: { width: number; height: number };
+        };
+      };
+      modelName?: string;
+      modelBaseUrl?: string;
+      openaiApiKey?: string;
+      anthropicApiKey?: string;
+    }
+
+    const config: StagehandConfig = {
       env,
       headless: process.env.BROWSER_HEADLESS !== "false",
     };

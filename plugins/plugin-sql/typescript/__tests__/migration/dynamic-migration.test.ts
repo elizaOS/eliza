@@ -99,7 +99,7 @@ describe("Dynamic Migration Tests", () => {
       const tables = await db.execute(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
-      const tableNames = tables.rows.map((r: any) => r.table_name);
+      const tableNames = tables.rows.map((r) => (r as { table_name: string }).table_name);
       expect(tableNames).toContain("agents");
       expect(tableNames).toContain("memories");
     });
@@ -109,7 +109,7 @@ describe("Dynamic Migration Tests", () => {
       const tables = await db.execute(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
-      const tableNames = tables.rows.map((r: any) => r.table_name);
+      const tableNames = tables.rows.map((r) => (r as { table_name: string }).table_name);
       // Plugin tables are created in public schema
       expect(tableNames).toContain("hello_world");
       expect(tableNames).toContain("greetings");
@@ -176,7 +176,7 @@ describe("Dynamic Migration Tests", () => {
       const tables = await db.execute(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
-      const tableNames = tables.rows.map((r: any) => r.table_name);
+      const tableNames = tables.rows.map((r) => (r as { table_name: string }).table_name);
       expect(tableNames).toContain("users");
       expect(tableNames).toContain("posts");
       expect(tableNames).toContain("comments");

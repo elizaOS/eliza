@@ -181,9 +181,9 @@ export class ElizaCodeError extends Error {
       message: this.message,
       category: ErrorCategory[this.category],
       level: ErrorLevel[this.level],
-      resolution: this.resolution,
-      details: this.details,
-      code: this.code,
+      resolution: this.resolution ?? null,
+      details: this.details ?? null,
+      code: this.code ?? null,
       timestamp: this.timestamp.toISOString(),
       stack: this.stack ?? null,
     };
@@ -266,7 +266,7 @@ export function createCommandError(
       "Verify required dependencies are installed",
       "Check the stderr output for more details",
     ],
-    details: { command, exitCode, stderr },
+    details: { command, exitCode: exitCode ?? null, stderr },
     ...options,
   });
 }

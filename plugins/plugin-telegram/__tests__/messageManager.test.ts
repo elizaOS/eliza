@@ -32,7 +32,7 @@ vi.mock("telegraf", () => ({
     };
   },
   Markup: {
-    inlineKeyboard: vi.fn((buttons: any) => ({
+    inlineKeyboard: vi.fn((buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>>) => ({
       reply_markup: { inline_keyboard: buttons },
     })),
     button: {

@@ -11,6 +11,7 @@ import { PgDatabaseAdapter } from "../pg/adapter";
 import { PostgresConnectionManager } from "../pg/manager";
 import { PgliteDatabaseAdapter } from "../pglite/adapter";
 import { PGliteClientManager } from "../pglite/manager";
+import type { DrizzleDatabase } from "../types";
 import { mockCharacter } from "./fixtures";
 
 /**
@@ -253,7 +254,7 @@ export async function createIsolatedTestDatabase(
  * @returns Database connection, adapter, and cleanup function
  */
 export async function createIsolatedTestDatabaseForMigration(testName: string): Promise<{
-  db: any; // DrizzleDatabase
+  db: DrizzleDatabase;
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   cleanup: () => Promise<void>;
   testAgentId: UUID;
@@ -360,7 +361,7 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
  * @returns Database connection, adapter, cleanup function, and environment management
  */
 export async function createIsolatedTestDatabaseForSchemaEvolutionTests(testName: string): Promise<{
-  db: any; // DrizzleDatabase
+  db: DrizzleDatabase;
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   cleanup: () => Promise<void>;
   testAgentId: UUID;

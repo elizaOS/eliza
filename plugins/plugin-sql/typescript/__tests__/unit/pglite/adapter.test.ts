@@ -169,9 +169,10 @@ describe("PgliteDatabaseAdapter", () => {
       try {
         await shuttingDownAdapter.getAgent(agentId);
         expect.unreachable("Should have thrown");
-      } catch (error: any) {
-        expect(error.message).toBe("Database is shutting down - operation rejected");
-        expect(error).toBeInstanceOf(Error);
+      } catch (error: unknown) {
+        const err = error as Error;
+        expect(err.message).toBe("Database is shutting down - operation rejected");
+        expect(err).toBeInstanceOf(Error);
       }
     });
   });

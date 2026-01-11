@@ -93,8 +93,8 @@ describe("plugin actions: LLM-backed", () => {
       createMemory("How do I write a for loop?"),
     );
 
-    expect(result.success).toBe(true);
-    expect(result.text).toBe("answer");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toBe("answer");
     expect(calls).toHaveLength(1);
     expect(calls[0].model).toBe(ModelType.TEXT_LARGE);
     expect(calls[0].prompt).toContain("How do I write a for loop?");
@@ -107,8 +107,8 @@ describe("plugin actions: LLM-backed", () => {
       createMemory("plan how to add oauth"),
     );
 
-    expect(result.success).toBe(true);
-    expect(result.text).toBe("plan");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toBe("plan");
     expect(calls).toHaveLength(1);
     expect(calls[0].model).toBe(ModelType.TEXT_LARGE);
     expect(calls[0].prompt).toContain("## Plan");
@@ -123,8 +123,8 @@ describe("plugin actions: LLM-backed", () => {
       createMemory("plan how to add oauth"),
     );
 
-    expect(result.success).toBe(true);
-    expect(result.text).toBe("plan");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toBe("plan");
     expect(calls).toHaveLength(1);
     expect(calls[0].model).toBe(ModelType.TEXT_REASONING_LARGE);
     expect(calls[0].prompt).toContain("## Plan");
@@ -146,8 +146,8 @@ describe("plugin actions: LLM-backed", () => {
       createMemory("generate a quicksort function in typescript"),
     );
 
-    expect(result.success).toBe(true);
-    expect(result.text).toBe("generated");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toBe("generated");
     expect(calls).toHaveLength(1);
     expect(calls[0].model).toBe(ModelType.TEXT_LARGE);
     expect(calls[0].prompt).toContain("quicksort");
@@ -166,8 +166,8 @@ describe("plugin actions: LLM-backed", () => {
       const { runtime, calls } = createMockRuntime("ok");
       const result = await action.handler(runtime, createMemory(input));
 
-      expect(result.success).toBe(true);
-      expect(result.text).toBe("ok");
+      expect(result!.success).toBe(true);
+      expect(result!.text).toBe("ok");
       expect(calls).toHaveLength(1);
       expect(calls[0].model).toBe(ModelType.TEXT_LARGE);
       expect(calls[0].prompt).toContain("sample.ts");
@@ -182,7 +182,7 @@ describe("plugin actions: LLM-backed", () => {
       createMemory("explain does-not-exist.ts"),
     );
 
-    expect(result.success).toBe(false);
-    expect(result.text.toLowerCase()).toContain("file not found");
+    expect(result!.success).toBe(false);
+    expect(result!.text!.toLowerCase()).toContain("file not found");
   });
 });

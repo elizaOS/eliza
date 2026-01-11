@@ -31,6 +31,8 @@ export interface ContactPreferences {
   contactFrequency?: "daily" | "weekly" | "monthly" | "quarterly";
   doNotDisturb?: boolean;
   notes?: string;
+  /** Index signature for metadata compatibility */
+  [key: string]: string | boolean | undefined;
 }
 
 export interface ContactInfo {
@@ -41,6 +43,32 @@ export interface ContactInfo {
   customFields: Record<string, unknown>;
   privacyLevel: "public" | "private" | "restricted";
   lastModified: string;
+}
+
+/** Helper to convert ContactInfo to Metadata for storage */
+function contactInfoToMetadata(contactInfo: ContactInfo): Metadata {
+  return {
+    entityId: contactInfo.entityId,
+    categories: contactInfo.categories,
+    tags: contactInfo.tags,
+    preferences: contactInfo.preferences,
+    customFields: contactInfo.customFields,
+    privacyLevel: contactInfo.privacyLevel,
+    lastModified: contactInfo.lastModified,
+  };
+}
+
+/** Helper to convert Metadata back to ContactInfo */
+function metadataToContactInfo(data: Metadata): ContactInfo {
+  return {
+    entityId: data.entityId as UUID,
+    categories: data.categories as string[],
+    tags: data.tags as string[],
+    preferences: data.preferences as ContactPreferences,
+    customFields: (data.customFields as Record<string, unknown>) ?? {},
+    privacyLevel: data.privacyLevel as "public" | "private" | "restricted",
+    lastModified: data.lastModified as string,
+  };
 }
 
 export interface RelationshipAnalytics {
@@ -199,7 +227,7 @@ export class RolodexService extends Service {
       );
 
       if (contactComponent) {
-        const contactInfo = contactComponent.data as unknown as ContactInfo;
+        const contactInfo = metadataToContactInfo(contactComponent.data);
         this.contactInfoCache.set(entityId, contactInfo);
       }
     }
@@ -235,7 +263,7 @@ export class RolodexService extends Service {
       roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
       worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
       sourceEntityId: this.runtime.agentId,
-      data: contactInfo as unknown as Metadata,
+      data: contactInfoToMetadata(contactInfo),
       createdAt: Date.now(),
     });
 
@@ -289,7 +317,7 @@ export class RolodexService extends Service {
     if (contactComponent) {
       await this.runtime.updateComponent({
         ...contactComponent,
-        data: updated as unknown as Metadata,
+        data: contactInfoToMetadata(updated),
       });
     }
 
@@ -315,7 +343,7 @@ export class RolodexService extends Service {
     );
 
     if (contactComponent) {
-      const contactInfo = contactComponent.data as unknown as ContactInfo;
+      const contactInfo = metadataToContactInfo(contactComponent.data);
       this.contactInfoCache.set(entityId, contactInfo);
       return contactInfo;
     }
@@ -534,7 +562,7 @@ export class RolodexService extends Service {
           strength,
           lastInteractionAt,
           metadata: relationship.metadata,
-        } as unknown as Metadata,
+        } as Metadata,
         createdAt: Date.now(),
       };
       await this.runtime.createComponent(relationshipComponent);

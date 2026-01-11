@@ -394,7 +394,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
    * Posts content to Twitter
    * @param {string} text The tweet text to post
    * @param {MediaData[]} mediaData Optional media to attach to the tweet
-   * @returns {Promise<any>} The result from the Twitter API
+   * @returns {Promise<TweetResponse | null>} The result from the Twitter API
    */
   private async postToTwitter(
     text: string,

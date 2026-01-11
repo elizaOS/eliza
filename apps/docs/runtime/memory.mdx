@@ -60,12 +60,12 @@ interface Memory {
   agentId?: UUID;
   content: {
     text: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   embedding?: number[];
   createdAt: Date;
   updatedAt?: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 ```
 
@@ -78,10 +78,10 @@ State represents the agent's current understanding of context:
 ```typescript
 interface State {
   // Key-value pairs for template access
-  values: Record<string, any>;
+  values: Record<string, unknown>;
 
   // Structured data from providers
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 
   // Concatenated textual context
   text: string;

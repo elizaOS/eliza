@@ -26,8 +26,13 @@ import type {
   GitHubRepository,
   GitHubReview,
   GitHubUser,
+  IssueState,
+  IssueStateReason,
   ListIssuesParams,
   ListPullRequestsParams,
+  MergeableState,
+  PullRequestState,
+  ReviewState,
   MergePullRequestParams,
   RepositoryRef,
   UpdateIssueParams,
@@ -852,75 +857,75 @@ export class GitHubService extends Service {
   // Mapping Methods
   // ===========================================================================
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapRepository(data: any): GitHubRepository {
+  private mapRepository(data: unknown): GitHubRepository {
+    const d = data as Record<string, unknown>;
+    const license = d.license as Record<string, unknown> | null;
     return {
-      id: data.id,
-      name: data.name,
-      fullName: data.full_name,
-      owner: this.mapUser(data.owner),
-      description: data.description,
-      private: data.private,
-      fork: data.fork,
-      defaultBranch: data.default_branch,
-      language: data.language,
-      stargazersCount: data.stargazers_count,
-      forksCount: data.forks_count,
-      openIssuesCount: data.open_issues_count,
-      watchersCount: data.watchers_count,
-      htmlUrl: data.html_url,
-      cloneUrl: data.clone_url,
-      sshUrl: data.ssh_url,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      pushedAt: data.pushed_at,
-      topics: data.topics ?? [],
-      license: data.license
+      id: d.id as number,
+      name: d.name as string,
+      fullName: d.full_name as string,
+      owner: this.mapUser(d.owner),
+      description: d.description as string | null,
+      private: d.private as boolean,
+      fork: d.fork as boolean,
+      defaultBranch: d.default_branch as string,
+      language: d.language as string | null,
+      stargazersCount: d.stargazers_count as number,
+      forksCount: d.forks_count as number,
+      openIssuesCount: d.open_issues_count as number,
+      watchersCount: d.watchers_count as number,
+      htmlUrl: d.html_url as string,
+      cloneUrl: d.clone_url as string,
+      sshUrl: d.ssh_url as string,
+      createdAt: d.created_at as string,
+      updatedAt: d.updated_at as string,
+      pushedAt: d.pushed_at as string,
+      topics: (d.topics as string[]) ?? [],
+      license: license
         ? {
-            key: data.license.key,
-            name: data.license.name,
-            spdxId: data.license.spdx_id,
-            url: data.license.url,
+            key: license.key as string,
+            name: license.name as string,
+            spdxId: license.spdx_id as string,
+            url: license.url as string | null,
           }
         : null,
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapUser(data: any): GitHubUser {
+  private mapUser(data: unknown): GitHubUser {
+    const d = data as Record<string, unknown>;
     return {
-      id: data.id,
-      login: data.login,
-      name: data.name ?? null,
-      avatarUrl: data.avatar_url,
-      htmlUrl: data.html_url,
-      type: data.type,
+      id: d.id as number,
+      login: d.login as string,
+      name: (d.name as string | null) ?? null,
+      avatarUrl: d.avatar_url as string,
+      htmlUrl: d.html_url as string,
+      type: d.type as "User" | "Organization" | "Bot",
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapIssue(data: any): GitHubIssue {
+  private mapIssue(data: unknown): GitHubIssue {
+    const d = data as Record<string, unknown>;
     return {
-      number: data.number,
-      title: data.title,
-      body: data.body,
-      state: data.state,
-      stateReason: data.state_reason ?? null,
-      user: this.mapUser(data.user),
-      assignees: (data.assignees ?? []).map((a: unknown) => this.mapUser(a)),
-      labels: (data.labels ?? []).map((l: unknown) => this.mapLabel(l)),
-      milestone: data.milestone ? this.mapMilestone(data.milestone) : null,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      closedAt: data.closed_at,
-      htmlUrl: data.html_url,
-      comments: data.comments,
-      isPullRequest: !!data.pull_request,
+      number: d.number as number,
+      title: d.title as string,
+      body: d.body as string | null,
+      state: d.state as IssueState,
+      stateReason: (d.state_reason as IssueStateReason | null) ?? null,
+      user: this.mapUser(d.user),
+      assignees: ((d.assignees as unknown[]) ?? []).map((a: unknown) => this.mapUser(a)),
+      labels: ((d.labels as unknown[]) ?? []).map((l: unknown) => this.mapLabel(l)),
+      milestone: d.milestone ? this.mapMilestone(d.milestone) : null,
+      createdAt: d.created_at as string,
+      updatedAt: d.updated_at as string,
+      closedAt: d.closed_at as string | null,
+      htmlUrl: d.html_url as string,
+      comments: d.comments as number,
+      isPullRequest: !!d.pull_request,
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapLabel(data: any): {
+  private mapLabel(data: unknown): {
     id: number;
     name: string;
     color: string;
@@ -936,17 +941,17 @@ export class GitHubService extends Service {
         default: false,
       };
     }
+    const d = data as Record<string, unknown>;
     return {
-      id: data.id,
-      name: data.name,
-      color: data.color,
-      description: data.description,
-      default: data.default,
+      id: d.id as number,
+      name: d.name as string,
+      color: d.color as string,
+      description: d.description as string | null,
+      default: d.default as boolean,
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapMilestone(data: any): {
+  private mapMilestone(data: unknown): {
     number: number;
     title: string;
     description: string | null;
@@ -958,86 +963,95 @@ export class GitHubService extends Service {
     openIssues: number;
     closedIssues: number;
   } {
+    const d = data as Record<string, unknown>;
     return {
-      number: data.number,
-      title: data.title,
-      description: data.description,
-      state: data.state,
-      dueOn: data.due_on,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      closedAt: data.closed_at,
-      openIssues: data.open_issues,
-      closedIssues: data.closed_issues,
+      number: d.number as number,
+      title: d.title as string,
+      description: d.description as string | null,
+      state: d.state as "open" | "closed",
+      dueOn: d.due_on as string | null,
+      createdAt: d.created_at as string,
+      updatedAt: d.updated_at as string,
+      closedAt: d.closed_at as string | null,
+      openIssues: d.open_issues as number,
+      closedIssues: d.closed_issues as number,
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapPullRequest(data: any): GitHubPullRequest {
+  private mapPullRequest(data: unknown): GitHubPullRequest {
+    const d = data as Record<string, unknown>;
+    const head = d.head as Record<string, unknown>;
+    const base = d.base as Record<string, unknown>;
+    const headRepo = head.repo as Record<string, unknown> | null;
+    const baseRepo = base.repo as Record<string, unknown> | null;
+    const headRepoOwner = headRepo?.owner as Record<string, unknown> | undefined;
+    const baseRepoOwner = baseRepo?.owner as Record<string, unknown> | undefined;
     return {
-      number: data.number,
-      title: data.title,
-      body: data.body,
-      state: data.state,
-      draft: data.draft ?? false,
-      merged: data.merged ?? false,
-      mergeable: data.mergeable,
-      mergeableState: data.mergeable_state ?? "unknown",
-      user: this.mapUser(data.user),
+      number: d.number as number,
+      title: d.title as string,
+      body: d.body as string | null,
+      state: d.state as PullRequestState,
+      draft: (d.draft as boolean) ?? false,
+      merged: (d.merged as boolean) ?? false,
+      mergeable: d.mergeable as boolean | null,
+      mergeableState: (d.mergeable_state as MergeableState) ?? "unknown",
+      user: this.mapUser(d.user),
       head: {
-        ref: data.head.ref,
-        label: data.head.label,
-        sha: data.head.sha,
-        repo: data.head.repo
-          ? { owner: data.head.repo.owner.login, repo: data.head.repo.name }
+        ref: head.ref as string,
+        label: head.label as string,
+        sha: head.sha as string,
+        repo: headRepo
+          ? { owner: headRepoOwner?.login as string, repo: headRepo.name as string }
           : null,
       },
       base: {
-        ref: data.base.ref,
-        label: data.base.label,
-        sha: data.base.sha,
-        repo: data.base.repo
-          ? { owner: data.base.repo.owner.login, repo: data.base.repo.name }
+        ref: base.ref as string,
+        label: base.label as string,
+        sha: base.sha as string,
+        repo: baseRepo
+          ? { owner: baseRepoOwner?.login as string, repo: baseRepo.name as string }
           : null,
       },
-      assignees: (data.assignees ?? []).map((a: unknown) => this.mapUser(a)),
-      requestedReviewers: (data.requested_reviewers ?? []).map((r: unknown) => this.mapUser(r)),
-      labels: (data.labels ?? []).map((l: unknown) => this.mapLabel(l)),
-      milestone: data.milestone ? this.mapMilestone(data.milestone) : null,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      closedAt: data.closed_at,
-      mergedAt: data.merged_at,
-      htmlUrl: data.html_url,
-      commits: data.commits ?? 0,
-      additions: data.additions ?? 0,
-      deletions: data.deletions ?? 0,
-      changedFiles: data.changed_files ?? 0,
+      assignees: ((d.assignees as unknown[]) ?? []).map((a: unknown) => this.mapUser(a)),
+      requestedReviewers: ((d.requested_reviewers as unknown[]) ?? []).map((r: unknown) =>
+        this.mapUser(r)
+      ),
+      labels: ((d.labels as unknown[]) ?? []).map((l: unknown) => this.mapLabel(l)),
+      milestone: d.milestone ? this.mapMilestone(d.milestone) : null,
+      createdAt: d.created_at as string,
+      updatedAt: d.updated_at as string,
+      closedAt: d.closed_at as string | null,
+      mergedAt: d.merged_at as string | null,
+      htmlUrl: d.html_url as string,
+      commits: (d.commits as number) ?? 0,
+      additions: (d.additions as number) ?? 0,
+      deletions: (d.deletions as number) ?? 0,
+      changedFiles: (d.changed_files as number) ?? 0,
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapReview(data: any): GitHubReview {
+  private mapReview(data: unknown): GitHubReview {
+    const d = data as Record<string, unknown>;
     return {
-      id: data.id,
-      user: this.mapUser(data.user),
-      body: data.body,
-      state: data.state,
-      commitId: data.commit_id,
-      htmlUrl: data.html_url,
-      submittedAt: data.submitted_at,
+      id: d.id as number,
+      user: this.mapUser(d.user),
+      body: d.body as string | null,
+      state: d.state as ReviewState,
+      commitId: d.commit_id as string,
+      htmlUrl: d.html_url as string,
+      submittedAt: d.submitted_at as string,
     };
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapComment(data: any): GitHubComment {
+  private mapComment(data: unknown): GitHubComment {
+    const d = data as Record<string, unknown>;
     return {
-      id: data.id,
-      body: data.body,
-      user: this.mapUser(data.user),
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      htmlUrl: data.html_url,
+      id: d.id as number,
+      body: d.body as string,
+      user: this.mapUser(d.user),
+      createdAt: d.created_at as string,
+      updatedAt: d.updated_at as string,
+      htmlUrl: d.html_url as string,
     };
   }
 }

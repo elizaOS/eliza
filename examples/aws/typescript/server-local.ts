@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
-import { handler } from "./handler-standalone";
+import { handler } from "./handler";
 
 // Load .env from root if not already set
 function loadEnv(): void {
@@ -127,6 +127,10 @@ const server = Bun.serve({
   async fetch(request: Request): Promise<Response> {
     const event = await requestToEvent(request);
     const result = await handler(event, mockContext);
+
+    if (typeof result === "string") {
+      return new Response(result, { status: 200 });
+    }
 
     return new Response(result.body, {
       status: result.statusCode,

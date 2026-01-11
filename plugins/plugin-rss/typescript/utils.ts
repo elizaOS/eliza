@@ -2,7 +2,7 @@
  * RSS Plugin Utility Functions
  */
 
-import type { ChannelType, Content, IAgentRuntime, Memory } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 
 /**
@@ -16,11 +16,9 @@ export function createMessageReply(
   return {
     text: reply,
     attachments: [],
-    source: ((message as unknown as Record<string, unknown>).source as string) || "unknown",
-    channelType: (message as unknown as Record<string, unknown>).channelType as
-      | ChannelType
-      | undefined,
-    inReplyTo: createUniqueUuid(runtime, message.id || ""),
+    source: message.content.source ?? "unknown",
+    channelType: message.content.channelType,
+    inReplyTo: createUniqueUuid(runtime, message.id ?? ""),
   };
 }
 

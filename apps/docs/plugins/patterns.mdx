@@ -47,7 +47,7 @@ The `HandlerCallback` provides a mechanism for actions to send immediate feedbac
 ```typescript
 export type HandlerCallback = (
   response: Content,
-  files?: any,
+  files?: Attachment[],
 ) => Promise<Memory[]>;
 ```
 

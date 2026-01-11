@@ -51,19 +51,19 @@ jobs:
             **🚨 CRITICAL CHECKS:**
             - Security: hardcoded keys, SQL injection, XSS
             - No tests = REJECT (untested code is broken)
-            - Wrong tools: npm/pnpm/yarn/jest/vitest = REJECT
+            - Wrong tools: npm/pnpm/yarn/jest = REJECT (use vitest)
             - Breaking changes without migration = REJECT
 
             **✅ REQUIRED:**
             - TypeScript types (no 'any')
-            - Tests with bun test ONLY
+            - Tests with vitest (via bun run test)
             - Use @elizaos/core imports (not packages/typescript)
             - Functional code (no classes)
             - Error handling
 
             **📋 VERIFY:**
             - All new code has tests
-            - bun commands only in package.json
+            - Use bun for scripts, vitest for testing
             - No circular dependencies
             - Follows existing patterns
             - Docs updated if needed

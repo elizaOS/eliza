@@ -148,7 +148,7 @@ Now we know exactly what to build and how to call it, so let's start developing 
     **Add the fal.ai import (from the fal.ai docs):**
     ```typescript src/actions/generateVideo.ts
     import {
-      Action, ActionResult, IAgentRuntime, Memory, HandlerCallback, State, logger
+      Action, ActionResult, IAgentRuntime, Memory, HandlerCallback, HandlerOptions, State, logger
     } from '@elizaos/core';
     import { fal } from '@fal-ai/client'; // [!code ++]
     ```
@@ -202,8 +202,8 @@ Now we know exactly what to build and how to call it, so let's start developing 
       handler: async ( // [!code ++]
         runtime: IAgentRuntime, // [!code ++]
         message: Memory, // [!code ++]
-        state: State | undefined, // [!code ++]
-        options: any, // [!code ++]
+        _state: State | undefined, // [!code ++]
+        _options: HandlerOptions | undefined, // [!code ++]
         callback?: HandlerCallback // [!code ++]
       ): Promise<ActionResult> => { // [!code ++]
         try { // [!code ++]
@@ -329,16 +329,32 @@ Plugins come default with component and E2E tests. Let's add custom component te
     Update `plugin-fal-ai/src/__tests__/plugin.test.ts`:
     
     ```typescript src/__tests__/plugin.test.ts
-    import { describe, it, expect } from 'vitest';
+    import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+    import type { IAgentRuntime, Memory } from '@elizaos/core'; // [!code ++]
     import { falaiPlugin, generateVideoAction } from '../index'; // [!code ++]
+    import { createTestRuntime, cleanupRuntime } from './test-utils'; // [!code ++]
 
     describe('FAL AI Plugin', () => {
-      it('action validates with FAL_KEY', async () => { // [!code ++]
-        const mockRuntime = { // [!code ++]
-          getSetting: (key: string) => key === 'FAL_KEY' ? 'test-key' : null // [!code ++]
-        }; // [!code ++]
+      let runtime: IAgentRuntime; // [!code ++]
 
-        const isValid = await generateVideoAction.validate(mockRuntime as any, {} as any); // [!code ++]
+      beforeEach(async () => { // [!code ++]
+        runtime = await createTestRuntime(); // [!code ++]
+      }); // [!code ++]
+
+      afterEach(async () => { // [!code ++]
+        await cleanupRuntime(runtime); // [!code ++]
+      }); // [!code ++]
+
+      it('action validates with FAL_KEY', async () => { // [!code ++]
+        // Set FAL_KEY in test runtime
+        runtime.setSetting('FAL_KEY', 'test-key'); // [!code ++]
+
+        const message = { content: { text: 'test' } } as Memory; // [!code ++]
+
+        const isValid = await generateVideoAction.validate( // [!code ++]
+          runtime, // [!code ++]
+          message // [!code ++]
+        ); // [!code ++]
         expect(isValid).toBe(true); // [!code ++]
       }); // [!code ++]
     });

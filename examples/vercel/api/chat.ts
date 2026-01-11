@@ -14,8 +14,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-// @ts-expect-error - plugin-sql types export issue
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 export const config = {
@@ -179,7 +178,7 @@ export default async function handler(request: Request): Promise<Response> {
     };
 
     const response = await handleChat(chatRequest);
-    return jsonResponse(200, response as unknown as Record<string, unknown>);
+    return jsonResponse(200, response);
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown error";
     console.error("Chat error:", error);

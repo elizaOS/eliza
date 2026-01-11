@@ -515,7 +515,7 @@ class SocketIOService extends Service {
     });
   }
 
-  private async handleRoomJoin(socket: Socket, payload: any) {
+  private async handleRoomJoin(socket: Socket, payload: RoomJoinPayload) {
     const { roomId, entityId } = payload;
 
     // Join the room
@@ -530,7 +530,7 @@ class SocketIOService extends Service {
     console.log(`User ${entityId} joined room ${roomId}`);
   }
 
-  private async handleMessage(socket: Socket, payload: any) {
+  private async handleMessage(socket: Socket, payload: MessagePayload) {
     const { roomId, message, senderId } = payload;
 
     // Process message through runtime
