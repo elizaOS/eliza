@@ -1,0 +1,65 @@
+{
+  "name": "@elizaos/plugin-blockrun",
+  "version": "1.7.1-alpha.14",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "BlockRun x402 pay-per-request AI plugin for ElizaOS - enables agents to make micropayments for AI API calls on Base",
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "blockrun",
+    "x402",
+    "micropayments",
+    "ai",
+    "base",
+    "usdc"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "package.json",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@blockrun/llm": "git+https://github.com/BlockRunAI/blockrun-llm-ts.git",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@elizaos/config": "workspace:*",
+    "@types/node": "^24.10.1",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
