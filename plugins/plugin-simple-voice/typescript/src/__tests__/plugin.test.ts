@@ -1,7 +1,7 @@
-import { logger } from "@elizaos/core";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SamTTSService, simpleVoicePlugin } from "../index";
-import { createMockMemory, createMockRuntime } from "./test-utils";
+import { cleanupTestRuntime, createTestMemory, createTestRuntime } from "./test-utils";
 
 beforeAll(() => {
   vi.spyOn(logger, "info");
@@ -27,38 +27,53 @@ describe("SimpleVoicePlugin", () => {
 });
 
 describe("SayAloudAction", () => {
+  let runtime: IAgentRuntime;
   const action = simpleVoicePlugin.actions?.[0];
 
   if (!action) {
     throw new Error("Action not found");
   }
 
+  afterEach(async () => {
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
+  });
+
   it("validates trigger phrases", async () => {
-    const runtime = createMockRuntime();
+    runtime = await createTestRuntime();
 
     const triggers = ["say aloud hello", "speak this text", "voice command"];
     for (const text of triggers) {
-      expect(await action.validate?.(runtime, createMockMemory(text))).toBe(true);
+      expect(await action.validate?.(runtime, createTestMemory(text))).toBe(true);
     }
   });
 
   it("rejects non-trigger phrases", async () => {
-    const runtime = createMockRuntime();
+    runtime = await createTestRuntime();
 
     const nonTriggers = ["hello world", "what is the weather"];
     for (const text of nonTriggers) {
-      expect(await action.validate?.(runtime, createMockMemory(text))).toBe(false);
+      expect(await action.validate?.(runtime, createTestMemory(text))).toBe(false);
     }
   });
 });
 
 describe("SamTTSService", () => {
+  let runtime: IAgentRuntime;
+
+  afterEach(async () => {
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
+  });
+
   it("has correct service type", () => {
     expect(SamTTSService.serviceType).toBe("SAM_TTS");
   });
 
-  it("generates audio from text", () => {
-    const runtime = createMockRuntime();
+  it("generates audio from text", async () => {
+    runtime = await createTestRuntime();
     const service = new SamTTSService(runtime);
 
     const audio = service.generateAudio("Hello");
@@ -66,8 +81,8 @@ describe("SamTTSService", () => {
     expect(audio.length).toBeGreaterThan(0);
   });
 
-  it("applies voice options", () => {
-    const runtime = createMockRuntime();
+  it("applies voice options", async () => {
+    runtime = await createTestRuntime();
     const service = new SamTTSService(runtime);
 
     const slow = service.generateAudio("Test", {
@@ -87,8 +102,8 @@ describe("SamTTSService", () => {
     expect(slow.length).not.toBe(fast.length);
   });
 
-  it("creates valid WAV buffer", () => {
-    const runtime = createMockRuntime();
+  it("creates valid WAV buffer", async () => {
+    runtime = await createTestRuntime();
     const service = new SamTTSService(runtime);
 
     const audio = service.generateAudio("Test");

@@ -4,7 +4,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type {
   SubAgent,
   SubAgentContext,
@@ -12,63 +12,10 @@ import type {
 } from "../lib/sub-agents/types.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function createMockRuntime(): IAgentRuntime {
-  const tasks = new Map<string, CodeTask>();
-  let taskCounter = 0;
-  const agentId = stringToUuid("test-agent");
-
-  const runtime: Partial<IAgentRuntime> = {
-    agentId,
-
-    createTask: async (task: Task) => {
-      taskCounter += 1;
-      const id = stringToUuid(`task-${taskCounter}`);
-      const fullTask: CodeTask = {
-        id,
-        name: task.name,
-        description: task.description,
-        tags: task.tags,
-        roomId: task.roomId,
-        worldId: task.worldId,
-        metadata: (task.metadata ?? {}) as CodeTaskMetadata,
-      };
-      tasks.set(id, fullTask);
-      return id;
-    },
-
-    getTask: async (id: UUID) => tasks.get(id) ?? null,
-
-    getTasks: async ({ tags }: { tags?: string[] }) => {
-      const allTasks = Array.from(tasks.values());
-      if (!tags || tags.length === 0) return allTasks;
-      return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    },
-
-    updateTask: async (id: UUID, updates: Partial<Task>) => {
-      const task = tasks.get(id);
-      if (!task) return;
-      if (typeof updates.name === "string") task.name = updates.name;
-      if (typeof updates.description === "string")
-        task.description = updates.description;
-      if (Array.isArray(updates.tags)) task.tags = updates.tags;
-      if (updates.roomId) task.roomId = updates.roomId;
-      if (updates.worldId) task.worldId = updates.worldId;
-      if (updates.metadata) {
-        task.metadata = { ...task.metadata, ...updates.metadata };
-      }
-    },
-
-    deleteTask: async (id: UUID) => {
-      tasks.delete(id);
-    },
-  };
-
-  return runtime as IAgentRuntime;
 }
 
 function createNoopTools(): SubAgentTool[] {
@@ -86,10 +33,65 @@ describe("CodeTaskService execution", () => {
   let runtime: IAgentRuntime;
   let service: CodeTaskService;
 
+  // In-memory task store for testing
+  let tasks: Map<string, CodeTask>;
+  let taskCounter: number;
+
   beforeEach(async () => {
     delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
-    runtime = createMockRuntime();
+    runtime = await createTestRuntime();
+    tasks = new Map();
+    taskCounter = 0;
+
+    // Spy on runtime methods with test-specific implementations
+    vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
+      taskCounter += 1;
+      const id = stringToUuid(`task-${taskCounter}`);
+      const fullTask: CodeTask = {
+        id,
+        name: task.name,
+        description: task.description,
+        tags: task.tags,
+        roomId: task.roomId,
+        worldId: task.worldId,
+        metadata: (task.metadata ?? {}) as CodeTaskMetadata,
+      };
+      tasks.set(id, fullTask);
+      return id;
+    });
+
+    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
+
+    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
+      const allTasks = Array.from(tasks.values());
+      if (!tags || tags.length === 0) return allTasks;
+      return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
+    });
+
+    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
+      const task = tasks.get(id);
+      if (!task) return;
+      if (typeof updates.name === "string") task.name = updates.name;
+      if (typeof updates.description === "string")
+        task.description = updates.description;
+      if (Array.isArray(updates.tags)) task.tags = updates.tags;
+      if (updates.roomId) task.roomId = updates.roomId;
+      if (updates.worldId) task.worldId = updates.worldId;
+      if (updates.metadata) {
+        task.metadata = { ...task.metadata, ...updates.metadata };
+      }
+    });
+
+    vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
+      tasks.delete(id);
+    });
+
     service = (await CodeTaskService.start(runtime)) as CodeTaskService;
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   test("startTaskExecution sets running and completes", async () => {

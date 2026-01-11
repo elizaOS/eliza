@@ -8,7 +8,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   pauseTaskAction,
   resumeTaskAction,
@@ -16,6 +16,7 @@ import {
 import { actionsProvider } from "../plugin/providers/actions.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
 function createMemory(text: string, roomId?: UUID): Memory {
   return {
@@ -24,40 +25,41 @@ function createMemory(text: string, roomId?: UUID): Memory {
   } as Memory;
 }
 
-function createMockRuntimeWithService(actions: IAgentRuntime["actions"]): {
-  runtime: IAgentRuntime;
-  setService: (service: CodeTaskService) => void;
-  roomId: UUID;
-} {
-  const tasks = new Map<string, CodeTask>();
-  const rooms = new Map<string, Room>();
-  let taskCounter = 0;
-  const agentId = stringToUuid("test-agent");
-
+describe("ACTIONS provider includes task control actions", () => {
+  let runtime: IAgentRuntime;
+  let service: CodeTaskService;
+  let tasks: Map<string, CodeTask>;
+  let rooms: Map<string, Room>;
+  let taskCounter: number;
+  let serviceRef: CodeTaskService | null;
   const roomId = stringToUuid("test-room");
   const worldId = stringToUuid("test-world");
-  rooms.set(roomId, {
-    id: roomId,
-    source: "test",
-    type: ChannelType.DM,
-    worldId,
-    name: "Test Room",
-  });
 
-  let serviceRef: CodeTaskService | null = null;
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+    tasks = new Map();
+    rooms = new Map();
+    taskCounter = 0;
+    serviceRef = null;
 
-  const runtime: Partial<IAgentRuntime> = {
-    agentId,
-    actions,
+    // Set up default room
+    rooms.set(roomId, {
+      id: roomId,
+      source: "test",
+      type: ChannelType.DM,
+      worldId,
+      name: "Test Room",
+    });
 
-    getRoom: async (id: UUID) => rooms.get(id) ?? null,
+    // Spy on runtime methods
+    vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
 
-    getService: (type: string) => {
+    vi.spyOn(runtime, "getService").mockImplementation((type: string) => {
       if (type === "CODE_TASK") return serviceRef;
       return null;
-    },
+    });
 
-    createTask: async (task: Task) => {
+    vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
       taskCounter += 1;
       const id = stringToUuid(`task-${taskCounter}`);
       const fullTask: CodeTask = {
@@ -71,50 +73,44 @@ function createMockRuntimeWithService(actions: IAgentRuntime["actions"]): {
       };
       tasks.set(id, fullTask);
       return id;
-    },
+    });
 
-    getTask: async (id: UUID) => tasks.get(id) ?? null,
+    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
 
-    getTasks: async ({ tags }: { tags?: string[] }) => {
+    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
       const allTasks = Array.from(tasks.values());
       if (!tags || tags.length === 0) return allTasks;
       return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    },
+    });
 
-    updateTask: async (id: UUID, updates: Partial<Task>) => {
+    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
       const task = tasks.get(id);
       if (!task) return;
       if (updates.metadata)
         task.metadata = { ...task.metadata, ...updates.metadata };
-    },
+    });
 
-    deleteTask: async (id: UUID) => {
+    vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);
-    },
+    });
 
-    useModel: async () => {
+    vi.spyOn(runtime, "useModel").mockImplementation(async () => {
       throw new Error("useModel should not be called in this test");
-    },
-  };
+    });
 
-  return {
-    runtime: runtime as IAgentRuntime,
-    setService: (svc) => {
-      serviceRef = svc;
-    },
-    roomId,
-  };
-}
+    // Set up actions on runtime
+    runtime.actions = [pauseTaskAction, resumeTaskAction];
 
-describe("ACTIONS provider includes task control actions", () => {
+    service = (await CodeTaskService.start(runtime)) as CodeTaskService;
+    serviceRef = service;
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
+  });
+
   test("stop task -> PAUSE_TASK appears in possible actions", async () => {
-    const { runtime, setService, roomId } = createMockRuntimeWithService([
-      pauseTaskAction,
-      resumeTaskAction,
-    ]);
-    const service = (await CodeTaskService.start(runtime)) as CodeTaskService;
-    setService(service);
-
     const msg = createMemory("stop task runner", roomId);
     const res = await actionsProvider.get(runtime, msg, {} as State);
     expect(res.data.actionsData.map((a) => a.name)).toContain("PAUSE_TASK");
@@ -122,12 +118,6 @@ describe("ACTIONS provider includes task control actions", () => {
 
   test("restart task -> RESUME_TASK appears in possible actions", async () => {
     process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
-    const { runtime, setService, roomId } = createMockRuntimeWithService([
-      pauseTaskAction,
-      resumeTaskAction,
-    ]);
-    const service = (await CodeTaskService.start(runtime)) as CodeTaskService;
-    setService(service);
 
     await service.createCodeTask("Runner", "desc", roomId);
 
