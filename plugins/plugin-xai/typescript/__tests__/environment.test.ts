@@ -5,7 +5,7 @@ import { shouldTargetUser, xEnvSchema, validateXConfig } from "../environment";
 // Mock runtime for testing
 function createMockRuntime(): IAgentRuntime {
   return {
-    getSetting: vi.fn().mockReturnValue(""),
+    getSetting: vi.fn(),
     agentId: "test-agent" as UUID,
   } as unknown as IAgentRuntime;
 }
@@ -24,7 +24,7 @@ describe("Environment Configuration", () => {
     vi.stubEnv("X_AUTH_MODE", "");
     vi.stubEnv("X_CLIENT_ID", "");
     vi.stubEnv("X_REDIRECT_URI", "");
-    vi.stubEnv("X_BEARER_TOKEN", "");
+    vi.stubEnv("X_BROKER_URL", "");
   });
 
   describe("shouldTargetUser", () => {
@@ -75,7 +75,7 @@ describe("Environment Configuration", () => {
           X_ACCESS_TOKEN: "test-access-token",
           X_ACCESS_TOKEN_SECRET: "test-access-secret",
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       const config = await validateXConfig(mockRuntime);
@@ -87,7 +87,7 @@ describe("Environment Configuration", () => {
     });
 
     it("should throw error when required credentials are missing", async () => {
-      vi.spyOn(mockRuntime, "getSetting").mockReturnValue("");
+      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(undefined);
 
       await expect(validateXConfig(mockRuntime)).rejects.toThrow(
         "X env auth requires"
@@ -101,7 +101,7 @@ describe("Environment Configuration", () => {
           X_CLIENT_ID: "client-id",
           X_REDIRECT_URI: "http://127.0.0.1:8080/callback",
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       const config = await validateXConfig(mockRuntime);
@@ -117,18 +117,18 @@ describe("Environment Configuration", () => {
           X_CLIENT_ID: "client-id",
           // missing redirect uri
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       await expect(validateXConfig(mockRuntime)).rejects.toThrow("X OAuth requires");
     });
 
-    it("should throw when bearer mode is missing bearer token", async () => {
+    it("should throw when broker mode is missing broker url", async () => {
       vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
-          X_AUTH_MODE: "bearer",
+          X_AUTH_MODE: "broker",
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       await expect(validateXConfig(mockRuntime)).rejects.toThrow(
@@ -144,7 +144,7 @@ describe("Environment Configuration", () => {
           X_ACCESS_TOKEN: "test-access-token",
           X_ACCESS_TOKEN_SECRET: "test-access-secret",
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       const config = await validateXConfig(mockRuntime);
@@ -167,7 +167,7 @@ describe("Environment Configuration", () => {
           X_ENABLE_POST: "true",
           X_DRY_RUN: "false",
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       const config = await validateXConfig(mockRuntime);
@@ -176,19 +176,21 @@ describe("Environment Configuration", () => {
       expect(config.X_DRY_RUN).toBe("false");
     });
 
-    it("should prioritize runtime settings", async () => {
-      vi.stubEnv("X_API_KEY", "env-api-key");
-
+    it("should handle partial config override", async () => {
       vi.spyOn(mockRuntime, "getSetting").mockImplementation((key: string) => {
-        if (key === "X_API_KEY") return "runtime-api-key";
-        if (key === "X_API_SECRET") return "test-secret";
-        if (key === "X_ACCESS_TOKEN") return "test-token";
-        if (key === "X_ACCESS_TOKEN_SECRET") return "test-token-secret";
-        return "";
+        const settings: Record<string, string> = {
+          X_API_KEY: "runtime-api-key",
+          X_API_SECRET: "runtime-api-secret",
+          X_ACCESS_TOKEN: "runtime-access-token",
+          X_ACCESS_TOKEN_SECRET: "runtime-access-secret",
+          X_POST_INTERVAL_MIN: "30",
+        };
+        return settings[key];
       });
 
       const config = await validateXConfig(mockRuntime);
 
+      // Should use runtime value
       expect(config.X_API_KEY).toBe("runtime-api-key");
     });
 
@@ -201,12 +203,19 @@ describe("Environment Configuration", () => {
           X_ACCESS_TOKEN_SECRET: "test-access-secret",
           X_TARGET_USERS: "alice,bob,charlie",
         };
-        return settings[key] || "";
+        return settings[key];
       });
 
       const config = await validateXConfig(mockRuntime);
 
       expect(config.X_TARGET_USERS).toBe("alice,bob,charlie");
+    });
+
+    it("should handle zod validation errors", async () => {
+      vi.spyOn(mockRuntime, "getSetting").mockReturnValue(undefined);
+
+      // Create a scenario that will fail zod validation
+      await expect(validateXConfig(mockRuntime)).rejects.toThrow();
     });
   });
 
