@@ -12,6 +12,7 @@ import {
   getTestChains,
   sepolia,
 } from "../custom-chain";
+import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 
 // Test environment variables - in real tests you'd use a funded testnet wallet
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
@@ -22,24 +23,31 @@ const TEST_RPC_URLS = {
   anvil: "http://127.0.0.1:8545",
 };
 
-// Create a mock runtime for testing
-function createMockRuntime(): IAgentRuntime {
-  return {
-    agentId: "test-agent-id" as IAgentRuntime["agentId"],
-    getCache: vi.fn().mockResolvedValue(null),
-    setCache: vi.fn().mockResolvedValue(undefined),
-    getSetting: vi.fn().mockReturnValue(null),
-    setSetting: vi.fn(),
-    getService: vi.fn().mockReturnValue(null),
-    registerService: vi.fn(),
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      log: vi.fn(),
-    },
-  } as IAgentRuntime;
+// Store runtimes for cleanup
+let runtimesToCleanup: IAgentRuntime[] = [];
+
+/**
+ * Creates a real AgentRuntime with spied methods for EVM testing.
+ */
+async function createEVMTestRuntime(): Promise<IAgentRuntime> {
+  const runtime = await createTestRuntime();
+  runtimesToCleanup.push(runtime);
+
+  // Spy on methods used by WalletProvider
+  vi.spyOn(runtime, "getCache").mockResolvedValue(null);
+  vi.spyOn(runtime, "setCache").mockResolvedValue(true);
+  vi.spyOn(runtime, "getSetting").mockReturnValue(null);
+  vi.spyOn(runtime, "setSetting").mockImplementation(() => {});
+  vi.spyOn(runtime, "getService").mockReturnValue(null);
+  vi.spyOn(runtime, "registerService").mockResolvedValue(undefined);
+
+  // Spy on logger methods
+  vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+  vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+  vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+  vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+
+  return runtime;
 }
 
 describe("Wallet Provider", () => {
@@ -51,8 +59,12 @@ describe("Wallet Provider", () => {
     pk = TEST_PRIVATE_KEY as `0x${string}`;
   });
 
-  afterEach(() => {
-    // Remove vi.clearAllTimers() as it's not needed in Bun test runner
+  afterEach(async () => {
+    vi.clearAllMocks();
+    for (const rt of runtimesToCleanup) {
+      await cleanupTestRuntime(rt);
+    }
+    runtimesToCleanup = [];
   });
 
   beforeEach(() => {
@@ -63,7 +75,7 @@ describe("Wallet Provider", () => {
     it("should set wallet address correctly", () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
-      const agentRuntime = createMockRuntime();
+      const agentRuntime = await createEVMTestRuntime();
 
       walletProvider = new WalletProvider(pk, agentRuntime);
 
@@ -71,7 +83,7 @@ describe("Wallet Provider", () => {
     });
 
     it("should initialize with empty chains when no chains provided", () => {
-      const agentRuntime = createMockRuntime();
+      const agentRuntime = await createEVMTestRuntime();
       walletProvider = new WalletProvider(pk, agentRuntime);
 
       // WalletProvider constructor with no chains should result in empty chains
@@ -87,7 +99,7 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
-      const agentRuntime = createMockRuntime();
+      const agentRuntime = await createEVMTestRuntime();
 
       walletProvider = new WalletProvider(pk, agentRuntime, customChains);
 
@@ -102,7 +114,7 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
-      walletProvider = new WalletProvider(pk, createMockRuntime(), customChains);
+      walletProvider = new WalletProvider(pk, await createEVMTestRuntime(), customChains);
     });
 
     it("should generate public client for Sepolia", () => {
@@ -113,7 +125,7 @@ describe("Wallet Provider", () => {
 
     it("should generate public client with custom RPC URL", () => {
       const chain = WalletProvider.genChainFromName("sepolia", TEST_RPC_URLS.sepolia);
-      const wp = new WalletProvider(pk, createMockRuntime(), {
+      const wp = new WalletProvider(pk, await createEVMTestRuntime(), {
         sepolia: chain,
       });
 
@@ -138,7 +150,7 @@ describe("Wallet Provider", () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
       const chain = WalletProvider.genChainFromName("sepolia", TEST_RPC_URLS.sepolia);
-      const wp = new WalletProvider(pk, createMockRuntime(), {
+      const wp = new WalletProvider(pk, await createEVMTestRuntime(), {
         sepolia: chain,
       });
 
@@ -158,7 +170,7 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
-      walletProvider = new WalletProvider(pk, createMockRuntime(), customChains);
+      walletProvider = new WalletProvider(pk, await createEVMTestRuntime(), customChains);
     });
 
     it("should fetch balance for Sepolia testnet", async () => {
@@ -196,7 +208,7 @@ describe("Wallet Provider", () => {
 
   describe("Chain Management", () => {
     beforeEach(() => {
-      walletProvider = new WalletProvider(pk, createMockRuntime());
+      walletProvider = new WalletProvider(pk, await createEVMTestRuntime());
     });
 
     it("should generate chain from name - Sepolia", () => {
@@ -258,7 +270,7 @@ describe("Wallet Provider", () => {
       const customChains = {
         sepolia: testChains.sepolia,
       };
-      walletProvider = new WalletProvider(pk, createMockRuntime(), customChains);
+      walletProvider = new WalletProvider(pk, await createEVMTestRuntime(), customChains);
     });
 
     it("should be able to connect to Sepolia network", async () => {
@@ -290,7 +302,7 @@ describe("Wallet Provider", () => {
     let anvilProvider: WalletProvider;
 
     beforeEach(() => {
-      anvilProvider = new WalletProvider(ANVIL_PRIVATE_KEY, createMockRuntime(), getAnvilChain());
+      anvilProvider = new WalletProvider(ANVIL_PRIVATE_KEY, await createEVMTestRuntime(), getAnvilChain());
     });
 
     it("should connect to local Anvil node", async () => {
