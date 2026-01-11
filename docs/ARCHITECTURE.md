@@ -115,7 +115,7 @@ ElizaOS uses a pluggable database adapter (`DatabaseAdapter` in `packages/typesc
 
 The `packages/interop/` package defines a cross-language contract:
 
-- A schema/IDL (`plugin.schema.json`) and a common **manifest** concept (`plugin.json`)
+- A language-neutral contract and plugin metadata (documented in `packages/interop/README.md`)
 - **Rust ↔ TypeScript**: WASM via `wasm-bindgen` and a TS wasm loader
 - **Rust ↔ Python**: FFI via exported C ABI and `ctypes`
 - **TypeScript ↔ Python**: subprocess IPC using newline-delimited JSON messages

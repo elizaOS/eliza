@@ -89,9 +89,9 @@ Providers are **state builders**: they fetch/compute context before a model call
 
 Providers (`Provider` in `packages/typescript/src/types/components.ts`) return a `ProviderResult`:
 
-- `**text**`: human-readable context aggregated into `state.text` (often injected into prompts)
-- `**values**`: key/value variables merged into `state.values` (template substitution)
-- `**data**`: structured data cached under `state.data.providers[providerName]`
+- **text**: human-readable context aggregated into `state.text` (often injected into prompts)
+- **values**: key/value variables merged into `state.values` (template substitution)
+- **data**: structured data cached under `state.data.providers[providerName]`
 
 `runtime.composeState(...)` (`packages/typescript/src/runtime.ts`) will:
 
