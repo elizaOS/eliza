@@ -70,10 +70,7 @@ export class XPostService implements IPostService {
         logger.warn("Media upload not currently supported with X API v2");
       }
 
-      const result = await this.client.xClient.sendPost(
-        options.text,
-        options.inReplyTo
-      );
+      const result = await this.client.xClient.sendPost(options.text, options.inReplyTo);
 
       const postId = await this.extractPostId(result);
       if (!postId) {
@@ -126,36 +123,36 @@ export class XPostService implements IPostService {
 
   async getPost(postId: string, agentId: UUID): Promise<Post | null> {
     try {
-      const post = await this.client.xClient.getPost(postId);
+      const rawPost = await this.client.xClient.getPost(postId);
 
-      if (!post || !post.id || !post.userId || !post.username || !post.text) {
+      if (!rawPost || !rawPost.id || !rawPost.userId || !rawPost.username || !rawPost.text) {
         return null;
       }
 
       const post: Post = {
-        id: post.id,
+        id: rawPost.id,
         agentId: agentId,
-        roomId: createUniqueUuid(this.client.runtime, post.conversationId || post.id),
-        userId: post.userId,
-        username: post.username,
-        text: post.text,
-        timestamp: getEpochMs(post.timestamp),
+        roomId: createUniqueUuid(this.client.runtime, rawPost.conversationId || rawPost.id),
+        userId: rawPost.userId,
+        username: rawPost.username,
+        text: rawPost.text,
+        timestamp: getEpochMs(rawPost.timestamp),
         metrics: {
-          likes: post.likes || 0,
-          reposts: post.reposts || 0,
-          replies: post.replies || 0,
-          quotes: post.quotes || 0,
-          views: post.views || 0,
+          likes: rawPost.likes || 0,
+          reposts: rawPost.reposts || 0,
+          replies: rawPost.replies || 0,
+          quotes: rawPost.quotes || 0,
+          views: rawPost.views || 0,
         },
         media:
-          post.photos?.map((photo) => ({
+          rawPost.photos?.map((photo) => ({
             type: "image" as const,
             url: photo.url,
             metadata: { id: photo.id },
           })) || [],
         metadata: {
-          conversationId: post.conversationId,
-          permanentUrl: post.permanentUrl,
+          conversationId: rawPost.conversationId,
+          permanentUrl: rawPost.permanentUrl,
         },
       };
 
@@ -193,7 +190,7 @@ export class XPostService implements IPostService {
     }
 
     try {
-      let posts: PartialPost[] | undefined;
+      let _posts: PartialPost[] | undefined;
 
       if (options.userId) {
         // Get posts from a specific user
@@ -202,15 +199,15 @@ export class XPostService implements IPostService {
           options.limit || 20,
           options.before
         );
-        posts = result.posts;
+        _posts = result.posts;
       } else {
         // Get home timeline or search results
-        posts = await this.client.fetchHomeTimeline(options.limit || 20, false);
+        _posts = await this.client.fetchHomeTimeline(options.limit || 20, false);
       }
 
-      if (!posts) return [];
+      if (!_posts) return [];
 
-      const posts: Post[] = posts.filter(hasRequiredFields).map((post) => ({
+      const posts: Post[] = _posts.filter(hasRequiredFields).map((post) => ({
         id: post.id,
         agentId: options.agentId,
         roomId: createUniqueUuid(this.client.runtime, post.conversationId || post.id),

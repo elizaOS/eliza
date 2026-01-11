@@ -11,9 +11,9 @@ describe("OAuth2PKCEAuthProvider", () => {
       agentId: "agent-1",
       getSetting: vi.fn((k: string) => {
         const settings: Record<string, string> = {
-          TWITTER_AUTH_MODE: "oauth",
-          TWITTER_CLIENT_ID: "client-id",
-          TWITTER_REDIRECT_URI: "http://127.0.0.1:8080/callback",
+          X_AUTH_MODE: "oauth",
+          X_CLIENT_ID: "client-id",
+          X_REDIRECT_URI: "http://127.0.0.1:8080/callback",
         };
         return settings[k];
       }),

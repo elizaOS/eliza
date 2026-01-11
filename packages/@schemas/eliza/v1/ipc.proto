@@ -3,11 +3,11 @@ syntax = "proto3";
 
 package eliza.v1;
 
-import "eliza/v1/memory.proto";
-import "eliza/v1/state.proto";
 import "eliza/v1/components.proto";
+import "eliza/v1/memory.proto";
 import "eliza/v1/plugin.proto";
 import "eliza/v1/service.proto";
+import "eliza/v1/state.proto";
 import "google/protobuf/struct.proto";
 
 // Interop protocol enumeration
@@ -210,4 +210,3 @@ message IPCResponse {
     ErrorResponse error = 7;
   }
 }
-

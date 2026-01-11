@@ -19,7 +19,6 @@ export interface XContextOptions {
   conversationId?: string;
 }
 
-
 /**
  * Result of ensuring X context
  */
@@ -28,7 +27,6 @@ export interface XContextResult {
   roomId: UUID;
   entityId: UUID;
 }
-
 
 /**
  * Ensures that the world, room, and entity exist for an X interaction
@@ -93,7 +91,6 @@ export async function ensureXContext(
     throw new Error(`Failed to create X context for user ${username}: ${err.message}`);
   }
 }
-
 
 /**
  * Creates a memory with error handling and retry logic

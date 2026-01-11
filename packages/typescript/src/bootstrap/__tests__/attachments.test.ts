@@ -73,13 +73,10 @@ describe("processAttachments", () => {
       "This image captures a breathtaking sunset scene over a calm ocean. The sky is painted with brilliant hues of orange, pink, and purple as the sun dips below the horizon. Gentle waves lap at the shore, creating a peaceful and serene atmosphere.",
     );
 
-    expect(runtime.useModel).toHaveBeenCalledWith(
-      ModelType.IMAGE_DESCRIPTION,
-      {
-        prompt: expect.stringContaining("Analyze the provided image"),
-        imageUrl: "https://example.com/image.jpg",
-      },
-    );
+    expect(runtime.useModel).toHaveBeenCalledWith(ModelType.IMAGE_DESCRIPTION, {
+      prompt: expect.stringContaining("Analyze the provided image"),
+      imageUrl: "https://example.com/image.jpg",
+    });
   });
 
   it("should skip processing for images that already have descriptions", async () => {

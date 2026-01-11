@@ -107,11 +107,7 @@ export async function sendStandardPost(
     data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
     mediaType: m.type,
   }));
-  const standardPostResult = await client.xClient.sendPost(
-    content,
-    postId,
-    convertedMediaData
-  );
+  const standardPostResult = await client.xClient.sendPost(content, postId, convertedMediaData);
 
   // The result is already the response object
   return standardPostResult;
@@ -485,7 +481,7 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
 
   // Regex patterns
   const likePattern = /\[LIKE\]/i;
-  const repostPattern = /\[REPOST\]|\[RETWEET\]/i;  // Support both for backward compatibility
+  const repostPattern = /\[REPOST\]|\[RETWEET\]/i; // Support both for backward compatibility
   const quotePattern = /\[QUOTE\]/i;
   const replyPattern = /\[REPLY\]/i;
 
@@ -500,7 +496,7 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed === "[LIKE]") actions.like = true;
-    if (trimmed === "[REPOST]" || trimmed === "[RETWEET]") actions.repost = true;  // Support both
+    if (trimmed === "[REPOST]" || trimmed === "[RETWEET]") actions.repost = true; // Support both
     if (trimmed === "[QUOTE]") actions.quote = true;
     if (trimmed === "[REPLY]") actions.reply = true;
   }

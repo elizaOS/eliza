@@ -75,7 +75,7 @@ Your reply should be:
 
 Your output must ONLY contain the XML block."""
 
-TWITTER_ACTION_TEMPLATE = """# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
+X_ACTION_TEMPLATE = """# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
 {{bio}}
 {{postDirections}}
 
@@ -98,7 +98,7 @@ Actions (respond only with tags):
 [QUOTE] - You can add meaningful commentary (7.5/10 or higher)
 [REPLY] - You can contribute helpful insights (7/10 or higher)"""
 
-TWITTER_MESSAGE_HANDLER_TEMPLATE = """# Task: Generate dialog and actions for {{agentName}}.
+X_MESSAGE_HANDLER_TEMPLATE = """# Task: Generate dialog and actions for {{agentName}}.
 {{providers}}
 Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
 {{currentPost}}
@@ -117,6 +117,6 @@ __all__ = [
     "MESSAGE_HANDLER_TEMPLATE",
     "QUOTE_TWEET_TEMPLATE",
     "REPLY_TWEET_TEMPLATE",
-    "TWITTER_ACTION_TEMPLATE",
-    "TWITTER_MESSAGE_HANDLER_TEMPLATE",
+    "X_ACTION_TEMPLATE",
+    "X_MESSAGE_HANDLER_TEMPLATE",
 ]

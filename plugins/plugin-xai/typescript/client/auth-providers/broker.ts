@@ -20,9 +20,7 @@ export class BrokerAuthProvider implements XAuthProvider {
   async getAccessToken(): Promise<string> {
     const url = getSetting(this.runtime, "X_BROKER_URL");
     if (!url) {
-      throw new Error(
-        "X_AUTH_MODE=broker requires X_BROKER_URL (broker not implemented yet)."
-      );
+      throw new Error("X_AUTH_MODE=broker requires X_BROKER_URL (broker not implemented yet).");
     }
     throw new Error(
       `X broker auth is not implemented yet. Configured X_BROKER_URL=${url}. ` +

@@ -31,7 +31,7 @@ const PluginSpecificationSchema = z.object({
       z.object({
         name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Action name must be alphanumeric"),
         description: z.string(),
-        parameters: z.record(z.unknown()).optional(),
+        parameters: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .optional(),
@@ -40,7 +40,7 @@ const PluginSpecificationSchema = z.object({
       z.object({
         name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Provider name must be alphanumeric"),
         description: z.string(),
-        dataStructure: z.record(z.unknown()).optional(),
+        dataStructure: z.record(z.string(), z.unknown()).optional(),
       })
     )
     .optional(),
@@ -62,7 +62,7 @@ const PluginSpecificationSchema = z.object({
       })
     )
     .optional(),
-  dependencies: z.record(z.string()).optional(),
+  dependencies: z.record(z.string(), z.string()).optional(),
   environmentVariables: z
     .array(
       z.object({
@@ -161,7 +161,7 @@ export const createPluginAction: Action = {
         if (error instanceof z.ZodError) {
           return {
             success: false,
-            text: `Invalid plugin specification:\n${error.errors.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`,
+            text: `Invalid plugin specification:\n${error.issues.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`,
           };
         }
         return {
@@ -487,7 +487,7 @@ export const createPluginFromDescriptionAction: Action = {
         if (error instanceof z.ZodError) {
           return {
             success: false,
-            text: `Failed to generate valid specification:\n${error.errors.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`,
+            text: `Failed to generate valid specification:\n${error.issues.map((e) => `- ${e.path.join(".")}: ${e.message}`).join("\n")}`,
           };
         }
       }

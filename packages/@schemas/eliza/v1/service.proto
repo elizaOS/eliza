@@ -41,4 +41,3 @@ message ServiceError {
   google.protobuf.Struct details = 3;
   optional string cause = 4;
 }
-

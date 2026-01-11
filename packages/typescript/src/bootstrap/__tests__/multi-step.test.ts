@@ -127,9 +127,7 @@ describe("Multi-Step Workflow Functionality", () => {
       }
 
       // Mock action execution
-      const mockAction = runtime.actions.find(
-        (a) => a.name === "TEST_ACTION",
-      );
+      const mockAction = runtime.actions.find((a) => a.name === "TEST_ACTION");
       if (mockAction) {
         mockAction.handler = vi.fn().mockResolvedValue(true);
       }
@@ -205,9 +203,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
     it("should handle action execution errors gracefully", async () => {
       // Mock action that throws an error
-      const mockAction = runtime.actions.find(
-        (a) => a.name === "TEST_ACTION",
-      );
+      const mockAction = runtime.actions.find((a) => a.name === "TEST_ACTION");
       if (mockAction) {
         mockAction.handler = vi.fn().mockImplementation(() => {
           throw new Error("Action failed");
@@ -330,9 +326,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
     it("should track action results correctly", async () => {
       // Mock successful action execution
-      const mockAction = runtime.actions.find(
-        (a) => a.name === "TEST_ACTION",
-      );
+      const mockAction = runtime.actions.find((a) => a.name === "TEST_ACTION");
       if (mockAction) {
         mockAction.handler = vi.fn().mockResolvedValue(true);
       }

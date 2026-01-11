@@ -198,4 +198,3 @@ enum VectorDimension {
   VECTOR_DIMENSION_XXL = 1536;
   VECTOR_DIMENSION_XXXL = 3072;
 }
-

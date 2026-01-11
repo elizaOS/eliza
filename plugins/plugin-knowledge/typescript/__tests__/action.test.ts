@@ -260,7 +260,13 @@ describe("processKnowledgeAction", () => {
         {},
         mockCallback
       );
-      await processKnowledgeAction.handler?.(agentRuntime, textMessage, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(
+        agentRuntime,
+        textMessage,
+        mockState,
+        {},
+        mockCallback
+      );
 
       // Get all calls to addKnowledge
       const addKnowledgeCalls = (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mock

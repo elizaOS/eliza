@@ -262,7 +262,9 @@ export function validateCharacter(data: unknown): CharacterValidationResult {
   }
 
   const errorMessage =
-    result.error.issues?.[0]?.message || result.error.toString() || "Validation failed";
+    result.error.issues?.[0]?.message ||
+    result.error.toString() ||
+    "Validation failed";
   return {
     success: false,
     error: {

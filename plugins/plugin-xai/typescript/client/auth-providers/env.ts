@@ -21,13 +21,10 @@ export class EnvAuthProvider implements XOAuth1Provider {
 
   async getOAuth1Credentials(): Promise<OAuth1Credentials> {
     const apiKeyRaw = this.state?.X_API_KEY ?? getSetting(this.runtime, "X_API_KEY");
-    const apiSecretKeyRaw =
-      this.state?.X_API_SECRET ?? getSetting(this.runtime, "X_API_SECRET");
-    const accessTokenRaw =
-      this.state?.X_ACCESS_TOKEN ?? getSetting(this.runtime, "X_ACCESS_TOKEN");
+    const apiSecretKeyRaw = this.state?.X_API_SECRET ?? getSetting(this.runtime, "X_API_SECRET");
+    const accessTokenRaw = this.state?.X_ACCESS_TOKEN ?? getSetting(this.runtime, "X_ACCESS_TOKEN");
     const accessTokenSecretRaw =
-      this.state?.X_ACCESS_TOKEN_SECRET ??
-      getSetting(this.runtime, "X_ACCESS_TOKEN_SECRET");
+      this.state?.X_ACCESS_TOKEN_SECRET ?? getSetting(this.runtime, "X_ACCESS_TOKEN_SECRET");
 
     const apiKey = typeof apiKeyRaw === "string" ? apiKeyRaw : undefined;
     const apiSecretKey = typeof apiSecretKeyRaw === "string" ? apiSecretKeyRaw : undefined;

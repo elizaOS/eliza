@@ -1,6 +1,6 @@
 import type { XAuth } from "./auth";
-import type { Profile } from "./profile";
 import type { Post } from "./posts";
+import type { Profile } from "./profile";
 
 /**
  * The categories that can be used in X searches.

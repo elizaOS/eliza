@@ -226,7 +226,6 @@ export class ConfigurationManager {
     }
   }
 
-
   // Configuration presets
   static getPreset(name: string): Partial<VisionConfigInput> {
     const presets: Record<string, Partial<VisionConfigInput>> = {

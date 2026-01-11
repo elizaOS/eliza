@@ -122,9 +122,7 @@ export async function waitForLoopbackCallback(
       finish(new Error(`OAuth callback server error${code}: ${errorObj?.message ?? String(err)}`));
     });
     server.listen(port, url.hostname, () => {
-      logger.info(
-        `X OAuth callback server listening on http://${url.hostname}:${port}${path}`
-      );
+      logger.info(`X OAuth callback server listening on http://${url.hostname}:${port}${path}`);
     });
   });
 }

@@ -8,9 +8,9 @@ import "google/protobuf/struct.proto";
 // LLM Mode for overriding model selection
 enum LLMMode {
   LLM_MODE_UNSPECIFIED = 0;
-  LLM_MODE_DEFAULT = 1;  // Use the model type as specified
-  LLM_MODE_SMALL = 2;    // Override to use TEXT_SMALL
-  LLM_MODE_LARGE = 3;    // Override to use TEXT_LARGE
+  LLM_MODE_DEFAULT = 1; // Use the model type as specified
+  LLM_MODE_SMALL = 2; // Override to use TEXT_SMALL
+  LLM_MODE_LARGE = 3; // Override to use TEXT_LARGE
 }
 
 // Model type enumeration
@@ -181,4 +181,3 @@ message ModelHandlerInfo {
   optional int32 priority = 2;
   optional int32 registration_order = 3;
 }
-

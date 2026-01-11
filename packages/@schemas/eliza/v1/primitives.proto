@@ -64,16 +64,16 @@ message MentionContext {
 // Channel type enumeration
 enum ChannelType {
   CHANNEL_TYPE_UNSPECIFIED = 0;
-  CHANNEL_TYPE_PERSONAL = 1;  // Personal/self messages
-  CHANNEL_TYPE_DM = 2;        // Direct messages between two participants
-  CHANNEL_TYPE_GROUP = 3;     // Group messages with multiple participants
-  CHANNEL_TYPE_VOICE_DM = 4;  // Voice direct messages
+  CHANNEL_TYPE_PERSONAL = 1; // Personal/self messages
+  CHANNEL_TYPE_DM = 2; // Direct messages between two participants
+  CHANNEL_TYPE_GROUP = 3; // Group messages with multiple participants
+  CHANNEL_TYPE_VOICE_DM = 4; // Voice direct messages
   CHANNEL_TYPE_VOICE_GROUP = 5; // Voice channels with multiple participants
-  CHANNEL_TYPE_FEED = 6;      // Social media feed
-  CHANNEL_TYPE_THREAD = 7;    // Threaded conversation
-  CHANNEL_TYPE_WORLD = 8;     // World channel
-  CHANNEL_TYPE_FORUM = 9;     // Forum discussion
-  CHANNEL_TYPE_API = 10;      // Legacy API type (deprecated)
+  CHANNEL_TYPE_FEED = 6; // Social media feed
+  CHANNEL_TYPE_THREAD = 7; // Threaded conversation
+  CHANNEL_TYPE_WORLD = 8; // World channel
+  CHANNEL_TYPE_FORUM = 9; // Forum discussion
+  CHANNEL_TYPE_API = 10; // Legacy API type (deprecated)
 }
 
 // Represents the content of a memory, message, or other information.
@@ -117,4 +117,3 @@ message Content {
 message Metadata {
   google.protobuf.Struct values = 1;
 }
-
