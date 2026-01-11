@@ -16,6 +16,7 @@ export enum ChannelType {
   THREAD = "THREAD", // Threaded conversation
   WORLD = "WORLD", // World channel
   FORUM = "FORUM", // Forum discussion
+  API = "API", // API channel for external integrations
 }
 
 /**

@@ -3,11 +3,10 @@ import { z } from "zod";
 import { getSetting } from "./utils/settings";
 
 /**
- * Get setting with X_ prefix, falling back to TWITTER_ for compatibility
+ * Get setting with X_ prefix
  */
 function getXSetting(runtime: IAgentRuntime, key: string): string {
-  const xKey = key.replace(/^TWITTER_/, "X_").replace(/^X_API_SECRET_KEY$/, "X_API_SECRET");
-  return getSetting(runtime, xKey) || getSetting(runtime, key) || "";
+  return getSetting(runtime, key) || "";
 }
 
 export const xEnvSchema = z.object({
@@ -37,8 +36,6 @@ export const xEnvSchema = z.object({
 });
 
 export type XConfig = z.infer<typeof xEnvSchema>;
-export const xEnvSchema = xEnvSchema;
-export type XConfig = XConfig;
 
 function parseTargetUsers(str: string): string[] {
   if (!str.trim()) return [];
@@ -113,8 +110,6 @@ export async function validateXConfig(runtime: IAgentRuntime): Promise<XConfig> 
   return xEnvSchema.parse(config);
 }
 
-export const validateXConfig = validateXConfig;
-
 function parseInterval(value: string, fallback: number): number {
   const parsed = parseInt(value, 10);
   return Number.isNaN(parsed) ? fallback : parsed;
@@ -153,36 +148,31 @@ export function getRandomInterval(
 }
 
 export function loadConfig(): XConfig {
-  const get = (x: string, t: string): string => process.env[x] || process.env[t] || "";
+  const get = (key: string): string => process.env[key] || "";
   return {
-    X_AUTH_MODE: (get("X_AUTH_MODE", "TWITTER_AUTH_MODE") || "env") as "env" | "oauth" | "bearer",
-    X_API_KEY: get("X_API_KEY", "TWITTER_API_KEY"),
-    X_API_SECRET: get("X_API_SECRET", "TWITTER_API_SECRET_KEY"),
-    X_ACCESS_TOKEN: get("X_ACCESS_TOKEN", "TWITTER_ACCESS_TOKEN"),
-    X_ACCESS_TOKEN_SECRET: get("X_ACCESS_TOKEN_SECRET", "TWITTER_ACCESS_TOKEN_SECRET"),
-    X_BEARER_TOKEN: get("X_BEARER_TOKEN", "TWITTER_BEARER_TOKEN"),
-    X_CLIENT_ID: get("X_CLIENT_ID", "TWITTER_CLIENT_ID"),
-    X_REDIRECT_URI: get("X_REDIRECT_URI", "TWITTER_REDIRECT_URI"),
-    X_DRY_RUN: get("X_DRY_RUN", "TWITTER_DRY_RUN") || "false",
-    X_TARGET_USERS: get("X_TARGET_USERS", "TWITTER_TARGET_USERS"),
-    X_ENABLE_POST: get("X_ENABLE_POST", "TWITTER_ENABLE_POST") || "false",
-    X_ENABLE_REPLIES: get("X_ENABLE_REPLIES", "TWITTER_ENABLE_REPLIES") || "true",
-    X_ENABLE_ACTIONS: get("X_ENABLE_ACTIONS", "TWITTER_ENABLE_ACTIONS") || "false",
-    X_ENABLE_DISCOVERY: get("X_ENABLE_DISCOVERY", "TWITTER_ENABLE_DISCOVERY") || "false",
-    X_POST_INTERVAL_MIN: get("X_POST_INTERVAL_MIN", "TWITTER_POST_INTERVAL_MIN") || "90",
-    X_POST_INTERVAL_MAX: get("X_POST_INTERVAL_MAX", "TWITTER_POST_INTERVAL_MAX") || "180",
-    X_ENGAGEMENT_INTERVAL_MIN:
-      get("X_ENGAGEMENT_INTERVAL_MIN", "TWITTER_ENGAGEMENT_INTERVAL_MIN") || "20",
-    X_ENGAGEMENT_INTERVAL_MAX:
-      get("X_ENGAGEMENT_INTERVAL_MAX", "TWITTER_ENGAGEMENT_INTERVAL_MAX") || "40",
-    X_DISCOVERY_INTERVAL_MIN:
-      get("X_DISCOVERY_INTERVAL_MIN", "TWITTER_DISCOVERY_INTERVAL_MIN") || "15",
-    X_DISCOVERY_INTERVAL_MAX:
-      get("X_DISCOVERY_INTERVAL_MAX", "TWITTER_DISCOVERY_INTERVAL_MAX") || "30",
-    X_MAX_ENGAGEMENTS_PER_RUN:
-      get("X_MAX_ENGAGEMENTS_PER_RUN", "TWITTER_MAX_ENGAGEMENTS_PER_RUN") || "5",
-    X_MAX_POST_LENGTH: get("X_MAX_POST_LENGTH", "TWITTER_MAX_TWEET_LENGTH") || "280",
-    X_RETRY_LIMIT: get("X_RETRY_LIMIT", "TWITTER_RETRY_LIMIT") || "5",
+    X_AUTH_MODE: (get("X_AUTH_MODE") || "env") as "env" | "oauth" | "bearer",
+    X_API_KEY: get("X_API_KEY"),
+    X_API_SECRET: get("X_API_SECRET"),
+    X_ACCESS_TOKEN: get("X_ACCESS_TOKEN"),
+    X_ACCESS_TOKEN_SECRET: get("X_ACCESS_TOKEN_SECRET"),
+    X_BEARER_TOKEN: get("X_BEARER_TOKEN"),
+    X_CLIENT_ID: get("X_CLIENT_ID"),
+    X_REDIRECT_URI: get("X_REDIRECT_URI"),
+    X_DRY_RUN: get("X_DRY_RUN") || "false",
+    X_TARGET_USERS: get("X_TARGET_USERS"),
+    X_ENABLE_POST: get("X_ENABLE_POST") || "false",
+    X_ENABLE_REPLIES: get("X_ENABLE_REPLIES") || "true",
+    X_ENABLE_ACTIONS: get("X_ENABLE_ACTIONS") || "false",
+    X_ENABLE_DISCOVERY: get("X_ENABLE_DISCOVERY") || "false",
+    X_POST_INTERVAL_MIN: get("X_POST_INTERVAL_MIN") || "90",
+    X_POST_INTERVAL_MAX: get("X_POST_INTERVAL_MAX") || "180",
+    X_ENGAGEMENT_INTERVAL_MIN: get("X_ENGAGEMENT_INTERVAL_MIN") || "20",
+    X_ENGAGEMENT_INTERVAL_MAX: get("X_ENGAGEMENT_INTERVAL_MAX") || "40",
+    X_DISCOVERY_INTERVAL_MIN: get("X_DISCOVERY_INTERVAL_MIN") || "15",
+    X_DISCOVERY_INTERVAL_MAX: get("X_DISCOVERY_INTERVAL_MAX") || "30",
+    X_MAX_ENGAGEMENTS_PER_RUN: get("X_MAX_ENGAGEMENTS_PER_RUN") || "5",
+    X_MAX_POST_LENGTH: get("X_MAX_POST_LENGTH") || "280",
+    X_RETRY_LIMIT: get("X_RETRY_LIMIT") || "5",
   };
 }
 

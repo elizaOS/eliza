@@ -22,7 +22,8 @@
  */
 
 // Re-export all generated types
-export * from "./generated/index.js";
+// TODO: Generate types from /packages/@schemas/eliza/v1/*.proto using @bufbuild/protoc-gen-es
+// export * from "./generated/index.js";
 
 /**
  * Type alias for JSON-serializable object (used for dynamic properties)

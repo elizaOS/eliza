@@ -1,10 +1,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { validateDiscordConfig } from "../src/environment";
 import {
-  createTestRuntime,
   cleanupTestRuntime,
+  createTestRuntime,
 } from "../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
+import { validateDiscordConfig } from "../src/environment";
 
 describe("Discord Environment Configuration", () => {
   let runtime: IAgentRuntime;
@@ -32,7 +32,7 @@ describe("Discord Environment Configuration", () => {
     vi.spyOn(runtime, "getSetting").mockReturnValue(null);
 
     await expect(validateDiscordConfig(runtime)).rejects.toThrowError(
-      "Discord configuration validation failed:\nDISCORD_API_TOKEN: Invalid input: expected string, received null",
+      "Discord configuration validation failed:\nDISCORD_API_TOKEN: Invalid input: expected string, received null"
     );
   });
 
