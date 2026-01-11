@@ -1,5 +1,5 @@
 /**
- * @fileoverview Test Utilities for Forms Plugin Tests
+ * @fileoverview Test Utilities for X Plugin Tests
  *
  * Uses REAL AgentRuntime instances for testing.
  * Re-exports utilities from bootstrap test-utils.

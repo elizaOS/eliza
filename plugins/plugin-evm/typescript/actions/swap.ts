@@ -15,7 +15,16 @@ import {
   type Route,
 } from "@lifi/sdk";
 
-import { type Address, encodeFunctionData, type Hex, parseAbi, parseUnits } from "viem";
+import {
+  type Address,
+  type Chain,
+  encodeFunctionData,
+  type Hex,
+  parseAbi,
+  parseUnits,
+  type SendTransactionParameters,
+} from "viem";
+import type { Account } from "viem/accounts";
 import {
   BEBOP_CHAIN_MAP,
   DEFAULT_SLIPPAGE_PERCENT,
@@ -39,6 +48,22 @@ import {
 } from "../types";
 
 export { swapTemplate };
+
+/**
+ * Build send transaction parameters for viem.
+ * Viem's type system is strict about transaction parameters.
+ */
+function buildSendTxParams(params: {
+  account: Account;
+  to: Address;
+  value?: bigint;
+  data?: Hex;
+  chain?: Chain;
+  gas?: bigint;
+  gasPrice?: bigint;
+}): SendTransactionParameters {
+  return params as SendTransactionParameters;
+}
 
 /**
  * Swap action executor

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   alloc,
-  toString as bufferToString,
+  bufferToString,
   byteLength,
   concat,
   equals,
