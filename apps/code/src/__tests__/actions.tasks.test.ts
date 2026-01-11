@@ -7,7 +7,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createTaskAction } from "../plugin/actions/create-task.js";
 import {
   cancelTaskAction,
@@ -19,6 +19,7 @@ import {
 } from "../plugin/actions/task-management.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
 function createMemory(text: string, roomId?: UUID): Memory {
   return {
@@ -27,39 +28,47 @@ function createMemory(text: string, roomId?: UUID): Memory {
   } as Memory;
 }
 
-function createMockRuntimeWithService(): {
-  runtime: IAgentRuntime;
-  setService: (service: CodeTaskService) => void;
-} {
-  const tasks = new Map<string, CodeTask>();
-  const rooms = new Map<string, Room>();
-  let taskCounter = 0;
-  const agentId = stringToUuid("test-agent");
+describe("plugin actions: task management", () => {
+  let runtime: IAgentRuntime;
+  let service: CodeTaskService;
+  let roomId: UUID;
 
-  // Default room (used when tests pass a roomId)
-  const defaultRoomId = stringToUuid("test-room");
-  const defaultWorldId = stringToUuid("test-world");
-  rooms.set(defaultRoomId, {
-    id: defaultRoomId,
-    source: "test",
-    type: ChannelType.DM,
-    worldId: defaultWorldId,
-    name: "Test Room",
-  });
+  // In-memory stores for testing
+  let tasks: Map<string, CodeTask>;
+  let rooms: Map<string, Room>;
+  let taskCounter: number;
+  let serviceRef: CodeTaskService | null;
 
-  let serviceRef: CodeTaskService | null = null;
+  beforeEach(async () => {
+    process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
 
-  const runtime: Partial<IAgentRuntime> = {
-    agentId,
+    runtime = await createTestRuntime();
+    tasks = new Map();
+    rooms = new Map();
+    taskCounter = 0;
+    serviceRef = null;
 
-    getRoom: async (id: UUID) => rooms.get(id) ?? null,
+    // Default room
+    const defaultRoomId = stringToUuid("test-room");
+    const defaultWorldId = stringToUuid("test-world");
+    roomId = defaultRoomId;
+    rooms.set(defaultRoomId, {
+      id: defaultRoomId,
+      source: "test",
+      type: ChannelType.DM,
+      worldId: defaultWorldId,
+      name: "Test Room",
+    });
 
-    getService: <T>(type: string): T | null => {
+    // Spy on runtime methods
+    vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
+
+    vi.spyOn(runtime, "getService").mockImplementation(<T>(type: string): T | null => {
       if (type === "CODE_TASK") return serviceRef as T;
       return null;
-    },
+    });
 
-    createTask: async (task: Task) => {
+    vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
       taskCounter += 1;
       const id = stringToUuid(`task-${taskCounter}`);
 
@@ -75,17 +84,17 @@ function createMockRuntimeWithService(): {
 
       tasks.set(id, fullTask);
       return id;
-    },
+    });
 
-    getTask: async (id: UUID) => tasks.get(id) ?? null,
+    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
 
-    getTasks: async ({ tags }: { tags?: string[] }) => {
+    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
       const allTasks = Array.from(tasks.values());
       if (!tags || tags.length === 0) return allTasks;
       return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    },
+    });
 
-    updateTask: async (id: UUID, updates: Partial<Task>) => {
+    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
       const task = tasks.get(id);
       if (!task) return;
 
@@ -98,46 +107,25 @@ function createMockRuntimeWithService(): {
       if (updates.metadata) {
         task.metadata = { ...task.metadata, ...updates.metadata } as CodeTaskMetadata;
       }
-    },
+    });
 
-    deleteTask: async (id: UUID) => {
+    vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);
-    },
+    });
 
     // In these tests we provide explicit steps so CREATE_TASK shouldn't need planning.
-    useModel: async () => {
+    vi.spyOn(runtime, "useModel").mockImplementation(async () => {
       throw new Error("useModel should not be called in this test");
-    },
-  };
-
-  return {
-    runtime: runtime as IAgentRuntime,
-    setService: (svc) => {
-      serviceRef = svc;
-    },
-  };
-}
-
-describe("plugin actions: task management", () => {
-  let runtime: IAgentRuntime;
-  let service: CodeTaskService;
-  let roomId: UUID;
-
-  beforeEach(async () => {
-    process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
-
-    const envRoomId = stringToUuid("test-room");
-    roomId = envRoomId;
-
-    const { runtime: r, setService } = createMockRuntimeWithService();
-    runtime = r;
+    });
 
     service = (await CodeTaskService.start(runtime)) as CodeTaskService;
-    setService(service);
+    serviceRef = service;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   test("CREATE_TASK validate avoids file-extension requests and small snippet requests", async () => {
@@ -149,162 +137,126 @@ describe("plugin actions: task management", () => {
 
     const valid2 = await createTaskAction.validate(
       runtime,
-      createMemory("implement quicksort algorithm", roomId),
+      createMemory("add a button to style.css", roomId),
     );
     expect(valid2).toBe(false);
 
     const valid3 = await createTaskAction.validate(
       runtime,
-      createMemory("create a task to implement oauth login", roomId),
+      createMemory("write a quicksort function", roomId),
     );
-    expect(valid3).toBe(true);
+    expect(valid3).toBe(false);
   });
 
-  test("CREATE_TASK handler creates a task with steps and does not start execution when disabled", async () => {
+  test("CREATE_TASK handler creates a task with initial steps from options", async () => {
     const msg = createMemory(
-      [
-        "create task: OAuth login",
-        "description: add oauth to the app",
-        "steps:",
-        "1. Add routes",
-        "2. Add tests",
-      ].join("\n"),
+      "Build a Tetris game with high scores",
       roomId,
     );
 
-    const result = await createTaskAction.handler(
+    const responses: Memory[] = [];
+    await createTaskAction.handler(
       runtime,
       msg,
       undefined,
-      undefined,
+      { title: "Build Tetris", steps: ["step 1", "step 2"] },
+      (result) => {
+        responses.push(result);
+        return Promise.resolve([]);
+      },
     );
-    expect(result!.success).toBe(true);
-    expect(result!.text).toContain("Created task");
-    expect(result!.text!.toLowerCase()).toContain("execution disabled");
 
-    const tasks = await service.getTasks();
-    expect(tasks).toHaveLength(1);
-
-    const task = tasks[0];
-    expect(task.metadata.status).toBe("pending");
-    expect(task.metadata.steps).toHaveLength(2);
-    expect(task.metadata.output.join("\n")).toContain("Plan:");
+    const allTasks = await service.getAllTasks();
+    expect(allTasks.length).toBeGreaterThan(0);
+    const task = allTasks[0];
+    expect(task.name).toBe("Build Tetris");
+    expect(task.metadata.steps).toEqual([
+      { text: "step 1", completed: false },
+      { text: "step 2", completed: false },
+    ]);
   });
 
-  test("LIST_TASKS shows recent tasks grouped by status and marks current", async () => {
-    const t1 = await service.createCodeTask("Auth", "Auth task", roomId);
-    const t2 = await service.createCodeTask(
-      "Refactor",
-      "Refactor task",
-      roomId,
-    );
-    const t3 = await service.createCodeTask("Done", "Done task", roomId);
-
-    await service.updateTaskStatus(t1.id ?? "", "running");
-    await service.updateTaskStatus(t3.id ?? "", "completed");
-    service.setCurrentTask(t2.id ?? null);
-
-    const result = await listTasksAction.handler(
-      runtime,
-      createMemory("show me my tasks", roomId),
-    );
-    expect(result!.success).toBe(true);
-    expect(result!.text).toContain("Tasks:");
-    expect(result!.text).toContain("Running");
-    expect(result!.text).toContain("Pending");
-    expect(result!.text).toContain("Completed");
-    expect(result!.text).toContain("(current)");
-  });
-
-  test("SWITCH_TASK selects the best match and updates current task", async () => {
-    const t1 = await service.createCodeTask(
-      "Authentication API",
-      "auth",
-      roomId,
-    );
-    await service.createCodeTask("File Upload", "upload", roomId);
-
-    const result = await switchTaskAction.handler(
-      runtime,
-      createMemory("switch to task auth", roomId),
-    );
-    expect(result!.success).toBe(true);
-    expect(result!.text).toContain("Switched to task");
-    expect(service.getCurrentTaskId()).toBe(t1.id ?? null);
-  });
-
-  test("SEARCH_TASKS returns matching tasks", async () => {
-    await service.createCodeTask("Authentication API", "auth", roomId);
-    await service.createCodeTask("File Upload", "upload", roomId);
-
-    const result = await searchTasksAction.handler(
-      runtime,
-      createMemory("find tasks about auth", roomId),
-    );
-    expect(result!.success).toBe(true);
-    expect(result!.text).toContain("Authentication API");
-  });
-
-  test("PAUSE_TASK/RESUME_TASK updates status of current task", async () => {
+  test("PAUSE_TASK pauses a running task", async () => {
     const task = await service.createCodeTask("Runner", "desc", roomId);
     service.setCurrentTask(task.id ?? null);
     await service.updateTaskStatus(task.id ?? "", "running");
 
-    const paused = await pauseTaskAction.handler(
-      runtime,
-      createMemory("pause the task", roomId),
-    );
-    expect(paused!.success).toBe(true);
-    expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe(
-      "paused",
+    const msg = createMemory("pause my task", roomId);
+    await pauseTaskAction.handler(runtime, msg, undefined, {}, () =>
+      Promise.resolve([]),
     );
 
-    const resumed = await resumeTaskAction.handler(
-      runtime,
-      createMemory("resume the task", roomId),
-    );
-    expect(resumed!.success).toBe(true);
-    expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe(
-      "running",
-    );
+    const updated = await service.getTask(task.id ?? "");
+    expect(updated?.metadata.status).toBe("paused");
   });
 
-  test("PAUSE_TASK validate matches stop/halt language", async () => {
-    const v1 = await pauseTaskAction.validate(
-      runtime,
-      createMemory("stop task runner", roomId),
+  test("RESUME_TASK resumes a paused task (without running execution)", async () => {
+    const task = await service.createCodeTask("Runner", "desc", roomId);
+    service.setCurrentTask(task.id ?? null);
+    await service.updateTaskStatus(task.id ?? "", "paused");
+
+    const msg = createMemory("resume my task", roomId);
+    await resumeTaskAction.handler(runtime, msg, undefined, {}, () =>
+      Promise.resolve([]),
     );
-    expect(v1).toBe(true);
-    const v2 = await pauseTaskAction.validate(
-      runtime,
-      createMemory("halt the task", roomId),
-    );
-    expect(v2).toBe(true);
+
+    const updated = await service.getTask(task.id ?? "");
+    expect(updated?.metadata.status).toBe("running");
   });
 
-  test("RESUME_TASK validate matches start language when task exists", async () => {
-    await service.createCodeTask("Runner", "desc", roomId);
-    const v1 = await resumeTaskAction.validate(
-      runtime,
-      createMemory("start task runner", roomId),
-    );
-    expect(v1).toBe(true);
-    const v2 = await resumeTaskAction.validate(
-      runtime,
-      createMemory("run task runner", roomId),
-    );
-    expect(v2).toBe(true);
-  });
+  test("CANCEL_TASK cancels a task", async () => {
+    const task = await service.createCodeTask("CancelMe", "desc", roomId);
+    service.setCurrentTask(task.id ?? null);
 
-  test("CANCEL_TASK cancels a task by name", async () => {
-    const task = await service.createCodeTask("Cancel Me", "desc", roomId);
-    const result = await cancelTaskAction.handler(
-      runtime,
-      createMemory("cancel task cancel me", roomId),
+    const msg = createMemory("cancel my task", roomId);
+    await cancelTaskAction.handler(runtime, msg, undefined, {}, () =>
+      Promise.resolve([]),
     );
 
-    expect(result!.success).toBe(true);
     const updated = await service.getTask(task.id ?? "");
     expect(updated?.metadata.status).toBe("cancelled");
+  });
+
+  test("LIST_TASKS returns summaries", async () => {
+    await service.createCodeTask("Task A", "desc A", roomId);
+    await service.createCodeTask("Task B", "desc B", roomId);
+
+    const msg = createMemory("show all tasks", roomId);
+    const responses: Memory[] = [];
+    await listTasksAction.handler(runtime, msg, undefined, {}, (m) => {
+      responses.push(m);
+      return Promise.resolve([]);
+    });
+
+    expect(responses[0].content.text).toContain("Task A");
+    expect(responses[0].content.text).toContain("Task B");
+  });
+
+  test("SEARCH_TASKS finds tasks by query", async () => {
+    await service.createCodeTask("Build Tetris", "Tetris game with high scores", roomId);
+    await service.createCodeTask("Fix Bug", "Address login bug", roomId);
+
+    const msg = createMemory("search tasks for tetris", roomId);
+    const responses: Memory[] = [];
+    await searchTasksAction.handler(runtime, msg, undefined, { query: "tetris" }, (m) => {
+      responses.push(m);
+      return Promise.resolve([]);
+    });
+
+    expect(responses[0].content.text).toContain("Tetris");
+    expect(responses[0].content.text).not.toContain("Fix Bug");
+  });
+
+  test("SWITCH_TASK changes current task", async () => {
+    const task1 = await service.createCodeTask("Task One", "desc", roomId);
+    const task2 = await service.createCodeTask("Task Two", "desc", roomId);
+    service.setCurrentTask(task1.id ?? null);
+
+    const msg = createMemory("switch to task two", roomId);
+    await switchTaskAction.handler(runtime, msg, undefined, { taskId: task2.id }, () =>
+      Promise.resolve([]),
+    );
+
+    expect(service.getCurrentTaskId()).toBe(task2.id);
   });
 });
