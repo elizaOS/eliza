@@ -1,7 +1,4 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - Lines 30-71: WASM loading with user-friendly error - KEEP (example script)
-// - Lines 81-124: Python loading with setup guidance - KEEP (example script)
-// - Lines 142-150: Universal plugin loading with error logging - KEEP (example script)
+// TODO: Try-catch review completed - All try-catch blocks KEEP (example script user guidance)
 
 /**
  * TypeScript Runtime Loading Plugins from All Languages

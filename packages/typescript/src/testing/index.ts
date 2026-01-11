@@ -1,3 +1,6 @@
+// TODO: Try-catch review completed 2026-01-11. No try-catch blocks in this file.
+// This is an export aggregation module.
+
 /**
  * @fileoverview elizaOS Integration Testing Infrastructure
  *

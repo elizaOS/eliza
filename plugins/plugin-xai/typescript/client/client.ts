@@ -7,9 +7,9 @@ import type {
   TTweetv2UserField,
 } from "twitter-api-v2";
 import type { FetchTransformOptions, RequestApiResult } from "./api-types";
-import { TwitterAuth } from "./auth";
-import type { TwitterAuthProvider, TwitterOAuth1Provider } from "./auth-providers/types";
-// Removed messages imports - using Twitter API v2 instead
+import { XAuth } from "./auth";
+import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
+// Removed messages imports - using X API v2 instead
 import {
   getEntityIdByScreenName,
   getProfile,
@@ -51,10 +51,12 @@ import {
   retweet,
   type Tweet,
   type TweetQuery,
+  unlikeTweet,
+  unretweet,
 } from "./tweets";
 import type { QueryProfilesResponse, QueryTweetsResponse } from "./types";
 
-const _twUrl = "https://twitter.com";
+const _xUrl = "https://x.com";
 
 /**
  * An alternative fetch function to use instead of the default fetch function. This may be useful
@@ -80,11 +82,11 @@ export interface ClientOptions {
 }
 
 /**
- * An interface to Twitter's API v2.
+ * An interface to X's API v2.
  * - Reusing Client objects is recommended to minimize the time spent authenticating unnecessarily.
  */
 export class Client {
-  private auth?: TwitterAuth;
+  private auth?: XAuth;
 
   /**
    * Creates a new Client object.
@@ -93,13 +95,13 @@ export class Client {
   constructor(readonly _options?: Partial<ClientOptions>) {}
 
   /**
-   * Fetches a Twitter profile.
-   * @param username The Twitter username of the profile to fetch, without an `@` at the beginning.
+   * Fetches an X profile.
+   * @param username The X username of the profile to fetch, without an `@` at the beginning.
    * @returns The requested {@link Profile}.
    */
   public async getProfile(username: string): Promise<Profile> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     const res = await getProfile(username, this.auth);
     return this.handleResponse(res);
@@ -107,12 +109,12 @@ export class Client {
 
   /**
    * Fetches the user ID corresponding to the provided screen name.
-   * @param screenName The Twitter screen name of the profile to fetch.
+   * @param screenName The X screen name of the profile to fetch.
    * @returns The ID of the corresponding account.
    */
   public async getEntityIdByScreenName(screenName: string): Promise<string> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     const res = await getEntityIdByScreenName(screenName, this.auth);
     return this.handleResponse(res);
@@ -125,19 +127,19 @@ export class Client {
    */
   public async getScreenNameByUserId(userId: string): Promise<string> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     const response = await getScreenNameByUserId(userId, this.auth);
     return this.handleResponse(response);
   }
 
   /**
-   * Fetches tweets from Twitter.
-   * @param query The search query. Any Twitter-compatible query format can be used.
-   * @param maxTweets The maximum number of tweets to return.
+   * Fetches posts from X.
+   * @param query The search query. Any X-compatible query format can be used.
+   * @param maxTweets The maximum number of posts to return.
    * @param includeReplies Whether or not replies should be included in the response.
    * @param searchMode The category filter to apply to the search. Defaults to `Top`.
-   * @returns An {@link AsyncGenerator} of tweets matching the provided filters.
+   * @returns An {@link AsyncGenerator} of posts matching the provided filters.
    */
   public searchTweets(
     query: string,
@@ -145,28 +147,28 @@ export class Client {
     searchMode: SearchMode = SearchMode.Top
   ): AsyncGenerator<Tweet, void> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return searchTweets(query, maxTweets, searchMode, this.auth);
   }
 
   /**
-   * Fetches profiles from Twitter.
-   * @param query The search query. Any Twitter-compatible query format can be used.
+   * Fetches profiles from X.
+   * @param query The search query. Any X-compatible query format can be used.
    * @param maxProfiles The maximum number of profiles to return.
-   * @returns An {@link AsyncGenerator} of tweets matching the provided filter(s).
+   * @returns An {@link AsyncGenerator} of profiles matching the provided filter(s).
    */
   public searchProfiles(query: string, maxProfiles: number): AsyncGenerator<Profile, void> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return searchProfiles(query, maxProfiles, this.auth);
   }
 
   /**
-   * Fetches tweets from Twitter.
-   * @param query The search query. Any Twitter-compatible query format can be used.
-   * @param maxTweets The maximum number of tweets to return.
+   * Fetches posts from X.
+   * @param query The search query. Any X-compatible query format can be used.
+   * @param maxTweets The maximum number of posts to return.
    * @param includeReplies Whether or not replies should be included in the response.
    * @param searchMode The category filter to apply to the search. Defaults to `Top`.
    * @param cursor The search cursor, which can be passed into further requests for more results.
@@ -181,7 +183,7 @@ export class Client {
     // Use the generator and collect results
     const tweets: Tweet[] = [];
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     const generator = searchTweets(query, maxTweets, searchMode, this.auth);
 
@@ -197,8 +199,8 @@ export class Client {
   }
 
   /**
-   * Fetches profiles from Twitter.
-   * @param query The search query. Any Twitter-compatible query format can be used.
+   * Fetches profiles from X.
+   * @param query The search query. Any X-compatible query format can be used.
    * @param maxProfiles The maximum number of profiles to return.
    * @param cursor The search cursor, which can be passed into further requests for more results.
    * @returns A page of results, containing a cursor that can be used in further requests.
@@ -209,7 +211,7 @@ export class Client {
     _cursor?: string
   ): Promise<QueryProfilesResponse> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     // Use the generator and collect results
     const profiles: Profile[] = [];
@@ -239,7 +241,7 @@ export class Client {
     cursor?: string
   ): Promise<QueryTweetsResponse> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return fetchListTweets(listId, maxTweets, cursor, this.auth);
   }
@@ -252,7 +254,7 @@ export class Client {
    */
   public getFollowing(userId: string, maxProfiles: number): AsyncGenerator<Profile, void> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return getFollowing(userId, maxProfiles, this.auth);
   }
@@ -265,13 +267,13 @@ export class Client {
    */
   public getFollowers(userId: string, maxProfiles: number): AsyncGenerator<Profile, void> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return getFollowers(userId, maxProfiles, this.auth);
   }
 
   /**
-   * Fetches following profiles from Twitter.
+   * Fetches following profiles from X.
    * @param userId The user whose following should be returned
    * @param maxProfiles The maximum number of profiles to return.
    * @param cursor The search cursor, which can be passed into further requests for more results.
@@ -283,13 +285,13 @@ export class Client {
     cursor?: string
   ): Promise<QueryProfilesResponse> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return fetchProfileFollowing(userId, maxProfiles, this.auth, cursor);
   }
 
   /**
-   * Fetches profile followers from Twitter.
+   * Fetches profile followers from X.
    * @param userId The user whose following should be returned
    * @param maxProfiles The maximum number of profiles to return.
    * @param cursor The search cursor, which can be passed into further requests for more results.
@@ -301,17 +303,17 @@ export class Client {
     cursor?: string
   ): Promise<QueryProfilesResponse> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return fetchProfileFollowers(userId, maxProfiles, this.auth, cursor);
   }
 
   /**
-   * Fetches the home timeline for the current user using Twitter API v2.
-   * Note: Twitter API v2 doesn't distinguish between "For You" and "Following" feeds.
-   * @param count The number of tweets to fetch.
-   * @param seenTweetIds An array of tweet IDs that have already been seen (not used in v2).
-   * @returns A promise that resolves to an array of tweets.
+   * Fetches the home timeline for the current user using X API v2.
+   * Note: X API v2 doesn't distinguish between "For You" and "Following" feeds.
+   * @param count The number of posts to fetch.
+   * @param seenTweetIds An array of post IDs that have already been seen (not used in v2).
+   * @returns A promise that resolves to an array of posts.
    */
   public async fetchHomeTimeline(count: number, _seenTweetIds: string[]): Promise<Tweet[]> {
     if (!this.auth) {
@@ -354,10 +356,10 @@ export class Client {
 
   /**
    * Fetches the home timeline for the current user (same as fetchHomeTimeline in v2).
-   * Twitter API v2 doesn't provide separate "Following" timeline endpoint.
-   * @param count The number of tweets to fetch.
-   * @param seenTweetIds An array of tweet IDs that have already been seen (not used in v2).
-   * @returns A promise that resolves to an array of tweets.
+   * X API v2 doesn't provide separate "Following" timeline endpoint.
+   * @param count The number of posts to fetch.
+   * @param seenTweetIds An array of post IDs that have already been seen (not used in v2).
+   * @returns A promise that resolves to an array of posts.
    */
   public async fetchFollowingTimeline(count: number, seenTweetIds: string[]): Promise<Tweet[]> {
     // In v2 API, there's no separate following timeline endpoint
@@ -436,45 +438,45 @@ export class Client {
   }
 
   /**
-   * Fetches the current trends from Twitter.
+   * Fetches the current trends from X.
    * @returns The current list of trends.
    */
   public getTrends(): Promise<string[]> {
-    // Trends API not available in Twitter API v2 with current implementation
-    console.warn("Trends API not available in Twitter API v2");
+    // Trends API not available in X API v2 with current implementation
+    console.warn("Trends API not available in X API v2");
     return Promise.resolve([]);
   }
 
   /**
-   * Fetches tweets from a Twitter user.
-   * @param user The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
-   * @returns An {@link AsyncGenerator} of tweets from the provided user.
+   * Fetches posts from an X user.
+   * @param user The user whose posts should be returned.
+   * @param maxTweets The maximum number of posts to return. Defaults to `200`.
+   * @returns An {@link AsyncGenerator} of posts from the provided user.
    */
   public getTweets(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return getTweets(user, maxTweets, this.auth);
   }
 
   /**
-   * Fetches tweets from a Twitter user using their ID.
-   * @param userId The user whose tweets should be returned.
-   * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
-   * @returns An {@link AsyncGenerator} of tweets from the provided user.
+   * Fetches posts from an X user using their ID.
+   * @param userId The user whose posts should be returned.
+   * @param maxTweets The maximum number of posts to return. Defaults to `200`.
+   * @returns An {@link AsyncGenerator} of posts from the provided user.
    */
   public getTweetsByUserId(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
     if (!this.auth) {
-      throw new Error("Twitter auth not initialized");
+      throw new Error("X auth not initialized");
     }
     return getTweetsByUserId(userId, maxTweets, this.auth);
   }
 
   /**
-   * Send a tweet
-   * @param text The text of the tweet
-   * @param tweetId The id of the tweet to reply to
+   * Send a post
+   * @param text The text of the post
+   * @param tweetId The id of the post to reply to
    * @param mediaData Optional media data
    * @returns
    */
@@ -867,8 +869,31 @@ export class Client {
     if (!this.auth) {
       throw new Error("Twitter auth not initialized");
     }
-    // Call the retweet function from tweets.ts
     await retweet(tweetId, this.auth);
+  }
+
+  /**
+   * Unlikes a tweet with the given tweet ID.
+   * @param tweetId The ID of the tweet to unlike.
+   * @returns A promise that resolves when the tweet is unliked.
+   */
+  public async unlikeTweet(tweetId: string): Promise<void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    await unlikeTweet(tweetId, this.auth);
+  }
+
+  /**
+   * Removes a retweet of a tweet with the given tweet ID.
+   * @param tweetId The ID of the tweet to unretweet.
+   * @returns A promise that resolves when the retweet is removed.
+   */
+  public async unretweet(tweetId: string): Promise<void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    await unretweet(tweetId, this.auth);
   }
 
   /**

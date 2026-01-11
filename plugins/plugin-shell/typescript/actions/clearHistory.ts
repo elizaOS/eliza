@@ -49,31 +49,21 @@ export const clearHistory: Action = {
       return { success: false, error: "Shell service is not available." };
     }
 
-    try {
-      // Get conversation ID
-      const conversationId = message.roomId || message.agentId;
+    // Get conversation ID
+    const conversationId = message.roomId || message.agentId;
 
-      // Clear the history
-      shellService.clearCommandHistory(conversationId);
+    // Clear the history
+    shellService.clearCommandHistory(conversationId);
 
-      logger.info(`Cleared shell history for conversation: ${conversationId}`);
+    logger.info(`Cleared shell history for conversation: ${conversationId}`);
 
-      const response: Content = {
-        text: "Shell command history has been cleared.",
-        source: message.content.source,
-      };
+    const response: Content = {
+      text: "Shell command history has been cleared.",
+      source: message.content.source,
+    };
 
-      await callback(response);
-      return { success: true, text: response.text };
-    } catch (error) {
-      logger.error("Error clearing shell history:", error);
-      const errorMsg = `Failed to clear shell history: ${error instanceof Error ? error.message : "Unknown error"}`;
-      await callback({
-        text: errorMsg,
-        source: message.content.source,
-      });
-      return { success: false, error: errorMsg };
-    }
+    await callback(response);
+    return { success: true, text: response.text };
   },
   examples: [
     [

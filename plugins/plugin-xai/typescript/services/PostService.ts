@@ -326,24 +326,18 @@ export class TwitterPostService implements IPostService {
     }
   }
 
-  async unlikePost(_postId: string, _agentId: UUID): Promise<void> {
+  async unlikePost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      // Twitter API v2 doesn't have a direct unlike method in the Client wrapper
-      // This would need to be implemented using the Twitter API v2 endpoints
-      logger.warn("Unlike functionality not yet implemented");
-      throw new Error("Unlike functionality not yet implemented");
+      await this.client.twitterClient.unlikeTweet(postId);
     } catch (error) {
       logger.error("Error unliking post:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
 
-  async unrepost(_postId: string, _agentId: UUID): Promise<void> {
+  async unrepost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      // Twitter API v2 doesn't have a direct unretweet method in the Client wrapper
-      // This would need to be implemented using the Twitter API v2 endpoints
-      logger.warn("Unrepost functionality not yet implemented");
-      throw new Error("Unrepost functionality not yet implemented");
+      await this.client.twitterClient.unretweet(postId);
     } catch (error) {
       logger.error("Error unreposting:", error instanceof Error ? error.message : String(error));
       throw error;

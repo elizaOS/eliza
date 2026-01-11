@@ -1,3 +1,5 @@
+// TODO: Try-catch review completed - All try-catch in test assertions KEEP
+
 import {
   ChannelType,
   type HandlerCallback,

@@ -1,3 +1,7 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - completeFollowUp, snoozeFollowUp: Runtime API calls with re-throw - KEEP
+// - Task workers: Execution error handling with re-throw - KEEP
+
 import {
   createUniqueUuid,
   type IAgentRuntime,
