@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type IAgentRuntime, type Memory, ModelType } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { askAction } from "../plugin/actions/ask.js";
 import { explainAction } from "../plugin/actions/explain.js";
 import { fixAction } from "../plugin/actions/fix.js";
@@ -12,6 +12,7 @@ import { refactorAction } from "../plugin/actions/refactor.js";
 import { reviewAction } from "../plugin/actions/review.js";
 import { testAction } from "../plugin/actions/test.js";
 import { getCwd, setCwd } from "../plugin/providers/cwd.js";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
 type UseModelParams = {
   prompt: string;
@@ -29,39 +30,44 @@ async function withTempDir(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix));
 }
 
-function createMockRuntime(
+/**
+ * Creates a real AgentRuntime with mocked model methods for LLM testing.
+ */
+async function createLLMTestRuntime(
   responseText: string,
   options?: { hasReasoningModel?: boolean },
-): {
+): Promise<{
   runtime: IAgentRuntime;
   calls: Array<{ model: string; prompt: string }>;
-} {
+}> {
   const calls: Array<{ model: string; prompt: string }> = [];
   const hasReasoningModel = options?.hasReasoningModel ?? false;
 
-  const runtime: Partial<IAgentRuntime> = {
-    useModel: async (model: string, params: UseModelParams) => {
-      calls.push({ model, prompt: params.prompt });
-      return ` ${responseText} `;
-    },
-    getModel: (modelType: string) => {
-      // Return a handler only if reasoning model is configured
-      if (modelType === ModelType.TEXT_REASONING_LARGE && hasReasoningModel) {
-        return () => Promise.resolve("");
-      }
-      if (modelType === ModelType.TEXT_LARGE) {
-        return () => Promise.resolve("");
-      }
-      return undefined;
-    },
-  };
+  const runtime = await createTestRuntime();
 
-  return { runtime: runtime as IAgentRuntime, calls };
+  vi.spyOn(runtime, "useModel").mockImplementation(async (model: string, params: UseModelParams) => {
+    calls.push({ model, prompt: params.prompt });
+    return ` ${responseText} `;
+  });
+
+  vi.spyOn(runtime, "getModel").mockImplementation((modelType: string) => {
+    // Return a handler only if reasoning model is configured
+    if (modelType === ModelType.TEXT_REASONING_LARGE && hasReasoningModel) {
+      return () => Promise.resolve("");
+    }
+    if (modelType === ModelType.TEXT_LARGE) {
+      return () => Promise.resolve("");
+    }
+    return undefined;
+  });
+
+  return { runtime, calls };
 }
 
 describe("plugin actions: LLM-backed", () => {
   const originalCwd = getCwd();
   let tempDir = "";
+  let runtimesToCleanup: IAgentRuntime[] = [];
 
   beforeEach(async () => {
     tempDir = await withTempDir("eliza-code-llm-");
@@ -71,9 +77,14 @@ describe("plugin actions: LLM-backed", () => {
       "export function add(a: number, b: number) { return a + b; }\n",
       "utf-8",
     );
+    runtimesToCleanup = [];
   });
 
   afterEach(async () => {
+    vi.clearAllMocks();
+    for (const rt of runtimesToCleanup) {
+      await cleanupTestRuntime(rt);
+    }
     try {
       await setCwd(originalCwd);
     } catch {
@@ -87,7 +98,8 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("ASK calls TEXT_LARGE and returns trimmed output", async () => {
-    const { runtime, calls } = createMockRuntime("answer");
+    const { runtime, calls } = await createLLMTestRuntime("answer");
+    runtimesToCleanup.push(runtime);
     const result = await askAction.handler(
       runtime,
       createMemory("How do I write a for loop?"),
@@ -101,7 +113,7 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("PLAN falls back to TEXT_LARGE when reasoning model unavailable", async () => {
-    const { runtime, calls } = createMockRuntime("plan");
+    const { runtime, calls } = createLLMTestRuntime("plan");
     const result = await planAction.handler(
       runtime,
       createMemory("plan how to add oauth"),
@@ -115,7 +127,7 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("PLAN uses TEXT_REASONING_LARGE when available", async () => {
-    const { runtime, calls } = createMockRuntime("plan", {
+    const { runtime, calls } = createLLMTestRuntime("plan", {
       hasReasoningModel: true,
     });
     const result = await planAction.handler(
@@ -131,7 +143,7 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("GENERATE does not trigger for explicit file paths (validate=false)", async () => {
-    const { runtime } = createMockRuntime("code");
+    const { runtime } = createLLMTestRuntime("code");
     const valid = await generateAction.validate(
       runtime,
       createMemory("generate code in index.html"),
@@ -140,7 +152,7 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("GENERATE calls TEXT_LARGE and returns trimmed output", async () => {
-    const { runtime, calls } = createMockRuntime("generated");
+    const { runtime, calls } = createLLMTestRuntime("generated");
     const result = await generateAction.handler(
       runtime,
       createMemory("generate a quicksort function in typescript"),
@@ -163,7 +175,7 @@ describe("plugin actions: LLM-backed", () => {
     ] as const;
 
     for (const { action, input } of actions) {
-      const { runtime, calls } = createMockRuntime("ok");
+      const { runtime, calls } = createLLMTestRuntime("ok");
       const result = await action.handler(runtime, createMemory(input));
 
       expect(result!.success).toBe(true);
@@ -176,7 +188,7 @@ describe("plugin actions: LLM-backed", () => {
   });
 
   test("EXPLAIN fails with a helpful error for missing files", async () => {
-    const { runtime } = createMockRuntime("unused");
+    const { runtime } = createLLMTestRuntime("unused");
     const result = await explainAction.handler(
       runtime,
       createMemory("explain does-not-exist.ts"),

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Test Utilities for Simple Voice Plugin Tests
+ * @fileoverview Test Utilities for Code App Tests
  *
  * Uses REAL AgentRuntime instances for testing.
  * Re-exports utilities from bootstrap test-utils.
@@ -7,8 +7,10 @@
 
 export {
   cleanupTestRuntime,
+  createTestDatabaseAdapter,
   createTestMemory,
   createTestRuntime,
   createTestState,
   createUUID,
-} from "../../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
+  setupActionTest,
+} from "../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
