@@ -161,7 +161,7 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
-      interface TranscriptionParams {
+      interface LocalTranscriptionParams {
         audioData: Buffer;
       }
       const audioBuffer =
@@ -169,7 +169,7 @@ export const groqPlugin: Plugin = {
           ? Buffer.from(params, "base64")
           : Buffer.isBuffer(params)
             ? params
-            : (params as TranscriptionParams).audioData;
+            : (params as unknown as LocalTranscriptionParams).audioData;
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
       formData.append(
