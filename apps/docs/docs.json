@@ -549,13 +549,13 @@
                 ]
               },
               {
-                "group": "Twitter",
+                "group": "X",
                 "pages": [
-                  "plugin-registry/platform/twitter",
-                  "plugin-registry/platform/twitter/developer-guide",
-                  "plugin-registry/platform/twitter/timeline-flow",
-                  "plugin-registry/platform/twitter/examples",
-                  "plugin-registry/platform/twitter/testing-guide"
+                  "plugin-registry/platform/x",
+                  "plugin-registry/platform/x/developer-guide",
+                  "plugin-registry/platform/x/timeline-flow",
+                  "plugin-registry/platform/x/examples",
+                  "plugin-registry/platform/x/testing-guide"
                 ]
               },
               {
@@ -641,8 +641,8 @@
       "og:site_name": "ElizaOS Documentation",
       "og:type": "website",
       "og:image": "/images/eliza-og.png",
-      "twitter:card": "summary_large_image",
-      "twitter:image": "/images/eliza-og.png"
+      "x:card": "summary_large_image",
+      "x:image": "/images/eliza-og.png"
     }
   },
   "analytics": {

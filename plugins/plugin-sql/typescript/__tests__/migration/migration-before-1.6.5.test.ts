@@ -530,11 +530,11 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         )
       `);
 
-      // Create a table from another plugin (e.g., plugin-twitter)
+      // Create a table from another plugin (e.g., plugin-x)
       await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS twitter_posts (
+        CREATE TABLE IF NOT EXISTS x_posts (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          tweet_id TEXT NOT NULL,
+          post_id TEXT NOT NULL,
           author_id TEXT NOT NULL,
           content TEXT NOT NULL,
           created_at TIMESTAMP DEFAULT NOW()
@@ -579,27 +579,27 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     it("should preserve other plugin tables with their data intact", async () => {
       // Insert test data
       await db.execute(sql`
-        INSERT INTO twitter_posts (id, tweet_id, author_id, content)
-        VALUES ('723e4567-e89b-12d3-a456-426614174000'::uuid, '12345', 'user123', 'Hello Twitter!')
+        INSERT INTO x_posts (id, post_id, author_id, content)
+        VALUES ('723e4567-e89b-12d3-a456-426614174000'::uuid, '12345', 'user123', 'Hello X!')
       `);
 
       // Run migration
       await migrateToEntityRLS(mockAdapter);
 
-      // Verify twitter_posts table and data are intact
-      const tweets = await db.execute(sql`SELECT * FROM twitter_posts`);
-      expect(tweets.rows).toHaveLength(1);
-      expect(tweets.rows[0].content).toBe("Hello Twitter!");
-      expect(tweets.rows[0].tweet_id).toBe("12345");
+      // Verify x_posts table and data are intact
+      const posts = await db.execute(sql`SELECT * FROM x_posts`);
+      expect(posts.rows).toHaveLength(1);
+      expect(posts.rows[0].content).toBe("Hello X!");
+      expect(posts.rows[0].post_id).toBe("12345");
     });
 
     it("should disable RLS on other plugin tables during migration", async () => {
-      // Enable RLS on twitter_posts
-      await db.execute(sql`ALTER TABLE twitter_posts ENABLE ROW LEVEL SECURITY`);
+      // Enable RLS on x_posts
+      await db.execute(sql`ALTER TABLE x_posts ENABLE ROW LEVEL SECURITY`);
 
       // Verify RLS is enabled
       const beforeRls = await db.execute(sql`
-        SELECT relrowsecurity FROM pg_class WHERE relname = 'twitter_posts'
+        SELECT relrowsecurity FROM pg_class WHERE relname = 'x_posts'
       `);
       expect(beforeRls.rows[0].relrowsecurity).toBe(true);
 
@@ -608,7 +608,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
 
       // RLS should be disabled on ALL tables including other plugins
       const afterRls = await db.execute(sql`
-        SELECT relrowsecurity FROM pg_class WHERE relname = 'twitter_posts'
+        SELECT relrowsecurity FROM pg_class WHERE relname = 'x_posts'
       `);
       expect(afterRls.rows[0].relrowsecurity).toBe(false);
     });
@@ -616,7 +616,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
     it("should NOT rename columns in other plugin tables", async () => {
       // Insert test data
       await db.execute(sql`
-        INSERT INTO twitter_posts (id, tweet_id, author_id, content)
+        INSERT INTO x_posts (id, post_id, author_id, content)
         VALUES ('723e4567-e89b-12d3-a456-426614174000'::uuid, '12345', 'user123', 'Hello!')
       `);
 
@@ -626,12 +626,12 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       // Verify columns are unchanged
       const columns = await db.execute(sql`
         SELECT column_name FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'twitter_posts'
+        WHERE table_schema = 'public' AND table_name = 'x_posts'
         ORDER BY column_name
       `);
       const columnNames = columns.rows.map((r: ColumnInfoRow) => r.column_name);
 
-      expect(columnNames).toContain("tweet_id");
+      expect(columnNames).toContain("post_id");
       expect(columnNames).toContain("author_id");
       expect(columnNames).toContain("created_at");
     });

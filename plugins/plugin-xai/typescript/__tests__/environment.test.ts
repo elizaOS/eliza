@@ -1,6 +1,6 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { shouldTargetUser, twitterEnvSchema, validateTwitterConfig } from "../environment";
+import { shouldTargetUser, xEnvSchema, validateXConfig } from "../environment";
 
 describe("Environment Configuration", () => {
   let mockRuntime: IAgentRuntime;
@@ -62,7 +62,7 @@ describe("Environment Configuration", () => {
     });
   });
 
-  describe("validateTwitterConfig", () => {
+  describe("validateXConfig", () => {
     it("should validate config with all required API credentials", async () => {
       mockRuntime.getSetting = vi.fn((key) => {
         const settings = {
@@ -74,7 +74,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime);
 
       expect(config.TWITTER_API_KEY).toBe("test-api-key");
       expect(config.TWITTER_API_SECRET_KEY).toBe("test-api-secret");
@@ -85,8 +85,8 @@ describe("Environment Configuration", () => {
     it("should throw error when required credentials are missing", async () => {
       mockRuntime.getSetting = vi.fn(() => undefined);
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter env auth is selected"
+      await expect(validateXConfig(mockRuntime)).rejects.toThrow(
+        "X env auth is selected"
       );
     });
 
@@ -100,7 +100,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime);
       expect(config.TWITTER_AUTH_MODE).toBe("oauth");
       expect(config.TWITTER_CLIENT_ID).toBe("client-id");
       expect(config.TWITTER_REDIRECT_URI).toBe("http://127.0.0.1:8080/callback");
@@ -116,7 +116,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow("Twitter OAuth is selected");
+      await expect(validateXConfig(mockRuntime)).rejects.toThrow("X OAuth is selected");
     });
 
     it("should throw when broker mode is missing broker url", async () => {
@@ -127,8 +127,8 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter broker auth is selected"
+      await expect(validateXConfig(mockRuntime)).rejects.toThrow(
+        "X broker auth is selected"
       );
     });
 
@@ -143,7 +143,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime);
 
       // Check default values
       expect(config.TWITTER_RETRY_LIMIT).toBe("5");
@@ -166,7 +166,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime);
 
       expect(config.TWITTER_ENABLE_POST).toBe("true");
       expect(config.TWITTER_DRY_RUN).toBe("false");
@@ -189,7 +189,7 @@ describe("Environment Configuration", () => {
         TWITTER_POST_INTERVAL_MAX: "120",
       };
 
-      const config = await validateTwitterConfig(mockRuntime, partialConfig);
+      const config = await validateXConfig(mockRuntime, partialConfig);
 
       // Should use partial config value
       expect(config.TWITTER_POST_INTERVAL_MIN).toBe("60");
@@ -209,7 +209,7 @@ describe("Environment Configuration", () => {
         return undefined;
       });
 
-      const config = await validateTwitterConfig(mockRuntime, {
+      const config = await validateXConfig(mockRuntime, {
         TWITTER_API_KEY: "config-api-key",
       });
 
@@ -228,7 +228,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime);
 
       expect(config.TWITTER_TARGET_USERS).toBe("alice,bob,charlie");
     });
@@ -242,12 +242,12 @@ describe("Environment Configuration", () => {
       };
 
       await expect(
-        validateTwitterConfig(mockRuntime, invalidConfig as Record<string, unknown>)
+        validateXConfig(mockRuntime, invalidConfig as Record<string, unknown>)
       ).rejects.toThrow();
     });
   });
 
-  describe("twitterEnvSchema", () => {
+  describe("xEnvSchema", () => {
     it("should validate a complete configuration", () => {
       const validConfig = {
         TWITTER_API_KEY: "test-key",
@@ -262,14 +262,14 @@ describe("Environment Configuration", () => {
         TWITTER_DRY_RUN: "true",
       };
 
-      const result = twitterEnvSchema.safeParse(validConfig);
+      const result = xEnvSchema.safeParse(validConfig);
       expect(result.success).toBe(true);
     });
 
     it("should allow optional fields", () => {
       const minimalConfig = {};
 
-      const result = twitterEnvSchema.safeParse(minimalConfig);
+      const result = xEnvSchema.safeParse(minimalConfig);
       expect(result.success).toBe(true);
 
       if (result.success) {
@@ -283,7 +283,7 @@ describe("Environment Configuration", () => {
         TWITTER_API_KEY: 123, // Should be string
       };
 
-      const result = twitterEnvSchema.safeParse(invalidConfig);
+      const result = xEnvSchema.safeParse(invalidConfig);
       expect(result.success).toBe(false);
     });
   });

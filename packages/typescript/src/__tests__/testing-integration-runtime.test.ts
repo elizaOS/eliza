@@ -2,9 +2,6 @@
  * @fileoverview Tests for integration runtime factory
  */
 
-// - skipInferenceCheck test: Verifying no specific error thrown - KEEP
-// - cleanup-on-throw test: Verifying cleanup behavior - KEEP
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createIntegrationTestRuntime,

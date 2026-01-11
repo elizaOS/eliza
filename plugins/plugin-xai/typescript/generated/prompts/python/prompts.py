@@ -35,18 +35,18 @@ MESSAGE_HANDLER_TEMPLATE = """{{agentName}} is replying to you:
 
 # Instructions: Write a thoughtful response to {{senderName}} that is appropriate and relevant to their message. Do not including any thinking, self-reflection or internal dialog in your response."""
 
-QUOTE_TWEET_TEMPLATE = """# Task: Write a quote tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+QUOTE_TWEET_TEMPLATE = """# Task: Write a quote post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
 
 <response>
-  <thought>Your thought here, explaining why the quote tweet is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The quote tweet content here, under 280 characters, without emojis, no questions</post>
+  <thought>Your thought here, explaining why the quote post is meaningful or how it connects to what {{agentName}} cares about</thought>
+  <post>The quote post content here, under 280 characters, without emojis, no questions</post>
 </response>
 
-Your quote tweet should be:
-- A reaction, agreement, disagreement, or expansion of the original tweet
+Your quote post should be:
+- A reaction, agreement, disagreement, or expansion of the original post
 - Personal and unique to {{agentName}}'s style and point of view
 - 1 to 3 sentences long, chosen at random
 - No questions, no emojis, concise
@@ -55,18 +55,18 @@ Your quote tweet should be:
 
 Your output must ONLY contain the XML block."""
 
-REPLY_TWEET_TEMPLATE = """# Task: Write a reply tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+REPLY_TWEET_TEMPLATE = """# Task: Write a reply post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
 
 <response>
   <thought>Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The reply tweet content here, under 280 characters, without emojis, no questions</post>
+  <post>The reply post content here, under 280 characters, without emojis, no questions</post>
 </response>
 
 Your reply should be:
-- A direct response, agreement, disagreement, or personal take on the original tweet
+- A direct response, agreement, disagreement, or personal take on the original post
 - Reflective of {{agentName}}'s unique voice and values
 - 1 to 2 sentences long, chosen at random
 - No questions, no emojis, concise
@@ -75,7 +75,7 @@ Your reply should be:
 
 Your output must ONLY contain the XML block."""
 
-TWITTER_ACTION_TEMPLATE = """# INSTRUCTIONS: Determine actions for {{agentName}} (@{{twitterUserName}}) based on:
+TWITTER_ACTION_TEMPLATE = """# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
 {{bio}}
 {{postDirections}}
 
@@ -94,7 +94,7 @@ Guidelines:
 
 Actions (respond only with tags):
 [LIKE] - Content is relevant and interesting (7/10 or higher)
-[RETWEET] - Content is valuable and worth sharing (8/10 or higher)
+[REPOST] - Content is valuable and worth sharing (8/10 or higher)
 [QUOTE] - You can add meaningful commentary (7.5/10 or higher)
 [REPLY] - You can contribute helpful insights (7/10 or higher)"""
 

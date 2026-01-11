@@ -17,5 +17,5 @@ export * from "./errors";
 export * from "./profile";
 export * from "./relationships";
 export * from "./search";
-export * from "./tweets";
-export type { QueryProfilesResponse, QueryTweetsResponse } from "./types";
+export * from "./posts";
+export type { QueryProfilesResponse, QueryPostsResponse } from "./types";

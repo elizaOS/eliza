@@ -1,7 +1,7 @@
 """
 xAI Plugin Types
 
-Type definitions for xAI Grok and X (Twitter) API integration.
+Type definitions for xAI Grok and X (X) API integration.
 All types use Pydantic for validation and serialization.
 """
 
@@ -41,7 +41,7 @@ class SearchMode(str, Enum):
 
 
 class XConfig(BaseModel):
-    """X (Twitter) API v2 configuration."""
+    """X (X) API v2 configuration."""
 
     auth_mode: AuthMode = Field(default=AuthMode.ENV)
 

@@ -147,7 +147,7 @@ export interface Action {
    *     name: "platform",
    *     description: "The platform to send the message on (telegram, discord, etc)",
    *     required: false,
-   *     schema: { type: "string", enum: ["telegram", "discord", "twitter"], default: "telegram" }
+   *     schema: { type: "string", enum: ["telegram", "discord", "x"], default: "telegram" }
    *   }
    * ]
    * ```

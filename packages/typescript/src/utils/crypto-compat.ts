@@ -427,16 +427,3 @@ export async function decryptAsync(
   return webCryptoDecrypt(key, iv, data);
 }
 
-/**
- * Legacy Web Crypto API export for backward compatibility
- *
- * @deprecated Use top-level async functions instead:
- * - `createHashAsync()` instead of `webCrypto.hash()`
- * - `encryptAsync()` instead of `webCrypto.encrypt()`
- * - `decryptAsync()` instead of `webCrypto.decrypt()`
- */
-export const webCrypto = {
-  hash: webCryptoHash,
-  encrypt: webCryptoEncrypt,
-  decrypt: webCryptoDecrypt,
-};

@@ -12,9 +12,6 @@ import {
   ModelType,
   type UUID,
 } from "@elizaos/core";
-// - reactionReceivedHandler duplicate error test - KEEP
-// - entityLeftHandler error test - KEEP
-// NOTE: entityLeftHandler in index.ts lacks internal try-catch; test assumes no throw
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBootstrapPlugin } from "../index";
@@ -618,7 +615,7 @@ describe("shouldRespond with mentionContext", () => {
     const room = { type: ChannelType.GROUP };
 
     // Test with different platform sources
-    const platforms = ["discord", "telegram", "twitter", "slack"];
+    const platforms = ["discord", "telegram", "x", "slack"];
 
     platforms.forEach((platform) => {
       const mentionContext = {

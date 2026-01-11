@@ -1,5 +1,3 @@
-// - mockInit: Registration error handling in test utility - KEEP (test robustness)
-
 import { EventType, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBootstrapPlugin } from "../index";

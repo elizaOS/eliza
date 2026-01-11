@@ -71,7 +71,7 @@ export function createTestCharacter(
 }
 
 /**
- * Type alias for backward compatibility.
+ * Type alias for MockRuntime.
  * MockRuntime is just IAgentRuntime - no separate type.
  */
 export type MockRuntime = IAgentRuntime;
@@ -621,7 +621,6 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
   };
 }
 
-// Alias for backward compatibility
 export const createTestMemory = createMockMemory;
 
 /**
@@ -649,7 +648,6 @@ export function createMockState(overrides: Partial<State> = {}): State {
   };
 }
 
-// Alias for backward compatibility
 export const createTestState = createMockState;
 
 /**

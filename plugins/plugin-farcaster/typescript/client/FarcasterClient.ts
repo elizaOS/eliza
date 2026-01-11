@@ -1,5 +1,3 @@
-// - publishCast, fetchProfile, publishReaction, deleteReaction: External Neynar API - KEEP
-
 /**
  * Farcaster API client implementation.
  *

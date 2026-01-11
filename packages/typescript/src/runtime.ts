@@ -254,7 +254,7 @@ export class AgentRuntime implements IAgentRuntime {
       skipCharacterProvider: this.isAnonymousCharacter,
       enableAutonomy: opts.enableAutonomy,
     };
-    // Generate deterministic UUID from character name for backward compatibility
+    // Generate deterministic UUID from character name
     // Falls back to random UUID only if no character name is provided
     this.agentId =
       character.id ?? opts.agentId ?? stringToUuid(character.name ?? uuidv4());
@@ -1501,8 +1501,8 @@ export class AgentRuntime implements IAgentRuntime {
             ),
         );
 
-        // Handle backward compatibility for void, null, true, false returns
-        const isLegacyReturn =
+        // Handle void, null, true, false returns
+        const isVoidReturn =
           result === undefined ||
           result === null ||
           typeof result === "boolean";
@@ -1510,7 +1510,7 @@ export class AgentRuntime implements IAgentRuntime {
         // Only create ActionResult if we have a proper result
         let actionResult: ActionResult | undefined;
 
-        if (!isLegacyReturn) {
+        if (!isVoidReturn) {
           // Ensure we have an ActionResult with required success field
           if (
             typeof result === "object" &&
@@ -1680,7 +1680,7 @@ export class AgentRuntime implements IAgentRuntime {
             message: message.content.text,
             messageId: message.id,
             result: logResult,
-            isLegacyReturn,
+            isVoidReturn,
             prompts: this.currentActionContext?.prompts || [],
             promptCount: this.currentActionContext?.prompts?.length || 0,
             runId,
@@ -2628,7 +2628,6 @@ export class AgentRuntime implements IAgentRuntime {
    * Precedence order (highest to lowest):
    * 1. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
    * 2. Default settings (e.g., DEFAULT_TEMPERATURE)
-   * 3. Legacy settings for backwards compatibility (e.g., MODEL_TEMPERATURE)
    *
    * @param modelType The specific model type to get settings for
    * @returns Object containing model parameters if they exist, or null if no settings are configured
@@ -2650,7 +2649,6 @@ export class AgentRuntime implements IAgentRuntime {
         | "REPETITION_PENALTY"
         | "FREQUENCY_PENALTY"
         | "PRESENCE_PENALTY",
-      legacyKey?: string,
     ): number | null => {
       // Try model-specific setting first
       if (modelType) {
@@ -2661,7 +2659,6 @@ export class AgentRuntime implements IAgentRuntime {
           if (!Number.isNaN(numValue)) {
             return numValue;
           }
-          // If model-specific value exists but is invalid, continue to fallbacks
         }
       }
 
@@ -2673,45 +2670,21 @@ export class AgentRuntime implements IAgentRuntime {
         if (!Number.isNaN(numValue)) {
           return numValue;
         }
-        // If default value exists but is invalid, continue to legacy
-      }
-
-      // Fall back to legacy setting for backwards compatibility (if provided)
-      if (legacyKey) {
-        const legacyValue = this.getSetting(legacyKey);
-        if (legacyValue !== null && legacyValue !== undefined) {
-          const numValue = Number(legacyValue);
-          if (!Number.isNaN(numValue)) {
-            return numValue;
-          }
-        }
       }
 
       return null;
     };
 
     // Get settings with proper fallback chain
-    const maxTokens = getSettingWithFallback(
-      "MAX_TOKENS",
-      MODEL_SETTINGS.MODEL_MAX_TOKEN,
-    );
-    const temperature = getSettingWithFallback(
-      "TEMPERATURE",
-      MODEL_SETTINGS.MODEL_TEMPERATURE,
-    );
+    const maxTokens = getSettingWithFallback("MAX_TOKENS");
+    const temperature = getSettingWithFallback("TEMPERATURE");
     const topP = getSettingWithFallback("TOP_P");
     const topK = getSettingWithFallback("TOP_K");
     const minP = getSettingWithFallback("MIN_P");
     const seed = getSettingWithFallback("SEED");
     const repetitionPenalty = getSettingWithFallback("REPETITION_PENALTY");
-    const frequencyPenalty = getSettingWithFallback(
-      "FREQUENCY_PENALTY",
-      MODEL_SETTINGS.MODEL_FREQ_PENALTY,
-    );
-    const presencePenalty = getSettingWithFallback(
-      "PRESENCE_PENALTY",
-      MODEL_SETTINGS.MODEL_PRESENCE_PENALTY,
-    );
+    const frequencyPenalty = getSettingWithFallback("FREQUENCY_PENALTY");
+    const presencePenalty = getSettingWithFallback("PRESENCE_PENALTY");
 
     // Add settings if they exist
     if (maxTokens !== null) modelSettings.maxTokens = maxTokens;

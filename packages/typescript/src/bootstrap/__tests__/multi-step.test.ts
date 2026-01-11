@@ -1,5 +1,3 @@
-// - runMultiStepCoreTest: Provider/action execution with error logging - KEEP (fault-tolerant)
-
 import {
   type Content,
   type IAgentRuntime,

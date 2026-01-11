@@ -1170,7 +1170,7 @@ async function getGraphNodeDetailsHandler(
     // First try exact match with roomId filter
     let document = allDocuments.find((doc) => doc.id === nodeId && doc.roomId === agentId);
 
-    // If not found with roomId filter, try without filter (for backward compatibility)
+    // If not found with roomId filter, try without filter
     if (!document) {
       logger.debug(`[Graph API] 📊 Document not found with roomId filter, trying without filter`);
       document = allDocuments.find((doc) => doc.id === nodeId);

@@ -128,7 +128,7 @@ If an action has no parameters or you're only using REPLY/IGNORE, omit <params> 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>`;
 
-export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
+export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{xUserName}}.
 
 Example task outputs:
 1. A post about the importance of AI in our lives
@@ -147,7 +147,7 @@ Example task outputs:
 
 3. A post about finding a new job
 <response>
-  <thought>Getting a job is hard, I bet there's a good tweet in that</thought>
+  <thought>Getting a job is hard, I bet there's a good post in that</thought>
   <post>Just keep going!</post>
   <imagePrompt>A person looking at a computer screen with a job search website</imagePrompt>
 </response>

@@ -1,6 +1,6 @@
 # elizaOS xAI Plugin
 
-Unified xAI Grok and X (Twitter) API integration for elizaOS agents.
+Unified xAI Grok and X (X) API integration for elizaOS agents.
 
 ## Features
 
@@ -10,7 +10,7 @@ Unified xAI Grok and X (Twitter) API integration for elizaOS agents.
 - **Embeddings**: `grok-embedding` for semantic text embeddings
 - **Streaming**: Real-time text generation with streaming support
 
-### X (Twitter) API v2
+### X (X) API v2
 
 - **Posts**: Create, read, delete, like, repost
 - **Users**: Profile lookup, follow/unfollow, followers/following lists
@@ -42,7 +42,7 @@ elizaos-plugin-xai = "1.0"
 | `XAI_SMALL_MODEL`     | No       | `grok-3-mini`         | Small model     |
 | `XAI_EMBEDDING_MODEL` | No       | `grok-embedding`      | Embedding model |
 
-### X (Twitter) API
+### X (X) API
 
 | Variable                | Required       | Default | Description                         |
 | ----------------------- | -------------- | ------- | ----------------------------------- |
@@ -54,7 +54,6 @@ elizaos-plugin-xai = "1.0"
 | `X_BEARER_TOKEN`        | For Bearer     | -       | App-only bearer token               |
 | `X_DRY_RUN`             | No             | `false` | Simulate actions without posting    |
 
-Legacy `TWITTER_*` variables are supported for backward compatibility.
 
 ## API Parity
 
@@ -100,7 +99,7 @@ const agent = new AgentRuntime({
 
 // Use Grok for text generation
 const response = await agent.useModel(ModelType.TEXT_LARGE, {
-  prompt: "Write a tweet about AI",
+  prompt: "Write a post about AI",
 });
 ```
 
@@ -117,7 +116,7 @@ async with GrokClient(GrokConfig.from_env()) as grok:
     )
     print(result.text)
 
-# X (Twitter)
+# X (X)
 async with XClient(XConfig.from_env()) as x:
     me = await x.me()
     print(f"Logged in as @{me.username}")
@@ -133,7 +132,7 @@ let grok = GrokClient::new(GrokConfig::from_env()?)?;
 let result = grok.generate_text(&TextGenerationParams::new("Hello"), false).await?;
 println!("{}", result.text);
 
-// X (Twitter)
+// X (X)
 let mut x = XClient::new(XConfig::from_env()?)?;
 let me = x.me().await?;
 println!("Logged in as @{}", me.username);
@@ -146,7 +145,7 @@ println!("Logged in as @{}", me.username);
 | Service  | Base URL                    | Version |
 | -------- | --------------------------- | ------- |
 | xAI Grok | `https://api.x.ai/v1`       | v1      |
-| X API    | `https://api.twitter.com/2` | v2      |
+| X API    | `https://api.x.com/2` | v2      |
 
 ### Grok Endpoints
 
@@ -158,20 +157,20 @@ println!("Logged in as @{}", me.username);
 
 - `GET /users/me` - Authenticated user
 - `GET /users/by/username/:username` - User lookup
-- `GET /tweets/:id` - Get post
-- `POST /tweets` - Create post
-- `DELETE /tweets/:id` - Delete post
+- `GET /posts/:id` - Get post
+- `POST /posts` - Create post
+- `DELETE /posts/:id` - Delete post
 - `POST /users/:id/likes` - Like post
-- `DELETE /users/:id/likes/:tweet_id` - Unlike post
-- `POST /users/:id/retweets` - Repost
-- `DELETE /users/:id/retweets/:tweet_id` - Undo repost
+- `DELETE /users/:id/likes/:post_id` - Unlike post
+- `POST /users/:id/reposts` - Repost
+- `DELETE /users/:id/reposts/:post_id` - Undo repost
 - `POST /users/:id/following` - Follow user
 - `DELETE /users/:id/following/:target_id` - Unfollow user
 - `GET /users/:id/followers` - Get followers
 - `GET /users/:id/following` - Get following
 - `GET /users/:id/timelines/reverse_chronological` - Home timeline
-- `GET /users/:id/tweets` - User posts
-- `GET /tweets/search/recent` - Search posts
+- `GET /users/:id/posts` - User posts
+- `GET /posts/search/recent` - Search posts
 
 ## License
 

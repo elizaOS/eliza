@@ -131,9 +131,6 @@ export const knowledgePlugin: Plugin = createKnowledgePlugin({
   enableTests: true,
 });
 
-/**
- * Default export - Full plugin for backward compatibility
- */
 export default knowledgePlugin;
 
 export { documentsProvider } from "./documents-provider";

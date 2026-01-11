@@ -1,19 +1,19 @@
-import { TwitterApi } from "twitter-api-v2";
+import { XApi } from "x-api-v2";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TwitterAuth } from "../auth";
+import { XAuth } from "../auth";
 
-// Mock twitter-api-v2
-vi.mock("twitter-api-v2", () => ({
-  TwitterApi: vi.fn().mockImplementation(() => ({
+// Mock x-api-v2
+vi.mock("x-api-v2", () => ({
+  XApi: vi.fn().mockImplementation(() => ({
     v2: {
       me: vi.fn(),
     },
   })),
 }));
 
-describe("TwitterAuth", () => {
-  let auth: TwitterAuth;
-  let mockTwitterApi: {
+describe("XAuth", () => {
+  let auth: XAuth;
+  let mockXApi: {
     v2: {
       me: ReturnType<typeof vi.fn>;
     };
@@ -22,15 +22,15 @@ describe("TwitterAuth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockTwitterApi = {
+    mockXApi = {
       v2: {
         me: vi.fn(),
       },
     };
 
-    vi.mocked(TwitterApi).mockImplementation(() => mockTwitterApi as unknown as TwitterApi);
+    vi.mocked(XApi).mockImplementation(() => mockXApi as unknown as XApi);
 
-    auth = new TwitterAuth({
+    auth = new XAuth({
       mode: "env",
       getAccessToken: async () => "test-access-token",
       getOAuth1Credentials: async () => ({
@@ -45,21 +45,21 @@ describe("TwitterAuth", () => {
   describe("constructor", () => {
     it("should initialize with API credentials", () => {
       // Initialization happens lazily on first use.
-      expect(TwitterApi).not.toHaveBeenCalled();
+      expect(XApi).not.toHaveBeenCalled();
     });
   });
 
   describe("getV2Client", () => {
-    it("should return the Twitter API v2 client", () => {
+    it("should return the X API v2 client", () => {
       return auth.getV2Client().then((client) => {
-        expect(client).toBe(mockTwitterApi);
+        expect(client).toBe(mockXApi);
       });
     });
   });
 
   describe("isLoggedIn", () => {
     it("should return true when authenticated", async () => {
-      mockTwitterApi.v2.me.mockResolvedValue({
+      mockXApi.v2.me.mockResolvedValue({
         data: {
           id: "123456",
           username: "testuser",
@@ -68,18 +68,18 @@ describe("TwitterAuth", () => {
 
       const isLoggedIn = await auth.isLoggedIn();
       expect(isLoggedIn).toBe(true);
-      expect(mockTwitterApi.v2.me).toHaveBeenCalled();
+      expect(mockXApi.v2.me).toHaveBeenCalled();
     });
 
     it("should return false when API call fails", async () => {
-      mockTwitterApi.v2.me.mockRejectedValue(new Error("Unauthorized"));
+      mockXApi.v2.me.mockRejectedValue(new Error("Unauthorized"));
 
       const isLoggedIn = await auth.isLoggedIn();
       expect(isLoggedIn).toBe(false);
     });
 
     it("should return false when no user data returned", async () => {
-      mockTwitterApi.v2.me.mockResolvedValue({});
+      mockXApi.v2.me.mockResolvedValue({});
 
       const isLoggedIn = await auth.isLoggedIn();
       expect(isLoggedIn).toBe(false);
@@ -105,11 +105,11 @@ describe("TwitterAuth", () => {
         },
       };
 
-      mockTwitterApi.v2.me.mockResolvedValue(mockUserData);
+      mockXApi.v2.me.mockResolvedValue(mockUserData);
 
       const profile = await auth.me();
 
-      expect(mockTwitterApi.v2.me).toHaveBeenCalledWith({
+      expect(mockXApi.v2.me).toHaveBeenCalledWith({
         "user.fields": [
           "id",
           "name",
@@ -146,7 +146,7 @@ describe("TwitterAuth", () => {
         },
       };
 
-      mockTwitterApi.v2.me.mockResolvedValue(mockUserData);
+      mockXApi.v2.me.mockResolvedValue(mockUserData);
 
       // First call
       const profile1 = await auth.me();
@@ -154,7 +154,7 @@ describe("TwitterAuth", () => {
       const profile2 = await auth.me();
 
       // Should only call API once
-      expect(mockTwitterApi.v2.me).toHaveBeenCalledTimes(1);
+      expect(mockXApi.v2.me).toHaveBeenCalledTimes(1);
       expect(profile1).toBe(profile2);
     });
 
@@ -168,7 +168,7 @@ describe("TwitterAuth", () => {
         },
       };
 
-      mockTwitterApi.v2.me.mockResolvedValue(mockUserData);
+      mockXApi.v2.me.mockResolvedValue(mockUserData);
 
       const profile = await auth.me();
 
@@ -187,7 +187,7 @@ describe("TwitterAuth", () => {
     });
 
     it("should return undefined on error", async () => {
-      mockTwitterApi.v2.me.mockRejectedValue(new Error("API Error"));
+      mockXApi.v2.me.mockRejectedValue(new Error("API Error"));
 
       const profile = await auth.me();
 
@@ -198,7 +198,7 @@ describe("TwitterAuth", () => {
   describe("logout", () => {
     it("should clear credentials and profile", async () => {
       // First login and fetch profile
-      mockTwitterApi.v2.me.mockResolvedValue({
+      mockXApi.v2.me.mockResolvedValue({
         data: { id: "123456", username: "testuser" },
       });
 
@@ -208,7 +208,7 @@ describe("TwitterAuth", () => {
       await auth.logout();
 
       // Try to get client after logout
-      await expect(auth.getV2Client()).rejects.toThrow("Twitter API client not initialized");
+      await expect(auth.getV2Client()).rejects.toThrow("X API client not initialized");
 
       // isLoggedIn should return false
       const isLoggedIn = await auth.isLoggedIn();

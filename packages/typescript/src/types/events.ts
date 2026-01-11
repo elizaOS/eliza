@@ -72,7 +72,7 @@ export enum EventType {
 export enum PlatformPrefix {
   DISCORD = "DISCORD",
   TELEGRAM = "TELEGRAM",
-  TWITTER = "TWITTER",
+  X = "X",
 }
 
 /**

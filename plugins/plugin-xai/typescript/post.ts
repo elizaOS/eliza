@@ -10,13 +10,13 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import { getRandomInterval } from "./environment";
-import type { MediaData, TweetResponse } from "./types";
-import { sendTweet } from "./utils";
+import type { MediaData, PostResponse } from "./types";
+import { sendPost } from "./utils";
 import {
-  addToRecentTweets,
+  addToRecentPosts,
   createMemorySafe,
-  ensureTwitterContext,
-  isDuplicateTweet,
+  ensureXContext,
+  isDuplicatePost,
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 /**
@@ -93,13 +93,13 @@ export class XPostClient {
     logger.log("Starting X post client...");
     this.isRunning = true;
 
-    const generateNewTweetLoop = async () => {
+    const generateNewPostLoop = async () => {
       if (!this.isRunning) {
         logger.log("X post client stopped, exiting loop");
         return;
       }
 
-      await this.generateNewTweet();
+      await this.generateNewPost();
 
       if (!this.isRunning) {
         logger.log("X post client stopped after post, exiting loop");
@@ -114,19 +114,19 @@ export class XPostClient {
 
       logger.info(`Next post scheduled in ${postIntervalMinutes.toFixed(1)} minutes`);
 
-      // Wait for the interval AFTER generating the tweet
+      // Wait for the interval AFTER generating the post
       await new Promise((resolve) => setTimeout(resolve, interval));
 
       if (this.isRunning) {
         // Schedule the next iteration
-        generateNewTweetLoop();
+        generateNewPostLoop();
       }
     };
 
     // Wait a bit longer to ensure profile is loaded
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    // Check if we should generate a tweet immediately
+    // Check if we should generate a post immediately
     const postImmediately =
       typeof this.state?.TWITTER_POST_IMMEDIATELY === "string" ||
       typeof this.state?.TWITTER_POST_IMMEDIATELY === "boolean"
@@ -138,7 +138,7 @@ export class XPostClient {
       // Try multiple times in case profile isn't ready
       let retries = 0;
       while (retries < 5) {
-        const success = await this.generateNewTweet();
+        const success = await this.generateNewPost();
         if (success) break;
 
         retries++;
@@ -148,15 +148,15 @@ export class XPostClient {
     }
 
     // Start the regular generation loop
-    generateNewTweetLoop();
+    generateNewPostLoop();
   }
 
   /**
-   * Handles the creation and posting of a tweet by emitting standardized events.
+   * Handles the creation and posting of a post by emitting standardized events.
    * This approach aligns with our platform-independent architecture.
-   * @returns {Promise<boolean>} true if tweet was posted successfully
+   * @returns {Promise<boolean>} true if post was posted successfully
    */
-  async generateNewTweet(): Promise<boolean> {
+  async generateNewPost(): Promise<boolean> {
     logger.info("Attempting to generate new post...");
 
     // Prevent concurrent posting
@@ -171,7 +171,7 @@ export class XPostClient {
       // Create the timeline room ID for storing the post
       const userId = this.client.profile?.id;
       if (!userId) {
-        logger.error("Cannot generate tweet: Twitter profile not available");
+        logger.error("Cannot generate post: X profile not available");
         this.isPosting = false; // Reset flag
         return false;
       }
@@ -182,7 +182,7 @@ export class XPostClient {
       const _worldId = createUniqueUuid(this.runtime, userId) as UUID;
       const roomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
 
-      // Generate tweet content using the runtime's model
+      // Generate post content using the runtime's model
       const state = await this.runtime
         .composeState({
           agentId: this.runtime.agentId,
@@ -202,7 +202,7 @@ export class XPostClient {
         });
 
       // Create a prompt for post generation
-      const tweetPrompt = `You are ${this.runtime.character.name}.
+      const postPrompt = `You are ${this.runtime.character.name}.
 ${this.runtime.character.bio}
 
 CRITICAL: Generate a post that sounds like YOU, not a generic motivational poster or LinkedIn influencer.
@@ -259,30 +259,30 @@ ${
 
 Generate a single post that sounds like YOU would actually write it:`;
 
-      // Use the runtime's model to generate tweet content
+      // Use the runtime's model to generate post content
       const generatedContent = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: tweetPrompt,
+        prompt: postPrompt,
         temperature: 0.9, // Increased for more creativity
         maxTokens: 100,
       });
 
-      const tweetText = generatedContent.trim();
+      const postText = generatedContent.trim();
 
-      if (!tweetText || tweetText.length === 0) {
+      if (!postText || postText.length === 0) {
         logger.error("Generated empty post content");
         return false;
       }
 
-      if (tweetText.includes("Error: Missing")) {
-        logger.error("Error in generated content:", tweetText);
+      if (postText.includes("Error: Missing")) {
+        logger.error("Error in generated content:", postText);
         return false;
       }
 
       // Validate post length
-      if (tweetText.length > 280) {
-        logger.warn(`Generated post too long (${tweetText.length} chars), truncating...`);
+      if (postText.length > 280) {
+        logger.warn(`Generated post too long (${postText.length} chars), truncating...`);
         // Truncate to the last complete sentence within 280 chars
-        const sentences = tweetText.match(/[^.!?]+[.!?]+/g) || [tweetText];
+        const sentences = postText.match(/[^.!?]+[.!?]+/g) || [postText];
         let truncated = "";
         for (const sentence of sentences) {
           if ((truncated + sentence).length <= 280) {
@@ -291,39 +291,39 @@ Generate a single post that sounds like YOU would actually write it:`;
             break;
           }
         }
-        const finalTweet = truncated.trim() || `${tweetText.substring(0, 277)}...`;
-        logger.info(`Truncated post: ${finalTweet}`);
+        const finalPost = truncated.trim() || `${postText.substring(0, 277)}...`;
+        logger.info(`Truncated post: ${finalPost}`);
 
         // Post the truncated post
         if (this.isDryRun) {
-          logger.info(`[DRY RUN] Would post: ${finalTweet}`);
+          logger.info(`[DRY RUN] Would post: ${finalPost}`);
           return false;
         }
 
-        const result = await this.postToX(finalTweet, []);
+        const result = await this.postToX(finalPost, []);
 
         if (result === null) {
           logger.info("Skipped posting duplicate post");
           return false;
         }
 
-        const tweetId = result.id ?? result.data?.id ?? result.data?.data?.id;
-        logger.info(`Post created successfully! ID: ${tweetId}`);
+        const postId = result.id ?? result.data?.id ?? result.data?.data?.id;
+        logger.info(`Post created successfully! ID: ${postId}`);
 
         // Don't save to memory if room creation might fail
         logger.info("Post created successfully (memory saving disabled due to room constraints)");
         return true;
       }
 
-      logger.info(`Generated post: ${tweetText}`);
+      logger.info(`Generated post: ${postText}`);
 
       // Post the post
       if (this.isDryRun) {
-        logger.info(`[DRY RUN] Would post: ${tweetText}`);
+        logger.info(`[DRY RUN] Would post: ${postText}`);
         return false;
       }
 
-      const result = await this.postToX(tweetText, []);
+      const result = await this.postToX(postText, []);
 
       // If result is null, it means we detected a duplicate post and skipped posting
       if (result === null) {
@@ -331,33 +331,33 @@ Generate a single post that sounds like YOU would actually write it:`;
         return false;
       }
 
-      const tweetId = result.id ?? result.data?.id ?? result.data?.data?.id;
-      logger.info(`Post created successfully! ID: ${tweetId}`);
+      const postId = result.id ?? result.data?.id ?? result.data?.data?.id;
+      logger.info(`Post created successfully! ID: ${postId}`);
 
-      if (result && tweetId) {
-        const postedTweetId = createUniqueUuid(this.runtime, tweetId);
+      if (result && postId) {
+        const postedPostId = createUniqueUuid(this.runtime, postId);
 
         try {
           // Ensure context exists with error handling
-          const context = await ensureTwitterContext(this.runtime, {
+          const context = await ensureXContext(this.runtime, {
             userId,
             username: this.client.profile?.username || "unknown",
             conversationId: `${userId}-home`,
           });
 
-          // Create memory for the posted tweet with retry logic
+          // Create memory for the posted post with retry logic
           const postedMemory: Memory = {
-            id: postedTweetId,
+            id: postedPostId,
             entityId: this.runtime.agentId,
             agentId: this.runtime.agentId,
             roomId: context.roomId,
             content: {
-              text: tweetText,
-              source: "twitter",
+              text: postText,
+              source: "x",
               channelType: ChannelType.FEED,
               type: "post",
               metadata: {
-                tweetId,
+                postId,
                 postedAt: Date.now(),
               },
             },
@@ -365,23 +365,23 @@ Generate a single post that sounds like YOU would actually write it:`;
           };
 
           await createMemorySafe(this.runtime, postedMemory, "messages");
-          logger.info("Tweet posted and saved to memory successfully");
+          logger.info("Post created and saved to memory successfully");
         } catch (error) {
           logger.error(
-            "Failed to save tweet memory:",
+            "Failed to save post memory:",
             error instanceof Error ? error.message : String(error)
           );
-          // Don't fail the tweet posting if memory creation fails
+          // Don't fail the post creation if memory creation fails
         }
 
         return true;
       } else {
-        logger.warn("Tweet generation returned no result");
+        logger.warn("Post generation returned no result");
         return false;
       }
     } catch (error) {
       logger.error(
-        "Error generating tweet:",
+        "Error generating post:",
         error instanceof Error ? error.message : String(error)
       );
       return false;
@@ -391,26 +391,26 @@ Generate a single post that sounds like YOU would actually write it:`;
   }
 
   /**
-   * Posts content to Twitter
-   * @param {string} text The tweet text to post
-   * @param {MediaData[]} mediaData Optional media to attach to the tweet
-   * @returns {Promise<TweetResponse | null>} The result from the Twitter API
+   * Posts content to X
+   * @param {string} text The post text to create
+   * @param {MediaData[]} mediaData Optional media to attach to the post
+   * @returns {Promise<PostResponse | null>} The result from the X API
    */
-  private async postToTwitter(
+  private async postToX(
     text: string,
     mediaData: MediaData[] = []
-  ): Promise<TweetResponse | null> {
-    // Check if this tweet is a duplicate of recent tweets
+  ): Promise<PostResponse | null> {
+    // Check if this post is a duplicate of recent posts
     const username = this.client.profile?.username;
     if (!username) {
       logger.error("No profile username available");
       return null;
     }
 
-    // Check for duplicates in recent tweets
-    const isDuplicate = await isDuplicateTweet(this.runtime, username, text);
+    // Check for duplicates in recent posts
+    const isDuplicate = await isDuplicatePost(this.runtime, username, text);
     if (isDuplicate) {
-      logger.warn("Tweet is a duplicate of a recent post. Skipping to avoid duplicate.");
+      logger.warn("Post is a duplicate of a recent post. Skipping to avoid duplicate.");
       return null;
     }
 
@@ -418,14 +418,15 @@ Generate a single post that sounds like YOU would actually write it:`;
     const _mediaIds: string[] = [];
 
     if (mediaData && mediaData.length > 0) {
-      logger.warn("Media upload not currently supported with the modern Twitter API");
+      logger.warn("Media upload not currently supported with the modern X API");
     }
 
-    const result = await sendTweet(this.client, text, mediaData);
+    const result = await sendPost(this.client, text, mediaData);
 
-    // Add to recent tweets cache to prevent future duplicates
-    await addToRecentTweets(this.runtime, username, text);
+    // Add to recent posts cache to prevent future duplicates
+    await addToRecentPosts(this.runtime, username, text);
 
     return result;
   }
 }
+

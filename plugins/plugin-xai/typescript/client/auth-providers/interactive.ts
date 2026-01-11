@@ -15,7 +15,7 @@ function canPrompt(): boolean {
 export async function promptForRedirectedUrl(promptText: string): Promise<string> {
   if (!canPrompt()) {
     throw new Error(
-      "Twitter OAuth requires interactive setup, but stdin is not a TTY. " +
+      "X OAuth requires interactive setup, but stdin is not a TTY. " +
         "Re-run with an interactive terminal or use a runtime with persistent settings storage."
     );
   }
@@ -103,7 +103,7 @@ export async function waitForLoopbackCallback(
         }
 
         res.writeHead(200, { "content-type": "text/plain" });
-        res.end("Twitter auth completed. You can close this tab.");
+        res.end("X auth completed. You can close this tab.");
         finish(undefined, { code, state });
       } catch (e) {
         finish(e instanceof Error ? e : new Error(String(e)));
@@ -111,7 +111,7 @@ export async function waitForLoopbackCallback(
     });
 
     const timer = setTimeout(() => {
-      finish(new Error("Timed out waiting for Twitter OAuth callback"));
+      finish(new Error("Timed out waiting for X OAuth callback"));
     }, timeoutMs);
 
     server.on("close", () => clearTimeout(timer));
@@ -123,7 +123,7 @@ export async function waitForLoopbackCallback(
     });
     server.listen(port, url.hostname, () => {
       logger.info(
-        `Twitter OAuth callback server listening on http://${url.hostname}:${port}${path}`
+        `X OAuth callback server listening on http://${url.hostname}:${port}${path}`
       );
     });
   });

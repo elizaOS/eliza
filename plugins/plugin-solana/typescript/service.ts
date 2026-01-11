@@ -36,7 +36,7 @@ import {
 } from "@solana/web3.js";
 import BigNumber from "bignumber.js";
 import bs58 from "bs58";
-import nacl from "tweetnacl";
+import nacl from "postnacl";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
 import { getWalletKey } from "./keypairUtils";
 import type {

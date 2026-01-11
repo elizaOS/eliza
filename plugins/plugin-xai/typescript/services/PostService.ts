@@ -1,11 +1,11 @@
 import { createUniqueUuid, logger, type UUID } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { SearchMode } from "../client";
-import { extractIdFromResult, extractRestId, isResponseLike, type TweetResponse } from "../types";
+import { extractIdFromResult, extractRestId, isResponseLike, type PostResponse } from "../types";
 import { getEpochMs } from "../utils/time";
 import type { CreatePostOptions, GetPostsOptions, IPostService, Post } from "./IPostService";
 
-export class TwitterPostService implements IPostService {
+export class XPostService implements IPostService {
   constructor(private client: ClientBase) {}
 
   /**
@@ -37,9 +37,9 @@ export class TwitterPostService implements IPostService {
   }
 
   /**
-   * Extract tweet ID from various Twitter API response shapes
+   * Extract post ID from various X API response shapes
    */
-  private async extractTweetId(result: TweetResponse | unknown): Promise<string | undefined> {
+  private async extractPostId(result: PostResponse | unknown): Promise<string | undefined> {
     // First try direct extraction using type-safe utility
     const directId = extractIdFromResult(result);
     if (directId) return directId;
@@ -67,26 +67,26 @@ export class TwitterPostService implements IPostService {
       const _mediaIds: string[] = [];
 
       if (options.media && options.media.length > 0) {
-        logger.warn("Media upload not currently supported with Twitter API v2");
+        logger.warn("Media upload not currently supported with X API v2");
       }
 
-      const result = await this.client.twitterClient.sendTweet(
+      const result = await this.client.xClient.sendPost(
         options.text,
         options.inReplyTo
       );
 
-      const tweetId = await this.extractTweetId(result);
-      if (!tweetId) {
+      const postId = await this.extractPostId(result);
+      if (!postId) {
         const safeResult =
           typeof result === "string" ? result : JSON.stringify(result, null, 2).slice(0, 8000);
-        logger.error("Twitter createPost: could not extract tweet id from API result", safeResult);
+        logger.error("X createPost: could not extract post id from API result", safeResult);
         throw new Error(
-          "Twitter createPost failed: could not extract tweet id from API response. See logs for raw response."
+          "X createPost failed: could not extract post id from API response. See logs for raw response."
         );
       }
 
       const post: Post = {
-        id: tweetId,
+        id: postId,
         agentId: options.agentId,
         roomId: options.roomId,
         userId: this.client.profile?.id || "",
@@ -117,7 +117,7 @@ export class TwitterPostService implements IPostService {
 
   async deletePost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      await this.client.twitterClient.deleteTweet(postId);
+      await this.client.xClient.deletePost(postId);
     } catch (error) {
       logger.error("Error deleting post:", error instanceof Error ? error.message : String(error));
       throw error;
@@ -126,36 +126,36 @@ export class TwitterPostService implements IPostService {
 
   async getPost(postId: string, agentId: UUID): Promise<Post | null> {
     try {
-      const tweet = await this.client.twitterClient.getTweet(postId);
+      const post = await this.client.xClient.getPost(postId);
 
-      if (!tweet || !tweet.id || !tweet.userId || !tweet.username || !tweet.text) {
+      if (!post || !post.id || !post.userId || !post.username || !post.text) {
         return null;
       }
 
       const post: Post = {
-        id: tweet.id,
+        id: post.id,
         agentId: agentId,
-        roomId: createUniqueUuid(this.client.runtime, tweet.conversationId || tweet.id),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
-        timestamp: getEpochMs(tweet.timestamp),
+        roomId: createUniqueUuid(this.client.runtime, post.conversationId || post.id),
+        userId: post.userId,
+        username: post.username,
+        text: post.text,
+        timestamp: getEpochMs(post.timestamp),
         metrics: {
-          likes: tweet.likes || 0,
-          reposts: tweet.retweets || 0,
-          replies: tweet.replies || 0,
-          quotes: tweet.quotes || 0,
-          views: tweet.views || 0,
+          likes: post.likes || 0,
+          reposts: post.reposts || 0,
+          replies: post.replies || 0,
+          quotes: post.quotes || 0,
+          views: post.views || 0,
         },
         media:
-          tweet.photos?.map((photo) => ({
+          post.photos?.map((photo) => ({
             type: "image" as const,
             url: photo.url,
             metadata: { id: photo.id },
           })) || [],
         metadata: {
-          conversationId: tweet.conversationId,
-          permanentUrl: tweet.permanentUrl,
+          conversationId: post.conversationId,
+          permanentUrl: post.permanentUrl,
         },
       };
 
@@ -167,8 +167,8 @@ export class TwitterPostService implements IPostService {
   }
 
   async getPosts(options: GetPostsOptions): Promise<Post[]> {
-    /** Shape of partial tweet data from Twitter API */
-    interface PartialTweet {
+    /** Shape of partial post data from X API */
+    interface PartialPost {
       id?: string;
       userId?: string;
       username?: string;
@@ -176,7 +176,7 @@ export class TwitterPostService implements IPostService {
       timestamp?: number;
       conversationId?: string;
       likes?: number;
-      retweets?: number;
+      reposts?: number;
       quotes?: number;
       replies?: number;
       views?: number;
@@ -185,55 +185,55 @@ export class TwitterPostService implements IPostService {
       media?: Array<{ type?: string; url?: string }>;
     }
 
-    /** Type guard for tweets with required fields */
+    /** Type guard for posts with required fields */
     function hasRequiredFields(
-      tweet: PartialTweet
-    ): tweet is PartialTweet & { id: string; userId: string; username: string; text: string } {
-      return Boolean(tweet.id && tweet.userId && tweet.username && tweet.text);
+      post: PartialPost
+    ): post is PartialPost & { id: string; userId: string; username: string; text: string } {
+      return Boolean(post.id && post.userId && post.username && post.text);
     }
 
     try {
-      let tweets: PartialTweet[] | undefined;
+      let posts: PartialPost[] | undefined;
 
       if (options.userId) {
-        // Get tweets from a specific user
-        const result = await this.client.twitterClient.getUserTweets(
+        // Get posts from a specific user
+        const result = await this.client.xClient.getUserPosts(
           options.userId,
           options.limit || 20,
           options.before
         );
-        tweets = result.tweets;
+        posts = result.posts;
       } else {
         // Get home timeline or search results
-        tweets = await this.client.fetchHomeTimeline(options.limit || 20, false);
+        posts = await this.client.fetchHomeTimeline(options.limit || 20, false);
       }
 
-      if (!tweets) return [];
+      if (!posts) return [];
 
-      const posts: Post[] = tweets.filter(hasRequiredFields).map((tweet) => ({
-        id: tweet.id,
+      const posts: Post[] = posts.filter(hasRequiredFields).map((post) => ({
+        id: post.id,
         agentId: options.agentId,
-        roomId: createUniqueUuid(this.client.runtime, tweet.conversationId || tweet.id),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
-        timestamp: getEpochMs(tweet.timestamp),
+        roomId: createUniqueUuid(this.client.runtime, post.conversationId || post.id),
+        userId: post.userId,
+        username: post.username,
+        text: post.text,
+        timestamp: getEpochMs(post.timestamp),
         metrics: {
-          likes: tweet.likes ?? 0,
-          reposts: tweet.retweets ?? 0,
-          replies: tweet.replies ?? 0,
-          quotes: tweet.quotes ?? 0,
-          views: tweet.views ?? 0,
+          likes: post.likes ?? 0,
+          reposts: post.reposts ?? 0,
+          replies: post.replies ?? 0,
+          quotes: post.quotes ?? 0,
+          views: post.views ?? 0,
         },
         media:
-          tweet.photos?.map((photo) => ({
+          post.photos?.map((photo) => ({
             type: "image" as const,
             url: photo.url,
             metadata: { id: photo.id },
           })) ?? [],
         metadata: {
-          conversationId: tweet.conversationId,
-          permanentUrl: tweet.permanentUrl,
+          conversationId: post.conversationId,
+          permanentUrl: post.permanentUrl,
         },
       }));
 
@@ -246,7 +246,7 @@ export class TwitterPostService implements IPostService {
 
   async likePost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      await this.client.twitterClient.likeTweet(postId);
+      await this.client.xClient.likePost(postId);
     } catch (error) {
       logger.error("Error liking post:", error instanceof Error ? error.message : String(error));
       throw error;
@@ -255,7 +255,7 @@ export class TwitterPostService implements IPostService {
 
   async repost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      await this.client.twitterClient.retweet(postId);
+      await this.client.xClient.repost(postId);
     } catch (error) {
       logger.error("Error reposting:", error instanceof Error ? error.message : String(error));
       throw error;
@@ -266,52 +266,52 @@ export class TwitterPostService implements IPostService {
     try {
       const username = this.client.profile?.username;
       if (!username) {
-        logger.error("No Twitter profile available");
+        logger.error("No X profile available");
         return [];
       }
 
-      const searchResult = await this.client.fetchSearchTweets(
+      const searchResult = await this.client.fetchSearchPosts(
         `@${username}`,
         options?.limit || 20,
         SearchMode.Latest,
         options?.before
       );
 
-      const posts: Post[] = searchResult.tweets
+      const posts: Post[] = searchResult.posts
         .filter(
           (
-            tweet
-          ): tweet is typeof tweet & {
+            post
+          ): post is typeof post & {
             id: string;
             userId: string;
             username: string;
             text: string;
-          } => !!(tweet.id && tweet.userId && tweet.username && tweet.text)
+          } => !!(post.id && post.userId && post.username && post.text)
         )
-        .map((tweet) => ({
-          id: tweet.id,
+        .map((post) => ({
+          id: post.id,
           agentId: agentId,
-          roomId: createUniqueUuid(this.client.runtime, tweet.conversationId || tweet.id),
-          userId: tweet.userId,
-          username: tweet.username,
-          text: tweet.text,
-          timestamp: getEpochMs(tweet.timestamp),
+          roomId: createUniqueUuid(this.client.runtime, post.conversationId || post.id),
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          timestamp: getEpochMs(post.timestamp),
           metrics: {
-            likes: tweet.likes || 0,
-            reposts: tweet.retweets || 0,
-            replies: tweet.replies || 0,
-            quotes: tweet.quotes || 0,
-            views: tweet.views || 0,
+            likes: post.likes || 0,
+            reposts: post.reposts || 0,
+            replies: post.replies || 0,
+            quotes: post.quotes || 0,
+            views: post.views || 0,
           },
           media:
-            tweet.photos?.map((photo) => ({
+            post.photos?.map((photo) => ({
               type: "image" as const,
               url: photo.url,
               metadata: { id: photo.id },
             })) || [],
           metadata: {
-            conversationId: tweet.conversationId,
-            permanentUrl: tweet.permanentUrl,
+            conversationId: post.conversationId,
+            permanentUrl: post.permanentUrl,
             isMention: true,
           },
         }));
@@ -328,7 +328,7 @@ export class TwitterPostService implements IPostService {
 
   async unlikePost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      await this.client.twitterClient.unlikeTweet(postId);
+      await this.client.xClient.unlikePost(postId);
     } catch (error) {
       logger.error("Error unliking post:", error instanceof Error ? error.message : String(error));
       throw error;
@@ -337,7 +337,7 @@ export class TwitterPostService implements IPostService {
 
   async unrepost(postId: string, _agentId: UUID): Promise<void> {
     try {
-      await this.client.twitterClient.unretweet(postId);
+      await this.client.xClient.unrepost(postId);
     } catch (error) {
       logger.error("Error unreposting:", error instanceof Error ? error.message : String(error));
       throw error;

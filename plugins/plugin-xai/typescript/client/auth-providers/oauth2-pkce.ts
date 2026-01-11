@@ -7,10 +7,10 @@ import type { StoredOAuth2Tokens, TokenStore } from "./token-store";
 import { chooseDefaultTokenStore } from "./token-store";
 import type { XAuthProvider } from "./types";
 
-const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
+const AUTHORIZE_URL = "https://x.com/i/oauth2/authorize";
 const TOKEN_URL = "https://api.x.com/2/oauth2/token";
 
-const DEFAULT_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"].join(" ");
+const DEFAULT_SCOPES = ["post.read", "post.write", "users.read", "offline.access"].join(" ");
 
 function nowMs(): number {
   return Date.now();

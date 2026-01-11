@@ -78,7 +78,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   hasService(serviceType: ServiceTypeName | string): boolean;
 
-  // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
 
   setSetting(

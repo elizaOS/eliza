@@ -1,9 +1,9 @@
 """
-elizaOS xAI Plugin - Grok models and X (Twitter) API integration.
+elizaOS xAI Plugin - Grok models and X (X) API integration.
 
 This package provides:
 - xAI Grok model client for text generation and embeddings
-- X (Twitter) API v2 client for social interactions
+- X (X) API v2 client for social interactions
 - Full parity with TypeScript and Rust implementations
 
 Example:

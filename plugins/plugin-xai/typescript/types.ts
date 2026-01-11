@@ -3,7 +3,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { Tweet } from "./client";
+import type { Post } from "./client";
 
 export type XServiceStatus = "idle" | "active" | "error";
 
@@ -26,26 +26,22 @@ export enum XEventTypes {
   QUOTE_RECEIVED = "X_QUOTE_RECEIVED",
 }
 
-// Keep backward compatibility alias
-export const TwitterEventTypes = XEventTypes;
 
 /**
  * X interaction payload
  */
 export interface XInteractionPayload {
   id: string;
-  type: "like" | "retweet" | "quote";
+  type: "like" | "repost" | "quote";
   userId: string;
   username: string;
   name: string;
-  targetTweetId?: string;
-  targetTweet: Tweet;
-  quoteTweet?: Tweet;
-  retweetId?: string;
+  targetPostId?: string;
+  targetPost: Post;
+  quotePost?: Post;
+  repostId?: string;
 }
 
-// Keep backward compatibility alias
-export type TwitterInteractionPayload = XInteractionPayload;
 
 /**
  * X interaction memory
@@ -57,8 +53,6 @@ export interface XInteractionMemory extends Memory {
   };
 }
 
-// Keep backward compatibility alias
-export type TwitterInteractionMemory = XInteractionMemory;
 
 /**
  * X memory
@@ -70,15 +64,13 @@ export interface XMemory extends Memory {
   };
 }
 
-// Keep backward compatibility alias
-export type TwitterMemory = XMemory;
 
 /**
  * X like received payload
  */
 export interface XLikeReceivedPayload {
   runtime: IAgentRuntime;
-  tweet: Tweet;
+  post: Post;
   user: {
     id: string;
     username: string;
@@ -87,16 +79,14 @@ export interface XLikeReceivedPayload {
   source: "x";
 }
 
-// Keep backward compatibility alias
-export type TwitterLikeReceivedPayload = XLikeReceivedPayload;
 
 /**
  * X repost received payload
  */
 export interface XRepostReceivedPayload {
   runtime: IAgentRuntime;
-  tweet: Tweet;
-  retweetId: string;
+  post: Post;
+  repostId: string;
   user: {
     id: string;
     username: string;
@@ -105,16 +95,14 @@ export interface XRepostReceivedPayload {
   source: "x";
 }
 
-// Keep backward compatibility alias
-export type TwitterRetweetReceivedPayload = XRepostReceivedPayload;
 
 /**
  * X quote received payload
  */
 export interface XQuoteReceivedPayload {
   runtime: IAgentRuntime;
-  quotedTweet: Tweet;
-  quoteTweet: Tweet;
+  quotedPost: Post;
+  quotePost: Post;
   user: {
     id: string;
     username: string;
@@ -129,8 +117,6 @@ export interface XQuoteReceivedPayload {
   source: "x";
 }
 
-// Keep backward compatibility alias
-export type TwitterQuoteReceivedPayload = XQuoteReceivedPayload;
 
 /**
  * Action response from X actions
@@ -139,13 +125,13 @@ export interface ActionResponse {
   text: string;
   actions: string[];
   like?: boolean;
-  retweet?: boolean;
+  repost?: boolean;
   quote?: boolean;
   reply?: boolean;
 }
 
 /**
- * Media data for tweets
+ * Media data for posts
  */
 export interface MediaData {
   data: Buffer | Uint8Array;
@@ -170,33 +156,30 @@ export interface IXClient {
   discovery?: XDiscoveryClient;
 }
 
-// Re-export Tweet type for convenience
-export type { Tweet } from "./client";
+// Re-export Post type for convenience
+export type { Post } from "./client";
 
 // Re-export XConfig from environment
 export type { XConfig } from "./environment";
 
-// Keep backward compatibility aliases
-export type TwitterConfig = XConfig;
-export type ITwitterClient = IXClient;
 
 /**
  * X API response structure - can have nested data structures
  * This covers various X API v2 response shapes
  */
-export interface TweetResponse {
+export interface PostResponse {
   id?: string;
   rest_id?: string;
-  data?: TweetResponseData;
+  data?: PostResponseData;
 }
 
-export interface TweetResponseData {
+export interface PostResponseData {
   id?: string;
   data?: {
     id?: string;
   };
-  create_tweet?: {
-    tweet_results?: {
+  create_post?: {
+    post_results?: {
       result?: {
         rest_id?: string;
       };
@@ -216,8 +199,8 @@ export interface XApiResultShape {
     data?: {
       id?: string;
     };
-    create_tweet?: {
-      tweet_results?: {
+    create_post?: {
+      post_results?: {
         result?: {
           rest_id?: string;
         };
@@ -235,8 +218,6 @@ export interface ResponseLike {
   bodyUsed?: boolean;
 }
 
-// Keep backward compatibility alias
-export type TwitterApiResultShape = XApiResultShape;
 
 /**
  * Utility type guard to check if value conforms to XApiResultShape
@@ -252,8 +233,6 @@ export function isResponseLike(value: unknown): value is ResponseLike {
   return value !== null && typeof value === "object" && "json" in value;
 }
 
-// Keep backward compatibility alias
-export const isTwitterApiResult = isXApiResult;
 
 /**
  * Extract ID from various X API response shapes
@@ -273,9 +252,9 @@ export function extractIdFromResult(result: unknown): string | undefined {
   // Double nested
   if (result.data?.data?.id) return result.data.data.id;
 
-  // Tweet creation response shape
-  if (result.data?.create_tweet?.tweet_results?.result?.rest_id) {
-    return result.data.create_tweet.tweet_results.result.rest_id;
+  // Post creation response shape
+  if (result.data?.create_post?.post_results?.result?.rest_id) {
+    return result.data.create_post.post_results.result.rest_id;
   }
 
   return undefined;
@@ -289,8 +268,8 @@ export function extractRestId(result: unknown): string | undefined {
 
   if (result.rest_id) return result.rest_id;
 
-  if (result.data?.create_tweet?.tweet_results?.result?.rest_id) {
-    return result.data.create_tweet.tweet_results.result.rest_id;
+  if (result.data?.create_post?.post_results?.result?.rest_id) {
+    return result.data.create_post.post_results.result.rest_id;
   }
 
   return undefined;

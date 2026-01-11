@@ -5,8 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { ClientBase } from "../../base";
 import { SearchMode } from "../../client";
 import { MessageType } from "../../services/IMessageService";
-import { TwitterMessageService } from "../../services/MessageService";
-import { TwitterPostService } from "../../services/PostService";
+import { XMessageService } from "../../services/MessageService";
+import { XPostService } from "../../services/PostService";
 
 // Load environment variables from .env.test file
 dotenv.config({ path: ".env.test" });
@@ -18,12 +18,12 @@ const SKIP_E2E =
   !process.env.TWITTER_ACCESS_TOKEN ||
   !process.env.TWITTER_ACCESS_TOKEN_SECRET;
 
-describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
+describe.skipIf(SKIP_E2E)("X E2E Integration Tests", () => {
   let client: ClientBase;
-  let messageService: TwitterMessageService;
-  let postService: TwitterPostService;
+  let messageService: XMessageService;
+  let postService: XPostService;
   let runtime: IAgentRuntime;
-  const testTweetIds: string[] = [];
+  const testPostIds: string[] = [];
 
   beforeAll(async () => {
     // Setup runtime mock
@@ -53,20 +53,20 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
     await client.init();
 
     // Initialize services
-    messageService = new TwitterMessageService(client);
-    postService = new TwitterPostService(client);
+    messageService = new XMessageService(client);
+    postService = new XPostService(client);
   });
 
   afterAll(async () => {
-    // Cleanup: Delete all test tweets
-    console.log(`Cleaning up ${testTweetIds.length} test tweets...`);
+    // Cleanup: Delete all test posts
+    console.log(`Cleaning up ${testPostIds.length} test posts...`);
 
-    for (const tweetId of testTweetIds) {
+    for (const postId of testPostIds) {
       try {
-        await postService.deletePost(tweetId, runtime.agentId);
-        console.log(`Deleted tweet ${tweetId}`);
+        await postService.deletePost(postId, runtime.agentId);
+        console.log(`Deleted post ${postId}`);
       } catch (error) {
-        console.error(`Failed to delete tweet ${tweetId}:`, error);
+        console.error(`Failed to delete post ${postId}:`, error);
       }
     }
   });
@@ -78,12 +78,12 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
 
   describe("Authentication", () => {
     it("should authenticate successfully with API v2 credentials", async () => {
-      const isLoggedIn = await client.twitterClient.isLoggedIn();
+      const isLoggedIn = await client.xClient.isLoggedIn();
       expect(isLoggedIn).toBe(true);
     });
 
     it("should fetch authenticated user profile", async () => {
-      const profile = await client.twitterClient.me();
+      const profile = await client.xClient.me();
 
       expect(profile).toBeDefined();
       expect(profile?.userId).toBeDefined();
@@ -112,7 +112,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       expect(post.text).toContain("E2E Test Post");
       expect(post.timestamp).toBeGreaterThan(0);
 
-      testTweetIds.push(post.id);
+      testPostIds.push(post.id);
       console.log("Created post:", post.id);
     });
 
@@ -123,7 +123,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
         roomId: stringToUuid("test-room"),
         text: `E2E Test Original ${Date.now()}`,
       });
-      testTweetIds.push(originalPost.id);
+      testPostIds.push(originalPost.id);
 
       // Create a reply
       const replyPost = await postService.createPost({
@@ -136,7 +136,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       expect(replyPost).toBeDefined();
       expect(replyPost.inReplyTo).toBe(originalPost.id);
 
-      testTweetIds.push(replyPost.id);
+      testPostIds.push(replyPost.id);
       console.log("Created reply:", replyPost.id, "to:", originalPost.id);
     });
 
@@ -147,7 +147,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
         roomId: stringToUuid("test-room"),
         text: `E2E Test Fetch ${Date.now()}`,
       });
-      testTweetIds.push(createdPost.id);
+      testPostIds.push(createdPost.id);
 
       // Fetch it back
       const fetchedPost = await postService.getPost(createdPost.id, runtime.agentId);
@@ -158,7 +158,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
     });
 
     it("should fetch user posts", async () => {
-      const profile = await client.twitterClient.me();
+      const profile = await client.xClient.me();
       if (!profile) throw new Error("No profile available");
 
       const posts = await postService.getPosts({
@@ -181,7 +181,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
         roomId: stringToUuid("test-room"),
         text: `E2E Test Like ${Date.now()}`,
       });
-      testTweetIds.push(post.id);
+      testPostIds.push(post.id);
 
       // Like the post
       await postService.likePost(post.id, runtime.agentId);
@@ -239,7 +239,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       }
     });
 
-    it("should send a regular tweet via message service", async () => {
+    it("should send a regular post via message service", async () => {
       const timestamp = Date.now();
       const message = await messageService.sendMessage({
         agentId: runtime.agentId,
@@ -253,19 +253,19 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       expect(message.text).toContain("E2E Test Message");
       expect(message.type).toBe(MessageType.POST);
 
-      testTweetIds.push(message.id);
+      testPostIds.push(message.id);
       console.log("Sent message:", message.id);
     });
 
     it("should fetch a specific message by ID", async () => {
-      // Create a tweet first
+      // Create a post first
       const sent = await messageService.sendMessage({
         agentId: runtime.agentId,
         roomId: stringToUuid("test-room"),
         text: `E2E Test Get Message ${Date.now()}`,
         type: MessageType.POST,
       });
-      testTweetIds.push(sent.id);
+      testPostIds.push(sent.id);
 
       // Fetch it back
       const fetched = await messageService.getMessage(sent.id, runtime.agentId);
@@ -277,14 +277,14 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
   });
 
   describe("Search and Timeline", () => {
-    it("should search for tweets", async () => {
-      const searchResult = await client.fetchSearchTweets("javascript", 5, SearchMode.Latest);
+    it("should search for posts", async () => {
+      const searchResult = await client.fetchSearchPosts("javascript", 5, SearchMode.Latest);
 
       expect(searchResult).toBeDefined();
-      expect(searchResult.tweets).toBeDefined();
-      expect(Array.isArray(searchResult.tweets)).toBe(true);
+      expect(searchResult.posts).toBeDefined();
+      expect(Array.isArray(searchResult.posts)).toBe(true);
 
-      console.log(`Found ${searchResult.tweets.length} tweets for "javascript"`);
+      console.log(`Found ${searchResult.posts.length} posts for "javascript"`);
     });
 
     it("should fetch home timeline", async () => {
@@ -294,12 +294,12 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
       expect(Array.isArray(timeline)).toBe(true);
       expect(timeline.length).toBeLessThanOrEqual(10);
 
-      console.log(`Fetched ${timeline.length} tweets from home timeline`);
+      console.log(`Fetched ${timeline.length} posts from home timeline`);
     });
   });
 
   describe("Error Handling", () => {
-    it("should handle non-existent tweet gracefully", async () => {
+    it("should handle non-existent post gracefully", async () => {
       const nonExistentId = "1234567890123456789"; // Unlikely to exist
 
       const post = await postService.getPost(nonExistentId, runtime.agentId);
@@ -321,7 +321,7 @@ describe.skipIf(SKIP_E2E)("Twitter E2E Integration Tests", () => {
             roomId: stringToUuid('test-room'),
             text: `Rate limit test ${i} at ${Date.now()}`,
           }).then(post => {
-            testTweetIds.push(post.id);
+            testPostIds.push(post.id);
             return post;
           })
         );

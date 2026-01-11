@@ -10,20 +10,20 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
-import type { Tweet } from "./client";
+import type { Post } from "./client";
 import { TWEET_MAX_LENGTH } from "./constants";
-import type { ActionResponse, MediaData, TweetResponse } from "./types";
+import type { ActionResponse, MediaData, PostResponse } from "./types";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
   const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
   return new Promise((resolve) => setTimeout(resolve, waitTime));
 };
 
-export const isValidTweet = (tweet: Tweet): boolean => {
-  // Filter out tweets with too many hashtags, @s, or $ signs, probably spam or garbage
-  const hashtagCount = (tweet.text?.match(/#/g) || []).length;
-  const atCount = (tweet.text?.match(/@/g) || []).length;
-  const dollarSignCount = (tweet.text?.match(/\$/g) || []).length;
+export const isValidPost = (post: Post): boolean => {
+  // Filter out posts with too many hashtags, @s, or $ signs, probably spam or garbage
+  const hashtagCount = (post.text?.match(/#/g) || []).length;
+  const atCount = (post.text?.match(/@/g) || []).length;
+  const dollarSignCount = (post.text?.match(/\$/g) || []).length;
   const totalCount = hashtagCount + atCount + dollarSignCount;
 
   return hashtagCount <= 1 && atCount <= 2 && dollarSignCount <= 1 && totalCount <= 3;
@@ -60,34 +60,34 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
 }
 
 /**
- * Handles sending a note tweet with optional media data.
+ * Handles sending a note post with optional media data.
  *
- * @param {ClientBase} client - The client object used for sending the note tweet.
- * @param {string} content - The content of the note tweet.
- * @param {string} [tweetId] - Optional Tweet ID to reply to.
- * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
- * @returns {Promise<Object>} - The result of the note tweet operation.
- * @throws {Error} - If the note tweet operation fails.
+ * @param {ClientBase} client - The client object used for sending the note post.
+ * @param {string} content - The content of the note post.
+ * @param {string} [postId] - Optional Post ID to reply to.
+ * @param {MediaData[]} [mediaData] - Optional media data to attach to the note post.
+ * @returns {Promise<Object>} - The result of the note post operation.
+ * @throws {Error} - If the note post operation fails.
  */
-async function _handleNoteTweet(
+async function _handleNotePost(
   client: ClientBase,
   content: string,
-  tweetId?: string,
+  postId?: string,
   mediaData?: MediaData[]
 ) {
-  // Twitter API v2 handles long tweets automatically
-  // Just use the regular sendTweet method
+  // X API v2 handles long posts automatically
+  // Just use the regular sendPost method
   const convertedMediaData = mediaData?.map((m) => ({
     data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
     mediaType: m.type,
   }));
-  const result = await client.twitterClient.sendTweet(content, tweetId, convertedMediaData);
+  const result = await client.xClient.sendPost(content, postId, convertedMediaData);
 
   // Check if the result was successful
   if (!result || !result.ok) {
-    // Tweet failed. Falling back to truncated Tweet.
+    // Post failed. Falling back to truncated Post.
     const truncateContent = truncateToCompleteSentence(content, TWEET_MAX_LENGTH);
-    return await sendStandardTweet(client, truncateContent, tweetId);
+    return await sendStandardPost(client, truncateContent, postId);
   }
 
   // Return the result directly
@@ -95,36 +95,36 @@ async function _handleNoteTweet(
 }
 
 /**
- * Send a standard tweet through the client
+ * Send a standard post through the client
  */
-export async function sendStandardTweet(
+export async function sendStandardPost(
   client: ClientBase,
   content: string,
-  tweetId?: string,
+  postId?: string,
   mediaData?: MediaData[]
 ) {
   const convertedMediaData = mediaData?.map((m) => ({
     data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
     mediaType: m.type,
   }));
-  const standardTweetResult = await client.twitterClient.sendTweet(
+  const standardPostResult = await client.xClient.sendPost(
     content,
-    tweetId,
+    postId,
     convertedMediaData
   );
 
   // The result is already the response object
-  return standardTweetResult;
+  return standardPostResult;
 }
 
-export async function sendTweet(
+export async function sendPost(
   client: ClientBase,
   text: string,
   mediaData: MediaData[] = [],
-  tweetToReplyTo?: string
-): Promise<TweetResponse | null> {
-  const isNoteTweet = text.length > TWEET_MAX_LENGTH;
-  const postText = isNoteTweet ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH) : text;
+  postToReplyTo?: string
+): Promise<PostResponse | null> {
+  const isNotePost = text.length > TWEET_MAX_LENGTH;
+  const postText = isNotePost ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH) : text;
 
   let result: { data?: { data?: { id?: string } }; id?: string } | undefined;
 
@@ -133,93 +133,93 @@ export async function sendTweet(
       data: Buffer.isBuffer(m.data) ? m.data : Buffer.from(m.data),
       mediaType: m.type,
     }));
-    result = await client.twitterClient.sendTweet(postText, tweetToReplyTo, convertedMediaData);
-    logger.log("Successfully posted Tweet");
+    result = await client.xClient.sendPost(postText, postToReplyTo, convertedMediaData);
+    logger.log("Successfully posted Post");
   } catch (error) {
-    logger.error("Error posting Tweet:", error instanceof Error ? error.message : String(error));
+    logger.error("Error posting Post:", error instanceof Error ? error.message : String(error));
     throw error;
   }
 
   try {
-    // The result from sendTweet should have the tweet data
-    const tweetData = result?.data || result;
+    // The result from sendPost should have the post data
+    const postData = result?.data || result;
 
-    // Extract the tweet ID and other data - parse to match TweetResponse structure
-    const rawResult = (tweetData?.data || tweetData) as
+    // Extract the post ID and other data - parse to match PostResponse structure
+    const rawResult = (postData?.data || postData) as
       | { id?: string; text?: string; data?: { id?: string; data?: { id?: string } } }
       | undefined;
 
     // if we have a response
-    const tweetId = rawResult && ("id" in rawResult ? rawResult.id : rawResult.data?.id);
-    if (tweetId) {
-      if (client.lastCheckedTweetId && client.lastCheckedTweetId < BigInt(tweetId)) {
-        client.lastCheckedTweetId = BigInt(tweetId);
-      } else if (!client.lastCheckedTweetId) {
-        client.lastCheckedTweetId = BigInt(tweetId);
+    const postId = rawResult && ("id" in rawResult ? rawResult.id : rawResult.data?.id);
+    if (postId) {
+      if (client.lastCheckedPostId && client.lastCheckedPostId < BigInt(postId)) {
+        client.lastCheckedPostId = BigInt(postId);
+      } else if (!client.lastCheckedPostId) {
+        client.lastCheckedPostId = BigInt(postId);
       }
-      await client.cacheLatestCheckedTweetId();
+      await client.cacheLatestCheckedPostId();
 
-      // Cache the tweet - ensure it has all required fields
-      const tweetText = rawResult && ("text" in rawResult ? rawResult.text : undefined);
-      if (tweetId && tweetText) {
-        await client.cacheTweet({ id: tweetId, text: tweetText, ...rawResult } as Tweet);
+      // Cache the post - ensure it has all required fields
+      const postText = rawResult && ("text" in rawResult ? rawResult.text : undefined);
+      if (postId && postText) {
+        await client.cachePost({ id: postId, text: postText, ...rawResult } as Post);
       }
 
-      logger.log("Successfully posted a tweet", tweetId);
+      logger.log("Successfully posted a post", postId);
 
-      // Return as TweetResponse format
-      const tweetResult: TweetResponse = {
+      // Return as PostResponse format
+      const postResult: PostResponse = {
         id: rawResult.id,
         data: rawResult.data,
       };
-      return tweetResult;
+      return postResult;
     }
   } catch (error) {
     logger.error(
-      "Error parsing tweet response:",
+      "Error parsing post response:",
       error instanceof Error ? error.message : String(error)
     );
     throw error;
   }
 
-  logger.error("No valid response from Twitter API");
-  throw new Error("Failed to send tweet - no valid response");
+  logger.error("No valid response from X API");
+  throw new Error("Failed to send post - no valid response");
 }
 
 /**
- * Sends a tweet on Twitter using the given client.
+ * Sends a post on X using the given client.
  *
- * @param {ClientBase} client The client used to send the tweet.
- * @param {Content} content The content of the tweet.
- * @param {UUID} roomId The ID of the room where the tweet will be sent.
- * @param {string} twitterUsername The Twitter username of the sender.
- * @param {string} inReplyTo The ID of the tweet to which the new tweet will reply.
- * @returns {Promise<Memory[]>} An array of memories representing the sent tweets.
+ * @param {ClientBase} client The client used to send the post.
+ * @param {Content} content The content of the post.
+ * @param {UUID} roomId The ID of the room where the post will be sent.
+ * @param {string} xUsername The X username of the sender.
+ * @param {string} inReplyTo The ID of the post to which the new post will reply.
+ * @returns {Promise<Memory[]>} An array of memories representing the sent posts.
  */
-export async function sendChunkedTweet(
+export async function sendChunkedPost(
   client: ClientBase,
   content: Content,
   roomId: UUID,
-  twitterUsername: string,
+  xUsername: string,
   inReplyTo: string
 ): Promise<Memory[]> {
   const messages: Memory[] = [];
   if (!content.text) {
-    logger.warn("Cannot split tweet content: text is undefined");
+    logger.warn("Cannot split post content: text is undefined");
     return [];
   }
-  const chunks = splitTweetContent(content.text, TWEET_MAX_LENGTH);
+  const chunks = splitPostContent(content.text, TWEET_MAX_LENGTH);
 
-  let previousTweetId = inReplyTo;
+  let previousPostId = inReplyTo;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     const _isLastChunk = i === chunks.length - 1;
 
-    // Add the tweet number to the beginning of each chunk
-    const tweetContent = `${chunk}`;
+    // Add the post number to the beginning of each chunk
+    const postContent = `${chunk}`;
 
-    logger.debug(`Sending tweet ${i + 1}/${chunks.length}: ${tweetContent}`);
+    logger.debug(`Sending post ${i + 1}/${chunks.length}: ${postContent}`);
 
     try {
       // Convert Media[] to MediaData[] if needed
@@ -228,26 +228,26 @@ export async function sendChunkedTweet(
         mediaData = await fetchMediaData(content.attachments);
       }
 
-      const result = await sendTweet(client, tweetContent, mediaData, previousTweetId);
+      const result = await sendPost(client, postContent, mediaData, previousPostId);
 
       if (!result) {
-        throw new Error("Failed to send tweet - no result returned");
+        throw new Error("Failed to send post - no result returned");
       }
 
-      // Extract tweet ID from the TweetResponse structure
-      const tweetId = result.id || result.data?.id || result.data?.data?.id;
+      // Extract post ID from the PostResponse structure
+      const postId = result.id || result.data?.id || result.data?.data?.id;
 
       // if we have a response
-      if (tweetId) {
-        const permanentUrl = `https://x.com/${twitterUsername}/status/${tweetId}`;
+      if (postId) {
+        const permanentUrl = `https://x.com/${xUsername}/status/${postId}`;
 
         const memory: Memory = {
-          id: createUniqueUuid(client.runtime, tweetId),
+          id: createUniqueUuid(client.runtime, postId),
           entityId: client.runtime.agentId,
           content: {
             text: chunk,
             url: permanentUrl,
-            source: "twitter",
+            source: "x",
           },
           agentId: client.runtime.agentId,
           roomId,
@@ -255,7 +255,7 @@ export async function sendChunkedTweet(
         };
 
         messages.push(memory);
-        previousTweetId = tweetId;
+        previousPostId = postId;
       }
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -268,45 +268,45 @@ export async function sendChunkedTweet(
 }
 
 /**
- * Splits the given content into individual tweets based on the maximum length allowed for a tweet.
- * @param {string} content - The content to split into tweets.
- * @param {number} maxLength - The maximum length allowed for a single tweet.
- * @returns {string[]} An array of strings representing individual tweets.
+ * Splits the given content into individual posts based on the maximum length allowed for a post.
+ * @param {string} content - The content to split into posts.
+ * @param {number} maxLength - The maximum length allowed for a single post.
+ * @returns {string[]} An array of strings representing individual posts.
  */
-function splitTweetContent(content: string, maxLength: number): string[] {
+function splitPostContent(content: string, maxLength: number): string[] {
   const paragraphs = content.split("\n\n").map((p) => p.trim());
-  const tweets: string[] = [];
-  let currentTweet = "";
+  const posts: string[] = [];
+  let currentPost = "";
 
   for (const paragraph of paragraphs) {
     if (!paragraph) continue;
 
-    if (`${currentTweet}\n\n${paragraph}`.trim().length <= maxLength) {
-      if (currentTweet) {
-        currentTweet += `\n\n${paragraph}`;
+    if (`${currentPost}\n\n${paragraph}`.trim().length <= maxLength) {
+      if (currentPost) {
+        currentPost += `\n\n${paragraph}`;
       } else {
-        currentTweet = paragraph;
+        currentPost = paragraph;
       }
     } else {
-      if (currentTweet) {
-        tweets.push(currentTweet.trim());
+      if (currentPost) {
+        posts.push(currentPost.trim());
       }
       if (paragraph.length <= maxLength) {
-        currentTweet = paragraph;
+        currentPost = paragraph;
       } else {
         // Split long paragraph into smaller chunks
         const chunks = splitParagraph(paragraph, maxLength);
-        tweets.push(...chunks.slice(0, -1));
-        currentTweet = chunks[chunks.length - 1];
+        posts.push(...chunks.slice(0, -1));
+        currentPost = chunks[chunks.length - 1];
       }
     }
   }
 
-  if (currentTweet) {
-    tweets.push(currentTweet.trim());
+  if (currentPost) {
+    posts.push(currentPost.trim());
   }
 
-  return tweets;
+  return posts;
 }
 
 /**
@@ -325,7 +325,7 @@ function extractUrls(paragraph: string): {
 
   let urlIndex = 0;
   const textWithPlaceholders = paragraph.replace(urlRegex, (match) => {
-    // twitter url would be considered as 23 characters
+    // x url would be considered as 23 characters
     // <<URL_CONSIDERER_23_1>> is also 23 characters
     const placeholder = `<<URL_CONSIDERER_23_${urlIndex}>>`; // Placeholder without . ? ! etc
     placeholderMap.set(placeholder, match);
@@ -478,20 +478,20 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
     text: "",
     actions: [],
     like: false,
-    retweet: false,
+    repost: false,
     quote: false,
     reply: false,
   };
 
   // Regex patterns
   const likePattern = /\[LIKE\]/i;
-  const retweetPattern = /\[RETWEET\]/i;
+  const repostPattern = /\[REPOST\]|\[RETWEET\]/i;  // Support both for backward compatibility
   const quotePattern = /\[QUOTE\]/i;
   const replyPattern = /\[REPLY\]/i;
 
   // Check with regex
   actions.like = likePattern.test(text);
-  actions.retweet = retweetPattern.test(text);
+  actions.repost = repostPattern.test(text);
   actions.quote = quotePattern.test(text);
   actions.reply = replyPattern.test(text);
 
@@ -500,7 +500,7 @@ export const parseActionResponseFromText = (text: string): { actions: ActionResp
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed === "[LIKE]") actions.like = true;
-    if (trimmed === "[RETWEET]") actions.retweet = true;
+    if (trimmed === "[REPOST]" || trimmed === "[RETWEET]") actions.repost = true;  // Support both
     if (trimmed === "[QUOTE]") actions.quote = true;
     if (trimmed === "[REPLY]") actions.reply = true;
   }

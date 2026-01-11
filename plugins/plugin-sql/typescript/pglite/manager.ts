@@ -36,7 +36,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   }
 
   public async initialize(): Promise<void> {
-    // Kept for backward compatibility
+    // No-op
   }
 
   public async close(): Promise<void> {

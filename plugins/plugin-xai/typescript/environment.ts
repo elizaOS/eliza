@@ -37,8 +37,8 @@ export const xEnvSchema = z.object({
 });
 
 export type XConfig = z.infer<typeof xEnvSchema>;
-export const twitterEnvSchema = xEnvSchema;
-export type TwitterConfig = XConfig;
+export const xEnvSchema = xEnvSchema;
+export type XConfig = XConfig;
 
 function parseTargetUsers(str: string): string[] {
   if (!str.trim()) return [];
@@ -113,7 +113,7 @@ export async function validateXConfig(runtime: IAgentRuntime): Promise<XConfig> 
   return xEnvSchema.parse(config);
 }
 
-export const validateTwitterConfig = validateXConfig;
+export const validateXConfig = validateXConfig;
 
 function parseInterval(value: string, fallback: number): number {
   const parsed = parseInt(value, 10);
