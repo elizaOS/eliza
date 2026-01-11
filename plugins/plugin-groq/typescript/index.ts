@@ -139,9 +139,7 @@ export const groqPlugin: Plugin = {
       const model = getSmallModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model) as unknown as Parameters<
-          typeof generateObject
-        >[0]["model"],
+        model: groq.languageModel(model),
         output: "no-schema",
         prompt: params.prompt,
         temperature: params.temperature,
@@ -154,9 +152,7 @@ export const groqPlugin: Plugin = {
       const model = getLargeModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model) as unknown as Parameters<
-          typeof generateObject
-        >[0]["model"],
+        model: groq.languageModel(model),
         output: "no-schema",
         prompt: params.prompt,
         temperature: params.temperature,
@@ -165,12 +161,15 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
+      interface TranscriptionParams {
+        audioData: Buffer;
+      }
       const audioBuffer =
         typeof params === "string"
           ? Buffer.from(params, "base64")
           : Buffer.isBuffer(params)
             ? params
-            : (params as unknown as { audioData: Buffer }).audioData;
+            : (params as TranscriptionParams).audioData;
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
       formData.append(
