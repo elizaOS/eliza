@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket CLOB Client Utilities
  *
@@ -16,10 +15,11 @@ import {
   DEFAULT_CLOB_API_URL,
   DEFAULT_CLOB_WS_URL,
 } from "../constants";
-import type { ApiKeyCreds } from "../types";
+import type { ApiKeyCreds, BookParams } from "../types";
 
-// Re-export the ClobClient type for other modules
+// Re-export types for other modules
 export type { ClobClient } from "@polymarket/clob-client";
+export type { BookParams } from "../types";
 
 /**
  * Get private key from runtime settings
@@ -43,10 +43,20 @@ function getPrivateKey(runtime: IAgentRuntime): `0x${string}` {
   return key as `0x${string}`;
 }
 
+interface EnhancedWallet {
+  address: string;
+  getAddress: () => Promise<string>;
+  _signTypedData: (
+    domain: Record<string, unknown>,
+    types: Record<string, unknown>,
+    value: Record<string, unknown>
+  ) => Promise<string>;
+}
+
 /**
  * Create an enhanced wallet object compatible with CLOB client
  */
-function createEnhancedWallet(privateKey: `0x${string}`) {
+function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
   const account = privateKeyToAccount(privateKey);
 
   const walletClient = createWalletClient({

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -8,82 +7,32 @@ import {
   type State,
   logger,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClientWithCreds } from '../utils/clobClient';
-import type { ClobClient } from '@polymarket/clob-client';
 import { getTradeHistoryTemplate } from '../templates';
-import type { GetTradesParams, TradeEntry, TradesResponse } from '../types';
+import type { ClobClient } from '@polymarket/clob-client';
+import type { GetTradesParams, TradesResponse, TradeEntry } from '../types';
 
-// Simplified params, assuming the official client might take a flexible object or specific known params.
-// The error "no properties in common" suggests our detailed OfficialTradeParams was too different.
-interface CompatibleTradeParams {
-  user_address?: string;
-  market_id?: string;
-  token_id?: string;
-  from_timestamp?: number;
-  to_timestamp?: number;
+interface LLMTradeHistoryResult {
+  market?: string;
+  assetId?: string;
   limit?: number;
-  next_cursor?: string;
-  // Other potential fields based on common usage, to be verified against official TradeParams
-  [key: string]: any; // Allows other properties if needed, making it more flexible
+  error?: string;
 }
 
-// This type should align with the actual structure of trade objects returned by the official client.
-// For now, mirroring our existing TradeEntry, assuming it's close to the official structure.
-interface AssumedTradeEntry {
-  trade_id: string;
-  order_id: string;
-  user_id: string;
-  market_id: string;
-  token_id: string;
-  side: string;
-  type: string;
-  price: string;
-  size: string;
-  fees_paid: string;
-  timestamp: string;
-  tx_hash?: string;
-}
-
-interface AssumedTradesPaginatedResponse {
-  trades: AssumedTradeEntry[];
-  next_cursor: string;
-  limit?: number;
-  count?: number;
-}
-
-// Helper function to parse date strings (e.g., "yesterday", "2023-01-01") to timestamps
-function parseDateToTimestamp(dateString?: string): number | undefined {
-  if (!dateString) return undefined;
-  if (/^\d+$/.test(dateString)) {
-    return parseInt(dateString, 10);
-  }
-  const date = new Date(dateString);
-  if (!isNaN(date.getTime())) {
-    return Math.floor(date.getTime() / 1000);
-  }
-  if (dateString.toLowerCase() === 'yesterday') {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return Math.floor(yesterday.getTime() / 1000);
-  }
-  if (dateString.toLowerCase() === 'today') {
-    const today = new Date();
-    return Math.floor(today.setHours(0, 0, 0, 0) / 1000); // Start of today
-  }
-  logger.warn(`[getTradeHistoryAction] Could not parse date string: ${dateString}`);
-  return undefined;
-}
-
+/**
+ * Get Trade History Action for Polymarket.
+ * Retrieves the authenticated user's trade history.
+ */
 export const getTradeHistoryAction: Action = {
   name: 'POLYMARKET_GET_TRADE_HISTORY',
-  similes: ['USER_TRADE_HISTORY', 'FETCH_MY_TRADES', 'TRADES_LIST', 'SHOW_PAST_TRADES'].map(
+  similes: ['MY_TRADES', 'TRADE_LOG', 'FILLED_ORDERS', 'PAST_TRADES', 'TRADING_HISTORY'].map(
     (s) => `POLYMARKET_${s}`
   ),
   description:
-    'Retrieves trade history for a user, with optional filters for market, token, date range, and pagination.',
+    'Retrieves the authenticated user trade history from Polymarket, optionally filtered by market or asset.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     logger.info(`[getTradeHistoryAction] Validate called for message: "${message.content?.text}"`);
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
     const clobApiKey = runtime.getSetting('CLOB_API_KEY');
@@ -97,7 +46,7 @@ export const getTradeHistoryAction: Action = {
       runtime.getSetting('POLYMARKET_PRIVATE_KEY');
 
     if (!clobApiUrl) {
-      logger.warn('[getTradeHistoryAction] CLOB_API_URL is required but not provided');
+      logger.warn('[getTradeHistoryAction] CLOB_API_URL is required.');
       return false;
     }
     if (!privateKey) {
@@ -107,7 +56,7 @@ export const getTradeHistoryAction: Action = {
       return false;
     }
     if (!clobApiKey || !clobApiSecret || !clobApiPassphrase) {
-      const missing = [];
+      const missing: string[] = [];
       if (!clobApiKey) missing.push('CLOB_API_KEY');
       if (!clobApiSecret) missing.push('CLOB_API_SECRET or CLOB_SECRET');
       if (!clobApiPassphrase) missing.push('CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE');
@@ -122,110 +71,85 @@ export const getTradeHistoryAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[getTradeHistoryAction] Handler called!');
-    // API key/signer should be handled by initializeClobClient now based on new strategy
 
-    let llmParams: {
-      userAddress?: string;
-      marketId?: string;
-      tokenId?: string;
-      fromDate?: string;
-      toDate?: string;
-      limit?: number;
-      nextCursor?: string;
-      error?: string;
-      info?: string;
-    } = {};
-
+    let llmResult: LLMTradeHistoryResult = {};
     try {
-      llmParams = await callLLMWithTimeout<typeof llmParams>(
+      const result = await callLLMWithTimeout<LLMTradeHistoryResult>(
         runtime,
         state,
         getTradeHistoryTemplate,
         'getTradeHistoryAction'
       );
-      logger.info(`[getTradeHistoryAction] LLM parameters: ${JSON.stringify(llmParams)}`);
-      if (llmParams.error) {
-        logger.warn(`[getTradeHistoryAction] LLM indicated an issue: ${llmParams.error}`);
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
+      logger.info(`[getTradeHistoryAction] LLM result: ${JSON.stringify(llmResult)}`);
     } catch (error) {
-      logger.error('[getTradeHistoryAction] LLM extraction failed:', error);
+      logger.warn('[getTradeHistoryAction] LLM extraction failed, using defaults', error);
     }
 
-    const apiParams: CompatibleTradeParams = {
-      user_address: llmParams.userAddress,
-      market_id: llmParams.marketId,
-      token_id: llmParams.tokenId,
-      from_timestamp: parseDateToTimestamp(llmParams.fromDate),
-      to_timestamp: parseDateToTimestamp(llmParams.toDate),
-      limit: llmParams.limit,
-      next_cursor: llmParams.nextCursor,
-    };
+    const market = llmResult.market;
+    const assetId = llmResult.assetId;
+    const limit = llmResult.limit || 20;
 
-    Object.keys(apiParams).forEach((key) => {
-      const K = key as keyof CompatibleTradeParams;
-      if (apiParams[K] === undefined) {
-        delete apiParams[K];
-      }
-    });
+    const apiParams: GetTradesParams = {};
+    if (market) apiParams.market = market;
+    if (assetId) apiParams.asset_id = assetId;
 
     logger.info(
-      `[getTradeHistoryAction] Calling ClobClient.getTradesPaginated with params: ${JSON.stringify(apiParams)}`
+      `[getTradeHistoryAction] Fetching trade history with params: ${JSON.stringify(apiParams)}`
     );
 
     try {
-      // Use initializeClobClientWithCreds
-      const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
+      const client = await initializeClobClientWithCreds(runtime) as ClobClient;
+      const tradesResponse: TradesResponse = await client.getTrades(apiParams);
+      const trades: TradeEntry[] = tradesResponse.data || [];
 
-      // Using 'any' for response type from official client to bypass strict compile-time checking for now,
-      // will rely on runtime structure matching AssumedTradesPaginatedResponse.
-      const tradesResponseAny: any = await client.getTradesPaginated(apiParams as any);
-      const tradesResponse = tradesResponseAny as AssumedTradesPaginatedResponse;
+      let responseText = `📜 **Your Trade History on Polymarket:**\n\n`;
 
-      let responseText = `📜 **Trade History**\n\n`;
-      if (tradesResponse.trades && tradesResponse.trades.length > 0) {
-        responseText += tradesResponse.trades
-          .map(
-            (trade: AssumedTradeEntry) =>
-              `• **Trade ID**: ${trade.trade_id}\n` +
-              `  ◦ **Market**: ${trade.market_id}\n` +
-              `  ◦ **Token**: ${trade.token_id}\n` +
-              `  ◦ **Side**: ${trade.side}, **Type**: ${trade.type}\n` +
-              `  ◦ **Price**: ${trade.price}, **Size**: ${trade.size}\n` +
-              `  ◦ **Fees Paid**: ${trade.fees_paid}\n` +
-              `  ◦ **Timestamp**: ${new Date(trade.timestamp).toLocaleString()}\n` +
-              (trade.tx_hash ? `  ◦ **Tx Hash**: ${trade.tx_hash.substring(0, 10)}...\n` : '')
-          )
-          .join('\n\n');
+      if (trades && trades.length > 0) {
+        responseText += `Found ${trades.length} trade(s):\n\n`;
+        const displayTrades = trades.slice(0, limit);
+        displayTrades.forEach((trade: TradeEntry, index: number) => {
+          const sideEmoji = trade.side === 'BUY' ? '🟢' : '🔴';
+          responseText += `**${index + 1}. Trade ID: ${trade.id}** ${sideEmoji}\n`;
+          responseText += `   • **Side**: ${trade.side}\n`;
+          responseText += `   • **Price**: $${parseFloat(trade.price).toFixed(4)}\n`;
+          responseText += `   • **Size**: ${trade.size}\n`;
+          responseText += `   • **Fee**: $${trade.fee_rate_bps ? (parseFloat(trade.size) * parseFloat(trade.price) * parseFloat(trade.fee_rate_bps) / 10000).toFixed(4) : 'N/A'}\n`;
+          responseText += `   • **Status**: ${trade.status || 'MATCHED'}\n`;
+          if (trade.match_time) {
+            responseText += `   • **Time**: ${new Date(trade.match_time).toLocaleString()}\n`;
+          }
+          responseText += `\n`;
+        });
 
-        if (tradesResponse.next_cursor && tradesResponse.next_cursor !== 'LTE=') {
-          responseText +=
-            `\n\n🗒️ *More trades available. Use cursor \`${tradesResponse.next_cursor}\` to fetch next page.*\n` +
-            `You can say: "get next page of trades with cursor ${tradesResponse.next_cursor}"`;
-        } else {
-          responseText += `\n\n🔚 *End of trade history for the given filters.*`;
+        if (trades.length > limit) {
+          responseText += `\n📄 *Showing ${limit} of ${trades.length} trades.*\n`;
+        }
+        if (tradesResponse.next_cursor) {
+          responseText += `*More trades available. Use cursor: \`${tradesResponse.next_cursor}\`*\n`;
         }
       } else {
-        responseText += 'No trades found matching your criteria.';
-        if (llmParams.info && !llmParams.userAddress && !llmParams.marketId && !llmParams.tokenId) {
-          responseText += `\n(${llmParams.info})`;
-        }
+        responseText += `You have no trades in your history.\n`;
+        if (market) responseText += ` (Filtered by market: ${market})`;
+        if (assetId) responseText += ` (Filtered by asset_id: ${assetId})`;
       }
 
       const responseContent: Content = {
         text: responseText,
         actions: ['POLYMARKET_GET_TRADE_HISTORY'],
         data: {
-          ...apiParams,
-          trades: tradesResponse.trades,
-          nextCursor: tradesResponse.next_cursor,
-          count: tradesResponse.count,
-          limit: tradesResponse.limit,
+          trades: trades.slice(0, limit),
+          totalTrades: trades.length,
+          filters: apiParams,
+          next_cursor: tradesResponse.next_cursor,
           timestamp: new Date().toISOString(),
         },
       };
@@ -238,7 +162,11 @@ export const getTradeHistoryAction: Action = {
       const errorContent: Content = {
         text: `❌ **Error fetching trade history**: ${errorMessage}`,
         actions: ['POLYMARKET_GET_TRADE_HISTORY'],
-        data: { error: errorMessage, params: apiParams, timestamp: new Date().toISOString() },
+        data: {
+          error: errorMessage,
+          filters: apiParams,
+          timestamp: new Date().toISOString(),
+        },
       };
       if (callback) await callback(errorContent);
       throw error;
@@ -247,54 +175,21 @@ export const getTradeHistoryAction: Action = {
 
   examples: [
     [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'Show my trade history for market 0xMarket123 from last week, limit 10 via Polymarket',
-        },
-      },
+      { name: '{{user1}}', content: { text: 'Show my trade history on Polymarket.' } },
       {
         name: '{{user2}}',
         content: {
-          text: 'Okay, fetching your trade history for market 0xMarket123 from last week, with a limit of 10 trades via Polymarket.',
+          text: 'Fetching your trade history from Polymarket...',
           action: 'POLYMARKET_GET_TRADE_HISTORY',
         },
       },
     ],
     [
-      { name: '{{user1}}', content: { text: 'Get my trades via Polymarket' } },
+      { name: '{{user1}}', content: { text: 'What trades have I made on Polymarket?' } },
       {
         name: '{{user2}}',
         content: {
-          text: "Fetching your recent trade history via Polymarket. I'll get the latest trades.",
-          action: 'POLYMARKET_GET_TRADE_HISTORY',
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: { text: 'Fetch next page of my trades with cursor XYZ123 via Polymarket' },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Okay, fetching the next page of your trades using cursor XYZ123 via Polymarket.',
-          action: 'POLYMARKET_GET_TRADE_HISTORY',
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'What were my trades on token 0xtokenCool for market 0xmarketRad since yesterday via Polymarket?',
-        },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Let me look up those trades for you on token 0xtokenCool in market 0xmarketRad since yesterday via Polymarket.',
+          text: 'Looking up your past trades on Polymarket...',
           action: 'POLYMARKET_GET_TRADE_HISTORY',
         },
       },

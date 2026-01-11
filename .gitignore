@@ -241,3 +241,6 @@ plugins/**/rust/Cargo.lock
 
 # Python poetry lock files (if not needed)
 **/poetry.lock
+
+# Build-generated examples copy (source is /examples/)
+packages/elizaos/examples/

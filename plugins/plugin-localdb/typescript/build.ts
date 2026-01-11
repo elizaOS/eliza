@@ -5,64 +5,94 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { runBuild } from "../../build-utils";
+import { build } from "bun";
+
+const distDir = join(process.cwd(), "dist");
+const browserDir = join(distDir, "browser");
+const nodeDir = join(distDir, "node");
 
 async function buildAll() {
+  console.log("🔨 Building @elizaos/plugin-localdb...\n");
+
+  // Clean dist directory
+  if (existsSync(distDir)) {
+    await rm(distDir, { recursive: true, force: true });
+  }
+  await mkdir(browserDir, { recursive: true });
+  await mkdir(nodeDir, { recursive: true });
+
   // Node build (server): File-based storage
-  const nodeOk = await runBuild({
-    packageName: "@elizaos/plugin-localdb",
-    buildOptions: {
-      entrypoints: ["typescript/index.node.ts"],
-      outdir: "dist/node",
-      target: "node",
-      format: "esm",
-      external: [
-        "@elizaos/core",
-        "fs",
-        "path",
-        "node:fs",
-        "node:fs/promises",
-        "node:path",
-      ],
-      sourcemap: true,
-      minify: false,
-      generateDts: true,
-    },
+  console.log("📦 Building Node ESM...");
+  const nodeResult = await build({
+    entrypoints: ["./index.node.ts"],
+    outdir: nodeDir,
+    target: "node",
+    format: "esm",
+    sourcemap: "linked",
+    minify: false,
+    external: [
+      "@elizaos/core",
+      "fs",
+      "path",
+      "node:fs",
+      "node:fs/promises",
+      "node:path",
+    ],
+    naming: "[name].js",
   });
 
-  if (!nodeOk) return false;
+  if (!nodeResult.success) {
+    console.error("Node build failed:", nodeResult.logs);
+    return false;
+  }
+  console.log("✅ Node build complete");
 
   // Browser build (client): localStorage-based storage
-  const browserOk = await runBuild({
-    packageName: "@elizaos/plugin-localdb",
-    buildOptions: {
-      entrypoints: ["typescript/index.browser.ts"],
-      outdir: "dist/browser",
-      target: "browser",
-      format: "esm",
-      external: ["@elizaos/core"],
-      sourcemap: true,
-      minify: false,
-      generateDts: true,
-    },
+  console.log("🌐 Building Browser ESM...");
+  const browserResult = await build({
+    entrypoints: ["./index.browser.ts"],
+    outdir: browserDir,
+    target: "browser",
+    format: "esm",
+    sourcemap: "linked",
+    minify: false,
+    external: ["@elizaos/core"],
+    naming: "[name].js",
   });
 
-  if (!browserOk) return false;
+  if (!browserResult.success) {
+    console.error("Browser build failed:", browserResult.logs);
+    return false;
+  }
+  console.log("✅ Browser build complete");
+
+  // Generate TypeScript declarations
+  console.log("📝 Generating type declarations...");
+  const tscBrowser = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
+    stdout: "inherit",
+    stderr: "inherit",
+    cwd: process.cwd(),
+  });
+  await tscBrowser.exited;
+  if (tscBrowser.exitCode !== 0) {
+    console.error("TypeScript declaration generation failed");
+    return false;
+  }
+
+  const tscNode = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.node.json"], {
+    stdout: "inherit",
+    stderr: "inherit",
+    cwd: process.cwd(),
+  });
+  await tscNode.exited;
+  if (tscNode.exitCode !== 0) {
+    console.error("TypeScript node declaration generation failed");
+    return false;
+  }
 
   // Ensure declaration entry points are present for consumers
-  const distDir = join(process.cwd(), "dist");
-  const browserDir = join(distDir, "browser");
-  const nodeDir = join(distDir, "node");
-  
-  if (!existsSync(browserDir)) {
-    await mkdir(browserDir, { recursive: true });
-  }
-  if (!existsSync(nodeDir)) {
-    await mkdir(nodeDir, { recursive: true });
-  }
-
   // Root types alias to node by default for server editors
   const rootIndexDtsPath = join(distDir, "index.d.ts");
   const rootAlias = [
@@ -90,6 +120,7 @@ async function buildAll() {
   ].join("\n");
   await writeFile(nodeIndexDtsPath, nodeAlias, "utf8");
 
+  console.log("\n✅ Build complete!");
   return true;
 }
 

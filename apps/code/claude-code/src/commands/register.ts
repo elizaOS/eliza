@@ -57,16 +57,46 @@ function registerLoginCommand(): void {
     description: 'Log in to Claude AI',
     category: 'Auth',
     handler: async (args) => {
-      try {
-        const { 'api-key': apiKey, oauth } = args;
+      const { 'api-key': apiKey, oauth } = args;
+      
+      console.log('Authenticating with Claude...');
+      
+      if (apiKey) {
+        // Use API key authentication
+        const authResult = await authManager.authenticateWithApiKey(apiKey);
+        if (authResult.success) {
+          console.log('Successfully logged in with API key.');
+          
+          // Display token expiration if available
+          if (authResult.token?.expiresAt) {
+            const expirationDate = new Date(authResult.token.expiresAt * 1000);
+            console.log(`Token expires on: ${expirationDate.toLocaleString()}`);
+          }
+        } else {
+          console.error(`Authentication failed: ${authResult.error || 'Unknown error'}`);
+        }
+      } else if (oauth) {
+        // Use OAuth authentication
+        const authResult = await authManager.authenticateWithOAuth();
+        if (authResult.success) {
+          console.log('Successfully logged in with OAuth.');
+          
+          // Display token expiration if available
+          if (authResult.token?.expiresAt) {
+            const expirationDate = new Date(authResult.token.expiresAt * 1000);
+            console.log(`Token expires on: ${expirationDate.toLocaleString()}`);
+          }
+        } else {
+          console.error(`Authentication failed: ${authResult.error || 'Unknown error'}`);
+        }
+      } else {
+        // Determine method based on available environment variables
+        const apiKeyFromEnv = process.env.ANTHROPIC_API_KEY;
         
-        console.log('Authenticating with Claude...');
-        
-        if (apiKey) {
-          // Use API key authentication
-          const authResult = await authManager.authenticateWithApiKey(apiKey);
+        if (apiKeyFromEnv) {
+          const authResult = await authManager.authenticateWithApiKey(apiKeyFromEnv);
           if (authResult.success) {
-            console.log('Successfully logged in with API key.');
+            console.log('Successfully logged in with API key from environment.');
             
             // Display token expiration if available
             if (authResult.token?.expiresAt) {
@@ -76,8 +106,9 @@ function registerLoginCommand(): void {
           } else {
             console.error(`Authentication failed: ${authResult.error || 'Unknown error'}`);
           }
-        } else if (oauth) {
-          // Use OAuth authentication
+        } else {
+          // Default to OAuth if no API key is available
+          console.log('No API key found. Proceeding with OAuth authentication...');
           const authResult = await authManager.authenticateWithOAuth();
           if (authResult.success) {
             console.log('Successfully logged in with OAuth.');
@@ -90,42 +121,7 @@ function registerLoginCommand(): void {
           } else {
             console.error(`Authentication failed: ${authResult.error || 'Unknown error'}`);
           }
-        } else {
-          // Determine method based on available environment variables
-          const apiKeyFromEnv = process.env.ANTHROPIC_API_KEY;
-          
-          if (apiKeyFromEnv) {
-            const authResult = await authManager.authenticateWithApiKey(apiKeyFromEnv);
-            if (authResult.success) {
-              console.log('Successfully logged in with API key from environment.');
-              
-              // Display token expiration if available
-              if (authResult.token?.expiresAt) {
-                const expirationDate = new Date(authResult.token.expiresAt * 1000);
-                console.log(`Token expires on: ${expirationDate.toLocaleString()}`);
-              }
-            } else {
-              console.error(`Authentication failed: ${authResult.error || 'Unknown error'}`);
-            }
-          } else {
-            // Default to OAuth if no API key is available
-            console.log('No API key found. Proceeding with OAuth authentication...');
-            const authResult = await authManager.authenticateWithOAuth();
-            if (authResult.success) {
-              console.log('Successfully logged in with OAuth.');
-              
-              // Display token expiration if available
-              if (authResult.token?.expiresAt) {
-                const expirationDate = new Date(authResult.token.expiresAt * 1000);
-                console.log(`Token expires on: ${expirationDate.toLocaleString()}`);
-              }
-            } else {
-              console.error(`Authentication failed: ${authResult.error || 'Unknown error'}`);
-            }
-          }
         }
-      } catch (error) {
-        console.error('Error during authentication:', formatErrorForDisplay(error));
       }
     },
     args: [
@@ -160,16 +156,12 @@ function registerLogoutCommand(): void {
     description: 'Log out and clear stored credentials',
     category: 'Auth',
     handler: async () => {
-      try {
-        console.log('Logging out and clearing credentials...');
-        
-        // Call the auth manager's logout function
-        await authManager.logout();
-        
-        console.log('Successfully logged out. All credentials have been cleared.');
-      } catch (error) {
-        console.error('Error during logout:', formatErrorForDisplay(error));
-      }
+      console.log('Logging out and clearing credentials...');
+      
+      // Call the auth manager's logout function
+      await authManager.logout();
+      
+      console.log('Successfully logged out. All credentials have been cleared.');
     },
     examples: [
       'logout'
@@ -205,9 +197,6 @@ function registerAskCommand(): void {
         // Extract and print the response
         const responseText = result.content[0]?.text || 'No response received';
         console.log(responseText);
-      } catch (error) {
-        console.error('Error asking Claude:', formatErrorForDisplay(error));
-      }
     },
     args: [
       {
@@ -280,9 +269,6 @@ function registerExplainCommand(): void {
         // Extract and print the response
         const responseText = result.content[0]?.text || 'No explanation received';
         console.log(responseText);
-      } catch (error) {
-        console.error('Error explaining code:', formatErrorForDisplay(error));
-      }
     },
     args: [
       {
@@ -350,9 +336,6 @@ function registerRefactorCommand(): void {
         // Extract and print the response
         const responseText = result.content[0]?.text || 'No refactored code received';
         console.log(responseText);
-      } catch (error) {
-        console.error('Error refactoring code:', formatErrorForDisplay(error));
-      }
     },
     args: [
       {
@@ -431,9 +414,6 @@ function registerFixCommand(): void {
         // Extract and print the response
         const responseText = result.content[0]?.text || 'No fixed code received';
         console.log(responseText);
-      } catch (error) {
-        console.error('Error fixing code:', formatErrorForDisplay(error));
-      }
     },
     args: [
       {
@@ -497,9 +477,6 @@ function registerGenerateCommand(): void {
         // Extract and print the response
         const responseText = result.content[0]?.text || 'No code generated';
         console.log(responseText);
-      } catch (error) {
-        console.error('Error generating code:', formatErrorForDisplay(error));
-      }
     },
     args: [
       {
@@ -547,60 +524,55 @@ function registerConfigCommand(): void {
     async handler({ key, value }: { key?: string; value?: string }) {
       logger.info('Executing config command');
       
-      try {
-        const configModule = await import('../config/index.js');
-        // Load the current configuration
-        const currentConfig = await configModule.loadConfig();
-        
-        if (!key) {
-          // Display the current configuration
-          logger.info('Current configuration:');
-          console.log(JSON.stringify(currentConfig, null, 2));
-          return;
+      const configModule = await import('../config/index.js');
+      // Load the current configuration
+      const currentConfig = await configModule.loadConfig();
+      
+      if (!key) {
+        // Display the current configuration
+        logger.info('Current configuration:');
+        console.log(JSON.stringify(currentConfig, null, 2));
+        return;
+      }
+      
+      // Handle nested keys like "api.baseUrl"
+      const keyPath = key.split('.');
+      let configSection: any = currentConfig;
+      
+      // Navigate to the nested config section
+      for (let i = 0; i < keyPath.length - 1; i++) {
+        configSection = configSection[keyPath[i]];
+        if (!configSection) {
+          throw new Error(`Configuration key '${key}' not found`);
         }
-        
-        // Handle nested keys like "api.baseUrl"
-        const keyPath = key.split('.');
-        let configSection: any = currentConfig;
-        
-        // Navigate to the nested config section
-        for (let i = 0; i < keyPath.length - 1; i++) {
-          configSection = configSection[keyPath[i]];
-          if (!configSection) {
-            throw new Error(`Configuration key '${key}' not found`);
-          }
+      }
+      
+      const finalKey = keyPath[keyPath.length - 1];
+      
+      if (value === undefined) {
+        // Get the value
+        const keyValue = configSection[finalKey];
+        if (keyValue === undefined) {
+          throw new Error(`Configuration key '${key}' not found`);
         }
+        logger.info(`${key}: ${JSON.stringify(keyValue)}`);
+      } else {
+        // Set the value
+        // Parse the value if needed (convert strings to numbers/booleans)
+        let parsedValue: any = value;
+        if (value.toLowerCase() === 'true') parsedValue = true;
+        else if (value.toLowerCase() === 'false') parsedValue = false;
+        else if (!isNaN(Number(value))) parsedValue = Number(value);
         
-        const finalKey = keyPath[keyPath.length - 1];
+        // Update the config in memory
+        configSection[finalKey] = parsedValue;
         
-        if (value === undefined) {
-          // Get the value
-          const keyValue = configSection[finalKey];
-          if (keyValue === undefined) {
-            throw new Error(`Configuration key '${key}' not found`);
-          }
-          logger.info(`${key}: ${JSON.stringify(keyValue)}`);
-        } else {
-          // Set the value
-          // Parse the value if needed (convert strings to numbers/booleans)
-          let parsedValue: any = value;
-          if (value.toLowerCase() === 'true') parsedValue = true;
-          else if (value.toLowerCase() === 'false') parsedValue = false;
-          else if (!isNaN(Number(value))) parsedValue = Number(value);
-          
-          // Update the config in memory
-          configSection[finalKey] = parsedValue;
-          
-          // Save the updated config to file
-          // Since there's no direct saveConfig function, we'd need to implement
-          // this part separately to write to a config file
-          logger.info(`Configuration updated in memory: ${key} = ${JSON.stringify(parsedValue)}`);
-          logger.warn('Note: Configuration changes are only temporary for this session');
-          // In a real implementation, we would save to the config file
-        }
-      } catch (error) {
-        logger.error(`Error executing config command: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
+        // Save the updated config to file
+        // Since there's no direct saveConfig function, we'd need to implement
+        // this part separately to write to a config file
+        logger.info(`Configuration updated in memory: ${key} = ${JSON.stringify(parsedValue)}`);
+        logger.warn('Note: Configuration changes are only temporary for this session');
+        // In a real implementation, we would save to the config file
       }
     },
     args: [
@@ -649,36 +621,30 @@ function registerBugCommand(): void {
         });
       }
       
-      try {
-        // In a real implementation, this would send the bug report to a server
-        logger.info('Submitting bug report...');
-        
-        // Get system information
-        const os = await import('os');
-        const systemInfo = {
-          platform: os.platform(),
-          release: os.release(),
-          nodeVersion: process.version,
-          appVersion: '0.2.29', // This would come from package.json in a real implementation
-          timestamp: new Date().toISOString()
-        };
-        
-        // Get current telemetry client
-        const telemetryModule = await import('../telemetry/index.js');
-        const telemetryManager = await telemetryModule.initTelemetry();
-        
-        telemetryManager.trackEvent('BUG_REPORT', {
-          description,
-          ...systemInfo
-        });
-        
-        logger.info('Bug report submitted successfully');
-        console.log('Thank you for your bug report. Our team will investigate the issue.');
-        
-      } catch (error) {
-        logger.error(`Error submitting bug report: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
-      }
+      // In a real implementation, this would send the bug report to a server
+      logger.info('Submitting bug report...');
+      
+      // Get system information
+      const os = await import('os');
+      const systemInfo = {
+        platform: os.platform(),
+        release: os.release(),
+        nodeVersion: process.version,
+        appVersion: '0.2.29', // This would come from package.json in a real implementation
+        timestamp: new Date().toISOString()
+      };
+      
+      // Get current telemetry client
+      const telemetryModule = await import('../telemetry/index.js');
+      const telemetryManager = await telemetryModule.initTelemetry();
+      
+      telemetryManager.trackEvent('BUG_REPORT', {
+        description,
+        ...systemInfo
+      });
+      
+      logger.info('Bug report submitted successfully');
+      console.log('Thank you for your bug report. Our team will investigate the issue.');
     },
     args: [
       {
@@ -718,36 +684,30 @@ function registerFeedbackCommand(): void {
         });
       }
       
-      try {
-        // In a real implementation, this would send the feedback to a server
-        logger.info('Submitting feedback...');
-        
-        // Get system information
-        const os = await import('os');
-        const systemInfo = {
-          platform: os.platform(),
-          release: os.release(),
-          nodeVersion: process.version,
-          appVersion: '0.2.29', // This would come from package.json in a real implementation
-          timestamp: new Date().toISOString()
-        };
-        
-        // Get current telemetry client
-        const telemetryModule = await import('../telemetry/index.js');
-        const telemetryManager = await telemetryModule.initTelemetry();
-        
-        telemetryManager.trackEvent('USER_FEEDBACK', {
-          content,
-          ...systemInfo
-        });
-        
-        logger.info('Feedback submitted successfully');
-        console.log('Thank you for your feedback. We appreciate your input.');
-        
-      } catch (error) {
-        logger.error(`Error submitting feedback: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
-      }
+      // In a real implementation, this would send the feedback to a server
+      logger.info('Submitting feedback...');
+      
+      // Get system information
+      const os = await import('os');
+      const systemInfo = {
+        platform: os.platform(),
+        release: os.release(),
+        nodeVersion: process.version,
+        appVersion: '0.2.29', // This would come from package.json in a real implementation
+        timestamp: new Date().toISOString()
+      };
+      
+      // Get current telemetry client
+      const telemetryModule = await import('../telemetry/index.js');
+      const telemetryManager = await telemetryModule.initTelemetry();
+      
+      telemetryManager.trackEvent('USER_FEEDBACK', {
+        content,
+        ...systemInfo
+      });
+      
+      logger.info('Feedback submitted successfully');
+      console.log('Thank you for your feedback. We appreciate your input.');
     },
     args: [
       {
@@ -787,35 +747,25 @@ function registerRunCommand(): void {
         });
       }
       
-      try {
-        logger.info(`Running command: ${commandToRun}`);
-        
-        // Execute the command
-        const { exec } = await import('child_process');
-        const util = await import('util');
-        const execPromise = util.promisify(exec);
-        
-        logger.debug(`Executing: ${commandToRun}`);
-        const { stdout, stderr } = await execPromise(commandToRun);
-        
-        if (stdout) {
-          console.log(stdout);
-        }
-        
-        if (stderr) {
-          console.error(stderr);
-        }
-        
-        logger.info('Command executed successfully');
-      } catch (error) {
-        logger.error(`Error executing command: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        
-        if (error instanceof Error) {
-          console.error(`Error: ${error.message}`);
-        }
-        
-        throw error;
+      logger.info(`Running command: ${commandToRun}`);
+      
+      // Execute the command
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execPromise = util.promisify(exec);
+      
+      logger.debug(`Executing: ${commandToRun}`);
+      const { stdout, stderr } = await execPromise(commandToRun);
+      
+      if (stdout) {
+        console.log(stdout);
       }
+      
+      if (stderr) {
+        console.error(stderr);
+      }
+      
+      logger.info('Command executed successfully');
     },
     args: [
       {
@@ -856,54 +806,44 @@ function registerSearchCommand(): void {
         });
       }
       
+      logger.info(`Searching for: ${term}`);
+      
+      // Get search directory (current directory if not specified)
+      const searchDir = args.dir || process.cwd();
+      
+      // Execute the search using ripgrep if available, otherwise fall back to simple grep
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execPromise = util.promisify(exec);
+      
+      let searchCommand;
+      const searchPattern = term.includes(' ') ? `"${term}"` : term;
+      
       try {
-        logger.info(`Searching for: ${term}`);
+        // Try to use ripgrep (rg) for better performance
+        await execPromise('rg --version');
         
-        // Get search directory (current directory if not specified)
-        const searchDir = args.dir || process.cwd();
-        
-        // Execute the search using ripgrep if available, otherwise fall back to simple grep
-        const { exec } = await import('child_process');
-        const util = await import('util');
-        const execPromise = util.promisify(exec);
-        
-        let searchCommand;
-        const searchPattern = term.includes(' ') ? `"${term}"` : term;
-        
-        try {
-          // Try to use ripgrep (rg) for better performance
-          await execPromise('rg --version');
-          
-          // Ripgrep is available, use it
-          searchCommand = `rg --color=always --line-number --heading --smart-case ${searchPattern} ${searchDir}`;
-        } catch {
-          // Fall back to grep (available on most Unix systems)
-          searchCommand = `grep -r --color=always -n "${term}" ${searchDir}`;
-        }
-        
-        logger.debug(`Running search command: ${searchCommand}`);
-        const { stdout, stderr } = await execPromise(searchCommand);
-        
-        if (stderr) {
-          console.error(stderr);
-        }
-        
-        if (stdout) {
-          console.log(stdout);
-        } else {
-          console.log(`No results found for '${term}'`);
-        }
-        
-        logger.info('Search completed');
-      } catch (error) {
-        logger.error(`Error searching codebase: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        
-        if (error instanceof Error) {
-          console.error(`Error: ${error.message}`);
-        }
-        
-        throw error;
+        // Ripgrep is available, use it
+        searchCommand = `rg --color=always --line-number --heading --smart-case ${searchPattern} ${searchDir}`;
+      } catch {
+        // Fall back to grep (available on most Unix systems)
+        searchCommand = `grep -r --color=always -n "${term}" ${searchDir}`;
       }
+      
+      logger.debug(`Running search command: ${searchCommand}`);
+      const { stdout, stderr } = await execPromise(searchCommand);
+      
+      if (stderr) {
+        console.error(stderr);
+      }
+      
+      if (stdout) {
+        console.log(stdout);
+      } else {
+        console.log(`No results found for '${term}'`);
+      }
+      
+      logger.info('Search completed');
     },
     args: [
       {
@@ -964,25 +904,19 @@ function registerThemeCommand(): void {
         });
       }
       
-      try {
-        // Update the theme in the configuration
-        const configModule = await import('../config/index.js');
-        const currentConfig = await configModule.loadConfig();
-        
-        if (!currentConfig.terminal) {
-          currentConfig.terminal = {};
-        }
-        
-        currentConfig.terminal.theme = theme.toLowerCase();
-        
-        logger.info(`Theme updated to: ${theme}`);
-        console.log(`Theme set to: ${theme}`);
-        console.log('Note: Theme changes are only temporary for this session. Use the config command to make permanent changes.');
-        
-      } catch (error) {
-        logger.error(`Error changing theme: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
+      // Update the theme in the configuration
+      const configModule = await import('../config/index.js');
+      const currentConfig = await configModule.loadConfig();
+      
+      if (!currentConfig.terminal) {
+        currentConfig.terminal = {};
       }
+      
+      currentConfig.terminal.theme = theme.toLowerCase();
+      
+      logger.info(`Theme updated to: ${theme}`);
+      console.log(`Theme set to: ${theme}`);
+      console.log('Note: Theme changes are only temporary for this session. Use the config command to make permanent changes.');
     },
     args: [
       {
@@ -1019,65 +953,59 @@ function registerVerbosityCommand(): void {
       
       const level = args.level;
       
-      try {
-        // If no level is specified, display the current verbosity level
-        if (!isNonEmptyString(level)) {
-          const configModule = await import('../config/index.js');
-          const currentConfig = await configModule.loadConfig();
-          
-          const currentLevel = currentConfig.logger?.level || 'info';
-          console.log(`Current verbosity level: ${currentLevel}`);
-          console.log('Available levels: error, warn, info, debug');
-          return;
-        }
-        
-        // Validate the verbosity level and map to LogLevel
-        const { LogLevel } = await import('../utils/logger.js');
-        let logLevel: any;
-        
-        switch (level.toLowerCase()) {
-          case 'debug':
-            logLevel = LogLevel.DEBUG;
-            break;
-          case 'info':
-            logLevel = LogLevel.INFO;
-            break;
-          case 'warn':
-            logLevel = LogLevel.WARN;
-            break;
-          case 'error':
-            logLevel = LogLevel.ERROR;
-            break;
-          case 'silent':
-            logLevel = LogLevel.SILENT;
-            break;
-          default:
-            throw createUserError(`Invalid verbosity level: ${level}`, {
-              category: ErrorCategory.VALIDATION,
-              resolution: `Please choose one of: debug, info, warn, error, silent`
-            });
-        }
-        
-        // Update the verbosity level in the configuration
+      // If no level is specified, display the current verbosity level
+      if (!isNonEmptyString(level)) {
         const configModule = await import('../config/index.js');
         const currentConfig = await configModule.loadConfig();
         
-        if (!currentConfig.logger) {
-          currentConfig.logger = {};
-        }
-        
-        currentConfig.logger.level = level.toLowerCase();
-        
-        // Update the logger instance directly
-        logger.setLevel(logLevel);
-        
-        logger.info(`Verbosity level updated to: ${level}`);
-        console.log(`Verbosity level set to: ${level}`);
-        
-      } catch (error) {
-        logger.error(`Error changing verbosity level: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
+        const currentLevel = currentConfig.logger?.level || 'info';
+        console.log(`Current verbosity level: ${currentLevel}`);
+        console.log('Available levels: error, warn, info, debug');
+        return;
       }
+      
+      // Validate the verbosity level and map to LogLevel
+      const { LogLevel } = await import('../utils/logger.js');
+      let logLevel: any;
+      
+      switch (level.toLowerCase()) {
+        case 'debug':
+          logLevel = LogLevel.DEBUG;
+          break;
+        case 'info':
+          logLevel = LogLevel.INFO;
+          break;
+        case 'warn':
+          logLevel = LogLevel.WARN;
+          break;
+        case 'error':
+          logLevel = LogLevel.ERROR;
+          break;
+        case 'silent':
+          logLevel = LogLevel.SILENT;
+          break;
+        default:
+          throw createUserError(`Invalid verbosity level: ${level}`, {
+            category: ErrorCategory.VALIDATION,
+            resolution: `Please choose one of: debug, info, warn, error, silent`
+          });
+      }
+      
+      // Update the verbosity level in the configuration
+      const configModule = await import('../config/index.js');
+      const currentConfig = await configModule.loadConfig();
+      
+      if (!currentConfig.logger) {
+        currentConfig.logger = {};
+      }
+      
+      currentConfig.logger.level = level.toLowerCase();
+      
+      // Update the logger instance directly
+      logger.setLevel(logLevel);
+      
+      logger.info(`Verbosity level updated to: ${level}`);
+      console.log(`Verbosity level set to: ${level}`);
     },
     args: [
       {
@@ -1120,78 +1048,72 @@ function registerEditCommand(): void {
         });
       }
       
+      // Check if file exists
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      // Resolve the file path
+      const resolvedPath = path.resolve(process.cwd(), file);
+      
       try {
         // Check if file exists
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        
-        // Resolve the file path
-        const resolvedPath = path.resolve(process.cwd(), file);
-        
-        try {
-          // Check if file exists
-          await fs.access(resolvedPath);
-        } catch (error) {
-          // If file doesn't exist, create it with empty content
-          logger.info(`File doesn't exist, creating: ${resolvedPath}`);
-          await fs.writeFile(resolvedPath, '');
-        }
-        
-        logger.info(`Opening file for editing: ${resolvedPath}`);
-        
-        // On different platforms, open the file with different editors
-        const { platform } = await import('os');
-        const { exec } = await import('child_process');
-        const util = await import('util');
-        const execPromise = util.promisify(exec);
-        
-        let editorCommand;
-        const systemPlatform = platform();
-        
-        // Try to use the EDITOR environment variable first
-        const editor = process.env.EDITOR;
-        
-        if (editor) {
-          editorCommand = `${editor} "${resolvedPath}"`;
-        } else {
-          // Default editors based on platform
-          if (systemPlatform === 'win32') {
-            editorCommand = `notepad "${resolvedPath}"`;
-          } else if (systemPlatform === 'darwin') {
-            editorCommand = `open -a TextEdit "${resolvedPath}"`;
-          } else {
-            // Try nano first, fall back to vi
-            try {
-              await execPromise('which nano');
-              editorCommand = `nano "${resolvedPath}"`;
-            } catch {
-              editorCommand = `vi "${resolvedPath}"`;
-            }
-          }
-        }
-        
-        logger.debug(`Executing editor command: ${editorCommand}`);
-        console.log(`Opening ${resolvedPath} for editing...`);
-        
-        const child = exec(editorCommand);
-        
-        // Log when the editor process exits
-        child.on('exit', (code) => {
-          logger.info(`Editor process exited with code: ${code}`);
-          if (code === 0) {
-            console.log(`File saved: ${resolvedPath}`);
-          } else {
-            console.error(`Editor exited with non-zero code: ${code}`);
-          }
-        });
-        
-        // Wait for the editor to start
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        
+        await fs.access(resolvedPath);
       } catch (error) {
-        logger.error(`Error editing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
+        // If file doesn't exist, create it with empty content
+        logger.info(`File doesn't exist, creating: ${resolvedPath}`);
+        await fs.writeFile(resolvedPath, '');
       }
+      
+      logger.info(`Opening file for editing: ${resolvedPath}`);
+      
+      // On different platforms, open the file with different editors
+      const { platform } = await import('os');
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execPromise = util.promisify(exec);
+      
+      let editorCommand;
+      const systemPlatform = platform();
+      
+      // Try to use the EDITOR environment variable first
+      const editor = process.env.EDITOR;
+      
+      if (editor) {
+        editorCommand = `${editor} "${resolvedPath}"`;
+      } else {
+        // Default editors based on platform
+        if (systemPlatform === 'win32') {
+          editorCommand = `notepad "${resolvedPath}"`;
+        } else if (systemPlatform === 'darwin') {
+          editorCommand = `open -a TextEdit "${resolvedPath}"`;
+        } else {
+          // Try nano first, fall back to vi
+          try {
+            await execPromise('which nano');
+            editorCommand = `nano "${resolvedPath}"`;
+          } catch {
+            editorCommand = `vi "${resolvedPath}"`;
+          }
+        }
+      }
+      
+      logger.debug(`Executing editor command: ${editorCommand}`);
+      console.log(`Opening ${resolvedPath} for editing...`);
+      
+      const child = exec(editorCommand);
+      
+      // Log when the editor process exits
+      child.on('exit', (code) => {
+        logger.info(`Editor process exited with code: ${code}`);
+        if (code === 0) {
+          console.log(`File saved: ${resolvedPath}`);
+        } else {
+          console.error(`Editor exited with non-zero code: ${code}`);
+        }
+      });
+      
+      // Wait for the editor to start
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     },
     args: [
       {
@@ -1232,56 +1154,46 @@ function registerGitCommand(): void {
         });
       }
       
+      logger.info(`Performing git operation: ${operation}`);
+      
+      // Check if git is installed
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execPromise = util.promisify(exec);
+      
       try {
-        logger.info(`Performing git operation: ${operation}`);
-        
-        // Check if git is installed
-        const { exec } = await import('child_process');
-        const util = await import('util');
-        const execPromise = util.promisify(exec);
-        
-        try {
-          await execPromise('git --version');
-        } catch (error) {
-          throw createUserError('Git is not installed or not in PATH', {
-            category: ErrorCategory.COMMAND_EXECUTION,
-            resolution: 'Please install git or add it to your PATH'
-          });
-        }
-        
-        // Validate the operation is a simple command without pipes, redirection, etc.
-        const validOpRegex = /^[a-z0-9\-_\s]+$/i;
-        if (!validOpRegex.test(operation)) {
-          throw createUserError('Invalid git operation', {
-            category: ErrorCategory.VALIDATION,
-            resolution: 'Please provide a simple git operation without special characters'
-          });
-        }
-        
-        // Construct and execute the git command
-        const gitCommand = `git ${operation}`;
-        logger.debug(`Executing git command: ${gitCommand}`);
-        
-        const { stdout, stderr } = await execPromise(gitCommand);
-        
-        if (stderr) {
-          console.error(stderr);
-        }
-        
-        if (stdout) {
-          console.log(stdout);
-        }
-        
-        logger.info('Git operation completed');
+        await execPromise('git --version');
       } catch (error) {
-        logger.error(`Error executing git operation: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        
-        if (error instanceof Error) {
-          console.error(`Error: ${error.message}`);
-        }
-        
-        throw error;
+        throw createUserError('Git is not installed or not in PATH', {
+          category: ErrorCategory.COMMAND_EXECUTION,
+          resolution: 'Please install git or add it to your PATH'
+        });
       }
+      
+      // Validate the operation is a simple command without pipes, redirection, etc.
+      const validOpRegex = /^[a-z0-9\-_\s]+$/i;
+      if (!validOpRegex.test(operation)) {
+        throw createUserError('Invalid git operation', {
+          category: ErrorCategory.VALIDATION,
+          resolution: 'Please provide a simple git operation without special characters'
+        });
+      }
+      
+      // Construct and execute the git command
+      const gitCommand = `git ${operation}`;
+      logger.debug(`Executing git command: ${gitCommand}`);
+      
+      const { stdout, stderr } = await execPromise(gitCommand);
+      
+      if (stderr) {
+        console.error(stderr);
+      }
+      
+      if (stdout) {
+        console.log(stdout);
+      }
+      
+      logger.info('Git operation completed');
     },
     args: [
       {
@@ -1425,24 +1337,19 @@ function registerHistoryCommand(): void {
     async handler(args: Record<string, any>): Promise<void> {
       logger.info('Executing history command');
       
-      try {
-        // Since we don't have direct access to conversation history through the AI client,
-        // we'll need to inform the user that history is not available or implement
-        // a conversation history tracking mechanism elsewhere
-        
-        // This is a placeholder implementation until a proper history tracking system is implemented
-        logger.warn('Conversation history feature is not currently implemented');
-        console.log('Conversation history is not available in the current version.');
-        console.log('This feature will be implemented in a future update.');
-        
-        // Future implementation could include:
-        // - Storing conversations in a local database or file
-        // - Retrieving conversations from the API if it supports it
-        // - Implementing a session-based history tracker
-      } catch (error) {
-        logger.error(`Error retrieving conversation history: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
-      }
+      // Since we don't have direct access to conversation history through the AI client,
+      // we'll need to inform the user that history is not available or implement
+      // a conversation history tracking mechanism elsewhere
+      
+      // This is a placeholder implementation until a proper history tracking system is implemented
+      logger.warn('Conversation history feature is not currently implemented');
+      console.log('Conversation history is not available in the current version.');
+      console.log('This feature will be implemented in a future update.');
+      
+      // Future implementation could include:
+      // - Storing conversations in a local database or file
+      // - Retrieving conversations from the API if it supports it
+      // - Implementing a session-based history tracker
     },
     args: [
       {
@@ -1476,65 +1383,59 @@ function registerCommandsCommand(): void {
     async handler(): Promise<void> {
       logger.info('Executing commands command');
       
-      try {
-        // Get all registered commands
-        const allCommands = commandRegistry.list()
-          .filter(cmd => !cmd.hidden) // Filter out hidden commands
-          .sort((a, b) => {
-            // Sort first by category, then by name
-            if (a.category && b.category) {
-              if (a.category !== b.category) {
-                return a.category.localeCompare(b.category);
-              }
-            } else if (a.category) {
-              return -1;
-            } else if (b.category) {
-              return 1;
+      // Get all registered commands
+      const allCommands = commandRegistry.list()
+        .filter(cmd => !cmd.hidden) // Filter out hidden commands
+        .sort((a, b) => {
+          // Sort first by category, then by name
+          if (a.category && b.category) {
+            if (a.category !== b.category) {
+              return a.category.localeCompare(b.category);
             }
-            return a.name.localeCompare(b.name);
-          });
-        
-        // Group commands by category
-        const categories = new Map<string, CommandDef[]>();
-        const uncategorizedCommands: CommandDef[] = [];
-        
-        for (const cmd of allCommands) {
-          if (cmd.category) {
-            if (!categories.has(cmd.category)) {
-              categories.set(cmd.category, []);
-            }
-            categories.get(cmd.category)!.push(cmd);
-          } else {
-            uncategorizedCommands.push(cmd);
+          } else if (a.category) {
+            return -1;
+          } else if (b.category) {
+            return 1;
           }
-        }
-        
-        console.log('Available slash commands:\n');
-        
-        // Display uncategorized commands first
-        if (uncategorizedCommands.length > 0) {
-          for (const cmd of uncategorizedCommands) {
-            console.log(`/${cmd.name.padEnd(15)} ${cmd.description}`);
+          return a.name.localeCompare(b.name);
+        });
+      
+      // Group commands by category
+      const categories = new Map<string, CommandDef[]>();
+      const uncategorizedCommands: CommandDef[] = [];
+      
+      for (const cmd of allCommands) {
+        if (cmd.category) {
+          if (!categories.has(cmd.category)) {
+            categories.set(cmd.category, []);
           }
-          console.log('');
+          categories.get(cmd.category)!.push(cmd);
+        } else {
+          uncategorizedCommands.push(cmd);
         }
-        
-        // Display categorized commands
-        for (const [category, commands] of categories.entries()) {
-          console.log(`${category}:`);
-          for (const cmd of commands) {
-            console.log(`  /${cmd.name.padEnd(13)} ${cmd.description}`);
-          }
-          console.log('');
-        }
-        
-        console.log('For more information on a specific command, use:');
-        console.log('  /help <command>');
-        
-      } catch (error) {
-        logger.error(`Error listing commands: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
       }
+      
+      console.log('Available slash commands:\n');
+      
+      // Display uncategorized commands first
+      if (uncategorizedCommands.length > 0) {
+        for (const cmd of uncategorizedCommands) {
+          console.log(`/${cmd.name.padEnd(15)} ${cmd.description}`);
+        }
+        console.log('');
+      }
+      
+      // Display categorized commands
+      for (const [category, commands] of categories.entries()) {
+        console.log(`${category}:`);
+        for (const cmd of commands) {
+          console.log(`  /${cmd.name.padEnd(13)} ${cmd.description}`);
+        }
+        console.log('');
+      }
+      
+      console.log('For more information on a specific command, use:');
+      console.log('  /help <command>');
     },
     examples: [
       'commands'
@@ -1565,53 +1466,48 @@ function registerHelpCommand(): void {
         });
       }
       
-      try {
-        // Get the command definition
-        const command = commandRegistry.get(commandName);
-        if (!command) {
-          throw createUserError(`Command not found: ${commandName}`, {
-            category: ErrorCategory.VALIDATION,
-            resolution: 'Please check the command name and try again'
-          });
-        }
-        
-        // Display command information
-        console.log(`Command: ${command.name}`);
-        console.log(`Description: ${command.description}`);
-        if (command.category) {
-          console.log(`Category: ${command.category}`);
-        }
-        console.log(`Requires Auth: ${command.requiresAuth ? 'Yes' : 'No'}`);
-        
-        // Display command usage
-        console.log('\nUsage:');
-        if (command.args && command.args.length > 0) {
-          console.log(`  /${command.name} ${command.args.map(arg => arg.name).join(' ')}`);
-        } else {
-          console.log(`  /${command.name}`);
-        }
-        
-        // Display command examples
-        if (command.examples && command.examples.length > 0) {
-          console.log('\nExamples:');
-          for (const example of command.examples) {
-            console.log(`  /${example}`);
-          }
-        }
-        
-        // Display command arguments
-        if (command.args && command.args.length > 0) {
-          console.log('\nArguments:');
-          for (const arg of command.args) {
-            console.log(`  ${arg.name}: ${arg.description}`);
-          }
-        }
-        
-        logger.info('Help information retrieved');
-      } catch (error) {
-        logger.error(`Error retrieving help: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        throw error;
+      // Get the command definition
+      const command = commandRegistry.get(commandName);
+      if (!command) {
+        throw createUserError(`Command not found: ${commandName}`, {
+          category: ErrorCategory.VALIDATION,
+          resolution: 'Please check the command name and try again'
+        });
       }
+      
+      // Display command information
+      console.log(`Command: ${command.name}`);
+      console.log(`Description: ${command.description}`);
+      if (command.category) {
+        console.log(`Category: ${command.category}`);
+      }
+      console.log(`Requires Auth: ${command.requiresAuth ? 'Yes' : 'No'}`);
+      
+      // Display command usage
+      console.log('\nUsage:');
+      if (command.args && command.args.length > 0) {
+        console.log(`  /${command.name} ${command.args.map(arg => arg.name).join(' ')}`);
+      } else {
+        console.log(`  /${command.name}`);
+      }
+      
+      // Display command examples
+      if (command.examples && command.examples.length > 0) {
+        console.log('\nExamples:');
+        for (const example of command.examples) {
+          console.log(`  /${example}`);
+        }
+      }
+      
+      // Display command arguments
+      if (command.args && command.args.length > 0) {
+        console.log('\nArguments:');
+        for (const arg of command.args) {
+          console.log(`  ${arg.name}: ${arg.description}`);
+        }
+      }
+      
+      logger.info('Help information retrieved');
     },
     args: [
       {

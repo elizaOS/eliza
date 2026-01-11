@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket Market Retrieval Actions
  *
@@ -23,6 +22,22 @@ import {
   getMarketTemplate,
 } from "../templates";
 import type { Market, SimplifiedMarket, MarketFilters } from "../types";
+
+// =============================================================================
+// Type Definitions
+// =============================================================================
+
+interface LLMMarketResult {
+  marketId?: string;
+  query?: string;
+  tokenId?: string;
+  error?: string;
+}
+
+interface LLMCursorResult {
+  next_cursor?: string;
+  error?: string;
+}
 
 // =============================================================================
 // Get All Markets Action
@@ -61,7 +76,7 @@ export const retrieveAllMarketsAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
@@ -218,7 +233,7 @@ export const getSimplifiedMarketsAction: Action = {
     logger.info("[getSimplifiedMarketsAction] Handler called");
 
     try {
-      const llmResult = await callLLMWithTimeout<{ next_cursor?: string }>(
+      const llmResult = await callLLMWithTimeout<LLMCursorResult>(
         runtime,
         state,
         getSimplifiedMarketsTemplate,
@@ -329,12 +344,12 @@ export const getMarketDetailsAction: Action = {
     let conditionId = "";
 
     try {
-      const llmResult = await callLLMWithTimeout<{
-        marketId?: string;
-        query?: string;
-        tokenId?: string;
-        error?: string;
-      }>(runtime, state, getMarketTemplate, "getMarketDetailsAction");
+      const llmResult = await callLLMWithTimeout<LLMMarketResult>(
+        runtime,
+        state,
+        getMarketTemplate,
+        "getMarketDetailsAction"
+      );
 
       if (isLLMError(llmResult)) {
         throw new Error("Market identifier not found. Please specify a condition ID.");
@@ -352,7 +367,7 @@ export const getMarketDetailsAction: Action = {
       }
 
       const clobClient = await initializeClobClient(runtime);
-      const market: Market = await clobClient.getMarket(conditionId);
+      const market = await clobClient.getMarket(conditionId) as Market;
 
       if (!market) {
         throw new Error(`Market not found for condition ID: ${conditionId}`);
@@ -461,7 +476,7 @@ export const getSamplingMarketsAction: Action = {
     logger.info("[getSamplingMarketsAction] Handler called");
 
     try {
-      const llmResult = await callLLMWithTimeout<{ next_cursor?: string }>(
+      const llmResult = await callLLMWithTimeout<LLMCursorResult>(
         runtime,
         state,
         getSamplingMarketsTemplate,
@@ -532,5 +547,3 @@ export const getSamplingMarketsAction: Action = {
     ],
   ],
 };
-
-

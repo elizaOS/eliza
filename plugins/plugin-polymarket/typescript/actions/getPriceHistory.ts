@@ -1,169 +1,205 @@
-// @ts-nocheck
 import {
   type Action,
+  type Content,
+  type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
-  type HandlerCallback,
   logger,
-  ModelType,
-  ActionExample,
 } from '@elizaos/core';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
+import { initializeClobClient } from '../utils/clobClient';
+import { getPriceHistoryTemplate } from '../templates';
+import type { ClobClient } from '@polymarket/clob-client';
 
-import { initializeClobClient } from '../utils/clobClient.js';
-import { callLLMWithTimeout } from '../utils/llmHelpers.js';
-
-export interface PricePoint {
-  t: number;
-  p: number;
-}
-
-export enum PriceHistoryInterval {
-  '1m' = '1m',
-  '5m' = '5m',
-  '1h' = '1h',
-  '1d' = '1d',
-  '1w' = '1w',
-}
-
-// Trigger words and phrases for price history action
-const PRICE_HISTORY_SIMILES = [
-  'PRICE_HISTORY',
-  'GET_PRICE_HISTORY',
-  'PRICES_HISTORY',
-  'HISTORICAL_PRICES',
-  'PRICE_CHART',
-  'PRICE_DATA',
-  'CHART_DATA',
-  'HISTORICAL_DATA',
-  'TIME_SERIES',
-  'PRICE_TIMELINE',
-  'MARKET_HISTORY',
-  'TOKEN_HISTORY',
-  'PRICE_TREND',
-  'HISTORICAL_CHART',
-  'SHOW_PRICE_HISTORY',
-  'FETCH_PRICE_HISTORY',
-  'GET_HISTORICAL_PRICES',
-  'SHOW_HISTORICAL_PRICES',
-];
-
-interface PriceHistoryParams {
+interface LLMPriceHistoryResult {
   tokenId?: string;
-  interval?: string;
+  startTs?: number;
+  endTs?: number;
+  fidelity?: number;
   error?: string;
 }
 
-import { getPriceHistoryTemplate as priceHistoryTemplate } from "../generated/prompts/typescript/prompts.js";
+interface PriceHistoryPoint {
+  t: number;
+  p: string;
+}
 
-export const getPriceHistory: Action = {
+type PriceHistoryResponse = PriceHistoryPoint[];
+
+/**
+ * Get Price History Action for Polymarket.
+ * Retrieves historical prices for a specific token over a time range.
+ */
+export const getPriceHistoryAction: Action = {
   name: 'POLYMARKET_GET_PRICE_HISTORY',
-  similes: PRICE_HISTORY_SIMILES.map((s) => `POLYMARKET_${s}`),
+  similes: ['HISTORICAL_PRICES', 'PRICE_CHART', 'TOKEN_PRICE_HISTORY', 'PRICE_DATA'].map(
+    (s) => `POLYMARKET_${s}`
+  ),
   description:
-    'Get historical price data for a Polymarket token - returns time-series of price points with timestamps and prices',
+    'Retrieves historical prices for a specific token ID on Polymarket over a specified time range.',
 
-  validate: async (_runtime: IAgentRuntime, _message: Memory) => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(`[getPriceHistoryAction] Validate called for message: "${message.content?.text}"`);
+    const clobApiUrl = runtime.getSetting('CLOB_API_URL');
+
+    if (!clobApiUrl) {
+      logger.warn('[getPriceHistoryAction] CLOB_API_URL is required.');
+      return false;
+    }
+    logger.info('[getPriceHistoryAction] Validation passed');
     return true;
   },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State | undefined,
-    _options: any,
+    state?: State,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<Content> => {
+    logger.info('[getPriceHistoryAction] Handler called!');
+
+    let llmResult: LLMPriceHistoryResult = {};
     try {
-      logger.info('[getPriceHistory] Starting price history retrieval');
-
-      // Initialize CLOB client
-      const clobClient = await initializeClobClient(runtime);
-
-      // Extract parameters using LLM
-      let params: PriceHistoryParams = {};
-      try {
-        const extractedParams = await callLLMWithTimeout<PriceHistoryParams>(
-          runtime,
-          state,
-          priceHistoryTemplate.replace('{{message}}', message.content.text || ''),
-          'getPriceHistory',
-          30000
-        );
-
-        if (extractedParams && !extractedParams.error) {
-          params = extractedParams;
-        } else if (extractedParams?.error) {
-          throw new Error(extractedParams.error);
-        }
-      } catch (error) {
-        logger.error('[getPriceHistory] LLM extraction failed:', error);
-        throw new Error('Failed to extract token ID from message. Please specify a token ID.');
-      }
-
-      // Validate required parameters
-      if (!params.tokenId) {
-        throw new Error('Token ID is required for price history retrieval');
-      }
-
-      // Set default interval if not provided
-      const interval = params.interval || '1d';
-
-      // Call CLOB API to get price history
-      logger.info(
-        `[getPriceHistory] Fetching price history for token ${params.tokenId} with interval ${interval}`
+      const result = await callLLMWithTimeout<LLMPriceHistoryResult>(
+        runtime,
+        state,
+        getPriceHistoryTemplate,
+        'getPriceHistoryAction'
       );
-      const priceHistory = await clobClient.getPricesHistory({
-        token_id: params.tokenId,
-        interval: interval as any,
+      if (result && !isLLMError(result)) {
+        llmResult = result;
+      }
+      logger.info(`[getPriceHistoryAction] LLM result: ${JSON.stringify(llmResult)}`);
+
+      if (llmResult.error || !llmResult.tokenId) {
+        throw new Error(llmResult.error || 'Token ID not found in LLM result.');
+      }
+    } catch (error) {
+      logger.warn('[getPriceHistoryAction] LLM extraction failed, trying regex fallback', error);
+      const text = message.content?.text || '';
+
+      const tokenIdMatch = text.match(
+        /(?:token|tokenId|asset|id|history\s+for)\s*[:=#]?\s*([0-9a-zA-Z_\-]+)/i
+      );
+
+      if (tokenIdMatch) {
+        llmResult.tokenId = tokenIdMatch[1];
+        logger.info(
+          `[getPriceHistoryAction] Regex extracted tokenId: ${llmResult.tokenId}`
+        );
+      } else {
+        const errorMessage = 'Please specify a Token ID to get price history.';
+        logger.error(`[getPriceHistoryAction] Extraction failed. Text: "${text}"`);
+        const errorContent: Content = {
+          text: `❌ **Error**: ${errorMessage}`,
+          actions: ['GET_PRICE_HISTORY'],
+          data: { error: errorMessage },
+        };
+        if (callback) await callback(errorContent);
+        throw new Error(errorMessage);
+      }
+    }
+
+    const tokenId = llmResult.tokenId!;
+    const now = Math.floor(Date.now() / 1000);
+    const oneDayAgo = now - 86400; // Default to last 24 hours
+    const startTs = llmResult.startTs || oneDayAgo;
+    const endTs = llmResult.endTs || now;
+    const fidelity = llmResult.fidelity || 60; // Default to 60-minute intervals
+
+    logger.info(
+      `[getPriceHistoryAction] Fetching price history for token: ${tokenId} from ${startTs} to ${endTs} with fidelity ${fidelity}`
+    );
+
+    try {
+      const client = await initializeClobClient(runtime) as ClobClient;
+      const priceHistory: PriceHistoryResponse = await client.getPricesHistory({
+        tokenID: tokenId,
+        startTs,
+        endTs,
+        fidelity,
       });
 
-      logger.info(`[getPriceHistory] Retrieved ${priceHistory?.length || 0} price points`);
+      let responseText = `📈 **Price History for Token ${tokenId}**:\n\n`;
 
-      // Format response message (handle null/undefined)
-      const responseMessage = formatPriceHistoryResponse(
-        priceHistory || [],
-        params.tokenId,
-        interval
-      );
+      if (priceHistory && priceHistory.length > 0) {
+        responseText += `Retrieved ${priceHistory.length} data point(s):\n\n`;
 
-      if (callback) {
-        await callback({
-          text: responseMessage,
-          content: {
-            action: 'POLYMARKET_PRICE_HISTORY_RETRIEVED',
-            tokenId: params.tokenId,
-            interval: interval,
-            priceHistory: priceHistory,
-            pointsCount: priceHistory?.length || 0,
-            timestamp: new Date().toISOString(),
-          },
+        // Show first and last few points
+        const showCount = Math.min(5, priceHistory.length);
+        const firstPoints = priceHistory.slice(0, showCount);
+        const lastPoints =
+          priceHistory.length > showCount * 2
+            ? priceHistory.slice(-showCount)
+            : [];
+
+        responseText += `**First ${showCount} Points:**\n`;
+        firstPoints.forEach((point: PriceHistoryPoint) => {
+          const date = new Date(point.t * 1000).toLocaleString();
+          responseText += `• ${date}: $${parseFloat(point.p).toFixed(4)}\n`;
         });
+
+        if (lastPoints.length > 0) {
+          responseText += `\n**Last ${showCount} Points:**\n`;
+          lastPoints.forEach((point: PriceHistoryPoint) => {
+            const date = new Date(point.t * 1000).toLocaleString();
+            responseText += `• ${date}: $${parseFloat(point.p).toFixed(4)}\n`;
+          });
+        }
+
+        if (priceHistory.length > showCount * 2) {
+          responseText += `\n*... and ${priceHistory.length - showCount * 2} more data points.*\n`;
+        }
+
+        // Calculate price change
+        const startPrice = parseFloat(priceHistory[0].p);
+        const endPrice = parseFloat(priceHistory[priceHistory.length - 1].p);
+        const priceChange = endPrice - startPrice;
+        const priceChangePercent = ((priceChange / startPrice) * 100).toFixed(2);
+        const changeEmoji = priceChange >= 0 ? '📈' : '📉';
+
+        responseText += `\n**Summary:**\n`;
+        responseText += `• Start Price: $${startPrice.toFixed(4)}\n`;
+        responseText += `• End Price: $${endPrice.toFixed(4)}\n`;
+        responseText += `• Change: ${changeEmoji} ${priceChange >= 0 ? '+' : ''}$${priceChange.toFixed(4)} (${priceChangePercent}%)\n`;
+      } else {
+        responseText += `No price history found for the specified time range.\n`;
       }
 
-      return true;
+      const responseContent: Content = {
+        text: responseText,
+        actions: ['GET_PRICE_HISTORY'],
+        data: {
+          tokenId,
+          priceHistory,
+          startTs,
+          endTs,
+          fidelity,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      if (callback) await callback(responseContent);
+      return responseContent;
     } catch (error) {
-      logger.error('[getPriceHistory] Error retrieving price history:', error);
-
-      const errorMessage = `❌ **Error getting price history**: ${error instanceof Error ? error.message : 'Unknown error'}
-
-Please check:
-• Token ID is valid and exists
-• Interval format is correct (e.g., "1m", "1h", "1d")
-• CLOB_API_URL is correctly configured
-• Network connectivity is available`;
-
-      if (callback) {
-        await callback({
-          text: errorMessage,
-          content: {
-            action: 'POLYMARKET_PRICE_HISTORY_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: new Date().toISOString(),
-          },
-        });
-      }
-
-      return false;
+      logger.error(
+        `[getPriceHistoryAction] Error getting price history for ${tokenId}:`,
+        error
+      );
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
+      const errorContent: Content = {
+        text: `❌ **Error getting price history**: ${errorMessage}`,
+        actions: ['GET_PRICE_HISTORY'],
+        data: {
+          tokenId,
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        },
+      };
+      if (callback) await callback(errorContent);
+      throw error;
     }
   },
 
@@ -171,109 +207,28 @@ Please check:
     [
       {
         name: '{{user1}}',
-        content: { text: 'Get price history for token 123456 with 1d interval via Polymarket' },
+        content: { text: 'Show price history for token xyz123 on Polymarket.' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: '📈 **Price History for Token 123456**\n\n⏱️ **Interval**: 1d\n📊 **Data Points**: 30\n\n**Recent Price Points:**\n• 2024-01-15 12:00:00 - $0.6523 (65.23%)\n• 2024-01-14 12:00:00 - $0.6445 (64.45%)\n• 2024-01-13 12:00:00 - $0.6387 (63.87%)\n• 2024-01-12 12:00:00 - $0.6234 (62.34%)\n• 2024-01-11 12:00:00 - $0.6156 (61.56%)\n\n📈 **Price Trend**: +2.78% over the period\n💹 **Highest**: $0.6789 (67.89%)\n📉 **Lowest**: $0.5923 (59.23%)\n\n🕒 **Time Range**: Jan 15, 2024 - Dec 16, 2023',
-          action: 'POLYMARKET_PRICE_HISTORY_RETRIEVED',
+          text: 'Fetching price history for token xyz123 on Polymarket...',
+          action: 'POLYMARKET_GET_PRICE_HISTORY',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: { text: 'PRICE_HISTORY 789012 via Polymarket' },
+        content: { text: 'Get the historical prices for token 0xabc789 over the last week via Polymarket.' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: '📊 **Historical Prices for Token 789012**\n\n⏱️ **Interval**: 1d (default)\n📈 **Retrieved**: 25 price points\n\n**Price Summary:**\n• Current: $0.4523 (45.23%)\n• 24h ago: $0.4456 (44.56%)\n• 7d ago: $0.4234 (42.34%)\n• Change: +2.89% (24h) | +6.83% (7d)\n\n📊 **Complete time-series data available in response**',
-          action: 'POLYMARKET_PRICE_HISTORY_RETRIEVED',
+          text: 'Looking up historical prices for token 0xabc789 on Polymarket...',
+          action: 'POLYMARKET_GET_PRICE_HISTORY',
         },
       },
     ],
-    [
-      {
-        name: '{{user1}}',
-        content: { text: 'Show me 1h price chart for token 456789 via Polymarket' },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: '⚡ **Hourly Price History - Token 456789**\n\n⏱️ **Interval**: 1h\n📊 **Data Points**: 48 (last 48 hours)\n\n**Recent Hourly Prices:**\n• 15:00 - $0.7234 (72.34%)\n• 14:00 - $0.7189 (71.89%)\n• 13:00 - $0.7156 (71.56%)\n• 12:00 - $0.7123 (71.23%)\n• 11:00 - $0.7098 (70.98%)\n\n📈 **Hourly Trend**: +1.36% over 48h\n🎯 **Volatility**: Moderate\n📊 **Trading Activity**: Active',
-          action: 'POLYMARKET_PRICE_HISTORY_RETRIEVED',
-        },
-      },
-    ],
-  ] as ActionExample[][],
+  ],
 };
-
-/**
- * Format price history response for display
- */
-function formatPriceHistoryResponse(
-  priceHistory: PricePoint[],
-  tokenId: string,
-  interval: string
-): string {
-  if (priceHistory.length === 0) {
-    return `📈 **No price history found for Token ${tokenId}**\n\nNo historical price data is available for this token. This might be due to:\n• Token being newly created\n• Insufficient trading activity\n• Invalid token ID\n\nPlease verify the token ID and try again.`;
-  }
-
-  let response = `📈 **Price History for Token ${tokenId}**\n\n`;
-  response += `⏱️ **Interval**: ${interval}\n`;
-  response += `📊 **Data Points**: ${priceHistory.length}\n\n`;
-
-  // Sort by timestamp (most recent first)
-  const sortedHistory = [...priceHistory].sort((a, b) => b.t - a.t);
-
-  // Show recent price points (first 5)
-  const recentPoints = sortedHistory.slice(0, 5);
-  response += `**Recent Price Points:**\n`;
-
-  for (const point of recentPoints) {
-    const date = new Date(point.t * 1000);
-    const formattedDate =
-      date.toISOString().split('T')[0] + ' ' + date.toTimeString().split(' ')[0];
-    const price = point.p;
-    const percentage = (price * 100).toFixed(2);
-    response += `• ${formattedDate} - $${price.toFixed(4)} (${percentage}%)\n`;
-  }
-
-  // Calculate price trend
-  if (sortedHistory.length >= 2) {
-    const latestPrice = sortedHistory[0].p;
-    const earliestPrice = sortedHistory[sortedHistory.length - 1].p;
-    const priceChange = ((latestPrice - earliestPrice) / earliestPrice) * 100;
-    const trendIcon = priceChange >= 0 ? '📈' : '📉';
-    response += `\n${trendIcon} **Price Trend**: ${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}% over the period\n`;
-  }
-
-  // Calculate high and low
-  const prices = priceHistory.map((p) => p.p);
-  const highest = Math.max(...prices);
-  const lowest = Math.min(...prices);
-  response += `💹 **Highest**: $${highest.toFixed(4)} (${(highest * 100).toFixed(2)}%)\n`;
-  response += `📉 **Lowest**: $${lowest.toFixed(4)} (${(lowest * 100).toFixed(2)}%)\n`;
-
-  // Add time range
-  if (sortedHistory.length >= 2) {
-    const latestDate = new Date(sortedHistory[0].t * 1000);
-    const earliestDate = new Date(sortedHistory[sortedHistory.length - 1].t * 1000);
-    const latestFormatted = latestDate.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    const earliestFormatted = earliestDate.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    response += `\n🕒 **Time Range**: ${latestFormatted} - ${earliestFormatted}`;
-  }
-
-  return response;
-}

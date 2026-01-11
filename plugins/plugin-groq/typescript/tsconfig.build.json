@@ -10,6 +10,6 @@
     "incremental": false,
     "tsBuildInfoFile": null
   },
-  "include": ["typescript/**/*.ts"],
+  "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts"]
 }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 #!/usr/bin/env bun
 
 /**

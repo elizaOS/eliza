@@ -79,24 +79,15 @@ function extractErrorFromArgs(args: any[]): Error | string | null {
   }
   
   // If no Error object found, convert to string
-  try {
-    const message = args.map(arg => {
-      if (typeof arg === 'string') {
-        return arg;
-      } else if (arg === null || arg === undefined) {
-        return String(arg);
-      } else {
-        try {
-          return JSON.stringify(arg);
-        } catch (error) {
-          return String(arg);
-        }
-      }
-    }).join(' ');
-    
-    return message || null;
-  } catch (error) {
-    // If all else fails, return a generic message
-    return 'Console error occurred';
-  }
+  const message = args.map(arg => {
+    if (typeof arg === 'string') {
+      return arg;
+    } else if (arg === null || arg === undefined) {
+      return String(arg);
+    } else {
+      return JSON.stringify(arg);
+    }
+  }).join(' ');
+  
+  return message || null;
 } 

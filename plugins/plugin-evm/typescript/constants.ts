@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Constants
  *
@@ -18,7 +17,7 @@ export const EVM_SERVICE_NAME = "evmService" as const;
 /**
  * Cache refresh interval in milliseconds (60 seconds)
  */
-export const CACHE_REFRESH_INTERVAL_MS = 60 * 1000 as const;
+export const CACHE_REFRESH_INTERVAL_MS = 60000;
 
 /**
  * Default gas buffer multiplier (20% extra)
@@ -48,12 +47,12 @@ export const MAX_PRICE_IMPACT = 0.4 as const;
 /**
  * Transaction confirmation timeout in milliseconds (60 seconds)
  */
-export const TX_CONFIRMATION_TIMEOUT_MS = 60 * 1000 as const;
+export const TX_CONFIRMATION_TIMEOUT_MS = 60000;
 
 /**
  * Bridge status polling interval in milliseconds (5 seconds)
  */
-export const BRIDGE_POLL_INTERVAL_MS = 5 * 1000 as const;
+export const BRIDGE_POLL_INTERVAL_MS = 5000;
 
 /**
  * Maximum bridge status polling attempts

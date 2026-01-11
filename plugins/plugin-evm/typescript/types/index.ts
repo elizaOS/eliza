@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Type Definitions
  *
@@ -392,7 +391,7 @@ export interface EvmPluginConfig {
  * Zod schema for plugin configuration
  */
 export const EvmPluginConfigSchema = z.object({
-  rpcUrl: z.record(z.string().url().optional()).optional(),
+  rpcUrl: z.record(z.string(), z.string().url().optional()).optional(),
   secrets: z
     .object({
       EVM_PRIVATE_KEY: PrivateKeySchema,
@@ -639,7 +638,7 @@ export function validateAddress(address: string): Address {
   if (!result.success) {
     throw new EVMError(
       EVMErrorCode.INVALID_PARAMS,
-      `Invalid address: ${address}. ${result.error.message}`
+      `Invalid address: ${address}. ${result.error.errors[0]?.message ?? "Validation failed"}`
     );
   }
   return result.data;
@@ -653,7 +652,7 @@ export function validateHash(hash: string): Hash {
   if (!result.success) {
     throw new EVMError(
       EVMErrorCode.INVALID_PARAMS,
-      `Invalid transaction hash: ${hash}. ${result.error.message}`
+      `Invalid transaction hash: ${hash}. ${result.error.errors[0]?.message ?? "Validation failed"}`
     );
   }
   return result.data;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -7,229 +6,183 @@ import {
   type Memory,
   type State,
   logger,
-  ModelType,
-  composePromptFromState,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClient } from '../utils/clobClient';
 import { retrieveAllMarketsTemplate } from '../templates';
-import type { MarketFilters, Market } from '../types';
+import type { ClobClient, MarketsResponse, Market } from '@polymarket/clob-client';
+
+interface LLMRetrieveAllResult {
+  maxPages?: number;
+  pageSize?: number;
+  error?: string;
+}
 
 /**
- * Retrieve all available markets action for Polymarket
- * Fetches the complete list of prediction markets from the CLOB
+ * Retrieve All Markets Action for Polymarket.
+ * Fetches all available markets by paginating through the API.
  */
 export const retrieveAllMarketsAction: Action = {
-  name: 'POLYMARKET_GET_ALL_MARKETS',
-  similes: [
-    'LIST_MARKETS',
-    'SHOW_MARKETS',
-    'GET_MARKETS',
-    'FETCH_MARKETS',
-    'ALL_MARKETS',
-    'AVAILABLE_MARKETS',
-  ],
-  description: 'Retrieve all available prediction markets from Polymarket',
+  name: 'POLYMARKET_RETRIEVE_ALL_MARKETS',
+  similes: ['FETCH_ALL_MARKETS', 'DOWNLOAD_MARKETS', 'FULL_MARKET_LIST', 'COMPLETE_MARKETS'].map(
+    (s) => `POLYMARKET_${s}`
+  ),
+  description:
+    'Retrieves all available markets from Polymarket by paginating through the entire catalog.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(
+      `[retrieveAllMarketsAction] Validate called for message: "${message.content?.text}"`
+    );
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
 
     if (!clobApiUrl) {
-      logger.warn('[retrieveAllMarketsAction] CLOB_API_URL is required but not provided');
+      logger.warn('[retrieveAllMarketsAction] CLOB_API_URL is required.');
       return false;
     }
-
+    logger.info('[retrieveAllMarketsAction] Validation passed');
     return true;
   },
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[retrieveAllMarketsAction] Handler called!');
 
-    const clobApiUrl = runtime.getSetting('CLOB_API_URL');
-
-    if (!clobApiUrl) {
-      const errorMessage = 'CLOB_API_URL is required in configuration.';
-      logger.error(`[retrieveAllMarketsAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYMARKET_GET_ALL_MARKETS'],
-        data: { error: errorMessage },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw new Error(errorMessage);
-    }
-
-    let filterParams: MarketFilters = {};
-
-    // Extract optional filter parameters using LLM
+    let llmResult: LLMRetrieveAllResult = {};
     try {
-      const llmResult = await callLLMWithTimeout<MarketFilters & { error?: string }>(
+      const result = await callLLMWithTimeout<LLMRetrieveAllResult>(
         runtime,
         state,
         retrieveAllMarketsTemplate,
         'retrieveAllMarketsAction'
       );
-
-      if (llmResult?.error) {
-        logger.info(
-          '[retrieveAllMarketsAction] No specific filters requested, fetching all markets'
-        );
-        filterParams = {};
-      } else {
-        filterParams = {
-          category: llmResult?.category,
-          active: llmResult?.active,
-          limit: llmResult?.limit,
-        };
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
+      logger.info(`[retrieveAllMarketsAction] LLM result: ${JSON.stringify(llmResult)}`);
     } catch (error) {
-      logger.debug(
-        '[retrieveAllMarketsAction] LLM parameter extraction failed, using defaults:',
-        error
-      );
-      filterParams = {};
+      logger.warn('[retrieveAllMarketsAction] LLM extraction failed, using defaults', error);
     }
 
+    const maxPages = llmResult.maxPages || 10; // Limit to prevent excessive API calls
+
+    logger.info(`[retrieveAllMarketsAction] Fetching all markets (max ${maxPages} pages)`);
+
     try {
-      // Initialize CLOB client
-      const clobClient = await initializeClobClient(runtime);
+      const client = await initializeClobClient(runtime) as ClobClient;
+      const allMarkets: Market[] = [];
+      let nextCursor: string | undefined = undefined;
+      let pageCount = 0;
 
-      // Fetch markets with optional pagination and filters
-      const response = await clobClient.getMarkets(filterParams?.next_cursor || '', filterParams);
+      // Paginate through all markets
+      do {
+        const marketsResponse: MarketsResponse = await client.getMarkets(nextCursor);
+        const markets: Market[] = marketsResponse.data || [];
+        allMarkets.push(...markets);
+        nextCursor = marketsResponse.next_cursor;
+        pageCount++;
 
-      if (!response || !response.data) {
-        throw new Error('Invalid response from CLOB API');
+        logger.info(
+          `[retrieveAllMarketsAction] Page ${pageCount}: fetched ${markets.length} markets (total: ${allMarkets.length})`
+        );
+
+        // Respect rate limits with a small delay
+        if (nextCursor && pageCount < maxPages) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      } while (nextCursor && pageCount < maxPages);
+
+      // Categorize markets
+      const openMarkets = allMarkets.filter((m: Market) => m.active && !m.closed);
+      const closedMarkets = allMarkets.filter((m: Market) => m.closed);
+      const inactiveMarkets = allMarkets.filter((m: Market) => !m.active && !m.closed);
+
+      let responseText = `📊 **Complete Polymarket Catalog**\n\n`;
+
+      responseText += `**Summary:**\n`;
+      responseText += `• **Total Markets**: ${allMarkets.length}\n`;
+      responseText += `• **Open/Active**: ${openMarkets.length}\n`;
+      responseText += `• **Closed**: ${closedMarkets.length}\n`;
+      responseText += `• **Inactive**: ${inactiveMarkets.length}\n`;
+      responseText += `• **Pages Fetched**: ${pageCount}\n\n`;
+
+      if (nextCursor) {
+        responseText += `⚠️ *More markets available. Reached page limit (${maxPages}). Use "continue fetching markets" for more.*\n\n`;
       }
 
-      const markets: Market[] = response.data;
-      const marketCount = markets.length;
+      // Show sample of open markets
+      responseText += `**Sample Open Markets (${Math.min(5, openMarkets.length)} of ${openMarkets.length}):**\n`;
+      openMarkets.slice(0, 5).forEach((market: Market, index: number) => {
+        responseText += `${index + 1}. ${market.question || market.condition_id}\n`;
+        responseText += `   ID: \`${market.condition_id.substring(0, 12)}...\`\n`;
+      });
 
-      // Format response text
-      let responseText = `📊 **Retrieved ${marketCount} Polymarket prediction markets**\n\n`;
-
-      if (marketCount === 0) {
-        responseText += 'No markets found matching your criteria.';
-      } else {
-        // Show first few markets as preview
-        const previewMarkets = markets.slice(0, 5);
-        responseText += '**Sample Markets:**\n';
-
-        previewMarkets.forEach((market: Market, index: number) => {
-          responseText += `${index + 1}. **${market.question}**\n`;
-          responseText += `   • Category: ${market.category || 'N/A'}\n`;
-          responseText += `   • Active: ${market.active ? '✅' : '❌'}\n`;
-          responseText += `   • End Date: ${market.end_date_iso ? new Date(market.end_date_iso).toLocaleDateString() : 'N/A'}\n\n`;
-        });
-
-        if (marketCount > 5) {
-          responseText += `... and ${marketCount - 5} more markets\n\n`;
-        }
-
-        responseText += `**Summary:**\n`;
-        responseText += `• Total Markets: ${marketCount}\n`;
-        responseText += `• Data includes: question, category, tokens, rewards, and trading details\n`;
-
-        if (response.next_cursor && response.next_cursor !== 'LTE=') {
-          responseText += `• More results available (paginated)\n`;
-        }
+      if (openMarkets.length > 5) {
+        responseText += `\n... and ${openMarkets.length - 5} more open markets.\n`;
       }
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['POLYMARKET_GET_ALL_MARKETS'],
+        actions: ['POLYMARKET_RETRIEVE_ALL_MARKETS'],
         data: {
-          markets,
-          count: marketCount,
-          total: response.count || marketCount,
-          next_cursor: response.next_cursor,
-          limit: response.limit,
-          filters: filterParams,
+          totalMarkets: allMarkets.length,
+          openMarkets: openMarkets.length,
+          closedMarkets: closedMarkets.length,
+          inactiveMarkets: inactiveMarkets.length,
+          pagesFetched: pageCount,
+          hasMore: !!nextCursor,
+          next_cursor: nextCursor,
+          sampleMarkets: openMarkets.slice(0, 10).map((m: Market) => ({
+            condition_id: m.condition_id,
+            question: m.question,
+            active: m.active,
+            closed: m.closed,
+          })),
+          timestamp: new Date().toISOString(),
         },
       };
 
-      if (callback) {
-        await callback(responseContent);
-      }
-
+      if (callback) await callback(responseContent);
       return responseContent;
     } catch (error) {
-      logger.error('[retrieveAllMarketsAction] Error fetching markets:', error);
-
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error occurred while fetching markets';
+      logger.error('[retrieveAllMarketsAction] Error retrieving all markets:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: `❌ **Error retrieving markets**: ${errorMessage}
-
-Please check:
-• CLOB_API_URL is correctly configured
-• Network connectivity is available
-• Polymarket CLOB service is operational`,
-        actions: ['POLYMARKET_GET_ALL_MARKETS'],
+        text: `❌ **Error retrieving all markets**: ${errorMessage}`,
+        actions: ['POLYMARKET_RETRIEVE_ALL_MARKETS'],
         data: {
           error: errorMessage,
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (callback) {
-        await callback(errorContent);
-      }
+      if (callback) await callback(errorContent);
       throw error;
     }
   },
 
   examples: [
     [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'Show me all available prediction markets via Polymarket',
-        },
-      },
+      { name: '{{user1}}', content: { text: 'Get all markets from Polymarket.' } },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll retrieve all available Polymarket prediction markets for you.",
-          action: 'POLYMARKET_GET_ALL_MARKETS',
+          text: 'Fetching the complete catalog of Polymarket markets...',
+          action: 'POLYMARKET_RETRIEVE_ALL_MARKETS',
         },
       },
     ],
     [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'What markets can I trade on Polymarket?',
-        },
-      },
+      { name: '{{user1}}', content: { text: 'How many markets are there on Polymarket?' } },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me fetch the current list of available markets from Polymarket.',
-          action: 'POLYMARKET_GET_ALL_MARKETS',
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'List all active prediction markets via Polymarket',
-        },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: "I'll get all the active prediction markets currently available via Polymarket.",
-          action: 'POLYMARKET_GET_ALL_MARKETS',
+          text: 'Retrieving all markets from Polymarket to get a count...',
+          action: 'POLYMARKET_RETRIEVE_ALL_MARKETS',
         },
       },
     ],

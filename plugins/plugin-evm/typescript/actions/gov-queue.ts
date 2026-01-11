@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   HandlerCallback,
   IAgentRuntime,
@@ -55,7 +54,7 @@ export class QueueAction {
         value: BigInt(0),
         data: txData as Hex,
         chain: chainConfig,
-      });
+      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,

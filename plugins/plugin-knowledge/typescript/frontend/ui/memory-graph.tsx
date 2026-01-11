@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { Memory, UUID } from '@elizaos/core';
-// @ts-ignore
 import ForceGraph2D, { ForceGraphMethods, LinkObject, NodeObject } from 'react-force-graph-2d';
 import { ExtendedMemoryMetadata } from '../../types';
 
@@ -120,7 +119,7 @@ const processGraphData = (memories: Memory[]) => {
 };
 
 export function MemoryGraph({ memories, onNodeClick, selectedMemoryId }: MemoryGraphProps) {
-  const graphRef = useRef<any>(null);
+  const graphRef = useRef<ForceGraphMethods | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [shouldRender, setShouldRender] = useState(true);
   const [graphData, setGraphData] = useState<{ nodes: MemoryNode[]; links: MemoryLink[] }>({
@@ -225,14 +224,12 @@ export function MemoryGraph({ memories, onNodeClick, selectedMemoryId }: MemoryG
       {renderLegend()}
       {shouldRender && (
         <ForceGraph2D
-          {...({
-            ref: (graph: any) => {
-              graphRef.current = graph;
-              if (graph && !initialized) {
-                handleGraphInit(graph);
-              }
-            },
-          } as any)}
+          ref={(graph: ForceGraphMethods | null) => {
+            graphRef.current = graph;
+            if (graph && !initialized) {
+              handleGraphInit(graph);
+            }
+          }}
           graphData={graphData}
           width={dimensions.width}
           height={dimensions.height}

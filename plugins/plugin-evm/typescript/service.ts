@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Service
  *
@@ -38,16 +37,15 @@ export interface EVMWalletData {
  * - Caches balance information for quick access
  */
 export class EVMService extends Service {
-  static serviceType: string = EVM_SERVICE_NAME;
+  static override serviceType: string = EVM_SERVICE_NAME;
   capabilityDescription = "EVM blockchain wallet access";
 
   private walletProvider: WalletProvider | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly runtime: IAgentRuntime;
+  private lastRefreshTimestamp: number = 0;
 
   constructor(runtime: IAgentRuntime) {
-    super();
-    this.runtime = runtime;
+    super(runtime);
   }
 
   /**
@@ -81,14 +79,14 @@ export class EVMService extends Service {
   /**
    * Stop the EVM service by name
    */
-  static async stop(runtime: IAgentRuntime): Promise<void> {
+  static override async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(EVM_SERVICE_NAME);
     if (!service) {
       logger.error("EVMService not found");
       return;
     }
 
-    const evmService = service as EVMService;
+    const evmService = service as unknown as EVMService;
     await evmService.stop();
   }
 
@@ -115,7 +113,13 @@ export class EVMService extends Service {
     const balances = await this.walletProvider.getWalletBalances();
 
     // Format balances for all chains
-    const chainDetails: EVMWalletData["chains"] = [];
+    const chainDetails: Array<{
+      chainName: string;
+      name: string;
+      balance: string;
+      symbol: string;
+      chainId: number;
+    }> = [];
 
     for (const [chainName, balance] of Object.entries(balances)) {
       try {

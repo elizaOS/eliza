@@ -258,12 +258,7 @@ async function searchInDirectory(
 ): Promise<void> {
   if (matches.length >= maxMatches) return;
 
-  let entries: Array<import("fs").Dirent>;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
+  const entries = await fs.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (matches.length >= maxMatches) break;
@@ -280,12 +275,7 @@ async function searchInDirectory(
     const ext = path.extname(entry.name).toLowerCase();
     if (!DEFAULT_TEXT_EXTENSIONS.has(ext) && entry.name.includes(".")) continue;
 
-    let content: string;
-    try {
-      content = await fs.readFile(fullPath, "utf-8");
-    } catch {
-      continue;
-    }
+    const content = await fs.readFile(fullPath, "utf-8");
 
     const lines = content.split("\n");
     const needleLower = needle.toLowerCase();

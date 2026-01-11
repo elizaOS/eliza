@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Swap Action
  *
@@ -14,7 +13,7 @@ import type {
 } from "@elizaos/core";
 import {
   composePromptFromState,
-  elizaLogger,
+  logger,
   ModelType,
   parseKeyValueXml,
 } from "@elizaos/core";
@@ -73,11 +72,12 @@ export class SwapAction {
           ? [config.blockExplorers.default.url]
           : [];
 
-      lifiChains.push({
+      // Cast to ExtendedChain - the type assertions are needed for LiFi SDK compatibility
+      const lifiChain = {
         id: config.id,
         name: config.name,
         key: config.name.toLowerCase(),
-        chainType: "EVM" as const,
+        chainType: "EVM",
         nativeToken: {
           ...config.nativeCurrency,
           chainId: config.id,
@@ -103,7 +103,9 @@ export class SwapAction {
         coin: config.nativeCurrency.symbol,
         mainnet: true,
         diamondAddress: NATIVE_TOKEN_ADDRESS,
-      });
+      } as ExtendedChain;
+
+      lifiChains.push(lifiChain);
     }
 
     this.lifiConfig = createConfig({
@@ -168,7 +170,7 @@ export class SwapAction {
     let attemptCount = 0;
 
     for (const slippage of slippageLevels) {
-      elizaLogger.info(
+      logger.info(
         `Attempting swap with ${(slippage * 100).toFixed(1)}% slippage...`
       );
 
@@ -180,7 +182,7 @@ export class SwapAction {
 
       for (const quote of sortedQuotes) {
         attemptCount++;
-        elizaLogger.info(
+        logger.info(
           `Trying ${quote.aggregator} (attempt ${attemptCount})...`
         );
 
@@ -197,12 +199,12 @@ export class SwapAction {
           }
 
           if (result) {
-            elizaLogger.info(`✅ Swap succeeded via ${quote.aggregator}!`);
+            logger.info(`✅ Swap succeeded via ${quote.aggregator}!`);
             return result;
           }
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
-          elizaLogger.warn(
+          logger.warn(
             `${quote.aggregator} attempt failed: ${lastError.message}`
           );
 
@@ -255,13 +257,12 @@ export class SwapAction {
     ) {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
-      fromTokenDecimals = await this.walletProvider
-        .getPublicClient(params.chain)
-        .readContract({
-          address: params.fromToken as Address,
-          abi: decimalsAbi,
-          functionName: "decimals",
-        });
+      const publicClient = this.walletProvider.getPublicClient(params.chain);
+      fromTokenDecimals = (await publicClient.readContract({
+        address: params.fromToken as Address,
+        abi: decimalsAbi,
+        functionName: "decimals",
+      } as unknown as Parameters<typeof publicClient.readContract>[0])) as number;
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
@@ -315,7 +316,7 @@ export class SwapAction {
         swapData: routes.routes[0],
       };
     } catch (error) {
-      elizaLogger.error("Error in getLifiQuote:", error);
+      logger.error("Error in getLifiQuote:", error);
       return undefined;
     }
   }
@@ -410,7 +411,7 @@ export class SwapAction {
         swapData: route,
       };
     } catch (error) {
-      elizaLogger.error("Error in getBebopQuote:", error);
+      logger.error("Error in getBebopQuote:", error);
       return undefined;
     }
   }
@@ -488,7 +489,7 @@ export class SwapAction {
       gasPrice: txRequest.gasPrice
         ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
         : undefined,
-    });
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
@@ -550,7 +551,7 @@ export class SwapAction {
       value: BigInt(bebopRoute.value),
       data: bebopRoute.data as Hex,
       chain: walletClient.chain,
-    });
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
@@ -592,18 +593,18 @@ export class SwapAction {
       "function allowance(address,address) view returns (uint256)",
     ]);
 
-    const allowance = await publicClient.readContract({
+    const allowance = (await publicClient.readContract({
       address: tokenAddress,
       abi: allowanceAbi,
       functionName: "allowance",
       args: [walletClient.account.address, spenderAddress],
-    });
+    } as unknown as Parameters<typeof publicClient.readContract>[0])) as bigint;
 
     if (allowance >= requiredAmount) {
       return;
     }
 
-    elizaLogger.info(`Approving token for swap...`);
+    logger.info(`Approving token for swap...`);
 
     const approvalData = encodeFunctionData({
       abi: parseAbi(["function approve(address,uint256)"]),
@@ -617,9 +618,9 @@ export class SwapAction {
       value: 0n,
       data: approvalData,
       chain: walletClient.chain,
-    });
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
-    elizaLogger.info(`Waiting for approval confirmation...`);
+    logger.info(`Waiting for approval confirmation...`);
 
     const approvalReceipt = await publicClient.waitForTransactionReceipt({
       hash: approvalTx,
@@ -633,7 +634,7 @@ export class SwapAction {
       );
     }
 
-    elizaLogger.info(`Token approval confirmed`);
+    logger.info(`Token approval confirmed`);
   }
 }
 

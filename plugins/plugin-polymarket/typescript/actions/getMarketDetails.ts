@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -7,43 +6,38 @@ import {
   type Memory,
   type State,
   logger,
-  ModelType,
-  composePromptFromState,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClient } from '../utils/clobClient';
-import { getMarketTemplate } from '../templates';
-import type { Market } from '../types';
+import { getMarketDetailsTemplate } from '../templates';
+import type { ClobClient, Market } from '@polymarket/clob-client';
+
+interface LLMMarketDetailsResult {
+  conditionId?: string;
+  error?: string;
+}
 
 /**
- * Get market details by condition ID action for Polymarket
- * Fetches detailed information about a specific prediction market
+ * Get Market Details Action for Polymarket.
+ * Retrieves detailed information about a specific market by its condition ID.
  */
 export const getMarketDetailsAction: Action = {
   name: 'POLYMARKET_GET_MARKET_DETAILS',
-  similes: [
-    'GET_MARKET',
-    'MARKET_DETAILS',
-    'SHOW_MARKET',
-    'FETCH_MARKET',
-    'MARKET_INFO',
-    'GET_MARKET_INFO',
-    'MARKET_BY_ID',
-    'FIND_MARKET',
-    'SEARCH_MARKET',
-    'LOOKUP_MARKET',
-  ],
+  similes: ['MARKET_INFO', 'MARKET_DATA', 'SHOW_MARKET', 'VIEW_MARKET'].map(
+    (s) => `POLYMARKET_${s}`
+  ),
   description:
-    'Retrieve detailed information about a specific Polymarket prediction market by condition ID',
+    'Retrieves detailed information about a specific Polymarket market by its condition ID.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(`[getMarketDetailsAction] Validate called for message: "${message.content?.text}"`);
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
 
     if (!clobApiUrl) {
-      logger.warn('[getMarketDetailsAction] CLOB_API_URL is required but not provided');
+      logger.warn('[getMarketDetailsAction] CLOB_API_URL is required.');
       return false;
     }
-
+    logger.info('[getMarketDetailsAction] Validation passed');
     return true;
   },
 
@@ -51,197 +45,115 @@ export const getMarketDetailsAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[getMarketDetailsAction] Handler called!');
 
-    const clobApiUrl = runtime.getSetting('CLOB_API_URL');
-
-    if (!clobApiUrl) {
-      const errorMessage = 'CLOB_API_URL is required in configuration.';
-      logger.error(`[getMarketDetailsAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYMARKET_GET_MARKET_DETAILS'],
-        data: { error: errorMessage },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw new Error(errorMessage);
-    }
-
-    let conditionId = '';
-
-    // Extract market ID using LLM
+    let llmResult: LLMMarketDetailsResult = {};
     try {
-      const llmResult = await callLLMWithTimeout<{
-        marketId?: string;
-        query?: string;
-        tokenId?: string;
-        error?: string;
-      }>(runtime, state, getMarketTemplate, 'getMarketDetailsAction');
-
-      if (llmResult?.error) {
-        const errorMessage = 'Market identifier not found. Please specify a market condition ID.';
-        logger.error(`[getMarketDetailsAction] Parameter extraction error: ${errorMessage}`);
-        const errorContent: Content = {
-          text: `❌ **Error**: ${errorMessage}
-
-Please provide a market condition ID in your request. For example:
-• "Show me market 0x1234567890abcdef..."
-• "Get details for condition ID 0xabc123..."`,
-          actions: ['POLYMARKET_GET_MARKET_DETAILS'],
-          data: { error: errorMessage },
-        };
-
-        if (callback) {
-          await callback(errorContent);
-        }
-        throw new Error(errorMessage);
+      const result = await callLLMWithTimeout<LLMMarketDetailsResult>(
+        runtime,
+        state,
+        getMarketDetailsTemplate,
+        'getMarketDetailsAction'
+      );
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
+      logger.info(`[getMarketDetailsAction] LLM result: ${JSON.stringify(llmResult)}`);
 
-      conditionId = llmResult?.marketId || '';
-
-      if (!conditionId || conditionId.trim() === '') {
-        // Try to extract from query or tokenId as fallback
-        const fallbackId = llmResult?.query || llmResult?.tokenId || '';
-        if (fallbackId && fallbackId.match(/^0x[a-fA-F0-9]{64}$/)) {
-          conditionId = fallbackId;
-        } else {
-          throw new Error('No valid condition ID found');
-        }
+      if (llmResult.error || !llmResult.conditionId) {
+        throw new Error(llmResult.error || 'Condition ID not found in LLM result.');
       }
     } catch (error) {
-      const errorMessage =
-        'Unable to extract market condition ID from your message. Please provide a valid condition ID.';
-      logger.error('[getMarketDetailsAction] LLM parameter extraction failed:', error);
+      logger.warn('[getMarketDetailsAction] LLM extraction failed, trying regex fallback', error);
+      const text = message.content?.text || '';
 
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}
+      const conditionIdMatch = text.match(
+        /(?:condition[_\s]?id|market|id)[:\s=#]?\s*([0-9a-zA-Z_\-]+)/i
+      );
 
-Please provide a market condition ID in your request. For example:
-• "Show me market 0x1234567890abcdef..."
-• "Get details for condition ID 0xabc123..."`,
-        actions: ['POLYMARKET_GET_MARKET_DETAILS'],
-        data: { error: errorMessage },
-      };
-
-      if (callback) {
-        await callback(errorContent);
+      if (conditionIdMatch) {
+        llmResult.conditionId = conditionIdMatch[1];
+        logger.info(
+          `[getMarketDetailsAction] Regex extracted conditionId: ${llmResult.conditionId}`
+        );
+      } else {
+        const errorMessage = 'Please specify a Condition ID to get market details.';
+        logger.error(`[getMarketDetailsAction] Extraction failed. Text: "${text}"`);
+        const errorContent: Content = {
+          text: `❌ **Error**: ${errorMessage}`,
+          actions: ['GET_MARKET_DETAILS'],
+          data: { error: errorMessage },
+        };
+        if (callback) await callback(errorContent);
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
     }
 
+    const conditionId = llmResult.conditionId!;
+
+    logger.info(`[getMarketDetailsAction] Fetching details for condition ID: ${conditionId}`);
+
     try {
-      // Initialize CLOB client
-      const clobClient = await initializeClobClient(runtime);
+      const client = await initializeClobClient(runtime) as ClobClient;
+      const market: Market = await client.getMarket(conditionId);
 
-      // Fetch market details
-      const market: Market = await clobClient.getMarket(conditionId);
+      let responseText = `📊 **Market Details for ${conditionId}**:\n\n`;
 
-      if (!market) {
-        throw new Error(`Market not found for condition ID: ${conditionId}`);
-      }
-
-      // Format response text
-      let responseText = `📊 **Market Details**\n\n`;
-
-      responseText += `**${market.question || 'Market Question Not Available'}**\n\n`;
-
-      responseText += `**Market Information:**\n`;
-      responseText += `• Condition ID: \`${market.condition_id}\`\n`;
-      responseText += `• Question ID: \`${market.question_id || 'N/A'}\`\n`;
-      responseText += `• Category: ${market.category || 'N/A'}\n`;
-      responseText += `• Market Slug: ${market.market_slug || 'N/A'}\n`;
-      responseText += `• Active: ${market.active ? '✅' : '❌'}\n`;
-      responseText += `• Closed: ${market.closed ? '✅' : '❌'}\n`;
-
-      if (market.end_date_iso) {
-        responseText += `• End Date: ${new Date(market.end_date_iso).toLocaleDateString()}\n`;
-      }
-
-      if (market.game_start_time) {
-        responseText += `• Game Start: ${new Date(market.game_start_time).toLocaleDateString()}\n`;
-      }
-
-      responseText += `\n**Trading Details:**\n`;
-      responseText += `• Minimum Order Size: ${market.minimum_order_size || 'N/A'}\n`;
-      responseText += `• Minimum Tick Size: ${market.minimum_tick_size || 'N/A'}\n`;
-      responseText += `• Min Incentive Size: ${market.min_incentive_size || 'N/A'}\n`;
-      responseText += `• Max Incentive Spread: ${market.max_incentive_spread || 'N/A'}\n`;
-
-      if (market.seconds_delay) {
-        responseText += `• Match Delay: ${market.seconds_delay} seconds\n`;
-      }
-
-      if (market.tokens && market.tokens.length >= 2) {
-        responseText += `\n**Outcome Tokens:**\n`;
-        market.tokens.forEach((token, index) => {
-          responseText += `• ${token.outcome || `Token ${index + 1}`}: \`${token.token_id}\`\n`;
-        });
-      }
-
-      if (market.rewards) {
-        responseText += `\n**Rewards Information:**\n`;
-        responseText += `• Min Size: ${market.rewards.min_size}\n`;
-        responseText += `• Max Spread: ${market.rewards.max_spread}\n`;
-        responseText += `• Event Start: ${market.rewards.event_start_date}\n`;
-        responseText += `• Event End: ${market.rewards.event_end_date}\n`;
-        responseText += `• In-Game Multiplier: ${market.rewards.in_game_multiplier}x\n`;
-        responseText += `• Reward Epoch: ${market.rewards.reward_epoch}\n`;
-      }
-
-      if (market.fpmm) {
-        responseText += `\n**Contract Information:**\n`;
-        responseText += `• FPMM Address: \`${market.fpmm}\`\n`;
+      if (market) {
+        responseText += `• **Question**: ${market.question || 'N/A'}\n`;
+        responseText += `• **Description**: ${market.description || 'N/A'}\n`;
+        responseText += `• **Condition ID**: \`${market.condition_id}\`\n`;
+        responseText += `• **Active**: ${market.active ? '✅ Yes' : '❌ No'}\n`;
+        responseText += `• **Closed**: ${market.closed ? '✅ Yes' : '❌ No'}\n`;
+        if (market.end_date_iso) {
+          responseText += `• **End Date**: ${new Date(market.end_date_iso).toLocaleString()}\n`;
+        }
+        if (market.tokens && market.tokens.length > 0) {
+          responseText += `• **Tokens**:\n`;
+          market.tokens.forEach((token) => {
+            responseText += `   - Token ID: \`${token.token_id}\` (Outcome: ${token.outcome || 'N/A'})\n`;
+          });
+        }
+        if (market.market_slug) {
+          responseText += `• **Slug**: ${market.market_slug}\n`;
+        }
+        if (market.minimum_order_size) {
+          responseText += `• **Minimum Order Size**: ${market.minimum_order_size}\n`;
+        }
+        if (market.minimum_tick_size) {
+          responseText += `• **Minimum Tick Size**: ${market.minimum_tick_size}\n`;
+        }
+      } else {
+        responseText += `No market found for the provided condition ID.\n`;
       }
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['POLYMARKET_GET_MARKET_DETAILS'],
+        actions: ['GET_MARKET_DETAILS'],
         data: {
           market,
-          conditionId,
           timestamp: new Date().toISOString(),
         },
       };
 
-      if (callback) {
-        await callback(responseContent);
-      }
-
+      if (callback) await callback(responseContent);
       return responseContent;
     } catch (error) {
-      logger.error('[getMarketDetailsAction] Error fetching market details:', error);
-
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Unknown error occurred while fetching market details';
+      logger.error(`[getMarketDetailsAction] Error fetching market ${conditionId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: `❌ **Error retrieving market details**: ${errorMessage}
-
-Please check:
-• The condition ID is valid and exists
-• CLOB_API_URL is correctly configured
-• Network connectivity is available
-• Polymarket CLOB service is operational
-
-**Condition ID provided**: \`${conditionId}\``,
-        actions: ['POLYMARKET_GET_MARKET_DETAILS'],
+        text: `❌ **Error fetching market details**: ${errorMessage}`,
+        actions: ['GET_MARKET_DETAILS'],
         data: {
-          error: errorMessage,
           conditionId,
+          error: errorMessage,
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (callback) {
-        await callback(errorContent);
-      }
+      if (callback) await callback(errorContent);
       throw error;
     }
   },
@@ -250,14 +162,12 @@ Please check:
     [
       {
         name: '{{user1}}',
-        content: {
-          text: 'Show me the details for market 0x123abc...',
-        },
+        content: { text: 'Get details for market condition_id abc123 on Polymarket.' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll retrieve the details for that market from Polymarket.",
+          text: 'Fetching details for market abc123 on Polymarket...',
           action: 'POLYMARKET_GET_MARKET_DETAILS',
         },
       },
@@ -265,29 +175,12 @@ Please check:
     [
       {
         name: '{{user1}}',
-        content: {
-          text: 'Can I get info on condition ID 0xdef456...?',
-        },
+        content: { text: 'Show me info about the Polymarket market 0xdef456.' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Fetching details for the specified market condition ID from Polymarket...',
-          action: 'POLYMARKET_GET_MARKET_DETAILS',
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'GET_MARKET_DETAILS 0x789ghi...',
-        },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Getting market details for 0x789ghi... from Polymarket.',
+          text: 'Looking up market information for 0xdef456 on Polymarket...',
           action: 'POLYMARKET_GET_MARKET_DETAILS',
         },
       },

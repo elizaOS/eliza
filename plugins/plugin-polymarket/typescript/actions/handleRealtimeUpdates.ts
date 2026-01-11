@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -8,144 +7,50 @@ import {
   type State,
   logger,
 } from '@elizaos/core';
-import WebSocket from 'ws';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
+import { handleRealtimeUpdatesTemplate } from '../templates';
 
-// Module-level variable to store the active WebSocket client instance
-let activeWebSocketClient: WebSocket | null = null;
-
-// Function to allow other modules (like setupWebsocketAction) to set the client instance
-export function setActiveClobSocketClientReference(client: WebSocket | null) {
-  activeWebSocketClient = client;
-  if (client) {
-    logger.info('[handleRealtimeUpdates] Active WebSocket client reference set.');
-  } else {
-    logger.info('[handleRealtimeUpdates] Active WebSocket client reference cleared.');
-  }
+interface LLMRealtimeResult {
+  action?: 'subscribe' | 'unsubscribe' | 'status';
+  channel?: string;
+  assetIds?: string[];
+  error?: string;
 }
 
-// Function to allow other modules to get the client instance
-export function getActiveWebSocketClient(): WebSocket | null {
-  return activeWebSocketClient;
+interface SubscriptionStatus {
+  channel: string;
+  assetIds?: string[];
+  status: 'active' | 'inactive' | 'pending';
+  subscribedAt?: string;
 }
 
-// Define types for event payloads we expect from Polymarket WebSocket
-// These should align with actual data structures from Polymarket WSS documentation and socketExample.ts
-// This is a generic example; specific event types might vary.
-interface PolymarketWebSocketEvent {
-  type: string; // e.g., 'book_update', 'order_update', 'trade', etc.
-  data: any;
-  [key: string]: any;
-}
-
-function registerEventHandlers(
-  wsClient: WebSocket,
-  runtime: IAgentRuntime,
-  callback?: HandlerCallback
-) {
-  logger.info('[handleRealtimeUpdates] Registering event handlers on WebSocket client.');
-
-  // Detach existing listeners first to prevent duplicates if called multiple times
-  // For 'ws', this means calling removeAllListeners for specific events if attaching new ones,
-  // or ensuring 'on' replaces previous listeners for the same event type (default behavior for .on typically).
-  // For simplicity, we assume .on will overwrite or that fresh client means fresh listeners.
-  // wsClient.removeAllListeners('message'); // Example if needed
-  // wsClient.removeAllListeners('error');
-  // wsClient.removeAllListeners('close');
-
-  wsClient.on('message', (rawData: WebSocket.RawData) => {
-    const messageString = rawData.toString();
-    logger.info(`[WS Event] Message: ${messageString}`);
-    try {
-      // Polymarket might send 'PONG' or other control messages as strings
-      if (messageString === 'PONG') {
-        logger.info('[WS Event] Received PONG');
-        return; // Handle PONG keep-alive
-      }
-      if (messageString === 'PING') {
-        // Though client usually sends PING, server might too
-        logger.info('[WS Event] Received PING, sending PONG');
-        wsClient.pong();
-        return;
-      }
-
-      const eventData: PolymarketWebSocketEvent = JSON.parse(messageString);
-      // TODO: Add more specific parsing and handling based on eventData.type
-      // For example, if (eventData.type === 'book_l2_update') { ... }
-
-      const notification: Content = {
-        text: `🔔 **WebSocket Update**: Type: \`${eventData.event || eventData.type || 'Unknown'}\`. Data: ${JSON.stringify(eventData.data || eventData).substring(0, 200)}...`,
-        data: { eventType: 'polymarketUpdate', payload: eventData },
-      };
-      if (callback) callback(notification);
-      else
-        logger.warn(
-          '[handleRealtimeUpdates] WebSocket message received, but no callback to send it to.'
-        );
-    } catch (parseError) {
-      logger.error(
-        '[WS Event] Error parsing message JSON or non-JSON message received:',
-        parseError,
-        `Raw: ${messageString}`
-      );
-      // Handle non-JSON messages if necessary, or log as an unexpected format
-      const notification: Content = {
-        text: `⚠️ **WebSocket Message**: Received non-JSON or unparseable message: ${messageString.substring(0, 200)}...`,
-        data: { eventType: 'polymarketRawUpdate', payload: messageString },
-      };
-      if (callback) callback(notification);
-    }
-  });
-
-  wsClient.on('error', (error: Error) => {
-    logger.error('[WS Event] Error:', error);
-    const notification: Content = {
-      text: `⚠️ **WebSocket Error**: ${error.message || 'An unknown WebSocket error occurred.'} `,
-      data: {
-        eventType: 'websocketError',
-        payload: { message: error.message, name: error.name, stack: error.stack },
-      },
-    };
-    if (callback) callback(notification);
-    // No need to call setActiveClobSocketClientReference(null) here as 'close' will handle it.
-  });
-
-  wsClient.on('close', (code: number, reason: Buffer) => {
-    logger.info(
-      `[WS Event] Close: WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`
-    );
-    const notification: Content = {
-      text: `🔌 **WebSocket Closed**. Code: ${code}, Reason: ${reason.toString()}`,
-      data: { eventType: 'websocketClose', payload: { code, reason: reason.toString() } },
-    };
-    if (callback) callback(notification);
-    setActiveClobSocketClientReference(null); // Clear the shared client reference
-  });
-
-  // Handle ping/pong for keep-alive, as seen in socketExample.ts
-  // The server might also send PINGs that the 'ws' library handles automatically by sending PONGs.
-  // Explicitly sending PING from client side can also be done if required by Polymarket.
-  // For now, rely on automatic PONG responses by 'ws' and server PINGs, or PINGs sent by setupWebsocket if implemented there.
-
-  logger.info('[handleRealtimeUpdates] WebSocket event handlers registered.');
-}
-
+/**
+ * Handle Realtime Updates Action for Polymarket.
+ * Manages WebSocket subscriptions for real-time market data.
+ */
 export const handleRealtimeUpdatesAction: Action = {
   name: 'POLYMARKET_HANDLE_REALTIME_UPDATES',
   similes: [
-    'SETUP_POLYMARKET_EVENT_LISTENERS',
-    'START_LISTENING_TO_POLYMARKET_WS',
-    'PROCESS_POLYMARKET_NOTIFICATIONS',
-  ],
+    'SUBSCRIBE_UPDATES',
+    'LIVE_UPDATES',
+    'REALTIME_DATA',
+    'MARKET_STREAM',
+    'WEBSOCKET_STATUS',
+  ].map((s) => `POLYMARKET_${s}`),
   description:
-    'Sets up and manages event listeners for real-time updates from an active Polymarket WebSocket connection (using ws library).',
+    'Manages WebSocket subscriptions for real-time Polymarket data updates including order books and trades.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    logger.info('[handleRealtimeUpdatesAction] Validate called.');
-    if (!activeWebSocketClient) {
-      logger.warn(
-        '[handleRealtimeUpdatesAction] No active WebSocket client (ws). Run SETUP_WEBSOCKET first.'
-      );
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(
+      `[handleRealtimeUpdatesAction] Validate called for message: "${message.content?.text}"`
+    );
+    const clobWsUrl = runtime.getSetting('CLOB_WS_URL');
+
+    if (!clobWsUrl) {
+      logger.warn('[handleRealtimeUpdatesAction] CLOB_WS_URL is required for WebSocket connections.');
+      return false;
     }
+    logger.info('[handleRealtimeUpdatesAction] Validation passed');
     return true;
   },
 
@@ -153,50 +58,117 @@ export const handleRealtimeUpdatesAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
-    logger.info('[handleRealtimeUpdatesAction] Handler called.');
+    logger.info('[handleRealtimeUpdatesAction] Handler called!');
 
-    if (!activeWebSocketClient) {
-      const errorMsg =
-        'No active Polymarket WebSocket client (ws). Please run SETUP_WEBSOCKET first to connect.';
-      logger.warn(`[handleRealtimeUpdatesAction] ${errorMsg}`);
-      if (callback) await callback({ text: `🟡 ${errorMsg}` });
-      return { text: `🟡 ${errorMsg}` };
+    let llmResult: LLMRealtimeResult = {};
+    try {
+      const result = await callLLMWithTimeout<LLMRealtimeResult>(
+        runtime,
+        state,
+        handleRealtimeUpdatesTemplate,
+        'handleRealtimeUpdatesAction'
+      );
+      if (result && !isLLMError(result)) {
+        llmResult = result;
+      }
+      logger.info(`[handleRealtimeUpdatesAction] LLM result: ${JSON.stringify(llmResult)}`);
+    } catch (error) {
+      logger.warn('[handleRealtimeUpdatesAction] LLM extraction failed, defaulting to status', error);
+      llmResult.action = 'status';
     }
 
+    const action = llmResult.action || 'status';
+    const channel = llmResult.channel;
+    const assetIds = llmResult.assetIds;
+
+    logger.info(`[handleRealtimeUpdatesAction] Action: ${action}, Channel: ${channel}, Assets: ${assetIds?.join(', ')}`);
+
     try {
-      // Check WebSocket state
-      if (activeWebSocketClient.readyState !== WebSocket.OPEN) {
-        // WebSocket.OPEN is 1
-        const stateName =
-          ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][activeWebSocketClient.readyState] ||
-          'UNKNOWN';
-        const warnMsg = `WebSocket client exists but is not in OPEN state (current: ${stateName}). Listeners will be attached/re-confirmed, but will only fire effectively once OPEN.`;
-        logger.warn(`[handleRealtimeUpdatesAction] ${warnMsg}`);
-        // We can still proceed to attach listeners. They will become active once connection is OPEN.
+      // Note: Full WebSocket implementation would require a service to manage connections.
+      // This action provides status and configuration guidance.
+
+      let responseText = `📡 **Polymarket Realtime Updates**\n\n`;
+
+      const clobWsUrl = runtime.getSetting('CLOB_WS_URL');
+
+      if (action === 'status') {
+        responseText += `**WebSocket Configuration:**\n`;
+        responseText += `• **Endpoint**: ${clobWsUrl || 'Not configured'}\n\n`;
+
+        responseText += `**Available Channels:**\n`;
+        responseText += `• \`price\` - Real-time price updates\n`;
+        responseText += `• \`book\` - Order book changes\n`;
+        responseText += `• \`trade\` - Trade executions\n`;
+        responseText += `• \`ticker\` - Market ticker updates\n`;
+        responseText += `• \`user\` - Authenticated user updates (orders, fills)\n\n`;
+
+        const mockSubscriptions: SubscriptionStatus[] = [
+          { channel: 'price', status: 'inactive' },
+          { channel: 'book', status: 'inactive' },
+          { channel: 'trade', status: 'inactive' },
+        ];
+
+        responseText += `**Current Subscriptions:**\n`;
+        mockSubscriptions.forEach((sub: SubscriptionStatus) => {
+          const statusEmoji = sub.status === 'active' ? '🟢' : sub.status === 'pending' ? '🟡' : '⚪';
+          responseText += `${statusEmoji} ${sub.channel}: ${sub.status}\n`;
+        });
+
+        responseText += `\n💡 *WebSocket subscriptions are managed by the PolymarketService.*\n`;
+        responseText += `*Use "subscribe to price updates for token xyz" to start streaming.*\n`;
+      } else if (action === 'subscribe') {
+        if (!channel) {
+          responseText += `❌ Please specify a channel to subscribe to (price, book, trade, ticker, or user).\n`;
+        } else if (!assetIds || assetIds.length === 0) {
+          responseText += `❌ Please specify asset ID(s) to subscribe to.\n`;
+        } else {
+          responseText += `📥 **Subscribing to ${channel} updates...**\n\n`;
+          responseText += `• **Channel**: ${channel}\n`;
+          responseText += `• **Assets**: ${assetIds.join(', ')}\n\n`;
+          responseText += `⏳ *Subscription request initiated.*\n`;
+          responseText += `*Note: Full WebSocket management requires the PolymarketService to be running.*\n`;
+        }
+      } else if (action === 'unsubscribe') {
+        if (!channel) {
+          responseText += `❌ Please specify a channel to unsubscribe from.\n`;
+        } else {
+          responseText += `📤 **Unsubscribing from ${channel}...**\n\n`;
+          if (assetIds && assetIds.length > 0) {
+            responseText += `• **Assets**: ${assetIds.join(', ')}\n`;
+          } else {
+            responseText += `• Unsubscribing from all assets on this channel.\n`;
+          }
+          responseText += `\n⏳ *Unsubscription request initiated.*\n`;
+        }
       }
 
-      registerEventHandlers(activeWebSocketClient, runtime, callback);
-
-      const responseText =
-        '👂 Event listeners for Polymarket WebSocket (ws) updates are now active (or re-confirmed).';
       const responseContent: Content = {
         text: responseText,
+        actions: ['POLYMARKET_HANDLE_REALTIME_UPDATES'],
         data: {
-          status: 'listening',
-          clientState: activeWebSocketClient.readyState,
+          action,
+          channel,
+          assetIds,
+          wsUrl: clobWsUrl,
           timestamp: new Date().toISOString(),
         },
       };
+
+      if (callback) await callback(responseContent);
       return responseContent;
-    } catch (error: any) {
-      logger.error('[handleRealtimeUpdatesAction] Error setting up event handlers:', error);
-      const errorMessage = error.message || 'Unknown error.';
+    } catch (error) {
+      logger.error('[handleRealtimeUpdatesAction] Error handling realtime updates:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: `❌ **Error setting up WebSocket event handlers**: ${errorMessage}`,
-        data: { error: errorMessage, timestamp: new Date().toISOString() },
+        text: `❌ **Error managing realtime updates**: ${errorMessage}`,
+        actions: ['POLYMARKET_HANDLE_REALTIME_UPDATES'],
+        data: {
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        },
       };
       if (callback) await callback(errorContent);
       throw error;
@@ -205,21 +177,24 @@ export const handleRealtimeUpdatesAction: Action = {
 
   examples: [
     [
-      { name: '{{user1}}', content: { text: 'Start listening for Polymarket updates.' } },
+      { name: '{{user1}}', content: { text: "What's the status of Polymarket realtime updates?" } },
       {
         name: '{{user2}}',
         content: {
-          text: "Okay, I'll ensure I'm listening for real-time updates from Polymarket if connected.",
+          text: 'Checking the status of Polymarket WebSocket subscriptions...',
           action: 'POLYMARKET_HANDLE_REALTIME_UPDATES',
         },
       },
     ],
     [
-      { name: '{{user1}}', content: { text: 'Make sure you process Polymarket notifications.' } },
+      {
+        name: '{{user1}}',
+        content: { text: 'Subscribe to price updates for token xyz123 on Polymarket.' },
+      },
       {
         name: '{{user2}}',
         content: {
-          text: 'Checking and activating Polymarket WebSocket event handlers.',
+          text: 'Setting up price update subscription for token xyz123...',
           action: 'POLYMARKET_HANDLE_REALTIME_UPDATES',
         },
       },

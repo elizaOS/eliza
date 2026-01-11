@@ -1,2 +1,1 @@
-"""Tests for elizaOS Python interop."""
-
+"""Test suite for elizaOS Python interop."""

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket Actions
  *
@@ -24,5 +23,3 @@ export {
 
 // Order placement actions
 export { placeOrderAction } from "./placeOrder";
-
-

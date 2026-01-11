@@ -506,19 +506,14 @@ export async function executeCommand(
     });
   }
   
-  try {
-    // Parse arguments
-    const parsedArgs = parseArgs(args, command);
-    
-    // Log command execution
-    logger.debug(`Executing command: ${command.name}`, { args: parsedArgs });
-    
-    // Execute the command
-    return await command.handler(parsedArgs);
-  } catch (error) {
-    logger.error(`Command ${command.name} failed:`, error);
-    throw error;
-  }
+  // Parse arguments
+  const parsedArgs = parseArgs(args, command);
+  
+  // Log command execution
+  logger.debug(`Executing command: ${command.name}`, { args: parsedArgs });
+  
+  // Execute the command
+  return await command.handler(parsedArgs);
 }
 
 /**

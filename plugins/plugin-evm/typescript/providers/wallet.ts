@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Wallet Provider
  *
@@ -8,7 +7,7 @@
 
 import * as path from "node:path";
 import {
-  elizaLogger,
+  logger,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -167,7 +166,7 @@ export class WalletProvider {
       await this._runtime.getCache<Record<SupportedChain, string>>(cacheKey);
 
     if (cachedData) {
-      elizaLogger.log(`Returning cached wallet balances`);
+      logger.log(`Returning cached wallet balances`);
       return cachedData;
     }
 
@@ -185,12 +184,12 @@ export class WalletProvider {
       if (result.status === "fulfilled" && result.value.balance !== null) {
         balances[result.value.chainName] = result.value.balance;
       } else if (result.status === "rejected") {
-        elizaLogger.error(`Error getting balance:`, result.reason);
+        logger.error(`Error getting balance:`, result.reason);
       }
     }
 
     await this._runtime.setCache(cacheKey, balances);
-    elizaLogger.log("Wallet balances cached");
+    logger.log("Wallet balances cached");
     return balances;
   }
 
@@ -207,7 +206,7 @@ export class WalletProvider {
       });
       return formatUnits(balance, 18);
     } catch (error) {
-      elizaLogger.error(`Error getting wallet balance for ${chainName}:`, error);
+      logger.error(`Error getting wallet balance for ${chainName}:`, error);
       return null;
     }
   }
@@ -231,7 +230,7 @@ export class WalletProvider {
       if (!result.success) {
         throw new EVMError(
           EVMErrorCode.INVALID_PARAMS,
-          `Invalid private key format: ${result.error.message}`
+          `Invalid private key format: ${result.error.errors[0]?.message ?? "Validation failed"}`
         );
       }
       return privateKeyToAccount(result.data);
@@ -319,7 +318,7 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
     configuredChains.length > 0 ? configuredChains : [...DEFAULT_CHAINS];
 
   if (!configuredChains.length) {
-    elizaLogger.warn(
+    logger.warn(
       "No EVM chains configured in settings, defaulting to mainnet and base"
     );
   }
@@ -329,16 +328,16 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
   for (const chainName of chainsToUse) {
     try {
       // Try to get RPC URL from settings
-      let rpcUrl = runtime.getSetting(
+      const rpcUrlRaw = runtime.getSetting(
         `ETHEREUM_PROVIDER_${chainName.toUpperCase()}`
-      );
-      if (!rpcUrl) {
-        rpcUrl = runtime.getSetting(`EVM_PROVIDER_${chainName.toUpperCase()}`);
-      }
+      ) ?? runtime.getSetting(`EVM_PROVIDER_${chainName.toUpperCase()}`);
+
+      // Convert to string if we got a valid URL
+      const rpcUrl = typeof rpcUrlRaw === "string" ? rpcUrlRaw : null;
 
       // Skip chains that don't exist in viem
       if (!(chainName in viemChains)) {
-        elizaLogger.warn(
+        logger.warn(
           `Chain ${chainName} not found in viem chains, skipping`
         );
         continue;
@@ -346,12 +345,12 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
 
       const chain = WalletProvider.genChainFromName(
         chainName,
-        rpcUrl ?? null
+        rpcUrl
       );
       chains[chainName] = chain;
-      elizaLogger.log(`Configured chain: ${chainName}`);
+      logger.log(`Configured chain: ${chainName}`);
     } catch (error) {
-      elizaLogger.error(`Error configuring chain ${chainName}:`, error);
+      logger.error(`Error configuring chain ${chainName}:`, error);
     }
   }
 
@@ -368,18 +367,18 @@ async function generateAndStorePrivateKey(
   const newPrivateKey = generatePrivateKey();
   const account = privateKeyToAccount(newPrivateKey);
 
-  elizaLogger.warn(
+  logger.warn(
     "═══════════════════════════════════════════════════════════════════"
   );
-  elizaLogger.warn("⚠️  EVM_PRIVATE_KEY not found - generating new wallet");
-  elizaLogger.warn(`📍 New wallet address: ${account.address}`);
-  elizaLogger.warn(
+  logger.warn("⚠️  EVM_PRIVATE_KEY not found - generating new wallet");
+  logger.warn(`📍 New wallet address: ${account.address}`);
+  logger.warn(
     "💾 Private key will be stored in agent secrets automatically"
   );
-  elizaLogger.warn(
+  logger.warn(
     "⚠️  IMPORTANT: Back up your private key for production use!"
   );
-  elizaLogger.warn(
+  logger.warn(
     "═══════════════════════════════════════════════════════════════════"
   );
 
@@ -397,9 +396,9 @@ async function generateAndStorePrivateKey(
         },
       },
     });
-    elizaLogger.log("EVM private key persisted to agent settings");
+    logger.log("EVM private key persisted to agent settings");
   } catch (error) {
-    elizaLogger.warn(
+    logger.warn(
       "Could not persist EVM private key to database - key is only in memory",
       error
     );
@@ -415,26 +414,30 @@ async function generateAndStorePrivateKey(
 export async function initWalletProvider(
   runtime: IAgentRuntime
 ): Promise<WalletProvider> {
-  const teeMode = runtime.getSetting("TEE_MODE") ?? TEEMode.OFF;
+  const teeModeRaw = runtime.getSetting("TEE_MODE");
+  const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : TEEMode.OFF;
   const chains = genChainsFromRuntime(runtime);
 
   if (teeMode !== TEEMode.OFF) {
-    const walletSecretSalt = runtime.getSetting("WALLET_SECRET_SALT");
-    if (!walletSecretSalt) {
+    const walletSecretSaltRaw = runtime.getSetting("WALLET_SECRET_SALT");
+    if (!walletSecretSaltRaw || typeof walletSecretSaltRaw !== "string") {
       throw new EVMError(
         EVMErrorCode.INVALID_PARAMS,
         "WALLET_SECRET_SALT required when TEE_MODE is enabled"
       );
     }
 
-    return new LazyTeeWalletProvider(runtime, walletSecretSalt, chains);
+    return new LazyTeeWalletProvider(runtime, walletSecretSaltRaw, chains);
   }
 
-  let privateKey = runtime.getSetting("EVM_PRIVATE_KEY");
+  const privateKeyRaw = runtime.getSetting("EVM_PRIVATE_KEY");
 
   // Auto-generate private key if not found
-  if (!privateKey) {
+  let privateKey: string;
+  if (!privateKeyRaw || typeof privateKeyRaw !== "string") {
     privateKey = await generateAndStorePrivateKey(runtime);
+  } else {
+    privateKey = privateKeyRaw;
   }
 
   // Validate the private key format
@@ -570,7 +573,7 @@ export const evmWalletProvider: Provider = {
       const evmService = runtime.getService(EVM_SERVICE_NAME);
 
       if (!evmService) {
-        elizaLogger.warn(
+        logger.warn(
           "EVM service not found, falling back to direct fetching"
         );
         return await directFetchWalletData(runtime, state);
@@ -589,7 +592,7 @@ export const evmWalletProvider: Provider = {
       };
 
       if (typeof serviceWithCache.getCachedData !== "function") {
-        elizaLogger.warn(
+        logger.warn(
           "EVM service missing getCachedData, falling back to direct fetching"
         );
         return await directFetchWalletData(runtime, state);
@@ -597,7 +600,7 @@ export const evmWalletProvider: Provider = {
 
       const walletData = await serviceWithCache.getCachedData();
       if (!walletData) {
-        elizaLogger.warn(
+        logger.warn(
           "No cached wallet data available, falling back to direct fetching"
         );
         return await directFetchWalletData(runtime, state);
@@ -620,7 +623,7 @@ export const evmWalletProvider: Provider = {
         },
       };
     } catch (error) {
-      elizaLogger.error("Error in EVM wallet provider:", error);
+      logger.error("Error in EVM wallet provider:", error);
       throw error; // Fail fast - don't swallow errors
     }
   },
