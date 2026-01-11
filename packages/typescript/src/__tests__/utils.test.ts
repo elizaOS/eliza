@@ -1,14 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  type Content,
-  type DetokenizeTextParams,
-  type Entity,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type State,
-  type TokenizeTextParams,
-} from "../types";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Content, Entity, IAgentRuntime, Memory, State } from "../types";
 import * as utils from "../utils";
 import {
   addHeader,

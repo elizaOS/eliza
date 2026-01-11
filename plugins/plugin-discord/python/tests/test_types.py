@@ -95,7 +95,7 @@ class TestMessagePayload:
 
     def test_payload_invalid_snowflake(self) -> None:
         """Test that invalid snowflakes are rejected."""
-        with pytest.raises(Exception):  # Pydantic will raise ValidationError
+        with pytest.raises(ValueError):  # Pydantic will raise ValidationError
             DiscordMessagePayload(
                 message_id="invalid",
                 channel_id="987654321098765432",

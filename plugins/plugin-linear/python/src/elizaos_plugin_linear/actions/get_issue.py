@@ -72,10 +72,10 @@ async def format_issue_response(
     priority_labels = ["", "Urgent", "High", "Normal", "Low"]
     priority = priority_labels[issue.get("priority", 0)] or "No priority"
 
-    label_text = f"Labels: {', '.join(l['name'] for l in labels)}" if labels else ""
+    label_text = f"Labels: {', '.join(lbl['name'] for lbl in labels)}" if labels else ""
 
     issue_message = f"""📋 **{issue["identifier"]}: {issue["title"]}**
-  
+
 Status: {state["name"] if state else "No status"}
 Priority: {priority}
 Team: {team["name"] if team else "No team"}

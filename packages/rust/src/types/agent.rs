@@ -2,7 +2,7 @@
 //!
 //! Contains Character, Agent, and related configuration types.
 
-use super::{Content, UUID};
+use super::primitives::{Content, UUID};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

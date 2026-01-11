@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-import pytest
-
 from elizaos_plugin_goals.types import (
     ConfirmationResult,
     CreateGoalParams,

@@ -241,7 +241,7 @@ class SolanaClient:
             # Parse decimals from mint account (offset 44 in SPL Token mint layout)
             mint_data = mint_info.value.data
             if hasattr(mint_data, "__len__") and len(mint_data) >= 45:
-                decimals = mint_data[44] if isinstance(mint_data, (bytes, list)) else 9
+                decimals = mint_data[44] if isinstance(mint_data, bytes | list) else 9
             else:
                 decimals = 9  # Default to 9 if we can't parse
 

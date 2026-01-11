@@ -1,12 +1,11 @@
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FileTokenStore, RuntimeCacheTokenStore } from "../auth-providers/token-store";
 
-// Local type definitions for testing
-type UUID = `${string}-${string}-${string}-${string}-${string}`;
-
+// Local type definitions for testing that satisfies IAgentRuntime subset
 interface TestRuntime {
   agentId: UUID;
   getCache: <T>(key: string) => Promise<T | undefined>;
@@ -64,7 +63,7 @@ describe("token-store", () => {
 
   describe("RuntimeCacheTokenStore", () => {
     // Minimal in-memory runtime implementation for testing
-    let runtime: Pick<IAgentRuntime, "agentId" | "getCache" | "setCache" | "deleteCache">;
+    let runtime: TestRuntime;
     let cache: Map<string, unknown>;
 
     beforeEach(() => {
@@ -83,7 +82,8 @@ describe("token-store", () => {
     });
 
     it("saves and loads via runtime cache", async () => {
-      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime);
+      // TestRuntime satisfies the runtime interface requirements
+      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime);
       const tokens = {
         access_token: "a",
         refresh_token: "r",
@@ -96,7 +96,7 @@ describe("token-store", () => {
     });
 
     it("clear removes the cached value", async () => {
-      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime);
+      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime);
       await store.save({
         access_token: "a",
         refresh_token: "r",
@@ -109,14 +109,14 @@ describe("token-store", () => {
     });
 
     it("returns null when no tokens stored", async () => {
-      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime);
+      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime);
       const loaded = await store.load();
       expect(loaded).toBeNull();
     });
 
     it("uses custom key when provided", async () => {
       const customKey = "custom/token/path";
-      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime, customKey);
+      const store = new RuntimeCacheTokenStore(runtime as unknown as IAgentRuntime, customKey);
 
       await store.save({
         access_token: "test",

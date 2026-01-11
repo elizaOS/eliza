@@ -246,7 +246,7 @@ class TestCacheManager:
         """Test get_or_set functionality."""
         call_count = 0
 
-        def fetcher():
+        def fetcher() -> str:
             nonlocal call_count
             call_count += 1
             return "fetched_value"

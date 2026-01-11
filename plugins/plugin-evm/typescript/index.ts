@@ -12,7 +12,6 @@
  * @packageDocumentation
  */
 
-
 // Import for plugin definition
 import type { Plugin, ServiceClass } from "@elizaos/core";
 import { bridgeAction } from "./actions/bridge";

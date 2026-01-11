@@ -102,6 +102,7 @@ ignore_errors = true
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+exclude = ["elizaos/types/generated/"]
 
 [tool.ruff.lint]
 select = [
@@ -130,4 +131,5 @@ known-first-party = ["elizaos"]
 [tool.black]
 line-length = 100
 target-version = ["py311"]
+exclude = "elizaos/types/generated/"
 

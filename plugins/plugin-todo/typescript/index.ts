@@ -43,7 +43,6 @@ import { TodoReminderService } from "./services/reminderService";
 
 // Tests import removed for type checking
 
-
 /**
  * The TodoPlugin provides task management functionality with daily recurring and one-off tasks,
  * including creating, completing, updating, and deleting tasks, as well as reminder notifications.

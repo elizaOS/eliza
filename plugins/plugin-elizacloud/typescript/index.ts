@@ -13,12 +13,6 @@ import {
 } from "./models";
 import { getApiKey, getBaseURL } from "./utils/config";
 
-// Re-export types for convenience
-export type {
-  OpenAITextToSpeechParams,
-  OpenAITranscriptionParams,
-} from "./types";
-
 /**
  * Defines the ElizaOS Cloud plugin with its name, description, and configuration options.
  *

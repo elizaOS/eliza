@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{service::Service, Metadata, UUID};
+use super::primitives::{Metadata, UUID};
+use super::service::Service;
 
 // Local alias to keep field names aligned with upstream docs/types while using elizaOS's UUID wrapper.
 type Uuid = UUID;

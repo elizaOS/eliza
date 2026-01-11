@@ -1,17 +1,24 @@
-import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldTargetUser, validateXConfig, xEnvSchema } from "../environment";
 
+// Local type definitions for testing
+type UUID = `${string}-${string}-${string}-${string}-${string}`;
+
+interface MockRuntime {
+  agentId: UUID;
+  getSetting: (key: string) => string | null | undefined;
+}
+
 // Mock runtime for testing
-function createMockRuntime(): IAgentRuntime {
+function createMockRuntime(): MockRuntime {
   return {
     getSetting: vi.fn(),
     agentId: "test-agent" as UUID,
-  } as unknown as IAgentRuntime;
+  };
 }
 
 describe("Environment Configuration", () => {
-  let mockRuntime: IAgentRuntime;
+  let mockRuntime: MockRuntime;
 
   beforeEach(async () => {
     mockRuntime = createMockRuntime();
@@ -78,7 +85,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime as never);
 
       expect(config.X_API_KEY).toBe("test-api-key");
       expect(config.X_API_SECRET).toBe("test-api-secret");
@@ -89,7 +96,7 @@ describe("Environment Configuration", () => {
     it("should throw error when required credentials are missing", async () => {
       vi.spyOn(mockRuntime, "getSetting").mockReturnValue(null);
 
-      await expect(validateXConfig(mockRuntime)).rejects.toThrow("X env auth requires");
+      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow("X env auth requires");
     });
 
     it("should validate oauth mode without legacy env credentials", async () => {
@@ -102,7 +109,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime as never);
       expect(config.X_AUTH_MODE).toBe("oauth");
       expect(config.X_CLIENT_ID).toBe("client-id");
       expect(config.X_REDIRECT_URI).toBe("http://127.0.0.1:8080/callback");
@@ -118,7 +125,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateXConfig(mockRuntime)).rejects.toThrow("X OAuth requires");
+      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow("X OAuth requires");
     });
 
     it("should throw when broker mode is missing broker url", async () => {
@@ -129,7 +136,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateXConfig(mockRuntime)).rejects.toThrow("X bearer auth requires");
+      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow("X bearer auth requires");
     });
 
     it("should use default values for optional settings", async () => {
@@ -143,7 +150,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime as never);
 
       // Check default values
       expect(config.X_RETRY_LIMIT).toBe("5");
@@ -166,7 +173,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime as never);
 
       expect(config.X_ENABLE_POST).toBe("true");
       expect(config.X_DRY_RUN).toBe("false");
@@ -184,7 +191,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime as never);
 
       // Should use runtime value
       expect(config.X_API_KEY).toBe("runtime-api-key");
@@ -202,7 +209,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateXConfig(mockRuntime);
+      const config = await validateXConfig(mockRuntime as never);
 
       expect(config.X_TARGET_USERS).toBe("alice,bob,charlie");
     });
@@ -211,7 +218,7 @@ describe("Environment Configuration", () => {
       vi.spyOn(mockRuntime, "getSetting").mockReturnValue(null);
 
       // Create a scenario that will fail zod validation
-      await expect(validateXConfig(mockRuntime)).rejects.toThrow();
+      await expect(validateXConfig(mockRuntime as never)).rejects.toThrow();
     });
   });
 

@@ -23,7 +23,6 @@ import {
   attachmentSummarizationTemplate as summarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
-
 /**
  * Retrieves attachment IDs from a model using a prompt generated from the current state and a template.
  * @param {IAgentRuntime} runtime - The agent runtime to use for interaction with models

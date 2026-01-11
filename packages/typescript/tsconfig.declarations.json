@@ -3,12 +3,17 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    "baseUrl": "./src",
     "types": ["node", "bun"],
     "noEmit": false,
     "emitDeclarationOnly": true,
     "composite": false,
     "incremental": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@elizaos/core": ["./index.node.ts"],
+      "@elizaos/core/*": ["./*"]
+    }
   },
   "include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
   "exclude": [

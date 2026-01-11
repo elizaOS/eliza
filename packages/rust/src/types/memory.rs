@@ -2,7 +2,7 @@
 //!
 //! Contains Memory, MemoryMetadata, and related types for storing agent memories.
 
-use super::{Content, UUID};
+use super::primitives::{Content, UUID};
 use serde::{Deserialize, Serialize};
 
 /// Memory type enumeration for built-in memory types

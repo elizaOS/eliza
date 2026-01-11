@@ -15,11 +15,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import {
-  mediaAttachmentIdTemplate,
-  transcriptionTemplate,
-} from "../generated/prompts/typescript/prompts.js";
-
+import { mediaAttachmentIdTemplate } from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Asynchronous function to get the media attachment ID from the user input.

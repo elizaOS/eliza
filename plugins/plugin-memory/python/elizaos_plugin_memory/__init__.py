@@ -10,7 +10,10 @@ Example:
     >>> await plugin.initialize(runtime)
 """
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from elizaos import AgentRuntime
 
 from elizaos_plugin_memory.evaluators.long_term_extraction import LongTermExtractionEvaluator
 from elizaos_plugin_memory.evaluators.summarization import SummarizationEvaluator
@@ -49,9 +52,9 @@ class MemoryPlugin:
             SummarizationEvaluator(),
             LongTermExtractionEvaluator(),
         ]
-        self.actions: list[Any] = []
+        self.actions: list[object] = []
 
-    async def initialize(self, runtime: Any) -> None:
+    async def initialize(self, runtime: "AgentRuntime") -> None:
         """Initialize the plugin with runtime context."""
         await self.service.start(runtime)
 

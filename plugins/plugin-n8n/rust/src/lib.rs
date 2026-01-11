@@ -42,12 +42,10 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - client::PluginCreationClient
-// - config::N8nConfig
-// - error::{N8nError, Result}
-// - models::{ClaudeModel, JobStatus}
-// - types::{ActionSpecification, PluginSpecification, etc.}
+// Re-export commonly used types for convenience
+pub use client::PluginCreationClient;
+pub use config::N8nConfig;
+pub use error::{N8nError, Result};
 
 /// Create a plugin creation client from environment variables.
 ///

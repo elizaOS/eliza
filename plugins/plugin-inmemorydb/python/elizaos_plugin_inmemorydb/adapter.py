@@ -648,14 +648,14 @@ class InMemoryDatabaseAdapter:
         """Get logs."""
         logs = await self._storage.get_where(
             COLLECTIONS.LOGS,
-            lambda l: (
-                (entity_id is None or l.get("entityId") == entity_id)
-                and (room_id is None or l.get("roomId") == room_id)
-                and (type_ is None or l.get("type") == type_)
+            lambda log: (
+                (entity_id is None or log.get("entityId") == entity_id)
+                and (room_id is None or log.get("roomId") == room_id)
+                and (type_ is None or log.get("type") == type_)
             ),
         )
 
-        logs.sort(key=lambda l: l.get("createdAt") or "", reverse=True)
+        logs.sort(key=lambda log: log.get("createdAt") or "", reverse=True)
 
         if offset:
             logs = logs[offset:]

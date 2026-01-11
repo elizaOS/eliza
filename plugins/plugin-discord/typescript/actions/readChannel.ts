@@ -17,7 +17,6 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { channelInfoTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
 
-
 /**
  * Get channel information from the user's request
  * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.

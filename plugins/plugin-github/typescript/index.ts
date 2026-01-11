@@ -18,7 +18,6 @@ import { allActions } from "./actions";
 import { allProviders } from "./providers";
 import { GitHubService } from "./service";
 
-
 /**
  * GitHub Plugin
  *

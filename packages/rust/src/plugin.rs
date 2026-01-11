@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for loading, validating, and resolving plugin dependencies.
 
-use crate::types::{Plugin, PluginDefinition};
+use crate::types::plugin::{Plugin, PluginDefinition};
 use anyhow::Result;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
@@ -292,7 +292,7 @@ pub fn resolve_plugin_dependencies(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::PluginDefinition;
+    use crate::types::plugin::PluginDefinition;
     use std::sync::Arc;
 
     fn create_test_plugin(name: &str, deps: Vec<&str>) -> Plugin {

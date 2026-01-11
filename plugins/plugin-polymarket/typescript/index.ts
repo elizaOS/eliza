@@ -16,7 +16,6 @@ import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-
 // Import for plugin definition
 import {
   checkOrderScoringAction,

@@ -43,12 +43,12 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - client::AnthropicClient
-// - config::AnthropicConfig
-// - error::{AnthropicError, Result}
-// - models::{Model, ModelSize}
-// - types::{ContentBlock, Message, ObjectGenerationParams, Role, TextGenerationParams, TextGenerationResponse}
+// Re-export commonly used types for convenience
+pub use client::AnthropicClient;
+pub use config::AnthropicConfig;
+pub use error::{AnthropicError, Result};
+pub use models::{Model, ModelSize};
+pub use types::{ContentBlock, Message, ObjectGenerationParams, Role, TextGenerationParams, TextGenerationResponse};
 
 /// Create an Anthropic client from environment variables.
 ///
