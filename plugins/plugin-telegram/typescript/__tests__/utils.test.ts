@@ -14,13 +14,12 @@ vi.mock("telegraf", () => ({
   },
 }));
 
-// Mock logger
-const warnSpy = vi.fn();
+// Mock logger - use inline vi.fn() to avoid hoisting issues
 vi.mock("@elizaos/core", () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: warnSpy,
+    warn: vi.fn(),
     error: vi.fn(),
   },
 }));

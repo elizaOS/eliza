@@ -127,6 +127,7 @@ from elizaos.types.plugin import (
     RouteResponse,
 )
 from elizaos.types.primitives import (
+    DEFAULT_UUID,
     UUID,
     Content,
     ContentType,
@@ -266,6 +267,7 @@ from elizaos.types.task import (
 __all__ = [
     # Primitives
     "UUID",
+    "DEFAULT_UUID",
     "as_uuid",
     "string_to_uuid",
     "Content",

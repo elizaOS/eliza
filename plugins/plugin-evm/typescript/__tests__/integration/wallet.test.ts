@@ -72,7 +72,7 @@ describe("Wallet Provider", () => {
   });
 
   describe("Constructor", () => {
-    it("should set wallet address correctly", () => {
+    it("should set wallet address correctly", async () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
       const agentRuntime = await createEVMTestRuntime();
@@ -82,7 +82,7 @@ describe("Wallet Provider", () => {
       expect(walletProvider.getAddress()).toBe(expectedAddress);
     });
 
-    it("should initialize with empty chains when no chains provided", () => {
+    it("should initialize with empty chains when no chains provided", async () => {
       const agentRuntime = await createEVMTestRuntime();
       walletProvider = new WalletProvider(pk, agentRuntime);
 
@@ -94,7 +94,7 @@ describe("Wallet Provider", () => {
       expect(supportedChains.includes("mainnet" as SupportedChain)).toBe(false);
     });
 
-    it("should initialize with custom testnet chains", () => {
+    it("should initialize with custom testnet chains", async () => {
       const customChains = {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,

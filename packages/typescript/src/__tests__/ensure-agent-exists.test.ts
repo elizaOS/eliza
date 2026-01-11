@@ -49,23 +49,27 @@ describe("ensureAgentExists - Settings Persistence", () => {
       },
     };
 
-    // Create mock adapter with proper types
-    getAgentMock = mock<IDatabaseAdapter["getAgent"]>(async () => null);
-    updateAgentMock = mock<IDatabaseAdapter["updateAgent"]>(async () => true);
-    getEntitiesByIdsMock = mock<IDatabaseAdapter["getEntitiesByIds"]>(
+    // Create mock adapter with proper types using vi.fn()
+    getAgentMock = vi.fn(async () => null) as IDatabaseAdapter["getAgent"];
+    updateAgentMock = vi.fn(
+      async () => true,
+    ) as IDatabaseAdapter["updateAgent"];
+    getEntitiesByIdsMock = vi.fn(
       async () => [],
-    );
-    getRoomsByIdsMock = mock<IDatabaseAdapter["getRoomsByIds"]>(async () => []);
-    getParticipantsForRoomMock = mock<
-      IDatabaseAdapter["getParticipantsForRoom"]
-    >(async () => []);
-    createEntitiesMock = mock<IDatabaseAdapter["createEntities"]>(
+    ) as IDatabaseAdapter["getEntitiesByIds"];
+    getRoomsByIdsMock = vi.fn(
+      async () => [],
+    ) as IDatabaseAdapter["getRoomsByIds"];
+    getParticipantsForRoomMock = vi.fn(
+      async () => [],
+    ) as IDatabaseAdapter["getParticipantsForRoom"];
+    createEntitiesMock = vi.fn(
       async () => true,
-    );
-    createRoomsMock = mock<IDatabaseAdapter["createRooms"]>(async () => []);
-    addParticipantsRoomMock = mock<IDatabaseAdapter["addParticipantsRoom"]>(
+    ) as IDatabaseAdapter["createEntities"];
+    createRoomsMock = vi.fn(async () => []) as IDatabaseAdapter["createRooms"];
+    addParticipantsRoomMock = vi.fn(
       async () => true,
-    );
+    ) as IDatabaseAdapter["addParticipantsRoom"];
 
     mockAdapter = {
       db: {},
