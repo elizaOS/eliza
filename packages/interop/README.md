@@ -7,7 +7,7 @@ This module provides seamless interoperability between elizaOS runtimes written 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Plugin Interface Definition                   │
-│                    (plugin.schema.json - IDL)                   │
+│                (contract documented in this README)             │
 └─────────────────────────────────────────────────────────────────┘
                               │
           ┌───────────────────┼───────────────────┐
@@ -86,7 +86,7 @@ await runtime.register_plugin(plugin)
 
 ## Plugin Manifest
 
-Every cross-language plugin must include a `plugin.json` manifest:
+Cross-language plugins are described by a manifest-like metadata object (format may vary by transport and host).
 
 ```json
 {

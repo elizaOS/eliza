@@ -14,12 +14,13 @@ The design goals are:
 
 ## Key files
 
-- **IDL / schema**
-  - `packages/interop/plugin.schema.json` (referenced by `packages/interop/README.md`)
+- **Contract / protocol docs**
+  - `packages/interop/README.md`
+- **TypeScript interop types**
+  - `packages/interop/typescript/types.ts`
 - **TypeScript interop**
   - `packages/interop/typescript/wasm-loader.ts`
   - `packages/interop/typescript/python-bridge.ts`
-  - `packages/interop/typescript/types.ts`
 - **Rust interop**
   - `packages/interop/rust/wasm_plugin.rs`
   - `packages/interop/rust/ffi_exports.rs`
