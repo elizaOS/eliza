@@ -6,7 +6,7 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { handleTaskSlashCommand } from "../lib/task-slash-command.js";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type {
@@ -14,40 +14,50 @@ import type {
   CodeTaskMetadata,
   TaskPaneVisibility,
 } from "../types.js";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
-function createMockRuntimeWithService(): {
-  runtime: IAgentRuntime;
-  setService: (service: CodeTaskService) => void;
-} {
-  const tasks = new Map<string, CodeTask>();
-  const rooms = new Map<string, Room>();
-  let taskCounter = 0;
-  const agentId = stringToUuid("test-agent");
+describe("TUI /task slash commands", () => {
+  let runtime: IAgentRuntime;
+  let service: CodeTaskService;
+  let messages: string[];
+  let started: string[];
+  let taskPaneVisibility: TaskPaneVisibility;
 
-  // Default room (used when tests pass a roomId)
-  const defaultRoomId = stringToUuid("test-room");
-  const defaultWorldId = stringToUuid("test-world");
-  rooms.set(defaultRoomId, {
-    id: defaultRoomId,
-    source: "test",
-    type: ChannelType.DM,
-    worldId: defaultWorldId,
-    name: "Test Room",
-  });
+  // In-memory stores for testing
+  let tasks: Map<string, CodeTask>;
+  let rooms: Map<string, Room>;
+  let taskCounter: number;
+  let serviceRef: CodeTaskService | null;
 
-  let serviceRef: CodeTaskService | null = null;
+  beforeEach(async () => {
+    process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
 
-  const runtime: Partial<IAgentRuntime> = {
-    agentId,
+    runtime = await createTestRuntime();
+    tasks = new Map();
+    rooms = new Map();
+    taskCounter = 0;
+    serviceRef = null;
 
-    getRoom: async (id: UUID) => rooms.get(id) ?? null,
+    // Default room (used when tests pass a roomId)
+    const defaultRoomId = stringToUuid("test-room");
+    const defaultWorldId = stringToUuid("test-world");
+    rooms.set(defaultRoomId, {
+      id: defaultRoomId,
+      source: "test",
+      type: ChannelType.DM,
+      worldId: defaultWorldId,
+      name: "Test Room",
+    });
 
-    getService: (type: string) => {
+    // Spy on runtime methods with test-specific implementations
+    vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
+
+    vi.spyOn(runtime, "getService").mockImplementation((type: string) => {
       if (type === "CODE_TASK") return serviceRef;
       return null;
-    },
+    });
 
-    createTask: async (task: Task) => {
+    vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
       taskCounter += 1;
       const id = stringToUuid(`task-${taskCounter}`);
 
@@ -63,17 +73,17 @@ function createMockRuntimeWithService(): {
 
       tasks.set(id, fullTask);
       return id;
-    },
+    });
 
-    getTask: async (id: UUID) => tasks.get(id) ?? null,
+    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
 
-    getTasks: async ({ tags }: { tags?: string[] }) => {
+    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
       const allTasks = Array.from(tasks.values());
       if (!tags || tags.length === 0) return allTasks;
       return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    },
+    });
 
-    updateTask: async (id: UUID, updates: Partial<Task>) => {
+    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
       const task = tasks.get(id);
       if (!task) return;
 
@@ -86,39 +96,18 @@ function createMockRuntimeWithService(): {
       if (updates.metadata) {
         task.metadata = { ...task.metadata, ...updates.metadata };
       }
-    },
+    });
 
-    deleteTask: async (id: UUID) => {
+    vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);
-    },
+    });
 
-    useModel: async () => {
+    vi.spyOn(runtime, "useModel").mockImplementation(async () => {
       throw new Error("useModel should not be called in this test");
-    },
-  };
+    });
 
-  return {
-    runtime: runtime as IAgentRuntime,
-    setService: (svc) => {
-      serviceRef = svc;
-    },
-  };
-}
-
-describe("TUI /task slash commands", () => {
-  let runtime: IAgentRuntime;
-  let service: CodeTaskService;
-  let messages: string[];
-  let started: string[];
-  let taskPaneVisibility: TaskPaneVisibility;
-
-  beforeEach(async () => {
-    process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION = "1";
-
-    const { runtime: r, setService } = createMockRuntimeWithService();
-    runtime = r;
     service = (await CodeTaskService.start(runtime)) as CodeTaskService;
-    setService(service);
+    serviceRef = service;
 
     messages = [];
     started = [];
@@ -132,8 +121,10 @@ describe("TUI /task slash commands", () => {
     };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     delete process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION;
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   test("/task pause pauses the current task", async () => {

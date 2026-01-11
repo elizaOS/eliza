@@ -6,34 +6,41 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 
-// Mock runtime
-function createMockRuntime(): IAgentRuntime {
-  const tasks = new Map<string, CodeTask>();
-  const rooms = new Map<string, Room>();
-  let taskCounter = 0;
-  const agentId = stringToUuid("test-agent");
+describe("CodeTaskService", () => {
+  let service: CodeTaskService;
+  let runtime: IAgentRuntime;
 
-  // Default room (used by tests that pass a roomId)
-  const defaultRoomId = stringToUuid("test-room");
-  const defaultWorldId = stringToUuid("test-world");
-  rooms.set(defaultRoomId, {
-    id: defaultRoomId,
-    source: "test",
-    type: ChannelType.DM,
-    worldId: defaultWorldId,
-    name: "Test Room",
-  });
+  // In-memory task store for testing
+  let tasks: Map<string, CodeTask>;
+  let rooms: Map<string, Room>;
+  let taskCounter: number;
 
-  const runtime: Partial<IAgentRuntime> = {
-    agentId,
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+    tasks = new Map();
+    rooms = new Map();
+    taskCounter = 0;
 
-    getRoom: vi.fn(async (id: UUID) => rooms.get(id) ?? null),
+    // Default room (used by tests that pass a roomId)
+    const defaultRoomId = stringToUuid("test-room");
+    const defaultWorldId = stringToUuid("test-world");
+    rooms.set(defaultRoomId, {
+      id: defaultRoomId,
+      source: "test",
+      type: ChannelType.DM,
+      worldId: defaultWorldId,
+      name: "Test Room",
+    });
 
-    createTask: vi.fn(async (task: Task) => {
+    // Spy on runtime methods with test-specific implementations
+    vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
+
+    vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
       taskCounter += 1;
       const id = stringToUuid(`task-${taskCounter}`);
 
@@ -49,17 +56,17 @@ function createMockRuntime(): IAgentRuntime {
 
       tasks.set(id, fullTask);
       return id;
-    }),
+    });
 
-    getTask: vi.fn(async (id: UUID) => tasks.get(id) ?? null),
+    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
 
-    getTasks: vi.fn(async ({ tags }: { tags?: string[] }) => {
+    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
       const allTasks = Array.from(tasks.values());
       if (!tags || tags.length === 0) return allTasks;
       return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    }),
+    });
 
-    updateTask: vi.fn(async (id: UUID, updates: Partial<Task>) => {
+    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
       const task = tasks.get(id);
       if (!task) return;
 
@@ -72,23 +79,18 @@ function createMockRuntime(): IAgentRuntime {
       if (updates.metadata) {
         task.metadata = { ...task.metadata, ...updates.metadata };
       }
-    }),
+    });
 
-    deleteTask: vi.fn(async (id: UUID) => {
+    vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);
-    }),
-  };
+    });
 
-  return runtime as IAgentRuntime;
-}
-
-describe("CodeTaskService", () => {
-  let service: CodeTaskService;
-  let runtime: IAgentRuntime;
-
-  beforeEach(async () => {
-    runtime = createMockRuntime();
     service = (await CodeTaskService.start(runtime)) as CodeTaskService;
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   describe("createCodeTask", () => {
