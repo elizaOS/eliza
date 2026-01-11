@@ -31,27 +31,6 @@ interface SqlToQueryConfig {
   casing?: Record<string, string>;
 }
 
-interface PgColumnWithConfig extends PgColumn {
-  isUnique?: boolean;
-  config?: {
-    uniqueName?: string;
-    notNull?: boolean;
-    default?: unknown;
-  };
-}
-
-interface DrizzleIndex {
-  config: {
-    name: string;
-    columns: (PgColumn | SQL)[];
-    unique: boolean;
-    where?: SQL;
-    concurrently?: boolean;
-    method?: string;
-    using?: string;
-  };
-}
-
 /**
  * Utility functions from Drizzle's code
  */

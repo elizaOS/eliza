@@ -172,19 +172,19 @@ pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
 }
 
 fn has_x_config(env: &HashMap<String, String>) -> bool {
-    env.get("TWITTER_API_KEY")
+    env.get("X_API_KEY")
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false)
         && env
-            .get("TWITTER_API_SECRET_KEY")
+            .get("X_API_SECRET")
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false)
         && env
-            .get("TWITTER_ACCESS_TOKEN")
+            .get("X_ACCESS_TOKEN")
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false)
         && env
-            .get("TWITTER_ACCESS_TOKEN_SECRET")
+            .get("X_ACCESS_TOKEN_SECRET")
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false)
 }

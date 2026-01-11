@@ -39,19 +39,19 @@ export class OAuth2PKCEAuthProvider implements XAuthProvider {
   ) {}
 
   private get clientId(): string {
-    const v = getSetting(this.runtime, "TWITTER_CLIENT_ID");
-    if (!v) throw new Error("TWITTER_CLIENT_ID is required for TWITTER_AUTH_MODE=oauth");
+    const v = getSetting(this.runtime, "X_CLIENT_ID");
+    if (!v) throw new Error("X_CLIENT_ID is required for X_AUTH_MODE=oauth");
     return v;
   }
 
   private get redirectUri(): string {
-    const v = getSetting(this.runtime, "TWITTER_REDIRECT_URI");
-    if (!v) throw new Error("TWITTER_REDIRECT_URI is required for TWITTER_AUTH_MODE=oauth");
+    const v = getSetting(this.runtime, "X_REDIRECT_URI");
+    if (!v) throw new Error("X_REDIRECT_URI is required for X_AUTH_MODE=oauth");
     return v;
   }
 
   private get scopes(): string {
-    return getSetting(this.runtime, "TWITTER_SCOPES") || DEFAULT_SCOPES;
+    return getSetting(this.runtime, "X_SCOPES") || DEFAULT_SCOPES;
   }
 
   private async loadTokens(): Promise<StoredOAuth2Tokens | null> {

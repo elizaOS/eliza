@@ -84,6 +84,7 @@ export interface ActionLogBody extends BaseLogBody {
   content?: ActionLogContent;
   result?: ActionLogResult;
   isLegacyReturn?: boolean;
+  isVoidReturn?: boolean;
   prompts?: ActionLogPrompt[];
   promptCount?: number;
   planStep?: string;
