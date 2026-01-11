@@ -412,8 +412,6 @@ export class ClientBase {
           .map((id) => createUniqueUuid(this.runtime, id as string)),
       });
 
-      //TODO: load tweets not in cache?
-
       // Create a Set to store the IDs of existing memories
       const existingMemoryIds = new Set(
         existingMemories.map((memory) => memory.id?.toString()).filter((id): id is string => !!id)

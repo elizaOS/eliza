@@ -251,9 +251,9 @@ export class EntityTracker {
     frameEntities: TrackedEntity[]
   ): Promise<void> {
     try {
-      // Create or update entities in the runtime
+      // Sync detected entities with the runtime's entity system
       for (const entity of frameEntities) {
-        const _elizaEntity = {
+        const elizaEntity = {
           id: entity.id as UUID,
           names: [entity.attributes.name || entity.id],
           metadata: {
@@ -266,17 +266,21 @@ export class EntityTracker {
           agentId: runtime.agentId,
         };
 
-        // For now, we'll just log the entity creation
-        // In a real implementation, this would integrate with runtime.createEntity
-        logger.debug(`[EntityTracker] Would sync entity ${entity.id} with runtime`);
-
-        // TODO: When runtime supports entity management:
-        // const existing = await runtime.getEntity(entity.id as UUID);
-        // if (!existing) {
-        //   await runtime.createEntity(elizaEntity);
-        // } else {
-        //   await runtime.updateEntity({...});
-        // }
+        try {
+          const existing = await runtime.getEntityById(entity.id as UUID);
+          if (!existing) {
+            await runtime.createEntity(elizaEntity);
+            logger.debug(`[EntityTracker] Created entity ${entity.id} in runtime`);
+          } else {
+            await runtime.updateEntity({
+              ...elizaEntity,
+              id: entity.id as UUID,
+            });
+            logger.debug(`[EntityTracker] Updated entity ${entity.id} in runtime`);
+          }
+        } catch (err) {
+          logger.debug(`[EntityTracker] Could not sync entity ${entity.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     } catch (error) {
       logger.error("[EntityTracker] Failed to sync with runtime:", error);

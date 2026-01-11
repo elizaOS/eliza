@@ -169,8 +169,7 @@ export const plugin: Plugin = {
       "Database adapter created and registered"
     );
 
-    // Note: DatabaseMigrationService is not registered as a runtime service
-    // because migrations are handled at the server level before agents are loaded
+    // Migrations run at server level before agents load - no runtime service needed
   },
 };
 

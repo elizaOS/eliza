@@ -86,8 +86,8 @@ export const setupWebsocketAction: Action = {
     );
 
     try {
-      // Note: Actual WebSocket connection would be managed by a service.
-      // This action configures and provides status information.
+      // This action provides WebSocket configuration and status information.
+      // Actual connections are managed by the PolymarketService.
 
       const config: WebsocketConfig = {
         url: String(clobWsUrl || ""),

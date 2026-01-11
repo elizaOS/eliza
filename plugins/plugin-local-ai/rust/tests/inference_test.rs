@@ -80,14 +80,14 @@ async fn test_async_plugin_methods() {
     
     let plugin = LocalAIPlugin::new(config).expect("Failed to create plugin");
     
-    // Test placeholder text generation
+    // Test mock text generation (actual inference requires llm feature)
     let response = plugin.generate_text("Hello").await;
     assert!(response.is_ok(), "Text generation should succeed");
     let text = response.unwrap();
     println!("   ✓ Text generation method works");
     println!("   Response: {}", text);
     
-    // Test placeholder embedding
+    // Test mock embedding generation (actual embeddings require llm feature)
     let embedding = plugin.create_embedding("Hello").await;
     assert!(embedding.is_ok(), "Embedding generation should succeed");
     let vec = embedding.unwrap();

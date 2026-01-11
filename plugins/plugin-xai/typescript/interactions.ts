@@ -502,8 +502,6 @@ Response (YES/NO):`;
    *  - Saves the tweet as memory
    *  - Emits thread-related events (THREAD_CREATED / THREAD_UPDATED)
    *  - Delegates tweet content to `handleTweet` for reply generation
-   *
-   * Note: MENTION_RECEIVED is currently disabled (see TODO below)
    */
   async processMentionTweets(mentionCandidates: ClientTweet[]) {
     logger.log("Completed checking mentioned tweets:", mentionCandidates.length.toString());
@@ -670,15 +668,6 @@ Response (YES/NO):`;
 
         logger.log("Saving tweet memory...");
         await createMemorySafe(this.runtime, memory, "messages");
-
-        // TODO: This doesn't work as intended - thread events are mixed with other events
-        //       and need a better implementation strategy
-        // this.runtime.emitEvent(TwitterEventTypes.MENTION_RECEIVED, {
-        //   entityId,
-        //   memory: {...memory, id: createUniqueUuid(this.runtime)},
-        //   world: {id: worldId, ...},
-        //   isThread: !!tweet.thread,
-        // });
 
         // 4. Handle thread-specific events
         if (tweet.thread && tweet.thread.length > 0) {

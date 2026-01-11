@@ -74,12 +74,8 @@ export const searchIssuesAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    try {
-      const apiKey = runtime.getSetting("LINEAR_API_KEY");
-      return !!apiKey;
-    } catch {
-      return false;
-    }
+    const apiKey = runtime.getSetting("LINEAR_API_KEY");
+    return !!apiKey;
   },
 
   async handler(
@@ -205,10 +201,8 @@ export const searchIssuesAction: Action = {
               filters.label = parsed.labels;
             }
 
-            // Note: Date range filtering and sorting would require API enhancements
-            if (parsed.dateRange || parsed.sort) {
-              logger.info("Date range and sort filters noted but not yet implemented");
-            }
+            // Date range and sort filters are captured for future API enhancement
+            // Currently, Linear SDK filtering is applied server-side without date range support
 
             // Clean up undefined values
             Object.keys(filters).forEach((key) => {

@@ -1,3 +1,6 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - scheduleNextThink: try-finally for isThinking flag management - KEEP (state management)
+
 /**
  * Autonomy Service for elizaOS
  *

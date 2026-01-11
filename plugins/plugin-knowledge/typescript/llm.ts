@@ -649,9 +649,7 @@ async function generateGeminiWithCaching(
     }
   } else {
     logger.debug(`[Document Processor] Using standard prompt format with Gemini ${modelName}`);
-    logger.debug(
-      `[Document Processor] Note: Only Gemini 2.5 models support automatic implicit caching`
-    );
+    logger.debug(`[Document Processor] Only Gemini 2.5 models support automatic implicit caching`);
   }
 
   // For Gemini models, we use a simpler format that works well with OpenRouter

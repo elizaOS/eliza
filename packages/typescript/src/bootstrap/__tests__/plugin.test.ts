@@ -1,3 +1,6 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - mockInit: Registration error handling in test utility - KEEP (test robustness)
+
 import { EventType, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBootstrapPlugin } from "../index";

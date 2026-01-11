@@ -1,3 +1,7 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - propose(): Blockchain transaction errors - KEEP (external API)
+// - handler: Action execution with proper error response - KEEP (API boundary)
+
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { type Address, encodeFunctionData, type Hex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
@@ -134,6 +138,24 @@ export const proposeAction = {
         },
       },
     ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Create a new proposal to update the fee structure on governor 0xabcdef1234567890abcdef1234567890abcdef12 on Base",
+          action: "PROPOSE",
+        },
+      },
+    ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Submit a governance proposal for treasury allocation on the DAO at 0x9876543210987654321098765432109876543210 on Arbitrum",
+          action: "PROPOSE",
+        },
+      },
+    ],
   ],
   similes: ["PROPOSE", "GOVERNANCE_PROPOSE"],
-}; // TODO: add more examples
+};

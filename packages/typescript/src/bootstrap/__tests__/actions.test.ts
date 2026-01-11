@@ -1,3 +1,5 @@
+// TODO: Try-catch review completed - All try-catch in test assertions KEEP
+
 import {
   ChannelType,
   type HandlerCallback,
@@ -8,6 +10,9 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+// TODO: Try-catch review completed 2026-01-11. No try-catch blocks to remove.
+// Test assertions use expect().rejects.toThrow() and try-catch within custom handlers.
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   followRoomAction,

@@ -1,3 +1,7 @@
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - Lines 167-172: JSON.parse for IPC messages - KEEP (external input validation)
+// - Lines 243-259: Process termination timeout pattern - KEEP (resource cleanup)
+
 /**
  * Python Plugin Bridge for elizaOS
  *

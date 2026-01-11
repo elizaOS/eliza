@@ -69,8 +69,8 @@ jobs:
           bun run test:integration:postgres
           bun run test:migration:postgres
 
-  # TODO: Remove this job once migration system is stable
-  # This tests upgrading from older Eliza versions (1.6.x) to current
+  # E2E upgrade test - validates migration from older Eliza versions (1.6.x) to current
+  # Can be removed once migration system is proven stable in production
   e2e-upgrade:
     runs-on: ubuntu-latest
     steps:

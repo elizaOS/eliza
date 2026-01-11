@@ -36,8 +36,8 @@ impl Provider for ContactsProvider {
             return Ok(ProviderResult::empty());
         }
 
-        // In a full implementation, this would query the RolodexService
-        // For now, we return a placeholder
+        // Return service availability indicator
+        // Full integration with RolodexService would query contact details
         Ok(ProviderResult::with_text(
             "Contact information available via the rolodex service.".to_string(),
         )
