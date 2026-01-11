@@ -4,43 +4,123 @@ import {
   type Content,
   type IAgentRuntime,
   type IPlanningService,
+  type Memory,
   type PlanningContext,
+  type State,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlanningService } from "../services/planning-service";
-import {
-  createMockMemory,
-  createMockPlanningContext,
-  createMockRuntime,
-  createMockState,
-} from "./test-utils";
+
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent for planning"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
+function createTestMemory(overrides: Partial<Memory> = {}): Memory {
+  return {
+    id: asUUID(uuidv4()),
+    roomId: asUUID("test-room-id"),
+    entityId: asUUID("test-entity-id"),
+    agentId: asUUID("test-agent-id"),
+    content: {
+      text: overrides.content?.text || "Test message",
+    },
+    createdAt: Date.now(),
+    ...overrides,
+  } as Memory;
+}
+
+function createTestState(overrides: Partial<State> = {}): State {
+  return {
+    values: {},
+    data: {},
+    text: "",
+    ...overrides,
+  };
+}
+
+function createTestPlanningContext(): PlanningContext {
+  return {
+    goal: "Test goal",
+    constraints: [],
+    availableActions: ["REPLY", "THINK"],
+    availableProviders: [],
+    preferences: {
+      executionModel: "sequential",
+      maxSteps: 5,
+      timeoutMs: 30000,
+    },
+  };
+}
 
 /**
  * Integration tests for the unified planning system
  * Tests the complete workflow from planning to execution
  */
 describe("Planning Integration Tests", () => {
-  let mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
   let planningService: PlanningService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    mockRuntime = createMockRuntime();
-    planningService = new PlanningService(mockRuntime);
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+    planningService = new PlanningService(runtime);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanup();
   });
 
   describe("Service Registration and Initialization", () => {
     it("should register planning service in runtime", async () => {
-      const runtime = createMockRuntime();
-
-      // Simulate service registration
-      const mockGetService = vi.fn().mockReturnValue(new PlanningService(runtime));
-      runtime.getService = mockGetService;
+      // Simulate service registration using vi.spyOn on the real runtime
+      const mockGetService = vi.spyOn(runtime, "getService").mockReturnValue(planningService);
 
       const service = runtime.getService<IPlanningService>("planning");
 
@@ -49,8 +129,7 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should handle missing planning service gracefully", () => {
-      const runtime = createMockRuntime();
-      runtime.getService = vi.fn().mockReturnValue(null);
+      vi.spyOn(runtime, "getService").mockReturnValue(null);
 
       const service = runtime.getService<IPlanningService>("planning");
 
@@ -60,12 +139,12 @@ describe("Planning Integration Tests", () => {
 
   describe("Simple Planning", () => {
     it("should create simple plans for basic tasks", async () => {
-      const message = createMockMemory({
-        text: "Send an email to John about the meeting",
+      const message = createTestMemory({
+        content: { text: "Send an email to John about the meeting" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
-      const plan = await planningService.createSimplePlan(mockRuntime, message, state);
+      const plan = await planningService.createSimplePlan(runtime, message, state);
 
       expect(plan).toBeDefined();
       expect(plan?.goal).toBe("Execute actions: SEND_EMAIL");
@@ -74,12 +153,12 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should handle complex requests with multi-step planning", async () => {
-      const message = createMockMemory({
-        text: "Research the weather, then send a summary to the team",
+      const message = createTestMemory({
+        content: { text: "Research the weather, then send a summary to the team" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
-      const plan = await planningService.createSimplePlan(mockRuntime, message, state);
+      const plan = await planningService.createSimplePlan(runtime, message, state);
 
       expect(plan).toBeDefined();
       expect(plan?.steps.length).toBe(2); // SEARCH and REPLY actions
@@ -88,12 +167,12 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should create conservative plans when uncertain", async () => {
-      const message = createMockMemory({
-        text: "Do something interesting",
+      const message = createTestMemory({
+        content: { text: "Do something interesting" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
-      const plan = await planningService.createSimplePlan(mockRuntime, message, state);
+      const plan = await planningService.createSimplePlan(runtime, message, state);
 
       expect(plan).toBeDefined();
       expect(plan?.steps).toHaveLength(1);
@@ -103,10 +182,10 @@ describe("Planning Integration Tests", () => {
 
   describe("Comprehensive Planning", () => {
     it("should create detailed plans with context and constraints", async () => {
-      const message = createMockMemory({
-        text: "Plan a project timeline for the new feature",
+      const message = createTestMemory({
+        content: { text: "Plan a project timeline for the new feature" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
       const planningContext: PlanningContext = {
         goal: "Create a comprehensive project timeline",
@@ -132,7 +211,7 @@ describe("Planning Integration Tests", () => {
       };
 
       const plan = await planningService.createComprehensivePlan(
-        mockRuntime,
+        runtime,
         planningContext,
         message,
         state
@@ -145,10 +224,10 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should respect execution model preferences", async () => {
-      const message = createMockMemory({
-        text: "Process multiple tasks simultaneously",
+      const message = createTestMemory({
+        content: { text: "Process multiple tasks simultaneously" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
       const planningContext: PlanningContext = {
         goal: "Process multiple tasks",
@@ -163,7 +242,7 @@ describe("Planning Integration Tests", () => {
       };
 
       const plan = await planningService.createComprehensivePlan(
-        mockRuntime,
+        runtime,
         planningContext,
         message,
         state
@@ -174,10 +253,10 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should handle DAG execution model for complex dependencies", async () => {
-      const message = createMockMemory({
-        text: "Coordinate dependent tasks with prerequisites",
+      const message = createTestMemory({
+        content: { text: "Coordinate dependent tasks with prerequisites" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
       const planningContext: PlanningContext = {
         goal: "Coordinate dependent tasks",
@@ -192,7 +271,7 @@ describe("Planning Integration Tests", () => {
       };
 
       const plan = await planningService.createComprehensivePlan(
-        mockRuntime,
+        runtime,
         planningContext,
         message,
         state
@@ -207,12 +286,12 @@ describe("Planning Integration Tests", () => {
 
   describe("Plan Execution", () => {
     it("should execute sequential plans correctly", async () => {
-      const message = createMockMemory({
-        text: "Execute test plan",
+      const message = createTestMemory({
+        content: { text: "Execute test plan" },
       });
 
-      // Add specific REPLY and THINK actions to mockRuntime for this test
-      mockRuntime.actions = [
+      // Add specific REPLY and THINK actions to runtime for this test
+      runtime.actions = [
         {
           name: "REPLY",
           similes: [],
@@ -282,7 +361,7 @@ describe("Planning Integration Tests", () => {
         return Promise.resolve([]);
       });
 
-      const result = await planningService.executePlan(mockRuntime, plan, message, mockCallback);
+      const result = await planningService.executePlan(runtime, plan, message, mockCallback);
 
       expect(result.success).toBe(true);
       expect(result.results).toHaveLength(2);
@@ -291,8 +370,8 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should handle execution errors gracefully", async () => {
-      const message = createMockMemory({
-        text: "Execute failing plan",
+      const message = createTestMemory({
+        content: { text: "Execute failing plan" },
       });
 
       const plan: ActionPlan = {
@@ -313,7 +392,7 @@ describe("Planning Integration Tests", () => {
       };
 
       // Mock a failing action
-      mockRuntime.actions = [
+      runtime.actions = [
         {
           name: "FAILING_ACTION",
           similes: [],
@@ -326,7 +405,7 @@ describe("Planning Integration Tests", () => {
 
       const mockCallback = vi.fn();
 
-      const result = await planningService.executePlan(mockRuntime, plan, message, mockCallback);
+      const result = await planningService.executePlan(runtime, plan, message, mockCallback);
 
       expect(result.success).toBe(false);
       expect(result.errors).toBeDefined();
@@ -336,8 +415,8 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should maintain working memory across steps", async () => {
-      const message = createMockMemory({
-        text: "Test working memory",
+      const message = createTestMemory({
+        content: { text: "Test working memory" },
       });
 
       const plan: ActionPlan = {
@@ -364,7 +443,7 @@ describe("Planning Integration Tests", () => {
       };
 
       // Mock actions that use working memory
-      mockRuntime.actions = [
+      runtime.actions = [
         {
           name: "SET_VALUE",
           similes: [],
@@ -419,7 +498,7 @@ describe("Planning Integration Tests", () => {
         return Promise.resolve([]);
       });
 
-      const result = await planningService.executePlan(mockRuntime, plan, message, mockCallback);
+      const result = await planningService.executePlan(runtime, plan, message, mockCallback);
 
       expect(result.success).toBe(true);
       expect(responses[0].text).toContain("Set test = hello");
@@ -446,7 +525,7 @@ describe("Planning Integration Tests", () => {
         estimatedDuration: 1000,
       };
 
-      const validation = await planningService.validatePlan(mockRuntime, validPlan);
+      const validation = await planningService.validatePlan(runtime, validPlan);
 
       expect(validation.valid).toBe(true);
       expect(validation.issues).toBeUndefined();
@@ -470,7 +549,7 @@ describe("Planning Integration Tests", () => {
         estimatedDuration: 1000,
       };
 
-      const validation = await planningService.validatePlan(mockRuntime, invalidPlan);
+      const validation = await planningService.validatePlan(runtime, invalidPlan);
 
       expect(validation.valid).toBe(false);
       expect(validation.issues).toBeDefined();
@@ -507,7 +586,7 @@ describe("Planning Integration Tests", () => {
         estimatedDuration: 2000,
       };
 
-      const validation = await planningService.validatePlan(mockRuntime, circularPlan);
+      const validation = await planningService.validatePlan(runtime, circularPlan);
 
       expect(validation.valid).toBe(false);
       expect(validation.issues).toBeDefined();
@@ -541,7 +620,7 @@ describe("Planning Integration Tests", () => {
       };
 
       const newPlan = await planningService.adaptPlan(
-        mockRuntime,
+        runtime,
         originalPlan,
         0, // currentStepIndex
         [], // results
@@ -591,7 +670,7 @@ describe("Planning Integration Tests", () => {
       };
 
       const adaptedPlan = await planningService.adaptPlan(
-        mockRuntime,
+        runtime,
         originalPlan,
         1, // currentStepIndex (failed at step 2, index 1)
         [
@@ -623,15 +702,10 @@ describe("Planning Integration Tests", () => {
         estimatedDuration: 0,
       };
 
-      const message = createMockMemory();
+      const message = createTestMemory();
       const mockCallback = vi.fn();
 
-      const result = await planningService.executePlan(
-        mockRuntime,
-        emptyPlan,
-        message,
-        mockCallback
-      );
+      const result = await planningService.executePlan(runtime, emptyPlan, message, mockCallback);
 
       expect(result.success).toBe(true);
       expect(result.results).toHaveLength(0);
@@ -639,10 +713,10 @@ describe("Planning Integration Tests", () => {
     });
 
     it("should handle malformed planning context", async () => {
-      const message = createMockMemory({
-        text: "Test malformed context",
+      const message = createTestMemory({
+        content: { text: "Test malformed context" },
       });
-      const state = createMockState();
+      const state = createTestState();
 
       const malformedContext = {
         goal: "", // Empty goal
@@ -653,17 +727,17 @@ describe("Planning Integration Tests", () => {
       };
 
       await expect(
-        planningService.createComprehensivePlan(mockRuntime, malformedContext, message, state)
+        planningService.createComprehensivePlan(runtime, malformedContext, message, state)
       ).rejects.toThrow();
     });
 
     it("should handle runtime service unavailability", async () => {
-      const brokenRuntime = createMockRuntime();
-      brokenRuntime.useModel = vi.fn().mockRejectedValue(new Error("Model service unavailable"));
+      const brokenRuntime = runtime;
+      vi.spyOn(brokenRuntime, "useModel").mockRejectedValue(new Error("Model service unavailable"));
 
       const planningServiceWithBrokenRuntime = new PlanningService(brokenRuntime);
-      const message = createMockMemory();
-      const state = createMockState();
+      const message = createTestMemory();
+      const state = createTestState();
 
       // Simple plan should still work even with broken useModel since it uses heuristics
       const simplePlan = await planningServiceWithBrokenRuntime.createSimplePlan(
@@ -675,7 +749,7 @@ describe("Planning Integration Tests", () => {
       expect(simplePlan?.steps.length).toBeGreaterThan(0);
 
       // Comprehensive plan should fail with broken useModel
-      const context = createMockPlanningContext();
+      const context = createTestPlanningContext();
       await expect(
         planningServiceWithBrokenRuntime.createComprehensivePlan(
           brokenRuntime,
@@ -704,16 +778,11 @@ describe("Planning Integration Tests", () => {
         estimatedDuration: 100000,
       };
 
-      const message = createMockMemory();
+      const message = createTestMemory();
       const mockCallback = vi.fn().mockResolvedValue([]);
 
       const startTime = Date.now();
-      const result = await planningService.executePlan(
-        mockRuntime,
-        largePlan,
-        message,
-        mockCallback
-      );
+      const result = await planningService.executePlan(runtime, largePlan, message, mockCallback);
       const executionTime = Date.now() - startTime;
 
       expect(result.success).toBe(true);
@@ -746,7 +815,7 @@ describe("Planning Integration Tests", () => {
       };
 
       // Mock a slow action
-      mockRuntime.actions = [
+      runtime.actions = [
         {
           name: "SLOW_ACTION",
           similes: [],
@@ -760,15 +829,10 @@ describe("Planning Integration Tests", () => {
         },
       ];
 
-      const message = createMockMemory();
+      const message = createTestMemory();
       const mockCallback = vi.fn();
 
-      const result = await planningService.executePlan(
-        mockRuntime,
-        timeoutPlan,
-        message,
-        mockCallback
-      );
+      const result = await planningService.executePlan(runtime, timeoutPlan, message, mockCallback);
 
       // Since the action completes successfully after 2 seconds, and there's no actual timeout logic
       // in the plan execution, we should expect success

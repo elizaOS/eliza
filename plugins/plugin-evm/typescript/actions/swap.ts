@@ -219,11 +219,13 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      fromTokenDecimals = Number(await publicClient.readContract({
-        address: params.fromToken as Address,
-        abi: decimalsAbi,
-        functionName: "decimals",
-      } as unknown as Parameters<typeof publicClient.readContract>[0]));
+      fromTokenDecimals = Number(
+        await publicClient.readContract({
+          address: params.fromToken as Address,
+          abi: decimalsAbi,
+          functionName: "decimals",
+        } as unknown as Parameters<typeof publicClient.readContract>[0])
+      );
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [

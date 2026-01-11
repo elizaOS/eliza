@@ -297,22 +297,16 @@ describe("Reflection Evaluator", () => {
     // Arrange - Mock a model error
     mockRuntime.useModel.mockRejectedValueOnce(new Error("Model failed"));
 
-    // Act - Should not throw error
-    let error: Error | undefined;
-    try {
-      await reflectionEvaluator.handler(
+    // Act - Errors propagate from the evaluator
+    await expect(
+      reflectionEvaluator.handler(
         mockRuntime as IAgentRuntime,
         mockMessage as Memory,
         mockState as State,
-      );
-    } catch (e) {
-      error = e as Error;
-    }
+      ),
+    ).rejects.toThrow("Model failed");
 
-    // Assert - Should not have thrown
-    expect(error).toBeUndefined();
-
-    // No facts or relationships should be stored
+    // No facts or relationships should be stored since error occurred
     expect(mockRuntime.queueEmbeddingGeneration).not.toHaveBeenCalled();
     expect(mockRuntime.createMemory).not.toHaveBeenCalled();
     expect(mockRuntime.createRelationship).not.toHaveBeenCalled();

@@ -746,9 +746,7 @@ export class VisionService extends Service {
                       age: face.ageGender?.age.toString(),
                       gender: face.ageGender?.gender,
                       emotion: face.expressions
-                        ? this.getDominantExpression(
-                            face.expressions as unknown as Record<string, number>
-                          )
+                        ? this.getDominantExpression(face.expressions)
                         : undefined,
                     },
                   });
@@ -1346,12 +1344,30 @@ export class VisionService extends Service {
     return intersection / union;
   }
 
-  private getDominantExpression(expressions: Record<string, number>): string {
+  private getDominantExpression(expressions: {
+    neutral: number;
+    happy: number;
+    sad: number;
+    angry: number;
+    fearful: number;
+    disgusted: number;
+    surprised: number;
+  }): string {
     let maxValue = 0;
     let dominantExpression = "neutral";
 
-    for (const [expression, value] of Object.entries(expressions)) {
-      if (typeof value === "number" && value > maxValue) {
+    const expressionEntries: [string, number][] = [
+      ["neutral", expressions.neutral],
+      ["happy", expressions.happy],
+      ["sad", expressions.sad],
+      ["angry", expressions.angry],
+      ["fearful", expressions.fearful],
+      ["disgusted", expressions.disgusted],
+      ["surprised", expressions.surprised],
+    ];
+
+    for (const [expression, value] of expressionEntries) {
+      if (value > maxValue) {
         maxValue = value;
         dominantExpression = expression;
       }

@@ -1,3 +1,5 @@
+import type { Service } from "@elizaos/core";
+
 /**
  * SAM TTS Voice Configuration
  *
@@ -43,7 +45,7 @@ export const SAMServiceType = {
 /**
  * Hardware bridge service interface for audio output
  */
-export interface HardwareBridgeService {
+export interface HardwareBridgeService extends Service {
   sendAudioData(audioBuffer: Uint8Array): Promise<void>;
 }
 

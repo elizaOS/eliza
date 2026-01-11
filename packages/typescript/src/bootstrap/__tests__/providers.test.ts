@@ -271,7 +271,12 @@ describe("Attachments Provider", () => {
 
   it("should return current message attachments", async () => {
     const testAttachments: Media[] = [
-      { id: "att-1", url: "https://example.com/image.png", contentType: "image/png", title: "Test Image" },
+      {
+        id: "att-1",
+        url: "https://example.com/image.png",
+        contentType: "image/png",
+        title: "Test Image",
+      },
     ];
 
     mockMessage.content = {

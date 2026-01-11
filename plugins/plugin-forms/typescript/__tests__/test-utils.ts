@@ -5,7 +5,7 @@
  * NO MOCKS - all tests run against actual runtime infrastructure.
  */
 
-import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import type { Memory, State, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
 /**

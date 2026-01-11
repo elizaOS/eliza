@@ -607,9 +607,9 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
   const id = createUUID();
   return {
     id,
-    roomId: ("test-room-id" as UUID) || overrides.roomId,
-    entityId: ("test-entity-id" as UUID) || overrides.entityId,
-    agentId: ("test-agent-id" as UUID) || overrides.agentId,
+    roomId: overrides.roomId || ("test-room-id" as UUID),
+    entityId: overrides.entityId || ("test-entity-id" as UUID),
+    agentId: overrides.agentId || ("test-agent-id" as UUID),
     content: {
       text: "Test message",
       channelType: ChannelType.GROUP,
@@ -620,6 +620,9 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
     ...overrides,
   };
 }
+
+// Alias for backward compatibility
+export const createTestMemory = createMockMemory;
 
 /**
  * Creates a mock State object for testing
@@ -645,6 +648,9 @@ export function createMockState(overrides: Partial<State> = {}): State {
     ...overrides,
   };
 }
+
+// Alias for backward compatibility
+export const createTestState = createMockState;
 
 /**
  * Creates a standardized setup for action tests with consistent objects.
@@ -708,6 +714,20 @@ export async function cleanupTestRuntime(
 ): Promise<void> {
   await runtime.stop();
 }
+
+/**
+ * Test fixtures for common testing scenarios
+ */
+export const testFixtures = {
+  agentId: "test-agent-id" as UUID,
+  roomId: "test-room-id" as UUID,
+  entityId: "test-entity-id" as UUID,
+  worldId: "test-world-id" as UUID,
+  serverId: "test-server-id" as UUID,
+  userId: "test-user-id" as UUID,
+  character: DEFAULT_TEST_CHARACTER,
+  timestamp: Date.now(),
+};
 
 /**
  * Helper to wait for a condition to be true
