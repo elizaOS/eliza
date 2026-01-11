@@ -177,9 +177,7 @@ describe("Bootstrap Plugin", () => {
       });
 
       // Check that all events were registered
-      expect(runtime.registerEvent).toHaveBeenCalledTimes(
-        expectedEventCount,
-      );
+      expect(runtime.registerEvent).toHaveBeenCalledTimes(expectedEventCount);
     }
   });
 
@@ -213,10 +211,7 @@ describe("Bootstrap Plugin", () => {
 
     // Should not throw error during initialization
     await expect(async () => {
-      await mockInit(
-        {},
-        runtime as Partial<IAgentRuntime> as IAgentRuntime,
-      );
+      await mockInit({}, runtime as Partial<IAgentRuntime> as IAgentRuntime);
     }).not.toThrow();
 
     // Ensure console.error was called (as the mockInit is expected to log errors)

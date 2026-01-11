@@ -138,7 +138,7 @@ export const polymarketPlugin: Plugin = {
     } catch (error) {
       if (error instanceof z.ZodError) {
         throw new Error(
-          `Invalid Polymarket plugin configuration: ${error.errors.map((e) => e.message).join(", ")}`
+          `Invalid Polymarket plugin configuration: ${error.issues.map((e) => e.message).join(", ")}`
         );
       }
       throw error;

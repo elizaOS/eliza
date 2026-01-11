@@ -26,7 +26,6 @@ export enum XEventTypes {
   QUOTE_RECEIVED = "X_QUOTE_RECEIVED",
 }
 
-
 /**
  * X interaction payload
  */
@@ -42,7 +41,6 @@ export interface XInteractionPayload {
   repostId?: string;
 }
 
-
 /**
  * X interaction memory
  */
@@ -53,7 +51,6 @@ export interface XInteractionMemory extends Memory {
   };
 }
 
-
 /**
  * X memory
  */
@@ -63,7 +60,6 @@ export interface XMemory extends Memory {
     source: "x";
   };
 }
-
 
 /**
  * X like received payload
@@ -79,7 +75,6 @@ export interface XLikeReceivedPayload {
   source: "x";
 }
 
-
 /**
  * X repost received payload
  */
@@ -94,7 +89,6 @@ export interface XRepostReceivedPayload {
   };
   source: "x";
 }
-
 
 /**
  * X quote received payload
@@ -116,7 +110,6 @@ export interface XQuoteReceivedPayload {
   };
   source: "x";
 }
-
 
 /**
  * Action response from X actions
@@ -161,7 +154,6 @@ export type { Post } from "./client";
 
 // Re-export XConfig from environment
 export type { XConfig } from "./environment";
-
 
 /**
  * X API response structure - can have nested data structures
@@ -218,7 +210,6 @@ export interface ResponseLike {
   bodyUsed?: boolean;
 }
 
-
 /**
  * Utility type guard to check if value conforms to XApiResultShape
  */
@@ -232,7 +223,6 @@ export function isXApiResult(value: unknown): value is XApiResultShape {
 export function isResponseLike(value: unknown): value is ResponseLike {
   return value !== null && typeof value === "object" && "json" in value;
 }
-
 
 /**
  * Extract ID from various X API response shapes

@@ -107,9 +107,7 @@ describe("EmbeddingGenerationService", () => {
       expect(service.getQueueSize()).toBe(0);
 
       // Verify getModel was called to check for TEXT_EMBEDDING
-      expect(runtime.getModel).toHaveBeenCalledWith(
-        ModelType.TEXT_EMBEDDING,
-      );
+      expect(runtime.getModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING);
     });
   });
 
@@ -303,12 +301,9 @@ describe("EmbeddingGenerationService", () => {
       // Wait for processing to complete
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      expect(runtime.useModel).toHaveBeenCalledWith(
-        ModelType.TEXT_EMBEDDING,
-        {
-          text: "Generate embedding for this",
-        },
-      );
+      expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
+        text: "Generate embedding for this",
+      });
       expect(runtime.updateMemory).toHaveBeenCalledWith({
         id: "test-memory",
         embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
@@ -548,9 +543,7 @@ describe("EmbeddingGenerationService", () => {
 
   describe("Service Lifecycle", () => {
     it("should process high priority items before stopping", async () => {
-      runtime.useModel = vi
-        .fn()
-        .mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]);
+      runtime.useModel = vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]);
 
       service = (await EmbeddingGenerationService.start(
         runtime,

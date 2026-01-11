@@ -11,6 +11,6 @@ export declare const QUOTE_TWEET_TEMPLATE: string;
 export declare const replyPostTemplate: string;
 export declare const REPLY_TWEET_TEMPLATE: string;
 export declare const xActionTemplate: string;
-export declare const TWITTER_ACTION_TEMPLATE: string;
+export declare const X_ACTION_TEMPLATE: string;
 export declare const xMessageHandlerTemplate: string;
-export declare const TWITTER_MESSAGE_HANDLER_TEMPLATE: string;
+export declare const X_MESSAGE_HANDLER_TEMPLATE: string;

@@ -42,17 +42,16 @@ export class XPostClient {
     this.state = state;
     this.runtime = runtime;
     const dryRunSetting =
-      typeof this.state?.TWITTER_DRY_RUN === "string" ||
-      typeof this.state?.TWITTER_DRY_RUN === "boolean" ||
-      this.state?.TWITTER_DRY_RUN === true ||
-      this.state?.TWITTER_DRY_RUN === false
-        ? this.state.TWITTER_DRY_RUN
-        : getSetting(this.runtime, "TWITTER_DRY_RUN");
+      typeof this.state?.X_DRY_RUN === "string" ||
+      typeof this.state?.X_DRY_RUN === "boolean" ||
+      this.state?.X_DRY_RUN === true ||
+      this.state?.X_DRY_RUN === false
+        ? this.state.X_DRY_RUN
+        : getSetting(this.runtime, "X_DRY_RUN");
     this.isDryRun = parseBooleanFromText(dryRunSetting);
 
     // Get X username from settings
-    const usernameSetting =
-      getSetting(this.runtime, "TWITTER_USERNAME") || this.state?.TWITTER_USERNAME;
+    const usernameSetting = getSetting(this.runtime, "X_USERNAME") || this.state?.X_USERNAME;
     this.xUsername = typeof usernameSetting === "string" ? usernameSetting : "";
 
     // Log configuration on initialization
@@ -60,18 +59,18 @@ export class XPostClient {
     logger.log(`- Dry Run Mode: ${this.isDryRun ? "Enabled" : "Disabled"}`);
 
     const postIntervalMin = parseInt(
-      (typeof this.state?.TWITTER_POST_INTERVAL_MIN === "string"
-        ? this.state.TWITTER_POST_INTERVAL_MIN
+      (typeof this.state?.X_POST_INTERVAL_MIN === "string"
+        ? this.state.X_POST_INTERVAL_MIN
         : null) ||
-        (getSetting(this.runtime, "TWITTER_POST_INTERVAL_MIN") as string) ||
+        (getSetting(this.runtime, "X_POST_INTERVAL_MIN") as string) ||
         "90",
       10
     );
     const postIntervalMax = parseInt(
-      (typeof this.state?.TWITTER_POST_INTERVAL_MAX === "string"
-        ? this.state.TWITTER_POST_INTERVAL_MAX
+      (typeof this.state?.X_POST_INTERVAL_MAX === "string"
+        ? this.state.X_POST_INTERVAL_MAX
         : null) ||
-        (getSetting(this.runtime, "TWITTER_POST_INTERVAL_MAX") as string) ||
+        (getSetting(this.runtime, "X_POST_INTERVAL_MAX") as string) ||
         "150",
       10
     );
@@ -128,13 +127,13 @@ export class XPostClient {
 
     // Check if we should generate a post immediately
     const postImmediately =
-      typeof this.state?.TWITTER_POST_IMMEDIATELY === "string" ||
-      typeof this.state?.TWITTER_POST_IMMEDIATELY === "boolean"
-        ? this.state.TWITTER_POST_IMMEDIATELY
-        : (getSetting(this.runtime, "TWITTER_POST_IMMEDIATELY") as string);
+      typeof this.state?.X_POST_IMMEDIATELY === "string" ||
+      typeof this.state?.X_POST_IMMEDIATELY === "boolean"
+        ? this.state.X_POST_IMMEDIATELY
+        : (getSetting(this.runtime, "X_POST_IMMEDIATELY") as string);
 
     if (parseBooleanFromText(postImmediately)) {
-      logger.info("TWITTER_POST_IMMEDIATELY is true, generating initial post now");
+      logger.info("X_POST_IMMEDIATELY is true, generating initial post now");
       // Try multiple times in case profile isn't ready
       let retries = 0;
       while (retries < 5) {
@@ -396,10 +395,7 @@ Generate a single post that sounds like YOU would actually write it:`;
    * @param {MediaData[]} mediaData Optional media to attach to the post
    * @returns {Promise<PostResponse | null>} The result from the X API
    */
-  private async postToX(
-    text: string,
-    mediaData: MediaData[] = []
-  ): Promise<PostResponse | null> {
+  private async postToX(text: string, mediaData: MediaData[] = []): Promise<PostResponse | null> {
     // Check if this post is a duplicate of recent posts
     const username = this.client.profile?.username;
     if (!username) {
@@ -429,4 +425,3 @@ Generate a single post that sounds like YOU would actually write it:`;
     return result;
   }
 }
-

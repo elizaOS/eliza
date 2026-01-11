@@ -3,8 +3,8 @@ syntax = "proto3";
 
 package eliza.v1;
 
-import "eliza/v1/primitives.proto";
 import "eliza/v1/memory.proto";
+import "eliza/v1/primitives.proto";
 
 // Socket message type enumeration
 enum SocketMessageType {
@@ -65,4 +65,3 @@ message MessageUsage {
   int32 output_tokens = 2;
   string model = 3;
 }
-

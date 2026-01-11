@@ -9,21 +9,6 @@ import type {
 import type { FetchTransformOptions, RequestApiResult } from "./api-types";
 import { XAuth } from "./auth";
 import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
-// Removed messages imports - using X API v2 instead
-import {
-  getEntityIdByScreenName,
-  getProfile,
-  getScreenNameByUserId,
-  type Profile,
-} from "./profile";
-import {
-  fetchProfileFollowers,
-  fetchProfileFollowing,
-  followUser,
-  getFollowers,
-  getFollowing,
-} from "./relationships";
-import { SearchMode, searchProfiles, searchQuotedPosts, searchPosts } from "./search";
 import {
   createCreateLongPostRequest,
   createCreateNotePostRequest,
@@ -46,15 +31,30 @@ import {
   getPostWhere,
   likePost,
   type PollData,
+  type Post,
+  type PostQuery,
   parsePostV2ToV1,
   type Reposter,
   repost,
-  type Post,
-  type PostQuery,
   unlikePost,
   unrepost,
 } from "./posts";
-import type { QueryProfilesResponse, QueryPostsResponse } from "./types";
+// Removed messages imports - using X API v2 instead
+import {
+  getEntityIdByScreenName,
+  getProfile,
+  getScreenNameByUserId,
+  type Profile,
+} from "./profile";
+import {
+  fetchProfileFollowers,
+  fetchProfileFollowing,
+  followUser,
+  getFollowers,
+  getFollowing,
+} from "./relationships";
+import { SearchMode, searchPosts, searchProfiles, searchQuotedPosts } from "./search";
+import type { QueryPostsResponse, QueryProfilesResponse } from "./types";
 
 const _xUrl = "https://x.com";
 

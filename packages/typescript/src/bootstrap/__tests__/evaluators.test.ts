@@ -170,7 +170,7 @@ describe("Reflection Evaluator", () => {
 
     // Return null for cache (no previous processing)
     vi.spyOn(runtime, "getCache").mockResolvedValue(null);
-    
+
     // Return enough messages for validation
     const mockMessages = Array.from({ length: 5 }, (_, i) => ({
       id: `msg-${i}`,
@@ -225,11 +225,7 @@ describe("Multiple Prompt Evaluator Factory", () => {
       return {
         name: config.name,
         description: config.description,
-        handler: async (
-          rt: IAgentRuntime,
-          _msg: Memory,
-          st: State,
-        ) => {
+        handler: async (rt: IAgentRuntime, _msg: Memory, st: State) => {
           const results: Record<string, unknown> = {};
 
           for (const prompt of config.prompts) {
@@ -317,11 +313,7 @@ describe("Multiple Prompt Evaluator Factory", () => {
       return {
         name: config.name,
         description: config.description,
-        handler: async (
-          rt: IAgentRuntime,
-          _msg: Memory,
-          st: State,
-        ) => {
+        handler: async (rt: IAgentRuntime, _msg: Memory, st: State) => {
           const results: Record<string, unknown> = {};
 
           for (const prompt of config.prompts) {

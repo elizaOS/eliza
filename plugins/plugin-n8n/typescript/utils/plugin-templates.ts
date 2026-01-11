@@ -542,4 +542,3 @@ describe('${componentName}${componentType}', () => {
 });
 `;
 };
-

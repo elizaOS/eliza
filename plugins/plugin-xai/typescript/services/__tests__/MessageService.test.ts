@@ -190,10 +190,7 @@ describe("XMessageService", () => {
 
       const message = await service.sendMessage(options);
 
-      expect(mockClient.xClient.sendDirectMessage).toHaveBeenCalledWith(
-        "room-123",
-        "Hello DM"
-      );
+      expect(mockClient.xClient.sendDirectMessage).toHaveBeenCalledWith("room-123", "Hello DM");
 
       expect(message).toEqual({
         id: "dm-123",
@@ -228,10 +225,7 @@ describe("XMessageService", () => {
 
       const message = await service.sendMessage(options);
 
-      expect(mockClient.xClient.sendPost).toHaveBeenCalledWith(
-        "Hello Post",
-        "reply-to-123"
-      );
+      expect(mockClient.xClient.sendPost).toHaveBeenCalledWith("Hello Post", "reply-to-123");
 
       expect(message.id).toBe("post-123");
       expect(message.type).toBe(MessageType.POST);
@@ -304,9 +298,7 @@ describe("XMessageService", () => {
 
       await service.markAsRead(["post-1", "post-2"], TEST_AGENT_ID);
 
-      expect(logSpy).toHaveBeenCalledWith(
-        "Marking messages as read is not implemented for X"
-      );
+      expect(logSpy).toHaveBeenCalledWith("Marking messages as read is not implemented for X");
 
       logSpy.mockRestore();
     });

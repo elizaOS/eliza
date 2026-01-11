@@ -1531,7 +1531,8 @@ export class DiscordService extends Service implements IDiscordService {
 
           for (const [guildId, guild] of guilds) {
             guildRegistrations.push(
-              this.client.application.commands.set(transformedAllGeneralCommands, guildId)
+              this.client.application.commands
+                .set(transformedAllGeneralCommands, guildId)
                 .then(() => {
                   this.runtime.logger.debug(
                     {
@@ -1936,11 +1937,14 @@ export class DiscordService extends Service implements IDiscordService {
 
       try {
         // can't interaction.deferReply if we want to allow custom apps (showModal)
+        if (!this.client) {
+          return; // Skip if client is not available
+        }
         const slashPayload: DiscordSlashCommandPayload = {
           runtime: this.runtime,
           source: "discord",
           interaction,
-          client: this.client!,
+          client: this.client,
           commands: this.slashCommands,
         };
         this.runtime.emitEvent(DiscordEventTypes.SLASH_COMMAND, slashPayload);
@@ -1968,11 +1972,14 @@ export class DiscordService extends Service implements IDiscordService {
 
     if (interaction.isModalSubmit()) {
       // this modal.id is stored in interaction.customId
+      if (!this.client) {
+        return; // Skip if client is not available
+      }
       const modalPayload: DiscordSlashCommandPayload = {
         runtime: this.runtime,
         source: "discord",
         interaction,
-        client: this.client!,
+        client: this.client,
         commands: this.slashCommands,
       };
       this.runtime.emitEvent(DiscordEventTypes.MODAL_SUBMIT, modalPayload);

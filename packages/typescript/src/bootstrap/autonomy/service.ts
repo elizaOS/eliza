@@ -110,7 +110,7 @@ export class AutonomyService extends Service {
         id: this.autonomousWorldId,
         name: "Autonomy World",
         agentId: this.runtime.agentId,
-        serverId: stringToUuid("00000000-0000-0000-0000-000000000000"),
+        messageServerId: stringToUuid("00000000-0000-0000-0000-000000000000"),
         metadata: {
           type: "autonomy",
           description: "World for autonomous agent thinking",

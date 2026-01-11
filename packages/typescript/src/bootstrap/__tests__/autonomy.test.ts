@@ -81,9 +81,7 @@ describe("AutonomyService", () => {
     });
 
     it("should create service instance with default values", async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
 
       expect(autonomyService).toBeDefined();
       expect(autonomyService).toBeInstanceOf(AutonomyService);
@@ -98,15 +96,10 @@ describe("AutonomyService", () => {
         return null;
       });
 
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(runtime.setSetting).toHaveBeenCalledWith(
-        "AUTONOMY_ENABLED",
-        true,
-      );
+      expect(runtime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
     });
 
     it("should auto-start loop when AUTONOMY_ENABLED is 'true' string", async () => {
@@ -115,17 +108,13 @@ describe("AutonomyService", () => {
         return null;
       });
 
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
 
       expect(autonomyService.isLoopRunning()).toBe(true);
     });
 
     it("should ensure world and room exist on initialization", async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
 
       expect(runtime.ensureWorldExists).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -148,26 +137,20 @@ describe("AutonomyService", () => {
 
   describe("Loop Management", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
     });
 
     it("should start loop and set running state", async () => {
       await autonomyService.startLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(runtime.setSetting).toHaveBeenCalledWith(
-        "AUTONOMY_ENABLED",
-        true,
-      );
+      expect(runtime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
     });
 
     it("should not start loop if already running", async () => {
       await autonomyService.startLoop();
-      const initialCallCount = (
-        runtime.setSetting as ReturnType<typeof vi.fn>
-      ).mock.calls.length;
+      const initialCallCount = (runtime.setSetting as ReturnType<typeof vi.fn>)
+        .mock.calls.length;
 
       await autonomyService.startLoop();
 
@@ -188,9 +171,8 @@ describe("AutonomyService", () => {
     });
 
     it("should not attempt to stop if loop is not running", async () => {
-      const initialCallCount = (
-        runtime.setSetting as ReturnType<typeof vi.fn>
-      ).mock.calls.length;
+      const initialCallCount = (runtime.setSetting as ReturnType<typeof vi.fn>)
+        .mock.calls.length;
 
       await autonomyService.stopLoop();
 
@@ -228,9 +210,7 @@ describe("AutonomyService", () => {
 
   describe("Interval Configuration", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
     });
 
     it("should set and get loop interval", () => {
@@ -256,18 +236,13 @@ describe("AutonomyService", () => {
 
   describe("Autonomy Control API", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
     });
 
     it("should enable autonomy via enableAutonomy()", async () => {
       await autonomyService.enableAutonomy();
 
-      expect(runtime.setSetting).toHaveBeenCalledWith(
-        "AUTONOMY_ENABLED",
-        true,
-      );
+      expect(runtime.setSetting).toHaveBeenCalledWith("AUTONOMY_ENABLED", true);
       expect(autonomyService.isLoopRunning()).toBe(true);
     });
 
@@ -300,9 +275,7 @@ describe("AutonomyService", () => {
 
   describe("Thinking Guard", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
     });
 
     it("should not be thinking initially", () => {
@@ -344,9 +317,7 @@ describe("AutonomyService", () => {
 
   describe("Autonomous Thinking", () => {
     beforeEach(async () => {
-      autonomyService = await AutonomyService.start(
-        runtime as IAgentRuntime,
-      );
+      autonomyService = await AutonomyService.start(runtime as IAgentRuntime);
     });
 
     it("should create first thought prompt when no previous thoughts", async () => {
@@ -687,7 +658,9 @@ describe("autonomyRoutes", () => {
     };
 
     runtime = await createTestRuntime();
-    vi.spyOn(runtime, "getService").mockReturnValue(mockAutonomyService as never);
+    vi.spyOn(runtime, "getService").mockReturnValue(
+      mockAutonomyService as never,
+    );
   });
 
   afterEach(async () => {

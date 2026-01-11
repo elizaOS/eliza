@@ -58,11 +58,7 @@ export function getErrorType(error: unknown): XErrorType {
   return XErrorType.UNKNOWN;
 }
 
-export function handleXError(
-  context: string,
-  error: unknown,
-  throwError = false
-): XError | null {
+export function handleXError(context: string, error: unknown, throwError = false): XError | null {
   const errorType = getErrorType(error);
   const errorObj = error as { message?: string; response?: unknown };
   const errorMessage = errorObj?.message || String(error);

@@ -57,9 +57,7 @@ export class XDiscoveryClient {
 
     // Check dry run mode
     const dryRunSetting =
-      state?.TWITTER_DRY_RUN ??
-      getSetting(this.runtime, "TWITTER_DRY_RUN") ??
-      process.env.TWITTER_DRY_RUN;
+      state?.X_DRY_RUN ?? getSetting(this.runtime, "X_DRY_RUN") ?? process.env.X_DRY_RUN;
     this.isDryRun =
       dryRunSetting === true ||
       dryRunSetting === "true" ||
@@ -124,20 +122,20 @@ export class XDiscoveryClient {
     return {
       topics,
       minFollowerCount: parseInt(
-        (getSetting(this.runtime, "TWITTER_MIN_FOLLOWER_COUNT") as string) ||
-          process.env.TWITTER_MIN_FOLLOWER_COUNT ||
+        (getSetting(this.runtime, "X_MIN_FOLLOWER_COUNT") as string) ||
+          process.env.X_MIN_FOLLOWER_COUNT ||
           "100",
         10
       ),
       maxFollowsPerCycle: parseInt(
-        (getSetting(this.runtime, "TWITTER_MAX_FOLLOWS_PER_CYCLE") as string) ||
-          process.env.TWITTER_MAX_FOLLOWS_PER_CYCLE ||
+        (getSetting(this.runtime, "X_MAX_FOLLOWS_PER_CYCLE") as string) ||
+          process.env.X_MAX_FOLLOWS_PER_CYCLE ||
           "5",
         10
       ),
       maxEngagementsPerCycle: parseInt(
-        (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ||
-          process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
+        (getSetting(this.runtime, "X_MAX_ENGAGEMENTS_PER_RUN") as string) ||
+          process.env.X_MAX_ENGAGEMENTS_PER_RUN ||
           "5",
         10
       ),
@@ -409,11 +407,7 @@ export class XDiscoveryClient {
       const viralQuery = `(${topicQuery}) -is:repost has:mentions`;
 
       logger.debug(`Searching viral threads with query: ${viralQuery}`);
-      const searchResults = await this.xClient.fetchSearchPosts(
-        viralQuery,
-        15,
-        SearchMode.Top
-      );
+      const searchResults = await this.xClient.fetchSearchPosts(viralQuery, 15, SearchMode.Top);
 
       for (const post of searchResults.posts) {
         // Filter for posts with good engagement (proxy for viral threads)
@@ -469,11 +463,7 @@ export class XDiscoveryClient {
         const influencerQuery = `${searchTopic} -is:repost lang:en`;
 
         logger.debug(`Searching for influencers in topic: ${topic}`);
-        const results = await this.xClient.fetchSearchPosts(
-          influencerQuery,
-          10,
-          SearchMode.Top
-        );
+        const results = await this.xClient.fetchSearchPosts(influencerQuery, 10, SearchMode.Top);
 
         for (const post of results.posts) {
           // Filter by engagement metrics after retrieval
@@ -730,9 +720,7 @@ export class XDiscoveryClient {
             }
             const quoteText = await this.generateQuote(scoredPost.post);
             if (this.isDryRun) {
-              logger.info(
-                `[DRY RUN] Would quote post ${scoredPost.post.id} with: "${quoteText}"`
-              );
+              logger.info(`[DRY RUN] Would quote post ${scoredPost.post.id} with: "${quoteText}"`);
             } else {
               await this.xClient.sendQuotePost(quoteText, scoredPost.post.id);
               logger.info(`Quoted post: ${scoredPost.post.id}`);
@@ -953,4 +941,3 @@ Quote post:`;
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

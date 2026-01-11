@@ -182,8 +182,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           ORDER BY column_name
         `);
 
-        const columns = columnsResult.rows);
-        const typedRows = getRows<ColumnInfoRow>(result);
+        const columns = getRows<ColumnInfoRow>(columnsResult);
         const serverIdSnake = columns.find((c) => c.column_name === "server_id");
         const serverIdCamel = columns.find((c) => c.column_name === "serverId");
         const messageServerId = columns.find((c) => c.column_name === "message_server_id");
@@ -385,8 +384,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         ORDER BY column_name
       `);
 
-      const agentsColumns = agentsColumnsResult.rows);
-        const typedRows = getRows<ColumnInfoRow>(result);
+      const agentsColumns = getRows<ColumnInfoRow>(agentsColumnsResult);
       const hasOwnerId = agentsColumns.some((c) => c.column_name === "owner_id");
       const hasServerId = agentsColumns.some((c) => c.column_name === "server_id");
 
@@ -466,8 +464,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         ORDER BY table_name
       `);
 
-      const tables = tablesResult.rows);
-        const typedRows = getRows<TableInfoRow>(result);
+      const tables = getRows<TableInfoRow>(tablesResult);
       const hasServerAgents = tables.some((t) => t.table_name === "server_agents");
       const hasMessageServerAgents = tables.some((t) => t.table_name === "message_server_agents");
 
@@ -502,8 +499,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           ORDER BY column_name
         `);
 
-        const columns = columnsResult.rows);
-        const typedRows = getRows<ColumnInfoRow>(result);
+        const columns = getRows<ColumnInfoRow>(columnsResult);
         const hasServerId = columns.some((c) => c.column_name === "server_id");
         const hasMessageServerId = columns.some((c) => c.column_name === "message_server_id");
 
@@ -712,8 +708,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           ORDER BY column_name
         `);
 
-        const columns = columnsResult.rows);
-        const typedRows = getRows<ColumnInfoRow>(result);
+        const columns = getRows<ColumnInfoRow>(columnsResult);
         const hasOldColumn = columns.some((c) => c.column_name === rename.from);
         const hasNewColumn = columns.some((c) => c.column_name === rename.to);
 

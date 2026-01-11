@@ -13,10 +13,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskService } from "../../services/task";
 import { createBootstrapPlugin } from "../index";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "./test-utils";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 // Define service interface for plugin services
 interface PluginService extends Service {
@@ -161,16 +158,18 @@ describe("TaskService", () => {
     ).executeTask.bind(taskService);
 
     const mockWorkerExecute = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(runtime, "getTaskWorker").mockImplementation((taskName: string) => {
-      if (taskName === "Past scheduled task") {
-        return {
-          name: taskName,
-          execute: mockWorkerExecute,
-          validate: vi.fn().mockResolvedValue(true),
-        };
-      }
-      return undefined;
-    });
+    vi.spyOn(runtime, "getTaskWorker").mockImplementation(
+      (taskName: string) => {
+        if (taskName === "Past scheduled task") {
+          return {
+            name: taskName,
+            execute: mockWorkerExecute,
+            validate: vi.fn().mockResolvedValue(true),
+          };
+        }
+        return undefined;
+      },
+    );
 
     vi.spyOn(runtime, "deleteTask").mockResolvedValue(undefined);
 
@@ -193,16 +192,18 @@ describe("TaskService", () => {
     const mockErrorExecute = vi
       .fn()
       .mockRejectedValue(new Error("Worker execution error"));
-    vi.spyOn(runtime, "getTaskWorker").mockImplementation((taskName: string) => {
-      if (taskName === "Error task") {
-        return {
-          name: taskName,
-          execute: mockErrorExecute,
-          validate: vi.fn().mockResolvedValue(true),
-        };
-      }
-      return undefined;
-    });
+    vi.spyOn(runtime, "getTaskWorker").mockImplementation(
+      (taskName: string) => {
+        if (taskName === "Error task") {
+          return {
+            name: taskName,
+            execute: mockErrorExecute,
+            validate: vi.fn().mockResolvedValue(true),
+          };
+        }
+        return undefined;
+      },
+    );
 
     const executeTaskMethod = (
       taskService as unknown as TestableTaskService
@@ -270,7 +271,9 @@ describe("Service Registry", () => {
     if (fileServiceDefinition) {
       const serviceInstance =
         typeof fileServiceDefinition === "function"
-          ? await (fileServiceDefinition as ServiceClassConstructor).start(runtime)
+          ? await (fileServiceDefinition as ServiceClassConstructor).start(
+              runtime,
+            )
           : await (fileServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
@@ -293,7 +296,9 @@ describe("Service Registry", () => {
     if (pdfServiceDefinition) {
       const serviceInstance =
         typeof pdfServiceDefinition === "function"
-          ? await (pdfServiceDefinition as ServiceClassConstructor).start(runtime)
+          ? await (pdfServiceDefinition as ServiceClassConstructor).start(
+              runtime,
+            )
           : await (pdfServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
@@ -313,7 +318,9 @@ describe("Service Registry", () => {
     if (imageServiceDefinition) {
       const serviceInstance =
         typeof imageServiceDefinition === "function"
-          ? await (imageServiceDefinition as ServiceClassConstructor).start(runtime)
+          ? await (imageServiceDefinition as ServiceClassConstructor).start(
+              runtime,
+            )
           : await (imageServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
@@ -325,7 +332,9 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const browserServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (s as ServiceClassConstructor).serviceType === ServiceType.BROWSER;
+        return (
+          (s as ServiceClassConstructor).serviceType === ServiceType.BROWSER
+        );
       }
       return (s as PluginService).type === ServiceType.BROWSER;
     });
@@ -333,7 +342,9 @@ describe("Service Registry", () => {
     if (browserServiceDefinition) {
       const serviceInstance =
         typeof browserServiceDefinition === "function"
-          ? await (browserServiceDefinition as ServiceClassConstructor).start(runtime)
+          ? await (browserServiceDefinition as ServiceClassConstructor).start(
+              runtime,
+            )
           : await (browserServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
@@ -357,7 +368,9 @@ describe("Service Registry", () => {
 
       const serviceInstance =
         typeof fileServiceDefinition === "function"
-          ? await (fileServiceDefinition as ServiceClassConstructor).start(runtime)
+          ? await (fileServiceDefinition as ServiceClassConstructor).start(
+              runtime,
+            )
           : await (fileServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();

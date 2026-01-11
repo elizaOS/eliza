@@ -119,13 +119,13 @@ export function buildCharacterPlugins(
 
     // Platform plugins
     ...(env.DISCORD_API_TOKEN?.trim() ? ["@elizaos/plugin-discord"] : []),
-    ...(env.TWITTER_API_KEY?.trim() &&
-    env.TWITTER_API_SECRET_KEY &&
-    env.TWITTER_API_SECRET_KEY.trim() &&
-    env.TWITTER_ACCESS_TOKEN &&
-    env.TWITTER_ACCESS_TOKEN.trim() &&
-    env.TWITTER_ACCESS_TOKEN_SECRET &&
-    env.TWITTER_ACCESS_TOKEN_SECRET.trim()
+    ...(env.X_API_KEY?.trim() &&
+    env.X_API_SECRET &&
+    env.X_API_SECRET.trim() &&
+    env.X_ACCESS_TOKEN &&
+    env.X_ACCESS_TOKEN.trim() &&
+    env.X_ACCESS_TOKEN_SECRET &&
+    env.X_ACCESS_TOKEN_SECRET.trim()
       ? ["@elizaos/plugin-x"]
       : []),
     ...(env.TELEGRAM_BOT_TOKEN?.trim() ? ["@elizaos/plugin-telegram"] : []),

@@ -34,8 +34,8 @@ npm test -- --coverage
 
 ### End-to-End Tests
 
-E2E tests require real X Developer API credentials and currently exercise **TWITTER_AUTH_MODE=env** (OAuth 1.0a keys/tokens).
-The plugin also supports **TWITTER_AUTH_MODE=oauth** (OAuth 2.0 PKCE “login + approve”), but that flow is interactive and is not covered by these E2E tests.
+E2E tests require real X Developer API credentials and currently exercise **X_AUTH_MODE=env** (OAuth 1.0a keys/tokens).
+The plugin also supports **X_AUTH_MODE=oauth** (OAuth 2.0 PKCE "login + approve"), but that flow is interactive and is not covered by these E2E tests.
 
 #### Prerequisites
 
@@ -52,11 +52,11 @@ The plugin also supports **TWITTER_AUTH_MODE=oauth** (OAuth 2.0 PKCE “login + 
 
 ```env
 # X API v2 Credentials
-TWITTER_AUTH_MODE=env
-TWITTER_API_KEY=your_api_key_here
-TWITTER_API_SECRET_KEY=your_api_secret_key_here
-TWITTER_ACCESS_TOKEN=your_access_token_here
-TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret_here
+X_AUTH_MODE=env
+X_API_KEY=your_api_key_here
+X_API_SECRET=your_api_secret_key_here
+X_ACCESS_TOKEN=your_access_token_here
+X_ACCESS_TOKEN_SECRET=your_access_token_secret_here
 ```
 
 2. **Important**: Add `.env.test` to your `.gitignore` to avoid committing credentials
@@ -186,11 +186,11 @@ Example GitHub Actions setup:
   run: npm test unit
 
 - name: Run E2E Tests
-  if: ${{ secrets.TWITTER_API_KEY != '' }}
+  if: ${{ secrets.X_API_KEY != '' }}
   env:
-    TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-    TWITTER_API_SECRET_KEY: ${{ secrets.TWITTER_API_SECRET_KEY }}
-    TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-    TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+    X_API_KEY: ${{ secrets.X_API_KEY }}
+    X_API_SECRET: ${{ secrets.X_API_SECRET }}
+    X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+    X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
   run: npm test e2e
 ```

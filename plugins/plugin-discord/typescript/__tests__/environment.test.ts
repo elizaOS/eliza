@@ -1,20 +1,34 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateDiscordConfig } from "../environment";
-import {
-  createTestRuntime,
-  cleanupTestRuntime,
-} from "../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
+
+/**
+ * Create a mock runtime for testing
+ */
+function createMockRuntime(): IAgentRuntime {
+  return {
+    getSetting: vi.fn(),
+    character: {
+      name: "Test Agent",
+    },
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  } as unknown as IAgentRuntime;
+}
 
 describe("Discord Environment Configuration", () => {
   let runtime: IAgentRuntime;
 
-  beforeEach(async () => {
-    runtime = await createTestRuntime();
+  beforeEach(() => {
+    runtime = createMockRuntime();
   });
 
-  afterEach(async () => {
-    await cleanupTestRuntime(runtime);
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   it("should validate correct configuration", async () => {
@@ -32,7 +46,7 @@ describe("Discord Environment Configuration", () => {
     vi.spyOn(runtime, "getSetting").mockReturnValue(null);
 
     await expect(validateDiscordConfig(runtime)).rejects.toThrowError(
-      "Discord configuration validation failed:\nDISCORD_API_TOKEN: Invalid input: expected string, received null",
+      "Discord configuration validation failed:\nDISCORD_API_TOKEN: Invalid input: expected string, received null"
     );
   });
 
