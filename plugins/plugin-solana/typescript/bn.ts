@@ -1,7 +1,7 @@
-// Re-export BigNumber from bignumber.js using require to avoid circular import issues
+// Import BigNumber from bignumber.js using require to avoid circular import issues
 const BigNumberLib = require("bignumber.js");
 
-// Re-export as BN
+// Export as BN (not a re-export, this is a local binding)
 export const BN = BigNumberLib;
 
 // Export as default

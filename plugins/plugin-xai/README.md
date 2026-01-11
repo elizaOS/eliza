@@ -1,6 +1,6 @@
 # elizaOS xAI Plugin
 
-Unified xAI Grok and X (X) API integration for elizaOS agents.
+Unified xAI Grok and X (formerly Twitter) API integration for elizaOS agents.
 
 ## Features
 
@@ -10,7 +10,7 @@ Unified xAI Grok and X (X) API integration for elizaOS agents.
 - **Embeddings**: `grok-embedding` for semantic text embeddings
 - **Streaming**: Real-time text generation with streaming support
 
-### X (X) API v2
+### X (formerly Twitter) API v2
 
 - **Posts**: Create, read, delete, like, repost
 - **Users**: Profile lookup, follow/unfollow, followers/following lists
@@ -42,7 +42,7 @@ elizaos-plugin-xai = "1.0"
 | `XAI_SMALL_MODEL`     | No       | `grok-3-mini`         | Small model     |
 | `XAI_EMBEDDING_MODEL` | No       | `grok-embedding`      | Embedding model |
 
-### X (X) API
+### X (formerly Twitter) API
 
 | Variable                | Required       | Default | Description                         |
 | ----------------------- | -------------- | ------- | ----------------------------------- |
@@ -106,7 +106,7 @@ const response = await agent.useModel(ModelType.TEXT_LARGE, {
 ### Python
 
 ```python
-from elizaos_plugin_xai import GrokClient, GrokConfig, XClient, XConfig
+from elizaos_plugin_xai import GrokClient, GrokConfig, TwitterClient, TwitterConfig
 from elizaos_plugin_xai.grok import TextGenerationParams
 
 # Grok
@@ -116,8 +116,8 @@ async with GrokClient(GrokConfig.from_env()) as grok:
     )
     print(result.text)
 
-# X (X)
-async with XClient(XConfig.from_env()) as x:
+# X (formerly Twitter)
+async with TwitterClient(TwitterConfig.from_env()) as x:
     me = await x.me()
     print(f"Logged in as @{me.username}")
 ```
@@ -125,15 +125,15 @@ async with XClient(XConfig.from_env()) as x:
 ### Rust
 
 ```rust
-use elizaos_plugin_xai::{GrokClient, GrokConfig, XClient, XConfig, TextGenerationParams};
+use elizaos_plugin_xai::{GrokClient, GrokConfig, TwitterClient, TwitterConfig, TextGenerationParams};
 
 // Grok
 let grok = GrokClient::new(GrokConfig::from_env()?)?;
 let result = grok.generate_text(&TextGenerationParams::new("Hello"), false).await?;
 println!("{}", result.text);
 
-// X (X)
-let mut x = XClient::new(XConfig::from_env()?)?;
+// X (formerly Twitter)
+let mut x = TwitterClient::new(TwitterConfig::from_env()?)?;
 let me = x.me().await?;
 println!("Logged in as @{}", me.username);
 ```

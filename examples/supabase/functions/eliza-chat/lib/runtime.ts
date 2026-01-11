@@ -16,8 +16,6 @@ import type {
   UUID,
 } from "./types.ts";
 
-// Re-export corsHeaders for use in handlers
-export { corsHeaders } from "./types.ts";
 
 // ============================================================================
 // Global State for Warm Container Reuse

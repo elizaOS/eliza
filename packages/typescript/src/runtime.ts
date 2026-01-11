@@ -47,7 +47,6 @@ import {
   type Memory,
   type MemoryMetadata,
   type Metadata,
-  MODEL_SETTINGS,
   type ModelHandler,
   type ModelParamsMap,
   type ModelResultMap,

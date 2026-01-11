@@ -16,7 +16,6 @@ import type {
   FormField,
   FormFieldType,
   FormStatus,
-  FormStep,
   FormTemplate,
   FormUpdateResult,
 } from "../types";
@@ -1141,7 +1140,7 @@ export class FormsService extends Service {
       // Reconstruct form with validated fields
       const form: Form = {
         ...validatedForm,
-        steps: steps.map((step: FormStep) => ({
+        steps: steps.map((step: DatabaseFormStep) => ({
           id: step.id,
           name: step.name,
           completed: step.completed || false,
@@ -1171,7 +1170,7 @@ export class FormsService extends Service {
                 if (!valueResult.success) {
                   logger.warn(
                     `Invalid field value after decryption for ${fieldRow.field_id}:`,
-                    valueResult.error.format()
+                    JSON.stringify(valueResult.error.format())
                   );
                   fieldValue = undefined; // Clear invalid values
                 } else {
@@ -1233,7 +1232,7 @@ export class FormsService extends Service {
     const result = DatabaseFieldRowSchema.safeParse(fieldRow);
 
     if (!result.success) {
-      logger.warn(`Invalid field data:`, result.error.format());
+      logger.warn(`Invalid field data:`, JSON.stringify(result.error.format()));
       return null;
     }
 

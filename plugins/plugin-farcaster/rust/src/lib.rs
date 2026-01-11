@@ -47,17 +47,12 @@ pub mod providers;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::FarcasterClient;
-pub use config::FarcasterConfig;
-pub use error::{FarcasterError, Result};
-pub use types::{
-    Cast, CastEmbed, CastId, CastParent, CastStats, EmbedType, FarcasterEventType,
-    FarcasterMessageType, FidRequest, Profile,
-};
-
-#[cfg(feature = "native")]
-pub use service::FarcasterService;
+// Import directly from submodules:
+// - client::FarcasterClient
+// - config::FarcasterConfig
+// - error::{FarcasterError, Result}
+// - types::{Cast, CastEmbed, CastId, CastParent, CastStats, etc.}
+// - service::FarcasterService (with "native" feature)
 
 /// Create a Farcaster client from environment variables.
 ///

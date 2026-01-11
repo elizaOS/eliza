@@ -46,23 +46,14 @@ pub mod types;
 pub mod utils;
 pub mod vendors;
 
-// Re-export main types
-pub use client::{upload_attestation_quote, TeeClient};
-pub use error::{Result, TeeError};
-pub use providers::{
-    DeriveKeyProvider, PhalaDeriveKeyProvider, PhalaRemoteAttestationProvider,
-    RemoteAttestationProvider,
-};
-pub use services::TEEService;
-pub use types::{
-    DeriveKeyAttestationData, DeriveKeyResult, EcdsaKeypairResult, Ed25519KeypairResult,
-    RemoteAttestationMessage, RemoteAttestationQuote, TdxQuoteHashAlgorithm, TeeMode,
-    TeeProviderResult, TeeServiceConfig, TeeType, TeeVendor,
-};
-pub use utils::{
-    bytes_to_hex, calculate_keccak256, calculate_sha256, get_tee_endpoint, hex_to_bytes,
-};
-pub use vendors::{get_vendor, PhalaVendor, TeeVendorInterface, TeeVendorNames};
+// Import directly from submodules:
+// - client::{upload_attestation_quote, TeeClient}
+// - error::{Result, TeeError}
+// - providers::{DeriveKeyProvider, PhalaDeriveKeyProvider, etc.}
+// - services::TEEService
+// - types::{DeriveKeyAttestationData, TeeMode, TeeType, etc.}
+// - utils::{bytes_to_hex, calculate_keccak256, etc.}
+// - vendors::{get_vendor, PhalaVendor, TeeVendorInterface, etc.}
 
 /// Plugin name.
 pub const PLUGIN_NAME: &str = "tee";

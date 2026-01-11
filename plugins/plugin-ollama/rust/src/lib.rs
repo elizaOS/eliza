@@ -38,14 +38,11 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::OllamaClient;
-pub use config::OllamaConfig;
-pub use error::{OllamaError, Result};
-pub use types::{
-    EmbeddingParams, EmbeddingResponse, ObjectGenerationParams, ObjectGenerationResponse,
-    TextGenerationParams, TextGenerationResponse,
-};
+// Import directly from submodules:
+// - client::OllamaClient
+// - config::OllamaConfig
+// - error::{OllamaError, Result}
+// - types::{EmbeddingParams, ObjectGenerationParams, TextGenerationParams, etc.}
 
 /// Create an Ollama client from environment variables.
 ///

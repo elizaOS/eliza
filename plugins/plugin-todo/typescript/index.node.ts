@@ -10,7 +10,5 @@ const nodePlugin = {
   routes,
 };
 
-// Re-export everything from index
-export * from "./index";
 // Override default export with routes-enabled version
 export { nodePlugin as default };

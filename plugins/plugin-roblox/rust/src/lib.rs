@@ -45,18 +45,12 @@ pub mod providers;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::RobloxClient;
-pub use config::RobloxConfig;
-pub use error::{RobloxError, Result};
-pub use types::{
-    DataStoreEntry, MessagingServiceMessage, RobloxEventType, RobloxExperienceInfo,
-    RobloxGameAction, RobloxGameMessage, RobloxPlayerSession, RobloxResponse, RobloxServerInfo,
-    RobloxUser,
-};
-
-#[cfg(feature = "native")]
-pub use service::RobloxService;
+// Import directly from submodules:
+// - client::RobloxClient
+// - config::RobloxConfig
+// - error::{RobloxError, Result}
+// - types::{DataStoreEntry, RobloxEventType, RobloxGameMessage, etc.}
+// - service::RobloxService (with "native" feature)
 
 /// Create a Roblox client from environment variables.
 ///

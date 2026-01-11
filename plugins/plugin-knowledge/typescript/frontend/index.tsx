@@ -73,7 +73,7 @@ export interface AgentPanel {
   shortLabel?: string; // Optional short label for mobile
 }
 
-interface KnowledgePanelProps {
+interface KnowledgePanelProps extends Record<string, string> {
   agentId: string;
 }
 

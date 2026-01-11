@@ -40,11 +40,11 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::SolanaClient;
-pub use error::{SolanaError, SolanaResult};
-pub use keypair::{KeypairUtils, WalletConfig};
-pub use types::*;
+// Import directly from submodules:
+// - client::SolanaClient
+// - error::{SolanaError, SolanaResult}
+// - keypair::{KeypairUtils, WalletConfig}
+// - types::* for all types
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "chain_solana";

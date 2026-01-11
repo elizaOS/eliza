@@ -4,26 +4,6 @@ import { readResourceAction } from "./actions/readResourceAction";
 import { provider } from "./provider";
 import { McpService } from "./service";
 
-// Re-export McpService class
-export { McpService } from "./service";
-
-// Re-export tool compatibility utilities
-export {
-  type ArrayConstraints,
-  createMcpToolCompatibility,
-  createMcpToolCompatibilitySync,
-  detectModelProvider,
-  McpToolCompatibility,
-  type ModelInfo,
-  type ModelProvider,
-  type NumberConstraints,
-  type ObjectConstraints,
-  type SchemaConstraints,
-  type StringConstraints,
-} from "./tool-compatibility";
-
-// Re-export all types for consumers
-export * from "./types";
 
 const mcpPlugin: Plugin = {
   name: "mcp",

@@ -17,8 +17,6 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { searchMessagesTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
 
-// Re-export for backwards compatibility
-export { searchMessagesTemplate };
 
 const getSearchParams = async (
   runtime: IAgentRuntime,

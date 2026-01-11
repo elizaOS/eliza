@@ -16,6 +16,25 @@ import type {
 } from "../types";
 
 /**
+ * Raw row type for long-term memory database queries
+ */
+interface LongTermMemoryRow {
+  id: string;
+  agentId: string;
+  entityId: string;
+  category: string;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  embedding: number[] | null;
+  confidence: number | null;
+  source: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  lastAccessedAt: Date | null;
+  accessCount: number | null;
+}
+
+/**
  * Type definition for Drizzle database operations used by the memory service.
  * This provides proper typing for the database instance accessed via runtime.
  */
@@ -561,7 +580,7 @@ export class MemoryService extends Service {
         conditions.push(gte(similarity, matchThreshold));
       }
 
-      const results = await db
+      const results = (await db
         .select({
           memory: longTermMemories,
           similarity,
@@ -569,22 +588,22 @@ export class MemoryService extends Service {
         .from(longTermMemories)
         .where(and(...conditions))
         .orderBy(desc(similarity))
-        .limit(limit);
+        .limit(limit)) as Array<{ memory: LongTermMemoryRow; similarity: number }>;
 
       return results.map((row) => ({
         id: row.memory.id as UUID,
         agentId: row.memory.agentId as UUID,
         entityId: row.memory.entityId as UUID,
         category: row.memory.category as LongTermMemoryCategory,
-        content: row.memory.content as string,
-        metadata: row.memory.metadata as Record<string, unknown>,
-        embedding: row.memory.embedding as number[],
-        confidence: row.memory.confidence as number,
-        source: row.memory.source as string,
-        createdAt: row.memory.createdAt as Date,
-        updatedAt: row.memory.updatedAt as Date,
-        lastAccessedAt: row.memory.lastAccessedAt as Date,
-        accessCount: row.memory.accessCount as number,
+        content: row.memory.content,
+        metadata: row.memory.metadata ?? {},
+        embedding: row.memory.embedding ?? [],
+        confidence: row.memory.confidence ?? 1.0,
+        source: row.memory.source ?? "",
+        createdAt: row.memory.createdAt,
+        updatedAt: row.memory.updatedAt,
+        lastAccessedAt: row.memory.lastAccessedAt ?? row.memory.updatedAt,
+        accessCount: row.memory.accessCount ?? 0,
         similarity: row.similarity,
       }));
     } catch (error) {

@@ -1414,7 +1414,7 @@ type ExtendedRouteHandler = (
  * ExtendedRouteHandler uses more specific request/response types than Route["handler"].
  */
 const asRouteHandler = (handler: ExtendedRouteHandler): Route["handler"] =>
-  handler as Route["handler"];
+  handler as unknown as Route["handler"];
 
 export const knowledgeRoutes: Route[] = [
   {

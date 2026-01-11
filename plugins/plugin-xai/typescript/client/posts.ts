@@ -11,19 +11,23 @@ import type {
   TTweetv2TweetField,
   TTweetv2UserField,
   UserV2,
+  TweetEntityHashtagV2,
+  TweetEntityMentionV2,
+  TweetEntityUrlV2,
+  ReferencedTweetV2,
 } from "twitter-api-v2";
 import type { XAuth } from "./auth";
 import { getEntityIdByScreenName } from "./profile";
 import type { QueryPostsResponse } from "./types";
 
-// Type aliases to bridge Post naming to Tweet naming used by twitter-api-v2
+// Type aliases for X naming convention
 type PostV2 = TweetV2;
 type TPostv2Expansion = TTweetv2Expansion;
-type TPostv2PostField = TTweetv2TweetField;
-type TPostv2PollField = TTweetv2PollField;
 type TPostv2MediaField = TTweetv2MediaField;
-type TPostv2UserField = TTweetv2UserField;
 type TPostv2PlaceField = TTweetv2PlaceField;
+type TPostv2PollField = TTweetv2PollField;
+type TPostv2PostField = TTweetv2TweetField;
+type TPostv2UserField = TTweetv2UserField;
 
 /**
  * Default options for X API v2 request parameters.
@@ -40,12 +44,12 @@ export const defaultOptions = {
     "attachments.poll_ids",
     "attachments.media_keys",
     "author_id",
-    "referenced_posts.id",
+    "referenced_tweets.id",
     "in_reply_to_user_id",
     "edit_history_post_ids",
     "geo.place_id",
     "entities.mentions.username",
-    "referenced_posts.id.author_id",
+    "referenced_tweets.id.author_id",
   ] as TPostv2Expansion[],
   postFields: [
     "attachments",
@@ -61,7 +65,7 @@ export const defaultOptions = {
     "public_metrics",
     "edit_controls",
     "possibly_sensitive",
-    "referenced_posts",
+    "referenced_tweets",
     "reply_settings",
     "source",
     "text",
@@ -313,20 +317,20 @@ export async function fetchPosts(
   try {
     const response = await client.v2.userTimeline(userId, {
       max_results: Math.min(maxPosts, 100),
-      exclude: ["reposts", "replies"],
-      "post.fields": [
+      exclude: ["retweets", "replies"],
+      "tweet.fields": [
         "id",
         "text",
         "created_at",
         "author_id",
-        "referenced_posts",
+        "referenced_tweets",
         "entities",
         "public_metrics",
         "attachments",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -359,19 +363,19 @@ export async function fetchPostsAndReplies(
   try {
     const response = await client.v2.userTimeline(userId, {
       max_results: Math.min(maxPosts, 100),
-      "post.fields": [
+      "tweet.fields": [
         "id",
         "text",
         "created_at",
         "author_id",
-        "referenced_posts",
+        "referenced_tweets",
         "entities",
         "public_metrics",
         "attachments",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -409,7 +413,7 @@ export async function createCreatePostRequestV2(
   let postConfig: {
     text: string;
     poll?: { options: string[]; duration_minutes: number };
-    reply?: { in_reply_to_post_id: string };
+    reply?: { in_reply_to_tweet_id: string };
   };
   if (poll) {
     postConfig = {
@@ -423,7 +427,7 @@ export async function createCreatePostRequestV2(
     postConfig = {
       text,
       reply: {
-        in_reply_to_post_id: postId,
+        in_reply_to_tweet_id: postId,
       },
     };
   } else {
@@ -431,7 +435,7 @@ export async function createCreatePostRequestV2(
       text,
     };
   }
-  const postResponse = await v2client.v2.post(postConfig);
+  const postResponse = await v2client.v2.tweet(postConfig);
   let optionsConfig = {};
   if (options?.poll) {
     optionsConfig = {
@@ -446,15 +450,15 @@ export function parsePostV2ToV1(postV2: PostV2, includes?: ApiV2Includes): Post 
   const parsedPost: Post = {
     id: postV2.id,
     text: postV2.text ?? "",
-    hashtags: postV2.entities?.hashtags?.map((tag) => tag.tag) ?? [],
+    hashtags: postV2.entities?.hashtags?.map((tag: TweetEntityHashtagV2) => tag.tag) ?? [],
     mentions:
-      postV2.entities?.mentions?.map((mention) => ({
+      postV2.entities?.mentions?.map((mention: TweetEntityMentionV2) => ({
         id: mention.id,
         username: mention.username,
       })) ?? [],
-    urls: postV2.entities?.urls?.map((url) => url.url) ?? [],
+    urls: postV2.entities?.urls?.map((url: TweetEntityUrlV2) => url.url) ?? [],
     likes: postV2.public_metrics?.like_count ?? 0,
-    reposts: postV2.public_metrics?.repost_count ?? 0,
+    reposts: postV2.public_metrics?.retweet_count ?? 0,
     replies: postV2.public_metrics?.reply_count ?? 0,
     quotes: postV2.public_metrics?.quote_count ?? 0,
     views: postV2.public_metrics?.impression_count ?? 0,
@@ -469,12 +473,12 @@ export function parsePostV2ToV1(postV2: PostV2, includes?: ApiV2Includes): Post 
     timestamp: postV2.created_at ? new Date(postV2.created_at).getTime() / 1000 : Date.now() / 1000,
     permanentUrl: `https://x.com/i/status/${postV2.id}`,
     // Check for referenced posts
-    isReply: postV2.referenced_posts?.some((ref) => ref.type === "replied_to") ?? false,
-    isRepost: postV2.referenced_posts?.some((ref) => ref.type === "reposted") ?? false,
-    isQuoted: postV2.referenced_posts?.some((ref) => ref.type === "quoted") ?? false,
-    inReplyToStatusId: postV2.referenced_posts?.find((ref) => ref.type === "replied_to")?.id,
-    quotedStatusId: postV2.referenced_posts?.find((ref) => ref.type === "quoted")?.id,
-    repostedStatusId: postV2.referenced_posts?.find((ref) => ref.type === "reposted")?.id,
+    isReply: postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "replied_to") ?? false,
+    isRepost: postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "retweeted") ?? false,
+    isQuoted: postV2.referenced_tweets?.some((ref: ReferencedTweetV2) => ref.type === "quoted") ?? false,
+    inReplyToStatusId: postV2.referenced_tweets?.find((ref: ReferencedTweetV2) => ref.type === "replied_to")?.id,
+    quotedStatusId: postV2.referenced_tweets?.find((ref: ReferencedTweetV2) => ref.type === "quoted")?.id,
+    repostedStatusId: postV2.referenced_tweets?.find((ref: ReferencedTweetV2) => ref.type === "retweeted")?.id,
   };
 
   // Process Polls
@@ -553,7 +557,7 @@ export async function createCreatePostRequest(
   try {
     const postConfig: {
       text: string;
-      reply?: { in_reply_to_post_id: string };
+      reply?: { in_reply_to_tweet_id: string };
       poll?: { options: string[]; duration_minutes: number };
     } = {
       text,
@@ -567,11 +571,11 @@ export async function createCreatePostRequest(
     // Handle reply
     if (postId) {
       postConfig.reply = {
-        in_reply_to_post_id: postId,
+        in_reply_to_tweet_id: postId,
       };
     }
 
-    const result = await v2client.v2.post(postConfig);
+    const result = await v2client.v2.tweet(postConfig);
 
     return {
       ok: true,
@@ -604,21 +608,21 @@ export async function fetchListPosts(
   const client = await auth.getV2Client();
 
   try {
-    const response = await client.v2.listPosts(listId, {
+    const response = await client.v2.listTweets(listId, {
       max_results: Math.min(maxPosts, 100),
-      "post.fields": [
+      "tweet.fields": [
         "id",
         "text",
         "created_at",
         "author_id",
-        "referenced_posts",
+        "referenced_tweets",
         "entities",
         "public_metrics",
         "attachments",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -647,7 +651,7 @@ export async function deletePost(postId: string, auth: XAuth) {
   }
 
   try {
-    const result = await v2client.v2.deletePost(postId);
+    const result = await v2client.v2.deleteTweet(postId);
     return {
       ok: true,
       success: true,
@@ -773,21 +777,21 @@ export async function fetchLikedPosts(
   const client = await auth.getV2Client();
 
   try {
-    const response = await client.v2.userLikedPosts(userId, {
+    const response = await client.v2.userLikedTweets(userId, {
       max_results: Math.min(maxPosts, 100),
-      "post.fields": [
+      "tweet.fields": [
         "id",
         "text",
         "created_at",
         "author_id",
-        "referenced_posts",
+        "referenced_tweets",
         "entities",
         "public_metrics",
         "attachments",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       pagination_token: cursor,
     });
 
@@ -867,13 +871,13 @@ export async function getPost(id: string, auth: XAuth): Promise<Post | null> {
   const client = await auth.getV2Client();
 
   try {
-    const post = await client.v2.singlePost(id, {
-      "post.fields": [
+    const post = await client.v2.singleTweet(id, {
+      "tweet.fields": [
         "id",
         "text",
         "created_at",
         "author_id",
-        "referenced_posts",
+        "referenced_tweets",
         "entities",
         "public_metrics",
         "attachments",
@@ -886,7 +890,7 @@ export async function getPost(id: string, auth: XAuth): Promise<Post | null> {
         "author_id",
         "attachments.media_keys",
         "attachments.poll_ids",
-        "referenced_posts.id",
+        "referenced_tweets.id",
       ],
     });
 
@@ -920,9 +924,9 @@ export async function getPostV2(
   }
 
   try {
-    const postData = await v2client.v2.singlePost(id, {
+    const postData = await v2client.v2.singleTweet(id, {
       expansions: options?.expansions,
-      "post.fields": options?.postFields,
+      "tweet.fields": options?.postFields,
       "poll.fields": options?.pollFields,
       "media.fields": options?.mediaFields,
       "user.fields": options?.userFields,
@@ -962,9 +966,9 @@ export async function getPostsV2(
   }
 
   try {
-    const postData = await v2client.v2.posts(ids, {
+    const postData = await v2client.v2.tweets(ids, {
       expansions: options?.expansions,
-      "post.fields": options?.postFields,
+      "tweet.fields": options?.postFields,
       "poll.fields": options?.pollFields,
       "media.fields": options?.mediaFields,
       "user.fields": options?.userFields,
@@ -991,7 +995,7 @@ export async function getPostAnonymous(id: string, auth: XAuth): Promise<Post | 
 }
 
 async function _uploadMedia(_mediaData: Buffer, _auth: XAuth, _mediaType: string): Promise<string> {
-  // X API v2 media upload is not yet fully implemented in x-api-v2 library
+  // X API v2 media upload is not yet fully implemented in twitter-api-v2 library
   // This would require using the v1.1 media upload endpoint with proper OAuth
   console.warn("Media upload not yet implemented for X API v2");
   throw new Error("Media upload not yet implemented for X API v2");
@@ -1014,7 +1018,7 @@ export async function createQuotePostRequest(
     const quotedPostUrl = `https://x.com/i/status/${quotedPostId}`;
     const fullText = `${text} ${quotedPostUrl}`;
 
-    const result = await v2client.v2.post({
+    const result = await v2client.v2.tweet({
       text: fullText,
     });
 
@@ -1065,7 +1069,7 @@ export async function repost(postId: string, auth: XAuth): Promise<void> {
   }
 
   try {
-    await v2client.v2.repost(
+    await v2client.v2.retweet(
       (await v2client.v2.me()).data.id, // Current user ID
       postId
     );
@@ -1111,7 +1115,7 @@ export async function unrepost(postId: string, auth: XAuth): Promise<void> {
   }
 
   try {
-    await v2client.v2.unrepost(
+    await v2client.v2.unretweet(
       (await v2client.v2.me()).data.id, // Current user ID
       postId
     );

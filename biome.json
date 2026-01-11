@@ -32,27 +32,7 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": [
-        "**/__tests__/**",
-        "**/*.test.ts",
-        "**/*.test.tsx",
-        "**/*.spec.ts",
-        "**/*.spec.tsx"
-      ],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noExplicitAny": "off"
-          },
-          "style": {
-            "noNonNullAssertion": "off"
-          }
-        }
-      }
-    }
-  ],
+  "overrides": [],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

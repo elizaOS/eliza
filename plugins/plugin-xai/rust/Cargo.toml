@@ -3,13 +3,13 @@ name = "elizaos-plugin-xai"
 version = "1.0.0"
 edition = "2021"
 authors = ["elizaOS Team <team@elizaos.ai>"]
-description = "elizaOS xAI Plugin - Grok models and X (X) API integration"
+description = "elizaOS xAI Plugin - Grok models and X (formerly Twitter) API integration"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 documentation = "https://docs.rs/elizaos-plugin-xai"
 readme = "README.md"
-keywords = ["ai", "xai", "grok", "x", "x", "elizaos", "llm"]
+keywords = ["ai", "xai", "grok", "x", "twitter", "elizaos", "llm"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]

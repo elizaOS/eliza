@@ -1,10 +1,10 @@
 #![allow(missing_docs)]
-//! Type definitions for xAI and X API.
+//! Type definitions for xAI and Twitter API v2.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// X authentication mode.
+/// Twitter API authentication mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthMode {
@@ -17,9 +17,9 @@ pub enum AuthMode {
     Bearer,
 }
 
-/// X API configuration.
+/// Twitter API configuration for X platform.
 #[derive(Debug, Clone)]
-pub struct XConfig {
+pub struct TwitterConfig {
     /// Authentication mode
     pub auth_mode: AuthMode,
     /// API key (consumer key)
@@ -42,7 +42,7 @@ pub struct XConfig {
     pub timeout_secs: u64,
 }
 
-impl XConfig {
+impl TwitterConfig {
     /// Create a new configuration.
     pub fn new(
         api_key: &str,

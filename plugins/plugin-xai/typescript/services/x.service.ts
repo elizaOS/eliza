@@ -9,7 +9,7 @@ import type { IXClient } from "../types";
 import { getSetting } from "../utils/settings";
 
 /**
- * X Client Instance - orchestrates all X (X) functionality:
+ * X Client Instance - orchestrates all X (formerly Twitter) functionality:
  * - client: base operations (auth, timeline caching)
  * - post: autonomous posting
  * - interaction: mentions and replies
@@ -60,7 +60,7 @@ export class XClientInstance implements IXClient {
 
 export class XService extends Service {
   static serviceType = "x";
-  capabilityDescription = "Send and receive posts on X (X)";
+  capabilityDescription = "Send and receive posts on X (formerly Twitter)";
 
   public xClient?: XClientInstance;
 

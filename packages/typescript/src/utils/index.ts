@@ -1,4 +1,3 @@
-// Re-export utilities from utils.ts file
-export * from "../utils.ts";
-// Re-export Node-specific utilities
-export * from "./node";
+// Utils index - import directly from the specific files:
+// - ../utils.ts for core utilities
+// - ./node for Node-specific utilities

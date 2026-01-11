@@ -20,8 +20,6 @@ import {
   transcriptionTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
-// Re-export for backwards compatibility
-export { transcriptionTemplate, mediaAttachmentIdTemplate };
 
 /**
  * Asynchronous function to get the media attachment ID from the user input.

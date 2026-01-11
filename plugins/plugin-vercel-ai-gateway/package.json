@@ -35,7 +35,7 @@
     "build": "bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
     "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
-    "build:python": "test -d python && cd python && (python3 -m build || (sleep 2 && python3 -m build || (sleep 4 && python3 -m build))) || echo 'Python build skipped - no python directory'",
+    "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun --hot build.ts",
     "test": "bun run test:ts && bun run test:rust && bun run test:python",
     "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
