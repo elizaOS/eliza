@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
-import type { OAuth1Credentials, TwitterOAuth1Provider } from "./types";
+import type { OAuth1Credentials, XOAuth1Provider } from "./types";
 
 /**
  * Legacy env-var auth provider (OAuth 1.0a user context).
@@ -11,7 +11,7 @@ import type { OAuth1Credentials, TwitterOAuth1Provider } from "./types";
  * - TWITTER_ACCESS_TOKEN
  * - TWITTER_ACCESS_TOKEN_SECRET
  */
-export class EnvAuthProvider implements TwitterOAuth1Provider {
+export class EnvAuthProvider implements XOAuth1Provider {
   readonly mode = "env" as const;
 
   constructor(
