@@ -40,6 +40,31 @@ Persistence is abstracted behind `DatabaseAdapter` (`packages/typescript/src/dat
 - entity/room/world CRUD helpers
 - `runPluginMigrations(...)` to apply plugin schemas
 
+## Worlds, rooms, and entities
+
+ElizaOS models “where” a conversation happens and “who” is participating using three core concepts:
+
+- **Entity**: a participant identity (user, agent, or external identity on a platform).
+- **Room**: a conversation space (a DM, channel, thread, etc.).
+- **World**: a container that groups rooms (often a “server”, “workspace”, or deployment environment).
+
+### How to use them (typical flow)
+
+Before you process messages, ensure the runtime knows about the participant and conversation context:
+
+- Create IDs for `worldId` and `roomId` (many examples use `stringToUuid(...)`).
+- Call `runtime.ensureConnection({ entityId, roomId, worldId, ... })` to ensure:
+  - the world exists,
+  - the room exists under that world,
+  - the entity exists and is a participant in the room.
+- Then create a message memory (often with `createMessageMemory(...)`) and call:
+  - `runtime.messageService.handleMessage(runtime, message, callback)`
+
+You can see this exact pattern in:
+
+- `packages/elizaos/examples/chat/typescript/chat.ts`
+- `packages/elizaos/examples/aws/typescript/handler.ts`
+
 ## State and providers
 
 ### State
