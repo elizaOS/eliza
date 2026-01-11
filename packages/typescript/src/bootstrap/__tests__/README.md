@@ -6,53 +6,47 @@
 
 This directory contains a comprehensive test suite for the Eliza Bootstrap Plugin. The tests cover all major components of the plugin including actions, providers, evaluators, services, and event handling logic.
 
+All tests use **REAL AgentRuntime instances** with mocked database adapters. There is no separate "MockRuntime" type - all tests operate against `IAgentRuntime` and use `vi.spyOn()` for method mocking when needed.
+
 ## Test Utilities
 
 The test suite includes utilities in `test-utils.ts`:
 
 ### Runtime Creation
 
-- `createMockRuntime(overrides?)`: Creates an `IAgentRuntime` with all methods mocked via `vi.fn()`. Use for unit tests.
+- `createTestRuntime(options?)`: Creates a real `AgentRuntime` with a mocked database adapter. This is the primary way to create test runtimes.
 
-- `createTestRuntime(options?)`: Creates a real `AgentRuntime` with a mocked database adapter. Use for integration tests.
-
-- `setupActionTest(options?)`: Quick setup for action tests - returns runtime, message, state, and callback.
+- `setupActionTest(options?)`: Quick async setup for action tests - returns runtime, message, state, callback, and IDs.
 
 ### Data Creation Utilities
 
-- `createTestMemory(overrides?)` / `createMockMemory(overrides?)`: Creates test Memory objects.
+- `createTestMemory(overrides?)`: Creates test Memory objects.
 
-- `createTestState(overrides?)` / `createMockState(overrides?)`: Creates test State objects.
+- `createTestState(overrides?)`: Creates test State objects.
 
-- `createMockRoom(overrides?)`: Creates test Room objects.
+- `createTestRoom(overrides?)`: Creates test Room objects.
 
 - `createTestCharacter(overrides?)`: Creates test Character configurations.
 
-- `createMockDatabaseAdapter(agentId?)`: Creates an in-memory database adapter for testing.
+- `createTestDatabaseAdapter(agentId?)`: Creates an in-memory database adapter for testing.
 
 ### Helper Utilities
 
-- `cleanupTestRuntime(runtime)`: Properly closes and cleans up a test runtime.
+- `cleanupTestRuntime(runtime)`: Properly closes and cleans up a test runtime. **Always call this in `afterEach`**.
 
 - `waitFor(condition, timeout?, interval?)`: Waits for a condition to be true.
 
 - `createUUID()`: Creates a UUID for testing.
 
-### Type Aliases
-
-- `MockRuntime`: Type alias for `IAgentRuntime` (for backward compatibility).
-
 ## Best Practices
 
-1. **Use `IAgentRuntime` Type**: Always type your test runtime as `IAgentRuntime`.
+1. **Use Real Runtime**: Always use `createTestRuntime()` or `setupActionTest()` to create real `AgentRuntime` instances.
 
-2. **Choose the Right Utility**:
-   - Unit tests → `createMockRuntime()` or `setupActionTest()`
-   - Integration tests → `createTestRuntime()`
+2. **Use `vi.spyOn` for Mocking**: If you need to mock specific methods, use `vi.spyOn(runtime, "methodName")`.
 
-3. **Clean Up**: Always call `cleanupTestRuntime()` in `afterEach` for integration tests.
+3. **Always Clean Up**: Call `cleanupTestRuntime(runtime)` in `afterEach` to properly shut down the runtime.
 
-4. **Use vi.spyOn for Verification**: If you need to verify method calls, use `vi.spyOn()` on the runtime.
+4. **Async Setup**: Both `createTestRuntime()` and `setupActionTest()` are async functions - use `await`.
 
 ## Usage
 
@@ -80,51 +74,67 @@ npx vitest --watch packages/typescript/src/bootstrap/__tests__
 
 ```typescript
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { setupActionTest } from "./test-utils";
+import { setupActionTest, cleanupTestRuntime } from "./test-utils";
 import { myAction } from "../actions";
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 
 describe("My Action", () => {
-  afterEach(() => {
+  let runtime: IAgentRuntime;
+  let message: Memory;
+  let state: State;
+  let callback: ReturnType<typeof vi.fn>;
+
+  afterEach(async () => {
     vi.clearAllMocks();
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
   });
 
   it("should validate correctly", async () => {
-    const { mockRuntime, mockMessage, mockState } = setupActionTest();
+    const setup = await setupActionTest();
+    runtime = setup.runtime;
+    message = setup.message;
+    state = setup.state;
 
-    const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+    const isValid = await myAction.validate(runtime, message, state);
 
     expect(isValid).toBe(true);
   });
 
   it("should handle action with custom overrides", async () => {
-    const { mockRuntime, mockMessage, mockState, callbackFn } = setupActionTest({
-      runtimeOverrides: {
-        getSetting: vi.fn().mockReturnValue("custom-value"),
-      },
+    const setup = await setupActionTest({
       messageOverrides: {
         content: { text: "custom message" },
       },
     });
+    runtime = setup.runtime;
+    message = setup.message;
+    state = setup.state;
+    callback = setup.callback;
+
+    // Mock specific methods using vi.spyOn
+    vi.spyOn(runtime, "getSetting").mockReturnValue("custom-value");
 
     const result = await myAction.handler(
-      mockRuntime,
-      mockMessage,
-      mockState,
+      runtime,
+      message,
+      state,
       {},
-      callbackFn
+      callback
     );
 
     expect(result.success).toBe(true);
-    expect(callbackFn).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalled();
   });
 });
 ```
 
-### Unit Testing with createMockRuntime
+### Testing with createTestRuntime
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createMockRuntime, createTestMemory, createTestState } from "./test-utils";
+import { createTestRuntime, cleanupTestRuntime, createTestMemory, createTestState } from "./test-utils";
 import { myAction } from "../actions";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
@@ -133,16 +143,18 @@ describe("My Action", () => {
   let message: Memory;
   let state: State;
 
-  beforeEach(() => {
-    runtime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue("test-api-key"),
-    });
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
     message = createTestMemory({ content: { text: "test message" } });
     state = createTestState();
+
+    // Mock specific methods using vi.spyOn
+    vi.spyOn(runtime, "getSetting").mockReturnValue("test-api-key");
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should validate correctly", async () => {
@@ -151,52 +163,11 @@ describe("My Action", () => {
   });
 
   it("should call runtime methods", async () => {
+    vi.spyOn(runtime, "createMemory").mockResolvedValue("memory-id" as UUID);
+
     await myAction.handler(runtime, message, state);
 
     expect(runtime.createMemory).toHaveBeenCalled();
-  });
-});
-```
-
-### Integration Testing with createTestRuntime
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestRuntime, cleanupTestRuntime, createTestMemory } from "./test-utils";
-import type { IAgentRuntime } from "@elizaos/core";
-
-describe("My Provider Integration", () => {
-  let runtime: IAgentRuntime;
-
-  beforeEach(async () => {
-    runtime = await createTestRuntime();
-  });
-
-  afterEach(async () => {
-    await cleanupTestRuntime(runtime);
-  });
-
-  it("should work with real runtime", async () => {
-    const roomId = await runtime.createRoom({
-      name: "test-room",
-      source: "test",
-      type: "GROUP",
-    });
-
-    await runtime.createMemory({
-      roomId,
-      entityId: "test-entity-id",
-      agentId: runtime.agentId,
-      content: { text: "test message" },
-    }, "messages");
-
-    const memories = await runtime.getMemories({
-      roomId,
-      tableName: "messages",
-      count: 10,
-    });
-
-    expect(memories.length).toBeGreaterThan(0);
   });
 });
 ```
@@ -205,7 +176,7 @@ describe("My Provider Integration", () => {
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createMockRuntime, createTestMemory, createTestState } from "./test-utils";
+import { createTestRuntime, cleanupTestRuntime, createTestMemory, createTestState } from "./test-utils";
 import { myProvider } from "../providers/myProvider";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
@@ -214,14 +185,15 @@ describe("My Provider", () => {
   let message: Memory;
   let state: State;
 
-  beforeEach(() => {
-    runtime = createMockRuntime();
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
     message = createTestMemory();
     state = createTestState();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should return provider result", async () => {
@@ -232,7 +204,7 @@ describe("My Provider", () => {
   });
 
   it("should handle custom data", async () => {
-    runtime.getMemories = vi.fn().mockResolvedValue([
+    vi.spyOn(runtime, "getMemories").mockResolvedValue([
       createTestMemory({ content: { text: "stored data" } }),
     ]);
 
@@ -281,10 +253,12 @@ describe("My Service", () => {
 
 ```typescript
 it("should call useModel with correct parameters", async () => {
-  const useModelSpy = vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
+  const setup = await setupActionTest();
+  runtime = setup.runtime;
+  message = setup.message;
+  state = setup.state;
 
-  const message = createTestMemory({ roomId: testRoomId });
-  const state = createTestState();
+  const useModelSpy = vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
 
   await myAction.handler(runtime, message, state, {}, vi.fn());
 

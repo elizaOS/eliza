@@ -14,6 +14,13 @@ interface TableInfoRow {
 }
 
 /**
+ * Type-safe extraction of rows from SQL query results.
+ */
+function getRows<T>(result: { rows: unknown[] }): T[] {
+  return result.rows as T[];
+}
+
+/**
  * TEMPORARY MIGRATION: pre-1.6.5 → 1.6.5+ schema migration
  *
  * This migration runs automatically on startup and is idempotent.
@@ -176,7 +183,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           ORDER BY column_name
         `);
 
-        const columns = columnsResult.rows as unknown as ColumnInfoRow[];
+        const columns = columnsResult.rows);
+        const typedRows = getRows<ColumnInfoRow>(result);
         const serverIdSnake = columns.find((c) => c.column_name === "server_id");
         const serverIdCamel = columns.find((c) => c.column_name === "serverId");
         const messageServerId = columns.find((c) => c.column_name === "message_server_id");
@@ -378,7 +386,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         ORDER BY column_name
       `);
 
-      const agentsColumns = agentsColumnsResult.rows as unknown as ColumnInfoRow[];
+      const agentsColumns = agentsColumnsResult.rows);
+        const typedRows = getRows<ColumnInfoRow>(result);
       const hasOwnerId = agentsColumns.some((c) => c.column_name === "owner_id");
       const hasServerId = agentsColumns.some((c) => c.column_name === "server_id");
 
@@ -458,7 +467,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         ORDER BY table_name
       `);
 
-      const tables = tablesResult.rows as unknown as TableInfoRow[];
+      const tables = tablesResult.rows);
+        const typedRows = getRows<TableInfoRow>(result);
       const hasServerAgents = tables.some((t) => t.table_name === "server_agents");
       const hasMessageServerAgents = tables.some((t) => t.table_name === "message_server_agents");
 
@@ -493,7 +503,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           ORDER BY column_name
         `);
 
-        const columns = columnsResult.rows as unknown as ColumnInfoRow[];
+        const columns = columnsResult.rows);
+        const typedRows = getRows<ColumnInfoRow>(result);
         const hasServerId = columns.some((c) => c.column_name === "server_id");
         const hasMessageServerId = columns.some((c) => c.column_name === "message_server_id");
 
@@ -536,7 +547,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         ORDER BY column_name
       `);
 
-      const columns = (columnsResult.rows || []) as unknown as ColumnInfoRow[];
+      const columns = getRows<ColumnInfoRow>({ rows: columnsResult.rows || [] });
       const hasUserId = columns.some((c) => c.column_name === "user_id");
       const hasEntityId = columns.some((c) => c.column_name === "entity_id");
 
@@ -702,7 +713,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           ORDER BY column_name
         `);
 
-        const columns = columnsResult.rows as unknown as ColumnInfoRow[];
+        const columns = columnsResult.rows);
+        const typedRows = getRows<ColumnInfoRow>(result);
         const hasOldColumn = columns.some((c) => c.column_name === rename.from);
         const hasNewColumn = columns.some((c) => c.column_name === rename.to);
 

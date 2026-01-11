@@ -936,7 +936,9 @@ export class TelegramService extends Service {
       // Sending DMs via entityId requires looking up the entity's Telegram metadata
       // which contains their Telegram User ID. This is not yet implemented.
       logger.error("[Telegram SendHandler] Sending DMs via entityId not implemented yet.");
-      throw new Error("Sending DMs via entityId is not yet supported for Telegram. Use channelId or roomId instead.");
+      throw new Error(
+        "Sending DMs via entityId is not yet supported for Telegram. Use channelId or roomId instead."
+      );
     } else {
       throw new Error("Telegram SendHandler requires channelId, roomId, or entityId.");
     }

@@ -211,6 +211,9 @@ export interface EntityAppearance {
 }
 
 export interface EntityAttributes {
+  // Index signature for Metadata compatibility
+  [key: string]: string | number | boolean | null | undefined | string[] | number[];
+
   // For people
   name?: string;
   faceEmbedding?: number[];

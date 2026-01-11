@@ -10,7 +10,7 @@
  */
 
 export * from "./api-types";
-export { TwitterAuth } from "./auth";
+export { XAuth as TwitterAuth } from "./auth";
 export type { ClientOptions } from "./client";
 export { Client } from "./client";
 export * from "./errors";

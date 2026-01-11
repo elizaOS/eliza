@@ -106,7 +106,7 @@ export class TodoDataService {
     }
 
     logger.info(`Created todo: ${todo.id} - ${todo.name}`);
-    return todo.id;
+    return todo.id as UUID;
   }
 
   /**
@@ -159,15 +159,15 @@ export class TodoDataService {
     if (filters?.isCompleted !== undefined)
       conditions.push(eq(todosTable.isCompleted, filters.isCompleted));
 
-    let query = db.select().from(todosTable);
+    const baseQuery = db.select().from(todosTable);
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
+    const filteredQuery = conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;
 
-    query = query.orderBy(desc(todosTable.createdAt));
+    const orderedQuery = filteredQuery.orderBy(desc(todosTable.createdAt));
 
-    const todos: TodoRow[] = filters?.limit ? await query.limit(filters.limit) : await query;
+    const todos: TodoRow[] = filters?.limit
+      ? await orderedQuery.limit(filters.limit)
+      : await orderedQuery;
 
     // Fetch tags for each todo
     const todosWithTags = await Promise.all(

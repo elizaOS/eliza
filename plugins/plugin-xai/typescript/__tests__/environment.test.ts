@@ -1,16 +1,16 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldTargetUser, twitterEnvSchema, validateTwitterConfig } from "../environment";
+import {
+  createTestRuntime,
+  cleanupTestRuntime,
+} from "../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
 
 describe("Environment Configuration", () => {
-  let mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
-    mockRuntime = {
-      getSetting: vi.fn(),
-      character: {},
-      agentId: "agent-123" as UUID,
-    } as Partial<IAgentRuntime> as IAgentRuntime;
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
 
     // Clear environment variables
     vi.stubEnv("TWITTER_API_KEY", "");
@@ -21,6 +21,10 @@ describe("Environment Configuration", () => {
     vi.stubEnv("TWITTER_CLIENT_ID", "");
     vi.stubEnv("TWITTER_REDIRECT_URI", "");
     vi.stubEnv("TWITTER_BROKER_URL", "");
+  });
+
+  afterEach(async () => {
+    await cleanupTestRuntime(runtime);
   });
 
   describe("shouldTargetUser", () => {
@@ -64,8 +68,8 @@ describe("Environment Configuration", () => {
 
   describe("validateTwitterConfig", () => {
     it("should validate config with all required API credentials", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
-        const settings = {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        const settings: Record<string, string> = {
           TWITTER_API_KEY: "test-api-key",
           TWITTER_API_SECRET_KEY: "test-api-secret",
           TWITTER_ACCESS_TOKEN: "test-access-token",
@@ -74,7 +78,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateTwitterConfig(runtime);
 
       expect(config.TWITTER_API_KEY).toBe("test-api-key");
       expect(config.TWITTER_API_SECRET_KEY).toBe("test-api-secret");
@@ -83,15 +87,15 @@ describe("Environment Configuration", () => {
     });
 
     it("should throw error when required credentials are missing", async () => {
-      mockRuntime.getSetting = vi.fn(() => undefined);
+      vi.spyOn(runtime, "getSetting").mockReturnValue(undefined);
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter env auth is selected"
+      await expect(validateTwitterConfig(runtime)).rejects.toThrow(
+        "Twitter env auth is selected",
       );
     });
 
     it("should validate oauth mode without legacy env credentials", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           TWITTER_AUTH_MODE: "oauth",
           TWITTER_CLIENT_ID: "client-id",
@@ -100,14 +104,14 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateTwitterConfig(runtime);
       expect(config.TWITTER_AUTH_MODE).toBe("oauth");
       expect(config.TWITTER_CLIENT_ID).toBe("client-id");
       expect(config.TWITTER_REDIRECT_URI).toBe("http://127.0.0.1:8080/callback");
     });
 
     it("should throw when oauth mode is missing required fields", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           TWITTER_AUTH_MODE: "oauth",
           TWITTER_CLIENT_ID: "client-id",
@@ -116,25 +120,27 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow("Twitter OAuth is selected");
+      await expect(validateTwitterConfig(runtime)).rejects.toThrow(
+        "Twitter OAuth is selected",
+      );
     });
 
     it("should throw when broker mode is missing broker url", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           TWITTER_AUTH_MODE: "broker",
         };
         return settings[key];
       });
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter broker auth is selected"
+      await expect(validateTwitterConfig(runtime)).rejects.toThrow(
+        "Twitter broker auth is selected",
       );
     });
 
     it("should use default values for optional settings", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
-        const settings = {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        const settings: Record<string, string> = {
           TWITTER_API_KEY: "test-api-key",
           TWITTER_API_SECRET_KEY: "test-api-secret",
           TWITTER_ACCESS_TOKEN: "test-access-token",
@@ -143,7 +149,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateTwitterConfig(runtime);
 
       // Check default values
       expect(config.TWITTER_RETRY_LIMIT).toBe("5");
@@ -154,8 +160,8 @@ describe("Environment Configuration", () => {
     });
 
     it("should parse boolean settings correctly", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
-        const settings = {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        const settings: Record<string, string> = {
           TWITTER_API_KEY: "test-api-key",
           TWITTER_API_SECRET_KEY: "test-api-secret",
           TWITTER_ACCESS_TOKEN: "test-access-token",
@@ -166,15 +172,15 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateTwitterConfig(runtime);
 
       expect(config.TWITTER_ENABLE_POST).toBe("true");
       expect(config.TWITTER_DRY_RUN).toBe("false");
     });
 
     it("should handle partial config override", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
-        const settings = {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        const settings: Record<string, string> = {
           TWITTER_API_KEY: "runtime-api-key",
           TWITTER_API_SECRET_KEY: "runtime-api-secret",
           TWITTER_ACCESS_TOKEN: "runtime-access-token",
@@ -189,7 +195,7 @@ describe("Environment Configuration", () => {
         TWITTER_POST_INTERVAL_MAX: "120",
       };
 
-      const config = await validateTwitterConfig(mockRuntime, partialConfig);
+      const config = await validateTwitterConfig(runtime, partialConfig);
 
       // Should use partial config value
       expect(config.TWITTER_POST_INTERVAL_MIN).toBe("60");
@@ -201,7 +207,7 @@ describe("Environment Configuration", () => {
     it("should prioritize config over runtime over env", async () => {
       vi.stubEnv("TWITTER_API_KEY", "env-api-key");
 
-      mockRuntime.getSetting = vi.fn((key) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         if (key === "TWITTER_API_KEY") return "runtime-api-key";
         if (key === "TWITTER_API_SECRET_KEY") return "test-secret";
         if (key === "TWITTER_ACCESS_TOKEN") return "test-token";
@@ -209,7 +215,7 @@ describe("Environment Configuration", () => {
         return undefined;
       });
 
-      const config = await validateTwitterConfig(mockRuntime, {
+      const config = await validateTwitterConfig(runtime, {
         TWITTER_API_KEY: "config-api-key",
       });
 
@@ -217,8 +223,8 @@ describe("Environment Configuration", () => {
     });
 
     it("should parse target users correctly", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
-        const settings = {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        const settings: Record<string, string> = {
           TWITTER_API_KEY: "test-api-key",
           TWITTER_API_SECRET_KEY: "test-api-secret",
           TWITTER_ACCESS_TOKEN: "test-access-token",
@@ -228,13 +234,13 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      const config = await validateTwitterConfig(mockRuntime);
+      const config = await validateTwitterConfig(runtime);
 
       expect(config.TWITTER_TARGET_USERS).toBe("alice,bob,charlie");
     });
 
     it("should handle zod validation errors", async () => {
-      mockRuntime.getSetting = vi.fn(() => undefined);
+      vi.spyOn(runtime, "getSetting").mockReturnValue(undefined);
 
       // Create a scenario that will fail zod validation
       const invalidConfig = {
@@ -242,7 +248,10 @@ describe("Environment Configuration", () => {
       };
 
       await expect(
-        validateTwitterConfig(mockRuntime, invalidConfig as Record<string, unknown>)
+        validateTwitterConfig(
+          runtime,
+          invalidConfig as Record<string, unknown>,
+        ),
       ).rejects.toThrow();
     });
   });

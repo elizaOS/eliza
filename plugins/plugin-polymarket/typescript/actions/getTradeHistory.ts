@@ -14,6 +14,14 @@ import type { GetTradesParams, TradeEntry } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
+/**
+ * Type assertion helper for trades from Polymarket API.
+ * The CLOB client library's Trade type differs from our TradeEntry interface.
+ */
+function asTradeEntries(trades: unknown): TradeEntry[] {
+  return (trades ?? []) as TradeEntry[];
+}
+
 interface LLMTradeHistoryResult {
   market?: string;
   assetId?: string;
@@ -106,7 +114,7 @@ export const getTradeHistoryAction: Action = {
     const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
     // Use getTradesPaginated to get pagination info including next_cursor
     const tradesResponse = await client.getTradesPaginated(apiParams);
-    const trades: TradeEntry[] = (tradesResponse.trades as unknown as TradeEntry[]) ?? [];
+    const trades = asTradeEntries(tradesResponse.trades);
 
     let responseText = `📜 **Your Trade History on Polymarket:**\n\n`;
 

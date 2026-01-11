@@ -1,16 +1,12 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - cleanupTestRuntime: Ignore runtime.stop() errors - KEEP (test cleanup robustness)
-
 /**
  * @fileoverview Test Utilities for Bootstrap Plugin Tests
  *
- * Provides utilities for creating AgentRuntime instances for testing.
- * Uses IAgentRuntime interface throughout - MockRuntime is an alias for IAgentRuntime.
+ * Creates REAL AgentRuntime instances for testing.
+ * Uses actual AgentRuntime with mocked database adapter.
  */
 
 import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
-import type { Logger } from "../../logger";
 import { AgentRuntime } from "../../runtime";
 import type {
   Character,
@@ -27,7 +23,7 @@ import type {
   UUID,
   World,
 } from "../../types";
-import { ChannelType, MemoryType, ModelType } from "../../types";
+import { ChannelType, MemoryType } from "../../types";
 
 /**
  * Converts a string to a UUID type
@@ -73,16 +69,10 @@ export function createTestCharacter(
 }
 
 /**
- * Type alias for backward compatibility.
- * MockRuntime is just IAgentRuntime - no separate type.
+ * Creates a database adapter for testing.
+ * Uses in-memory maps to simulate database operations.
  */
-export type MockRuntime = IAgentRuntime;
-
-/**
- * Creates a comprehensive mock database adapter for testing.
- * This adapter uses in-memory maps to simulate database operations.
- */
-export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
+export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const resolvedAgentId = agentId || createUUID();
 
   // In-memory storage
@@ -92,8 +82,8 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const entities = new Map<UUID, Entity>();
   const tasks = new Map<UUID, Task>();
   const cache = new Map<string, unknown>();
-  const participants = new Map<UUID, Set<UUID>>(); // roomId -> entityIds
-  const participantStates = new Map<string, string | null>(); // `${roomId}-${entityId}` -> state
+  const participants = new Map<UUID, Set<UUID>>();
+  const participantStates = new Map<string, string | null>();
 
   return {
     db: {},
@@ -103,7 +93,6 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getConnection: vi.fn().mockResolvedValue({}),
     isReady: vi.fn().mockResolvedValue(true),
 
-    // Agent methods
     getAgent: vi.fn().mockResolvedValue({
       id: resolvedAgentId,
       name: "TestAgent",
@@ -114,18 +103,15 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     deleteAgent: vi.fn().mockResolvedValue(true),
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
 
-    // Memory methods
-    getMemories: vi.fn(
-      async (params: { roomId?: UUID; tableName?: string; count?: number }) => {
-        const result: Memory[] = [];
-        for (const mem of memories.values()) {
-          if (!params.roomId || mem.roomId === params.roomId) {
-            result.push(mem);
-          }
+    getMemories: vi.fn(async (params: { roomId?: UUID; count?: number }) => {
+      const result: Memory[] = [];
+      for (const mem of memories.values()) {
+        if (!params.roomId || mem.roomId === params.roomId) {
+          result.push(mem);
         }
-        return result.slice(0, params.count || 100);
-      },
-    ),
+      }
+      return result.slice(0, params.count || 100);
+    }),
     getMemoryById: vi.fn(async (id: UUID) => memories.get(id) || null),
     getMemoriesByIds: vi.fn(
       async (ids: UUID[]) =>
@@ -142,7 +128,7 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     }),
     getCachedEmbeddings: vi.fn().mockResolvedValue([]),
     searchMemories: vi.fn().mockResolvedValue([]),
-    createMemory: vi.fn(async (memory: Memory, _tableName?: string) => {
+    createMemory: vi.fn(async (memory: Memory) => {
       const id = memory.id || createUUID();
       memories.set(id, { ...memory, id });
       return id;
@@ -160,7 +146,6 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     countMemories: vi.fn().mockResolvedValue(0),
     getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
 
-    // Entity methods
     getEntitiesByIds: vi.fn(
       async (ids: UUID[]) =>
         ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
@@ -176,14 +161,12 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     }),
     updateEntity: vi.fn().mockResolvedValue(undefined),
 
-    // Component methods
     getComponent: vi.fn().mockResolvedValue(null),
     getComponents: vi.fn().mockResolvedValue([]),
     createComponent: vi.fn().mockResolvedValue(true),
     updateComponent: vi.fn().mockResolvedValue(undefined),
     deleteComponent: vi.fn().mockResolvedValue(undefined),
 
-    // Room methods
     getRoomsByIds: vi.fn(
       async (ids: UUID[]) =>
         ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
@@ -220,7 +203,6 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       return result;
     }),
 
-    // Participant methods
     addParticipantsRoom: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
       let roomParticipants = participants.get(roomId);
       if (!roomParticipants) {
@@ -248,7 +230,6 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       },
     ),
 
-    // World methods
     createWorld: vi.fn(async (world: World) => {
       const id = world.id || createUUID();
       worlds.set(id, { ...world, id });
@@ -265,13 +246,11 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       }
     }),
 
-    // Relationship methods
     createRelationship: vi.fn().mockResolvedValue(true),
     updateRelationship: vi.fn().mockResolvedValue(undefined),
     getRelationship: vi.fn().mockResolvedValue(null),
     getRelationships: vi.fn().mockResolvedValue([]),
 
-    // Cache methods
     getCache: vi.fn(async <T>(key: string) => cache.get(key) as T | undefined),
     setCache: vi.fn(async <T>(key: string, value: T) => {
       cache.set(key, value);
@@ -282,7 +261,6 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       return true;
     }),
 
-    // Task methods
     createTask: vi.fn(async (task: Task) => {
       const id = task.id || createUUID();
       tasks.set(id, { ...task, id });
@@ -296,7 +274,6 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       tasks.delete(id);
     }),
 
-    // Log methods
     log: vi.fn().mockResolvedValue(undefined),
     getLogs: vi.fn().mockResolvedValue([]),
     deleteLog: vi.fn().mockResolvedValue(undefined),
@@ -304,291 +281,8 @@ export function createMockDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
 }
 
 /**
- * Creates a mock IAgentRuntime for unit testing.
- * All methods are mocked with vi.fn() and can be overridden.
- */
-export function createMockRuntime(
-  overrides: Partial<IAgentRuntime> = {},
-): IAgentRuntime {
-  const agentId = (overrides.agentId || "test-agent-id") as UUID;
-  const character = overrides.character || createTestCharacter({ id: agentId });
-
-  const mockLogger: Logger = {
-    level: "info",
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    success: vi.fn(),
-    progress: vi.fn(),
-    log: vi.fn(),
-    clear: vi.fn(),
-    child: vi.fn().mockReturnThis(),
-  };
-
-  const baseRuntime: IAgentRuntime = {
-    // Core properties
-    agentId,
-    initPromise: Promise.resolve(),
-    character,
-    messageService: null,
-    providers: overrides.providers || [],
-    actions: overrides.actions || [],
-    evaluators: overrides.evaluators || [],
-    plugins: overrides.plugins || [],
-    services: overrides.services || new Map(),
-    events: overrides.events || ({} as IAgentRuntime["events"]),
-    routes: overrides.routes || [],
-    logger: overrides.logger || mockLogger,
-    stateCache: overrides.stateCache || new Map(),
-    fetch: fetch,
-
-    // Database adapter properties
-    db: {},
-
-    // Database methods
-    init: vi.fn().mockResolvedValue(undefined),
-    initialize: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    getConnection: vi.fn().mockResolvedValue({}),
-    isReady: vi.fn().mockResolvedValue(true),
-
-    // Agent methods
-    getAgent: vi.fn().mockResolvedValue(null),
-    getAgents: vi.fn().mockResolvedValue([]),
-    createAgent: vi.fn().mockResolvedValue(true),
-    updateAgent: vi.fn().mockResolvedValue(true),
-    deleteAgent: vi.fn().mockResolvedValue(true),
-
-    // Memory methods
-    createMemory: vi.fn().mockResolvedValue("memory-id" as UUID),
-    getMemories: vi.fn().mockResolvedValue([]),
-    getMemoryById: vi.fn().mockResolvedValue(null),
-    getMemoriesByIds: vi.fn().mockResolvedValue([]),
-    getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
-    searchMemories: vi.fn().mockResolvedValue([]),
-    updateMemory: vi.fn().mockResolvedValue(true),
-    deleteMemory: vi.fn().mockResolvedValue(undefined),
-    deleteManyMemories: vi.fn().mockResolvedValue(undefined),
-    deleteAllMemories: vi.fn().mockResolvedValue(undefined),
-    countMemories: vi.fn().mockResolvedValue(0),
-    getCachedEmbeddings: vi.fn().mockResolvedValue([]),
-    addEmbeddingToMemory: vi.fn().mockResolvedValue({
-      id: "memory-id",
-      entityId: "test-entity-id",
-      roomId: "test-room-id",
-      content: { text: "Test fact" },
-    }),
-    queueEmbeddingGeneration: vi.fn().mockResolvedValue(undefined),
-    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
-
-    // Entity methods
-    getEntityById: vi.fn().mockResolvedValue(null),
-    getEntitiesByIds: vi.fn().mockResolvedValue([]),
-    getEntitiesForRoom: vi.fn().mockResolvedValue([]),
-    createEntity: vi.fn().mockResolvedValue(true),
-    createEntities: vi.fn().mockResolvedValue(true),
-    updateEntity: vi.fn().mockResolvedValue(undefined),
-
-    // Component methods
-    getComponent: vi.fn().mockResolvedValue(null),
-    getComponents: vi.fn().mockResolvedValue([]),
-    createComponent: vi.fn().mockResolvedValue(true),
-    updateComponent: vi.fn().mockResolvedValue(undefined),
-    deleteComponent: vi.fn().mockResolvedValue(undefined),
-
-    // Room methods
-    getRoom: vi.fn().mockResolvedValue({
-      id: "test-room-id",
-      name: "Test Room",
-      worldId: "test-world-id",
-      serverId: "test-server-id",
-      source: "test",
-      type: ChannelType.GROUP,
-    }),
-    getRooms: vi.fn().mockResolvedValue([]),
-    getRoomsByIds: vi.fn().mockResolvedValue([]),
-    createRoom: vi.fn().mockResolvedValue("room-id" as UUID),
-    createRooms: vi.fn().mockResolvedValue(["room-id" as UUID]),
-    updateRoom: vi.fn().mockResolvedValue(undefined),
-    deleteRoom: vi.fn().mockResolvedValue(undefined),
-    deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
-    getRoomsForParticipant: vi.fn().mockResolvedValue([]),
-    getRoomsForParticipants: vi.fn().mockResolvedValue([]),
-    getRoomsByWorld: vi.fn().mockResolvedValue([]),
-    addParticipant: vi.fn().mockResolvedValue(true),
-    addParticipantsRoom: vi.fn().mockResolvedValue(true),
-    removeParticipant: vi.fn().mockResolvedValue(true),
-    getParticipantsForEntity: vi.fn().mockResolvedValue([]),
-    getParticipantsForRoom: vi.fn().mockResolvedValue([]),
-    isRoomParticipant: vi.fn().mockResolvedValue(false),
-    getParticipantUserState: vi.fn().mockResolvedValue(null),
-    setParticipantUserState: vi.fn().mockResolvedValue(undefined),
-
-    // World methods
-    getWorld: vi.fn().mockResolvedValue({
-      id: "test-world-id",
-      name: "Test World",
-      serverId: "test-server-id",
-      metadata: {
-        roles: {
-          "test-entity-id": "ADMIN",
-          "test-agent-id": "OWNER",
-        },
-      },
-    }),
-    createWorld: vi.fn().mockResolvedValue("world-id" as UUID),
-    updateWorld: vi.fn().mockResolvedValue(undefined),
-    removeWorld: vi.fn().mockResolvedValue(undefined),
-    getAllWorlds: vi.fn().mockResolvedValue([]),
-
-    // Relationship methods
-    createRelationship: vi.fn().mockResolvedValue(true),
-    updateRelationship: vi.fn().mockResolvedValue(undefined),
-    getRelationship: vi.fn().mockResolvedValue(null),
-    getRelationships: vi.fn().mockResolvedValue([]),
-
-    // Service methods
-    getService: vi.fn().mockReturnValue(null),
-    getServicesByType: vi.fn().mockReturnValue([]),
-    getAllServices: vi.fn().mockReturnValue(new Map()),
-    registerService: vi.fn().mockResolvedValue(undefined),
-    getRegisteredServiceTypes: vi.fn().mockReturnValue([]),
-    hasService: vi.fn().mockReturnValue(false),
-    getServiceLoadPromise: vi.fn().mockResolvedValue(null),
-
-    // Plugin methods
-    registerPlugin: vi.fn().mockResolvedValue(undefined),
-    registerProvider: vi.fn(),
-    registerAction: vi.fn(),
-    registerEvaluator: vi.fn(),
-    registerDatabaseAdapter: vi.fn(),
-
-    // Model methods
-    registerModel: vi.fn(),
-    getModel: vi.fn().mockReturnValue(undefined),
-    useModel: vi.fn().mockImplementation((modelType: string) => {
-      if (modelType === ModelType.OBJECT_LARGE) {
-        return Promise.resolve({
-          thought: "I should respond in a friendly way",
-          message: "Hello there! How can I help you today?",
-        });
-      } else if (modelType === ModelType.TEXT_SMALL) {
-        return Promise.resolve("yes");
-      } else if (modelType === ModelType.TEXT_LARGE) {
-        return Promise.resolve(`<response>
-  <thought>Responding to the user greeting.</thought>
-  <text>Hello there! How can I help you today?</text>
-</response>`);
-      } else if (modelType === ModelType.TEXT_EMBEDDING) {
-        return Promise.resolve([0.1, 0.2, 0.3, 0.4, 0.5]);
-      } else if (modelType === ModelType.IMAGE_DESCRIPTION) {
-        return Promise.resolve(`<response>
-  <title>Test Image</title>
-  <description>A test image description</description>
-  <text>This is a test image description generated by the mock runtime.</text>
-</response>`);
-      } else if (modelType === ModelType.IMAGE) {
-        return Promise.resolve({
-          imageUrl: "https://example.com/image.png",
-        });
-      }
-      return Promise.resolve({});
-    }),
-
-    // Event methods
-    registerEvent: vi.fn(),
-    getEvent: vi.fn().mockReturnValue(undefined),
-    emitEvent: vi.fn().mockResolvedValue(undefined),
-
-    // Settings methods
-    setSetting: vi.fn(),
-    getSetting: vi.fn().mockReturnValue(null),
-    getConversationLength: vi.fn().mockReturnValue(10),
-
-    // Configuration methods
-    isActionPlanningEnabled: vi.fn().mockReturnValue(false),
-    getLLMMode: vi.fn().mockReturnValue("DEFAULT"),
-    isCheckShouldRespondEnabled: vi.fn().mockReturnValue(true),
-
-    // Action processing
-    processActions: vi.fn().mockResolvedValue(undefined),
-    getActionResults: vi.fn().mockReturnValue([]),
-    evaluate: vi.fn().mockResolvedValue(null),
-
-    // State methods
-    composeState: vi
-      .fn()
-      .mockImplementation(async (_message: Memory, _providers?: string[]) => ({
-        values: {
-          agentName: "Test Agent",
-          recentMessages: "User: Test message",
-        },
-        data: {
-          room: {
-            id: "test-room-id" as UUID,
-            type: ChannelType.GROUP,
-            worldId: "test-world-id" as UUID,
-            serverId: "test-server-id" as UUID,
-            source: "test",
-          },
-        },
-        text: "",
-      })),
-
-    // Connection methods
-    ensureConnection: vi.fn().mockResolvedValue(undefined),
-    ensureConnections: vi.fn().mockResolvedValue(undefined),
-    ensureParticipantInRoom: vi.fn().mockResolvedValue(undefined),
-    ensureWorldExists: vi.fn().mockResolvedValue(undefined),
-    ensureRoomExists: vi.fn().mockResolvedValue(undefined),
-    ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
-
-    // Task methods
-    getTasks: vi.fn().mockResolvedValue([]),
-    getTask: vi.fn().mockResolvedValue(null),
-    getTasksByName: vi.fn().mockResolvedValue([]),
-    createTask: vi.fn().mockResolvedValue("task-id" as UUID),
-    updateTask: vi.fn().mockResolvedValue(undefined),
-    deleteTask: vi.fn().mockResolvedValue(undefined),
-    registerTaskWorker: vi.fn(),
-    getTaskWorker: vi.fn().mockReturnValue(undefined),
-
-    // Cache methods
-    getCache: vi.fn().mockResolvedValue(undefined),
-    setCache: vi.fn().mockResolvedValue(true),
-    deleteCache: vi.fn().mockResolvedValue(true),
-
-    // Log methods
-    log: vi.fn().mockResolvedValue(undefined),
-    getLogs: vi.fn().mockResolvedValue([]),
-    deleteLog: vi.fn().mockResolvedValue(undefined),
-
-    // Run tracking methods
-    createRunId: vi.fn().mockReturnValue("test-run-id" as UUID),
-    startRun: vi.fn().mockReturnValue("test-run-id" as UUID),
-    endRun: vi.fn(),
-    getCurrentRunId: vi.fn().mockReturnValue("test-run-id" as UUID),
-
-    // Messaging methods
-    registerSendHandler: vi.fn(),
-    sendMessageToTarget: vi.fn().mockResolvedValue(undefined),
-
-    // Lifecycle
-    stop: vi.fn().mockResolvedValue(undefined),
-
-    // Apply overrides last to allow customization
-    ...overrides,
-  } as IAgentRuntime;
-
-  return baseRuntime;
-}
-
-/**
- * Creates a real AgentRuntime for integration testing.
- * Uses actual runtime logic with mocked database adapter.
+ * Creates a REAL AgentRuntime for testing.
+ * This is the primary way to create test runtimes.
  */
 export async function createTestRuntime(
   options: {
@@ -600,7 +294,7 @@ export async function createTestRuntime(
 ): Promise<IAgentRuntime> {
   const character = createTestCharacter(options.character);
   const agentId = character.id || createUUID();
-  const adapter = options.adapter || createMockDatabaseAdapter(agentId);
+  const adapter = options.adapter || createTestDatabaseAdapter(agentId);
 
   const runtime = new AgentRuntime({
     agentId,
@@ -617,9 +311,9 @@ export async function createTestRuntime(
 }
 
 /**
- * Creates a mock Memory object for testing
+ * Creates a test Memory object
  */
-export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
+export function createTestMemory(overrides: Partial<Memory> = {}): Memory {
   const id = createUUID();
   return {
     id,
@@ -637,13 +331,10 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
   };
 }
 
-// Alias for backward compatibility
-export const createTestMemory = createMockMemory;
-
 /**
- * Creates a mock State object for testing
+ * Creates a test State object
  */
-export function createMockState(overrides: Partial<State> = {}): State {
+export function createTestState(overrides: Partial<State> = {}): State {
   return {
     values: {
       agentName: "Test Agent",
@@ -665,13 +356,10 @@ export function createMockState(overrides: Partial<State> = {}): State {
   };
 }
 
-// Alias for backward compatibility
-export const createTestState = createMockState;
-
 /**
- * Creates a mock Room object for testing
+ * Creates a test Room object
  */
-export function createMockRoom(overrides: Partial<Room> = {}): Room {
+export function createTestRoom(overrides: Partial<Room> = {}): Room {
   return {
     id: createUUID(),
     name: "Test Room",
@@ -684,33 +372,39 @@ export function createMockRoom(overrides: Partial<Room> = {}): Room {
 }
 
 /**
- * Creates a standardized setup for action tests with consistent objects.
+ * Creates a standardized setup for action tests with REAL runtime.
  */
-export function setupActionTest(options?: {
-  runtimeOverrides?: Partial<IAgentRuntime>;
+export async function setupActionTest(options?: {
+  characterOverrides?: Partial<Character>;
   messageOverrides?: Partial<Memory>;
   stateOverrides?: Partial<State>;
-}) {
-  const agentId = "test-agent-id" as UUID;
-  const roomId = "test-room-id" as UUID;
-  const entityId = "test-entity-id" as UUID;
-
-  // Create mock runtime with any overrides
-  const mockRuntime = createMockRuntime({
-    agentId,
-    ...options?.runtimeOverrides,
+  plugins?: Plugin[];
+}): Promise<{
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State;
+  callback: ReturnType<typeof vi.fn>;
+  agentId: UUID;
+  roomId: UUID;
+  entityId: UUID;
+}> {
+  const runtime = await createTestRuntime({
+    character: options?.characterOverrides,
+    plugins: options?.plugins,
   });
 
-  // Create message
-  const mockMessage = createMockMemory({
+  const agentId = runtime.agentId;
+  const roomId = createUUID();
+  const entityId = createUUID();
+
+  const message = createTestMemory({
     roomId,
     entityId,
     agentId,
     ...options?.messageOverrides,
   });
 
-  // Create state
-  const mockState = createMockState({
+  const state = createTestState({
     data: {
       room: {
         id: roomId,
@@ -723,14 +417,13 @@ export function setupActionTest(options?: {
     ...options?.stateOverrides,
   });
 
-  // Create callback function
-  const callbackFn = vi.fn().mockResolvedValue([] as Memory[]);
+  const callback = vi.fn().mockResolvedValue([] as Memory[]);
 
   return {
-    mockRuntime,
-    mockMessage,
-    mockState,
-    callbackFn,
+    runtime,
+    message,
+    state,
+    callback,
     agentId,
     roomId,
     entityId,
@@ -743,11 +436,7 @@ export function setupActionTest(options?: {
 export async function cleanupTestRuntime(
   runtime: IAgentRuntime,
 ): Promise<void> {
-  try {
-    await runtime.stop();
-  } catch {
-    // Ignore cleanup errors
-  }
+  await runtime.stop();
 }
 
 /**

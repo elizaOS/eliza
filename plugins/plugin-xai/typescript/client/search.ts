@@ -1,3 +1,10 @@
+import type {
+  ReferencedTweetV2,
+  TweetEntityHashtagV2,
+  TweetEntityMentionV2,
+  TweetEntityUrlV2,
+  UserV2,
+} from "twitter-api-v2";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
 import type { Tweet } from "./tweets";
@@ -75,24 +82,31 @@ export async function* searchTweets(
         timestamp: tweet.created_at ? new Date(tweet.created_at).getTime() : Date.now(),
         timeParsed: tweet.created_at ? new Date(tweet.created_at) : new Date(),
         userId: tweet.author_id || "",
-        name: searchIterator.includes?.users?.find((u) => u.id === tweet.author_id)?.name || "",
+        name:
+          searchIterator.includes?.users?.find((u: UserV2) => u.id === tweet.author_id)?.name || "",
         username:
-          searchIterator.includes?.users?.find((u) => u.id === tweet.author_id)?.username || "",
+          searchIterator.includes?.users?.find((u: UserV2) => u.id === tweet.author_id)?.username ||
+          "",
         conversationId: tweet.id,
-        hashtags: tweet.entities?.hashtags?.map((h) => h.tag) || [],
+        hashtags: tweet.entities?.hashtags?.map((h: TweetEntityHashtagV2) => h.tag) || [],
         mentions:
-          tweet.entities?.mentions?.map((m) => ({
+          tweet.entities?.mentions?.map((m: TweetEntityMentionV2) => ({
             id: m.id || "",
             username: m.username || "",
             name: "",
           })) || [],
         photos: [],
         thread: [],
-        urls: tweet.entities?.urls?.map((u) => u.expanded_url || u.url) || [],
+        urls: tweet.entities?.urls?.map((u: TweetEntityUrlV2) => u.expanded_url || u.url) || [],
         videos: [],
-        isRetweet: tweet.referenced_tweets?.some((rt) => rt.type === "retweeted") || false,
-        isReply: tweet.referenced_tweets?.some((rt) => rt.type === "replied_to") || false,
-        isQuoted: tweet.referenced_tweets?.some((rt) => rt.type === "quoted") || false,
+        isRetweet:
+          tweet.referenced_tweets?.some((rt: ReferencedTweetV2) => rt.type === "retweeted") ||
+          false,
+        isReply:
+          tweet.referenced_tweets?.some((rt: ReferencedTweetV2) => rt.type === "replied_to") ||
+          false,
+        isQuoted:
+          tweet.referenced_tweets?.some((rt: ReferencedTweetV2) => rt.type === "quoted") || false,
         isPin: false,
         sensitiveContent: false,
         likes: tweet.public_metrics?.like_count || undefined,
