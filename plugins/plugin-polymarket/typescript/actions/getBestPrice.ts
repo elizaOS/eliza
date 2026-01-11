@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -7,56 +6,42 @@ import {
   type Memory,
   type State,
   logger,
-  ModelType,
-  composePromptFromState,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClient } from '../utils/clobClient';
 import { getBestPriceTemplate } from '../templates';
+import type { ClobClient } from '@polymarket/clob-client';
 
-interface BestPriceParams {
-  tokenId: string;
-  side: string;
+interface LLMBestPriceResult {
+  tokenId?: string;
+  side?: string;
+  error?: string;
+}
+
+interface PriceResult {
+  price: string;
 }
 
 /**
- * Get best bid/ask price for a market token action for Polymarket
- * Fetches the best price for a specific token and side (buy/sell)
+ * Get Best Price Action for Polymarket.
+ * Returns the current best price (top of book) for a given token and side.
  */
 export const getBestPriceAction: Action = {
-  name: 'GET_BEST_PRICE',
-  similes: [
-    'BEST_PRICE',
-    'GET_PRICE',
-    'SHOW_PRICE',
-    'FETCH_PRICE',
-    'PRICE_DATA',
-    'MARKET_PRICE',
-    'BID_PRICE',
-    'ASK_PRICE',
-    'BEST_BID',
-    'BEST_ASK',
-    'GET_BEST_PRICE',
-    'SHOW_BEST_PRICE',
-    'FETCH_BEST_PRICE',
-    'PRICE_CHECK',
-    'CHECK_PRICE',
-    'PRICE_LOOKUP',
-    'TOKEN_PRICE',
-    'MARKET_RATE',
-  ],
-  description: 'Get the best bid or ask price for a specific market token',
+  name: 'POLYMARKET_GET_BEST_PRICE',
+  similes: ['GET_TOP_OF_BOOK', 'BEST_BID', 'BEST_ASK', 'SHOW_BEST_PRICE'].map(
+    (s) => `POLYMARKET_${s}`
+  ),
+  description:
+    'Gets the current best price (top of book) for a specified token ID and side (BUY/SELL) on Polymarket.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     logger.info(`[getBestPriceAction] Validate called for message: "${message.content?.text}"`);
-
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
 
     if (!clobApiUrl) {
-      logger.warn('[getBestPriceAction] CLOB_API_URL is required but not provided');
+      logger.warn('[getBestPriceAction] CLOB_API_URL is required.');
       return false;
     }
-
     logger.info('[getBestPriceAction] Validation passed');
     return true;
   },
@@ -65,168 +50,103 @@ export const getBestPriceAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[getBestPriceAction] Handler called!');
 
-    const clobApiUrl = runtime.getSetting('CLOB_API_URL');
-
-    if (!clobApiUrl) {
-      const errorMessage = 'CLOB_API_URL is required in configuration.';
-      logger.error(`[getBestPriceAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['GET_BEST_PRICE'],
-        data: { error: errorMessage },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw new Error(errorMessage);
-    }
-
-    let tokenId: string;
-    let side: string;
-
+    let llmResult: LLMBestPriceResult = {};
     try {
-      // Use LLM to extract parameters
-      const llmResult = await callLLMWithTimeout<{
-        tokenId?: string;
-        side?: string;
-        error?: string;
-      }>(runtime, state, getBestPriceTemplate, 'getBestPriceAction');
-
-      logger.info('[getBestPriceAction] LLM result:', JSON.stringify(llmResult));
-
-      if (llmResult?.error) {
-        throw new Error('Token ID or side not found');
+      const result = await callLLMWithTimeout<LLMBestPriceResult>(
+        runtime,
+        state,
+        getBestPriceTemplate,
+        'getBestPriceAction'
+      );
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
+      logger.info(`[getBestPriceAction] LLM result: ${JSON.stringify(llmResult)}`);
 
-      tokenId = llmResult?.tokenId || '';
-      side = llmResult?.side?.toLowerCase() || '';
-
-      if (!tokenId || !side) {
-        throw new Error('Token ID or side not found');
+      if (llmResult.error || !llmResult.tokenId || !llmResult.side) {
+        throw new Error(llmResult.error || 'Token ID and side not found in LLM result.');
       }
     } catch (error) {
-      logger.warn('[getBestPriceAction] LLM extraction failed, trying regex fallback');
-
-      // Fallback to regex extraction
+      logger.warn('[getBestPriceAction] LLM extraction failed, trying regex fallback', error);
       const text = message.content?.text || '';
 
-      // Extract token ID - look for patterns like "token 123456", "market 456789", or just numbers
-      const tokenMatch = text.match(/(?:token|market|id)\s+([a-zA-Z0-9]+)|([0-9]{5,})/i);
-      tokenId = tokenMatch?.[1] || tokenMatch?.[2] || '';
+      const tokenIdMatch = text.match(
+        /(?:token|tokenId|asset|id|for)\s*[:=#]?\s*([0-9a-zA-Z_\-]+)/i
+      );
+      const sideMatch = text.match(/\b(buy|bid|sell|ask)\b/i);
 
-      // Extract side - look for buy/sell indicators
-      const sideMatch = text.match(/\b(buy|sell|bid|ask)\b/i);
-      if (sideMatch) {
-        const matched = sideMatch[1].toLowerCase();
-        // Map ask -> buy, bid -> sell (common trading terminology)
-        side = matched === 'ask' ? 'buy' : matched === 'bid' ? 'sell' : matched;
+      if (tokenIdMatch && sideMatch) {
+        llmResult.tokenId = tokenIdMatch[1];
+        llmResult.side = sideMatch[1].toUpperCase();
+        if (llmResult.side === 'ASK') llmResult.side = 'SELL';
+        if (llmResult.side === 'BID') llmResult.side = 'BUY';
+        logger.info(
+          `[getBestPriceAction] Regex extracted: tokenId=${llmResult.tokenId}, side=${llmResult.side}`
+        );
       } else {
-        side = 'buy'; // Default to buy
-      }
-
-      if (!tokenId) {
-        const errorMessage = 'Please provide a token ID to get the price for.';
-        logger.error(`[getBestPriceAction] Token ID extraction failed`);
-
+        const errorMessage = 'Please specify a Token ID and a side (BUY/SELL) to get the best price.';
+        logger.error(`[getBestPriceAction] Extraction failed. Text: "${text}"`);
         const errorContent: Content = {
-          text: `❌ **Error**: ${errorMessage}
-
-Please provide a token ID in your request. Examples:
-• "Get best price for token 123456 on buy side"
-• "What's the sell price for market token 789012?"
-• "Show me the best bid for 456789"`,
-          actions: ['POLYMARKET_GET_BEST_PRICE'],
+          text: `❌ **Error**: ${errorMessage}`,
+          actions: ['GET_BEST_PRICE'],
           data: { error: errorMessage },
         };
-
-        if (callback) {
-          await callback(errorContent);
-        }
+        if (callback) await callback(errorContent);
         throw new Error(errorMessage);
       }
     }
 
-    // Validate side parameter
-    if (!['buy', 'sell'].includes(side)) {
-      side = 'buy'; // Default to buy if invalid
-    }
+    const tokenId = llmResult.tokenId!;
+    const side = llmResult.side!.toUpperCase();
+
+    logger.info(`[getBestPriceAction] Fetching best ${side} price for token: ${tokenId}`);
 
     try {
-      const client = await initializeClobClient(runtime);
-      const priceResponse = await client.getPrice(tokenId, side);
+      const client = await initializeClobClient(runtime) as ClobClient;
+      const priceResult: PriceResult = await client.getPrice(tokenId, side);
 
-      if (!priceResponse || !priceResponse.price) {
-        throw new Error(`No price data available for token ${tokenId}`);
+      let responseText = `💰 **Best ${side} Price for Token ${tokenId}**:\n\n`;
+      if (priceResult?.price) {
+        responseText += `• **Price**: $${parseFloat(priceResult.price).toFixed(4)}\n`;
+      } else {
+        responseText += `Could not retrieve best price. Order book might be empty for this side.\n`;
       }
-
-      const priceValue = parseFloat(priceResponse.price);
-      const formattedPrice = priceValue.toFixed(4);
-      const percentagePrice = (priceValue * 100).toFixed(2);
-
-      const sideText = side === 'buy' ? 'ask (buy)' : 'bid (sell)';
-
-      const responseText = `💰 **Best ${sideText.charAt(0).toUpperCase() + sideText.slice(1)} Price for Token ${tokenId}**
-
-**Price**: $${formattedPrice} (${percentagePrice}%)
-**Side**: ${sideText}
-**Token ID**: ${tokenId}
-
-${
-  side === 'buy'
-    ? 'This is the best price you would pay to buy this token.'
-    : 'This is the best price you would receive when selling this token.'
-}`;
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['POLYMARKET_GET_BEST_PRICE'],
+        actions: ['GET_BEST_PRICE'],
         data: {
           tokenId,
           side,
-          price: priceResponse.price,
-          formattedPrice,
-          percentagePrice,
+          price: priceResult?.price,
           timestamp: new Date().toISOString(),
         },
       };
 
-      if (callback) {
-        await callback(responseContent);
-      }
-
+      if (callback) await callback(responseContent);
       return responseContent;
     } catch (error) {
-      logger.error('[getBestPriceAction] Error fetching price:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-
+      logger.error(
+        `[getBestPriceAction] Error getting best price for ${tokenId} ${side}:`,
+        error
+      );
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: `❌ **Error getting best price**: ${errorMessage}
-
-Please check:
-• The token ID is valid and exists
-• CLOB_API_URL is correctly configured
-• Network connectivity is available
-
-**Token ID**: \`${tokenId}\`
-**Side**: \`${side}\``,
-        actions: ['POLYMARKET_GET_BEST_PRICE'],
+        text: `❌ **Error getting best price**: ${errorMessage}`,
+        actions: ['GET_BEST_PRICE'],
         data: {
-          error: errorMessage,
           tokenId,
           side,
+          error: errorMessage,
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (callback) {
-        await callback(errorContent);
-      }
+      if (callback) await callback(errorContent);
       throw error;
     }
   },
@@ -235,45 +155,26 @@ Please check:
     [
       {
         name: '{{user1}}',
-        content: {
-          text: 'Get best price for token 123456 on buy side via Polymarket',
-        },
+        content: { text: 'What is the best buy price for token xyz123 on Polymarket?' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll fetch the best buy price for that token via Polymarket.",
-          actions: ['POLYMARKET_GET_BEST_PRICE'],
+          text: 'Fetching the best buy price for token xyz123...',
+          action: 'POLYMARKET_GET_BEST_PRICE',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: {
-          text: "What's the sell price for market token 789012 via Polymarket?",
-        },
+        content: { text: 'Get the best ask for token 0xabc789 via Polymarket.' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me get the best sell price for that token via Polymarket.',
-          actions: ['POLYMARKET_GET_BEST_PRICE'],
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'Show me the best bid for 456789 via Polymarket',
-        },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Getting the best bid price for token 456789 via Polymarket.',
-          actions: ['POLYMARKET_GET_BEST_PRICE'],
+          text: 'Looking up the best sell/ask price for token 0xabc789...',
+          action: 'POLYMARKET_GET_BEST_PRICE',
         },
       },
     ],

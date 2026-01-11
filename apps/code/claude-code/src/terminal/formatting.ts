@@ -21,15 +21,11 @@ export function getTerminalSize(): { rows: number; columns: number } {
   // Default to a reasonable size if we can't determine the actual size
   const defaultSize = { rows: 24, columns: 80 };
   
-  try {
-    if (process.stdout.isTTY) {
-      return {
-        rows: process.stdout.rows || defaultSize.rows,
-        columns: process.stdout.columns || defaultSize.columns
-      };
-    }
-  } catch (error) {
-    // Ignore errors
+  if (process.stdout.isTTY) {
+    return {
+      rows: process.stdout.rows || defaultSize.rows,
+      columns: process.stdout.columns || defaultSize.columns
+    };
   }
   
   return defaultSize;

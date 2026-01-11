@@ -457,8 +457,8 @@ export class VisionManager {
       logger.info('Creating image blob...');
       const blob = new Blob([buffer], { type: mimeType });
       logger.info('Converting blob to RawImage...');
-      // @ts-ignore - RawImage.fromBlob expects web Blob but works with node Blob
-      const image = await RawImage.fromBlob(blob);
+      // Node.js Blob is compatible with web Blob at runtime
+      const image = await RawImage.fromBlob(blob as globalThis.Blob);
 
       logger.info('Processing image with vision processor...');
       const visionInputs = await this.processor(image);

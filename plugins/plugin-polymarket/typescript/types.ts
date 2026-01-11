@@ -495,3 +495,29 @@ export interface ApiKeysResponse {
   api_keys: ApiKey[];
   cert_required: boolean;
 }
+
+/**
+ * API Key credentials for L2 authentication
+ */
+export interface ApiKeyCreds {
+  key: string;
+  secret: string;
+  passphrase: string;
+}
+
+/**
+ * Error type for Polymarket operations
+ */
+export interface PolymarketError extends Error {
+  code?: string;
+  details?: string;
+  status?: number;
+}
+
+/**
+ * Book parameters for order book queries
+ */
+export interface BookParams {
+  token_id: string;
+  side?: 'buy' | 'sell';
+}

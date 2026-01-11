@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-01-10T12:14:14.101Z",
+  "generatedAt": "2026-01-11T08:04:06.684Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
@@ -154,6 +154,46 @@
         }
       ],
       "category": "cloudflare"
+    },
+    {
+      "name": "elizagotchi",
+      "description": "A Tamagotchi-style virtual pet game running on **elizaOS** with **NO LLM required**!",
+      "path": "/home/shaw/eliza/examples/elizagotchi",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/elizagotchi",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "elizagotchi"
+    },
+    {
+      "name": "game-of-life",
+      "description": "A multi-agent evolution simulation demonstrating elizaOS's ability to run autonomous agents **withou",
+      "path": "/home/shaw/eliza/examples/game-of-life",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/game-of-life/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/game-of-life/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "game-of-life"
     },
     {
       "name": "gcp",
@@ -436,22 +476,6 @@
       "category": "tic-tac-toe"
     },
     {
-      "name": "typescript",
-      "description": "typescript example",
-      "path": "/home/shaw/eliza/examples/typescript",
-      "languages": [
-        {
-          "language": "typescript",
-          "path": "/home/shaw/eliza/examples/typescript",
-          "hasPackageJson": true,
-          "hasRequirementsTxt": false,
-          "hasCargoToml": false,
-          "hasPyprojectToml": false
-        }
-      ],
-      "category": "typescript"
-    },
-    {
       "name": "vercel",
       "description": "Deploy AI chat agents as serverless Vercel Edge Functions. These examples show how to run an elizaOS",
       "path": "/home/shaw/eliza/examples/vercel",
@@ -473,6 +497,8 @@
     "aws",
     "chat",
     "cloudflare",
+    "elizagotchi",
+    "game-of-life",
     "gcp",
     "html",
     "mcp",
@@ -484,7 +510,6 @@
     "supabase",
     "text-adventure",
     "tic-tac-toe",
-    "typescript",
     "vercel"
   ],
   "languages": [

@@ -30,21 +30,16 @@ export async function createPrompt<T>(options: PromptOptions, config: TerminalCo
     throw new Error('Cannot prompt for input in non-interactive terminal');
   }
   
-  try {
-    // Use Inquirer to create the prompt
-    const result = await inquirer.prompt([{
-      ...options,
-      // Make sure name is a string
-      name: String(options.name)
-    }]);
-    
-    logger.debug('Prompt result', { name: options.name, result: result[options.name] });
-    
-    return result;
-  } catch (error) {
-    logger.error('Error in prompt', error);
-    throw new Error(`Failed to prompt for ${options.name}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  // Use Inquirer to create the prompt
+  const result = await inquirer.prompt([{
+    ...options,
+    // Make sure name is a string
+    name: String(options.name)
+  }]);
+  
+  logger.debug('Prompt result', { name: options.name, result: result[options.name] });
+  
+  return result;
 }
 
 /**

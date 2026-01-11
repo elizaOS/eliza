@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { Memory, UUID } from '@elizaos/core';
-// @ts-ignore
 import ForceGraph2D, { ForceGraphMethods, LinkObject, NodeObject } from 'react-force-graph-2d';
 
 // Declare global window extension for TypeScript
@@ -112,7 +111,7 @@ export function MemoryGraphOptimized({
                 const { nodes, links, pagination } = result.data;
 
                 // Convert to graph nodes with initial properties
-                const graphNodes: GraphNode[] = nodes.map((node: any) => ({
+                const graphNodes: GraphNode[] = nodes.map((node: { id: UUID; type: 'document' | 'fragment' }) => ({
                     id: node.id,
                     type: node.type,
                     loading: false,
@@ -314,7 +313,7 @@ export function MemoryGraphOptimized({
             {/* Graph */}
             <ForceGraph2D
                 key={`graph-${graphVersion}`}
-                ref={graphRef as any}
+                ref={graphRef}
                 graphData={graphData}
                 width={dimensions.width}
                 height={dimensions.height}

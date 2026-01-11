@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Bridge Action
  *
@@ -14,7 +13,6 @@ import type {
 } from "@elizaos/core";
 import {
   composePromptFromState,
-  elizaLogger,
   logger,
   ModelType,
   parseKeyValueXml,
@@ -75,25 +73,22 @@ export class BridgeAction {
   private readonly config: ReturnType<typeof createConfig>;
 
   constructor(private readonly walletProvider: WalletProvider) {
+    // Create EVM provider configuration for LiFi SDK
+    const evmProvider = EVM({
+      getWalletClient: (async () => {
+        const firstChain = Object.keys(this.walletProvider.chains)[0];
+        return this.walletProvider.getWalletClient(firstChain as SupportedChain);
+      }) as Parameters<typeof EVM>[0]["getWalletClient"],
+      switchChain: ((chainId: number) => {
+        logger.debug(`LiFi requesting chain switch to ${chainId}...`);
+        const chainName = this.getChainNameById(chainId);
+        return this.walletProvider.getWalletClient(chainName as SupportedChain);
+      }) as Parameters<typeof EVM>[0]["switchChain"],
+    });
+
     this.config = createConfig({
       integrator: "eliza-agent",
-      providers: [
-        EVM({
-          getWalletClient: async () => {
-            const firstChain = Object.keys(this.walletProvider.chains)[0];
-            return this.walletProvider.getWalletClient(
-              firstChain as SupportedChain
-            ) as ReturnType<typeof this.walletProvider.getWalletClient>;
-          },
-          switchChain: async (chainId: number) => {
-            logger.debug(`LiFi requesting chain switch to ${chainId}...`);
-            const chainName = this.getChainNameById(chainId);
-            return this.walletProvider.getWalletClient(
-              chainName as SupportedChain
-            ) as ReturnType<typeof this.walletProvider.getWalletClient>;
-          },
-        }),
-      ],
+      providers: [evmProvider],
       chains: Object.values(this.walletProvider.chains).map((config) => ({
         id: config.id,
         name: config.name,
@@ -175,13 +170,12 @@ export class BridgeAction {
 
     const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
-    return await this.walletProvider
-      .getPublicClient(chainName as SupportedChain)
-      .readContract({
-        address: tokenAddress as Address,
-        abi: decimalsAbi,
-        functionName: "decimals",
-      });
+    const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
+    return (await publicClient.readContract({
+      address: tokenAddress as Address,
+      abi: decimalsAbi,
+      functionName: "decimals",
+    } as unknown as Parameters<typeof publicClient.readContract>[0])) as number;
   }
 
   private createExecutionOptions(routeId: string): ExecutionOptions {
@@ -216,13 +210,11 @@ export class BridgeAction {
         this.updateRouteStatus(routeId, updatedRoute);
       },
 
-      switchChainHook: async (chainId: number) => {
+      switchChainHook: ((chainId: number) => {
         logger.debug(`Switching to chain ${chainId}...`);
         const chainName = this.getChainNameById(chainId);
-        return this.walletProvider.getWalletClient(
-          chainName as SupportedChain
-        ) as ReturnType<typeof this.walletProvider.getWalletClient>;
-      },
+        return this.walletProvider.getWalletClient(chainName as SupportedChain);
+      }) as ExecutionOptions["switchChainHook"],
 
       executeInBackground: false,
       disableMessageSigning: false,

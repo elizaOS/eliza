@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket Order Placement Actions
  *
@@ -18,7 +17,7 @@ import { Side } from "@polymarket/clob-client";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 import { initializeClobClient } from "../utils/clobClient";
 import { orderTemplate } from "../templates";
-import { OrderSide, OrderType, type OrderResponse } from "../types";
+import { OrderType, type OrderResponse } from "../types";
 
 interface PlaceOrderParams {
   tokenId: string;
@@ -28,6 +27,7 @@ interface PlaceOrderParams {
   orderType?: string;
   feeRateBps?: string;
   marketName?: string;
+  error?: string;
 }
 
 /**
@@ -79,7 +79,7 @@ export const placeOrderAction: Action = {
 
     try {
       // Use LLM to extract parameters
-      const llmResult = await callLLMWithTimeout<PlaceOrderParams & { error?: string }>(
+      const llmResult = await callLLMWithTimeout<PlaceOrderParams>(
         runtime,
         state,
         orderTemplate,
@@ -203,7 +203,7 @@ export const placeOrderAction: Action = {
       // Post the order
       let orderResponse: OrderResponse;
       try {
-        orderResponse = await client.postOrder(signedOrder, orderType as OrderType);
+        orderResponse = await client.postOrder(signedOrder, orderType as OrderType) as OrderResponse;
         logger.info("[placeOrderAction] Order posted successfully");
       } catch (postError) {
         logger.error("[placeOrderAction] Error posting order:", postError);

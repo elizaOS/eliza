@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -7,254 +6,165 @@ import {
   type Memory,
   type State,
   logger,
-  ModelType,
-  composePromptFromState,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClient } from '../utils/clobClient';
 import { getSimplifiedMarketsTemplate } from '../templates';
-import type { SimplifiedMarket } from '../types';
+import type { ClobClient, MarketsResponse, Market } from '@polymarket/clob-client';
+
+interface LLMSimplifiedMarketsResult {
+  limit?: number;
+  next_cursor?: string;
+  error?: string;
+}
+
+interface SimplifiedMarket {
+  condition_id: string;
+  question: string;
+  active: boolean;
+  closed: boolean;
+  end_date?: string;
+  outcomes: number;
+}
 
 /**
- * Get simplified market data action for Polymarket
- * Fetches markets in a simplified schema with reduced fields
+ * Get Simplified Markets Action for Polymarket.
+ * Retrieves a simplified view of markets with essential information only.
  */
 export const getSimplifiedMarketsAction: Action = {
   name: 'POLYMARKET_GET_SIMPLIFIED_MARKETS',
-  similes: [
-    'LIST_SIMPLIFIED_MARKETS',
-    'SHOW_SIMPLIFIED_MARKETS',
-    'GET_SIMPLE_MARKETS',
-    'FETCH_SIMPLIFIED_MARKETS',
-    'SIMPLIFIED_MARKETS',
-    'SIMPLE_MARKETS',
-    'SHOW_SIMPLIFIED_DATA',
-    'GET_SIMPLIFIED_DATA',
-    'SIMPLIFIED_MARKET_DATA',
-    'SIMPLE_MARKET_DATA',
-    'SHOW_SIMPLE_MARKETS',
-    'LIST_SIMPLE_MARKETS',
-  ],
-  description: 'Retrieve simplified prediction market data from Polymarket with reduced schema',
+  similes: ['SIMPLE_MARKETS', 'MARKET_LIST', 'BASIC_MARKETS', 'QUICK_MARKETS'].map(
+    (s) => `POLYMARKET_${s}`
+  ),
+  description:
+    'Retrieves a simplified list of markets from Polymarket with essential information only.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(
+      `[getSimplifiedMarketsAction] Validate called for message: "${message.content?.text}"`
+    );
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
 
     if (!clobApiUrl) {
-      logger.warn('[getSimplifiedMarketsAction] CLOB_API_URL is required but not provided');
+      logger.warn('[getSimplifiedMarketsAction] CLOB_API_URL is required.');
       return false;
     }
-
+    logger.info('[getSimplifiedMarketsAction] Validation passed');
     return true;
   },
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[getSimplifiedMarketsAction] Handler called!');
 
-    const clobApiUrl = runtime.getSetting('CLOB_API_URL');
-
-    if (!clobApiUrl) {
-      const errorMessage = 'CLOB_API_URL is required in configuration.';
-      logger.error(`[getSimplifiedMarketsAction] Configuration error: ${errorMessage}`);
-      const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYMARKET_GET_SIMPLIFIED_MARKETS'],
-        data: { error: errorMessage },
-      };
-
-      if (callback) {
-        await callback(errorContent);
-      }
-      throw new Error(errorMessage);
-    }
-
-    let nextCursor = '';
-
-    // Extract optional pagination cursor using LLM
+    let llmResult: LLMSimplifiedMarketsResult = {};
     try {
-      const llmResult = await callLLMWithTimeout<{ next_cursor?: string; error?: string }>(
+      const result = await callLLMWithTimeout<LLMSimplifiedMarketsResult>(
         runtime,
         state,
         getSimplifiedMarketsTemplate,
         'getSimplifiedMarketsAction'
       );
-
-      if (llmResult?.error) {
-        logger.info(
-          '[getSimplifiedMarketsAction] No pagination cursor requested, fetching first page'
-        );
-        nextCursor = '';
-      } else {
-        nextCursor = llmResult?.next_cursor || '';
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
+      logger.info(`[getSimplifiedMarketsAction] LLM result: ${JSON.stringify(llmResult)}`);
     } catch (error) {
-      logger.debug(
-        '[getSimplifiedMarketsAction] LLM parameter extraction failed, using defaults:',
-        error
-      );
-      nextCursor = '';
+      logger.warn('[getSimplifiedMarketsAction] LLM extraction failed, using defaults', error);
     }
 
+    const limit = llmResult.limit || 10;
+    const nextCursor = llmResult.next_cursor;
+
+    logger.info(`[getSimplifiedMarketsAction] Fetching simplified markets with limit=${limit}`);
+
     try {
-      // Initialize CLOB client
-      const clobClient = await initializeClobClient(runtime);
+      const client = await initializeClobClient(runtime) as ClobClient;
+      const marketsResponse: MarketsResponse = await client.getMarkets(nextCursor);
+      const allMarkets: Market[] = marketsResponse.data || [];
 
-      // Fetch simplified markets with optional pagination
-      const response = await clobClient.getSimplifiedMarkets(nextCursor);
+      // Create simplified view
+      const simplifiedMarkets: SimplifiedMarket[] = allMarkets.slice(0, limit).map((market: Market) => ({
+        condition_id: market.condition_id,
+        question: market.question || 'N/A',
+        active: market.active ?? false,
+        closed: market.closed ?? false,
+        end_date: market.end_date_iso,
+        outcomes: market.tokens?.length || 0,
+      }));
 
-      if (!response || !response.data) {
-        throw new Error('Invalid response from CLOB API');
-      }
+      let responseText = `📋 **Simplified Polymarket Markets**:\n\n`;
 
-      const markets: SimplifiedMarket[] = response.data;
-      const marketCount = markets.length;
-
-      // Filter out markets with missing essential data
-      const validMarkets = markets.filter(
-        (market) =>
-          market.condition_id &&
-          market.tokens &&
-          market.tokens.length === 2 &&
-          market.tokens[0]?.token_id &&
-          market.tokens[1]?.token_id
-      );
-
-      // Format response text
-      let responseText = `📊 **Retrieved ${marketCount} Simplified Polymarket markets**\n`;
-
-      if (validMarkets.length < marketCount) {
-        responseText += `📝 **Note**: ${marketCount - validMarkets.length} markets filtered out due to incomplete data\n`;
-      }
-
-      responseText += `\n`;
-
-      if (validMarkets.length === 0) {
-        responseText += 'No valid simplified markets found.';
-      } else {
-        // Show first few valid markets as preview
-        const previewMarkets = validMarkets.slice(0, 5);
-        responseText += '**Sample Simplified Markets:**\n';
-
-        previewMarkets.forEach((market: SimplifiedMarket, index: number) => {
-          const yesToken =
-            market.tokens.find((token) => token.outcome === 'Yes') || market.tokens[0];
-          const noToken = market.tokens.find((token) => token.outcome === 'No') || market.tokens[1];
-
-          responseText += `${index + 1}. **Condition ID**: ${market.condition_id}\n`;
-          responseText += `   • Tokens: ${yesToken.outcome || 'Token1'} (${yesToken.token_id.slice(0, 8)}...) / ${noToken.outcome || 'Token2'} (${noToken.token_id.slice(0, 8)}...)\n`;
-          responseText += `   • Active: ${market.active ? '✅' : '❌'}\n`;
-          responseText += `   • Closed: ${market.closed ? '✅' : '❌'}\n`;
-          responseText += `   • Min Incentive Size: ${market.min_incentive_size || 'Not specified'}\n\n`;
+      if (simplifiedMarkets && simplifiedMarkets.length > 0) {
+        responseText += `Showing ${simplifiedMarkets.length} market(s):\n\n`;
+        simplifiedMarkets.forEach((market: SimplifiedMarket, index: number) => {
+          const statusEmoji = market.active && !market.closed ? '🟢' : '🔴';
+          responseText += `**${index + 1}.** ${statusEmoji} ${market.question}\n`;
+          responseText += `   ID: \`${market.condition_id.substring(0, 12)}...\` | Outcomes: ${market.outcomes}`;
+          if (market.end_date) {
+            responseText += ` | Ends: ${new Date(market.end_date).toLocaleDateString()}`;
+          }
+          responseText += `\n\n`;
         });
 
-        if (validMarkets.length > 5) {
-          responseText += `... and ${validMarkets.length - 5} more simplified markets\n\n`;
+        if (marketsResponse.next_cursor) {
+          responseText += `\n📄 *More markets available. Use cursor: \`${marketsResponse.next_cursor}\`*\n`;
         }
-
-        responseText += `**Summary:**\n`;
-        responseText += `• Total Simplified Markets: ${validMarkets.length} (${marketCount} total retrieved)\n`;
-        responseText += `• Simplified schema includes: condition_id, tokens, rewards, incentives, status\n`;
-        responseText += `• Reduced data for faster processing and lower bandwidth\n`;
-
-        if (response.next_cursor && response.next_cursor !== 'LTE=') {
-          responseText += `• More results available (paginated)\n`;
-        }
+      } else {
+        responseText += `No markets found.\n`;
       }
 
       const responseContent: Content = {
         text: responseText,
         actions: ['POLYMARKET_GET_SIMPLIFIED_MARKETS'],
         data: {
-          markets: validMarkets, // Return only valid markets
-          count: validMarkets.length,
-          total: response.count || marketCount,
-          filtered: marketCount - validMarkets.length,
-          next_cursor: response.next_cursor,
-          limit: response.limit,
+          markets: simplifiedMarkets,
+          limit,
+          next_cursor: marketsResponse.next_cursor,
+          timestamp: new Date().toISOString(),
         },
       };
 
-      if (callback) {
-        await callback(responseContent);
-      }
-
+      if (callback) await callback(responseContent);
       return responseContent;
     } catch (error) {
       logger.error('[getSimplifiedMarketsAction] Error fetching simplified markets:', error);
-
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Unknown error occurred while fetching simplified markets';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: `❌ **Error retrieving simplified markets**: ${errorMessage}
-
-Please check:
-• CLOB_API_URL is correctly configured
-• Network connectivity is available
-• Polymarket CLOB service is operational`,
+        text: `❌ **Error fetching simplified markets**: ${errorMessage}`,
         actions: ['POLYMARKET_GET_SIMPLIFIED_MARKETS'],
         data: {
           error: errorMessage,
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (callback) {
-        await callback(errorContent);
-      }
+      if (callback) await callback(errorContent);
       throw error;
     }
   },
 
   examples: [
     [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'Show me simplified market data via Polymarket',
-        },
-      },
+      { name: '{{user1}}', content: { text: 'Give me a simple list of Polymarket markets.' } },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll retrieve simplified Polymarket data for faster processing.",
+          text: 'Fetching a simplified list of Polymarket markets...',
           action: 'POLYMARKET_GET_SIMPLIFIED_MARKETS',
         },
       },
     ],
     [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'Get markets in simplified format via Polymarket',
-        },
-      },
+      { name: '{{user1}}', content: { text: 'Show me a quick overview of markets on Polymarket.' } },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me fetch the markets using the simplified schema.',
-          action: 'POLYMARKET_GET_SIMPLIFIED_MARKETS',
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'I need simple market data for analysis via Polymarket',
-        },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Retrieving simplified market data for your analysis.',
+          text: 'Getting a quick market overview from Polymarket...',
           action: 'POLYMARKET_GET_SIMPLIFIED_MARKETS',
         },
       },

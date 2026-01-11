@@ -25,7 +25,7 @@ async function runBuild(): Promise<boolean> {
 
   // Build the TypeScript code
   const result = await Bun.build({
-    entrypoints: ["typescript/index.ts"],
+    entrypoints: ["index.ts"],
     outdir: distDir,
     target: "node",
     format: "esm",
@@ -75,8 +75,8 @@ async function runBuild(): Promise<boolean> {
   if (!existsSync(indexDtsPath)) {
     await writeFile(
       indexDtsPath,
-      `export * from "./typescript/index";
-export { default } from "./typescript/index";
+      `export * from "./index";
+export { default } from "./index";
 `,
       "utf8"
     );

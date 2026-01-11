@@ -1,18 +1,35 @@
-// @ts-nocheck
-import { IAgentRuntime, Memory, State, HandlerCallback, logger, Action } from '@elizaos/core';
-import { initializeClobClient } from '../utils/clobClient';
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  type Content,
+  logger,
+} from '@elizaos/core';
 import { ethers } from 'ethers';
-
-export interface CreateApiKeyParams {
-  // No parameters needed - API key generation is based on wallet signature
-}
 
 export interface ApiKeyResponse {
   id: string;
   secret: string;
   passphrase: string;
   created_at?: string;
-  // Add any other fields returned by Polymarket API
+}
+
+interface ApiCredentialsResponse {
+  api_key?: string;
+  key?: string;
+  id?: string;
+  apiKey?: string;
+  API_KEY?: string;
+  api_secret?: string;
+  secret?: string;
+  apiSecret?: string;
+  API_SECRET?: string;
+  api_passphrase?: string;
+  passphrase?: string;
+  apiPassphrase?: string;
+  API_PASSPHRASE?: string;
 }
 
 /**
@@ -61,10 +78,9 @@ export const createApiKeyAction: Action = {
     ],
   ],
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
     logger.info('[createApiKeyAction] Validating action');
 
-    // Check if private key is available
     const privateKey =
       runtime.getSetting('WALLET_PRIVATE_KEY') ||
       runtime.getSetting('PRIVATE_KEY') ||
@@ -80,17 +96,16 @@ export const createApiKeyAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-    options: any,
+    _message: Memory,
+    _state: State,
+    _options: Record<string, unknown>,
     callback: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<Content> => {
     logger.info('[createApiKeyAction] Handler called!');
 
     try {
       const clobApiUrl = runtime.getSetting('CLOB_API_URL') || 'https://clob.polymarket.com';
 
-      // Get private key from environment
       const privateKey =
         runtime.getSetting('WALLET_PRIVATE_KEY') ||
         runtime.getSetting('PRIVATE_KEY') ||
@@ -102,20 +117,18 @@ export const createApiKeyAction: Action = {
         );
       }
 
-      // Create ethers wallet for signing
       const wallet = new ethers.Wallet(privateKey);
       const address = wallet.address;
 
       logger.info('[createApiKeyAction] Creating API key credentials...');
 
-      // Prepare EIP-712 signature for L1 authentication
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const nonce = 0;
 
       const domain = {
         name: 'ClobAuthDomain',
         version: '1',
-        chainId: 137, // Polygon Chain ID
+        chainId: 137,
       };
 
       const types = {
@@ -134,18 +147,14 @@ export const createApiKeyAction: Action = {
         message: 'This message attests that I control the given wallet',
       };
 
-      // Sign the EIP-712 message
       const signature = await wallet.signTypedData(domain, types, value);
 
-      // First try to derive existing API key credentials
-      // This is safer than always creating new ones which might fail with 400 if keys already exist
-      let apiCredentials: any;
+      let apiCredentials: ApiCredentialsResponse | null = null;
       let isNewKey = false;
 
       try {
         logger.info('[createApiKeyAction] Attempting to derive existing API key...');
 
-        // Try to derive existing API key first
         const deriveResponse = await fetch(`${clobApiUrl}/auth/derive-api-key`, {
           method: 'GET',
           headers: {
@@ -158,17 +167,12 @@ export const createApiKeyAction: Action = {
         });
 
         if (deriveResponse.ok) {
-          apiCredentials = await deriveResponse.json();
+          apiCredentials = await deriveResponse.json() as ApiCredentialsResponse;
           logger.info('[createApiKeyAction] Successfully derived existing API key');
-          logger.debug(
-            '[createApiKeyAction] Derive response:',
-            JSON.stringify(apiCredentials, null, 2)
-          );
         } else {
           throw new Error(`Derive failed: ${deriveResponse.status}`);
         }
       } catch (deriveError) {
-        // If derive fails, try to create a new API key
         logger.info('[createApiKeyAction] No existing API key found, creating new one...');
         isNewKey = true;
 
@@ -191,87 +195,63 @@ export const createApiKeyAction: Action = {
           );
         }
 
-        apiCredentials = await createResponse.json();
+        apiCredentials = await createResponse.json() as ApiCredentialsResponse;
         logger.info('[createApiKeyAction] Successfully created new API key');
       }
 
-      logger.info('[createApiKeyAction] API key created successfully');
+      if (!apiCredentials) {
+        throw new Error('Failed to obtain API credentials');
+      }
 
-      // Debug logging to see the actual response structure
+      logger.info('[createApiKeyAction] API key created successfully');
       logger.info(
         '[createApiKeyAction] Raw API response:',
         JSON.stringify(apiCredentials, null, 2)
       );
 
-      // Check all possible field names in the response
-      const allFields = Object.keys(apiCredentials || {});
-      logger.info('[createApiKeyAction] Available fields in response:', allFields);
-
-      // Format the response with proper type handling - Polymarket uses api_key, api_secret, api_passphrase
       const responseData: ApiKeyResponse = {
         id:
-          (apiCredentials as any).api_key ||
-          (apiCredentials as any).key ||
-          (apiCredentials as any).id ||
-          (apiCredentials as any).apiKey ||
-          (apiCredentials as any).API_KEY,
+          apiCredentials.api_key ||
+          apiCredentials.key ||
+          apiCredentials.id ||
+          apiCredentials.apiKey ||
+          apiCredentials.API_KEY ||
+          '',
         secret:
-          (apiCredentials as any).api_secret ||
-          (apiCredentials as any).secret ||
-          (apiCredentials as any).apiSecret ||
-          (apiCredentials as any).API_SECRET,
+          apiCredentials.api_secret ||
+          apiCredentials.secret ||
+          apiCredentials.apiSecret ||
+          apiCredentials.API_SECRET ||
+          '',
         passphrase:
-          (apiCredentials as any).api_passphrase ||
-          (apiCredentials as any).passphrase ||
-          (apiCredentials as any).apiPassphrase ||
-          (apiCredentials as any).API_PASSPHRASE,
+          apiCredentials.api_passphrase ||
+          apiCredentials.passphrase ||
+          apiCredentials.apiPassphrase ||
+          apiCredentials.API_PASSPHRASE ||
+          '',
         created_at: new Date().toISOString(),
       };
 
-      // Debug logging to see what we extracted
       logger.info('[createApiKeyAction] Extracted fields:', {
         id: responseData.id,
         secretLength: responseData.secret?.length,
         passphraseLength: responseData.passphrase?.length,
       });
 
-      // Store the credentials in runtime settings for other actions to use
-      // This allows get/delete API key actions to work without requiring env vars
       if (responseData.id && responseData.secret && responseData.passphrase) {
         logger.info('[createApiKeyAction] Storing API credentials in runtime settings...');
 
-        // Use the proper runtime.setSetting method
         runtime.setSetting('CLOB_API_KEY', responseData.id, false);
-        runtime.setSetting('CLOB_API_SECRET', responseData.secret, true); // Mark secret as sensitive
-        runtime.setSetting('CLOB_API_PASSPHRASE', responseData.passphrase, true); // Mark passphrase as sensitive
+        runtime.setSetting('CLOB_API_SECRET', responseData.secret, true);
+        runtime.setSetting('CLOB_API_PASSPHRASE', responseData.passphrase, true);
 
         logger.info('[createApiKeyAction] API credentials stored successfully');
-
-        // Verify storage by immediately retrieving the values
-        const storedApiKey = runtime.getSetting('CLOB_API_KEY');
-        const storedApiSecret = runtime.getSetting('CLOB_API_SECRET');
-        const storedApiPassphrase = runtime.getSetting('CLOB_API_PASSPHRASE');
-
-        logger.info('[createApiKeyAction] Verification of stored credentials:', {
-          storedApiKeyLength: storedApiKey?.length,
-          storedSecretLength: storedApiSecret?.length,
-          storedPassphraseLength: storedApiPassphrase?.length,
-          keysMatch: storedApiKey === responseData.id,
-          secretsMatch: storedApiSecret === responseData.secret,
-          passphrasesMatch: storedApiPassphrase === responseData.passphrase,
-        });
       } else {
         logger.warn(
           '[createApiKeyAction] Some credentials are missing, could not store in runtime'
         );
-        logger.warn('[createApiKeyAction] Missing fields:', {
-          hasId: !!responseData.id,
-          hasSecret: !!responseData.secret,
-          hasPassphrase: !!responseData.passphrase,
-        });
       }
 
-      // Create success message
       const actionType = isNewKey ? 'Created' : 'Retrieved';
       const actionDescription = isNewKey
         ? 'New credentials have been generated'
@@ -296,19 +276,21 @@ ${actionDescription}
 **Next Steps:**
 You can now place orders on Polymarket. The system will automatically use these credentials for authenticated operations.`;
 
-      // Call callback with success response
+      const responseContent: Content = {
+        text: successMessage,
+        actions: ['CREATE_API_KEY'],
+        data: {
+          success: true,
+          apiKey: responseData,
+        },
+      };
+
       if (callback) {
-        callback({
-          text: successMessage,
-          action: 'CREATE_API_KEY',
-          data: {
-            success: true,
-            apiKey: responseData,
-          },
-        });
+        callback(responseContent);
       }
 
       logger.info('[createApiKeyAction] API key creation completed successfully');
+      return responseContent;
     } catch (error) {
       logger.error('[createApiKeyAction] Error creating API key:', error);
 
@@ -327,16 +309,20 @@ You can now place orders on Polymarket. The system will automatically use these 
 • Network connection is stable
 • Try again in a few moments`;
 
+      const errorContent: Content = {
+        text: errorMessage,
+        actions: ['CREATE_API_KEY'],
+        data: {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      };
+
       if (callback) {
-        callback({
-          text: errorMessage,
-          action: 'CREATE_API_KEY',
-          data: {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          },
-        });
+        callback(errorContent);
       }
+
+      return errorContent;
     }
   },
 };

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -8,45 +7,30 @@ import {
   type State,
   logger,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClientWithCreds } from '../utils/clobClient';
-import type { ClobClient } from '@polymarket/clob-client';
 import { getOrderDetailsTemplate } from '../templates';
-import type { OrderSide, OrderStatus } from '../types';
+import type { ClobClient } from '@polymarket/clob-client';
+import type { DetailedOrder } from '../types';
 
-interface OfficialOpenOrder {
-  order_id: string;
-  user_id: string;
-  market_id: string;
-  token_id: string;
-  side: OrderSide;
-  type: string;
-  status: string;
-  price: string;
-  size: string;
-  filled_size: string;
-  fees_paid?: string;
-  created_at: string;
-  updated_at: string;
-  is_cancelled?: boolean;
-  is_taker?: boolean;
-  is_active_order?: boolean;
-  error_code?: string | null;
-  error_message?: string | null;
+interface LLMOrderDetailsResult {
+  orderId?: string;
+  error?: string;
 }
 
 /**
- * Get order details by ID action for Polymarket.
- * Fetches detailed information for a specific order.
+ * Get Order Details Action for Polymarket.
+ * Retrieves detailed information about a specific order by its ID.
  */
 export const getOrderDetailsAction: Action = {
   name: 'POLYMARKET_GET_ORDER_DETAILS',
-  similes: ['ORDER_DETAILS', 'GET_ORDER', 'FETCH_ORDER', 'SHOW_ORDER_INFO', 'ORDER_STATUS'].map(
+  similes: ['ORDER_INFO', 'VIEW_ORDER', 'SHOW_ORDER', 'ORDER_STATUS'].map(
     (s) => `POLYMARKET_${s}`
   ),
-  description: 'Retrieves details for a specific order by its ID.',
+  description:
+    'Retrieves detailed information about a specific order by its ID on Polymarket.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     logger.info(`[getOrderDetailsAction] Validate called for message: "${message.content?.text}"`);
     const clobApiUrl = runtime.getSetting('CLOB_API_URL');
     const clobApiKey = runtime.getSetting('CLOB_API_KEY');
@@ -60,7 +44,7 @@ export const getOrderDetailsAction: Action = {
       runtime.getSetting('POLYMARKET_PRIVATE_KEY');
 
     if (!clobApiUrl) {
-      logger.warn('[getOrderDetailsAction] CLOB_API_URL is required');
+      logger.warn('[getOrderDetailsAction] CLOB_API_URL is required.');
       return false;
     }
     if (!privateKey) {
@@ -70,7 +54,7 @@ export const getOrderDetailsAction: Action = {
       return false;
     }
     if (!clobApiKey || !clobApiSecret || !clobApiPassphrase) {
-      const missing = [];
+      const missing: string[] = [];
       if (!clobApiKey) missing.push('CLOB_API_KEY');
       if (!clobApiSecret) missing.push('CLOB_API_SECRET or CLOB_SECRET');
       if (!clobApiPassphrase) missing.push('CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE');
@@ -87,37 +71,46 @@ export const getOrderDetailsAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[getOrderDetailsAction] Handler called!');
 
-    let orderId: string | undefined;
+    let llmResult: LLMOrderDetailsResult = {};
     try {
-      const llmResult = await callLLMWithTimeout<{ orderId?: string; error?: string }>(
+      const result = await callLLMWithTimeout<LLMOrderDetailsResult>(
         runtime,
         state,
         getOrderDetailsTemplate,
         'getOrderDetailsAction'
       );
-      logger.info(`[getOrderDetailsAction] LLM result: ${JSON.stringify(llmResult)}`);
-      if (llmResult?.error || !llmResult?.orderId) {
-        throw new Error(llmResult?.error || 'Order ID not found in LLM result.');
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
-      orderId = llmResult.orderId;
+      logger.info(`[getOrderDetailsAction] LLM result: ${JSON.stringify(llmResult)}`);
+
+      if (llmResult.error || !llmResult.orderId) {
+        throw new Error(llmResult.error || 'Order ID not found in LLM result.');
+      }
     } catch (error) {
-      logger.warn('[getOrderDetailsAction] LLM extraction failed, trying regex fallback');
+      logger.warn('[getOrderDetailsAction] LLM extraction failed, trying regex fallback', error);
       const text = message.content?.text || '';
-      const orderIdRegex = /(?:order|ID)[:\s#]?([0-9a-zA-Z_\-]+(?:0x[0-9a-fA-F]+)?)/i;
-      const match = text.match(orderIdRegex);
-      if (match && match[1]) {
-        orderId = match[1];
+
+      const orderIdMatch = text.match(
+        /(?:order|orderId|id|details\s+for)\s*[:=#]?\s*([0-9a-zA-Z_\-]+)/i
+      );
+
+      if (orderIdMatch) {
+        llmResult.orderId = orderIdMatch[1];
+        logger.info(
+          `[getOrderDetailsAction] Regex extracted orderId: ${llmResult.orderId}`
+        );
       } else {
-        const errorMessage = 'Please specify an Order ID to get details.';
-        logger.error(`[getOrderDetailsAction] Order ID extraction failed. Text: "${text}"`);
+        const errorMessage = 'Please specify an Order ID to get order details.';
+        logger.error(`[getOrderDetailsAction] Extraction failed. Text: "${text}"`);
         const errorContent: Content = {
           text: `❌ **Error**: ${errorMessage}`,
-          actions: ['POLYMARKET_GET_ORDER_DETAILS'],
+          actions: ['GET_ORDER_DETAILS'],
           data: { error: errorMessage },
         };
         if (callback) await callback(errorContent);
@@ -125,67 +118,65 @@ export const getOrderDetailsAction: Action = {
       }
     }
 
-    if (!orderId) {
-      const errorMessage = 'Order ID is missing after extraction attempts.';
-      logger.error(`[getOrderDetailsAction] ${errorMessage}`);
-      const errorContent: Content = {
-        text: `❌ **Error**: ${errorMessage}`,
-        actions: ['POLYMARKET_GET_ORDER_DETAILS'],
-        data: { error: errorMessage },
-      };
-      if (callback) await callback(errorContent);
-      throw new Error(errorMessage);
-    }
+    const orderId = llmResult.orderId!;
 
-    logger.info(`[getOrderDetailsAction] Attempting to fetch details for Order ID: ${orderId}`);
+    logger.info(`[getOrderDetailsAction] Fetching details for order: ${orderId}`);
 
     try {
-      const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-      const order: any = await client.getOrder(orderId);
+      const client = await initializeClobClientWithCreds(runtime) as ClobClient;
+      const order: DetailedOrder = await client.getOrder(orderId);
 
-      if (!order) {
-        logger.warn(`[getOrderDetailsAction] Order not found for ID: ${orderId}`);
-        const notFoundContent: Content = {
-          text: `🤷 **Order Not Found**: No order exists with the ID \`${orderId}\`.`,
-          actions: ['POLYMARKET_GET_ORDER_DETAILS'],
-          data: { error: 'Order not found', orderId, timestamp: new Date().toISOString() },
-        };
-        if (callback) await callback(notFoundContent);
-        return notFoundContent;
+      let responseText = `📋 **Order Details for ${orderId}**:\n\n`;
+
+      if (order) {
+        const sideEmoji = order.side === 'BUY' ? '🟢' : '🔴';
+        responseText += `• **Order ID**: \`${order.id}\` ${sideEmoji}\n`;
+        responseText += `• **Status**: ${order.status}\n`;
+        responseText += `• **Market**: ${order.market || 'N/A'}\n`;
+        responseText += `• **Asset ID**: \`${order.asset_id || 'N/A'}\`\n`;
+        responseText += `• **Side**: ${order.side}\n`;
+        responseText += `• **Type**: ${order.order_type || 'LIMIT'}\n`;
+        responseText += `• **Price**: $${parseFloat(order.price).toFixed(4)}\n`;
+        responseText += `• **Original Size**: ${order.original_size}\n`;
+        responseText += `• **Size Matched**: ${order.size_matched}\n`;
+        responseText += `• **Remaining Size**: ${parseFloat(order.original_size) - parseFloat(order.size_matched)}\n`;
+        if (order.created_at) {
+          responseText += `• **Created**: ${new Date(order.created_at).toLocaleString()}\n`;
+        }
+        if (order.expiration && order.expiration !== '0') {
+          responseText += `• **Expiration**: ${new Date(parseInt(order.expiration) * 1000).toLocaleString()}\n`;
+        } else {
+          responseText += `• **Expiration**: None (GTC)\n`;
+        }
+        if (order.associate_trades && order.associate_trades.length > 0) {
+          responseText += `• **Associated Trades**: ${order.associate_trades.length}\n`;
+        }
+      } else {
+        responseText += `Order not found or you do not have access to view it.\n`;
       }
-
-      const displayOrder = order as OfficialOpenOrder;
-
-      let responseText = `📦 **Order Details: ${displayOrder.order_id}**\n\n`;
-      responseText += `  **Market ID**: ${displayOrder.market_id}\n`;
-      responseText += `  **Token ID**: ${displayOrder.token_id}\n`;
-      responseText += `  **Side**: ${displayOrder.side}, **Type**: ${displayOrder.type}\n`;
-      responseText += `  **Status**: ${displayOrder.status}\n`;
-      responseText += `  **Price**: ${displayOrder.price}, **Size**: ${displayOrder.size}\n`;
-      responseText += `  **Filled Size**: ${displayOrder.filled_size}\n`;
-      if (displayOrder.fees_paid) responseText += `  **Fees Paid**: ${displayOrder.fees_paid}\n`;
-      responseText += `  **Created**: ${new Date(displayOrder.created_at).toLocaleString()}\n`;
-      responseText += `  **Updated**: ${new Date(displayOrder.updated_at).toLocaleString()}\n`;
-      if (displayOrder.is_cancelled !== undefined)
-        responseText += `  **Cancelled**: ${displayOrder.is_cancelled ? 'Yes' : 'No'}\n`;
-      if (displayOrder.error_message)
-        responseText += `  **Error**: ${displayOrder.error_message}\n`;
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['POLYMARKET_GET_ORDER_DETAILS'],
-        data: { order: displayOrder, timestamp: new Date().toISOString() },
+        actions: ['GET_ORDER_DETAILS'],
+        data: {
+          order,
+          timestamp: new Date().toISOString(),
+        },
       };
 
       if (callback) await callback(responseContent);
       return responseContent;
     } catch (error) {
-      logger.error(`[getOrderDetailsAction] Error fetching order ${orderId}:`, error);
+      logger.error(`[getOrderDetailsAction] Error getting order ${orderId}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: `❌ **Error fetching order details for ${orderId}**: ${errorMessage}`,
-        actions: ['POLYMARKET_GET_ORDER_DETAILS'],
-        data: { error: errorMessage, orderId, timestamp: new Date().toISOString() },
+        text: `❌ **Error getting order details**: ${errorMessage}`,
+        actions: ['GET_ORDER_DETAILS'],
+        data: {
+          orderId,
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        },
       };
       if (callback) await callback(errorContent);
       throw error;
@@ -194,21 +185,27 @@ export const getOrderDetailsAction: Action = {
 
   examples: [
     [
-      { name: '{{user1}}', content: { text: 'Get details for order 0x123abcxyz via Polymarket' } },
+      {
+        name: '{{user1}}',
+        content: { text: 'Show me the details for order abc123 on Polymarket.' },
+      },
       {
         name: '{{user2}}',
         content: {
-          text: 'Fetching details for order 0x123abcxyz via Polymarket.',
+          text: 'Fetching details for order abc123 on Polymarket...',
           action: 'POLYMARKET_GET_ORDER_DETAILS',
         },
       },
     ],
     [
-      { name: '{{user1}}', content: { text: 'order status myOrderID_123 via Polymarket' } },
+      {
+        name: '{{user1}}',
+        content: { text: 'What is the status of my order 0xdef456 via Polymarket?' },
+      },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me get the status for order myOrderID_123 via Polymarket.',
+          text: 'Looking up order 0xdef456 on Polymarket...',
           action: 'POLYMARKET_GET_ORDER_DETAILS',
         },
       },

@@ -190,12 +190,7 @@ export async function withConcurrency<T, R>(
       const index = currentIndex++;
       logger.debug(`Worker ${workerId} processing item ${index}`);
       
-      try {
-        results[index] = await fn(items[index], index);
-      } catch (error) {
-        logger.error(`Error processing item ${index}`, error);
-        throw error; // Fail fast
-      }
+      results[index] = await fn(items[index], index);
     }
   });
   

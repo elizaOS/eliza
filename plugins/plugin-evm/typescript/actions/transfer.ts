@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm Transfer Action
  *
@@ -7,6 +6,7 @@
 
 import {
   type Action,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -26,7 +26,6 @@ import {
   parseTransferParams,
   EVMError,
   EVMErrorCode,
-  assertDefined,
 } from "../types";
 
 /**
@@ -42,7 +41,7 @@ export class TransferAction {
   async transfer(params: TransferParams): Promise<Transaction> {
     // Normalize empty or invalid data field to '0x'
     let data: Hex = "0x";
-    if (params.data && params.data !== "0x" && params.data !== "null") {
+    if (params.data && params.data !== "0x") {
       data = params.data;
     }
 
@@ -61,7 +60,7 @@ export class TransferAction {
       value: parseEther(params.amount),
       data,
       chain: walletClient.chain,
-    });
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     return {
       hash,
@@ -151,7 +150,7 @@ export const transferAction: Action = {
     state: State | undefined,
     _options: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     if (!state) {
       state = (await runtime.composeState(message)) as State;
     }
@@ -169,9 +168,11 @@ export const transferAction: Action = {
 
     const transferResp = await action.transfer(paramOptions);
 
+    const successText = `Successfully transferred ${paramOptions.amount} tokens to ${paramOptions.toAddress}\nTransaction Hash: ${transferResp.hash}`;
+
     if (callback) {
       callback({
-        text: `Successfully transferred ${paramOptions.amount} tokens to ${paramOptions.toAddress}\nTransaction Hash: ${transferResp.hash}`,
+        text: successText,
         content: {
           success: true,
           hash: transferResp.hash,
@@ -182,7 +183,20 @@ export const transferAction: Action = {
       });
     }
 
-    return true;
+    return {
+      success: true,
+      text: successText,
+      values: {
+        transferSucceeded: true,
+      },
+      data: {
+        actionName: "EVM_TRANSFER_TOKENS",
+        transactionHash: transferResp.hash,
+        chain: paramOptions.fromChain,
+        amount: paramOptions.amount,
+        recipient: transferResp.to,
+      },
+    };
   },
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket Service
  *
@@ -19,7 +18,7 @@ import {
   CACHE_REFRESH_INTERVAL_MS,
   POLYMARKET_WALLET_DATA_CACHE_KEY,
 } from "../constants";
-import type { ApiKeyCreds, PolymarketError } from "../types";
+import type { ApiKeyCreds } from "../types";
 
 /**
  * Cached Polymarket wallet data structure
@@ -29,6 +28,16 @@ export interface PolymarketWalletData {
   readonly chainId: number;
   readonly usdcBalance: string;
   readonly timestamp: number;
+}
+
+interface EnhancedWallet {
+  address: string;
+  getAddress: () => Promise<string>;
+  _signTypedData: (
+    domain: Record<string, unknown>,
+    types: Record<string, unknown>,
+    value: Record<string, unknown>
+  ) => Promise<string>;
 }
 
 /**
@@ -114,9 +123,7 @@ export class PolymarketService extends Service {
     }
 
     // Close WebSocket connections if any
-    if (this.clobClient) {
-      // ClobClient cleanup if needed
-    }
+    // ClobClient cleanup if needed
 
     logger.info("Polymarket service shutdown");
   }
@@ -142,29 +149,18 @@ export class PolymarketService extends Service {
   }
 
   /**
-   * Initialize the basic CLOB client for read operations
+   * Create an enhanced wallet object compatible with CLOB client
    */
-  private async initializeClobClient(): Promise<void> {
-    const clobApiUrl =
-      this.runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
-    const clobWsUrl =
-      this.runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
-
-    const privateKey = this.getPrivateKey();
+  private createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
     const account = privateKeyToAccount(privateKey);
-    this.walletAddress = account.address;
 
-    logger.info(`Initializing CLOB client for address: ${account.address}`);
-
-    // Create viem wallet client for Polygon
     const walletClient = createWalletClient({
       account,
       chain: polygon,
       transport: http(),
     });
 
-    // Create enhanced wallet object for CLOB client
-    const enhancedWallet = {
+    return {
       address: account.address,
       getAddress: async () => account.address,
       _signTypedData: async (
@@ -180,11 +176,29 @@ export class PolymarketService extends Service {
         });
       },
     };
+  }
+
+  /**
+   * Initialize the basic CLOB client for read operations
+   */
+  private async initializeClobClient(): Promise<void> {
+    const clobApiUrl =
+      this.runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
+    const clobWsUrl =
+      this.runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
+
+    const privateKey = this.getPrivateKey();
+    const account = privateKeyToAccount(privateKey);
+    this.walletAddress = account.address;
+
+    logger.info(`Initializing CLOB client for address: ${account.address}`);
+
+    const enhancedWallet = this.createEnhancedWallet(privateKey);
 
     this.clobClient = new ClobClient(
       clobApiUrl,
       POLYGON_CHAIN_ID,
-      enhancedWallet as unknown as Parameters<typeof ClobClient>[2],
+      enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
       undefined,
       clobWsUrl
     );
@@ -214,30 +228,7 @@ export class PolymarketService extends Service {
       this.runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
 
     const privateKey = this.getPrivateKey();
-    const account = privateKeyToAccount(privateKey);
-
-    const walletClient = createWalletClient({
-      account,
-      chain: polygon,
-      transport: http(),
-    });
-
-    const enhancedWallet = {
-      address: account.address,
-      getAddress: async () => account.address,
-      _signTypedData: async (
-        domain: Record<string, unknown>,
-        types: Record<string, unknown>,
-        value: Record<string, unknown>
-      ) => {
-        return walletClient.signTypedData({
-          domain: domain as Parameters<typeof walletClient.signTypedData>[0]["domain"],
-          types: types as Parameters<typeof walletClient.signTypedData>[0]["types"],
-          primaryType: Object.keys(types).find((k) => k !== "EIP712Domain") ?? "",
-          message: value,
-        });
-      },
-    };
+    const enhancedWallet = this.createEnhancedWallet(privateKey);
 
     const creds: ApiKeyCreds = {
       key: apiKey,
@@ -248,7 +239,7 @@ export class PolymarketService extends Service {
     this.authenticatedClient = new ClobClient(
       clobApiUrl,
       POLYGON_CHAIN_ID,
-      enhancedWallet as unknown as Parameters<typeof ClobClient>[2],
+      enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
       creds,
       clobWsUrl
     );
@@ -329,4 +320,3 @@ export class PolymarketService extends Service {
     return this.authenticatedClient !== null;
   }
 }
-

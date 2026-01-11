@@ -150,15 +150,11 @@ class Logger {
     
     // Add context if verbose and context is provided
     if (this.config.verbose && context) {
-      try {
-        if (typeof context === 'object') {
-          const contextStr = JSON.stringify(context);
-          result += ` ${contextStr}`;
-        } else {
-          result += ` ${context}`;
-        }
-      } catch (error) {
-        result += ' [Context serialization failed]';
+      if (typeof context === 'object') {
+        const contextStr = JSON.stringify(context);
+        result += ` ${contextStr}`;
+      } else {
+        result += ` ${context}`;
       }
     }
     

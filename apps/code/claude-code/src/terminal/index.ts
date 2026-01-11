@@ -32,17 +32,10 @@ export async function initTerminal(config: any): Promise<TerminalInterface> {
   
   const terminal = new Terminal(terminalConfig);
   
-  try {
-    // Detect terminal capabilities
-    await terminal.detectCapabilities();
-    
-    return terminal;
-  } catch (error) {
-    logger.warn('Error initializing terminal interface:', error);
-    
-    // Return a basic terminal interface even if there was an error
-    return terminal;
-  }
+  // Detect terminal capabilities
+  await terminal.detectCapabilities();
+  
+  return terminal;
 }
 
 /**

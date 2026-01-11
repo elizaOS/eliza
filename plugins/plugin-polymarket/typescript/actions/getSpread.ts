@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -7,229 +6,165 @@ import {
   type Memory,
   type State,
   logger,
-  ModelType,
-  composePromptFromState,
 } from '@elizaos/core';
-import { callLLMWithTimeout } from '../utils/llmHelpers';
+import { callLLMWithTimeout, isLLMError } from '../utils/llmHelpers';
 import { initializeClobClient } from '../utils/clobClient';
 import { getSpreadTemplate } from '../templates';
+import type { ClobClient } from '@polymarket/clob-client';
 
-interface SpreadParams {
-  tokenId: string;
+interface LLMSpreadResult {
+  tokenId?: string;
+  error?: string;
+}
+
+interface SpreadResult {
+  spread: string;
 }
 
 /**
- * Get spread for a market token action for Polymarket
- * Fetches the spread (difference between best ask and best bid) for a specific token
+ * Get Spread Action for Polymarket.
+ * Returns the bid-ask spread for a given token.
  */
 export const getSpreadAction: Action = {
   name: 'POLYMARKET_GET_SPREAD',
-  similes: [
-    'SPREAD',
-    'GET_SPREAD',
-    'SHOW_SPREAD',
-    'FETCH_SPREAD',
-    'SPREAD_DATA',
-    'MARKET_SPREAD',
-    'BID_ASK_SPREAD',
-    'GET_BID_ASK_SPREAD',
-    'SHOW_BID_ASK_SPREAD',
-    'FETCH_BID_ASK_SPREAD',
-    'SPREAD_CHECK',
-    'CHECK_SPREAD',
-    'SPREAD_LOOKUP',
-    'TOKEN_SPREAD',
-    'MARKET_BID_ASK',
-    'GET_MARKET_SPREAD',
-    'SHOW_MARKET_SPREAD',
-    'FETCH_MARKET_SPREAD',
-  ],
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    logger.info('[getSpreadAction] Validating action trigger');
+  similes: ['BID_ASK_SPREAD', 'MARKET_SPREAD', 'SPREAD_INFO', 'TOKEN_SPREAD'].map(
+    (s) => `POLYMARKET_${s}`
+  ),
+  description:
+    'Gets the bid-ask spread for a specified token ID on Polymarket.',
+
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(`[getSpreadAction] Validate called for message: "${message.content?.text}"`);
+    const clobApiUrl = runtime.getSetting('CLOB_API_URL');
+
+    if (!clobApiUrl) {
+      logger.warn('[getSpreadAction] CLOB_API_URL is required.');
+      return false;
+    }
+    logger.info('[getSpreadAction] Validation passed');
     return true;
   },
-  description:
-    'Get the spread (difference between best ask and best bid) for a specific Polymarket token using the CLOB API spread endpoint.',
+
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
+    logger.info('[getSpreadAction] Handler called!');
+
+    let llmResult: LLMSpreadResult = {};
     try {
-      logger.info('[getSpreadAction] Starting spread retrieval process');
-
-      // Initialize CLOB client
-      const clobClient = await initializeClobClient(runtime);
-
-      let tokenId: string;
-
-      try {
-        // Use LLM to extract parameters
-        const llmResult = await callLLMWithTimeout<{ tokenId?: string; error?: string }>(
-          runtime,
-          state,
-          getSpreadTemplate,
-          'getSpreadAction'
-        );
-
-        logger.info('[getSpreadAction] LLM result:', JSON.stringify(llmResult));
-
-        if (llmResult?.error) {
-          throw new Error('Token ID not found');
-        }
-
-        tokenId = llmResult?.tokenId || '';
-
-        if (!tokenId) {
-          throw new Error('Token ID not found');
-        }
-      } catch (error) {
-        logger.warn('[getSpreadAction] LLM extraction failed, trying regex fallback');
-
-        // Fallback to regex extraction
-        const text = message.content?.text || '';
-
-        // Extract token ID - prioritize standalone numbers
-        const numberMatch = text.match(/\b(\d{5,})\b/);
-        if (numberMatch) {
-          tokenId = numberMatch[1];
-        } else {
-          // Fallback to keyword-based extraction
-          const keywordMatch = text.match(/(?:token|market|id|spread)\s+([a-zA-Z0-9]+)/i);
-          tokenId = keywordMatch?.[1] || '';
-        }
-
-        if (!tokenId) {
-          const errorMessage = 'Please provide a token ID to get the spread for.';
-          logger.error(`[getSpreadAction] Token ID extraction failed`);
-
-          const errorContent: Content = {
-            text: `❌ **Error**: ${errorMessage}
-
-Please provide a token ID in your request. Examples:
-• "Get spread for token 123456"
-• "What's the spread for market token 789012?"
-• "Show me the bid-ask spread for 456789"`,
-            actions: ['POLYMARKET_GET_SPREAD'],
-            data: { error: errorMessage },
-          };
-
-          if (callback) {
-            await callback(errorContent);
-          }
-          throw new Error(errorMessage);
-        }
+      const result = await callLLMWithTimeout<LLMSpreadResult>(
+        runtime,
+        state,
+        getSpreadTemplate,
+        'getSpreadAction'
+      );
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
+      logger.info(`[getSpreadAction] LLM result: ${JSON.stringify(llmResult)}`);
 
-      logger.info(`[getSpreadAction] Fetching spread for token: ${tokenId}`);
+      if (llmResult.error || !llmResult.tokenId) {
+        throw new Error(llmResult.error || 'Token ID not found in LLM result.');
+      }
+    } catch (error) {
+      logger.warn('[getSpreadAction] LLM extraction failed, trying regex fallback', error);
+      const text = message.content?.text || '';
 
-      // Fetch spread from CLOB API
-      const spreadResponse = await clobClient.getSpread(tokenId);
-      logger.info(`[getSpreadAction] Successfully retrieved spread: ${spreadResponse.spread}`);
+      const tokenIdMatch = text.match(
+        /(?:token|tokenId|asset|id|spread\s+for)\s*[:=#]?\s*([0-9a-zA-Z_\-]+)/i
+      );
 
-      // Convert spread to number and format it
-      const spreadValue = parseFloat(spreadResponse.spread);
-      const formattedSpread = spreadValue.toFixed(4);
-      const percentageSpread = (spreadValue * 100).toFixed(2);
+      if (tokenIdMatch) {
+        llmResult.tokenId = tokenIdMatch[1];
+        logger.info(`[getSpreadAction] Regex extracted tokenId: ${llmResult.tokenId}`);
+      } else {
+        const errorMessage = 'Please specify a Token ID to get the spread.';
+        logger.error(`[getSpreadAction] Extraction failed. Text: "${text}"`);
+        const errorContent: Content = {
+          text: `❌ **Error**: ${errorMessage}`,
+          actions: ['GET_SPREAD'],
+          data: { error: errorMessage },
+        };
+        if (callback) await callback(errorContent);
+        throw new Error(errorMessage);
+      }
+    }
 
-      const successMessage = `✅ **Spread for Token ${tokenId}**
+    const tokenId = llmResult.tokenId!;
 
-📊 **Spread**: \`${formattedSpread}\` (${percentageSpread}%)
+    logger.info(`[getSpreadAction] Fetching spread for token: ${tokenId}`);
 
-**Details**:
-• **Token ID**: \`${tokenId}\`
-• **Spread Value**: \`${formattedSpread}\`
-• **Percentage**: \`${percentageSpread}%\`
+    try {
+      const client = await initializeClobClient(runtime) as ClobClient;
+      const spreadResult: SpreadResult = await client.getSpread(tokenId);
 
-*The spread represents the difference between the best ask and best bid prices.*`;
+      let responseText = `📊 **Bid-Ask Spread for Token ${tokenId}**:\n\n`;
+      if (spreadResult?.spread) {
+        const spreadValue = parseFloat(spreadResult.spread);
+        const spreadPercent = (spreadValue * 100).toFixed(2);
+        responseText += `• **Spread**: $${spreadValue.toFixed(4)} (${spreadPercent}%)\n`;
+        responseText += `\n*A tighter spread indicates better liquidity and lower trading costs.*\n`;
+      } else {
+        responseText += `Could not retrieve spread. The order book may be empty or have insufficient quotes.\n`;
+      }
 
       const responseContent: Content = {
-        text: successMessage,
-        actions: ['POLYMARKET_GET_SPREAD'],
+        text: responseText,
+        actions: ['GET_SPREAD'],
         data: {
           tokenId,
-          spread: spreadResponse.spread,
-          formattedSpread,
-          percentageSpread,
+          spread: spreadResult?.spread,
           timestamp: new Date().toISOString(),
         },
       };
 
-      if (callback) {
-        await callback(responseContent);
-      }
-
+      if (callback) await callback(responseContent);
       return responseContent;
     } catch (error) {
-      logger.error('[getSpreadAction] Error getting spread:', error);
-
-      const errorMessage = `❌ **Error getting spread**: ${error instanceof Error ? error.message : String(error)}
-
-Please check:
-• The token ID is valid and exists
-• CLOB_API_URL is correctly configured
-• Network connectivity is available`;
-
+      logger.error(`[getSpreadAction] Error getting spread for ${tokenId}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred.';
       const errorContent: Content = {
-        text: errorMessage,
-        actions: ['POLYMARKET_GET_SPREAD'],
+        text: `❌ **Error getting spread**: ${errorMessage}`,
+        actions: ['GET_SPREAD'],
         data: {
-          error: error instanceof Error ? error.message : String(error),
+          tokenId,
+          error: errorMessage,
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (callback) {
-        await callback(errorContent);
-      }
+      if (callback) await callback(errorContent);
       throw error;
     }
   },
+
   examples: [
     [
       {
         name: '{{user1}}',
-        content: {
-          text: 'Get spread for token 71321045679252212594626385532706912750332728571942532289631379312455583992563 via Polymarket',
-        },
+        content: { text: 'What is the spread for token xyz123 on Polymarket?' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll fetch the spread for that token via Polymarket.",
-          actions: ['POLYMARKET_GET_SPREAD'],
+          text: 'Fetching the bid-ask spread for token xyz123 on Polymarket...',
+          action: 'POLYMARKET_GET_SPREAD',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: {
-          text: "What's the bid-ask spread for market token 123456 via Polymarket?",
-        },
+        content: { text: 'Get the market spread for token 0xabc789 via Polymarket.' },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me get the spread for that market token via Polymarket.',
-          actions: ['POLYMARKET_GET_SPREAD'],
-        },
-      },
-    ],
-    [
-      {
-        name: '{{user1}}',
-        content: {
-          text: 'Show me the spread for 789012 via Polymarket',
-        },
-      },
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Getting the spread for token 789012 via Polymarket.',
-          actions: ['POLYMARKET_GET_SPREAD'],
+          text: 'Looking up the spread for token 0xabc789 on Polymarket...',
+          action: 'POLYMARKET_GET_SPREAD',
         },
       },
     ],

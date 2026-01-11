@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-evm
  *

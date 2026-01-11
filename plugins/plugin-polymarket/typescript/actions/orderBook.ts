@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket Order Book Actions
  *
@@ -24,6 +23,34 @@ import {
   getSpreadTemplate,
 } from "../templates";
 import type { OrderBook } from "../types";
+
+// =============================================================================
+// Type Definitions
+// =============================================================================
+
+interface LLMTokenResult {
+  tokenId?: string;
+  error?: string;
+}
+
+interface LLMTokensResult {
+  tokenIds?: string[];
+  error?: string;
+}
+
+interface LLMPriceResult {
+  tokenId?: string;
+  side?: "buy" | "sell";
+  error?: string;
+}
+
+interface MidpointResponse {
+  mid: string;
+}
+
+interface SpreadResponse {
+  spread: string;
+}
 
 // =============================================================================
 // Get Order Book Summary Action
@@ -56,10 +83,12 @@ export const getOrderBookSummaryAction: Action = {
     let tokenId = "";
 
     try {
-      const llmResult = await callLLMWithTimeout<{
-        tokenId?: string;
-        error?: string;
-      }>(runtime, state, getOrderBookTemplate, "getOrderBookSummaryAction");
+      const llmResult = await callLLMWithTimeout<LLMTokenResult>(
+        runtime,
+        state,
+        getOrderBookTemplate,
+        "getOrderBookSummaryAction"
+      );
 
       if (isLLMError(llmResult) || !llmResult?.tokenId) {
         throw new Error("Token ID not found. Please specify a token ID.");
@@ -68,7 +97,7 @@ export const getOrderBookSummaryAction: Action = {
       tokenId = llmResult.tokenId;
 
       const clobClient = await initializeClobClient(runtime);
-      const orderBook: OrderBook = await clobClient.getOrderBook(tokenId);
+      const orderBook = await clobClient.getOrderBook(tokenId) as OrderBook;
 
       // Calculate summary stats
       const topBid = orderBook.bids[0];
@@ -149,6 +178,11 @@ export const getOrderBookSummaryAction: Action = {
 // Get Order Book Depth Action
 // =============================================================================
 
+interface DepthData {
+  bids: number;
+  asks: number;
+}
+
 export const getOrderBookDepthAction: Action = {
   name: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
   similes: [
@@ -175,10 +209,12 @@ export const getOrderBookDepthAction: Action = {
     let tokenIds: string[] = [];
 
     try {
-      const llmResult = await callLLMWithTimeout<{
-        tokenIds?: string[];
-        error?: string;
-      }>(runtime, state, getOrderBookDepthTemplate, "getOrderBookDepthAction");
+      const llmResult = await callLLMWithTimeout<LLMTokensResult>(
+        runtime,
+        state,
+        getOrderBookDepthTemplate,
+        "getOrderBookDepthAction"
+      );
 
       if (isLLMError(llmResult) || !llmResult?.tokenIds?.length) {
         throw new Error("Token IDs not found. Please specify token IDs.");
@@ -187,15 +223,14 @@ export const getOrderBookDepthAction: Action = {
       tokenIds = llmResult.tokenIds;
 
       const clobClient = await initializeClobClient(runtime);
-      const depths = await clobClient.getOrderBooksDepth(tokenIds);
+      const depths = await clobClient.getOrderBooksDepth(tokenIds) as Record<string, DepthData>;
 
       let responseText = `📊 **Order Book Depth**\n\n`;
 
       Object.entries(depths).forEach(([tid, depth]) => {
-        const depthData = depth as { bids: number; asks: number };
         responseText += `**Token ${tid.slice(0, 12)}...**\n`;
-        responseText += `• Bid Depth: ${depthData.bids}\n`;
-        responseText += `• Ask Depth: ${depthData.asks}\n\n`;
+        responseText += `• Bid Depth: ${depth.bids}\n`;
+        responseText += `• Ask Depth: ${depth.asks}\n\n`;
       });
 
       const responseContent: Content = {
@@ -279,11 +314,12 @@ export const getBestPriceAction: Action = {
     let side = "buy";
 
     try {
-      const llmResult = await callLLMWithTimeout<{
-        tokenId?: string;
-        side?: "buy" | "sell";
-        error?: string;
-      }>(runtime, state, getBestPriceTemplate, "getBestPriceAction");
+      const llmResult = await callLLMWithTimeout<LLMPriceResult>(
+        runtime,
+        state,
+        getBestPriceTemplate,
+        "getBestPriceAction"
+      );
 
       if (isLLMError(llmResult) || !llmResult?.tokenId) {
         throw new Error("Token ID not found. Please specify a token ID and side.");
@@ -295,7 +331,7 @@ export const getBestPriceAction: Action = {
       const clobClient = await initializeClobClient(runtime);
 
       // Get order book to find best price
-      const orderBook: OrderBook = await clobClient.getOrderBook(tokenId);
+      const orderBook = await clobClient.getOrderBook(tokenId) as OrderBook;
 
       let bestPrice: string;
       let bestSize: string;
@@ -397,10 +433,12 @@ export const getMidpointPriceAction: Action = {
     let tokenId = "";
 
     try {
-      const llmResult = await callLLMWithTimeout<{
-        tokenId?: string;
-        error?: string;
-      }>(runtime, state, getMidpointPriceTemplate, "getMidpointPriceAction");
+      const llmResult = await callLLMWithTimeout<LLMTokenResult>(
+        runtime,
+        state,
+        getMidpointPriceTemplate,
+        "getMidpointPriceAction"
+      );
 
       if (isLLMError(llmResult) || !llmResult?.tokenId) {
         throw new Error("Token ID not found. Please specify a token ID.");
@@ -409,18 +447,18 @@ export const getMidpointPriceAction: Action = {
       tokenId = llmResult.tokenId;
 
       const clobClient = await initializeClobClient(runtime);
-      const midpoint = await clobClient.getMidpoint(tokenId);
+      const midpointResponse = await clobClient.getMidpoint(tokenId) as MidpointResponse;
 
       const responseText = `📍 **Midpoint Price**\n\n` +
         `• Token: \`${tokenId}\`\n` +
-        `• Midpoint: $${midpoint}`;
+        `• Midpoint: $${midpointResponse.mid}`;
 
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_MIDPOINT"],
         data: {
           tokenId,
-          midpoint,
+          midpoint: midpointResponse.mid,
           timestamp: new Date().toISOString(),
         },
       };
@@ -494,10 +532,12 @@ export const getSpreadAction: Action = {
     let tokenId = "";
 
     try {
-      const llmResult = await callLLMWithTimeout<{
-        tokenId?: string;
-        error?: string;
-      }>(runtime, state, getSpreadTemplate, "getSpreadAction");
+      const llmResult = await callLLMWithTimeout<LLMTokenResult>(
+        runtime,
+        state,
+        getSpreadTemplate,
+        "getSpreadAction"
+      );
 
       if (isLLMError(llmResult) || !llmResult?.tokenId) {
         throw new Error("Token ID not found. Please specify a token ID.");
@@ -506,18 +546,18 @@ export const getSpreadAction: Action = {
       tokenId = llmResult.tokenId;
 
       const clobClient = await initializeClobClient(runtime);
-      const spread = await clobClient.getSpread(tokenId);
+      const spreadResponse = await clobClient.getSpread(tokenId) as SpreadResponse;
 
       const responseText = `📏 **Bid-Ask Spread**\n\n` +
         `• Token: \`${tokenId}\`\n` +
-        `• Spread: ${spread}`;
+        `• Spread: ${spreadResponse.spread}`;
 
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_SPREAD"],
         data: {
           tokenId,
-          spread,
+          spread: spreadResponse.spread,
           timestamp: new Date().toISOString(),
         },
       };
@@ -561,5 +601,3 @@ export const getSpreadAction: Action = {
     ],
   ],
 };
-
-

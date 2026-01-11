@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -14,13 +13,14 @@ import type { ClobClient } from '@polymarket/clob-client';
 import { checkOrderScoringTemplate } from '../templates';
 import type { AreOrdersScoringResponse } from '../types';
 
-// This is the expected parameter structure for the official client's areOrdersScoring method
 interface OfficialOrdersScoringParams {
   orderIds: string[];
 }
 
-// This is the expected response structure from the official client's areOrdersScoring method
-// type OfficialOrdersScoringResponse = Record<string, boolean>; // This is same as our AreOrdersScoringResponse
+interface LLMScoringResult {
+  orderIds?: string[];
+  error?: string;
+}
 
 /**
  * Check if an order is scoring (eligible for rewards) action for Polymarket.
@@ -32,7 +32,7 @@ export const checkOrderScoringAction: Action = {
   ),
   description: 'Checks if any of the authenticated user orders are eligible for rewards (scoring).',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     logger.info(
       `[checkOrderScoringAction] Validate called for message: "${message.content?.text}"`
     );
@@ -58,7 +58,7 @@ export const checkOrderScoringAction: Action = {
       return false;
     }
     if (!clobApiKey || !clobApiSecret || !clobApiPassphrase) {
-      const missing = [];
+      const missing: string[] = [];
       if (!clobApiKey) missing.push('CLOB_API_KEY');
       if (!clobApiSecret) missing.push('CLOB_API_SECRET or CLOB_SECRET');
       if (!clobApiPassphrase) missing.push('CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE');
@@ -75,19 +75,22 @@ export const checkOrderScoringAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[checkOrderScoringAction] Handler called!');
 
-    let llmResult: { orderIds?: string[]; error?: string } = {};
+    let llmResult: LLMScoringResult = {};
     try {
-      llmResult = await callLLMWithTimeout<typeof llmResult>(
+      const result = await callLLMWithTimeout<LLMScoringResult>(
         runtime,
         state,
         checkOrderScoringTemplate,
         'checkOrderScoringAction'
       );
+      if (result) {
+        llmResult = result;
+      }
       logger.info(`[checkOrderScoringAction] LLM result: ${JSON.stringify(llmResult)}`);
 
       if (llmResult.error || !llmResult.orderIds || llmResult.orderIds.length === 0) {
@@ -107,7 +110,7 @@ export const checkOrderScoringAction: Action = {
       }
 
       if (extractedIds.length > 0) {
-        llmResult.orderIds = extractedIds.filter((id, index, self) => self.indexOf(id) === index); // Unique IDs
+        llmResult.orderIds = extractedIds.filter((id, index, self) => self.indexOf(id) === index);
       } else {
         const errorMessage = 'Please specify one or more Order IDs to check scoring status.';
         logger.error(`[checkOrderScoringAction] Order ID extraction failed. Text: "${text}"`);
@@ -132,10 +135,8 @@ export const checkOrderScoringAction: Action = {
     );
 
     try {
-      const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-      // The official client's areOrdersScoring returns Promise<OrdersScoring>
-      // where OrdersScoring is likely Record<string, boolean>
-      const scoringResponse: AreOrdersScoringResponse = await client.areOrdersScoring(apiParams);
+      const client = await initializeClobClientWithCreds(runtime) as ClobClient;
+      const scoringResponse = await client.areOrdersScoring(apiParams) as AreOrdersScoringResponse;
 
       let responseText = `📊 **Order Scoring Status**:\n\n`;
       if (Object.keys(scoringResponse).length > 0) {

@@ -11,6 +11,12 @@ categories = ["text-processing", "simulation"]
 [lib]
 name = "elizaos_plugin_eliza_classic"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "eliza-classic-ipc"
+path = "src/bin/ipc_server.rs"
+required-features = ["ipc"]
 
 [dependencies]
 regex = "1.10"
@@ -21,11 +27,24 @@ anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# WASM support (for TypeScript interop)
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# IPC server support
+tokio = { version = "1.0", features = ["io-std", "rt-multi-thread", "macros"], optional = true }
+
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util"] }
 
 [features]
 default = []
+# Enable WASM bindings for TypeScript runtime loading
+wasm = ["wasm-bindgen", "console_error_panic_hook"]
+# Enable FFI exports for Python/C loading  
+ffi = []
+# Enable IPC server mode for subprocess interop
+ipc = ["tokio"]
 
 
 

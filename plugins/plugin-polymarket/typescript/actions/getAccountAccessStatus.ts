@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
@@ -13,6 +12,10 @@ import { initializeClobClientWithCreds } from '../utils/clobClient';
 import type { ClobClient } from '@polymarket/clob-client';
 import { getAccountAccessStatusTemplate } from '../templates';
 import type { ApiKeysResponse, ApiKey } from '../types';
+
+interface LLMStatusResult {
+  error?: string;
+}
 
 /**
  * Get account access status, including U.S. certification requirements and API key details.
@@ -29,7 +32,7 @@ export const getAccountAccessStatusAction: Action = {
   description:
     'Retrieves account access status from Polymarket, including U.S. certification requirements and API key details.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     logger.info(
       `[getAccountAccessStatusAction] Validate called for message: "${message.content?.text}"`
     );
@@ -54,15 +57,15 @@ export const getAccountAccessStatusAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
     logger.info('[getAccountAccessStatusAction] Handler called!');
 
     try {
-      const llmResult = await callLLMWithTimeout<{ error?: string }>(
+      const llmResult = await callLLMWithTimeout<LLMStatusResult>(
         runtime,
         state,
         getAccountAccessStatusTemplate,
@@ -92,20 +95,18 @@ export const getAccountAccessStatusAction: Action = {
         runtime.getSetting('CLOB_API_PASSPHRASE') || runtime.getSetting('CLOB_PASS_PHRASE');
       const hasConfiguredManagedApiCredentials = clobApiKey && clobApiSecret && clobApiPassphrase;
 
-      // Check for a session/derived key explicitly set by createApiKeyAction or handleAuthenticationAction
-      // These might be different from the .env configured ones used for getApiKeys()
       const sessionApiKeyId = runtime.getSetting('POLYMARKET_SESSION_API_KEY_ID');
       const sessionApiLabel = runtime.getSetting('POLYMARKET_SESSION_API_LABEL');
-      const sessionApiSource = runtime.getSetting('POLYMARKET_SESSION_API_SOURCE'); // e.g., 'derived', 'user-provided'
+      const sessionApiSource = runtime.getSetting('POLYMARKET_SESSION_API_SOURCE');
 
       if (hasConfiguredManagedApiCredentials) {
         try {
           logger.info(
             '[getAccountAccessStatusAction] Configured API credentials found. Attempting to fetch managed API keys and cert status.'
           );
-          const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-          const officialResponse: any = await client.getApiKeys();
-          const accessStatus: ApiKeysResponse = officialResponse as ApiKeysResponse;
+          const client = await initializeClobClientWithCreds(runtime) as ClobClient;
+          const officialResponse = await client.getApiKeys();
+          const accessStatus = officialResponse as ApiKeysResponse;
           certRequired = accessStatus.cert_required;
           apiKeysList = accessStatus.api_keys || [];
         } catch (err) {
@@ -158,7 +159,6 @@ export const getAccountAccessStatusAction: Action = {
         responseText += `Managed API key listing skipped as credentials for this are not configured (CLOB_API_KEY, etc. in .env).\n`;
       }
 
-      // Add information about any active session/derived key
       responseText += `\n**Active Session API Key:**\n`;
       if (sessionApiKeyId) {
         responseText += `• **ID**: \`${sessionApiKeyId.substring(0, 8)}...\`\n`;
@@ -175,7 +175,7 @@ export const getAccountAccessStatusAction: Action = {
         actions: ['POLYMARKET_GET_ACCOUNT_ACCESS_STATUS'],
         data: {
           certRequired,
-          managedApiKeys: apiKeysList, // Renamed for clarity
+          managedApiKeys: apiKeysList,
           activeSessionKey: sessionApiKeyId
             ? { id: sessionApiKeyId, label: sessionApiLabel, source: sessionApiSource }
             : undefined,
