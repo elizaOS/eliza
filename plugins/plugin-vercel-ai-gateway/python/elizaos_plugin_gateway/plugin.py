@@ -395,3 +395,4 @@ def get_gateway_plugin() -> "Plugin":
         _gateway_plugin_instance = create_gateway_elizaos_plugin()
     return _gateway_plugin_instance
 
+

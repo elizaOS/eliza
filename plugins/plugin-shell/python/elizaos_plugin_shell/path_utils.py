@@ -174,3 +174,4 @@ def is_forbidden_command(
 
     return False
 
+

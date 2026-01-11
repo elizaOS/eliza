@@ -181,3 +181,4 @@ class ConfirmationResponse(BaseModel):
     should_proceed: bool
     modifications: Optional[str] = None
 
+

@@ -38,3 +38,4 @@ pub enum GatewayError {
 /// Result type alias for Gateway operations.
 pub type Result<T> = std::result::Result<T, GatewayError>;
 
+

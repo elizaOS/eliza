@@ -16,3 +16,4 @@ export interface IInteractionProcessor {
   processWebhookData(webhookData: NeynarWebhookData): Promise<void>;
 }
 
+

@@ -79,3 +79,4 @@ console.log(`   Node:    ${outDir}/node/index.node.js`);
 console.log(`   Browser: ${outDir}/browser/index.browser.js`);
 console.log(`   CJS:     ${outDir}/cjs/index.node.cjs`);
 
+

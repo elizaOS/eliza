@@ -107,3 +107,4 @@ async def browser_screenshot(
             data={"actionName": "BROWSER_SCREENSHOT"},
         )
 
+

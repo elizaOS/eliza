@@ -219,3 +219,4 @@ class TestServiceLifecycle:
         assert len(planning_service.active_plans) == 0
         assert len(planning_service.plan_executions) == 0
 
+

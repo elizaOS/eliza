@@ -162,3 +162,4 @@ export function shouldAutoCleanupImages(runtime: IAgentRuntime): boolean {
   return setting?.toLowerCase() === 'true';
 }
 
+

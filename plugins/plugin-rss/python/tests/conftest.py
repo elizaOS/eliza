@@ -55,3 +55,4 @@ def sample_atom_xml() -> str:
         </entry>
     </feed>"""
 
+

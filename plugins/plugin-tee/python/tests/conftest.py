@@ -22,3 +22,4 @@ def secret_salt() -> str:
     """Get a test secret salt."""
     return "test-secret-salt"
 
+

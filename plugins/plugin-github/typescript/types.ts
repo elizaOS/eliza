@@ -984,3 +984,4 @@ export const gitHubSettingsSchema = z.object({
   installationId: z.string().optional(),
 });
 
+

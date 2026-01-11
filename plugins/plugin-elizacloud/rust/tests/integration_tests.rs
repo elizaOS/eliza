@@ -96,3 +96,4 @@ async fn test_embedding_batch() {
     assert_eq!(embeddings.len(), 3);
 }
 
+

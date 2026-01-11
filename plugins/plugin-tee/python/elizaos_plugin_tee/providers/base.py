@@ -58,3 +58,4 @@ class RemoteAttestationProvider(ABC):
             The remote attestation quote.
         """
 
+

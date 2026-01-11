@@ -102,3 +102,4 @@ async def browser_type(
             data={"actionName": "BROWSER_TYPE"},
         )
 
+

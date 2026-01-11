@@ -127,3 +127,4 @@ __version__ = "1.0.0"
 PLUGIN_NAME = "github"
 PLUGIN_DESCRIPTION = "GitHub integration for elizaOS agents"
 
+

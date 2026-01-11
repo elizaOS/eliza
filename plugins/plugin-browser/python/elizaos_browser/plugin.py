@@ -131,3 +131,4 @@ def create_browser_plugin(config: BrowserConfig | None = None) -> BrowserPlugin:
     """Create a browser plugin instance."""
     return BrowserPlugin(config=config or BrowserConfig())
 
+

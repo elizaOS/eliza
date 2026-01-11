@@ -32,3 +32,4 @@ def test_x_config_from_env() -> None:
     assert config.max_post_length == 280
     assert config.dry_run is False
 
+

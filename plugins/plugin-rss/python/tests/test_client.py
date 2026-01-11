@@ -91,3 +91,4 @@ class TestRelativeTime:
         result = format_relative_time(now - 2 * 24 * 60 * 60000)  # 2 days ago
         assert "2 day" in result
 
+

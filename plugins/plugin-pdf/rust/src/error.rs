@@ -38,3 +38,4 @@ pub enum PdfError {
 /// Result type alias for PDF operations.
 pub type Result<T> = std::result::Result<T, PdfError>;
 
+

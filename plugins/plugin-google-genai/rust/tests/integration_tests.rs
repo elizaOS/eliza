@@ -107,3 +107,4 @@ async fn test_generate_object_with_schema() {
     assert!(response.object.get("age").is_some());
 }
 
+

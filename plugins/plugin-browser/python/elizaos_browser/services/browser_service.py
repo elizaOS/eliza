@@ -129,3 +129,4 @@ class BrowserService:
 
         raise RuntimeError(f"Browser server did not become ready after {max_attempts} attempts")
 
+

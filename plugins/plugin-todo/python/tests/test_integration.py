@@ -357,3 +357,4 @@ class TestTodoClient:
             assert len(one_off) >= 1
             assert all(t.type == TaskType.ONE_OFF for t in one_off)
 
+

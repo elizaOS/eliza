@@ -80,3 +80,4 @@ class MaxConcurrentJobsError(N8nError):
             f"Maximum number of concurrent jobs ({max_jobs}) reached. Please wait for existing jobs to complete."
         )
 
+

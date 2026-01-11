@@ -424,3 +424,4 @@ pub async fn clear_activity(service: &LinearService, _params: Value) -> Result<A
     Ok(ActionResult::success("✅ Linear activity log has been cleared."))
 }
 
+

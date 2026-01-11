@@ -253,3 +253,4 @@ class BrowserWebSocketClient:
             logger.error(f"[Browser] Health check failed: {e}")
             return False
 
+

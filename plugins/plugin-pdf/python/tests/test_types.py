@@ -122,3 +122,4 @@ class TestPdfDocumentInfo:
         assert info.metadata.title == "Test"
         assert len(info.pages) == 1
 
+

@@ -77,3 +77,4 @@ class N8nConfig:
         if not self.api_key:
             raise ApiKeyError("ANTHROPIC")
 
+

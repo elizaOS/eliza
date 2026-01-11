@@ -170,3 +170,4 @@ async fn test_plugin_creation() {
     assert!(plugin.config().feeds.is_empty());
 }
 
+

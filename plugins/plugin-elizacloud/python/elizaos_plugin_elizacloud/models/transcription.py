@@ -20,3 +20,4 @@ async def handle_transcription(
     async with ElizaCloudClient(config) as client:
         return await client.transcribe_audio(params)
 
+

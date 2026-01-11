@@ -70,3 +70,4 @@ class ProfileError(FarcasterError):
 
     pass
 
+

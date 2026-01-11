@@ -76,3 +76,4 @@ class TestBlueSkyConfig:
         assert config.enable_posting is True
         assert config.enable_dms is True
 
+

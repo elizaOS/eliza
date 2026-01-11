@@ -59,3 +59,4 @@ fn test_content_type_detection() {
     assert_eq!(get_content_type("file.unknown"), "application/octet-stream");
 }
 
+

@@ -333,3 +333,4 @@ def get_knowledge_plugin() -> KnowledgePlugin | None:
     return _plugin_instance
 
 
+

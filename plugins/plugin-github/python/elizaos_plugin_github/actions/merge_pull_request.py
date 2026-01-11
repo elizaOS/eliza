@@ -87,3 +87,4 @@ class MergePullRequestAction:
         except Exception as e:
             return ActionResult.error_result(f"Failed to merge pull request: {e}")
 
+

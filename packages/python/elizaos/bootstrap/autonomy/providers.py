@@ -175,3 +175,4 @@ autonomy_status_provider = Provider(
     description="Provides current autonomy status for agent awareness in conversations",
     get=_get_autonomy_status,
 )
+

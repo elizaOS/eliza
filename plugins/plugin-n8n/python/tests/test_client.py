@@ -105,3 +105,4 @@ class TestPluginSpecification:
         assert spec.services is None
         assert spec.evaluators is None
 
+

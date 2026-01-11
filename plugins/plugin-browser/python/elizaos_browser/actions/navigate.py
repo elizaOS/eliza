@@ -118,3 +118,4 @@ async def browser_navigate(
             data={"actionName": "BROWSER_NAVIGATE", "url": url or "unknown"},
         )
 
+

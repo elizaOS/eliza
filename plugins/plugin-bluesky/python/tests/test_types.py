@@ -90,3 +90,4 @@ class TestNotificationReason:
         assert NotificationReason.REPOST.value == "repost"
         assert NotificationReason.QUOTE.value == "quote"
 
+

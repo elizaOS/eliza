@@ -119,3 +119,4 @@ class TestGetTeeEndpoint:
         with pytest.raises(ValueError, match="Invalid TEE_MODE"):
             get_tee_endpoint("INVALID")
 
+

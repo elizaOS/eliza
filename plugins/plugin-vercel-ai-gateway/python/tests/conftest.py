@@ -17,3 +17,4 @@ def api_key() -> str:
         pytest.skip("API key not available")
     return key
 
+

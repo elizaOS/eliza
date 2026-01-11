@@ -18,3 +18,4 @@ def mock_config() -> OllamaConfig:
         timeout_seconds=30,
     )
 
+

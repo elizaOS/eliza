@@ -119,3 +119,4 @@ class GitHubConfig(BaseModel):
                 "GITHUB_INSTALLATION_ID is required when using GitHub App authentication"
             )
 
+

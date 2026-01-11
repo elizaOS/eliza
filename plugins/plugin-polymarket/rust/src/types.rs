@@ -535,3 +535,4 @@ pub struct PriceHistoryEntry {
     pub volume: Option<String>,
 }
 
+

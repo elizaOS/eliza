@@ -169,3 +169,4 @@ export const mergePullRequestAction: Action = {
 
 export default mergePullRequestAction;
 
+

@@ -78,3 +78,4 @@ export interface ShellConfig {
   forbiddenCommands: string[];
 }
 
+

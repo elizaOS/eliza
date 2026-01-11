@@ -47,3 +47,4 @@ class NotificationError(TodoError):
 
     pass
 
+

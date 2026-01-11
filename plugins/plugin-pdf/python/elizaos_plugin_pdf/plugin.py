@@ -174,3 +174,4 @@ def get_pdf_plugin() -> PdfPlugin:
         _pdf_plugin_instance = create_plugin()
     return _pdf_plugin_instance
 
+

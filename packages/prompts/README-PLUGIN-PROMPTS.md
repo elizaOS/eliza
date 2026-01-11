@@ -206,3 +206,4 @@ To migrate an existing plugin:
 - Ensure variable names use camelCase
 - Check that `composePrompt` is used for TypeScript (handles Handlebars)
 
+

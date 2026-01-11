@@ -49,3 +49,4 @@ class TestParseTeeVendor:
         with pytest.raises(ValueError, match="Invalid TEE_VENDOR"):
             parse_tee_vendor("invalid")
 
+

@@ -536,3 +536,4 @@ class GitHubEventType(str, Enum):
     CHECK_SUITE = "check_suite"
     STATUS = "status"
 
+

@@ -50,3 +50,4 @@ async def handle_batch_text_embedding(
             return result  # type: ignore[return-value]
         return [result]  # type: ignore[list-item]
 
+

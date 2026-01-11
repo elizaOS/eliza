@@ -36,3 +36,4 @@ If the marketId is not found, you MUST respond with the following JSON structure
 
 If marketId is found but assetId is ambiguous or missing and seems required, you can omit assetId or include an additional field like "clarification_needed": "assetId". For now, prioritize extracting what is available.
 
+

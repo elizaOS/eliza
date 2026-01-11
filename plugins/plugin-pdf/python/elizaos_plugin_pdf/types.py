@@ -57,3 +57,4 @@ class PdfDocumentInfo(BaseModel):
     text: str = Field(..., description="Full text content")
     pages: list[PdfPageInfo] = Field(..., description="Per-page information")
 
+

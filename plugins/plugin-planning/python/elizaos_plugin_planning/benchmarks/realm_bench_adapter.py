@@ -477,3 +477,4 @@ class RealmBenchAdapter:
             logger.error(f"[RealmBenchAdapter] Error saving report: {e}")
             raise
 
+

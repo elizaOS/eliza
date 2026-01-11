@@ -12,3 +12,4 @@ def mock_config() -> dict[str, str]:
         "service": "https://bsky.social",
     }
 
+
