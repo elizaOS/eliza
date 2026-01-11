@@ -219,8 +219,7 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      fromTokenDecimals = Number(// @ts-expect-error - viem type narrowing issue
-    await publicClient.readContract({
+      fromTokenDecimals = Number(await publicClient.readContract({
         address: params.fromToken as Address,
         abi: decimalsAbi,
         functionName: "decimals",
@@ -410,20 +409,19 @@ export class SwapAction {
       );
     }
 
-    const hash = // @ts-expect-error - viem type narrowing issue
-    await walletClient.sendTransaction({
-      account: walletClient.account,
+    const hash = await walletClient.sendTransaction({
+      account: walletClient.account!,
       to: txRequest.to as Address,
       value: BigInt(txRequest.value ?? "0"),
       data: txRequest.data as Hex,
-      chain: walletClient.chain,
+      chain: walletClient.chain!,
       gas: txRequest.gasLimit
         ? BigInt(Math.floor(Number(txRequest.gasLimit) * GAS_BUFFER_MULTIPLIER))
         : undefined,
       gasPrice: txRequest.gasPrice
         ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
         : undefined,
-    });
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
@@ -510,8 +508,8 @@ export class SwapAction {
 
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
 
-    const allowance = (// @ts-expect-error - viem type narrowing issue
-    await publicClient.readContract({
+    // @ts-expect-error - viem type narrowing issue
+    const allowance = (await publicClient.readContract({
       address: tokenAddress,
       abi: allowanceAbi,
       functionName: "allowance",
@@ -530,14 +528,13 @@ export class SwapAction {
       args: [spenderAddress, requiredAmount],
     });
 
-    const approvalTx = // @ts-expect-error - viem type narrowing issue
-    await walletClient.sendTransaction({
+    const approvalTx = await walletClient.sendTransaction({
       account: walletClient.account,
       to: tokenAddress,
       value: 0n,
       data: approvalData,
       chain: walletClient.chain,
-    });
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     logger.info(`Waiting for approval confirmation...`);
 

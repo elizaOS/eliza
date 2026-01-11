@@ -36,10 +36,8 @@ function buildGenerateParams(
     modelType === ModelType.TEXT_SMALL ? "TEXT_SMALL" : "TEXT_LARGE";
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
 
-  const generateParams: Parameters<typeof generateText>[0] = {
-    model: openai.languageModel(modelName) as unknown as Parameters<
-      typeof generateText
-    >[0]["model"],
+  const generateParams = {
+    model: openai.languageModel(modelName),
     prompt: prompt,
     system: runtime.character.system ?? undefined,
     temperature: temperature,
