@@ -89,7 +89,7 @@ describe("Memory Integration Tests", () => {
   });
 
   const createTestMemory = (
-    content: Record<string, any>,
+    content: Content,
     embedding?: number[]
   ): Memory & { metadata: MemoryMetadata } => ({
     id: v4() as UUID,
