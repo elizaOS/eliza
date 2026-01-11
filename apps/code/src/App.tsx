@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPane } from "./components/ChatPane.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";

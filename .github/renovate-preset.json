@@ -15,12 +15,12 @@
     {
       "description": "Group TypeScript ecosystem updates",
       "groupName": "TypeScript",
-      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$"]
+      "matchPackagePatterns": ["^typescript$"]
     },
     {
-      "description": "Group ESLint and Prettier updates",
+      "description": "Group Biome linting updates",
       "groupName": "Linting",
-      "matchPackagePatterns": ["^eslint", "^prettier", "^@eslint/"]
+      "matchPackagePatterns": ["^@biomejs/"]
     },
     {
       "description": "Group build tools",

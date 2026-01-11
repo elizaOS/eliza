@@ -344,7 +344,7 @@ pub fn create_my_plugin() -> Result<Plugin> {
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "test": "bun test"
+    "test": "vitest"
   }
 }
 ```
@@ -443,11 +443,10 @@ import {
   describe,
   expect,
   it,
-  mock,
+  vi,
   beforeEach,
   afterEach,
-  spyOn,
-} from "bun:test";
+} from "vitest";
 import {
   type IAgentRuntime,
   type Memory,
@@ -466,7 +465,7 @@ import {
 Create a `test-utils.ts` file with reusable mocks:
 
 ```typescript
-import { mock } from "bun:test";
+import { vi } from "vitest";
 import {
   type IAgentRuntime,
   type Memory,
@@ -479,12 +478,12 @@ import {
 export type MockRuntime = Partial<IAgentRuntime> & {
   agentId: UUID;
   character: Character;
-  getSetting: ReturnType<typeof mock>;
-  useModel: ReturnType<typeof mock>;
-  composeState: ReturnType<typeof mock>;
-  createMemory: ReturnType<typeof mock>;
-  getMemories: ReturnType<typeof mock>;
-  getService: ReturnType<typeof mock>;
+  getSetting: ReturnType<typeof vi.fn>;
+  useModel: ReturnType<typeof vi.fn>;
+  composeState: ReturnType<typeof vi.fn>;
+  createMemory: ReturnType<typeof vi.fn>;
+  getMemories: ReturnType<typeof vi.fn>;
+  getService: ReturnType<typeof vi.fn>;
 };
 
 // Create Mock Runtime
@@ -499,25 +498,25 @@ export function createMockRuntime(
       id: "test-character" as UUID,
       ...overrides?.character,
     },
-    getSetting: mock((key: string) => {
+    getSetting: vi.fn((key: string) => {
       const settings: Record<string, string> = {
         TEST_API_KEY: "test-key-123",
         ...overrides?.settings,
       };
       return settings[key];
     }),
-    useModel: mock(async () => ({
+    useModel: vi.fn(async () => ({
       content: "Mock response from LLM",
       success: true,
     })),
-    composeState: mock(async () => ({
+    composeState: vi.fn(async () => ({
       values: { test: "state" },
       data: {},
       text: "Composed state",
     })),
-    createMemory: mock(async () => ({ id: "memory-123" })),
-    getMemories: mock(async () => []),
-    getService: mock(() => null),
+    createMemory: vi.fn(async () => ({ id: "memory-123" })),
+    getMemories: vi.fn(async () => []),
+    getService: vi.fn(() => null),
     ...overrides,
   };
 }
@@ -552,7 +551,7 @@ export function createMockState(overrides?: Partial<State>): State {
 ### Testing Actions
 
 ```typescript
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach } from "vitest";
 import { myAction } from "../src/actions/myAction";
 import {
   createMockRuntime,
@@ -585,7 +584,7 @@ describe("MyAction", () => {
     });
 
     it("should not validate without required service", async () => {
-      mockRuntime.getService = mock(() => null);
+      mockRuntime.getService = vi.fn(() => null);
       const isValid = await myAction.validate(
         mockRuntime,
         mockMessage,
@@ -597,7 +596,7 @@ describe("MyAction", () => {
 
   describe("handler", () => {
     it("should return success ActionResult on successful execution", async () => {
-      const mockCallback = mock();
+      const mockCallback = vi.fn();
 
       const result = await myAction.handler(
         mockRuntime,
@@ -615,7 +614,7 @@ describe("MyAction", () => {
 
     it("should handle errors gracefully", async () => {
       // Make service throw error
-      mockRuntime.getService = mock(() => {
+      mockRuntime.getService = vi.fn(() => {
         throw new Error("Service unavailable");
       });
 
@@ -674,7 +673,7 @@ describe("MyAction", () => {
 ### Testing Providers
 
 ```typescript
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach } from "vitest";
 import { myProvider } from "../src/providers/myProvider";
 import {
   createMockRuntime,
@@ -704,7 +703,7 @@ describe("MyProvider", () => {
 
   it("should handle errors gracefully", async () => {
     // Mock service to throw error
-    mockRuntime.getService = mock(() => {
+    mockRuntime.getService = vi.fn(() => {
       throw new Error("Service error");
     });
 
@@ -719,7 +718,7 @@ describe("MyProvider", () => {
 ### Testing Services
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MyService } from "../src/services/myService";
 import { createMockRuntime } from "./test-utils";
 
@@ -748,7 +747,7 @@ describe("MyService", () => {
   });
 
   it("should throw error without API key", async () => {
-    mockRuntime.getSetting = mock(() => undefined);
+    mockRuntime.getSetting = vi.fn(() => undefined);
 
     expect(async () => {
       await MyService.start(mockRuntime);
@@ -825,16 +824,16 @@ export const myPluginE2ETests = {
 
 ```bash
 # Run all tests
-bun test
+npx vitest
 
 # Run specific test file
-bun test src/__tests__/actions.test.ts
+npx vitest src/__tests__/actions.test.ts
 
 # Run with watch mode
-bun test --watch
+npx vitest --watch
 
 # Run with coverage
-bun test --coverage
+npx vitest --coverage
 ```
 
 ### Test Best Practices

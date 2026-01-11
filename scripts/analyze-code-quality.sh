@@ -443,12 +443,12 @@ print_info "Analyzing repository standards..."
     grep -r -E "^class\s+|export\s+class\s+" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | grep -v -E "(Error|Exception)" | head -20 || echo "None found"
 
     echo ""
-    echo "### Non-Bun Test Framework Usage (Should use bun:test)"
-    echo "elizaOS uses 'bun:test' exclusively. Found usage of other test frameworks:"
-    grep -r -E "(from ['\"]vitest|from ['\"]jest|from ['\"]mocha|import.*vitest|import.*jest|require\(['\"]jest|require\(['\"]vitest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
+    echo "### Non-Vitest Test Framework Usage (Should use vitest)"
+    echo "elizaOS uses 'vitest' exclusively. Found usage of other test frameworks:"
+    grep -r -E "(from ['\"]jest|from ['\"]mocha|import.*jest|require\(['\"]jest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
     echo ""
-    echo "Test syntax that should use bun:test instead:"
-    grep -r -E "(describe\.only|it\.only|test\.only|jest\.|vitest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
+    echo "Test syntax that should use vitest instead:"
+    grep -r -E "(jest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
 } >> "${REPORT_FILE}"
 
 # Generate summary

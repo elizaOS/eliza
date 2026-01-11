@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,9 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient } from "@polymarket/clob-client";
+import type { ApiKeysResponse as ClobApiKeysResponse, ClobClient } from "@polymarket/clob-client";
 import { getAccountAccessStatusTemplate } from "../templates";
-import type { ApiKey, ApiKeysResponse } from "../types";
+import type { ApiKey } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout } from "../utils/llmHelpers";
 
@@ -71,7 +72,7 @@ export const getAllApiKeysAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getAllApiKeysAction] Handler called!");
 
     try {
@@ -90,9 +91,18 @@ export const getAllApiKeysAction: Action = {
 
     try {
       const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-      const response = await client.getApiKeys();
-      const apiKeysResponse = response as ApiKeysResponse;
-      const keys: ApiKey[] = apiKeysResponse.api_keys || [];
+      const response: ClobApiKeysResponse = await client.getApiKeys();
+      // clob-client returns apiKeys (array of ApiKeyCreds), convert to our ApiKey format
+      const creds = response.apiKeys || [];
+      const keys: ApiKey[] = creds.map((cred, idx) => ({
+        key_id: cred.key,
+        label: `API Key ${idx + 1}`,
+        type: "read_write" as const,
+        status: "active" as const,
+        created_at: new Date().toISOString(),
+        last_used_at: null,
+        is_cert_whitelisted: false,
+      }));
 
       let responseText = `🔑 **Your Polymarket API Keys:**\n\n`;
 
@@ -116,14 +126,20 @@ export const getAllApiKeysAction: Action = {
         text: responseText,
         actions: ["POLYMARKET_GET_ALL_API_KEYS"],
         data: {
-          apiKeys: keys,
-          cert_required: apiKeysResponse.cert_required,
+          apiKeysCount: keys.length,
           timestamp: new Date().toISOString(),
         },
       };
 
       if (callback) await callback(responseContent);
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          apiKeysCount: keys.length,
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       logger.error("[getAllApiKeysAction] Error fetching API keys:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred.";
@@ -138,7 +154,11 @@ export const getAllApiKeysAction: Action = {
       };
 
       if (callback) await callback(errorContent);
-      throw error;
+      return {
+        success: false,
+        text: `Error fetching API keys: ${errorMessage}`,
+        error: errorMessage,
+      };
     }
   },
 

@@ -1,6 +1,6 @@
 import { logger } from "@elizaos/core";
 import * as undici from "undici";
-import { afterEach, beforeEach, describe, expect, jest, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { openrouterPlugin } from "../src/index";
 
 // Create a minimal mock runtime
@@ -21,7 +21,7 @@ const createMockRuntime = (env: Record<string, string>) => {
 describe("OpenRouter Plugin Configuration", () => {
   beforeEach(() => {
     // Stub undici fetch to prevent network calls
-    jest.spyOn(undici, "fetch").mockImplementation(() =>
+    vi.spyOn(undici, "fetch").mockImplementation(() =>
       Promise.resolve({
         ok: true,
         status: 200,
@@ -33,7 +33,7 @@ describe("OpenRouter Plugin Configuration", () => {
 
   afterEach(() => {
     // Clear all mocks
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
   test("should warn when API key is missing", async () => {
     // Save original env value
@@ -46,7 +46,7 @@ describe("OpenRouter Plugin Configuration", () => {
     const mockRuntime = createMockRuntime({});
 
     // Spy on logger warnings
-    const warnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     // Initialize plugin
     if (openrouterPlugin.init) {
@@ -109,7 +109,7 @@ describe("OpenRouter Plugin Configuration", () => {
     });
 
     // Create spy to access private function
-    const getSpy = jest.spyOn(mockRuntime, "getSetting");
+    const getSpy = vi.spyOn(mockRuntime, "getSetting");
 
     // Check if our model is used
     if (openrouterPlugin.models?.IMAGE_DESCRIPTION) {
@@ -142,7 +142,7 @@ describe("OpenRouter Plugin Configuration", () => {
     });
 
     // Create spy to access getSetting calls
-    const getSpy = jest.spyOn(mockRuntime, "getSetting");
+    const getSpy = vi.spyOn(mockRuntime, "getSetting");
 
     if (openrouterPlugin.models?.TEXT_EMBEDDING) {
       const embeddingHandler = openrouterPlugin.models.TEXT_EMBEDDING;

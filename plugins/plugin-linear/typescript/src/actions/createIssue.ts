@@ -2,6 +2,7 @@ import {
   type Action,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -63,7 +64,7 @@ export const createIssueAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
@@ -86,7 +87,9 @@ export const createIssueAction: Action = {
       }
 
       // Check if the message already has structured data
-      const structuredData = _options?.issueData as Partial<LinearIssueInput> | undefined;
+      const structuredData = _options?.parameters?.issueData as
+        | Partial<LinearIssueInput>
+        | undefined;
 
       let issueData: Partial<LinearIssueInput>;
 

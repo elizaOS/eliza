@@ -46,7 +46,7 @@
     "build:ts": "tsc",
     "build": "bun run build:rust && bun run build:ts",
     "test": "elizaos test",
-    "test:component": "bun test",
+    "test:component": "vitest run",
     "test:e2e": "elizaos test --type e2e",
     "start": "elizaos start",
     "typecheck": "tsc --noEmit"

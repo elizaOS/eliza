@@ -138,7 +138,6 @@
     "**/voice.ts",
     "**/frontend/**",
     "**/stagehand-server/**",
-    "**/eslint.config.js",
     "**/utils/*.ts",
     "**/managers/*.ts",
     "**/plugin-*/typescript/actions/*.ts",

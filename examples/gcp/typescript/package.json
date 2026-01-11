@@ -11,7 +11,7 @@
     "start": "node dist/handler.js",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "vitest run",
     "docker:build": "docker build -t eliza-worker-ts .",
     "docker:run": "docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY eliza-worker-ts"
   },

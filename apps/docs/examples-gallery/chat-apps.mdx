@@ -36,7 +36,7 @@ bun run examples/chat/typescript/chat.ts
 ```typescript
 const runtime = new AgentRuntime({
   character: { name: "Eliza", bio: "A helpful AI assistant." },
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
 });
 
 await runtime.initialize();
@@ -169,7 +169,7 @@ import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, anthropicPlugin],
+  plugins: [sqlPlugin, anthropicPlugin],
 });
 ```
 
@@ -179,7 +179,7 @@ const runtime = new AgentRuntime({
 // Use PostgreSQL for production
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
   database: {
     url: process.env.POSTGRES_URL,
   },

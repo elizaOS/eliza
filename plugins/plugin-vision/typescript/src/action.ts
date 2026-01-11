@@ -54,7 +54,7 @@ export const describeSceneAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -290,7 +290,7 @@ export const captureImageAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -421,10 +421,11 @@ export const captureImageAction: Action = {
           timestamp,
         },
       };
-    } catch (error: any) {
+    } catch (error) {
       logger.error("[captureImageAction] Error capturing image:", error);
       const thought = "An error occurred while trying to capture an image.";
-      const text = `Error capturing image: ${error.message}`;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const text = `Error capturing image: ${errorMessage}`;
       await saveExecutionRecord(runtime, message, thought, text, ["CAPTURE_IMAGE"]);
       if (callback) {
         await callback({
@@ -441,11 +442,11 @@ export const captureImageAction: Action = {
           success: false,
           visionAvailable: true,
           error: true,
-          errorMessage: error.message || String(error),
+          errorMessage,
         },
         data: {
           actionName: "CAPTURE_IMAGE",
-          error: error.message || String(error),
+          error: errorMessage,
           errorType: "capture_error",
         },
       };
@@ -499,7 +500,7 @@ export const killAutonomousAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -547,11 +548,12 @@ export const killAutonomousAction: Action = {
           text,
         };
       }
-    } catch (error: any) {
+    } catch (error) {
       logger.error("[killAutonomousAction] Error stopping autonomous service:", error);
 
       const thought = "An error occurred while trying to stop the autonomous loop.";
-      const text = `Error stopping autonomous loop: ${error.message || String(error)}`;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const text = `Error stopping autonomous loop: ${errorMessage}`;
 
       await saveExecutionRecord(runtime, message, thought, text, ["KILL_AUTONOMOUS"]);
       if (callback) {
@@ -564,7 +566,7 @@ export const killAutonomousAction: Action = {
       return {
         success: false,
         text,
-        error: error.message || String(error),
+        error: errorMessage,
       };
     }
   },
@@ -612,7 +614,7 @@ export const setVisionModeAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -703,10 +705,11 @@ export const setVisionModeAction: Action = {
           visionMode: newMode,
         },
       };
-    } catch (error: any) {
+    } catch (error) {
       logger.error("[setVisionModeAction] Error changing vision mode:", error);
       const thought = "An error occurred while trying to change the vision mode.";
-      const text = `Error changing vision mode: ${error.message || String(error)}`;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const text = `Error changing vision mode: ${errorMessage}`;
       await saveExecutionRecord(runtime, message, thought, text, ["SET_VISION_MODE"]);
       if (callback) {
         await callback({
@@ -718,7 +721,7 @@ export const setVisionModeAction: Action = {
       return {
         success: false,
         text,
-        error: error.message || String(error),
+        error: errorMessage,
       };
     }
   },
@@ -813,7 +816,7 @@ export const nameEntityAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -994,7 +997,7 @@ export const identifyPersonAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -1182,7 +1185,7 @@ export const trackEntityAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {

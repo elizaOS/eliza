@@ -16,19 +16,19 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./types/index.d.ts",
+      "types": "./dist/index.d.ts",
       "browser": {
-        "types": "./dist/browser/index.d.ts",
+        "types": "./dist/index.d.ts",
         "import": "./dist/browser/index.browser.js",
         "default": "./dist/browser/index.browser.js"
       },
       "node": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/index.d.ts",
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "bun": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/index.d.ts",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
@@ -66,14 +66,14 @@
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "test": "bun run test:unit && bun run test:integration",
-    "test:unit": "bun test __tests__/unit/",
+    "test:unit": "vitest run __tests__/unit/",
     "test:integration": "bash scripts/run-integration-tests.sh",
     "test:integration:postgres": "bash scripts/run-integration-tests.sh --postgres",
-    "test:migration": "bun test __tests__/migration/",
-    "test:migration:postgres": "bun test __tests__/migration/ --serial",
+    "test:migration": "vitest run __tests__/migration/",
+    "test:migration:postgres": "vitest run __tests__/migration/",
     "test:e2e:upgrade": "bash __tests__/migration/e2e/run-upgrade-test.sh",
-    "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build:clean": "rm -rf dist",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

@@ -4,7 +4,12 @@ import { promisify } from "node:util";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import type { VisionService } from "../../service";
 import { VisionServiceType } from "../../types";
-import { TestPatternGenerator } from "../test-pattern-generator";
+import {
+  generateComplexPattern,
+  generateQuadrantPattern,
+  savePattern,
+  verifyQuadrantNumbers,
+} from "../test-pattern-generator";
 
 const execAsync = promisify(exec);
 
@@ -96,14 +101,14 @@ export class VisionWorkerE2ETestSuite implements TestSuite {
         }
 
         // Generate test pattern
-        const pattern = await TestPatternGenerator.generateQuadrantPattern({
+        const pattern = await generateQuadrantPattern({
           width: 1920,
           height: 1080,
           fontSize: 72,
           includeGrid: true,
         });
 
-        const patternPath = await TestPatternGenerator.savePattern(pattern, "quadrant-test.png");
+        const patternPath = await savePattern(pattern, "quadrant-test.png");
         console.log(`✓ Test pattern saved to ${patternPath}`);
 
         // Display the pattern
@@ -121,7 +126,7 @@ export class VisionWorkerE2ETestSuite implements TestSuite {
           console.log(`OCR detected text: "${ocrText.substring(0, 100)}..."`);
 
           // Verify quadrant numbers
-          const verification = TestPatternGenerator.verifyQuadrantNumbers(ocrText);
+          const verification = verifyQuadrantNumbers(ocrText);
           console.log(`Found numbers: ${verification.foundNumbers.join(", ")}`);
 
           if (verification.success) {
@@ -186,12 +191,12 @@ export class VisionWorkerE2ETestSuite implements TestSuite {
         }
 
         // Generate complex pattern
-        const pattern = await TestPatternGenerator.generateComplexPattern({
+        const pattern = await generateComplexPattern({
           width: 1920,
           height: 1080,
         });
 
-        const patternPath = await TestPatternGenerator.savePattern(pattern, "complex-test.png");
+        const patternPath = await savePattern(pattern, "complex-test.png");
         await displayTestPattern(patternPath);
 
         try {

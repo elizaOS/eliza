@@ -31,7 +31,6 @@ export class VisionWorkerManager {
 
   // Buffer views
   private screenAtomicState: Int32Array;
-  private screenDataView: DataView;
   private florence2ResultsView: DataView;
   private ocrResultsView: DataView;
 
@@ -70,7 +69,6 @@ export class VisionWorkerManager {
 
     // Create views
     this.screenAtomicState = new Int32Array(this.screenBuffer, 0, 6);
-    this.screenDataView = new DataView(this.screenBuffer);
     this.florence2ResultsView = new DataView(this.florence2ResultsBuffer);
     this.ocrResultsView = new DataView(this.ocrResultsBuffer);
   }
@@ -264,7 +262,7 @@ export class VisionWorkerManager {
     });
   }
 
-  private updateFlorence2Cache(msg: any): void {
+  private updateFlorence2Cache(msg: { tileId: string }): void {
     // Read result from shared buffer
     try {
       const tileId = msg.tileId;
@@ -277,7 +275,7 @@ export class VisionWorkerManager {
     }
   }
 
-  private updateOCRCache(_msg: any): void {
+  private updateOCRCache(_msg: unknown): void {
     // Read OCR result from shared buffer
     try {
       const result = this.readOCRResult();
@@ -393,7 +391,11 @@ export class VisionWorkerManager {
 
     // Combine all Florence-2 results
     const florence2Captions: string[] = [];
-    const allObjects: any[] = [];
+    const allObjects: Array<{
+      label: string;
+      confidence: number;
+      bbox: { x: number; y: number; width: number; height: number };
+    }> = [];
     const allTags = new Set<string>();
 
     this.latestFlorence2Results.forEach((result) => {
@@ -404,16 +406,26 @@ export class VisionWorkerManager {
         allObjects.push(...result.objects);
       }
       if (result.tags) {
-        result.tags.forEach((tag) => allTags.add(tag));
+        for (const tag of result.tags) {
+          allTags.add(tag);
+        }
       }
     });
 
     const _tiles = this.generateTiles(screenCapture?.width || 0, screenCapture?.height || 0);
 
+    // Map allObjects to DetectedObject format
+    const mappedObjects = allObjects.map((obj, index) => ({
+      id: `obj-${index}`,
+      type: obj.label,
+      confidence: obj.confidence,
+      boundingBox: obj.bbox,
+    }));
+
     return {
       timestamp: Date.now(),
       description: florence2Captions.join(". "),
-      objects: allObjects,
+      objects: mappedObjects,
       people: [], // Could be populated by TensorFlow worker
       sceneChanged: true,
       changePercentage: 100,
@@ -537,22 +549,26 @@ export class VisionWorkerManager {
     logger.info("[VisionWorkerManager] All workers stopped");
   }
 
-  private handleWorkerLog(workerName: string, msg: any): void {
+  private handleWorkerLog(
+    workerName: string,
+    msg: { level: string; message: string; args: unknown[] }
+  ): void {
     const { level, message, args } = msg;
     const formattedMessage = `[${workerName}] ${message}`;
+    const stringArgs = args.map((arg) => String(arg));
 
     switch (level) {
       case "info":
-        logger.info(formattedMessage, ...args);
+        logger.info(formattedMessage, ...stringArgs);
         break;
       case "warn":
-        logger.warn(formattedMessage, ...args);
+        logger.warn(formattedMessage, ...stringArgs);
         break;
       case "error":
-        logger.error(formattedMessage, ...args);
+        logger.error(formattedMessage, ...stringArgs);
         break;
       case "debug":
-        logger.debug(formattedMessage, ...args);
+        logger.debug(formattedMessage, ...stringArgs);
         break;
     }
   }

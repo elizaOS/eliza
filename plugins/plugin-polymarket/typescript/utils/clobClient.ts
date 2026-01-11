@@ -10,7 +10,7 @@ import { ClobClient } from "@polymarket/clob-client";
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
-import { DEFAULT_CLOB_API_URL, DEFAULT_CLOB_WS_URL, POLYGON_CHAIN_ID } from "../constants";
+import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "../constants";
 import type { ApiKeyCreds } from "../types";
 
 // Re-export types for other modules
@@ -73,6 +73,7 @@ function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
       const primaryType = Object.keys(types).find((k) => k !== "EIP712Domain") ?? "";
 
       return walletClient.signTypedData({
+        account,
         domain: domain as Parameters<typeof walletClient.signTypedData>[0]["domain"],
         types: types as Parameters<typeof walletClient.signTypedData>[0]["types"],
         primaryType,
@@ -89,7 +90,6 @@ function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
  */
 export async function initializeClobClient(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
-  const clobWsUrl = String(runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL);
 
   const privateKey = getPrivateKey(runtime);
   const enhancedWallet = createEnhancedWallet(privateKey);
@@ -102,8 +102,7 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
     clobApiUrl,
     POLYGON_CHAIN_ID,
     enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
-    undefined, // No API creds for basic client
-    clobWsUrl
+    undefined // No API creds for basic client
   );
 
   logger.info("[initializeClobClient] CLOB client initialized successfully with EOA wallet");
@@ -117,7 +116,6 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
  */
 export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Promise<ClobClient> {
   const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
-  const clobWsUrl = String(runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL);
 
   const privateKey = getPrivateKey(runtime);
 
@@ -155,8 +153,7 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
     clobApiUrl,
     POLYGON_CHAIN_ID,
     enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
-    creds,
-    clobWsUrl
+    creds
   );
 
   logger.info(

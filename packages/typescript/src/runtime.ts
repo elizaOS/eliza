@@ -8,7 +8,6 @@ interface WorkingMemoryEntry {
 
 import { parseActionParams, validateActionParams } from "./actions";
 import {
-  bootstrapPlugin,
   type CapabilityConfig,
   createBootstrapPlugin,
 } from "./bootstrap/index";
@@ -568,15 +567,11 @@ export class AgentRuntime implements IAgentRuntime {
   async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
     const pluginRegistrationPromises: Promise<void>[] = [];
 
-    // Auto-include bootstrapPlugin unless already present
-    const hasBootstrap = this.characterPlugins.some(
-      (p) => p?.name === "bootstrap",
-    );
-    const pluginsToLoad = hasBootstrap
-      ? this.characterPlugins
-      : [bootstrapPlugin, ...this.characterPlugins];
+    // Bootstrap plugin is now built into core - auto-register it first
+    const bootstrapPlugin = createBootstrapPlugin(this.capabilityOptions);
+    pluginRegistrationPromises.push(this.registerPlugin(bootstrapPlugin));
 
-    for (const plugin of pluginsToLoad) {
+    for (const plugin of this.characterPlugins) {
       if (plugin) {
         pluginRegistrationPromises.push(this.registerPlugin(plugin));
       }

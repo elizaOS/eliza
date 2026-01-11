@@ -197,14 +197,17 @@ class TestRunner {
     const coverageResults = this.results.filter((r) => r.coverage);
     if (coverageResults.length > 0) {
       const avgStatements =
-        coverageResults.reduce((sum, r) => sum + r.coverage?.statements, 0) /
+        coverageResults.reduce((sum, r) => sum + (r.coverage?.statements ?? 0), 0) /
         coverageResults.length;
       const avgBranches =
-        coverageResults.reduce((sum, r) => sum + r.coverage?.branches, 0) / coverageResults.length;
+        coverageResults.reduce((sum, r) => sum + (r.coverage?.branches ?? 0), 0) /
+        coverageResults.length;
       const avgFunctions =
-        coverageResults.reduce((sum, r) => sum + r.coverage?.functions, 0) / coverageResults.length;
+        coverageResults.reduce((sum, r) => sum + (r.coverage?.functions ?? 0), 0) /
+        coverageResults.length;
       const avgLines =
-        coverageResults.reduce((sum, r) => sum + r.coverage?.lines, 0) / coverageResults.length;
+        coverageResults.reduce((sum, r) => sum + (r.coverage?.lines ?? 0), 0) /
+        coverageResults.length;
 
       console.log("📈 Coverage Summary");
       console.log("===================");
@@ -269,16 +272,17 @@ class TestRunner {
       timestamp: new Date().toISOString(),
       overall: {
         statements:
-          coverageResults.reduce((sum, r) => sum + r.coverage?.statements, 0) /
+          coverageResults.reduce((sum, r) => sum + (r.coverage?.statements ?? 0), 0) /
           coverageResults.length,
         branches:
-          coverageResults.reduce((sum, r) => sum + r.coverage?.branches, 0) /
+          coverageResults.reduce((sum, r) => sum + (r.coverage?.branches ?? 0), 0) /
           coverageResults.length,
         functions:
-          coverageResults.reduce((sum, r) => sum + r.coverage?.functions, 0) /
+          coverageResults.reduce((sum, r) => sum + (r.coverage?.functions ?? 0), 0) /
           coverageResults.length,
         lines:
-          coverageResults.reduce((sum, r) => sum + r.coverage?.lines, 0) / coverageResults.length,
+          coverageResults.reduce((sum, r) => sum + (r.coverage?.lines ?? 0), 0) /
+          coverageResults.length,
       },
       bySuite: coverageResults.map((result) => ({
         suite: result.suite,

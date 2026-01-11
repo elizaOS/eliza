@@ -67,7 +67,6 @@ export async function demonstrateToolCompatibility() {
   console.log(`\n${"=".repeat(50)}\n`);
 
   for (const runtime of testRuntimes) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const runtimeAny = runtime as unknown as Record<string, string>;
     console.log(`Testing with: ${runtimeAny.modelProvider} - ${runtimeAny.model}`);
     console.log("-".repeat(30));

@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,8 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient, Market, MarketsResponse } from "@polymarket/clob-client";
+import type { ClobClient, PaginationPayload } from "@polymarket/clob-client";
 import { getSimplifiedMarketsTemplate } from "../templates";
+import type { Market } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -59,7 +61,7 @@ export const getSimplifiedMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getSimplifiedMarketsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMSimplifiedMarketsResult>(
@@ -80,7 +82,7 @@ export const getSimplifiedMarketsAction: Action = {
     logger.info(`[getSimplifiedMarketsAction] Fetching simplified markets with limit=${limit}`);
 
     const client = (await initializeClobClient(runtime)) as ClobClient;
-    const marketsResponse: MarketsResponse = await client.getMarkets(nextCursor);
+    const marketsResponse: PaginationPayload = await client.getMarkets(nextCursor);
     const allMarkets: Market[] = marketsResponse.data || [];
 
     // Create simplified view
@@ -119,16 +121,19 @@ export const getSimplifiedMarketsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_SIMPLIFIED_MARKETS"],
-      data: {
-        markets: simplifiedMarkets,
-        limit,
-        next_cursor: marketsResponse.next_cursor,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        count: String(simplifiedMarkets.length),
+        limit: String(limit),
+        nextCursor: marketsResponse.next_cursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

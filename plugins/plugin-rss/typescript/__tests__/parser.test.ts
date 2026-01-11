@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { createEmptyFeed, parseRssToJson } from "../parser";
 import { extractUrls, formatRelativeTime } from "../utils";
 

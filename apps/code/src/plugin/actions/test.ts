@@ -36,10 +36,8 @@ function extractFilePath(text: string): string {
 }
 
 function extractTestFramework(text: string): string {
-  if (text.includes("jest")) return "jest";
   if (text.includes("vitest")) return "vitest";
   if (text.includes("mocha")) return "mocha";
-  if (text.includes("bun")) return "bun:test";
   return "vitest";
 }
 
@@ -63,7 +61,7 @@ BEHAVIOR:
 - Reads the specified source file
 - Generates tests using detected or specified framework
 - Includes edge cases and error handling tests
-- Supports Jest, Vitest, Mocha, and Bun test frameworks
+- Supports Vitest, Mocha, and Bun test frameworks
 - Auto-detects framework from user message or defaults to Vitest
 
 REQUIRES: A valid file path to the code that should be tested.

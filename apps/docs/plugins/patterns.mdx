@@ -756,12 +756,12 @@ export const myPlugin: Plugin = {
 
 ### Bootstrap Plugin Pattern
 
-The most complex and comprehensive plugin that provides core functionality:
+The bootstrap plugin is built into `@elizaos/core` and automatically registered during runtime initialization. It provides core functionality through:
 
 ```typescript
-export const bootstrapPlugin: Plugin = {
-  name: "bootstrap",
-  description: "Agent bootstrap with basic actions and evaluators",
+// The bootstrap plugin is created internally using createBootstrapPlugin()
+// It provides:
+const bootstrapCapabilities = {
   actions: [
     actions.replyAction,
     actions.followRoomAction,
@@ -786,6 +786,10 @@ export const bootstrapPlugin: Plugin = {
   },
 };
 ```
+
+<Note>
+You don't need to import or configure the bootstrap plugin - it's automatically included when you create an AgentRuntime.
+</Note>
 
 ### Service Plugin Pattern (Discord, Telegram)
 

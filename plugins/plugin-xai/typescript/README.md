@@ -37,7 +37,7 @@ console.log(`@${profile.username}`);
 bun run build
 
 # Test
-bun test
+npx vitest
 
 # Lint
 bun run lint

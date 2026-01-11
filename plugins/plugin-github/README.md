@@ -185,7 +185,7 @@ bun run build:rust    # Rust
 
 ```bash
 # Run all tests
-bun test
+npx vitest
 
 # Run individually
 bun run test:ts      # TypeScript

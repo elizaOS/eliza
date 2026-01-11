@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,9 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient } from "@polymarket/clob-client";
+import type { ApiKeysResponse as ClobApiKeysResponse, ClobClient } from "@polymarket/clob-client";
 import { getAccountAccessStatusTemplate } from "../templates";
-import type { ApiKey, ApiKeysResponse } from "../types";
+import type { ApiKey } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout } from "../utils/llmHelpers";
 
@@ -61,7 +62,7 @@ export const getAccountAccessStatusAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getAccountAccessStatusAction] Handler called!");
 
     try {
@@ -95,9 +96,12 @@ export const getAccountAccessStatusAction: Action = {
         runtime.getSetting("CLOB_API_PASSPHRASE") || runtime.getSetting("CLOB_PASS_PHRASE");
       const hasConfiguredManagedApiCredentials = clobApiKey && clobApiSecret && clobApiPassphrase;
 
-      const sessionApiKeyId = runtime.getSetting("POLYMARKET_SESSION_API_KEY_ID");
-      const sessionApiLabel = runtime.getSetting("POLYMARKET_SESSION_API_LABEL");
-      const sessionApiSource = runtime.getSetting("POLYMARKET_SESSION_API_SOURCE");
+      const sessionApiKeyIdRaw = runtime.getSetting("POLYMARKET_SESSION_API_KEY_ID");
+      const sessionApiKeyId = sessionApiKeyIdRaw ? String(sessionApiKeyIdRaw) : undefined;
+      const sessionApiLabelRaw = runtime.getSetting("POLYMARKET_SESSION_API_LABEL");
+      const sessionApiLabel = sessionApiLabelRaw ? String(sessionApiLabelRaw) : undefined;
+      const sessionApiSourceRaw = runtime.getSetting("POLYMARKET_SESSION_API_SOURCE");
+      const sessionApiSource = sessionApiSourceRaw ? String(sessionApiSourceRaw) : undefined;
 
       if (hasConfiguredManagedApiCredentials) {
         try {
@@ -105,10 +109,19 @@ export const getAccountAccessStatusAction: Action = {
             "[getAccountAccessStatusAction] Configured API credentials found. Attempting to fetch managed API keys and cert status."
           );
           const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-          const officialResponse = await client.getApiKeys();
-          const accessStatus = officialResponse as ApiKeysResponse;
-          certRequired = accessStatus.cert_required;
-          apiKeysList = accessStatus.api_keys || [];
+          const officialResponse: ClobApiKeysResponse = await client.getApiKeys();
+          // Note: clob-client ApiKeysResponse has apiKeys (array of ApiKeyCreds), not api_keys or cert_required
+          // We'll work with what we have
+          const creds = officialResponse.apiKeys || [];
+          apiKeysList = creds.map((cred, idx) => ({
+            key_id: cred.key,
+            label: `API Key ${idx + 1}`,
+            type: "read_write" as const,
+            status: "active" as const,
+            created_at: new Date().toISOString(),
+            last_used_at: null,
+            is_cert_whitelisted: false,
+          }));
         } catch (err) {
           logger.error(
             "[getAccountAccessStatusAction] Error fetching API keys with credentials:",
@@ -174,22 +187,25 @@ export const getAccountAccessStatusAction: Action = {
         text: responseText,
         actions: ["POLYMARKET_GET_ACCOUNT_ACCESS_STATUS"],
         data: {
-          certRequired,
-          managedApiKeys: apiKeysList,
-          activeSessionKey: sessionApiKeyId
-            ? {
-                id: sessionApiKeyId,
-                label: sessionApiLabel,
-                source: sessionApiSource,
-              }
-            : undefined,
-          error: apiKeysError,
+          certRequired: certRequired ?? false,
+          managedApiKeysCount: apiKeysList.length,
+          activeSessionKeyId: sessionApiKeyId || null,
+          error: apiKeysError || null,
           timestamp: new Date().toISOString(),
         },
       };
 
       if (callback) await callback(responseContent);
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          certRequired: certRequired ?? false,
+          managedApiKeysCount: apiKeysList.length,
+          activeSessionKeyId: sessionApiKeyId || null,
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       logger.error("[getAccountAccessStatusAction] Error fetching account access status:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred.";
@@ -201,7 +217,11 @@ export const getAccountAccessStatusAction: Action = {
       };
 
       if (callback) await callback(errorContent);
-      throw error;
+      return {
+        success: false,
+        text: `Error fetching account access status: ${errorMessage}`,
+        error: errorMessage,
+      };
     }
   },
 

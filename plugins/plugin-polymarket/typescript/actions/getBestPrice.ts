@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -52,7 +53,7 @@ export const getBestPriceAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getBestPriceAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMBestPriceResult>(
@@ -68,7 +69,12 @@ export const getBestPriceAction: Action = {
     logger.info(`[getBestPriceAction] LLM result: ${JSON.stringify(llmResult)}`);
 
     if (llmResult.error || !llmResult.tokenId || !llmResult.side) {
-      throw new Error(llmResult.error || "Token ID and side not found in LLM result.");
+      const errorMsg = llmResult.error || "Token ID and side not found in LLM result.";
+      return {
+        success: false,
+        text: errorMsg,
+        error: errorMsg,
+      };
     }
 
     const tokenId = llmResult.tokenId;
@@ -92,13 +98,22 @@ export const getBestPriceAction: Action = {
       data: {
         tokenId,
         side,
-        price: priceResult?.price,
+        price: priceResult?.price || null,
         timestamp: new Date().toISOString(),
       },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        tokenId,
+        side,
+        price: priceResult?.price || null,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

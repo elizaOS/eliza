@@ -161,7 +161,7 @@ const useCompleteTask = () => {
   const queryClient = useQueryClient();
 
   return useMutation<
-    unknown,
+    { message?: string },
     Error,
     {
       taskId: string;
@@ -195,7 +195,7 @@ const useCompleteTask = () => {
 
 const useUncompleteTask = () => {
   const queryClient = useQueryClient();
-  return useMutation<unknown, Error, string>({
+  return useMutation<{ message?: string }, Error, string>({
     mutationFn: async (taskId) => {
       const response = await fetch(`/api/goals/${taskId}/uncomplete`, {
         method: "PUT",
@@ -310,7 +310,12 @@ const AddTaskForm = ({ worlds }: { worlds: WorldWithRooms[] }) => {
       alert("Please enter a task name and select a world/room.");
       return;
     }
-    const taskData: Record<string, string | number | boolean> = {
+    const taskData: Omit<Task, "id"> & {
+      type: string;
+      isUrgent?: boolean;
+      priority?: number;
+      dueDate?: string;
+    } = {
       name: name.trim(),
       type,
       roomId: selectedRoomId,

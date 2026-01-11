@@ -169,7 +169,9 @@ export async function savePattern(buffer: Buffer, filename: string): Promise<str
 /**
  * Generate patterns for all displays
  */
-export async function generatePatternsForAllDisplays(displayCount: number): Promise<Map<number, Buffer>> {
+export async function generatePatternsForAllDisplays(
+  displayCount: number
+): Promise<Map<number, Buffer>> {
   const patterns = new Map<number, Buffer>();
 
   for (let i = 0; i < displayCount; i++) {

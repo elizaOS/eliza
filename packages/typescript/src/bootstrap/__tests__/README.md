@@ -45,19 +45,19 @@ The test suite includes a robust set of utilities in `test-utils.ts`:
 Run all tests:
 
 ```bash
-bun test packages/plugin-bootstrap/__tests__
+npx vitest packages/plugin-bootstrap/__tests__
 ```
 
 Run specific test file:
 
 ```bash
-bun test packages/plugin-bootstrap/__tests__/actions.test.ts
+npx vitest packages/plugin-bootstrap/__tests__/actions.test.ts
 ```
 
 Run tests in watch mode:
 
 ```bash
-bun test --watch packages/plugin-bootstrap/__tests__
+npx vitest --watch packages/plugin-bootstrap/__tests__
 ```
 
 ## Common Test Patterns

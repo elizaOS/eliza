@@ -62,7 +62,7 @@ async function build(): Promise<boolean> {
   console.log(`✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
   // Ensure dist directories exist
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
   const nodeDir = join(distDir, "node");
   if (!existsSync(nodeDir)) {
     await mkdir(nodeDir, { recursive: true });

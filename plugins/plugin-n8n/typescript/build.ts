@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
-const distDir = join(process.cwd(), "..", "dist");
+const distDir = join(process.cwd(), "dist");
 
 async function buildPlugin() {
   console.log("🔨 Building @elizaos/plugin-n8n...\n");

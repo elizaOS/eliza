@@ -114,14 +114,13 @@ const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 
 ## Comparison: Browser vs Node.js
 
-| Feature   | chat.ts (Node.js)   | index.html (Browser)                |
-| --------- | ------------------- | ----------------------------------- |
-| Runtime   | AgentRuntime        | AgentRuntime                        |
-| Database  | plugin-sql (PGLite) | plugin-localdb (localStorage)       |
-| Model     | plugin-openai       | plugin-eliza-classic                |
-| Bootstrap | bootstrapPlugin     | Not needed (uses useModel directly) |
-| UI        | readline (CLI)      | HTML/CSS Terminal                   |
-| API Keys  | Required (OpenAI)   | Not required                        |
+| Feature  | chat.ts (Node.js)   | index.html (Browser)          |
+| -------- | ------------------- | ----------------------------- |
+| Runtime  | AgentRuntime        | AgentRuntime                  |
+| Database | plugin-sql (PGLite) | plugin-localdb (localStorage) |
+| Model    | plugin-openai       | plugin-eliza-classic          |
+| UI       | readline (CLI)      | HTML/CSS Terminal             |
+| API Keys | Required (OpenAI)   | Not required                  |
 
 ## Project Structure
 

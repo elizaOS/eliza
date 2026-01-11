@@ -39,7 +39,7 @@
     "dev": "bun --hot build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
-    "test:unit": "bun test __tests__/",
+    "test:unit": "vitest run __tests__/",
     "test:integration": "elizaos test",
     "lint": "biome check --write .",
     "lint:check": "biome check .",

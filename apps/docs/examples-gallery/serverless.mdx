@@ -33,7 +33,7 @@ sam deploy --guided
 
 ```typescript
 import { APIGatewayProxyHandler } from "aws-lambda";
-import { AgentRuntime, bootstrapPlugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 
 let runtime: AgentRuntime | null = null;
@@ -42,7 +42,7 @@ const getRuntime = async () => {
   if (runtime) return runtime;
   runtime = new AgentRuntime({
     character: { name: "Eliza", bio: "A helpful AI." },
-    plugins: [bootstrapPlugin, openaiPlugin],
+    plugins: [openaiPlugin],
   });
   await runtime.initialize();
   return runtime;

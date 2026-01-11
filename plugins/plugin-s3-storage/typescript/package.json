@@ -52,8 +52,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "test:ts": "bun test",
+    "test": "vitest run",
+    "test:ts": "vitest run",
     "build": "bun run build.ts"
   },
   "publishConfig": {

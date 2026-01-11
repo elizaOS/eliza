@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,16 +8,10 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient } from "@polymarket/clob-client";
+import type { ClobClient, OpenOrder, OpenOrderParams } from "@polymarket/clob-client";
 import { getActiveOrdersTemplate } from "../templates";
-import type { GetOpenOrdersParams, OpenOrder } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
-
-interface OfficialOpenOrdersParams {
-  market?: string;
-  asset_id?: string;
-}
 
 interface LLMOrdersResult {
   market?: string;
@@ -83,7 +78,7 @@ export const getActiveOrdersAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getActiveOrdersAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMOrdersResult>(
@@ -105,7 +100,7 @@ export const getActiveOrdersAction: Action = {
     const marketSlug = llmResult.market;
     const assetId = llmResult.assetId;
 
-    const apiParams: OfficialOpenOrdersParams = {};
+    const apiParams: OpenOrderParams = {};
     if (marketSlug) apiParams.market = marketSlug;
     if (assetId) apiParams.asset_id = assetId;
 
@@ -114,11 +109,7 @@ export const getActiveOrdersAction: Action = {
     );
 
     const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-    const fetchParams: GetOpenOrdersParams = {
-      market: apiParams.market,
-      asset_id: apiParams.asset_id,
-    };
-    const orders: OpenOrder[] = await client.getOpenOrders(fetchParams);
+    const orders: OpenOrder[] = await client.getOpenOrders(apiParams);
 
     let responseText = `📋 **Your Active Orders on Polymarket:**\n\n`;
 
@@ -133,7 +124,7 @@ export const getActiveOrdersAction: Action = {
         responseText += `   • **Price**: $${parseFloat(order.price).toFixed(4)}\n`;
         responseText += `   • **Original Size**: ${order.original_size}\n`;
         responseText += `   • **Size Matched**: ${order.size_matched}\n`;
-        responseText += `   • **Created At**: ${order.created_at ? new Date(order.created_at).toLocaleString() : "N/A"}\n`;
+        responseText += `   • **Created At**: ${order.created_at ? new Date(order.created_at * 1000).toLocaleString() : "N/A"}\n`;
         responseText += `   • **Expiration**: ${order.expiration && order.expiration !== "0" ? new Date(parseInt(order.expiration, 10) * 1000).toLocaleString() : "None (GTC)"}\n`;
         responseText += `\n`;
       });
@@ -147,14 +138,24 @@ export const getActiveOrdersAction: Action = {
       text: responseText,
       actions: ["GET_ACTIVE_ORDERS"],
       data: {
-        orders,
-        filters: apiParams,
+        ordersCount: orders.length,
+        filterMarket: marketSlug || null,
+        filterAssetId: assetId || null,
         timestamp: new Date().toISOString(),
       },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        ordersCount: orders.length,
+        filterMarket: marketSlug || null,
+        filterAssetId: assetId || null,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

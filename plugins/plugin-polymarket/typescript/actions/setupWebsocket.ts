@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -55,7 +56,7 @@ export const setupWebsocketAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[setupWebsocketAction] Handler called!");
 
     let llmResult: LLMWebsocketSetupResult = {};
@@ -156,14 +157,19 @@ export const setupWebsocketAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_SETUP_WEBSOCKET"],
-        data: {
-          config,
-          timestamp: new Date().toISOString(),
-        },
       };
 
       if (callback) await callback(responseContent);
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          url: config.url,
+          status: config.status,
+          authenticated: String(config.authenticated),
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       logger.error("[setupWebsocketAction] Error setting up WebSocket:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred.";

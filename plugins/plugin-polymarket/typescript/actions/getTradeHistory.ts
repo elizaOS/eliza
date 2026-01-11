@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -9,7 +10,7 @@ import {
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { getTradeHistoryTemplate } from "../templates";
-import type { GetTradesParams, TradeEntry, TradesResponse } from "../types";
+import type { GetTradesParams, TradeEntry } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -75,7 +76,7 @@ export const getTradeHistoryAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getTradeHistoryAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMTradeHistoryResult>(
@@ -103,8 +104,9 @@ export const getTradeHistoryAction: Action = {
     );
 
     const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
-    const tradesResponse: TradesResponse = await client.getTrades(apiParams);
-    const trades: TradeEntry[] = tradesResponse.data || [];
+    // Use getTradesPaginated to get pagination info including next_cursor
+    const tradesResponse = await client.getTradesPaginated(apiParams);
+    const trades: TradeEntry[] = (tradesResponse.trades as unknown as TradeEntry[]) ?? [];
 
     let responseText = `📜 **Your Trade History on Polymarket:**\n\n`;
 
@@ -128,7 +130,7 @@ export const getTradeHistoryAction: Action = {
       if (trades.length > limit) {
         responseText += `\n📄 *Showing ${limit} of ${trades.length} trades.*\n`;
       }
-      if (tradesResponse.next_cursor) {
+      if (tradesResponse?.next_cursor) {
         responseText += `*More trades available. Use cursor: \`${tradesResponse.next_cursor}\`*\n`;
       }
     } else {
@@ -140,17 +142,18 @@ export const getTradeHistoryAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_TRADE_HISTORY"],
-      data: {
-        trades: trades.slice(0, limit),
-        totalTrades: trades.length,
-        filters: apiParams,
-        next_cursor: tradesResponse.next_cursor,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        totalTrades: String(trades.length),
+        nextCursor: tradesResponse?.next_cursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

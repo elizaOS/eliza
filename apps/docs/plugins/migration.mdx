@@ -93,7 +93,7 @@ rm -f *.lock.json *.yml.lock
   "dev": "bun --hot build.ts",
   "lint": "prettier --write ./src",
   "clean": "rm -rf dist .turbo node_modules",
-  "test": "bun test",
+  "test": "vitest",
   "publish": "npm publish --access public"
 }
 ```
@@ -278,28 +278,26 @@ interface Provider {
 
 ## Step 9: Testing Migration
 
-### From Vitest to Bun
+### Test Framework (Vitest)
 
 ```typescript
-// OLD (Vitest)
+// Using Vitest for tests
 import { describe, it, expect, vi } from "vitest";
 
 const mockRuntime = {
   getSetting: vi.fn(() => "test-value"),
 };
+```
 
-// NEW (Bun)
-import { describe, it, expect, mock } from "bun:test";
-
-const mockRuntime = {
-  getSetting: mock(() => "test-value"),
-};
+Run tests with:
+```bash
+npx vitest
 ```
 
 ### Test Structure
 
 ```typescript
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { myAction } from "../src/actions/myAction";
 
 describe("MyAction", () => {
@@ -308,9 +306,9 @@ describe("MyAction", () => {
   beforeEach(() => {
     mockRuntime = {
       agentId: "test-agent",
-      getSetting: mock((key: string) => "test-value"),
-      useModel: mock(async () => ({ content: "response" })),
-      composeState: mock(async () => ({ values: {}, text: "" })),
+      getSetting: vi.fn((key: string) => "test-value"),
+      useModel: vi.fn(async () => ({ content: "response" })),
+      composeState: vi.fn(async () => ({ values: {}, text: "" })),
     };
   });
 
@@ -464,10 +462,10 @@ return {
 
 ### Issue: Tests failing with module errors
 
-**Solution**: Update imports to use `bun:test`:
+**Solution**: Update imports to use `vitest`:
 
 ```typescript
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect, vi } from "vitest";
 ```
 
 ### Issue: State composition performance
@@ -508,7 +506,7 @@ bun run build
 ### Run Tests
 
 ```bash
-bun test
+npx vitest
 ```
 
 ### Integration Test
@@ -535,7 +533,7 @@ Once migration is complete:
 bun run build
 
 # Test everything
-bun test
+npx vitest
 
 # Publish to npm
 npm publish --access public
@@ -546,7 +544,7 @@ npm publish --access public
 - [ ] All imports updated to `@elizaos/core`
 - [ ] Actions return `ActionResult` with `success` field
 - [ ] Callbacks implemented in action handlers
-- [ ] Tests migrated to Bun test runner
+- [ ] Tests use Vitest for test framework
 - [ ] State composition uses new filtering API
 - [ ] Providers implemented for custom data
 - [ ] Package.json updated with correct dependencies

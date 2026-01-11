@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -51,7 +52,7 @@ export const getMidpointPriceAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getMidpointPriceAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMMidpointResult>(
@@ -67,7 +68,12 @@ export const getMidpointPriceAction: Action = {
     logger.info(`[getMidpointPriceAction] LLM result: ${JSON.stringify(llmResult)}`);
 
     if (llmResult.error || !llmResult.tokenId) {
-      throw new Error(llmResult.error || "Token ID not found in LLM result.");
+      const errorMsg = llmResult.error || "Token ID not found in LLM result.";
+      return {
+        success: false,
+        text: errorMsg,
+        error: errorMsg,
+      };
     }
 
     const tokenId = llmResult.tokenId;
@@ -90,13 +96,21 @@ export const getMidpointPriceAction: Action = {
       actions: ["GET_MIDPOINT_PRICE"],
       data: {
         tokenId,
-        midpoint: midpointResult?.mid,
+        midpoint: midpointResult?.mid || null,
         timestamp: new Date().toISOString(),
       },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        tokenId,
+        midpoint: midpointResult?.mid || null,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

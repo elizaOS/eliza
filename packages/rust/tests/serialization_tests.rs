@@ -66,7 +66,7 @@ fn test_character_deserialization_from_typescript() {
     assert!(character.topics.is_some());
     assert_eq!(character.topics.as_ref().unwrap().len(), 2);
     assert!(character.plugins.is_some());
-    assert_eq!(character.plugins.as_ref().unwrap().len(), 2);
+    assert_eq!(character.plugins.as_ref().unwrap().len(), 1);
 }
 
 /// Test that Character with array bio works

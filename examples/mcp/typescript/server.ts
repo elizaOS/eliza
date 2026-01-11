@@ -9,7 +9,6 @@
 
 import {
   AgentRuntime,
-  bootstrapPlugin,
   ChannelType,
   type Character,
   createMessageMemory,
@@ -86,7 +85,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   runtime = new AgentRuntime({
     character: CHARACTER,
-    plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+    plugins: [sqlPlugin, openaiPlugin],
   });
 
   await runtime.initialize();

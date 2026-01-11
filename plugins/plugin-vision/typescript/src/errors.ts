@@ -273,19 +273,25 @@ export class VisionErrorHandler {
   }
 
   getCircuitBreaker(name: string, threshold = 5, timeout = 60000): CircuitBreaker {
-    if (!this.circuitBreakers.has(name)) {
-      this.circuitBreakers.set(name, new CircuitBreaker(threshold, timeout, name));
+    let breaker = this.circuitBreakers.get(name);
+    if (!breaker) {
+      breaker = new CircuitBreaker(threshold, timeout, name);
+      this.circuitBreakers.set(name, breaker);
     }
-    return this.circuitBreakers.get(name)!;
+    return breaker;
   }
 
-  async handle(error: any): Promise<boolean> {
+  async handle(error: unknown): Promise<boolean> {
     // Convert to VisionError if needed
-    if (!(error instanceof VisionError)) {
-      error = new ProcessingError(error.message || "Unknown error", { originalError: error });
+    let visionError: VisionError;
+    if (error instanceof VisionError) {
+      visionError = error;
+    } else {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      visionError = new ProcessingError(errorMessage, { originalError: error });
     }
 
-    return this.recoveryManager.handleError(error);
+    return this.recoveryManager.handleError(visionError);
   }
 
   resetCircuitBreaker(name: string): void {

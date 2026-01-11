@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,7 +8,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient, OrderBookDepth } from "@polymarket/clob-client";
+import type { ClobClient, OrderBookSummary } from "@polymarket/clob-client";
 import { getOrderBookDepthTemplate } from "../templates";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
@@ -49,7 +50,7 @@ export const getOrderBookDepthAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getOrderBookDepthAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMOrderBookDepthResult>(
@@ -65,7 +66,12 @@ export const getOrderBookDepthAction: Action = {
     logger.info(`[getOrderBookDepthAction] LLM result: ${JSON.stringify(llmResult)}`);
 
     if (llmResult.error || !llmResult.tokenId) {
-      throw new Error(llmResult.error || "Token ID not found in LLM result.");
+      const errorMsg = llmResult.error || "Token ID not found in LLM result.";
+      return {
+        success: false,
+        text: errorMsg,
+        error: errorMsg,
+      };
     }
 
     const tokenId = llmResult.tokenId;
@@ -73,7 +79,8 @@ export const getOrderBookDepthAction: Action = {
     logger.info(`[getOrderBookDepthAction] Fetching order book depth for token: ${tokenId}`);
 
     const client = (await initializeClobClient(runtime)) as ClobClient;
-    const depth: OrderBookDepth = await client.getOrderBook(tokenId);
+    // Use OrderBookSummary type from clob-client (getOrderBook returns this)
+    const depth: OrderBookSummary = await client.getOrderBook(tokenId);
 
     let responseText = `📊 **Order Book Depth for Token ${tokenId}**:\n\n`;
 
@@ -83,7 +90,7 @@ export const getOrderBookDepthAction: Action = {
     responseText += `**Bids (Buy Orders):** ${bids.length}\n`;
     if (bids.length > 0) {
       const topBids = bids.slice(0, 5);
-      topBids.forEach((bid: { price: string; size: string }, index: number) => {
+      topBids.forEach((bid, index: number) => {
         responseText += `  ${index + 1}. $${parseFloat(bid.price).toFixed(4)} × ${bid.size}\n`;
       });
       if (bids.length > 5) {
@@ -96,7 +103,7 @@ export const getOrderBookDepthAction: Action = {
     responseText += `\n**Asks (Sell Orders):** ${asks.length}\n`;
     if (asks.length > 0) {
       const topAsks = asks.slice(0, 5);
-      topAsks.forEach((ask: { price: string; size: string }, index: number) => {
+      topAsks.forEach((ask, index: number) => {
         responseText += `  ${index + 1}. $${parseFloat(ask.price).toFixed(4)} × ${ask.size}\n`;
       });
       if (asks.length > 5) {
@@ -120,8 +127,6 @@ export const getOrderBookDepthAction: Action = {
       actions: ["GET_ORDER_BOOK_DEPTH"],
       data: {
         tokenId,
-        bids: bids.slice(0, 10),
-        asks: asks.slice(0, 10),
         totalBids: bids.length,
         totalAsks: asks.length,
         timestamp: new Date().toISOString(),
@@ -129,7 +134,16 @@ export const getOrderBookDepthAction: Action = {
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        tokenId,
+        totalBids: bids.length,
+        totalAsks: asks.length,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

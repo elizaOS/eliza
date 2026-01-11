@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,7 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { ethers } from "ethers";
+import { createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { polygon } from "viem/chains";
 
 export interface ApiKeyResponse {
   id: string;
@@ -97,27 +100,37 @@ export const createApiKeyAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ): Promise<Content> => {
+    _state?: State,
+    _options?: Record<string, unknown>,
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     logger.info("[createApiKeyAction] Handler called!");
 
-    const clobApiUrl = runtime.getSetting("CLOB_API_URL") || "https://clob.polymarket.com";
+    const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || "https://clob.polymarket.com");
 
-    const privateKey =
+    const privateKeySetting =
       runtime.getSetting("WALLET_PRIVATE_KEY") ||
       runtime.getSetting("PRIVATE_KEY") ||
       runtime.getSetting("POLYMARKET_PRIVATE_KEY");
 
-    if (!privateKey) {
+    if (!privateKeySetting) {
       throw new Error(
         "No private key found. Please set WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY in your environment"
       );
     }
 
-    const wallet = new ethers.Wallet(privateKey);
-    const address = wallet.address;
+    const privateKeyStr = String(privateKeySetting);
+    const privateKey = (
+      privateKeyStr.startsWith("0x") ? privateKeyStr : `0x${privateKeyStr}`
+    ) as `0x${string}`;
+    const account = privateKeyToAccount(privateKey);
+    const address = account.address;
+
+    const walletClient = createWalletClient({
+      account,
+      chain: polygon,
+      transport: http(),
+    });
 
     logger.info("[createApiKeyAction] Creating API key credentials...");
 
@@ -128,7 +141,7 @@ export const createApiKeyAction: Action = {
       name: "ClobAuthDomain",
       version: "1",
       chainId: 137,
-    };
+    } as const;
 
     const types = {
       ClobAuth: [
@@ -137,16 +150,22 @@ export const createApiKeyAction: Action = {
         { name: "nonce", type: "uint256" },
         { name: "message", type: "string" },
       ],
-    };
+    } as const;
 
     const value = {
       address: address,
       timestamp: timestamp,
-      nonce: nonce,
+      nonce: BigInt(nonce),
       message: "This message attests that I control the given wallet",
     };
 
-    const signature = await wallet.signTypedData(domain, types, value);
+    const signature = await walletClient.signTypedData({
+      account,
+      domain,
+      types,
+      primaryType: "ClobAuth",
+      message: value,
+    });
 
     let apiCredentials: ApiCredentialsResponse | null = null;
     let isNewKey = false;
@@ -224,11 +243,9 @@ export const createApiKeyAction: Action = {
       created_at: new Date().toISOString(),
     };
 
-    logger.info("[createApiKeyAction] Extracted fields:", {
-      id: responseData.id,
-      secretLength: responseData.secret?.length,
-      passphraseLength: responseData.passphrase?.length,
-    });
+    logger.info(
+      `[createApiKeyAction] Extracted fields: id=${responseData.id}, secretLength=${responseData.secret?.length || 0}, passphraseLength=${responseData.passphrase?.length || 0}`
+    );
 
     if (responseData.id && responseData.secret && responseData.passphrase) {
       logger.info("[createApiKeyAction] Storing API credentials in runtime settings...");
@@ -270,16 +287,23 @@ You can now place orders on Polymarket. The system will automatically use these 
       text: successMessage,
       actions: ["CREATE_API_KEY"],
       data: {
-        success: true,
-        apiKey: responseData,
+        apiKeyId: responseData.id,
+        createdAt: responseData.created_at || new Date().toISOString(),
       },
     };
 
     if (callback) {
-      callback(responseContent);
+      await callback(responseContent);
     }
 
     logger.info("[createApiKeyAction] API key creation completed successfully");
-    return responseContent;
+    return {
+      success: true,
+      text: successMessage,
+      data: {
+        apiKeyId: responseData.id,
+        createdAt: responseData.created_at || new Date().toISOString(),
+      },
+    };
   },
 };

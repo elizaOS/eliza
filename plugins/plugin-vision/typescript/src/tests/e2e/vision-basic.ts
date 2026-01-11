@@ -52,7 +52,12 @@ export class VisionBasicE2ETestSuite implements TestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: any = null;
+        let callbackResponse: {
+          text?: string;
+          thought?: string;
+          actions?: string[];
+          attachments?: Array<{ url: string; title: string }>;
+        } | null = null;
 
         const state: State = { values: {}, data: {}, text: "" };
 
@@ -147,7 +152,12 @@ export class VisionBasicE2ETestSuite implements TestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: any = null;
+        let callbackResponse: {
+          text?: string;
+          thought?: string;
+          actions?: string[];
+          attachments?: Array<{ url: string; title: string }>;
+        } | null = null;
 
         const state: State = { values: {}, data: {}, text: "" };
 

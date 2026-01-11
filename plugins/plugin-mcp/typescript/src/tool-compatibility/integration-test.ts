@@ -66,7 +66,6 @@ async function testIntegration() {
   console.log("🧪 Testing MCP Tool Compatibility Integration\n");
 
   for (const [providerName, runtime] of Object.entries(mockRuntimes)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const runtimeAny = runtime as unknown as Record<string, string>;
     console.log(`📋 Testing ${providerName} (${runtimeAny.model})`);
     console.log("-".repeat(40));

@@ -240,7 +240,7 @@ examples/next/
 ```typescript
 // app/api/chat/route.ts
 import { NextResponse } from "next/server";
-import { AgentRuntime, bootstrapPlugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
@@ -255,7 +255,7 @@ async function getRuntime() {
       bio: "A helpful AI assistant.",
       secrets: { OPENAI_API_KEY: process.env.OPENAI_API_KEY },
     },
-    plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+    plugins: [sqlPlugin, openaiPlugin],
   });
 
   await runtime.initialize();

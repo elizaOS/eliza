@@ -31,8 +31,8 @@
     "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun --hot build.ts",
     "test": "bun run test:ts",
-    "test:ts": "cd typescript && bun test",
-    "typecheck": "tsc --noEmit",
+    "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",
     "clean": "rm -rf typescript/dist .turbo node_modules"

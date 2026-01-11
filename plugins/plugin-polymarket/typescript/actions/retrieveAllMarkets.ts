@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,8 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient, Market, MarketsResponse } from "@polymarket/clob-client";
+import type { ClobClient, PaginationPayload } from "@polymarket/clob-client";
 import { retrieveAllMarketsTemplate } from "../templates";
+import type { Market } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -50,7 +52,7 @@ export const retrieveAllMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[retrieveAllMarketsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMRetrieveAllResult>(
@@ -76,7 +78,7 @@ export const retrieveAllMarketsAction: Action = {
 
     // Paginate through all markets
     do {
-      const marketsResponse: MarketsResponse = await client.getMarkets(nextCursor);
+      const marketsResponse: PaginationPayload = await client.getMarkets(nextCursor);
       const markets: Market[] = marketsResponse.data || [];
       allMarkets.push(...markets);
       nextCursor = marketsResponse.next_cursor;
@@ -124,26 +126,23 @@ export const retrieveAllMarketsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_RETRIEVE_ALL_MARKETS"],
-      data: {
-        totalMarkets: allMarkets.length,
-        openMarkets: openMarkets.length,
-        closedMarkets: closedMarkets.length,
-        inactiveMarkets: inactiveMarkets.length,
-        pagesFetched: pageCount,
-        hasMore: !!nextCursor,
-        next_cursor: nextCursor,
-        sampleMarkets: openMarkets.slice(0, 10).map((m: Market) => ({
-          condition_id: m.condition_id,
-          question: m.question,
-          active: m.active,
-          closed: m.closed,
-        })),
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        totalMarkets: String(allMarkets.length),
+        openMarkets: String(openMarkets.length),
+        closedMarkets: String(closedMarkets.length),
+        inactiveMarkets: String(inactiveMarkets.length),
+        pagesFetched: String(pageCount),
+        hasMore: String(!!nextCursor),
+        nextCursor: nextCursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

@@ -114,7 +114,7 @@ export class GoalDataService {
 
       return goalId;
     } catch (error) {
-      logger.error("Error creating goal:", error);
+      logger.error("Error creating goal:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -200,7 +200,7 @@ export class GoalDataService {
         } as GoalData;
       });
     } catch (error) {
-      logger.error("Error getting goals:", error);
+      logger.error("Error getting goals:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -231,7 +231,7 @@ export class GoalDataService {
         completedAt: goal.completedAt ? new Date(goal.completedAt as string | number | Date) : null,
       } as GoalData;
     } catch (error) {
-      logger.error("Error getting goal:", error);
+      logger.error("Error getting goal:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -286,7 +286,7 @@ export class GoalDataService {
 
       return true;
     } catch (error) {
-      logger.error("Error updating goal:", error);
+      logger.error("Error updating goal:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -302,7 +302,7 @@ export class GoalDataService {
       await db.delete(goalsTable).where(eq(goalsTable.id, goalId));
       return true;
     } catch (error) {
-      logger.error("Error deleting goal:", error);
+      logger.error("Error deleting goal:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -327,7 +327,10 @@ export class GoalDataService {
         ownerId,
       });
     } catch (error) {
-      logger.error("Error getting uncompleted goals:", error);
+      logger.error(
+        "Error getting uncompleted goals:",
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   }
@@ -343,7 +346,10 @@ export class GoalDataService {
         ownerId,
       });
     } catch (error) {
-      logger.error("Error getting completed goals:", error);
+      logger.error(
+        "Error getting completed goals:",
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   }
@@ -364,7 +370,7 @@ export class GoalDataService {
       });
       return goals.length;
     } catch (error) {
-      logger.error("Error counting goals:", error);
+      logger.error("Error counting goals:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -379,7 +385,10 @@ export class GoalDataService {
         ownerId,
       });
     } catch (error) {
-      logger.error("Error getting all goals for owner:", error);
+      logger.error(
+        "Error getting all goals for owner:",
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   }

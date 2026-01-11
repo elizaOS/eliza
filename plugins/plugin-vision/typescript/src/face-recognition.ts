@@ -8,17 +8,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Dynamic imports for optional dependencies
-let Canvas: any, Image: any, ImageData: any;
+// Canvas package types differ from DOM types but are runtime-compatible with face-api.js
+let CanvasModule: typeof import("canvas") | undefined;
 
 async function initializeCanvas() {
   try {
-    const canvas = await import("canvas");
-    Canvas = canvas.Canvas;
-    Image = canvas.Image;
-    ImageData = canvas.ImageData;
+    CanvasModule = await import("canvas");
 
-    // Polyfill for face-api.js
-    faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+    // Polyfill for face-api.js - use type assertion since canvas package
+    // provides Node.js compatible implementations that work with face-api.js
+    // but have different TypeScript types than DOM equivalents
+    faceapi.env.monkeyPatch({
+      Canvas: CanvasModule.Canvas as unknown as typeof HTMLCanvasElement,
+      Image: CanvasModule.Image as unknown as typeof HTMLImageElement,
+      ImageData: CanvasModule.ImageData as unknown as typeof ImageData,
+    });
   } catch (error) {
     logger.error("[FaceRecognition] Canvas module not available:", error);
     throw new Error(
@@ -103,10 +107,17 @@ export class FaceRecognition {
     }
 
     try {
+      if (!CanvasModule) {
+        throw new Error("Canvas module not initialized. Call initialize() first.");
+      }
       // Create canvas from image data
-      const canvas = new Canvas(width, height);
+      const canvas = new CanvasModule.Canvas(width, height);
       const ctx = canvas.getContext("2d");
-      const imageDataObj = new ImageData(new Uint8ClampedArray(imageData), width, height);
+      const imageDataObj = new CanvasModule.ImageData(
+        new Uint8ClampedArray(imageData),
+        width,
+        height
+      );
       ctx.putImageData(imageDataObj, 0, 0);
 
       // Detect faces with full analysis

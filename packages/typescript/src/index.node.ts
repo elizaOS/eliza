@@ -9,6 +9,8 @@
 
 // Export all core modules
 export * from "./actions";
+// Export bootstrap plugin and capabilities
+export * from "./bootstrap/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 export * from "./database";

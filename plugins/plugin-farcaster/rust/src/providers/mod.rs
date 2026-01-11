@@ -45,6 +45,7 @@ impl<'a> ProfileProvider<'a> {
 /// Provider for Farcaster timeline.
 pub struct TimelineProvider<'a> {
     service: &'a FarcasterService,
+    #[allow(dead_code)]
     config: &'a FarcasterConfig,
 }
 

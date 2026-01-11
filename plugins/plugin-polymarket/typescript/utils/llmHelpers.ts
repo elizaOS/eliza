@@ -115,8 +115,13 @@ export async function extractFieldFromLLM<T>(
 /**
  * Check if LLM response indicates an error
  */
-export function isLLMError(
-  response: Record<string, unknown> | null
-): response is { error: string } {
-  return response !== null && typeof response === "object" && "error" in response;
+export function isLLMError<T extends object>(
+  response: T | null
+): response is T & { error: string } {
+  return (
+    response !== null &&
+    typeof response === "object" &&
+    "error" in response &&
+    typeof (response as { error?: unknown }).error === "string"
+  );
 }

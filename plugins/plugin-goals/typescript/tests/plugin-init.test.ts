@@ -55,8 +55,8 @@ describe("GoalsPlugin Initialization", () => {
 
   it("should have schema with correct tables", () => {
     expect(GoalsPlugin.schema).toBeDefined();
-    expect(GoalsPlugin.schema.goalsTable).toBeDefined();
-    expect(GoalsPlugin.schema.goalTagsTable).toBeDefined();
+    expect(GoalsPlugin.schema?.goalsTable).toBeDefined();
+    expect(GoalsPlugin.schema?.goalTagsTable).toBeDefined();
   });
 
   it("should export correct types", () => {

@@ -115,7 +115,7 @@ export class Florence2Local {
     // Since we're using MobileNet as a placeholder, we'll create a basic caption
     // In a real Florence-2 implementation, this would decode the model's actual output
 
-    const values = await predictions.array();
+    const values = (await predictions.array()) as number[][];
     predictions.dispose();
 
     // Generate a basic caption based on feature analysis
@@ -129,7 +129,7 @@ export class Florence2Local {
     };
   }
 
-  private generateCaptionFromFeatures(features: any): string {
+  private generateCaptionFromFeatures(features: number[][]): string {
     // Simplified caption generation
     // In reality, Florence-2 would use its language model to generate captions
 

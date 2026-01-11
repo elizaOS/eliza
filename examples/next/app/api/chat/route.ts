@@ -1,6 +1,5 @@
 import {
   AgentRuntime,
-  bootstrapPlugin,
   ChannelType,
   type Character,
   createMessageMemory,
@@ -20,7 +19,7 @@ const character: Character = {
   name: "Eliza",
   bio: "A helpful AI assistant.",
   secrets: {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
   },
 };
 
@@ -46,7 +45,7 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
 
       const newRuntime = new AgentRuntime({
         character,
-        plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+        plugins: [sqlPlugin, openaiPlugin],
       });
 
       await newRuntime.initialize();

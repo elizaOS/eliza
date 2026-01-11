@@ -13,8 +13,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bootstrapPlugin } from "../index";
+import { createBootstrapPlugin } from "../index";
 import { type MockRuntime, setupActionTest } from "./test-utils";
+
+// Create the bootstrap plugin for testing
+const bootstrapPlugin = createBootstrapPlugin();
 
 describe("Message Handler Logic", () => {
   let mockRuntime: MockRuntime;

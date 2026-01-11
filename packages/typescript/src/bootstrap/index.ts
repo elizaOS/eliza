@@ -1476,10 +1476,9 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
   };
 }
 
-/** Default bootstrap plugin (basic capabilities only) */
-export const bootstrapPlugin: Plugin = createBootstrapPlugin();
-
-export default bootstrapPlugin;
+// Bootstrap plugin is now built into core and auto-registered during runtime initialization.
+// External code should NOT import or use bootstrapPlugin directly.
+// The createBootstrapPlugin function is used internally by the runtime.
 
 // Export capability arrays for direct access if needed
 export {

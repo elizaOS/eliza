@@ -23,7 +23,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:python": "cd python && python -m pytest tests/ -v",
-    "lint": "echo 'Linting skipped - ESLint not configured'",
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

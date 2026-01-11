@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 // Unit tests for S3 types and utilities (without requiring full service initialization)
 describe("AwsS3Service", () => {

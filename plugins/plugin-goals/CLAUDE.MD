@@ -1734,7 +1734,7 @@ Run comprehensive testing with real-world conditions.
 
    ```bash
    # Unit tests
-   bun test
+   npx vitest
 
    # E2E tests with real runtime
    elizaos test

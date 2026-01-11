@@ -30,7 +30,7 @@ echo "--------------------------------------------------"
 cd "$(dirname "$0")/.."
 
 echo "Running unit tests..."
-if bun test typescript/__tests__/unit/; then
+if npx vitest run typescript/__tests__/unit/; then
     echo "✅ TypeScript unit tests passed"
 else
     echo "❌ TypeScript unit tests failed"
@@ -39,7 +39,7 @@ fi
 
 if [ "$SKIP_INTEGRATION" != "true" ]; then
     echo "Running integration tests..."
-    if bun test typescript/__tests__/integration/; then
+    if npx vitest run typescript/__tests__/integration/; then
         echo "✅ TypeScript integration tests passed"
     else
         echo "❌ TypeScript integration tests failed"

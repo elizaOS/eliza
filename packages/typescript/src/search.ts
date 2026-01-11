@@ -1508,8 +1508,10 @@ export class BM25 {
       // Process each token in the field
       tokens.forEach((term) => {
         let termIndexVal: number;
-        // Add term to index if new
-        if (!this.termToIndex.has(term)) {
+        // Check if term already exists in the index
+        const existingIndex = this.termToIndex.get(term);
+        if (existingIndex === undefined) {
+          // Add term to index if new
           termIndexVal = this.termToIndex.size;
           this.termToIndex.set(term, termIndexVal);
 
@@ -1524,10 +1526,8 @@ export class BM25 {
           // Initialize DF for new term (will be incremented below)
           this.documentFrequency[termIndexVal] = 0;
         } else {
-          const existingIndex = this.termToIndex.get(term);
-          if (existingIndex !== undefined) {
-            termIndexVal = existingIndex;
-          }
+          // Term exists in the map, use its existing index
+          termIndexVal = existingIndex;
         }
 
         // Increment frequency for this term in this new document

@@ -439,7 +439,8 @@ export class PluginCreationService extends Service {
       scripts: {
         build: "tsc",
         test: "vitest run",
-        lint: "eslint src/**/*.ts",
+        lint: "bunx @biomejs/biome check --write .",
+        "lint:check": "bunx @biomejs/biome check .",
         dev: "tsc --watch",
       },
       dependencies: {
@@ -450,9 +451,7 @@ export class PluginCreationService extends Service {
         "@types/node": "^20.0.0",
         typescript: "^5.0.0",
         vitest: "^1.0.0",
-        eslint: "^8.0.0",
-        "@typescript-eslint/parser": "^6.0.0",
-        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@biomejs/biome": "^2.3.11",
       },
       elizaos: {
         environmentVariables: job.specification.environmentVariables ?? [],
@@ -490,20 +489,31 @@ export class PluginCreationService extends Service {
     await fs.ensureDir(path.join(job.outputPath, "src"));
     await fs.ensureDir(path.join(job.outputPath, "src", "__tests__"));
 
-    const eslintConfig = {
-      parser: "@typescript-eslint/parser",
-      extends: ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
-      env: {
-        node: true,
-        es2022: true,
+    const biomeConfig = {
+      $schema: "https://biomejs.dev/schemas/1.9.4/schema.json",
+      organizeImports: {
+        enabled: true,
       },
-      rules: {
-        "@typescript-eslint/no-explicit-any": "warn",
-        "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      linter: {
+        enabled: true,
+        rules: {
+          recommended: true,
+          suspicious: {
+            noExplicitAny: "warn",
+          },
+          correctness: {
+            noUnusedVariables: "error",
+          },
+        },
+      },
+      formatter: {
+        enabled: true,
+        indentStyle: "space",
+        indentWidth: 2,
       },
     };
 
-    await fs.writeJson(path.join(job.outputPath, ".eslintrc.json"), eslintConfig, { spaces: 2 });
+    await fs.writeJson(path.join(job.outputPath, "biome.json"), biomeConfig, { spaces: 2 });
 
     const vitestConfig = `
 import { defineConfig } from 'vitest/config';

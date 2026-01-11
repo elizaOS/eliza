@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -57,7 +58,7 @@ export const getPriceHistoryAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getPriceHistoryAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMPriceHistoryResult>(
@@ -88,12 +89,12 @@ export const getPriceHistoryAction: Action = {
     );
 
     const client = (await initializeClobClient(runtime)) as ClobClient;
-    const priceHistory: PriceHistoryResponse = await client.getPricesHistory({
-      tokenID: tokenId,
+    const priceHistory = (await client.getPricesHistory({
+      market: tokenId,
       startTs,
       endTs,
       fidelity,
-    });
+    })) as unknown as PriceHistoryResponse;
 
     let responseText = `📈 **Price History for Token ${tokenId}**:\n\n`;
 
@@ -141,18 +142,21 @@ export const getPriceHistoryAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["GET_PRICE_HISTORY"],
-      data: {
-        tokenId,
-        priceHistory,
-        startTs,
-        endTs,
-        fidelity,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        tokenId,
+        dataPoints: String(priceHistory.length),
+        startTs: String(startTs),
+        endTs: String(endTs),
+        fidelity: String(fidelity),
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

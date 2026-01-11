@@ -9,7 +9,7 @@
 | **Project Type**    | elizaOS Plugin        |
 | **Package Manager** | `bun` (REQUIRED)      |
 | **Language**        | TypeScript (Required) |
-| **Testing**         | Bun test              |
+| **Testing**         | Vitest                |
 | **Runtime**         | elizaOS Agent Runtime |
 
 ## 🏗️ Plugin Architecture
@@ -241,7 +241,7 @@ bun install
 elizaos dev
 
 # Run tests
-bun test
+npx vitest
 
 # Build for production
 bun run build
@@ -266,7 +266,7 @@ This automatically:
 
 ```typescript
 // tests/actions.test.ts
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import { exampleAction } from "../src/actions";
 
 describe("ExampleAction", () => {
@@ -445,7 +445,7 @@ elizaos test --filter "action-name"
     "build": "bun run build:types && bun run build:js",
     "build:types": "tsc",
     "build:js": "bun build src/index.ts --outdir dist",
-    "test": "bun test",
+    "test": "vitest",
     "dev": "elizaos dev"
   },
 

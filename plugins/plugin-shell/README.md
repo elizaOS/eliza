@@ -237,7 +237,7 @@ By default, these potentially dangerous commands are blocked:
 ```bash
 cd typescript
 bun run build.ts     # Build
-bun test             # Run tests
+npx vitest           # Run tests
 ```
 
 ### Python

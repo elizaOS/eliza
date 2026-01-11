@@ -26,9 +26,9 @@
   ],
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "test": "bun test __tests__/",
-    "test:unit": "bun test __tests__/",
-    "test:integration": "bun test __tests__/integration/",
+    "test": "vitest run __tests__/",
+    "test:unit": "vitest run __tests__/",
+    "test:integration": "vitest run __tests__/integration/",
     "lint": "bunx @biomejs/biome check --write .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",

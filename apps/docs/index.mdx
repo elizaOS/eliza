@@ -117,7 +117,7 @@ All three implementations share identical interfaces:
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { AgentRuntime, bootstrapPlugin } from '@elizaos/core';
+import { AgentRuntime } from '@elizaos/core';
 import { openaiPlugin } from '@elizaos/plugin-openai';
 import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
@@ -126,7 +126,7 @@ character: {
 name: 'Eliza',
 bio: 'A helpful AI assistant.',
 },
-plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+plugins: [sqlPlugin, openaiPlugin],
 });
 
 await runtime.initialize();

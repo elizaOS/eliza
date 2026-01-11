@@ -840,8 +840,8 @@ Test service interactions:
 ```typescript
 it("should notify through multiple channels", async () => {
   const notificationService = runtime.getService("notification");
-  const discordSpy = jest.spyOn(discordService, "sendMessage");
-  const telegramSpy = jest.spyOn(telegramService, "sendMessage");
+  const discordSpy = vi.spyOn(discordService, "sendMessage");
+  const telegramSpy = vi.spyOn(telegramService, "sendMessage");
 
   await notificationService.notify("Test message");
 

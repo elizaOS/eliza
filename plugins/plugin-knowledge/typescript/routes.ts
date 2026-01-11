@@ -184,7 +184,7 @@ async function uploadKnowledgeHandler(
 
       // Get agentId from request body or query parameter BEFORE processing files
       // IMPORTANT: We require explicit agent ID to prevent cross-agent contamination
-      const agentId = (req.body.agentId as UUID) || (req.query.agentId as UUID);
+      const agentId = (req.body?.agentId as UUID) || (req.query?.agentId as UUID);
 
       if (!agentId) {
         logger.error("[Document Processor] ❌ No agent ID provided in upload request");
@@ -196,7 +196,7 @@ async function uploadKnowledgeHandler(
         );
       }
 
-      const worldId = (req.body.worldId as UUID) || agentId;
+      const worldId = (req.body?.worldId as UUID) || agentId;
       logger.info(`[Document Processor] 📤 Processing file upload for agent: ${agentId}`);
 
       const processingPromises = files.map(async (file, _index) => {
@@ -256,10 +256,10 @@ async function uploadKnowledgeHandler(
     // Process JSON requests (URL uploads)
     else if (isJsonRequest) {
       // Accept either an array of URLs or a single URL
-      const fileUrls = Array.isArray(req.body.fileUrls)
-        ? req.body.fileUrls
-        : req.body.fileUrl
-          ? [req.body.fileUrl]
+      const fileUrls = Array.isArray(req.body?.fileUrls)
+        ? req.body?.fileUrls
+        : req.body?.fileUrl
+          ? [req.body?.fileUrl]
           : [];
 
       if (fileUrls.length === 0) {
@@ -268,7 +268,7 @@ async function uploadKnowledgeHandler(
 
       // Get agentId from request body or query parameter
       // IMPORTANT: We require explicit agent ID to prevent cross-agent contamination
-      const agentId = (req.body.agentId as UUID) || (req.query.agentId as UUID);
+      const agentId = (req.body?.agentId as UUID) || (req.query?.agentId as UUID);
 
       if (!agentId) {
         logger.error("[Document Processor] ❌ No agent ID provided in URL request");
@@ -403,16 +403,16 @@ async function getKnowledgeDocumentsHandler(
   }
 
   try {
-    const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 10000;
-    const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : Date.now();
-    const includeEmbedding = req.query.includeEmbedding === "true";
-    const _agentId = req.query.agentId as UUID | undefined;
+    const limit = req.query?.limit ? Number.parseInt(req.query.limit as string, 10) : 10000;
+    const before = req.query?.before ? Number.parseInt(req.query.before as string, 10) : Date.now();
+    const includeEmbedding = req.query?.includeEmbedding === "true";
+    const _agentId = req.query?.agentId as UUID | undefined;
 
     // Retrieve fileUrls if they are provided in the request
-    const fileUrls = req.query.fileUrls
-      ? typeof req.query.fileUrls === "string" && req.query.fileUrls.includes(",")
+    const fileUrls = req.query?.fileUrls
+      ? typeof req.query?.fileUrls === "string" && req.query.fileUrls.includes(",")
         ? req.query.fileUrls.split(",")
-        : [req.query.fileUrls]
+        : [req.query?.fileUrls]
       : null;
 
     const memories = await service.getMemories({
@@ -425,7 +425,7 @@ async function getKnowledgeDocumentsHandler(
     let filteredMemories = memories;
     if (fileUrls && fileUrls.length > 0) {
       // Normalize the URLs for comparison
-      const normalizedRequestUrls = fileUrls.map((url: string) => normalizeS3Url(url));
+      const normalizedRequestUrls = fileUrls.map((url) => normalizeS3Url(String(url)));
 
       // Create IDs based on normalized URLs for comparison
       const urlBasedIds = normalizedRequestUrls.map((url: string) =>
@@ -476,7 +476,7 @@ async function deleteKnowledgeDocumentHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  logger.debug(`[Document Processor] 🗑️ DELETE request for document: ${req.params.knowledgeId}`);
+  logger.debug(`[Document Processor] 🗑️ DELETE request for document: ${req.params?.knowledgeId}`);
 
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
@@ -489,7 +489,7 @@ async function deleteKnowledgeDocumentHandler(
   }
 
   // Get the ID directly from the route parameters
-  const knowledgeId = req.params.knowledgeId;
+  const knowledgeId = req.params?.knowledgeId;
 
   if (!knowledgeId || knowledgeId.length < 36) {
     logger.error(`[Document Processor] ❌ Invalid knowledge ID format: ${knowledgeId}`);
@@ -521,7 +521,7 @@ async function getKnowledgeByIdHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  logger.debug(`[Document Processor] 🔍 GET request for document: ${req.params.knowledgeId}`);
+  logger.debug(`[Document Processor] 🔍 GET request for document: ${req.params?.knowledgeId}`);
 
   const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
@@ -534,7 +534,7 @@ async function getKnowledgeByIdHandler(
   }
 
   // Get the ID directly from the route parameters
-  const knowledgeId = req.params.knowledgeId;
+  const knowledgeId = req.params?.knowledgeId;
 
   if (!knowledgeId || knowledgeId.length < 36) {
     logger.error(`[Document Processor] ❌ Invalid knowledge ID format: ${knowledgeId}`);
@@ -543,7 +543,7 @@ async function getKnowledgeByIdHandler(
 
   try {
     logger.debug(`[Document Processor] 🔍 Retrieving document: ${knowledgeId}`);
-    const _agentId = req.query.agentId as UUID | undefined;
+    const _agentId = req.query?.agentId as UUID | undefined;
 
     // Use the service methods instead of calling runtime directly
     // We can't use getMemoryById directly because it's not exposed by the service
@@ -595,7 +595,7 @@ async function knowledgePanelHandler(
   // Extract the plugin API base path from the request path
   // Request path will be like: /api/agents/[uuid]/plugins/knowledge/display
   // We need: /api/agents/[uuid]/plugins/knowledge
-  const requestPath = req.originalUrl || req.url || req.path;
+  const requestPath = req.originalUrl || req.url || req.path || "";
   const pluginBasePath = requestPath.replace(/\/display.*$/, "");
 
   logger.debug(`[Document Processor] 🌐 Plugin base path: ${pluginBasePath}`);
@@ -717,7 +717,7 @@ async function frontendAssetHandler(
 ) {
   try {
     // Use originalUrl or url first, fallback to path
-    const fullPath = req.originalUrl || req.url || req.path;
+    const fullPath = req.originalUrl || req.url || req.path || "";
     logger.debug(`[Document Processor] 🌐 Asset request: ${fullPath}`);
     const currentDir = path.dirname(new URL(import.meta.url).pathname);
 
@@ -726,7 +726,7 @@ async function frontendAssetHandler(
     const assetsMarker = "/assets/";
     const assetsStartIndex = fullPath.lastIndexOf(assetsMarker); // Use lastIndexOf to get the last occurrence
 
-    let assetName = null;
+    let assetName: string | null = null;
     if (assetsStartIndex !== -1) {
       assetName = fullPath.substring(assetsStartIndex + assetsMarker.length);
       // Remove any query parameters if present
@@ -785,8 +785,8 @@ async function getKnowledgeChunksHandler(
   }
 
   try {
-    const documentId = req.query.documentId as string | undefined;
-    const documentsOnly = req.query.documentsOnly === "true";
+    const documentId = req.query?.documentId as string | undefined;
+    const documentsOnly = req.query?.documentsOnly === "true";
 
     // Always get documents first
     const documents = await service.getMemories({
@@ -871,10 +871,10 @@ async function searchKnowledgeHandler(
   }
 
   try {
-    const searchText = req.query.q as string;
+    const searchText = req.query?.q as string;
 
     // Parse threshold with NaN check
-    const parsedThreshold = req.query.threshold
+    const parsedThreshold = req.query?.threshold
       ? Number.parseFloat(req.query.threshold as string)
       : NaN;
     let matchThreshold = Number.isNaN(parsedThreshold) ? 0.5 : parsedThreshold;
@@ -883,25 +883,25 @@ async function searchKnowledgeHandler(
     matchThreshold = Math.max(0, Math.min(1, matchThreshold));
 
     // Parse limit with NaN check
-    const parsedLimit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : NaN;
+    const parsedLimit = req.query?.limit ? Number.parseInt(req.query.limit as string, 10) : NaN;
     let limit = Number.isNaN(parsedLimit) ? 20 : parsedLimit;
 
     // Clamp limit between 1 and 100
     limit = Math.max(1, Math.min(100, limit));
 
-    const agentId = (req.query.agentId as UUID) || runtime.agentId;
+    const agentId = (req.query?.agentId as UUID) || runtime.agentId;
 
     if (!searchText || searchText.trim().length === 0) {
       return sendError(res, 400, "INVALID_QUERY", "Search query cannot be empty");
     }
 
     // Log if values were clamped
-    if (req.query.threshold && (parsedThreshold < 0 || parsedThreshold > 1)) {
+    if (req.query?.threshold && (parsedThreshold < 0 || parsedThreshold > 1)) {
       logger.debug(
         `[Document Processor] 🔍 Threshold value ${parsedThreshold} was clamped to ${matchThreshold}`
       );
     }
-    if (req.query.limit && (parsedLimit < 1 || parsedLimit > 100)) {
+    if (req.query?.limit && (parsedLimit < 1 || parsedLimit > 100)) {
       logger.debug(`[Document Processor] 🔍 Limit value ${parsedLimit} was clamped to ${limit}`);
     }
 
@@ -1003,10 +1003,10 @@ async function getGraphNodesHandler(
 
   try {
     // Parse pagination parameters
-    const parsedPage = req.query.page ? Number.parseInt(req.query.page as string, 10) : 1;
-    const parsedLimit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 20;
-    const type = req.query.type as "document" | "fragment" | undefined;
-    const agentId = (req.query.agentId as UUID) || runtime.agentId;
+    const parsedPage = req.query?.page ? Number.parseInt(req.query.page as string, 10) : 1;
+    const parsedLimit = req.query?.limit ? Number.parseInt(req.query.limit as string, 10) : 20;
+    const type = req.query?.type as "document" | "fragment" | undefined;
+    const agentId = (req.query?.agentId as UUID) || runtime.agentId;
 
     const page = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
     const limit = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 20 : Math.min(parsedLimit, 50);
@@ -1149,8 +1149,8 @@ async function getGraphNodeDetailsHandler(
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
-  const nodeId = req.params.nodeId as UUID;
-  const agentId = (req.query.agentId as UUID) || runtime.agentId;
+  const nodeId = req.params?.nodeId as UUID;
+  const agentId = (req.query?.agentId as UUID) || runtime.agentId;
 
   if (!nodeId || nodeId.length < 36) {
     return sendError(res, 400, "INVALID_ID", "Invalid node ID format");
@@ -1262,8 +1262,8 @@ async function expandDocumentGraphHandler(
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
 
-  const documentId = req.params.documentId as UUID;
-  const agentId = (req.query.agentId as UUID) || runtime.agentId;
+  const documentId = req.params?.documentId as UUID;
+  const agentId = (req.query?.agentId as UUID) || runtime.agentId;
 
   if (!documentId || documentId.length < 36) {
     return sendError(res, 400, "INVALID_ID", "Invalid document ID format");

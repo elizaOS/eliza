@@ -1,7 +1,7 @@
 src/
 tsconfig.json
-jest.config.js
-eslint.config.js
+vitest.config.ts
+biome.json
 commintlint.config.js
 .prettierrc
 .prettierignore

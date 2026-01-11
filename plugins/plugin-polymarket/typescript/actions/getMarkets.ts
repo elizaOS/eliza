@@ -6,6 +6,7 @@
 
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -75,7 +76,7 @@ export const retrieveAllMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[retrieveAllMarketsAction] Handler called");
 
     // Extract filters using LLM
@@ -133,20 +134,21 @@ export const retrieveAllMarketsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_MARKETS"],
-      data: {
-        markets: filteredMarkets,
-        count: filteredMarkets.length,
-        filters,
-        nextCursor: response.next_cursor,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) {
       await callback(responseContent);
     }
 
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        count: String(filteredMarkets.length),
+        nextCursor: response.next_cursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [
@@ -203,7 +205,7 @@ export const getSimplifiedMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getSimplifiedMarketsAction] Handler called");
 
     const llmResult = await callLLMWithTimeout<LLMCursorResult>(
@@ -230,19 +232,21 @@ export const getSimplifiedMarketsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_SIMPLIFIED_MARKETS"],
-      data: {
-        markets,
-        count: markets.length,
-        nextCursor: response.next_cursor,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) {
       await callback(responseContent);
     }
 
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        count: String(markets.length),
+        nextCursor: response.next_cursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [
@@ -292,7 +296,7 @@ export const getMarketDetailsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getMarketDetailsAction] Handler called");
 
     const llmResult = await callLLMWithTimeout<LLMMarketResult>(
@@ -350,18 +354,23 @@ export const getMarketDetailsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_MARKET_DETAILS"],
-      data: {
-        market,
-        conditionId,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) {
       await callback(responseContent);
     }
 
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        conditionId,
+        question: market.question ?? "",
+        active: String(market.active),
+        closed: String(market.closed),
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [
@@ -403,7 +412,7 @@ export const getSamplingMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getSamplingMarketsAction] Handler called");
 
     const llmResult = await callLLMWithTimeout<LLMCursorResult>(
@@ -428,19 +437,21 @@ export const getSamplingMarketsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_SAMPLING_MARKETS"],
-      data: {
-        markets,
-        count: markets.length,
-        nextCursor: response.next_cursor,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) {
       await callback(responseContent);
     }
 
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        count: String(markets.length),
+        nextCursor: response.next_cursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

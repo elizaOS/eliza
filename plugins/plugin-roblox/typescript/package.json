@@ -34,7 +34,7 @@
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
-    "test:unit": "bun test __tests__/",
+    "test:unit": "vitest run __tests__/",
     "test:integration": "elizaos test",
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",

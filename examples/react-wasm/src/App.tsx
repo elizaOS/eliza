@@ -18,6 +18,18 @@ function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const addElizaMessage = useCallback((text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `eliza-${Date.now()}`,
+        text,
+        isUser: false,
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
+
   // Boot sequence - initialize the AgentRuntime
   useEffect(() => {
     let mounted = true;
@@ -62,18 +74,6 @@ function App() {
       inputRef.current.focus();
     }
   }, [isBooted]);
-
-  const addElizaMessage = useCallback((text: string) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `eliza-${Date.now()}`,
-        text,
-        isUser: false,
-        timestamp: new Date(),
-      },
-    ]);
-  }, []);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {

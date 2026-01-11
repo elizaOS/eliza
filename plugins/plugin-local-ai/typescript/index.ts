@@ -1561,10 +1561,13 @@ Example response format:
 
               logger.success("TRANSCRIPTION test completed successfully");
             } catch (error) {
-              logger.error("TRANSCRIPTION test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "TRANSCRIPTION test failed"
+              );
               throw error;
             }
           },
@@ -1601,10 +1604,13 @@ Example response format:
 
               logger.success("TEXT_TO_SPEECH test completed successfully");
             } catch (error) {
-              logger.error("TEXT_TO_SPEECH test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "TEXT_TO_SPEECH test failed"
+              );
               throw error;
             }
           },

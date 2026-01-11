@@ -53,14 +53,20 @@ declare module "face-api.js" {
     genderProbability: number;
   }
 
-  export type FullFaceDescription = WithFaceDetection<{}> &
-    WithFaceLandmarks<{}> &
-    WithFaceDescriptor<{}> &
-    WithFaceExpressions<{}> &
-    WithAgeAndGender<{}>;
+  export type FullFaceDescription = WithFaceDetection<object> &
+    WithFaceLandmarks<object> &
+    WithFaceDescriptor<object> &
+    WithFaceExpressions<object> &
+    WithAgeAndGender<object>;
+
+  export interface EnvConfig {
+    Canvas?: unknown;
+    Image?: unknown;
+    ImageData?: unknown;
+  }
 
   export const env: {
-    monkeyPatch: (config: any) => void;
+    monkeyPatch: (config: EnvConfig) => void;
   };
 
   export const nets: {
@@ -85,13 +91,15 @@ declare module "face-api.js" {
     constructor(options: { minConfidence?: number; maxResults?: number });
   }
 
+  export interface DetectionChain {
+    withFaceLandmarks(): DetectionChain;
+    withFaceDescriptors(): DetectionChain;
+    withFaceExpressions(): DetectionChain;
+    withAgeAndGender(): Promise<FullFaceDescription[]>;
+  }
+
   export function detectAllFaces(
-    input: any,
-    options?: any
-  ): {
-    withFaceLandmarks(): any;
-    withFaceDescriptors(): any;
-    withFaceExpressions(): any;
-    withAgeAndGender(): any;
-  };
+    input: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement | unknown,
+    options?: SsdMobilenetv1Options
+  ): DetectionChain;
 }

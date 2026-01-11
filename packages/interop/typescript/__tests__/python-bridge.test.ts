@@ -333,7 +333,10 @@ describe("Python Bridge", () => {
     test("should track pending requests", async () => {
       const pending = new Map<
         string,
-        { resolve: Function; reject: Function }
+        {
+          resolve: (value: unknown) => void;
+          reject: (reason?: unknown) => void;
+        }
       >();
 
       // Simulate request

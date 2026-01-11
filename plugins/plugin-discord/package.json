@@ -56,7 +56,7 @@
     "dev": "cd typescript && bun run build.ts --watch",
     "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
-    "test:unit": "bun test typescript/__tests__/",
+    "test:unit": "vitest run typescript/__tests__/",
     "test:integration": "elizaos test",
     "lint": "bunx @biomejs/biome check --write typescript/",
     "lint:check": "bunx @biomejs/biome check typescript/",

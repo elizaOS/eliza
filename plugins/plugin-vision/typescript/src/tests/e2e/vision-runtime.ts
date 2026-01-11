@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { TestSuite } from "@elizaos/core";
+import type { Action, IAgentRuntime, Provider, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 
 export class VisionRuntimeTestSuite implements TestSuite {
@@ -9,7 +9,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
   tests = [
     {
       name: "Vision service initialization",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision service initialization...");
 
         const visionService = runtime.getService("VISION");
@@ -36,7 +36,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "Scene description functionality",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing scene description...");
 
         const visionService = runtime.getService("VISION");
@@ -77,7 +77,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "Vision mode switching",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision mode switching...");
 
         const visionService = runtime.getService("VISION");
@@ -110,11 +110,11 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "DESCRIBE_SCENE action execution",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing DESCRIBE_SCENE action...");
 
         // Find the action
-        const action = runtime.actions.find((a: any) => a.name === "DESCRIBE_SCENE");
+        const action = (runtime.actions as Action[]).find((a) => a.name === "DESCRIBE_SCENE");
         if (!action) {
           throw new Error("DESCRIBE_SCENE action not found");
         }
@@ -139,7 +139,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
         // Execute action
         let responseReceived = false;
-        const callback = async (response: any) => {
+        const callback = async (response: { text?: string }) => {
           if (response.text && response.text.length > 0) {
             responseReceived = true;
             logger.info(`[Test] Action response: ${response.text.substring(0, 100)}...`);
@@ -159,11 +159,11 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "Vision provider integration",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision provider...");
 
         // Find the vision provider
-        const provider = runtime.providers.find((p: any) => p.name === "visionProvider");
+        const provider = (runtime.providers as Provider[]).find((p) => p.name === "visionProvider");
         if (!provider) {
           throw new Error("Vision provider not found");
         }
@@ -201,7 +201,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "Florence-2 model initialization",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing Florence-2 model...");
 
         const visionService = runtime.getService("VISION");
@@ -237,7 +237,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "OCR service functionality",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing OCR service...");
 
         const visionService = runtime.getService("VISION");
@@ -274,7 +274,7 @@ export class VisionRuntimeTestSuite implements TestSuite {
 
     {
       name: "Entity tracking system",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing entity tracking...");
 
         const visionService = runtime.getService("VISION");

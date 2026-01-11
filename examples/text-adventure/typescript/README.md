@@ -66,7 +66,6 @@ import {
   ChannelType,
   createMessageMemory,
   stringToUuid,
-  bootstrapPlugin,
   type Character,
   type UUID,
 } from "@elizaos/core";
@@ -81,7 +80,7 @@ const character: Character = {
 
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
 });
 await runtime.initialize();
 
@@ -111,19 +110,14 @@ await runtime.stop();
 ### Adventure Game Example
 
 ```typescript
-import {
-  AgentRuntime,
-  ModelType,
-  stringToUuid,
-  bootstrapPlugin,
-} from "@elizaos/core";
+import { AgentRuntime, ModelType, stringToUuid } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
 // Create runtime
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
   settings: {
     OPENAI_API_KEY: config.openaiApiKey,
     PGLITE_DATA_DIR: config.pgliteDataDir,

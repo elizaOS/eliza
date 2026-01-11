@@ -13,7 +13,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "next": "^14.2.15",
+    "next": "^15.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "uuid": "^13.0.0"
@@ -21,7 +21,7 @@
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/react": "19.2.3",
-    "@types/react-dom": "^18.3.0",
+    "@types/react-dom": "19.2.3",
     "@types/uuid": "^11.0.0",
     "typescript": "^5.9.3"
   }

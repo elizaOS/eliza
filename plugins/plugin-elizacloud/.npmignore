@@ -19,7 +19,6 @@ tests/
 tsconfig*.json
 build.ts
 biome.json
-.eslintrc*
 .prettierrc*
 
 # Git

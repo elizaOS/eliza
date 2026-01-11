@@ -61,7 +61,6 @@ import {
   ChannelType,
   createMessageMemory,
   stringToUuid,
-  bootstrapPlugin,
   type Character,
   type UUID,
 } from "@elizaos/core";
@@ -81,7 +80,7 @@ console.log("🚀 Starting Eliza...\n");
 // Create runtime with plugins
 const runtime = new AgentRuntime({
 character,
-plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+plugins: [sqlPlugin, openaiPlugin],
 });
 await runtime.initialize();
 
@@ -366,7 +365,7 @@ Create and initialize the runtime with plugins:
 ```typescript
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
 });
 await runtime.initialize();
 ```

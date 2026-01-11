@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -70,7 +71,7 @@ export const getOrderDetailsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getOrderDetailsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMOrderDetailsResult>(
@@ -128,14 +129,22 @@ export const getOrderDetailsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["GET_ORDER_DETAILS"],
-      data: {
-        order,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        orderId: order.id,
+        status: order.status,
+        side: order.side,
+        price: order.price,
+        originalSize: order.original_size,
+        sizeMatched: order.size_matched,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [
