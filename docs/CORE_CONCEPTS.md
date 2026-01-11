@@ -48,6 +48,14 @@ ElizaOS models “where” a conversation happens and “who” is participating
 - **Room**: a conversation space (a DM, channel, thread, etc.).
 - **World**: a container that groups rooms (often a “server”, “workspace”, or deployment environment).
 
+### Room vs channel (both exist)
+
+ElizaOS has both an internal **room** concept and a “channel” concept, but “channel” is treated as **platform-specific metadata**:
+
+- **Room**: the internal conversation record with a stable UUID `roomId` (`Room.id`).
+- **Channel type**: what kind of conversation it is (DM, GROUP, THREAD, etc.) via `ChannelType` (`Room.type`, and often also `Content.channelType`).
+- **Channel ID**: the platform-native identifier for that room (e.g., Discord channel id, Telegram chat id) via `Room.channelId`.
+
 ### How to use them (typical flow)
 
 Before you process messages, ensure the runtime knows about the participant and conversation context:
