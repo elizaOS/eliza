@@ -66,9 +66,9 @@ const mockLogger: {
 (global as { logger?: typeof mockLogger }).logger = mockLogger;
 
 /**
- * Creates a mock runtime with common test functionality
+ * Creates a test runtime with common test functionality
  */
-function createMockRuntime(overrides?: Partial<IAgentRuntime>): IAgentRuntime {
+function createTestRuntime(overrides?: Partial<IAgentRuntime>): IAgentRuntime {
   const memories: Map<UUID, Memory> = new Map();
   const services: Map<string, Service> = new Map();
 

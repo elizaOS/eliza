@@ -18,8 +18,8 @@ import {
 // Test environment - use a funded wallet private key for real testing
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
 
-// Create a mock runtime for testing
-function createMockRuntime(): IAgentRuntime {
+// Create a test runtime for testing
+function createTestRuntime(): IAgentRuntime {
   return {
     agentId: "test-agent-id" as IAgentRuntime["agentId"],
     getCache: vi.fn().mockResolvedValue(null),

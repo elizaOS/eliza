@@ -177,7 +177,7 @@ export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Pro
   return profile;
 }
 
-import type { UserV2 } from "x-api-v2";
+import type { UserV2 } from "twitter-api-v2";
 
 /**
  * Convert X API v2 user data to Profile format

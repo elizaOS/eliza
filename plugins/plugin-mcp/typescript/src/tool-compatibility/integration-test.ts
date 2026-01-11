@@ -10,9 +10,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
-// Mock runtime objects to test different scenarios
-// These are minimal mocks for testing purposes only
-const mockRuntimes = {
+// Minimal runtime objects for testing model detection
+// These are intentionally minimal - they only need modelProvider and model properties
+const testRuntimes = {
   openai: {
     modelProvider: "openai",
     model: "gpt-4",
@@ -65,7 +65,7 @@ const testSchema: JSONSchema7 = {
 async function testIntegration() {
   console.log("🧪 Testing MCP Tool Compatibility Integration\n");
 
-  for (const [providerName, runtime] of Object.entries(mockRuntimes)) {
+  for (const [providerName, runtime] of Object.entries(testRuntimes)) {
     const runtimeAny = runtime as unknown as Record<string, string>;
     console.log(`📋 Testing ${providerName} (${runtimeAny.model})`);
     console.log("-".repeat(40));
@@ -169,7 +169,7 @@ async function testServiceIntegration() {
   }
 
   // Test with different runtimes
-  for (const [providerName, runtime] of Object.entries(mockRuntimes)) {
+  for (const [providerName, runtime] of Object.entries(testRuntimes)) {
     console.log(`Testing ${providerName}:`);
     const processedTools = await simulateFetchToolsList(runtime, [mockMcpTool]);
 

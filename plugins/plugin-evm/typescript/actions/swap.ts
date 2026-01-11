@@ -66,6 +66,17 @@ function buildSendTxParams(params: {
 }
 
 /**
+ * Build read contract parameters for viem.
+ */
+function buildReadContractParams<TAbi extends readonly unknown[]>(params: {
+  address: Address;
+  abi: TAbi;
+  functionName: string;
+}) {
+  return params;
+}
+
+/**
  * Swap action executor
  */
 export class SwapAction {
@@ -245,11 +256,13 @@ export class SwapAction {
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
       fromTokenDecimals = Number(
-        await publicClient.readContract({
-          address: params.fromToken as Address,
-          abi: decimalsAbi,
-          functionName: "decimals",
-        } as unknown as Parameters<typeof publicClient.readContract>[0])
+        await publicClient.readContract(
+          buildReadContractParams({
+            address: params.fromToken as Address,
+            abi: decimalsAbi,
+            functionName: "decimals",
+          })
+        )
       );
     }
 
@@ -442,19 +455,21 @@ export class SwapAction {
       );
     }
 
-    const hash = await walletClient.sendTransaction({
-      account,
-      to: txRequest.to as Address,
-      value: BigInt(txRequest.value ?? "0"),
-      data: txRequest.data as Hex,
-      chain,
-      gas: txRequest.gasLimit
-        ? BigInt(Math.floor(Number(txRequest.gasLimit) * GAS_BUFFER_MULTIPLIER))
-        : undefined,
-      gasPrice: txRequest.gasPrice
-        ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
-        : undefined,
-    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
+    const hash = await walletClient.sendTransaction(
+      buildSendTxParams({
+        account,
+        to: txRequest.to as Address,
+        value: BigInt(txRequest.value ?? "0"),
+        data: txRequest.data as Hex,
+        chain,
+        gas: txRequest.gasLimit
+          ? BigInt(Math.floor(Number(txRequest.gasLimit) * GAS_BUFFER_MULTIPLIER))
+          : undefined,
+        gasPrice: txRequest.gasPrice
+          ? BigInt(Math.floor(Number(txRequest.gasPrice) * GAS_PRICE_MULTIPLIER))
+          : undefined,
+      })
+    );
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
@@ -483,7 +498,8 @@ export class SwapAction {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
     const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-    if (!walletClient.account) {
+    const account = walletClient.account;
+    if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
 
@@ -501,13 +517,15 @@ export class SwapAction {
       );
     }
 
-    const hash = await walletClient.sendTransaction({
-      account: walletClient.account,
-      to: bebopRoute.to,
-      value: BigInt(bebopRoute.value),
-      data: bebopRoute.data as Hex,
-      chain: walletClient.chain,
-    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
+    const hash = await walletClient.sendTransaction(
+      buildSendTxParams({
+        account,
+        to: bebopRoute.to as Address,
+        value: BigInt(bebopRoute.value),
+        data: bebopRoute.data as Hex,
+        chain: walletClient.chain,
+      })
+    );
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash,
@@ -520,7 +538,7 @@ export class SwapAction {
 
     return {
       hash,
-      from: walletClient.account.address,
+      from: account.address,
       to: bebopRoute.to,
       value: BigInt(bebopRoute.value),
       data: bebopRoute.data as Hex,
@@ -535,7 +553,8 @@ export class SwapAction {
     spenderAddress: Address,
     requiredAmount: bigint
   ): Promise<void> {
-    if (!walletClient.account) {
+    const account = walletClient.account;
+    if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account not available");
     }
 
@@ -546,7 +565,7 @@ export class SwapAction {
       address: tokenAddress,
       abi: allowanceAbi,
       functionName: "allowance",
-      args: [walletClient.account.address, spenderAddress],
+      args: [account.address, spenderAddress],
     })) as bigint;
 
     if (allowance >= requiredAmount) {
@@ -561,13 +580,15 @@ export class SwapAction {
       args: [spenderAddress, requiredAmount],
     });
 
-    const approvalTx = await walletClient.sendTransaction({
-      account: walletClient.account,
-      to: tokenAddress,
-      value: 0n,
-      data: approvalData,
-      chain: walletClient.chain,
-    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
+    const approvalTx = await walletClient.sendTransaction(
+      buildSendTxParams({
+        account,
+        to: tokenAddress,
+        value: 0n,
+        data: approvalData,
+        chain: walletClient.chain,
+      })
+    );
 
     logger.info(`Waiting for approval confirmation...`);
 
