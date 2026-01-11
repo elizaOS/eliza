@@ -5,7 +5,8 @@ import {
   type ServiceTypeName,
   type UUID,
 } from "@elizaos/core";
-import { and, cosineDistance, desc, eq, gte, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, gte, type SQL, sql } from "drizzle-orm";
+import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { longTermMemories, sessionSummaries } from "../schemas";
 import type {
   LongTermMemory,
@@ -13,6 +14,43 @@ import type {
   MemoryConfig,
   SessionSummary,
 } from "../types";
+
+/**
+ * Type definition for Drizzle database operations used by the memory service.
+ * This provides proper typing for the database instance accessed via runtime.
+ */
+interface DrizzleDb {
+  insert<T extends PgTable<TableConfig>>(
+    table: T
+  ): {
+    values(data: Record<string, unknown>): Promise<void>;
+  };
+  select<T extends Record<string, unknown>>(
+    columns?: T
+  ): {
+    from<TTable extends PgTable<TableConfig>>(
+      table: TTable
+    ): {
+      where(condition: SQL): {
+        orderBy(...args: SQL[]): {
+          limit(n: number): Promise<Array<Record<string, unknown>>>;
+        };
+      };
+    };
+  };
+  update<T extends PgTable<TableConfig>>(
+    table: T
+  ): {
+    set(data: Record<string, unknown>): {
+      where(condition: SQL): Promise<void>;
+    };
+  };
+  delete<T extends PgTable<TableConfig>>(
+    table: T
+  ): {
+    where(condition: SQL): Promise<void>;
+  };
+}
 
 /**
  * Memory Service
@@ -120,12 +158,12 @@ export class MemoryService extends Service {
     );
   }
 
-  private getDb(): ReturnType<typeof eq> & Record<string, unknown> {
-    const db = (this.runtime as IAgentRuntime & { db: ReturnType<typeof eq> }).db;
+  private getDb(): DrizzleDb {
+    const db = (this.runtime as IAgentRuntime & { db: DrizzleDb }).db;
     if (!db) {
       throw new Error("Database not available");
     }
-    return db as ReturnType<typeof eq> & Record<string, unknown>;
+    return db;
   }
 
   getConfig(): MemoryConfig {
@@ -243,29 +281,21 @@ export class MemoryService extends Service {
     };
 
     try {
-      await (
-        db as unknown as {
-          insert: (table: unknown) => {
-            values: (data: unknown) => Promise<void>;
-          };
-        }
-      )
-        .insert(longTermMemories)
-        .values({
-          id: newMemory.id,
-          agentId: newMemory.agentId,
-          entityId: newMemory.entityId,
-          category: newMemory.category,
-          content: newMemory.content,
-          metadata: newMemory.metadata || {},
-          embedding: newMemory.embedding,
-          confidence: newMemory.confidence,
-          source: newMemory.source,
-          accessCount: newMemory.accessCount,
-          createdAt: now,
-          updatedAt: now,
-          lastAccessedAt: newMemory.lastAccessedAt,
-        });
+      await db.insert(longTermMemories).values({
+        id: newMemory.id,
+        agentId: newMemory.agentId,
+        entityId: newMemory.entityId,
+        category: newMemory.category,
+        content: newMemory.content,
+        metadata: newMemory.metadata || {},
+        embedding: newMemory.embedding,
+        confidence: newMemory.confidence,
+        source: newMemory.source,
+        accessCount: newMemory.accessCount,
+        createdAt: now,
+        updatedAt: now,
+        lastAccessedAt: newMemory.lastAccessedAt,
+      });
     } catch (error) {
       logger.error({ error }, "Failed to store long-term memory");
       throw error;
@@ -291,19 +321,7 @@ export class MemoryService extends Service {
       conditions.push(eq(longTermMemories.category, category));
     }
 
-    const results = await (
-      db as unknown as {
-        select: () => {
-          from: (table: unknown) => {
-            where: (cond: unknown) => {
-              orderBy: (...args: unknown[]) => {
-                limit: (n: number) => Promise<Array<Record<string, unknown>>>;
-              };
-            };
-          };
-        };
-      }
-    )
+    const results = await db
       .select()
       .from(longTermMemories)
       .where(and(...conditions))
@@ -345,13 +363,7 @@ export class MemoryService extends Service {
     if (updates.lastAccessedAt !== undefined) updateData.lastAccessedAt = updates.lastAccessedAt;
     if (updates.accessCount !== undefined) updateData.accessCount = updates.accessCount;
 
-    await (
-      db as unknown as {
-        update: (table: unknown) => {
-          set: (data: unknown) => { where: (cond: unknown) => Promise<void> };
-        };
-      }
-    )
+    await db
       .update(longTermMemories)
       .set(updateData)
       .where(
@@ -368,19 +380,13 @@ export class MemoryService extends Service {
   async deleteLongTermMemory(id: UUID, entityId: UUID): Promise<void> {
     const db = this.getDb();
 
-    await (
-      db as unknown as {
-        delete: (table: unknown) => { where: (cond: unknown) => Promise<void> };
-      }
-    )
-      .delete(longTermMemories)
-      .where(
-        and(
-          eq(longTermMemories.id, id),
-          eq(longTermMemories.agentId, this.runtime.agentId),
-          eq(longTermMemories.entityId, entityId)
-        )
-      );
+    await db.delete(longTermMemories).where(
+      and(
+        eq(longTermMemories.id, id),
+        eq(longTermMemories.agentId, this.runtime.agentId),
+        eq(longTermMemories.entityId, entityId)
+      )
+    );
 
     logger.info(`Deleted long-term memory: ${id} for entity ${entityId}`);
   }
@@ -388,19 +394,7 @@ export class MemoryService extends Service {
   async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
     const db = this.getDb();
 
-    const results = await (
-      db as unknown as {
-        select: () => {
-          from: (table: unknown) => {
-            where: (cond: unknown) => {
-              orderBy: (...args: unknown[]) => {
-                limit: (n: number) => Promise<Array<Record<string, unknown>>>;
-              };
-            };
-          };
-        };
-      }
-    )
+    const results = await db
       .select()
       .from(sessionSummaries)
       .where(
@@ -447,30 +441,22 @@ export class MemoryService extends Service {
       ...summary,
     };
 
-    await (
-      db as unknown as {
-        insert: (table: unknown) => {
-          values: (data: unknown) => Promise<void>;
-        };
-      }
-    )
-      .insert(sessionSummaries)
-      .values({
-        id: newSummary.id,
-        agentId: newSummary.agentId,
-        roomId: newSummary.roomId,
-        entityId: newSummary.entityId || null,
-        summary: newSummary.summary,
-        messageCount: newSummary.messageCount,
-        lastMessageOffset: newSummary.lastMessageOffset,
-        startTime: newSummary.startTime,
-        endTime: newSummary.endTime,
-        topics: newSummary.topics || [],
-        metadata: newSummary.metadata || {},
-        embedding: newSummary.embedding,
-        createdAt: now,
-        updatedAt: now,
-      });
+    await db.insert(sessionSummaries).values({
+      id: newSummary.id,
+      agentId: newSummary.agentId,
+      roomId: newSummary.roomId,
+      entityId: newSummary.entityId || null,
+      summary: newSummary.summary,
+      messageCount: newSummary.messageCount,
+      lastMessageOffset: newSummary.lastMessageOffset,
+      startTime: newSummary.startTime,
+      endTime: newSummary.endTime,
+      topics: newSummary.topics || [],
+      metadata: newSummary.metadata || {},
+      embedding: newSummary.embedding,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     logger.info(`Stored session summary for room ${newSummary.roomId}`);
     return newSummary;
@@ -496,13 +482,7 @@ export class MemoryService extends Service {
     if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
     if (updates.embedding !== undefined) updateData.embedding = updates.embedding;
 
-    await (
-      db as unknown as {
-        update: (table: unknown) => {
-          set: (data: unknown) => { where: (cond: unknown) => Promise<void> };
-        };
-      }
-    )
+    await db
       .update(sessionSummaries)
       .set(updateData)
       .where(
@@ -519,19 +499,7 @@ export class MemoryService extends Service {
   async getSessionSummaries(roomId: UUID, limit: number = 5): Promise<SessionSummary[]> {
     const db = this.getDb();
 
-    const results = await (
-      db as unknown as {
-        select: () => {
-          from: (table: unknown) => {
-            where: (cond: unknown) => {
-              orderBy: (...args: unknown[]) => {
-                limit: (n: number) => Promise<Array<Record<string, unknown>>>;
-              };
-            };
-          };
-        };
-      }
-    )
+    const results = await db
       .select()
       .from(sessionSummaries)
       .where(
@@ -591,24 +559,7 @@ export class MemoryService extends Service {
         conditions.push(gte(similarity, matchThreshold));
       }
 
-      const results = await (
-        db as unknown as {
-          select: (cols: unknown) => {
-            from: (table: unknown) => {
-              where: (cond: unknown) => {
-                orderBy: (...args: unknown[]) => {
-                  limit: (n: number) => Promise<
-                    Array<{
-                      memory: Record<string, unknown>;
-                      similarity: number;
-                    }>
-                  >;
-                };
-              };
-            };
-          };
-        }
-      )
+      const results = await db
         .select({
           memory: longTermMemories,
           similarity,

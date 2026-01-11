@@ -24,6 +24,14 @@ type ExtendedResponse = ServerResponse<IncomingMessage> & {
   pipe?: <T extends NodeJS.WritableStream>(destination: T) => T;
 };
 
+/**
+ * Cast response to WritableStream for piping file content.
+ * ServerResponse implements WritableStream but TypeScript needs help recognizing this.
+ */
+function asWritableStream(res: ExtendedResponse): NodeJS.WritableStream {
+  return res as NodeJS.WritableStream;
+}
+
 // Create multer configuration function that uses runtime settings
 const createUploadMiddleware = (runtime: IAgentRuntime) => {
   const uploadDir = String(runtime.getSetting("KNOWLEDGE_UPLOAD_DIR") || "/tmp/uploads/");
@@ -758,7 +766,7 @@ async function frontendAssetHandler(
         contentType = "text/css";
       }
       res.writeHead(200, { "Content-Type": contentType });
-      fileStream.pipe(res as unknown as NodeJS.WritableStream);
+      fileStream.pipe(asWritableStream(res));
     } else {
       sendError(res, 404, "NOT_FOUND", `Asset not found: ${req.url}`);
     }
@@ -1401,9 +1409,12 @@ type ExtendedRouteHandler = (
   runtime: IAgentRuntime
 ) => Promise<void>;
 
-// Cast handler to the expected Route handler type
+/**
+ * Cast handler to the expected Route handler type.
+ * ExtendedRouteHandler uses more specific request/response types than Route["handler"].
+ */
 const asRouteHandler = (handler: ExtendedRouteHandler): Route["handler"] =>
-  handler as unknown as Route["handler"];
+  handler as Route["handler"];
 
 export const knowledgeRoutes: Route[] = [
   {

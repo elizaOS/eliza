@@ -143,6 +143,8 @@ export interface DiscordListenChannelPayload {
   runtime: IAgentRuntime;
   /** The message that was received */
   message: Memory;
+  /** Source identifier for the event */
+  source: string;
 }
 
 /**
@@ -153,6 +155,8 @@ export interface DiscordNotInChannelsPayload {
   runtime: IAgentRuntime;
   /** The message that was received */
   message: Message;
+  /** Source identifier for the event */
+  source: string;
 }
 
 // ============================================================================
@@ -459,7 +463,7 @@ export interface DiscordRegisterCommandsPayload extends EventPayload {
 /**
  * Discord-specific slash commands payload for command execution
  */
-export interface DiscordSlashCommandPayload {
+export interface DiscordSlashCommandPayload extends EventPayload {
   interaction: Interaction;
   client: DiscordJsClient;
   commands: DiscordSlashCommand[];

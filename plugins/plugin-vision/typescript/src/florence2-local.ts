@@ -8,6 +8,11 @@ interface VisionModelConfig {
   cacheDir?: string;
 }
 
+interface ResolvedVisionModelConfig {
+  modelUrl: string;
+  cacheDir: string;
+}
+
 /**
  * Local vision model for basic image analysis using MobileNet.
  * Provides caption generation and basic scene understanding capabilities.
@@ -15,7 +20,7 @@ interface VisionModelConfig {
 export class Florence2Local {
   private model: tf.GraphModel | null = null;
   private initialized = false;
-  private config: VisionModelConfig;
+  private config: ResolvedVisionModelConfig;
 
   constructor(config?: VisionModelConfig) {
     this.config = {
@@ -34,7 +39,7 @@ export class Florence2Local {
     try {
       logger.info("[VisionModel] Initializing MobileNet model for image analysis...");
 
-      this.model = await tf.loadGraphModel(this.config.modelUrl!);
+      this.model = await tf.loadGraphModel(this.config.modelUrl);
 
       this.initialized = true;
       logger.info("[VisionModel] Model initialized successfully");

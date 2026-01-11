@@ -55,10 +55,12 @@ import {
  *    to use the generic emitEvent overload.
  */
 import {
+  type ApplicationCommandData,
   type ApplicationCommandDataResolvable,
   AttachmentBuilder,
   AuditLogEvent,
   type Channel,
+  type ChatInputApplicationCommandData,
   type Collection,
   ChannelType as DiscordChannelType,
   Client as DiscordJsClient,
@@ -95,10 +97,13 @@ import {
   type ChannelHistoryResult,
   type ChannelSpiderState,
   DiscordEventTypes,
+  type DiscordListenChannelPayload,
+  type DiscordNotInChannelsPayload,
   type DiscordReactionPayload,
   type DiscordRegisterCommandsPayload,
   type DiscordSettings,
   type DiscordSlashCommand,
+  type DiscordSlashCommandPayload,
   type IDiscordService,
 } from "./types";
 import { getAttachmentFileName, MAX_MESSAGE_LENGTH, splitMessage } from "./utils";
@@ -529,11 +534,12 @@ export class DiscordService extends Service implements IDiscordService {
         }
 
         // Emit event for listen channel handlers
-        this.runtime.emitEvent("DISCORD_LISTEN_CHANNEL_MESSAGE", {
+        const listenPayload: DiscordListenChannelPayload = {
           runtime: this.runtime,
-          source: "discord",
           message: newMessage,
-        } as EventPayload & { message: Memory });
+          source: "discord",
+        };
+        this.runtime.emitEvent(DiscordEventTypes.LISTEN_CHANNEL_MESSAGE, listenPayload);
       }
 
       // Skip if channel restrictions are set and this channel is not allowed
@@ -541,11 +547,12 @@ export class DiscordService extends Service implements IDiscordService {
         // check first whether the channel is a thread...
         const channel = this.client ? await this.client.channels.fetch(message.channel.id) : null;
 
-        this.runtime.emitEvent("DISCORD_NOT_IN_CHANNELS_MESSAGE", {
+        const notInChannelsPayload: DiscordNotInChannelsPayload = {
           runtime: this.runtime,
+          message: message,
           source: "discord",
-          message: message as unknown as Memory,
-        } as EventPayload & { message: Memory });
+        };
+        this.runtime.emitEvent(DiscordEventTypes.NOT_IN_CHANNELS_MESSAGE, notInChannelsPayload);
 
         if (!channel) {
           this.runtime.logger.error(
@@ -1480,9 +1487,7 @@ export class DiscordService extends Service implements IDiscordService {
         // Always call .set() even with empty array to clear stale global commands
         // (e.g., when all commands become guild-only).
         try {
-          await this.client.application.commands.set(
-            transformedGlobalCommands as unknown as readonly ApplicationCommandDataResolvable[]
-          );
+          await this.client.application.commands.set(transformedGlobalCommands);
           globalCommandsRegistered = true;
           this.runtime.logger.debug(
             {
@@ -1526,11 +1531,7 @@ export class DiscordService extends Service implements IDiscordService {
 
           for (const [guildId, guild] of guilds) {
             guildRegistrations.push(
-              this.client.application.commands
-                .set(
-                  transformedAllGeneralCommands as unknown as readonly ApplicationCommandDataResolvable[],
-                  guildId
-                )
+              this.client.application.commands.set(transformedAllGeneralCommands, guildId)
                 .then(() => {
                   this.runtime.logger.debug(
                     {
@@ -1596,7 +1597,9 @@ export class DiscordService extends Service implements IDiscordService {
                       const existingCommand = existingCommands.find((c) => c.name === cmd.name);
 
                       if (existingCommand) {
-                        await existingCommand.edit(transformedCmd);
+                        await existingCommand.edit(
+                          transformedCmd as Partial<ApplicationCommandData>
+                        );
                         this.runtime.logger.debug(
                           {
                             src: "plugin:discord",
@@ -1608,9 +1611,7 @@ export class DiscordService extends Service implements IDiscordService {
                           "Updated existing targeted command in guild"
                         );
                       } else {
-                        await fullGuild.commands.create(
-                          transformedCmd as unknown as ApplicationCommandDataResolvable
-                        );
+                        await fullGuild.commands.create(transformedCmd);
                         this.runtime.logger.debug(
                           {
                             src: "plugin:discord",
@@ -1691,8 +1692,12 @@ export class DiscordService extends Service implements IDiscordService {
    * @returns {object} Discord API compatible command object
    * @private
    */
-  private transformCommandToDiscordApi(cmd: DiscordSlashCommand): Record<string, unknown> {
-    const discordCmd: Record<string, unknown> = {
+  private transformCommandToDiscordApi(cmd: DiscordSlashCommand): ApplicationCommandDataResolvable {
+    // Build the base command structure that Discord.js expects
+    const discordCmd: ChatInputApplicationCommandData & {
+      contexts?: number[];
+      default_member_permissions?: string;
+    } = {
       name: cmd.name,
       description: cmd.description,
       options: cmd.options,
@@ -1795,10 +1800,7 @@ export class DiscordService extends Service implements IDiscordService {
             this.transformCommandToDiscordApi(cmd)
           );
 
-          await this.client.application.commands.set(
-            discordCommands as unknown as readonly ApplicationCommandDataResolvable[],
-            fullGuild.id
-          );
+          await this.client.application.commands.set(discordCommands, fullGuild.id);
           this.runtime.logger.info(
             {
               src: "plugin:discord",
@@ -1934,14 +1936,14 @@ export class DiscordService extends Service implements IDiscordService {
 
       try {
         // can't interaction.deferReply if we want to allow custom apps (showModal)
-        // DiscordEventTypes are custom events not in core's EventPayloadMap
-        this.runtime.emitEvent([DiscordEventTypes.SLASH_COMMAND], {
+        const slashPayload: DiscordSlashCommandPayload = {
           runtime: this.runtime,
-          source: "discord" as const,
+          source: "discord",
           interaction,
-          client: this.client,
+          client: this.client!,
           commands: this.slashCommands,
-        } as unknown as EventPayload);
+        };
+        this.runtime.emitEvent(DiscordEventTypes.SLASH_COMMAND, slashPayload);
         this.runtime.logger.debug(
           {
             src: "plugin:discord",
@@ -1966,13 +1968,14 @@ export class DiscordService extends Service implements IDiscordService {
 
     if (interaction.isModalSubmit()) {
       // this modal.id is stored in interaction.customId
-      this.runtime.emitEvent([DiscordEventTypes.MODAL_SUBMIT], {
+      const modalPayload: DiscordSlashCommandPayload = {
         runtime: this.runtime,
         source: "discord",
         interaction,
-        client: this.client,
+        client: this.client!,
         commands: this.slashCommands,
-      } as unknown as EventPayload);
+      };
+      this.runtime.emitEvent(DiscordEventTypes.MODAL_SUBMIT, modalPayload);
     }
 
     // Handle message component interactions (buttons, dropdowns, etc.)
@@ -3488,7 +3491,7 @@ export class DiscordService extends Service implements IDiscordService {
       agentId: this.runtime.agentId,
       name: ("name" in channel && channel.name) || channel.id,
       source: "discord",
-      type: await this.getChannelType(channel as unknown as Channel),
+      type: await this.getChannelType(channel as Channel),
       channelId: channel.id,
       messageServerId: stringToUuid(serverId),
       worldId,

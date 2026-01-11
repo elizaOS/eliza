@@ -1,11 +1,22 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createService, defineService } from "../services";
 import type { IAgentRuntime, ServiceTypeName } from "../types";
 import { Service } from "../types";
+import {
+  createTestRuntime,
+  cleanupTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 
 describe("service builder", () => {
-  // Mock runtime
-  const mockRuntime = {} as IAgentRuntime;
+  let runtime: IAgentRuntime;
+
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+  });
+
+  afterEach(async () => {
+    await cleanupTestRuntime(runtime);
+  });
 
   it("createService builds custom class", async () => {
     const Builder = createService("TEST")
@@ -18,7 +29,7 @@ describe("service builder", () => {
           })(),
       )
       .build();
-    const instance = await Builder.start(mockRuntime);
+    const instance = await Builder.start(runtime);
     expect(instance).toBeInstanceOf(Service);
     await instance.stop();
   });
@@ -33,7 +44,7 @@ describe("service builder", () => {
           async stop() {}
         })(),
     });
-    const instance = await Def.start(mockRuntime);
+    const instance = await Def.start(runtime);
     expect(instance).toBeInstanceOf(Service);
     await instance.stop();
   });
@@ -44,7 +55,7 @@ describe("service builder", () => {
       .withDescription("Service without start")
       .build();
 
-    await expect(Builder.start(mockRuntime)).rejects.toThrow(
+    await expect(Builder.start(runtime)).rejects.toThrow(
       "Start function not defined for service NO_START",
     );
   });
@@ -65,7 +76,7 @@ describe("service builder", () => {
       .withStop(stopFn)
       .build();
 
-    await Builder.start(mockRuntime);
+    await Builder.start(runtime);
     const builtInstance = new Builder();
     await builtInstance.stop();
 
@@ -103,7 +114,7 @@ describe("service builder", () => {
       // Note: no stop function provided
     });
 
-    await Def.start(mockRuntime);
+    await Def.start(runtime);
     const defInstance = new Def();
     // Should not throw when using default stop
     expect(defInstance.stop()).resolves.toBeUndefined();

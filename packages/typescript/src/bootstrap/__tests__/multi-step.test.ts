@@ -9,8 +9,8 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "./test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 // Mock the internal functions we need to test
 const mockParseKeyValueXml = vi.fn(() => ({
@@ -42,11 +42,11 @@ mockStateCache.set("test_action_results", {
 });
 
 describe("Multi-Step Workflow Functionality", () => {
-  let mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
   let testMessage: Memory;
   let testState: State;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset all mocks
     mockParseKeyValueXml.mockClear();
     mockComposePromptFromState.mockClear();
@@ -56,46 +56,20 @@ describe("Multi-Step Workflow Functionality", () => {
     mockGetSetting.mockClear();
     mockCallback.mockClear();
 
-    // Create a fresh mock runtime for each test
-    mockRuntime = createMockRuntime({
-      useModel: mockUseModel,
-      composeState: mockComposeState,
-      processActions: mockProcessActions,
-      getSetting: mockGetSetting,
-      providers: [
-        {
-          name: "TEST_PROVIDER",
-          description: "Test provider",
-          get: vi.fn().mockResolvedValue({
-            text: "Provider result",
-            success: true,
-          }),
-        },
-        {
-          name: "ANOTHER_PROVIDER",
-          description: "Another test provider",
-          get: vi.fn().mockResolvedValue({
-            text: "Another result",
-            success: true,
-          }),
-        },
-      ],
-      actions: [
-        {
-          name: "TEST_ACTION",
-          description: "Test action",
-          examples: [],
-          validate: vi.fn().mockResolvedValue(true),
-          handler: vi.fn().mockResolvedValue(true),
-        },
-      ],
-      logger: {
-        debug: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn(),
-      },
-    }) as IAgentRuntime;
+    // Create a fresh real runtime for each test
+    runtime = await createTestRuntime();
+
+    // Spy on runtime methods
+    vi.spyOn(runtime, "useModel").mockImplementation(mockUseModel);
+    vi.spyOn(runtime, "composeState").mockImplementation(mockComposeState);
+    vi.spyOn(runtime, "processActions").mockImplementation(mockProcessActions);
+    vi.spyOn(runtime, "getSetting").mockImplementation(mockGetSetting);
+
+    // Spy on logger methods
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
 
     // Create test message
     testMessage = {
@@ -111,6 +85,13 @@ describe("Multi-Step Workflow Functionality", () => {
       values: { recentMessages: "Test messages" },
       data: { actionResults: [] },
     };
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
   });
 
   describe("Multi-Step Core Function", () => {
@@ -138,7 +119,7 @@ describe("Multi-Step Workflow Functionality", () => {
         });
 
       // Mock provider execution
-      const mockProvider = mockRuntime.providers.find(
+      const mockProvider = runtime.providers.find(
         (p) => p.name === "TEST_PROVIDER",
       );
       if (mockProvider) {
@@ -149,7 +130,7 @@ describe("Multi-Step Workflow Functionality", () => {
       }
 
       // Mock action execution
-      const mockAction = mockRuntime.actions.find(
+      const mockAction = runtime.actions.find(
         (a) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
@@ -164,7 +145,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
       // Execute multi-step workflow
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
@@ -179,7 +160,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
     it("should handle provider execution errors gracefully", async () => {
       // Mock provider that throws an error
-      const mockProvider = mockRuntime.providers.find(
+      const mockProvider = runtime.providers.find(
         (p) => p.name === "TEST_PROVIDER",
       );
       if (mockProvider) {
@@ -214,7 +195,7 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
@@ -227,7 +208,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
     it("should handle action execution errors gracefully", async () => {
       // Mock action that throws an error
-      const mockAction = mockRuntime.actions.find(
+      const mockAction = runtime.actions.find(
         (a) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
@@ -257,7 +238,7 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
@@ -281,14 +262,14 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
       });
 
       // Verify iteration limit was respected
-      expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
+      expect(runtime.logger.warn).toHaveBeenCalledWith(
         expect.stringContaining(
           "Reached maximum iterations (2), forcing completion",
         ),
@@ -301,14 +282,14 @@ describe("Multi-Step Workflow Functionality", () => {
       mockParseKeyValueXml.mockReturnValue(null);
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
       });
 
       // Verify malformed response was handled
-      expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
+      expect(runtime.logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Failed to parse step result"),
       );
       expect(result.mode).toBe("none");
@@ -337,14 +318,14 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
       });
 
       // Verify empty step was handled
-      expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
+      expect(runtime.logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("No providers or action specified"),
       );
       expect(result.responseContent).toBeDefined();
@@ -352,7 +333,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
     it("should track action results correctly", async () => {
       // Mock successful action execution
-      const mockAction = mockRuntime.actions.find(
+      const mockAction = runtime.actions.find(
         (a) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
@@ -369,7 +350,7 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       // Mock the runtime.stateCache.get method to return our cached results
-      mockRuntime.stateCache.get = vi.fn().mockReturnValue({
+      runtime.stateCache.get = vi.fn().mockReturnValue({
         values: {
           actionResults: [
             { success: true, text: "Action completed successfully" },
@@ -408,7 +389,7 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
@@ -442,7 +423,7 @@ describe("Multi-Step Workflow Functionality", () => {
       });
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: mockCallback,
@@ -461,10 +442,10 @@ describe("Multi-Step Workflow Functionality", () => {
       mockGetSetting.mockReturnValueOnce("false"); // USE_MULTI_STEP
 
       // Call getSetting to trigger the mock
-      mockRuntime.getSetting("USE_MULTI_STEP");
+      runtime.getSetting("USE_MULTI_STEP");
 
       // This should not call multi-step functions
-      expect(mockRuntime.getSetting).toHaveBeenCalledWith("USE_MULTI_STEP");
+      expect(runtime.getSetting).toHaveBeenCalledWith("USE_MULTI_STEP");
     });
 
     it("should use default MAX_MULTISTEP_ITERATIONS when not set", async () => {
@@ -473,11 +454,11 @@ describe("Multi-Step Workflow Functionality", () => {
       mockGetSetting.mockReturnValueOnce(null); // MAX_MULTISTEP_ITERATIONS
 
       // Call getSetting to trigger the mocks
-      mockRuntime.getSetting("USE_MULTI_STEP");
-      mockRuntime.getSetting("MAX_MULTISTEP_ITERATIONS");
+      runtime.getSetting("USE_MULTI_STEP");
+      runtime.getSetting("MAX_MULTISTEP_ITERATIONS");
 
       // The function should use default value of 6
-      expect(mockRuntime.getSetting).toHaveBeenCalledWith(
+      expect(runtime.getSetting).toHaveBeenCalledWith(
         "MAX_MULTISTEP_ITERATIONS",
       );
     });
@@ -491,7 +472,7 @@ describe("Multi-Step Workflow Functionality", () => {
       };
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: messageWithUndefinedContent,
         state: testState,
         callback: mockCallback,
@@ -508,7 +489,7 @@ describe("Multi-Step Workflow Functionality", () => {
       };
 
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: emptyState,
         callback: mockCallback,
@@ -534,7 +515,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
       // Should handle callback errors gracefully without crashing
       const result = await runMultiStepCoreTest({
-        runtime: mockRuntime,
+        runtime: runtime,
         message: testMessage,
         state: testState,
         callback: errorCallback,

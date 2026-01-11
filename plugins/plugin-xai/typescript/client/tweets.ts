@@ -973,7 +973,9 @@ export async function getTweetsV2(
       return [];
     }
     return (
-      await Promise.all(tweetsV2.map(async (tweet) => await getTweetV2(tweet.id, auth, options)))
+      await Promise.all(
+        tweetsV2.map(async (tweet: TweetV2) => await getTweetV2(tweet.id, auth, options))
+      )
     ).filter((tweet): tweet is Tweet => tweet !== null);
   } catch (error) {
     console.error(`Error fetching tweets for IDs: ${ids.join(", ")}`, error);

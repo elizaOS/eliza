@@ -38,3 +38,7 @@ export interface XAuthProviderFactoryOptions {
   runtime: IAgentRuntime;
   state?: Record<string, unknown>;
 }
+
+// Backward-compatible aliases
+export type TwitterAuthMode = XAuthMode;
+export type TwitterAuthProvider = XAuthProvider;

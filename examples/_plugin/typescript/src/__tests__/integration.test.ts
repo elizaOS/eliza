@@ -8,11 +8,20 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { starterPlugin } from "../index";
 import {
-  createMockRuntime,
-  type MockRuntime,
+  createTestRuntime,
+  cleanupTestRuntime,
   setupLoggerSpies,
 } from "./test-utils";
 
@@ -35,9 +44,12 @@ afterAll(() => {
 });
 
 describe("Integration: HelloWorld Action with StarterService", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Create real runtime
+    runtime = await createTestRuntime();
+
     // Create a service mock that will be returned by getService
     const mockService: Partial<Service> = {
       capabilityDescription:
@@ -45,17 +57,19 @@ describe("Integration: HelloWorld Action with StarterService", () => {
       stop: () => Promise.resolve(),
     };
 
-    // Create a mock runtime with a spied getService method
-    const getServiceImpl = (serviceType: string): Service | null => {
-      if (serviceType === "starter") {
-        return mockService as Service;
-      }
-      return null;
-    };
+    // Spy on getService to return our mock service
+    vi.spyOn(runtime, "getService").mockImplementation(
+      (serviceType: string): Service | null => {
+        if (serviceType === "starter") {
+          return mockService as Service;
+        }
+        return null;
+      },
+    );
+  });
 
-    mockRuntime = createMockRuntime({
-      getService: getServiceImpl,
-    });
+  afterEach(async () => {
+    await cleanupTestRuntime(runtime);
   });
 
   it("should handle HelloWorld action with StarterService available", async () => {
@@ -119,34 +133,42 @@ describe("Integration: HelloWorld Action with StarterService", () => {
 });
 
 describe("Integration: Plugin initialization and service registration", () => {
-  it("should initialize the plugin and register the service", async () => {
-    // Create a fresh mock runtime with mocked registerService for testing initialization flow
-    const mockRuntime = createMockRuntime();
+  let runtime: IAgentRuntime;
 
-    // Create and install a mock registerService
+  afterEach(async () => {
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
+  });
+
+  it("should initialize the plugin and register the service", async () => {
+    // Create a real runtime
+    runtime = await createTestRuntime();
+
+    // Track registerService calls
     const registerServiceCalls: { service: typeof Service }[] = [];
-    mockRuntime.registerService = (service: typeof Service) => {
-      registerServiceCalls.push({ service });
-      return Promise.resolve();
-    };
+    vi.spyOn(runtime, "registerService").mockImplementation(
+      (service: typeof Service) => {
+        registerServiceCalls.push({ service });
+        return Promise.resolve();
+      },
+    );
 
     // Run a minimal simulation of the plugin initialization process
     if (starterPlugin.init) {
       await starterPlugin.init(
         { EXAMPLE_PLUGIN_VARIABLE: "test-value" },
-        mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
       );
 
-      // Directly mock the service registration that happens during initialization
+      // Directly start the service that happens during initialization
       // because unit tests don't run the full agent initialization flow
       if (starterPlugin.services) {
         const StarterServiceClass = starterPlugin.services[0];
-        const _serviceInstance = await StarterServiceClass.start(
-          mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-        );
+        const _serviceInstance = await StarterServiceClass.start(runtime);
 
         // Register the Service class to match the core API
-        mockRuntime.registerService(StarterServiceClass);
+        runtime.registerService(StarterServiceClass);
       }
 
       // Now verify the service was registered with the runtime

@@ -27,35 +27,50 @@ import {
   sendToAdminAction,
 } from "../autonomy";
 import {
-  createMockMemory,
-  createMockRuntime,
-  createMockState,
-  type MockRuntime,
+  cleanupTestRuntime,
+  createTestMemory,
+  createTestRuntime,
+  createTestState,
 } from "./test-utils";
 
 describe("AutonomyService", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
   let autonomyService: AutonomyService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue(null),
-      setSetting: vi.fn(),
-      ensureWorldExists: vi.fn().mockResolvedValue(undefined),
-      ensureRoomExists: vi.fn().mockResolvedValue(undefined),
-      addParticipant: vi.fn().mockResolvedValue(undefined),
-      ensureParticipantInRoom: vi.fn().mockResolvedValue(undefined),
-      getEntityById: vi.fn().mockResolvedValue({ id: "test-agent-id" }),
-      getMemories: vi.fn().mockResolvedValue([]),
-      emitEvent: vi.fn().mockResolvedValue(undefined),
-      createMemory: vi.fn().mockResolvedValue("memory-id"),
+    runtime = await createTestRuntime();
+
+    // Spy on runtime methods
+    vi.spyOn(runtime, "getSetting").mockReturnValue(null);
+    vi.spyOn(runtime, "setSetting").mockImplementation(() => {});
+    vi.spyOn(runtime, "ensureWorldExists").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "ensureRoomExists").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "addParticipant").mockResolvedValue(true);
+    vi.spyOn(runtime, "ensureParticipantInRoom").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "getEntityById").mockResolvedValue({
+      id: "test-agent-id" as UUID,
+      names: ["Test Agent"],
+      agentId: runtime.agentId,
+      metadata: {},
     });
+    vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
+    vi.spyOn(runtime, "emitEvent").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "createMemory").mockResolvedValue("memory-id" as UUID);
+
+    // Spy on logger methods
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
   });
 
   describe("Service Initialization", () => {
@@ -67,7 +82,7 @@ describe("AutonomyService", () => {
 
     it("should create service instance with default values", async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(autonomyService).toBeDefined();
@@ -78,30 +93,30 @@ describe("AutonomyService", () => {
     });
 
     it("should auto-start loop when AUTONOMY_ENABLED is true", async () => {
-      mockRuntime.getSetting = vi.fn().mockImplementation((key: string) => {
+      runtime.getSetting = vi.fn().mockImplementation((key: string) => {
         if (key === "AUTONOMY_ENABLED") return true;
         return null;
       });
 
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      expect(runtime.setSetting).toHaveBeenCalledWith(
         "AUTONOMY_ENABLED",
         true,
       );
     });
 
     it("should auto-start loop when AUTONOMY_ENABLED is 'true' string", async () => {
-      mockRuntime.getSetting = vi.fn().mockImplementation((key: string) => {
+      runtime.getSetting = vi.fn().mockImplementation((key: string) => {
         if (key === "AUTONOMY_ENABLED") return "true";
         return null;
       });
 
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(autonomyService.isLoopRunning()).toBe(true);
@@ -109,18 +124,18 @@ describe("AutonomyService", () => {
 
     it("should ensure world and room exist on initialization", async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
-      expect(mockRuntime.ensureWorldExists).toHaveBeenCalledWith(
+      expect(runtime.ensureWorldExists).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Autonomy World",
-          agentId: mockRuntime.agentId,
+          agentId: runtime.agentId,
           metadata: expect.objectContaining({ type: "autonomy" }),
         }),
       );
 
-      expect(mockRuntime.ensureRoomExists).toHaveBeenCalledWith(
+      expect(runtime.ensureRoomExists).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Autonomous Thoughts",
           source: "autonomy-service",
@@ -134,7 +149,7 @@ describe("AutonomyService", () => {
   describe("Loop Management", () => {
     beforeEach(async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
     });
 
@@ -142,7 +157,7 @@ describe("AutonomyService", () => {
       await autonomyService.startLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(true);
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      expect(runtime.setSetting).toHaveBeenCalledWith(
         "AUTONOMY_ENABLED",
         true,
       );
@@ -151,13 +166,13 @@ describe("AutonomyService", () => {
     it("should not start loop if already running", async () => {
       await autonomyService.startLoop();
       const initialCallCount = (
-        mockRuntime.setSetting as ReturnType<typeof vi.fn>
+        runtime.setSetting as ReturnType<typeof vi.fn>
       ).mock.calls.length;
 
       await autonomyService.startLoop();
 
       expect(
-        (mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length,
+        (runtime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length,
       ).toBe(initialCallCount);
     });
 
@@ -166,7 +181,7 @@ describe("AutonomyService", () => {
       await autonomyService.stopLoop();
 
       expect(autonomyService.isLoopRunning()).toBe(false);
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      expect(runtime.setSetting).toHaveBeenCalledWith(
         "AUTONOMY_ENABLED",
         false,
       );
@@ -174,13 +189,13 @@ describe("AutonomyService", () => {
 
     it("should not attempt to stop if loop is not running", async () => {
       const initialCallCount = (
-        mockRuntime.setSetting as ReturnType<typeof vi.fn>
+        runtime.setSetting as ReturnType<typeof vi.fn>
       ).mock.calls.length;
 
       await autonomyService.stopLoop();
 
       expect(
-        (mockRuntime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length,
+        (runtime.setSetting as ReturnType<typeof vi.fn>).mock.calls.length,
       ).toBe(initialCallCount);
     });
 
@@ -191,10 +206,10 @@ describe("AutonomyService", () => {
       await vi.advanceTimersByTimeAsync(30000);
 
       // Should have emitted an event for autonomous thinking
-      expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.MESSAGE_RECEIVED,
         expect.objectContaining({
-          runtime: mockRuntime,
+          runtime: runtime,
           source: "autonomy-service",
           message: expect.objectContaining({
             roomId: autonomyService.getAutonomousRoomId(),
@@ -214,7 +229,7 @@ describe("AutonomyService", () => {
   describe("Interval Configuration", () => {
     beforeEach(async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
     });
 
@@ -228,28 +243,28 @@ describe("AutonomyService", () => {
       autonomyService.setLoopInterval(1000);
 
       expect(autonomyService.getLoopInterval()).toBe(5000);
-      expect(mockRuntime.logger.warn).toHaveBeenCalled();
+      expect(runtime.logger.warn).toHaveBeenCalled();
     });
 
     it("should enforce maximum interval of 600000ms", () => {
       autonomyService.setLoopInterval(1000000);
 
       expect(autonomyService.getLoopInterval()).toBe(600000);
-      expect(mockRuntime.logger.warn).toHaveBeenCalled();
+      expect(runtime.logger.warn).toHaveBeenCalled();
     });
   });
 
   describe("Autonomy Control API", () => {
     beforeEach(async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
     });
 
     it("should enable autonomy via enableAutonomy()", async () => {
       await autonomyService.enableAutonomy();
 
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      expect(runtime.setSetting).toHaveBeenCalledWith(
         "AUTONOMY_ENABLED",
         true,
       );
@@ -260,7 +275,7 @@ describe("AutonomyService", () => {
       await autonomyService.enableAutonomy();
       await autonomyService.disableAutonomy();
 
-      expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      expect(runtime.setSetting).toHaveBeenCalledWith(
         "AUTONOMY_ENABLED",
         false,
       );
@@ -268,7 +283,7 @@ describe("AutonomyService", () => {
     });
 
     it("should return correct status via getStatus()", async () => {
-      mockRuntime.getSetting = vi.fn().mockReturnValue(true);
+      runtime.getSetting = vi.fn().mockReturnValue(true);
       await autonomyService.startLoop();
 
       const status = autonomyService.getStatus();
@@ -286,7 +301,7 @@ describe("AutonomyService", () => {
   describe("Thinking Guard", () => {
     beforeEach(async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
     });
 
@@ -320,7 +335,7 @@ describe("AutonomyService", () => {
       await vi.advanceTimersByTimeAsync(30000);
 
       // Should log debug message about skipping
-      expect(mockRuntime.logger.debug).toHaveBeenCalledWith(
+      expect(runtime.logger.debug).toHaveBeenCalledWith(
         expect.objectContaining({ src: "autonomy" }),
         expect.stringContaining("still in progress"),
       );
@@ -330,17 +345,17 @@ describe("AutonomyService", () => {
   describe("Autonomous Thinking", () => {
     beforeEach(async () => {
       autonomyService = await AutonomyService.start(
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
     });
 
     it("should create first thought prompt when no previous thoughts", async () => {
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
+      runtime.getMemories = vi.fn().mockResolvedValue([]);
 
       await autonomyService.startLoop();
       await vi.advanceTimersByTimeAsync(30000);
 
-      expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.MESSAGE_RECEIVED,
         expect.objectContaining({
           message: expect.objectContaining({
@@ -365,12 +380,12 @@ describe("AutonomyService", () => {
         },
         createdAt: Date.now() - 60000,
       };
-      mockRuntime.getMemories = vi.fn().mockResolvedValue([previousThought]);
+      runtime.getMemories = vi.fn().mockResolvedValue([previousThought]);
 
       await autonomyService.startLoop();
       await vi.advanceTimersByTimeAsync(30000);
 
-      expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.MESSAGE_RECEIVED,
         expect.objectContaining({
           message: expect.objectContaining({
@@ -390,30 +405,32 @@ describe("AutonomyService", () => {
 });
 
 describe("sendToAdminAction", () => {
-  let mockRuntime: MockRuntime;
-  let mockMessage: Partial<Memory>;
-  let _mockState: Partial<State>;
+  let runtime: IAgentRuntime;
+  let mockMessage: Memory;
+  let _mockState: State;
   let _callbackFn: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockImplementation((key: string) => {
-        if (key === "ADMIN_USER_ID") return "admin-user-123";
-        return null;
-      }),
-      getService: vi.fn().mockReturnValue({
-        getAutonomousRoomId: () => "autonomous-room-id" as UUID,
-      }),
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "ADMIN_USER_ID") return "admin-user-123";
+      return null;
     });
-    mockMessage = createMockMemory({
+    vi.spyOn(runtime, "getService").mockReturnValue({
+      getAutonomousRoomId: () => "autonomous-room-id" as UUID,
+    } as never);
+
+    mockMessage = createTestMemory({
       roomId: "autonomous-room-id" as UUID,
     });
-    _mockState = createMockState();
+    _mockState = createTestState();
     _callbackFn = vi.fn().mockResolvedValue([]);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should have correct action metadata", () => {
@@ -426,7 +443,7 @@ describe("sendToAdminAction", () => {
   it("should validate only in autonomous room", async () => {
     // In autonomous room - should validate
     const isValid = await sendToAdminAction.validate(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
     );
     expect(isValid).toBe(true);
@@ -434,7 +451,7 @@ describe("sendToAdminAction", () => {
     // Not in autonomous room - should not validate
     mockMessage.roomId = "other-room-id" as UUID;
     const isInvalid = await sendToAdminAction.validate(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
     );
     expect(isInvalid).toBe(false);
@@ -442,10 +459,10 @@ describe("sendToAdminAction", () => {
 
   it("should validate only when ADMIN_USER_ID is configured", async () => {
     // No admin configured
-    mockRuntime.getSetting = vi.fn().mockReturnValue(null);
+    runtime.getSetting = vi.fn().mockReturnValue(null);
 
     const isValid = await sendToAdminAction.validate(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
     );
     expect(isValid).toBe(false);
@@ -453,29 +470,31 @@ describe("sendToAdminAction", () => {
 });
 
 describe("adminChatProvider", () => {
-  let mockRuntime: MockRuntime;
-  let mockMessage: Partial<Memory>;
-  let mockState: Partial<State>;
+  let runtime: IAgentRuntime;
+  let mockMessage: Memory;
+  let mockState: State;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockImplementation((key: string) => {
-        if (key === "ADMIN_USER_ID") return "admin-user-123";
-        return null;
-      }),
-      getService: vi.fn().mockReturnValue({
-        getAutonomousRoomId: () => "autonomous-room-id" as UUID,
-      }),
-      getMemories: vi.fn().mockResolvedValue([]),
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "ADMIN_USER_ID") return "admin-user-123";
+      return null;
     });
-    mockMessage = createMockMemory({
+    vi.spyOn(runtime, "getService").mockReturnValue({
+      getAutonomousRoomId: () => "autonomous-room-id" as UUID,
+    } as never);
+    vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
+
+    mockMessage = createTestMemory({
       roomId: "autonomous-room-id" as UUID,
     });
-    mockState = createMockState();
+    mockState = createTestState();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should have correct provider metadata", () => {
@@ -484,10 +503,10 @@ describe("adminChatProvider", () => {
   });
 
   it("should return empty result when autonomy service not available", async () => {
-    mockRuntime.getService = vi.fn().mockReturnValue(null);
+    runtime.getService = vi.fn().mockReturnValue(null);
 
     const result = await adminChatProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -500,7 +519,7 @@ describe("adminChatProvider", () => {
     mockMessage.roomId = "other-room-id" as UUID;
 
     const result = await adminChatProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -509,10 +528,10 @@ describe("adminChatProvider", () => {
   });
 
   it("should indicate when no admin is configured", async () => {
-    mockRuntime.getSetting = vi.fn().mockReturnValue(null);
+    runtime.getSetting = vi.fn().mockReturnValue(null);
 
     const result = await adminChatProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -531,15 +550,15 @@ describe("adminChatProvider", () => {
       },
       {
         id: "msg-2",
-        entityId: mockRuntime.agentId,
+        entityId: runtime.agentId,
         content: { text: "Hello admin" },
         createdAt: Date.now() - 30000,
       },
     ];
-    mockRuntime.getMemories = vi.fn().mockResolvedValue(adminMessages);
+    runtime.getMemories = vi.fn().mockResolvedValue(adminMessages);
 
     const result = await adminChatProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -551,27 +570,29 @@ describe("adminChatProvider", () => {
 });
 
 describe("autonomyStatusProvider", () => {
-  let mockRuntime: MockRuntime;
-  let mockMessage: Partial<Memory>;
-  let mockState: Partial<State>;
+  let runtime: IAgentRuntime;
+  let mockMessage: Memory;
+  let mockState: State;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue(true),
-      getService: vi.fn().mockReturnValue({
-        getAutonomousRoomId: () => "autonomous-room-id" as UUID,
-        isLoopRunning: () => true,
-        getLoopInterval: () => 30000,
-      }),
-    });
-    mockMessage = createMockMemory({
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+
+    vi.spyOn(runtime, "getSetting").mockReturnValue(true);
+    vi.spyOn(runtime, "getService").mockReturnValue({
+      getAutonomousRoomId: () => "autonomous-room-id" as UUID,
+      isLoopRunning: () => true,
+      getLoopInterval: () => 30000,
+    } as never);
+
+    mockMessage = createTestMemory({
       roomId: "regular-room-id" as UUID,
     });
-    mockState = createMockState();
+    mockState = createTestState();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should have correct provider metadata", () => {
@@ -580,10 +601,10 @@ describe("autonomyStatusProvider", () => {
   });
 
   it("should return empty result when autonomy service not available", async () => {
-    mockRuntime.getService = vi.fn().mockReturnValue(null);
+    runtime.getService = vi.fn().mockReturnValue(null);
 
     const result = await autonomyStatusProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -595,7 +616,7 @@ describe("autonomyStatusProvider", () => {
     mockMessage.roomId = "autonomous-room-id" as UUID;
 
     const result = await autonomyStatusProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -605,7 +626,7 @@ describe("autonomyStatusProvider", () => {
 
   it("should show running status correctly", async () => {
     const result = await autonomyStatusProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -617,15 +638,15 @@ describe("autonomyStatusProvider", () => {
   });
 
   it("should show disabled status correctly", async () => {
-    mockRuntime.getSetting = vi.fn().mockReturnValue(false);
-    mockRuntime.getService = vi.fn().mockReturnValue({
+    runtime.getSetting = vi.fn().mockReturnValue(false);
+    runtime.getService = vi.fn().mockReturnValue({
       getAutonomousRoomId: () => "autonomous-room-id" as UUID,
       isLoopRunning: () => false,
       getLoopInterval: () => 30000,
     });
 
     const result = await autonomyStatusProvider.get(
-      mockRuntime as IAgentRuntime,
+      runtime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
     );
@@ -636,16 +657,19 @@ describe("autonomyStatusProvider", () => {
 });
 
 describe("autonomyRoutes", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
   let mockAutonomyService: {
     getStatus: ReturnType<typeof vi.fn>;
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
     pause: ReturnType<typeof vi.fn>;
     resume: ReturnType<typeof vi.fn>;
+    enableAutonomy: ReturnType<typeof vi.fn>;
+    disableAutonomy: ReturnType<typeof vi.fn>;
+    setLoopInterval: ReturnType<typeof vi.fn>;
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockAutonomyService = {
       getStatus: vi.fn().mockReturnValue({
         enabled: true,
@@ -653,18 +677,22 @@ describe("autonomyRoutes", () => {
         interval: 30000,
         autonomousRoomId: "autonomous-room-id",
       }),
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      pause: vi.fn().mockResolvedValue(undefined),
+      resume: vi.fn().mockResolvedValue(undefined),
       enableAutonomy: vi.fn().mockResolvedValue(undefined),
       disableAutonomy: vi.fn().mockResolvedValue(undefined),
       setLoopInterval: vi.fn(),
     };
 
-    mockRuntime = createMockRuntime({
-      getService: vi.fn().mockReturnValue(mockAutonomyService),
-    });
+    runtime = await createTestRuntime();
+    vi.spyOn(runtime, "getService").mockReturnValue(mockAutonomyService as never);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should define all required routes", () => {
@@ -705,7 +733,7 @@ describe("autonomyRoutes", () => {
       await statusRoute?.handler(
         mockReq as RouteRequest,
         mockRes as RouteResponse,
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(mockRes.json).toHaveBeenCalledWith(
@@ -721,7 +749,7 @@ describe("autonomyRoutes", () => {
     });
 
     it("should return 503 when service not available", async () => {
-      mockRuntime.getService = vi.fn().mockReturnValue(null);
+      runtime.getService = vi.fn().mockReturnValue(null);
       const statusRoute = autonomyRoutes.find(
         (r) => r.path === "/autonomy/status",
       );
@@ -734,7 +762,7 @@ describe("autonomyRoutes", () => {
       await statusRoute?.handler(
         mockReq as RouteRequest,
         mockRes as RouteResponse,
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(mockRes.status).toHaveBeenCalledWith(503);
@@ -755,7 +783,7 @@ describe("autonomyRoutes", () => {
       await enableRoute?.handler(
         mockReq as RouteRequest,
         mockRes as RouteResponse,
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(mockAutonomyService.enableAutonomy).toHaveBeenCalled();
@@ -782,7 +810,7 @@ describe("autonomyRoutes", () => {
       await intervalRoute?.handler(
         mockReq as RouteRequest,
         mockRes as RouteResponse,
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(mockAutonomyService.setLoopInterval).toHaveBeenCalledWith(60000);
@@ -807,7 +835,7 @@ describe("autonomyRoutes", () => {
       await intervalRoute?.handler(
         mockReq as RouteRequest,
         mockRes as RouteResponse,
-        mockRuntime as IAgentRuntime,
+        runtime as IAgentRuntime,
       );
 
       expect(mockRes.status).toHaveBeenCalledWith(400);

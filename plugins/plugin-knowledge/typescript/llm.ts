@@ -8,14 +8,6 @@ import { generateText as aiGenerateText, type CoreMessage, embed } from "ai";
 // Use a flexible type derived from generateText to handle AI SDK version differences
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 
-// Infer GenerateTextResult from the function's return type - parameterized for compatibility
-type GenerateTextResult<_T = Record<string, never>, _U = unknown> = Awaited<
-  ReturnType<typeof aiGenerateText>
->;
-
-// Alias for code using LanguageModel
-type LanguageModel = AIModel;
-
 /**
  * Result type for text generation operations.
  * Contains the generated text and usage information.
@@ -649,7 +641,9 @@ async function generateGeminiWithCaching(
     }
   } else {
     logger.debug(`[Document Processor] Using standard prompt format with Gemini ${modelName}`);
-    logger.debug(`[Document Processor] Only Gemini 2.5 models support automatic implicit caching`);
+    logger.debug(
+      `[Document Processor] Note: Only Gemini 2.5 models support automatic implicit caching`
+    );
   }
 
   // For Gemini models, we use a simpler format that works well with OpenRouter

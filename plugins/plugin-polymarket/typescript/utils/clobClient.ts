@@ -50,6 +50,20 @@ interface EnhancedWallet {
 }
 
 /**
+ * Type alias for the ClobClient's signer parameter.
+ * The ClobClient expects a specific signer interface that our EnhancedWallet satisfies.
+ */
+type ClobClientSigner = ConstructorParameters<typeof ClobClient>[2];
+
+/**
+ * Cast EnhancedWallet to ClobClient's signer type.
+ * Our EnhancedWallet implements the same interface the ClobClient expects.
+ */
+function asClobClientSigner(wallet: EnhancedWallet): ClobClientSigner {
+  return wallet as ClobClientSigner;
+}
+
+/**
  * Create an enhanced wallet object compatible with CLOB client
  */
 function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
@@ -101,7 +115,7 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
   const client = new ClobClient(
     clobApiUrl,
     POLYGON_CHAIN_ID,
-    enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
+    asClobClientSigner(enhancedWallet),
     undefined // No API creds for basic client
   );
 
@@ -152,7 +166,7 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
   const client = new ClobClient(
     clobApiUrl,
     POLYGON_CHAIN_ID,
-    enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
+    asClobClientSigner(enhancedWallet),
     creds
   );
 

@@ -1,74 +1,76 @@
 import {
   type EventPayload,
   EventType,
+  type IAgentRuntime,
   type Memory,
   ModelType,
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
-import { createMockRuntime, type MockRuntime } from "./test-utils.ts";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils.ts";
 
 describe("EmbeddingGenerationService", () => {
   let service: EmbeddingGenerationService;
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
   let registeredEventHandlers: Map<
     string,
     (params: EventPayload) => Promise<void>
   >;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Track registered event handlers
     registeredEventHandlers = new Map();
 
-    mockRuntime = createMockRuntime({
-      registerEvent: vi.fn(
-        (
-          eventType: string,
-          handler: (params: EventPayload) => Promise<void>,
-        ) => {
-          registeredEventHandlers.set(eventType, handler);
-        },
-      ),
-      useModel: vi.fn().mockImplementation((modelType: string) => {
+    runtime = await createTestRuntime();
+
+    // Spy on runtime methods
+    vi.spyOn(runtime, "registerEvent").mockImplementation(
+      (eventType: string, handler: (params: EventPayload) => Promise<void>) => {
+        registeredEventHandlers.set(eventType, handler);
+      },
+    );
+    vi.spyOn(runtime, "useModel").mockImplementation(
+      async (modelType: string) => {
         if (modelType === ModelType.TEXT_EMBEDDING) {
           // Simulate embedding generation with a small delay
           return new Promise((resolve) => {
             setTimeout(() => resolve([0.1, 0.2, 0.3, 0.4, 0.5]), 10);
           });
         }
-        return Promise.resolve("mock response");
-      }),
-      updateMemory: vi.fn().mockResolvedValue(true),
-      emitEvent: vi.fn().mockResolvedValue(undefined),
-    });
+        return "mock response";
+      },
+    );
+    vi.spyOn(runtime, "updateMemory").mockResolvedValue(true);
+    vi.spyOn(runtime, "emitEvent").mockResolvedValue(undefined);
 
     // Suppress logger output during tests
-    mockRuntime.logger = {
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
   });
 
   afterEach(async () => {
     if (service) {
       await service.stop();
     }
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
   });
 
   describe("Service Initialization", () => {
     it("should start the service successfully", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
 
       expect(service).toBeDefined();
       expect(service.capabilityDescription).toBe(
         "Handles asynchronous embedding generation for memories",
       );
-      expect(mockRuntime.registerEvent).toHaveBeenCalledWith(
+      expect(runtime.registerEvent).toHaveBeenCalledWith(
         EventType.EMBEDDING_GENERATION_REQUESTED,
         expect.any(Function),
       );
@@ -76,7 +78,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should register the event handler for EMBEDDING_GENERATION_REQUESTED", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
 
       expect(
@@ -86,12 +88,12 @@ describe("EmbeddingGenerationService", () => {
 
     it("should return a disabled service when no TEXT_EMBEDDING model is available", async () => {
       // Override getModel to return undefined for TEXT_EMBEDDING
-      mockRuntime.getModel = vi.fn((_modelType: string) => {
+      runtime.getModel = vi.fn((_modelType: string) => {
         return undefined;
       });
 
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
 
       expect(service).toBeDefined();
@@ -105,7 +107,7 @@ describe("EmbeddingGenerationService", () => {
       expect(service.getQueueSize()).toBe(0);
 
       // Verify getModel was called to check for TEXT_EMBEDDING
-      expect(mockRuntime.getModel).toHaveBeenCalledWith(
+      expect(runtime.getModel).toHaveBeenCalledWith(
         ModelType.TEXT_EMBEDDING,
       );
     });
@@ -114,7 +116,7 @@ describe("EmbeddingGenerationService", () => {
   describe("Queue Management", () => {
     it("should add memories to queue when event is received", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
 
       const memory: Memory = {
@@ -131,7 +133,7 @@ describe("EmbeddingGenerationService", () => {
       );
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory,
           priority: "normal",
           source: "test",
@@ -143,7 +145,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should prioritize high priority items", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -179,7 +181,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: normalMemory,
           priority: "normal",
           source: "test",
@@ -187,7 +189,7 @@ describe("EmbeddingGenerationService", () => {
       }
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: lowMemory,
           priority: "low",
           source: "test",
@@ -195,7 +197,7 @@ describe("EmbeddingGenerationService", () => {
       }
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: highMemory,
           priority: "high",
           source: "test",
@@ -211,7 +213,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should skip memories that already have embeddings", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -229,7 +231,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: memoryWithEmbedding,
           priority: "normal",
           source: "test",
@@ -241,7 +243,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should clear the queue when requested", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -258,7 +260,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory,
           priority: "normal",
           source: "test",
@@ -274,7 +276,7 @@ describe("EmbeddingGenerationService", () => {
   describe("Embedding Generation", () => {
     it("should generate embeddings and update memory", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -291,7 +293,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory,
           priority: "high",
           source: "test",
@@ -301,20 +303,20 @@ describe("EmbeddingGenerationService", () => {
       // Wait for processing to complete
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      expect(mockRuntime.useModel).toHaveBeenCalledWith(
+      expect(runtime.useModel).toHaveBeenCalledWith(
         ModelType.TEXT_EMBEDDING,
         {
           text: "Generate embedding for this",
         },
       );
-      expect(mockRuntime.updateMemory).toHaveBeenCalledWith({
+      expect(runtime.updateMemory).toHaveBeenCalledWith({
         id: "test-memory",
         embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
       });
-      expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.EMBEDDING_GENERATION_COMPLETED,
         expect.objectContaining({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: expect.objectContaining({
             id: "test-memory",
             embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
@@ -326,7 +328,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should skip memories without text content", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -343,7 +345,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: memoryWithoutText,
           priority: "normal",
           source: "test",
@@ -353,15 +355,15 @@ describe("EmbeddingGenerationService", () => {
       // Wait a bit to ensure processing would have happened
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      expect(mockRuntime.useModel).not.toHaveBeenCalled();
-      expect(mockRuntime.updateMemory).not.toHaveBeenCalled();
+      expect(runtime.useModel).not.toHaveBeenCalled();
+      expect(runtime.updateMemory).not.toHaveBeenCalled();
     });
   });
 
   describe("Error Handling and Retry", () => {
     it("should retry on failure up to max retries", async () => {
       let callCount = 0;
-      mockRuntime.useModel = vi.fn().mockImplementation(() => {
+      runtime.useModel = vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount <= 2) {
           return Promise.reject(new Error("Embedding generation failed"));
@@ -370,7 +372,7 @@ describe("EmbeddingGenerationService", () => {
       });
 
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -387,7 +389,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory,
           priority: "normal",
           source: "test",
@@ -399,16 +401,16 @@ describe("EmbeddingGenerationService", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       expect(callCount).toBe(3); // Failed twice, succeeded on third try
-      expect(mockRuntime.updateMemory).toHaveBeenCalled();
+      expect(runtime.updateMemory).toHaveBeenCalled();
     });
 
     it("should emit failure event after max retries exceeded", async () => {
-      mockRuntime.useModel = vi
+      runtime.useModel = vi
         .fn()
         .mockRejectedValue(new Error("Persistent failure"));
 
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -425,7 +427,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory,
           priority: "normal",
           source: "test",
@@ -436,10 +438,10 @@ describe("EmbeddingGenerationService", () => {
       // Wait for retries to exhaust
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.EMBEDDING_GENERATION_FAILED,
         expect.objectContaining({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory,
           error: "Persistent failure",
           source: "embeddingService",
@@ -451,14 +453,14 @@ describe("EmbeddingGenerationService", () => {
   describe("Non-blocking Behavior", () => {
     it("should not block the runtime while generating embeddings", async () => {
       // Mock a slow embedding generation
-      mockRuntime.useModel = vi.fn().mockImplementation(() => {
+      runtime.useModel = vi.fn().mockImplementation(() => {
         return new Promise((resolve) => {
           setTimeout(() => resolve([0.1, 0.2, 0.3, 0.4, 0.5]), 500); // 500ms delay
         });
       });
 
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -480,7 +482,7 @@ describe("EmbeddingGenerationService", () => {
       for (const memory of memories) {
         if (handler) {
           await handler({
-            runtime: mockRuntime,
+            runtime: runtime,
             memory,
             priority: "normal",
             source: "test",
@@ -500,13 +502,13 @@ describe("EmbeddingGenerationService", () => {
 
     it("should process queue in batches without blocking", async () => {
       let processedCount = 0;
-      mockRuntime.useModel = vi.fn().mockImplementation(() => {
+      runtime.useModel = vi.fn().mockImplementation(() => {
         processedCount++;
         return Promise.resolve([0.1, 0.2, 0.3, 0.4, 0.5]);
       });
 
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -525,7 +527,7 @@ describe("EmbeddingGenerationService", () => {
 
         if (handler) {
           await handler({
-            runtime: mockRuntime,
+            runtime: runtime,
             memory,
             priority: "normal",
             source: "test",
@@ -546,12 +548,12 @@ describe("EmbeddingGenerationService", () => {
 
   describe("Service Lifecycle", () => {
     it("should process high priority items before stopping", async () => {
-      mockRuntime.useModel = vi
+      runtime.useModel = vi
         .fn()
         .mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]);
 
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        runtime,
       )) as EmbeddingGenerationService;
       const handler = registeredEventHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -578,7 +580,7 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: highMemory,
           priority: "high",
           source: "test",
@@ -586,7 +588,7 @@ describe("EmbeddingGenerationService", () => {
       }
       if (handler) {
         await handler({
-          runtime: mockRuntime,
+          runtime: runtime,
           memory: normalMemory,
           priority: "normal",
           source: "test",
@@ -597,7 +599,7 @@ describe("EmbeddingGenerationService", () => {
       await service.stop();
 
       // High priority should have been processed
-      expect(mockRuntime.updateMemory).toHaveBeenCalledWith(
+      expect(runtime.updateMemory).toHaveBeenCalledWith(
         expect.objectContaining({ id: "high-priority" }),
       );
     });

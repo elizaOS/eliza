@@ -18,9 +18,7 @@ import { SolanaService } from "../../service";
 /**
  * Creates a REAL AgentRuntime for testing - NO MOCKS.
  */
-async function createTestRuntime(
-  settings: Record<string, string | undefined> = {}
-): Promise<{
+async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
 }> {
@@ -110,7 +108,7 @@ describe("SolanaService Lazy Loading - Core Scenario", () => {
 
     // Step 3: Add wallet via character settings (simulating wallet creation)
     console.log("📝 Step 3: Adding wallet via runtime character settings...");
-    
+
     // Use the real runtime's character settings
     if (runtime.character.settings) {
       runtime.character.settings.secrets = {

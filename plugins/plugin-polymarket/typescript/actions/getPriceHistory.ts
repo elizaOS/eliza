@@ -29,6 +29,14 @@ interface PriceHistoryPoint {
 type PriceHistoryResponse = PriceHistoryPoint[];
 
 /**
+ * Type assertion helper for Polymarket API responses.
+ * The CLOB client library doesn't expose proper return types for getPricesHistory.
+ */
+function asPriceHistoryResponse(response: unknown): PriceHistoryResponse {
+  return response as PriceHistoryResponse;
+}
+
+/**
  * Get Price History Action for Polymarket.
  * Retrieves historical prices for a specific token over a time range.
  */
@@ -89,12 +97,14 @@ export const getPriceHistoryAction: Action = {
     );
 
     const client = (await initializeClobClient(runtime)) as ClobClient;
-    const priceHistory = (await client.getPricesHistory({
-      market: tokenId,
-      startTs,
-      endTs,
-      fidelity,
-    })) as unknown as PriceHistoryResponse;
+    const priceHistory = asPriceHistoryResponse(
+      await client.getPricesHistory({
+        market: tokenId,
+        startTs,
+        endTs,
+        fidelity,
+      })
+    );
 
     let responseText = `📈 **Price History for Token ${tokenId}**:\n\n`;
 
