@@ -5,7 +5,7 @@
  * NO MOCKS - all tests run against actual runtime infrastructure.
  */
 
-import { type IAgentRuntime, logger, type Memory, type UUID } from "@elizaos/core";
+import { logger, type Memory, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
 

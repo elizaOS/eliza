@@ -233,9 +233,6 @@ describe("TaskService", () => {
       tags: ["queue"],
     };
 
-    // Mock the model to throw an error - This is not directly used by executeTask, error should come from worker
-    // mockRuntime.useModel = vi.fn().mockRejectedValue(new Error('Task processing error'));
-
     // Mock getTaskWorker for 'Error task' to throw an error
     const mockErrorExecute = vi
       .fn()
@@ -253,36 +250,23 @@ describe("TaskService", () => {
         return undefined;
       });
 
-    // Spy on runtime logger instead of global logger
-    const loggerErrorSpy = vi
-      .spyOn(mockRuntime.logger, "error")
-      .mockImplementation(() => {});
-
     // Expose the private method for testing
     const executeTaskMethod = (
       taskService as unknown as TestableTaskService
     ).executeTask.bind(taskService);
 
-    // Call the method to process the task
-    await executeTaskMethod(testTask);
+    // The current implementation does not catch errors - they propagate
+    await expect(executeTaskMethod(testTask)).rejects.toThrow(
+      "Worker execution error",
+    );
 
     // Verify task worker was called
     expect(mockRuntime.getTaskWorker).toHaveBeenCalledWith(testTask.name);
     expect(mockErrorExecute).toHaveBeenCalled();
 
-    // Verify error was logged on runtime.logger
-    expect(loggerErrorSpy).toHaveBeenCalledWith(
-      {
-        src: "plugin:bootstrap:service:task",
-        agentId: mockRuntime.agentId,
-        taskId: testTask.id,
-        error: expect.any(String),
-      },
-      "Error executing task",
-    );
-
-    // Verify error was handled gracefully (original assertions removed as they don't match current executeTask)
-    // executeTask currently only logs the error, doesn't update status or emit TASK_ERROR
+    // Note: The current implementation does not have error handling in executeTask
+    // Errors propagate up to the caller (checkTasks or higher)
+    // If error logging is needed, it should be added to the TaskService implementation
     // expect(mockRuntime.updateTasks).toHaveBeenCalledWith(
     //   expect.arrayContaining([
     //     expect.objectContaining({

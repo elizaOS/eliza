@@ -60,9 +60,7 @@ export class SamTTSService extends Service {
     const audioBuffer = this.generateAudio(text, options);
     const wavBuffer = this.createWAVBuffer(audioBuffer);
 
-    const hardwareBridge = this.runtime.getService("hardwareBridge") as unknown as
-      | HardwareBridgeService
-      | undefined;
+    const hardwareBridge = this.runtime.getService<HardwareBridgeService>("hardwareBridge");
 
     if (hardwareBridge) {
       logger.info("[SAM-TTS] Sending to hardware bridge...");

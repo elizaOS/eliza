@@ -147,11 +147,13 @@ export class BridgeAction {
 
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
     // @ts-expect-error - viem type narrowing issue
-    return Number(await publicClient.readContract({
-      address: tokenAddress as Address,
-      abi: decimalsAbi,
-      functionName: "decimals",
-    }));
+    return Number(
+      await publicClient.readContract({
+        address: tokenAddress as Address,
+        abi: decimalsAbi,
+        functionName: "decimals",
+      })
+    );
   }
 
   private createExecutionOptions(routeId: string): ExecutionOptions {

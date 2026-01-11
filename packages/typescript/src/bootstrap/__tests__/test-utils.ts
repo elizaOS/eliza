@@ -7,6 +7,7 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
+import type { Logger } from "../../logger";
 import { AgentRuntime } from "../../runtime";
 import type {
   Character,
@@ -24,7 +25,6 @@ import type {
   World,
 } from "../../types";
 import { ChannelType, MemoryType, ModelType } from "../../types";
-import type { Logger } from "../../logger";
 
 /**
  * Converts a string to a UUID type

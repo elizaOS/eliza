@@ -1,5 +1,5 @@
 import type { HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAllApiKeysAction } from "../actions/getAllApiKeys";
 
 // Mock the crypto module
@@ -17,53 +17,125 @@ interface GlobalWithFetch {
 }
 (globalThis as unknown as GlobalWithFetch).fetch = vi.fn();
 
-describe("getAllApiKeysAction", () => {
-  let mockRuntime: IAgentRuntime;
-  let mockMessage: Memory;
-  let mockState: State;
-  let mockCallback: HandlerCallback;
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
 
-  beforeEach(() => {
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent for Polymarket"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {
+        secrets: {
+          WALLET_PRIVATE_KEY:
+            settings.WALLET_PRIVATE_KEY ??
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+          CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+          CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
+          CLOB_API_SECRET: settings.CLOB_API_SECRET ?? "test-api-secret",
+          CLOB_API_PASSPHRASE: settings.CLOB_API_PASSPHRASE ?? "test-passphrase",
+        },
+      },
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
+describe("getAllApiKeysAction", () => {
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testMessage: Memory;
+  let testState: State;
+  let testCallback: HandlerCallback;
+
+  beforeEach(async () => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    // Mock runtime
-    mockRuntime = {
-      getSetting: vi.fn((key: string) => {
-        if (key === "WALLET_PRIVATE_KEY")
-          return "0x1234567890123456789012345678901234567890123456789012345678901234";
-        if (key === "CLOB_API_URL") return "https://clob.polymarket.com";
-        if (key === "CLOB_API_KEY") return "test-api-key";
-        if (key === "CLOB_API_SECRET") return "test-api-secret";
-        if (key === "CLOB_API_PASSPHRASE") return "test-passphrase";
-        return undefined;
-      }),
-    } as Partial<IAgentRuntime> as IAgentRuntime;
+    // Create real runtime
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
 
-    // Mock message
-    mockMessage = {
+    // Test message
+    testMessage = {
+      id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
       content: {
         text: "Get my API keys",
       },
-    } as Partial<Memory> as Memory;
+      userId: "test-user" as `${string}-${string}-${string}-${string}-${string}`,
+      roomId: "test-room" as `${string}-${string}-${string}-${string}-${string}`,
+      entityId: "test-entity" as `${string}-${string}-${string}-${string}-${string}`,
+      agentId: runtime.agentId,
+      createdAt: Date.now(),
+    } as Memory;
 
-    // Mock state
-    mockState = {} as State;
+    // Test state
+    testState = {} as State;
 
-    // Mock callback
-    mockCallback = vi.fn();
+    // Test callback
+    testCallback = vi.fn();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   describe("validate", () => {
     it("should return true when private key is available", async () => {
-      const result = await getAllApiKeysAction.validate(mockRuntime, mockMessage);
+      const result = await getAllApiKeysAction.validate(runtime, testMessage);
       expect(result).toBe(true);
     });
 
     it("should return false when no private key is available", async () => {
-      mockRuntime.getSetting = vi.fn(() => undefined);
-      const result = await getAllApiKeysAction.validate(mockRuntime, mockMessage);
+      // Create runtime without private key
+      const resultWithoutKey = await createTestRuntime({
+        WALLET_PRIVATE_KEY: undefined,
+        CLOB_API_KEY: undefined,
+        CLOB_API_SECRET: undefined,
+        CLOB_API_PASSPHRASE: undefined,
+      });
+
+      // Override getSetting to return undefined for WALLET_PRIVATE_KEY
+      vi.spyOn(resultWithoutKey.runtime, "getSetting").mockReturnValue(undefined);
+
+      const result = await getAllApiKeysAction.validate(resultWithoutKey.runtime, testMessage);
       expect(result).toBe(false);
+
+      await resultWithoutKey.cleanup();
     });
   });
 
@@ -97,9 +169,9 @@ describe("getAllApiKeysAction", () => {
         json: vi.fn().mockResolvedValue(mockApiKeys),
       });
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      expect(mockCallback).toHaveBeenCalledWith({
+      expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("✅ **API Keys Retrieved Successfully**"),
         action: "GET_API_KEYS",
         data: {
@@ -116,9 +188,11 @@ describe("getAllApiKeysAction", () => {
         },
       });
 
-      expect(mockCallback.mock.calls[0][0].text).toContain("Total API Keys**: 2");
-      expect(mockCallback.mock.calls[0][0].text).toContain("Key 1:");
-      expect(mockCallback.mock.calls[0][0].text).toContain("Key 2:");
+      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
+        "Total API Keys**: 2"
+      );
+      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain("Key 1:");
+      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain("Key 2:");
     });
 
     it("should handle empty array of API keys", async () => {
@@ -128,9 +202,9 @@ describe("getAllApiKeysAction", () => {
         json: vi.fn().mockResolvedValue([]),
       });
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      expect(mockCallback).toHaveBeenCalledWith({
+      expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("✅ **API Keys Retrieved Successfully**"),
         action: "GET_API_KEYS",
         data: {
@@ -141,9 +215,15 @@ describe("getAllApiKeysAction", () => {
         },
       });
 
-      expect(mockCallback.mock.calls[0][0].text).toContain("Total API Keys**: 0");
-      expect(mockCallback.mock.calls[0][0].text).toContain("No API keys found");
-      expect(mockCallback.mock.calls[0][0].text).toContain("CREATE_API_KEY action");
+      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
+        "Total API Keys**: 0"
+      );
+      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
+        "No API keys found"
+      );
+      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
+        "CREATE_API_KEY action"
+      );
     });
 
     it("should handle API response with data wrapper", async () => {
@@ -164,9 +244,9 @@ describe("getAllApiKeysAction", () => {
         json: vi.fn().mockResolvedValue(mockApiResponse),
       });
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      expect(mockCallback).toHaveBeenCalledWith({
+      expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("✅ **API Keys Retrieved Successfully**"),
         action: "GET_API_KEYS",
         data: {
@@ -185,17 +265,32 @@ describe("getAllApiKeysAction", () => {
     });
 
     it("should handle missing API credentials error", async () => {
-      // Mock runtime without API credentials
-      mockRuntime.getSetting = vi.fn((key: string) => {
+      // Create runtime without API credentials
+      const resultWithoutCreds = await createTestRuntime({
+        WALLET_PRIVATE_KEY: "0x1234567890123456789012345678901234567890123456789012345678901234",
+        CLOB_API_URL: "https://clob.polymarket.com",
+        CLOB_API_KEY: undefined,
+        CLOB_API_SECRET: undefined,
+        CLOB_API_PASSPHRASE: undefined,
+      });
+
+      // Override getSetting to return undefined for API credentials
+      vi.spyOn(resultWithoutCreds.runtime, "getSetting").mockImplementation((key: string) => {
         if (key === "WALLET_PRIVATE_KEY")
           return "0x1234567890123456789012345678901234567890123456789012345678901234";
         if (key === "CLOB_API_URL") return "https://clob.polymarket.com";
-        return undefined; // No API credentials
+        return undefined;
       });
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(
+        resultWithoutCreds.runtime,
+        testMessage,
+        testState,
+        {},
+        testCallback
+      );
 
-      expect(mockCallback).toHaveBeenCalledWith({
+      expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("❌ **Failed to Retrieve API Keys**"),
         action: "GET_API_KEYS",
         data: {
@@ -204,6 +299,8 @@ describe("getAllApiKeysAction", () => {
             "API credentials not found. You need to create API keys first using the CREATE_API_KEY action",
         },
       });
+
+      await resultWithoutCreds.cleanup();
     });
 
     it("should handle network/auth error from API", async () => {
@@ -215,9 +312,9 @@ describe("getAllApiKeysAction", () => {
         text: vi.fn().mockResolvedValue('{"error":"Invalid credentials"}'),
       });
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      expect(mockCallback).toHaveBeenCalledWith({
+      expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("❌ **Failed to Retrieve API Keys**"),
         action: "GET_API_KEYS",
         data: {
@@ -233,9 +330,9 @@ describe("getAllApiKeysAction", () => {
         new Error("Network error")
       );
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      expect(mockCallback).toHaveBeenCalledWith({
+      expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("❌ **Failed to Retrieve API Keys**"),
         action: "GET_API_KEYS",
         data: {
@@ -261,9 +358,9 @@ describe("getAllApiKeysAction", () => {
         json: vi.fn().mockResolvedValue(mockApiKeys),
       });
 
-      await getAllApiKeysAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      const responseText = mockCallback.mock.calls[0][0].text;
+      const responseText = (testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text;
 
       // Check that sensitive data is truncated
       expect(responseText).toContain("very-lon...");

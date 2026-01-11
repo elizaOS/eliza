@@ -58,6 +58,7 @@ function handleStreamingGeneration(
 ): TextStreamResult {
   logger.debug(`[OpenRouter] Streaming text with ${modelLabel} model`);
 
+  // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
   const streamResult = streamText(generateParams);
 
   return {
@@ -102,6 +103,7 @@ async function generateTextWithModel(
   }
 
   // Non-streaming mode
+  // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
   const response = await generateText(generateParams);
 
   if (response.usage) {

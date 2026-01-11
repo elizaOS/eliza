@@ -364,7 +364,7 @@ export class DiscordTestSuite implements TestSuite {
    *
    * @param {TextChannel} channel - The text-based channel the message is being sent to.
    * @param {string} messageContent - The content of the message being sent.
-   * @param {any[]} files - An array of files to include in the message.
+   * @param {AttachmentBuilder[]} files - An array of files to include in the message.
    * @throws {Error} If the channel is not a text-based channel or does not exist.
    * @throws {Error} If there is an error sending the message.
    */
@@ -388,9 +388,9 @@ export class DiscordTestSuite implements TestSuite {
   /**
    * Play an audio stream from a given response stream using the provided VoiceConnection.
    *
-   * @param {any} responseStream - The response stream to play as audio.
-   * @param {VoiceConnection} connection - The VoiceConnection to use for playing the audio.
-   * @returns {Promise<void>} - A Promise that resolves when the TTS playback is finished.
+   * @param responseStream - The response stream to play as audio.
+   * @param connection - The VoiceConnection to use for playing the audio.
+   * @returns A Promise that resolves when the TTS playback is finished.
    */
   async playAudioStream(
     responseStream: ReadableStream | NodeJS.ReadableStream | Readable,

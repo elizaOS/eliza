@@ -13,7 +13,7 @@ import {
   MemoryType,
   ModelType,
   parseJSONObjectFromText,
-  Service,
+  type Service,
   ServiceType,
   type State,
 } from "@elizaos/core";
