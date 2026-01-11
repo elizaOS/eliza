@@ -1,10 +1,10 @@
 /**
- * Common types for Twitter plugin API responses
+ * Common types for X plugin API responses
  */
 
 /**
  * Generic API result container
- * Defined here to avoid circular dependency with profile.ts and tweets.ts
+ * Defined here to avoid circular dependency with profile.ts and posts.ts
  */
 export type RequestApiResult<T> = { success: true; value: T } | { success: false; err: Error };
 
@@ -27,5 +27,4 @@ export interface FetchTransformOptions {
   response: (response: Response) => Response | Promise<Response>;
 }
 
-// Note: QueryTweetsResponse and QueryProfilesResponse are exported from types.ts
-// Import them directly from "./types" to avoid circular dependencies
+// QueryPostsResponse and QueryProfilesResponse are in types.ts - import from there

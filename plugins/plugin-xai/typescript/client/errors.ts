@@ -59,15 +59,15 @@ interface TraceInfo {
 }
 
 /**
- * Interface representing additional information that can be included in Twitter API error objects.
- * @typedef { Object } TwitterApiErrorExtensions
+ * Interface representing additional information that can be included in X API error objects.
+ * @typedef { Object } XApiErrorExtensions
  * @property { number } [code] - The error code associated with the error.
  * @property { string } [kind] - The kind of error that occurred.
  * @property { string } [name] - The name of the error.
  * @property { string } [source] - The source of the error.
  * @property { TraceInfo } [tracing] - Information about the tracing of the error.
  */
-interface TwitterApiErrorExtensions {
+interface XApiErrorExtensions {
   code?: number;
   kind?: string;
   name?: string;
@@ -76,17 +76,17 @@ interface TwitterApiErrorExtensions {
 }
 
 /**
- * Interface representing a raw Twitter API error object.
+ * Interface representing a raw X API error object.
  * @interface
- * @extends {TwitterApiErrorExtensions}
+ * @extends {XApiErrorExtensions}
  * @property {string} [message] The error message.
  * @property {Position[]} [locations] An array of positions.
  * @property {string[]} [path] An array representing the path of the error.
- * @property {TwitterApiErrorExtensions} [extensions] Additional error extensions.
+ * @property {XApiErrorExtensions} [extensions] Additional error extensions.
  */
-export interface TwitterApiErrorRaw extends TwitterApiErrorExtensions {
+export interface XApiErrorRaw extends XApiErrorExtensions {
   message?: string;
   locations?: Position[];
   path?: string[];
-  extensions?: TwitterApiErrorExtensions;
+  extensions?: XApiErrorExtensions;
 }

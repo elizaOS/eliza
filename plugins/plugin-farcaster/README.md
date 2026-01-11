@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
 Posts a new cast to Farcaster.
 
 ```typescript
-// Triggered by messages containing: post, cast, share, announce, farcaster, tweet
+// Triggered by messages containing: post, cast, share, announce, farcaster, post
 "Please post about the new ElizaOS features on Farcaster";
 ```
 

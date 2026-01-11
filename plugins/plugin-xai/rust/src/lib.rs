@@ -1,13 +1,13 @@
 #![allow(missing_docs)]
 //! elizaOS xAI Plugin
 //!
-//! This crate provides xAI Grok model support and X (Twitter) API v2 integration
+//! This crate provides xAI Grok model support and X (X) API v2 integration
 //! for elizaOS agents.
 //!
 //! # Features
 //!
 //! - xAI Grok models for text generation and embeddings
-//! - Full X (Twitter) API v2 client (posts, timelines, users, search)
+//! - Full X (X) API v2 client (posts, timelines, users, search)
 //! - OAuth 1.0a and Bearer token authentication
 //! - Async/await with Tokio runtime
 //!

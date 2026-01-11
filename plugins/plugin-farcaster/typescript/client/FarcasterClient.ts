@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - publishCast, fetchProfile, publishReaction, deleteReaction: External Neynar API - KEEP
-
 /**
  * Farcaster API client implementation.
  *

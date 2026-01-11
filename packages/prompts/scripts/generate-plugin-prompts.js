@@ -65,7 +65,7 @@ function escapePython(content) {
 
 /**
  * Escape a string for use in Rust raw string literal
- * Note: Rust raw strings r#"..."# don't need escaping except for the delimiter itself
+ * Rust raw strings r#"..."# don't need escaping except for the delimiter itself
  */
 function escapeRust(content) {
   // Check if content contains "# - if so, we need more # in our delimiter

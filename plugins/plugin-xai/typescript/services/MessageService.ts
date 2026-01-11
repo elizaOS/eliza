@@ -1,7 +1,7 @@
 import { createUniqueUuid, logger, type UUID } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { SearchMode } from "../client";
-import { extractIdFromResult, extractRestId, isResponseLike, type TweetResponse } from "../types";
+import { extractIdFromResult, extractRestId, isResponseLike, type PostResponse } from "../types";
 import { getEpochMs } from "../utils/time";
 import {
   type GetMessagesOptions,
@@ -11,13 +11,13 @@ import {
   type SendMessageOptions,
 } from "./IMessageService";
 
-export class TwitterMessageService implements IMessageService {
+export class XMessageService implements IMessageService {
   constructor(private client: ClientBase) {}
 
   /**
-   * Extract ID from various Twitter API response shapes
+   * Extract ID from various X API response shapes
    */
-  private async extractResultId(result: TweetResponse | unknown): Promise<string | undefined> {
+  private async extractResultId(result: PostResponse | unknown): Promise<string | undefined> {
     // First try direct extraction using type-safe utility
     const directId = extractIdFromResult(result);
     if (directId) return directId;
@@ -45,54 +45,54 @@ export class TwitterMessageService implements IMessageService {
 
   async getMessages(options: GetMessagesOptions): Promise<Message[]> {
     try {
-      // Twitter doesn't have a direct way to get messages by room ID
-      // We'll need to use search to find related tweets/DMs
+      // X doesn't have a direct way to get messages by room ID
+      // We'll need to use search to find related posts/DMs
       const username = this.client.profile?.username;
       if (!username) {
-        logger.error("No Twitter profile available");
+        logger.error("No X profile available");
         return [];
       }
 
       // Search for mentions and replies
-      const searchResult = await this.client.fetchSearchTweets(
+      const searchResult = await this.client.fetchSearchPosts(
         `@${username}`,
         options.limit || 20,
         SearchMode.Latest
       );
 
-      const messages: Message[] = searchResult.tweets
-        .filter((tweet) => {
+      const messages: Message[] = searchResult.posts
+        .filter((post) => {
           // Filter by room ID if specified
-          if (options.roomId && tweet.conversationId) {
-            const tweetRoomId = createUniqueUuid(this.client.runtime, tweet.conversationId);
-            return tweetRoomId === options.roomId;
+          if (options.roomId && post.conversationId) {
+            const postRoomId = createUniqueUuid(this.client.runtime, post.conversationId);
+            return postRoomId === options.roomId;
           }
           return true;
         })
         .filter(
           (
-            tweet
-          ): tweet is typeof tweet & {
+            post
+          ): post is typeof post & {
             id: string;
             userId: string;
             username: string;
             text: string;
             conversationId: string;
-          } => !!(tweet.id && tweet.userId && tweet.username && tweet.text && tweet.conversationId)
+          } => !!(post.id && post.userId && post.username && post.text && post.conversationId)
         )
-        .map((tweet) => ({
-          id: tweet.id,
+        .map((post) => ({
+          id: post.id,
           agentId: this.client.runtime.agentId,
-          roomId: createUniqueUuid(this.client.runtime, tweet.conversationId),
-          userId: tweet.userId,
-          username: tweet.username,
-          text: tweet.text,
-          type: tweet.inReplyToStatusId ? MessageType.REPLY : MessageType.MENTION,
-          timestamp: getEpochMs(tweet.timestamp),
-          inReplyTo: tweet.inReplyToStatusId,
+          roomId: createUniqueUuid(this.client.runtime, post.conversationId),
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          type: post.inReplyToStatusId ? MessageType.REPLY : MessageType.MENTION,
+          timestamp: getEpochMs(post.timestamp),
+          inReplyTo: post.inReplyToStatusId,
           metadata: {
-            tweetId: tweet.id,
-            permanentUrl: tweet.permanentUrl,
+            postId: post.id,
+            permanentUrl: post.permanentUrl,
           },
         }));
 
@@ -112,13 +112,13 @@ export class TwitterMessageService implements IMessageService {
 
       if (options.type === MessageType.DIRECT_MESSAGE) {
         // Send direct message using the roomId as conversationId
-        result = await this.client.twitterClient.sendDirectMessage(
+        result = await this.client.xClient.sendDirectMessage(
           options.roomId.toString(),
           options.text
         );
       } else {
-        // Send tweet (reply, mention, or regular post)
-        result = await this.client.twitterClient.sendTweet(options.text, options.replyToId);
+        // Send post (reply, mention, or regular post)
+        result = await this.client.xClient.sendPost(options.text, options.replyToId);
       }
 
       // Extract the message ID using type-safe utilities
@@ -126,7 +126,7 @@ export class TwitterMessageService implements IMessageService {
       const messageId = extractedId || "";
 
       if (!messageId) {
-        logger.warn("Could not extract message ID from Twitter response");
+        logger.warn("Could not extract message ID from X response");
       }
 
       const message: Message = {
@@ -154,7 +154,7 @@ export class TwitterMessageService implements IMessageService {
 
   async deleteMessage(messageId: string, _agentId: UUID): Promise<void> {
     try {
-      await this.client.twitterClient.deleteTweet(messageId);
+      await this.client.xClient.deletePost(messageId);
     } catch (error) {
       logger.error(
         "Error deleting message:",
@@ -166,32 +166,32 @@ export class TwitterMessageService implements IMessageService {
 
   async getMessage(messageId: string, agentId: UUID): Promise<Message | null> {
     try {
-      const tweet = await this.client.twitterClient.getTweet(messageId);
+      const post = await this.client.xClient.getPost(messageId);
 
       if (
-        !tweet ||
-        !tweet.id ||
-        !tweet.userId ||
-        !tweet.username ||
-        !tweet.text ||
-        !tweet.conversationId
+        !post ||
+        !post.id ||
+        !post.userId ||
+        !post.username ||
+        !post.text ||
+        !post.conversationId
       ) {
         return null;
       }
 
       const message: Message = {
-        id: tweet.id,
+        id: post.id,
         agentId: agentId,
-        roomId: createUniqueUuid(this.client.runtime, tweet.conversationId),
-        userId: tweet.userId,
-        username: tweet.username,
-        text: tweet.text,
-        type: tweet.inReplyToStatusId ? MessageType.REPLY : MessageType.POST,
-        timestamp: getEpochMs(tweet.timestamp),
-        inReplyTo: tweet.inReplyToStatusId,
+        roomId: createUniqueUuid(this.client.runtime, post.conversationId),
+        userId: post.userId,
+        username: post.username,
+        text: post.text,
+        type: post.inReplyToStatusId ? MessageType.REPLY : MessageType.POST,
+        timestamp: getEpochMs(post.timestamp),
+        inReplyTo: post.inReplyToStatusId,
         metadata: {
-          tweetId: tweet.id,
-          permanentUrl: tweet.permanentUrl,
+          postId: post.id,
+          permanentUrl: post.permanentUrl,
         },
       };
 
@@ -206,8 +206,8 @@ export class TwitterMessageService implements IMessageService {
   }
 
   async markAsRead(_messageIds: string[], _agentId: UUID): Promise<void> {
-    // Twitter doesn't have a read/unread concept for tweets
+    // X doesn't have a read/unread concept for posts
     // This could be implemented by storing read status in local cache
-    logger.debug("Marking messages as read is not implemented for Twitter");
+    logger.debug("Marking messages as read is not implemented for X");
   }
 }

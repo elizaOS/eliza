@@ -32,7 +32,7 @@ impl SendCastAction {
 
     /// Validate if this action should be executed.
     pub fn validate(&self, text: &str, service: Option<&FarcasterService>) -> bool {
-        let keywords = ["post", "cast", "share", "announce", "farcaster", "tweet"];
+        let keywords = ["post", "cast", "share", "announce", "farcaster", "post"];
         let text_lower = text.to_lowercase();
         let has_keyword = keywords.iter().any(|k| text_lower.contains(k));
         has_keyword && service.is_some()

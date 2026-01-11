@@ -1,7 +1,7 @@
 /**
  * @elizaos/plugin-xai - Node.js Entry Point
  *
- * Provides xAI Grok models and X (Twitter) API integration.
+ * Provides xAI Grok models and X (X) API integration.
  */
 
 export * from "./index";

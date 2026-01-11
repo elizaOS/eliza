@@ -439,7 +439,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("  ✅ Created department with manager reference");
 
     // V2: Add foreign keys (one direction only for this test)
-    // Note: True circular FKs require special handling in Drizzle
+    // True circular FKs require special handling in Drizzle
     const employeeTableV2 = pgTable("employees", {
       id: uuid("id").primaryKey().defaultRandom(),
       name: text("name").notNull(),

@@ -72,7 +72,7 @@ async function generateTextByModelType(
 
   // Use chat() instead of languageModel() to use the Chat Completions API
   // which has better compatibility than the Responses API
-  // Note: gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
+  // gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
   // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
   const model = openai.chat(modelName);
   const generateParams = {

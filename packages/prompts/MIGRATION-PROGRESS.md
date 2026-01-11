@@ -86,7 +86,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 
 - **Status**: ✅ Fully migrated
 - **Prompts**: 2 templates
-  - `twitter_message_handler.txt`
+  - `x_message_handler.txt`
   - `message_handler.txt`
 - **Files Updated**:
   - `typescript/interactions.ts`

@@ -60,9 +60,7 @@ function normalizeTimestamp(timestamp: number): number {
  * - Relative time strings: "5 minutes ago", "2 hours ago", "3 days ago"
  * - ISO date strings: "2024-01-15T10:30:00Z"
  *
- * Note: Month and year calculations use approximate values (30 days and 365 days respectively).
- * This is intentional for conversation summarization to ensure inclusive time ranges.
- * For example, "1 month ago" may include 28-31 days of conversation depending on the actual month.
+ * Month and year calculations use approximate values (30/365 days) to ensure inclusive time ranges.
  *
  * @param {string | number} input - The time value to parse
  * @returns {number} Unix timestamp in milliseconds
@@ -312,9 +310,7 @@ export const summarize: Action = {
 
     const { objective, start, end } = dateRange;
 
-    // 2. get these memories from the database
-    // Note: start and end are absolute timestamps (milliseconds since epoch)
-    // returned by parseTimeToTimestamp from the user's date range request
+    // 2. get these memories from the database (start/end are absolute ms timestamps)
     const memories = await runtime.getMemories({
       tableName: "messages",
       roomId,

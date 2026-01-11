@@ -24,7 +24,7 @@ export class RuntimeCacheTokenStore implements TokenStore {
     private readonly runtime: IAgentRuntime,
     key?: string
   ) {
-    this.key = key ?? `twitter/oauth2/tokens/${runtime.agentId}`;
+    this.key = key ?? `x/oauth2/tokens/${runtime.agentId}`;
   }
 
   async load(): Promise<StoredOAuth2Tokens | null> {
@@ -51,7 +51,7 @@ export class FileTokenStore implements TokenStore {
 
   static defaultPath(): string {
     // Explicit warning is logged by the provider when this fallback is used.
-    return join(homedir(), ".eliza", "twitter", "oauth2.tokens.json");
+    return join(homedir(), ".eliza", "x", "oauth2.tokens.json");
   }
 
   async load(): Promise<StoredOAuth2Tokens | null> {
@@ -97,7 +97,7 @@ export function chooseDefaultTokenStore(runtime: IAgentRuntime | undefined): Tok
   }
 
   logger.warn(
-    "Twitter OAuth token persistence: runtime cache API not available; falling back to local token file. " +
+    "X OAuth token persistence: runtime cache API not available; falling back to local token file. " +
       "This file contains sensitive tokens—protect it and rotate tokens if compromised."
   );
   return new FileTokenStore(FileTokenStore.defaultPath());

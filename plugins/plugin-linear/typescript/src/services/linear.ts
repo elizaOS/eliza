@@ -342,8 +342,7 @@ export class LinearService extends Service {
 
   // Project operations
   async getProjects(teamId?: string): Promise<Project[]> {
-    // Note: Linear SDK v51 may not support direct team filtering on projects
-    // Get all projects and filter manually if needed
+    // Linear SDK v51 requires manual team filtering on projects
     const query = this.client.projects({
       first: 100,
     });

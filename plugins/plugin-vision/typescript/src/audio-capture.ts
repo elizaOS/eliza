@@ -202,8 +202,7 @@ export class AudioCaptureService {
       };
 
       // Store in agent's context
-      // Note: createMemory requires runtime implementation specific to the database adapter
-      // For now, we'll just log it
+      // createMemory requires runtime-specific database adapter implementation
       logger.info("[AudioCapture] Audio transcription stored in context");
     } catch (error) {
       logger.error("[AudioCapture] Failed to create audio memory:", error);

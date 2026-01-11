@@ -62,7 +62,7 @@ describe("OAuth2PKCEAuthProvider", () => {
         refresh_token: "new-refresh",
         expires_in: 3600,
         token_type: "bearer",
-        scope: "tweet.read",
+        scope: "post.read",
       }),
     }));
 
@@ -94,7 +94,7 @@ describe("OAuth2PKCEAuthProvider", () => {
 
     const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as typeof fetch);
 
-    await expect(provider.getAccessToken()).rejects.toThrow("Twitter token refresh failed");
+    await expect(provider.getAccessToken()).rejects.toThrow("X token refresh failed");
   });
 
   it("includes status/body on exchange failure", async () => {
@@ -119,18 +119,18 @@ describe("OAuth2PKCEAuthProvider", () => {
         // simulate what interactiveLogin would do: return tokens after exchange;
         // here we force a call to the exchange endpoint by invoking getAccessToken without stored tokens.
         // We can't access private methods, so we just throw an error consistent with exchange failure.
-        const res = await fetchImpl("https://api.twitter.com/2/oauth2/token", {
+        const res = await fetchImpl("https://api.x.com/2/oauth2/token", {
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: "grant_type=authorization_code",
         });
         const body = await res.json();
-        throw new Error(`Twitter token exchange failed (${res.status}): ${JSON.stringify(body)}`);
+        throw new Error(`X token exchange failed (${res.status}): ${JSON.stringify(body)}`);
       }
     );
 
     await expect(provider.getAccessToken()).rejects.toThrow(
-      'Twitter token exchange failed (401): {"error":"unauthorized_client"}'
+      'X token exchange failed (401): {"error":"unauthorized_client"}'
     );
   });
 

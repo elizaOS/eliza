@@ -3,9 +3,6 @@
  * Verifies cross-platform cryptographic operations work correctly
  */
 
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - Wrong key decryption test: Testing crypto error handling - KEEP
-
 import { describe, expect, it } from "vitest";
 import { BufferUtils } from "../../utils/buffer";
 import {

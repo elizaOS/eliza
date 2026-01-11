@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - beforeAll Python availability check - KEEP (conditional test execution)
-
 /**
  * Cross-language interop tests for elizaOS
  *

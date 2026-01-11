@@ -35,9 +35,6 @@ import {
   type UUID,
   type WorldPayload,
 } from "@elizaos/core";
-// TODO: Try-catch review completed 2026-01-11. No try-catch blocks to remove.
-// NOTE: Consider adding try-catch around runtime.useModel in postGeneratedHandler retry loop
-// for explicit model error handling (currently errors would exit the retry loop).
 
 import { v4 } from "uuid";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
@@ -493,7 +490,7 @@ const reactionReceivedHandler = async ({
 };
 
 /**
- * Handles the generation of a post (like a Tweet) and creates a memory for it.
+ * Handles the generation of a post (like a Post) and creates a memory for it.
  *
  * @param {Object} params - The parameters for the function.
  * @param {IAgentRuntime} params.runtime - The agent runtime object.
@@ -533,7 +530,7 @@ const postGeneratedHandler = async ({
   });
 
   const message: Memory = {
-    id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
+    id: createUniqueUuid(runtime, `post-${Date.now()}`) as UUID,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
     roomId: roomId as UUID,
@@ -546,7 +543,7 @@ const postGeneratedHandler = async ({
 
   // generate thought of which providers to use using messageHandlerTemplate
 
-  // Compose state with relevant context for tweet generation
+  // Compose state with relevant context for post generation
   let state = await runtime.composeState(message, [
     "PROVIDERS",
     "CHARACTER",
@@ -554,20 +551,20 @@ const postGeneratedHandler = async ({
     "ENTITIES",
   ]);
 
-  // get twitterUserName
+  // get xUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  interface TwitterMetadata {
-    twitter?: {
+  interface XMetadata {
+    x?: {
       userName?: string;
     };
     userName?: string;
   }
   const entityMetadata = entity?.metadata;
-  const metadata = entityMetadata as TwitterMetadata | undefined;
-  const metadataTwitter = metadata?.twitter;
-  if (metadataTwitter?.userName || metadata?.userName) {
-    state.values.twitterUserName =
-      metadataTwitter?.userName || metadata?.userName || undefined;
+  const metadata = entityMetadata as XMetadata | undefined;
+  const metadataX = metadata?.x;
+  if (metadataX?.userName || metadata?.userName) {
+    state.values.xUserName =
+      metadataX?.userName || metadata?.userName || undefined;
   }
 
   const prompt = composePromptFromState({
@@ -636,7 +633,7 @@ const postGeneratedHandler = async ({
   const responseContentProviders = responseContent?.providers;
   state = await runtime.composeState(message, responseContentProviders);
 
-  // Generate prompt for tweet content
+  // Generate prompt for post content
   const postPrompt = composePromptFromState({
     state,
     template:
@@ -660,7 +657,7 @@ const postGeneratedHandler = async ({
   }
 
   /**
-   * Cleans up a tweet text by removing quotes and fixing newlines
+   * Cleans up a post text by removing quotes and fixing newlines
    */
   function cleanupPostText(text: string): string {
     // Remove quotes
@@ -672,7 +669,7 @@ const postGeneratedHandler = async ({
     return cleanedText;
   }
 
-  // Cleanup the tweet text
+  // Cleanup the post text
   const cleanedText = cleanupPostText(parsedXmlResponse.post ?? "");
 
   // Prepare media if included
@@ -690,7 +687,7 @@ const postGeneratedHandler = async ({
   // 		const fetchedMedia = await fetchMediaData(imagePromptMedia);
   // 		mediaData.push(...fetchedMedia);
   // 	} catch (error) {
-  // 		runtime.logger.error("Error fetching media for tweet:", error);
+  // 		runtime.logger.error("Error fetching media for post:", error);
   // 	}
   // }
 

@@ -5,12 +5,12 @@ import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
 import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
 import type { StoredOAuth2Tokens, TokenStore } from "./token-store";
 import { chooseDefaultTokenStore } from "./token-store";
-import type { TwitterAuthProvider } from "./types";
+import type { XAuthProvider } from "./types";
 
-const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
-const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
+const AUTHORIZE_URL = "https://x.com/i/oauth2/authorize";
+const TOKEN_URL = "https://api.x.com/2/oauth2/token";
 
-const DEFAULT_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"].join(" ");
+const DEFAULT_SCOPES = ["post.read", "post.write", "users.read", "offline.access"].join(" ");
 
 function nowMs(): number {
   return Date.now();
@@ -26,7 +26,7 @@ function formEncode(params: Record<string, string>): string {
     .join("&");
 }
 
-export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
+export class OAuth2PKCEAuthProvider implements XAuthProvider {
   readonly mode = "oauth" as const;
 
   private tokens: StoredOAuth2Tokens | null = null;
@@ -97,7 +97,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(`Twitter token exchange failed (${res.status}): ${JSON.stringify(json)}`);
+      throw new Error(`X token exchange failed (${res.status}): ${JSON.stringify(json)}`);
     }
 
     const access = json.access_token as string | undefined;
@@ -105,10 +105,10 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     const expiresIn = json.expires_in as number | undefined;
 
     if (!access || typeof access !== "string") {
-      throw new Error("Twitter token exchange returned no access_token");
+      throw new Error("X token exchange returned no access_token");
     }
     if (!expiresIn || typeof expiresIn !== "number") {
-      throw new Error("Twitter token exchange returned no expires_in");
+      throw new Error("X token exchange returned no expires_in");
     }
 
     return {
@@ -135,7 +135,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(`Twitter token refresh failed (${res.status}): ${JSON.stringify(json)}`);
+      throw new Error(`X token refresh failed (${res.status}): ${JSON.stringify(json)}`);
     }
 
     const access = json.access_token as string | undefined;
@@ -143,10 +143,10 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     const expiresIn = json.expires_in as number | undefined;
 
     if (!access || typeof access !== "string") {
-      throw new Error("Twitter token refresh returned no access_token");
+      throw new Error("X token refresh returned no access_token");
     }
     if (!expiresIn || typeof expiresIn !== "number") {
-      throw new Error("Twitter token refresh returned no expires_in");
+      throw new Error("X token refresh returned no expires_in");
     }
 
     return {
@@ -167,7 +167,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
       codeChallenge: challenge,
     });
 
-    logger.info("Twitter OAuth (PKCE) setup required.");
+    logger.info("X OAuth (PKCE) setup required.");
     logger.info(`Open this URL to authorize: ${authorizeUrl}`);
 
     let code: string | undefined;

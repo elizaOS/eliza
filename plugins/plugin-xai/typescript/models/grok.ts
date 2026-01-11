@@ -1,8 +1,8 @@
 /**
  * xAI (Grok) Model Integration
  *
- * Provides model handlers for xAI's Grok models, available with Twitter/X premium.
- * This enables AI-powered tweet generation, content analysis, and more.
+ * Provides model handlers for xAI's Grok models, available with X premium.
+ * This enables AI-powered post generation, content analysis, and more.
  */
 
 import {
@@ -115,9 +115,7 @@ async function generateText(
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   const messages: ChatMessage[] = [];
-
-  // Note: GenerateTextParams doesn't have a system field
-  // If system prompts are needed, they should be included in the prompt itself
+  // GenerateTextParams has no system field - include system prompts in prompt itself
   messages.push({ role: "user", content: params.prompt });
 
   const body: Record<string, unknown> = {

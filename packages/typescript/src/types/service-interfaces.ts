@@ -1679,7 +1679,7 @@ export interface MessageChannel {
 
 /**
  * Interface for platform messaging services (Discord, Slack, etc).
- * Note: Not to be confused with the internal IMessageService for message handling.
+ * Distinct from IMessageService which handles internal message processing.
  */
 export abstract class IMessagingService extends Service {
   static override readonly serviceType = ServiceType.MESSAGE;

@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - runMultiStepCoreTest: Provider/action execution with error logging - KEEP (fault-tolerant)
-
 import {
   type Content,
   type IAgentRuntime,

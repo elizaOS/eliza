@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - parseAndValidateCharacter: JSON.parse for external input - KEEP (input validation)
-
 import { z } from "zod";
 import type { Character } from "../types/agent";
 import { ChannelType, ContentType } from "../types/primitives";

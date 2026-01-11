@@ -364,7 +364,7 @@ export const choiceAction: Action = {
       {
         name: "{{name2}}",
         content: {
-          text: "Selected option: post for task: Confirm Twitter Post",
+          text: "Selected option: post for task: Confirm X Post",
           actions: ["CHOOSE_OPTION"],
         },
       },
@@ -379,7 +379,7 @@ export const choiceAction: Action = {
       {
         name: "{{name2}}",
         content: {
-          text: "Selected option: cancel for task: Confirm Twitter Post",
+          text: "Selected option: cancel for task: Confirm X Post",
           actions: ["CHOOSE_OPTION"],
         },
       },

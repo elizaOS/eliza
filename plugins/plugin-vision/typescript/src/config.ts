@@ -2,7 +2,7 @@ import { logger } from "@elizaos/core";
 import { z } from "zod";
 import type { VisionConfig, VisionMode } from "./types";
 
-// Default configuration for backward compatibility
+// Default configuration
 export const defaultVisionConfig: VisionConfig = {
   pixelChangeThreshold: 50,
   updateInterval: 100,
@@ -226,26 +226,6 @@ export class ConfigurationManager {
     }
   }
 
-  // Convert to legacy VisionConfig format for backward compatibility
-  toLegacyFormat(): VisionConfig {
-    return {
-      cameraName: this.config.cameraName,
-      pixelChangeThreshold: this.config.pixelChangeThreshold,
-      updateInterval: this.config.updateInterval,
-      enableObjectDetection: this.config.enableObjectDetection,
-      enablePoseDetection: this.config.enablePoseDetection,
-      tfUpdateInterval: this.config.tfUpdateInterval,
-      vlmUpdateInterval: this.config.vlmUpdateInterval,
-      tfChangeThreshold: this.config.tfChangeThreshold,
-      vlmChangeThreshold: this.config.vlmChangeThreshold,
-      visionMode: this.config.visionMode as VisionMode,
-      screenCaptureInterval: this.config.screenCaptureInterval,
-      tileSize: this.config.tileSize,
-      tileProcessingOrder: this.config.tileProcessingOrder,
-      ocrEnabled: this.config.ocrEnabled,
-      florence2Enabled: this.config.florence2Enabled,
-    };
-  }
 
   // Configuration presets
   static getPreset(name: string): Partial<VisionConfigInput> {

@@ -466,9 +466,7 @@ describe("Base Adapter Comprehensive Tests", () => {
         query_field_sub_name: "content",
         query_match_count: 10,
       });
-
-      // Note: This might return empty if the cache implementation
-      // doesn't match the expected behavior
+      // May return empty if cache implementation doesn't match expected behavior
       expect(cached).toBeDefined();
     });
   });

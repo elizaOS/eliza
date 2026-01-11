@@ -144,7 +144,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
-    // Note: Vector extension is already installed by adapter.init()
+    // Vector extension is already installed by adapter.init()
   });
 
   afterAll(async () => {

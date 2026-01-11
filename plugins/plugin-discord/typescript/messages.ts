@@ -145,7 +145,7 @@ export class MessageManager {
     const roomId = createUniqueUuid(this.runtime, channelId);
 
     // Determine channel type and server ID for ensureConnection
-    // Note: messageServerId is a Discord snowflake string, converted to UUID when needed
+    // messageServerId is a Discord snowflake string, converted to UUID when needed
     let type: ChannelType;
     let messageServerId: string | undefined;
 
@@ -197,10 +197,7 @@ export class MessageManager {
       }
 
       const { processedContent, attachments } = await this.processMessage(message);
-
-      // Note: Audio attachments are already processed in processMessage via
-      // attachmentManager.processAttachments(message.attachments), so no need
-      // to process them again here.
+      // Audio attachments already processed in processMessage via attachmentManager
 
       if (!processedContent && !attachments?.length) {
         // Only process messages that are not empty

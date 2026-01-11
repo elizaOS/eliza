@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - beforeAll WASM module loading - KEEP (conditional test execution)
-
 /**
  * @fileoverview Interop Equivalence Tests
  *
@@ -65,7 +62,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
         expect(wasm.validateUUID(tsUuid)).toBe(true);
         expect(wasm.validateUUID(rustUuid)).toBe(true);
 
-        // Note: UUIDs may differ if algorithms differ, but both should be deterministic
+        // UUIDs may differ if algorithms differ, but both should be deterministic
         const tsUuid2 = stringToUuid(input);
         const rustUuid2 = wasm.stringToUuid(input);
 

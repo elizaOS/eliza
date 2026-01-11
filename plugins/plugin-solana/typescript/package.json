@@ -44,7 +44,7 @@
     "@solana/web3.js": "^1.98.0",
     "bignumber.js": "9.3.0",
     "bs58": "6.0.0",
-    "tweetnacl": "^1.0.3"
+    "postnacl": "^1.0.3"
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",

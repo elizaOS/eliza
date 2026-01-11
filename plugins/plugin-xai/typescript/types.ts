@@ -3,7 +3,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type { Tweet } from "./client";
+import type { Post } from "./client";
 
 export type XServiceStatus = "idle" | "active" | "error";
 
@@ -15,116 +15,123 @@ export interface XClientConfig {
 }
 
 /**
- * Twitter-specific event types
+ * X-specific event types
  */
-export enum TwitterEventTypes {
-  MENTION_RECEIVED = "TWITTER_MENTION_RECEIVED",
-  THREAD_CREATED = "TWITTER_THREAD_CREATED",
-  THREAD_UPDATED = "TWITTER_THREAD_UPDATED",
-  LIKE_RECEIVED = "TWITTER_LIKE_RECEIVED",
-  RETWEET_RECEIVED = "TWITTER_RETWEET_RECEIVED",
-  QUOTE_RECEIVED = "TWITTER_QUOTE_RECEIVED",
+export enum XEventTypes {
+  MENTION_RECEIVED = "X_MENTION_RECEIVED",
+  THREAD_CREATED = "X_THREAD_CREATED",
+  THREAD_UPDATED = "X_THREAD_UPDATED",
+  LIKE_RECEIVED = "X_LIKE_RECEIVED",
+  REPOST_RECEIVED = "X_REPOST_RECEIVED",
+  QUOTE_RECEIVED = "X_QUOTE_RECEIVED",
 }
 
+
 /**
- * Twitter interaction payload
+ * X interaction payload
  */
-export interface TwitterInteractionPayload {
+export interface XInteractionPayload {
   id: string;
-  type: "like" | "retweet" | "quote";
+  type: "like" | "repost" | "quote";
   userId: string;
   username: string;
   name: string;
-  targetTweetId?: string;
-  targetTweet: Tweet;
-  quoteTweet?: Tweet;
-  retweetId?: string;
+  targetPostId?: string;
+  targetPost: Post;
+  quotePost?: Post;
+  repostId?: string;
 }
 
+
 /**
- * Twitter interaction memory
+ * X interaction memory
  */
-export interface TwitterInteractionMemory extends Memory {
+export interface XInteractionMemory extends Memory {
   content: {
     type: string;
-    source: "twitter";
+    source: "x";
   };
 }
 
+
 /**
- * Twitter memory
+ * X memory
  */
-export interface TwitterMemory extends Memory {
+export interface XMemory extends Memory {
   content: {
     text: string;
-    source: "twitter";
+    source: "x";
   };
 }
 
+
 /**
- * Twitter like received payload
+ * X like received payload
  */
-export interface TwitterLikeReceivedPayload {
+export interface XLikeReceivedPayload {
   runtime: IAgentRuntime;
-  tweet: Tweet;
+  post: Post;
   user: {
     id: string;
     username: string;
     name: string;
   };
-  source: "twitter";
+  source: "x";
 }
 
+
 /**
- * Twitter retweet received payload
+ * X repost received payload
  */
-export interface TwitterRetweetReceivedPayload {
+export interface XRepostReceivedPayload {
   runtime: IAgentRuntime;
-  tweet: Tweet;
-  retweetId: string;
+  post: Post;
+  repostId: string;
   user: {
     id: string;
     username: string;
     name: string;
   };
-  source: "twitter";
+  source: "x";
 }
 
+
 /**
- * Twitter quote received payload
+ * X quote received payload
  */
-export interface TwitterQuoteReceivedPayload {
+export interface XQuoteReceivedPayload {
   runtime: IAgentRuntime;
-  quotedTweet: Tweet;
-  quoteTweet: Tweet;
+  quotedPost: Post;
+  quotePost: Post;
   user: {
     id: string;
     username: string;
     name: string;
   };
-  message: TwitterMemory;
+  message: XMemory;
   callback: () => Promise<Memory[]>;
   reaction: {
     type: "quote";
     entityId: string;
   };
-  source: "twitter";
+  source: "x";
 }
 
+
 /**
- * Action response from Twitter actions
+ * Action response from X actions
  */
 export interface ActionResponse {
   text: string;
   actions: string[];
   like?: boolean;
-  retweet?: boolean;
+  repost?: boolean;
   quote?: boolean;
   reply?: boolean;
 }
 
 /**
- * Media data for tweets
+ * Media data for posts
  */
 export interface MediaData {
   data: Buffer | Uint8Array;
@@ -133,48 +140,46 @@ export interface MediaData {
 }
 
 import type { ClientBase } from "./base";
-import type { TwitterDiscoveryClient } from "./discovery";
-import type { TwitterInteractionClient } from "./interactions";
-import type { TwitterPostClient } from "./post";
-import type { TwitterTimelineClient } from "./timeline";
+import type { XDiscoveryClient } from "./discovery";
+import type { XInteractionClient } from "./interactions";
+import type { XPostClient } from "./post";
+import type { XTimelineClient } from "./timeline";
 
 /**
  * X Client interface
  */
 export interface IXClient {
   client: ClientBase;
-  post?: TwitterPostClient;
-  interaction?: TwitterInteractionClient;
-  timeline?: TwitterTimelineClient;
-  discovery?: TwitterDiscoveryClient;
+  post?: XPostClient;
+  interaction?: XInteractionClient;
+  timeline?: XTimelineClient;
+  discovery?: XDiscoveryClient;
 }
 
-// Re-export Tweet type for convenience
-export type { Tweet } from "./client";
+// Re-export Post type for convenience
+export type { Post } from "./client";
 
-// Re-export TwitterConfig from environment
-export type { TwitterConfig } from "./environment";
+// Re-export XConfig from environment
+export type { XConfig } from "./environment";
 
-// ITwitterClient is not defined - using IXClient as alias
-export type ITwitterClient = IXClient;
 
 /**
- * Twitter API response structure - can have nested data structures
- * This covers various Twitter API v2 response shapes
+ * X API response structure - can have nested data structures
+ * This covers various X API v2 response shapes
  */
-export interface TweetResponse {
+export interface PostResponse {
   id?: string;
   rest_id?: string;
-  data?: TweetResponseData;
+  data?: PostResponseData;
 }
 
-export interface TweetResponseData {
+export interface PostResponseData {
   id?: string;
   data?: {
     id?: string;
   };
-  create_tweet?: {
-    tweet_results?: {
+  create_post?: {
+    post_results?: {
       result?: {
         rest_id?: string;
       };
@@ -183,10 +188,10 @@ export interface TweetResponseData {
 }
 
 /**
- * A type-safe accessor for extracting tweet IDs from various Twitter API response shapes.
- * The Twitter API can return data in multiple nested formats.
+ * A type-safe accessor for extracting post IDs from various X API response shapes.
+ * The X API can return data in multiple nested formats.
  */
-export interface TwitterApiResultShape {
+export interface XApiResultShape {
   id?: string;
   rest_id?: string;
   data?: {
@@ -194,8 +199,8 @@ export interface TwitterApiResultShape {
     data?: {
       id?: string;
     };
-    create_tweet?: {
-      tweet_results?: {
+    create_post?: {
+      post_results?: {
         result?: {
           rest_id?: string;
         };
@@ -213,10 +218,11 @@ export interface ResponseLike {
   bodyUsed?: boolean;
 }
 
+
 /**
- * Utility type guard to check if value conforms to TwitterApiResultShape
+ * Utility type guard to check if value conforms to XApiResultShape
  */
-export function isTwitterApiResult(value: unknown): value is TwitterApiResultShape {
+export function isXApiResult(value: unknown): value is XApiResultShape {
   return value !== null && typeof value === "object";
 }
 
@@ -227,11 +233,12 @@ export function isResponseLike(value: unknown): value is ResponseLike {
   return value !== null && typeof value === "object" && "json" in value;
 }
 
+
 /**
- * Extract ID from various Twitter API response shapes
+ * Extract ID from various X API response shapes
  */
 export function extractIdFromResult(result: unknown): string | undefined {
-  if (!isTwitterApiResult(result)) return undefined;
+  if (!isXApiResult(result)) return undefined;
 
   // Direct ID
   if (result.id) return result.id;
@@ -245,24 +252,24 @@ export function extractIdFromResult(result: unknown): string | undefined {
   // Double nested
   if (result.data?.data?.id) return result.data.data.id;
 
-  // Tweet creation response shape
-  if (result.data?.create_tweet?.tweet_results?.result?.rest_id) {
-    return result.data.create_tweet.tweet_results.result.rest_id;
+  // Post creation response shape
+  if (result.data?.create_post?.post_results?.result?.rest_id) {
+    return result.data.create_post.post_results.result.rest_id;
   }
 
   return undefined;
 }
 
 /**
- * Extract rest_id from Twitter API response shapes
+ * Extract rest_id from X API response shapes
  */
 export function extractRestId(result: unknown): string | undefined {
-  if (!isTwitterApiResult(result)) return undefined;
+  if (!isXApiResult(result)) return undefined;
 
   if (result.rest_id) return result.rest_id;
 
-  if (result.data?.create_tweet?.tweet_results?.result?.rest_id) {
-    return result.data.create_tweet.tweet_results.result.rest_id;
+  if (result.data?.create_post?.post_results?.result?.rest_id) {
+    return result.data.create_post.post_results.result.rest_id;
   }
 
   return undefined;

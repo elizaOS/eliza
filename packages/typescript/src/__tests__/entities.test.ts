@@ -631,8 +631,7 @@ describe("entities", () => {
       });
 
       const parsedData = JSON.parse(result[0].data);
-      // Note: Due to how Object.assign works in the implementation,
-      // the second component's hobbies array overwrites the first one
+      // Object.assign causes second component's hobbies array to overwrite first
       expect(parsedData.hobbies).toEqual(["gaming", "music"]);
     });
   });

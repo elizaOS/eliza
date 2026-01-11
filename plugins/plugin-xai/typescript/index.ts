@@ -3,7 +3,7 @@
  *
  * Unified xAI integration for elizaOS agents:
  * - xAI Grok models for text generation and embeddings
- * - X (Twitter) API v2 for social interactions
+ * - X (X) API v2 for social interactions
  */
 
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
@@ -24,7 +24,7 @@ export { getSetting } from "./utils/settings";
 
 export const XAIPlugin: Plugin = {
   name: "xai",
-  description: "xAI Grok models and X (Twitter) API integration",
+  description: "xAI Grok models and X (X) API integration",
 
   actions: [postAction],
   services: [XService],

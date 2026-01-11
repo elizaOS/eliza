@@ -194,9 +194,8 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
       randomValue: integer("random_value").default(sql`floor(random() * 100)`),
       timestampWithOffset:
         timestamp("timestamp_with_offset").default(sql`now() + interval '1 hour'`),
-      // Note: Expressions like to_tsvector('english', name) would need
-      // generatedAlwaysAs() which isn't fully supported in all contexts
-      // So we use only valid DEFAULT expressions that don't reference columns
+      // Using only valid DEFAULT expressions that don't reference columns
+      // (generatedAlwaysAs for expressions like to_tsvector isn't fully supported)
     });
 
     const schemaV2 = { test_complex: testTableV2 };

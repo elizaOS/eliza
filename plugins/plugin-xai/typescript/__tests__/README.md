@@ -1,25 +1,25 @@
-# Twitter Plugin Tests
+# X Plugin Tests
 
-This directory contains comprehensive unit tests and end-to-end tests for the refactored Twitter plugin.
+This directory contains comprehensive unit tests and end-to-end tests for the refactored X plugin.
 
 ## Test Structure
 
 ```
 __tests__/
 ├── unit/
-│   ├── MessageService.test.ts    # Unit tests for TwitterMessageService
-│   ├── PostService.test.ts       # Unit tests for TwitterPostService
-│   ├── auth.test.ts             # Unit tests for TwitterAuth
+│   ├── MessageService.test.ts    # Unit tests for XMessageService
+│   ├── PostService.test.ts       # Unit tests for XPostService
+│   ├── auth.test.ts             # Unit tests for XAuth
 │   └── environment.test.ts      # Unit tests for config validation
 └── e2e/
-    └── twitter-integration.test.ts # End-to-end tests with real API
+    └── x-integration.test.ts # End-to-end tests with real API
 ```
 
 ## Running Tests
 
 ### Unit Tests
 
-Unit tests can be run without any Twitter API credentials:
+Unit tests can be run without any X API credentials:
 
 ```bash
 # Run all unit tests
@@ -34,12 +34,12 @@ npm test -- --coverage
 
 ### End-to-End Tests
 
-E2E tests require real Twitter Developer API credentials and currently exercise **TWITTER_AUTH_MODE=env** (OAuth 1.0a keys/tokens).
+E2E tests require real X Developer API credentials and currently exercise **TWITTER_AUTH_MODE=env** (OAuth 1.0a keys/tokens).
 The plugin also supports **TWITTER_AUTH_MODE=oauth** (OAuth 2.0 PKCE “login + approve”), but that flow is interactive and is not covered by these E2E tests.
 
 #### Prerequisites
 
-1. **Twitter Developer Account**: You need a Twitter Developer account with an app created
+1. **X Developer Account**: You need a X Developer account with an app created
 2. **API Credentials (env mode)**: You need all four credentials:
    - API Key (Consumer Key)
    - API Secret Key (Consumer Secret)
@@ -51,7 +51,7 @@ The plugin also supports **TWITTER_AUTH_MODE=oauth** (OAuth 2.0 PKCE “login + 
 1. Create a `.env.test` file in the plugin root directory:
 
 ```env
-# Twitter API v2 Credentials
+# X API v2 Credentials
 TWITTER_AUTH_MODE=env
 TWITTER_API_KEY=your_api_key_here
 TWITTER_API_SECRET_KEY=your_api_secret_key_here
@@ -77,7 +77,7 @@ npm test e2e -- --reporter=verbose
 
 1. **MessageService**
    - Fetching messages/mentions
-   - Sending messages (tweets and DMs)
+   - Sending messages (posts and DMs)
    - Deleting messages
    - Getting specific messages
    - Marking messages as read
@@ -117,11 +117,11 @@ npm test e2e -- --reporter=verbose
 
 3. **Message Operations**
    - Fetching mentions
-   - Sending tweets
+   - Sending posts
    - Retrieving specific messages
 
 4. **Search and Timeline**
-   - Searching tweets
+   - Searching posts
    - Fetching home timeline
 
 5. **Error Handling**
@@ -132,10 +132,10 @@ npm test e2e -- --reporter=verbose
 
 ### Test Cleanup
 
-E2E tests automatically clean up created tweets after all tests complete. However, if tests are interrupted:
+E2E tests automatically clean up created posts after all tests complete. However, if tests are interrupted:
 
-1. Check your Twitter account for test tweets (they contain "E2E Test" in the text)
-2. Manually delete any remaining test tweets
+1. Check your X account for test posts (they contain "E2E Test" in the text)
+2. Manually delete any remaining test posts
 
 ### Rate Limiting
 
@@ -145,15 +145,15 @@ E2E tests automatically clean up created tweets after all tests complete. Howeve
 
 ### Test Data
 
-- All test tweets are prefixed with "E2E Test" and include timestamps
-- Test tweets mention they are automated tests and will be deleted
-- The cleanup process tracks all created tweet IDs
+- All test posts are prefixed with "E2E Test" and include timestamps
+- Test posts mention they are automated tests and will be deleted
+- The cleanup process tracks all created post IDs
 
 ### Mocking
 
 Unit tests use Vitest's mocking capabilities to:
 
-- Mock the Twitter API client
+- Mock the X API client
 - Mock core dependencies
 - Isolate service logic
 

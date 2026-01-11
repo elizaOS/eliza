@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-xai"
 version = "1.0.0"
-description = "elizaOS xAI Plugin - Grok models and X (Twitter) API integration"
+description = "elizaOS xAI Plugin - Grok models and X (X) API integration"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "elizaOS Team", email = "team@elizaos.ai" }
 ]
-keywords = ["ai", "xai", "grok", "x", "twitter", "elizaos", "llm"]
+keywords = ["ai", "xai", "grok", "x", "x", "elizaos", "llm"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

@@ -179,7 +179,7 @@ EOF
 # Create FULLY DYNAMIC seed data script - works with ANY version
 # Introspects the database schema and builds INSERT statements dynamically
 cat > "$TEST_PROJECT_DIR/seed-data.ts" << 'EOF'
-import postgres from 'postgres';
+import postgres, { type Sql } from 'postgres';
 
 const POSTGRES_URL = process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5433/migration_test';
 
@@ -193,15 +193,28 @@ interface TableSchema {
   exists: boolean;
 }
 
+/** Row type from information_schema.columns query */
+interface ColumnSchemaRow {
+  column_name: string;
+  data_type: string;
+  udt_name: string;
+}
+
+/** Generic database value types supported by postgres driver */
+type DbValue = string | number | boolean | null | object | string[];
+
+/** Record with database-compatible values */
+type DbRecord = Record<string, DbValue>;
+
 // Get all columns and their types for a table
-async function getTableSchema(client: any, tableName: string): Promise<TableSchema> {
-  const result = await client`
+async function getTableSchema(client: Sql, tableName: string): Promise<TableSchema> {
+  const result = await client<ColumnSchemaRow[]>`
     SELECT column_name, data_type, udt_name FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = ${tableName}
     ORDER BY ordinal_position
   `;
   return {
-    columns: result.map((r: any) => ({
+    columns: result.map((r: ColumnSchemaRow) => ({
       name: r.column_name,
       type: r.data_type === 'ARRAY' ? r.udt_name : r.data_type  // e.g., '_text' for text[]
     })),
@@ -227,11 +240,11 @@ function isArrayColumn(col: ColumnInfo): boolean {
 function buildInsert(
   tableName: string,
   schema: TableSchema,
-  data: Record<string, any>
-): { sql: string; values: any[] } | null {
+  data: DbRecord
+): { sql: string; values: DbValue[] } | null {
   // Filter data to only include columns that exist in the schema
   const availableCols: string[] = [];
-  const availableVals: any[] = [];
+  const availableVals: DbValue[] = [];
 
   for (const [key, value] of Object.entries(data)) {
     // Try to find the column (could be camelCase or snake_case)
@@ -295,7 +308,7 @@ async function seedData() {
     // ============================================
     // HELPER: Insert with schema detection
     // ============================================
-    async function smartInsert(tableName: string, dataRows: Record<string, any>[]) {
+    async function smartInsert(tableName: string, dataRows: DbRecord[]) {
       if (!schemas[tableName]?.exists) {
         console.log(`   ⊘ ${tableName}: table not found, skipping`);
         return 0;
@@ -304,7 +317,7 @@ async function seedData() {
       let count = 0;
       for (const data of dataRows) {
         // Map common column name variants with type info
-        const mappedData: Record<string, { value: any; colInfo: ColumnInfo }> = {};
+        const mappedData: Record<string, { value: DbValue; colInfo: ColumnInfo }> = {};
         for (const [key, value] of Object.entries(data)) {
           // Try camelCase, snake_case, and exact
           const snakeCase = key.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -341,8 +354,9 @@ async function seedData() {
         try {
           await client.unsafe(`INSERT INTO "${tableName}" (${colNames}) VALUES (${placeholders})`, values);
           count++;
-        } catch (err: any) {
-          console.log(`   ⚠ ${tableName} insert failed: ${err.message?.slice(0, 60)}`);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.log(`   ⚠ ${tableName} insert failed: ${message.slice(0, 60)}`);
         }
       }
       stats[tableName] = count;

@@ -1,8 +1,4 @@
 import { logger } from "./logger";
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - tryInstallPlugin: Bun availability check - KEEP (external dependency check)
-// - tryInstallPlugin: Installation process errors - KEEP (optional recovery mechanism)
-// - loadAndPreparePlugin: Module import with auto-install retry - KEEP (explicit retry logic)
 
 import type { Plugin } from "./types";
 import { detectEnvironment } from "./utils/environment";
@@ -550,7 +546,7 @@ async function resolvePluginsImpl(
  * @param isTestMode - Whether to include test dependencies
  * @returns Ordered array of resolved plugins
  *
- * Note: In browser environments, string plugin names are not supported.
+ * In browser environments, string plugin names are not supported.
  * Only pre-resolved Plugin objects can be used.
  */
 export async function resolvePlugins(

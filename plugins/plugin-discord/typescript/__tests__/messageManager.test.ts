@@ -144,9 +144,8 @@ describe("Discord MessageManager", () => {
   });
 
   it("should ignore messages from restricted channels", async () => {
-    // Note: Channel filtering is now handled in setupEventListeners, not in handleMessage
-    // This test verifies that handleMessage processes messages regardless of channel restrictions
-    // (restrictions are enforced at the event listener level)
+    // Channel filtering is handled in setupEventListeners, not handleMessage.
+    // Restrictions are enforced at the event listener level.
     mockMessage.channel.id = "undefined-channel-id";
     await messageManager.handleMessage(mockMessage);
     // In the current implementation, handleMessage doesn't filter by channel

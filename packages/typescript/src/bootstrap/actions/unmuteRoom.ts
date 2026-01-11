@@ -1,6 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - handler: Runtime API calls - KEEP (external runtime API)
-
 import {
   type Action,
   type ActionExample,

@@ -1,7 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - handleMessage: try-finally for timeout cleanup - KEEP (resource cleanup)
-// - clearChannel: Individual deleteMemory errors - KEEP (fault-tolerant batch)
-
 import { v4 } from "uuid";
 import { createUniqueUuid } from "../entities";
 import { logger } from "../logger";

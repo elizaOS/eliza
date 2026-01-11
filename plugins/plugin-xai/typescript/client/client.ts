@@ -1,11 +1,11 @@
 import type {
-  TTweetv2Expansion,
-  TTweetv2MediaField,
-  TTweetv2PlaceField,
-  TTweetv2PollField,
-  TTweetv2TweetField,
-  TTweetv2UserField,
-} from "twitter-api-v2";
+  TPostv2Expansion,
+  TPostv2MediaField,
+  TPostv2PlaceField,
+  TPostv2PollField,
+  TPostv2PostField,
+  TPostv2UserField,
+} from "x-api-v2";
 import type { FetchTransformOptions, RequestApiResult } from "./api-types";
 import { XAuth } from "./auth";
 import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
@@ -23,38 +23,38 @@ import {
   getFollowers,
   getFollowing,
 } from "./relationships";
-import { SearchMode, searchProfiles, searchQuotedTweets, searchTweets } from "./search";
+import { SearchMode, searchProfiles, searchQuotedPosts, searchPosts } from "./search";
 import {
-  createCreateLongTweetRequest,
-  createCreateNoteTweetRequest,
-  createCreateTweetRequest,
-  createCreateTweetRequestV2,
-  createQuoteTweetRequest,
+  createCreateLongPostRequest,
+  createCreateNotePostRequest,
+  createCreatePostRequest,
+  createCreatePostRequestV2,
+  createQuotePostRequest,
   defaultOptions,
-  deleteTweet,
-  fetchListTweets,
-  getAllRetweeters,
-  getLatestTweet,
-  getTweet,
-  getTweets,
-  getTweetsAndReplies,
-  getTweetsAndRepliesByUserId,
-  getTweetsByUserId,
-  getTweetsV2,
-  getTweetsWhere,
-  getTweetV2,
-  getTweetWhere,
-  likeTweet,
+  deletePost,
+  fetchListPosts,
+  getAllReposters,
+  getLatestPost,
+  getPost,
+  getPosts,
+  getPostsAndReplies,
+  getPostsAndRepliesByUserId,
+  getPostsByUserId,
+  getPostsV2,
+  getPostsWhere,
+  getPostV2,
+  getPostWhere,
+  likePost,
   type PollData,
-  parseTweetV2ToV1,
-  type Retweeter,
-  retweet,
-  type Tweet,
-  type TweetQuery,
-  unlikeTweet,
-  unretweet,
-} from "./tweets";
-import type { QueryProfilesResponse, QueryTweetsResponse } from "./types";
+  parsePostV2ToV1,
+  type Reposter,
+  repost,
+  type Post,
+  type PostQuery,
+  unlikePost,
+  unrepost,
+} from "./posts";
+import type { QueryProfilesResponse, QueryPostsResponse } from "./types";
 
 const _xUrl = "https://x.com";
 
@@ -136,20 +136,20 @@ export class Client {
   /**
    * Fetches posts from X.
    * @param query The search query. Any X-compatible query format can be used.
-   * @param maxTweets The maximum number of posts to return.
+   * @param maxPosts The maximum number of posts to return.
    * @param includeReplies Whether or not replies should be included in the response.
    * @param searchMode The category filter to apply to the search. Defaults to `Top`.
    * @returns An {@link AsyncGenerator} of posts matching the provided filters.
    */
-  public searchTweets(
+  public searchPosts(
     query: string,
-    maxTweets: number,
+    maxPosts: number,
     searchMode: SearchMode = SearchMode.Top
-  ): AsyncGenerator<Tweet, void> {
+  ): AsyncGenerator<Post, void> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return searchTweets(query, maxTweets, searchMode, this.auth);
+    return searchPosts(query, maxPosts, searchMode, this.auth);
   }
 
   /**
@@ -168,31 +168,31 @@ export class Client {
   /**
    * Fetches posts from X.
    * @param query The search query. Any X-compatible query format can be used.
-   * @param maxTweets The maximum number of posts to return.
+   * @param maxPosts The maximum number of posts to return.
    * @param includeReplies Whether or not replies should be included in the response.
    * @param searchMode The category filter to apply to the search. Defaults to `Top`.
    * @param cursor The search cursor, which can be passed into further requests for more results.
    * @returns A page of results, containing a cursor that can be used in further requests.
    */
-  public async fetchSearchTweets(
+  public async fetchSearchPosts(
     query: string,
-    maxTweets: number,
+    maxPosts: number,
     searchMode: SearchMode,
     _cursor?: string
-  ): Promise<QueryTweetsResponse> {
+  ): Promise<QueryPostsResponse> {
     // Use the generator and collect results
-    const tweets: Tweet[] = [];
+    const posts: Post[] = [];
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    const generator = searchTweets(query, maxTweets, searchMode, this.auth);
+    const generator = searchPosts(query, maxPosts, searchMode, this.auth);
 
-    for await (const tweet of generator) {
-      tweets.push(tweet);
+    for await (const post of generator) {
+      posts.push(post);
     }
 
     return {
-      tweets,
+      posts,
       // v2 API doesn't provide cursor-based pagination for search
       next: undefined,
     };
@@ -229,21 +229,21 @@ export class Client {
   }
 
   /**
-   * Fetches list tweets from Twitter.
+   * Fetches list posts from X.
    * @param listId The list id
-   * @param maxTweets The maximum number of tweets to return.
+   * @param maxPosts The maximum number of posts to return.
    * @param cursor The search cursor, which can be passed into further requests for more results.
    * @returns A page of results, containing a cursor that can be used in further requests.
    */
-  public fetchListTweets(
+  public fetchListPosts(
     listId: string,
-    maxTweets: number,
+    maxPosts: number,
     cursor?: string
-  ): Promise<QueryTweetsResponse> {
+  ): Promise<QueryPostsResponse> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return fetchListTweets(listId, maxTweets, cursor, this.auth);
+    return fetchListPosts(listId, maxPosts, cursor, this.auth);
   }
 
   /**
@@ -312,10 +312,10 @@ export class Client {
    * Fetches the home timeline for the current user using X API v2.
    * X API v2 returns a unified feed (no separate "For You" vs "Following").
    * @param count The number of posts to fetch.
-   * @param seenTweetIds An array of post IDs that have already been seen (not used in v2).
+   * @param seenPostIds An array of post IDs that have already been seen (not used in v2).
    * @returns A promise that resolves to an array of posts.
    */
-  public async fetchHomeTimeline(count: number, _seenTweetIds: string[]): Promise<Tweet[]> {
+  public async fetchHomeTimeline(count: number, _seenPostIds: string[]): Promise<Post[]> {
     if (!this.auth) {
       throw new Error("Not authenticated");
     }
@@ -325,12 +325,12 @@ export class Client {
     try {
       const timeline = await client.v2.homeTimeline({
         max_results: Math.min(count, 100),
-        "tweet.fields": [
+        "post.fields": [
           "id",
           "text",
           "created_at",
           "author_id",
-          "referenced_tweets",
+          "referenced_posts",
           "entities",
           "public_metrics",
           "attachments",
@@ -338,16 +338,16 @@ export class Client {
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
-        expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
+        expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
       });
 
-      const tweets: Tweet[] = [];
-      for await (const tweet of timeline) {
-        tweets.push(parseTweetV2ToV1(tweet, timeline.includes));
-        if (tweets.length >= count) break;
+      const posts: Post[] = [];
+      for await (const post of timeline) {
+        posts.push(parsePostV2ToV1(post, timeline.includes));
+        if (posts.length >= count) break;
       }
 
-      return tweets;
+      return posts;
     } catch (error) {
       console.error("Failed to fetch home timeline:", error);
       throw error;
@@ -358,20 +358,20 @@ export class Client {
    * Fetches the home timeline for the current user (same as fetchHomeTimeline in v2).
    * X API v2 doesn't provide separate "Following" timeline endpoint.
    * @param count The number of posts to fetch.
-   * @param seenTweetIds An array of post IDs that have already been seen (not used in v2).
+   * @param seenPostIds An array of post IDs that have already been seen (not used in v2).
    * @returns A promise that resolves to an array of posts.
    */
-  public async fetchFollowingTimeline(count: number, seenTweetIds: string[]): Promise<Tweet[]> {
+  public async fetchFollowingTimeline(count: number, seenPostIds: string[]): Promise<Post[]> {
     // In v2 API, there's no separate following timeline endpoint
     // Use the same home timeline endpoint
-    return this.fetchHomeTimeline(count, seenTweetIds);
+    return this.fetchHomeTimeline(count, seenPostIds);
   }
 
-  async getUserTweets(
+  async getUserPosts(
     userId: string,
-    maxTweets = 200,
+    maxPosts = 200,
     cursor?: string
-  ): Promise<{ tweets: Tweet[]; next?: string }> {
+  ): Promise<{ posts: Post[]; next?: string }> {
     if (!this.auth) {
       throw new Error("Not authenticated");
     }
@@ -380,13 +380,13 @@ export class Client {
 
     try {
       const response = await client.v2.userTimeline(userId, {
-        max_results: Math.min(maxTweets, 100),
-        "tweet.fields": [
+        max_results: Math.min(maxPosts, 100),
+        "post.fields": [
           "id",
           "text",
           "created_at",
           "author_id",
-          "referenced_tweets",
+          "referenced_posts",
           "entities",
           "public_metrics",
           "attachments",
@@ -394,37 +394,37 @@ export class Client {
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
-        expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
+        expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
         pagination_token: cursor,
       });
 
-      const tweets: Tweet[] = [];
-      for await (const tweet of response) {
-        tweets.push(parseTweetV2ToV1(tweet, response.includes));
-        if (tweets.length >= maxTweets) break;
+      const posts: Post[] = [];
+      for await (const post of response) {
+        posts.push(parsePostV2ToV1(post, response.includes));
+        if (posts.length >= maxPosts) break;
       }
 
       return {
-        tweets,
+        posts,
         next: response.meta?.next_token,
       };
     } catch (error) {
-      console.error("Failed to fetch user tweets:", error);
+      console.error("Failed to fetch user posts:", error);
       throw error;
     }
   }
 
-  async *getUserTweetsIterator(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
+  async *getUserPostsIterator(userId: string, maxPosts = 200): AsyncGenerator<Post, void> {
     let cursor: string | undefined;
-    let retrievedTweets = 0;
+    let retrievedPosts = 0;
 
-    while (retrievedTweets < maxTweets) {
-      const response = await this.getUserTweets(userId, maxTweets - retrievedTweets, cursor);
+    while (retrievedPosts < maxPosts) {
+      const response = await this.getUserPosts(userId, maxPosts - retrievedPosts, cursor);
 
-      for (const tweet of response.tweets) {
-        yield tweet;
-        retrievedTweets++;
-        if (retrievedTweets >= maxTweets) {
+      for (const post of response.posts) {
+        yield post;
+        retrievedPosts++;
+        if (retrievedPosts >= maxPosts) {
           break;
         }
       }
@@ -450,40 +450,40 @@ export class Client {
   /**
    * Fetches posts from an X user.
    * @param user The user whose posts should be returned.
-   * @param maxTweets The maximum number of posts to return. Defaults to `200`.
+   * @param maxPosts The maximum number of posts to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of posts from the provided user.
    */
-  public getTweets(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
+  public getPosts(user: string, maxPosts = 200): AsyncGenerator<Post> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return getTweets(user, maxTweets, this.auth);
+    return getPosts(user, maxPosts, this.auth);
   }
 
   /**
    * Fetches posts from an X user using their ID.
    * @param userId The user whose posts should be returned.
-   * @param maxTweets The maximum number of posts to return. Defaults to `200`.
+   * @param maxPosts The maximum number of posts to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of posts from the provided user.
    */
-  public getTweetsByUserId(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
+  public getPostsByUserId(userId: string, maxPosts = 200): AsyncGenerator<Post, void> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return getTweetsByUserId(userId, maxTweets, this.auth);
+    return getPostsByUserId(userId, maxPosts, this.auth);
   }
 
   /**
    * Send a post
    * @param text The text of the post
-   * @param tweetId The id of the post to reply to
+   * @param postId The id of the post to reply to
    * @param mediaData Optional media data
    * @returns
    */
 
-  async sendTweet(
+  async sendPost(
     text: string,
-    replyToTweetId?: string,
+    replyToPostId?: string,
     mediaData?: { data: Buffer; mediaType: string }[],
     hideLinkPreview?: boolean
   ) {
@@ -496,18 +496,18 @@ export class Client {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await createCreateTweetRequest(
+    return await createCreatePostRequest(
       text,
       this.auth,
-      replyToTweetId,
+      replyToPostId,
       mediaData,
       hideLinkPreview
     );
   }
 
-  async sendNoteTweet(
+  async sendNotePost(
     text: string,
-    replyToTweetId?: string,
+    replyToPostId?: string,
     mediaData?: { data: Buffer; mediaType: string }[]
   ) {
     if (!text || text.trim().length === 0) {
@@ -519,38 +519,38 @@ export class Client {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await createCreateNoteTweetRequest(text, this.auth, replyToTweetId, mediaData);
+    return await createCreateNotePostRequest(text, this.auth, replyToPostId, mediaData);
   }
 
   /**
    * Send a long post (Note Post)
    * @param text The text of the post
-   * @param tweetId The id of the post to reply to
+   * @param postId The id of the post to reply to
    * @param mediaData Optional media data
    * @returns
    */
-  async sendLongTweet(
+  async sendLongPost(
     text: string,
-    replyToTweetId?: string,
+    replyToPostId?: string,
     mediaData?: { data: Buffer; mediaType: string }[]
   ) {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await createCreateLongTweetRequest(text, this.auth, replyToTweetId, mediaData);
+    return await createCreateLongPostRequest(text, this.auth, replyToPostId, mediaData);
   }
 
   /**
    * Send a post
    * @param text The text of the post
-   * @param tweetId The id of the post to reply to
+   * @param postId The id of the post to reply to
    * @param options The options for the post
    * @returns
    */
 
-  async sendTweetV2(
+  async sendPostV2(
     text: string,
-    replyToTweetId?: string,
+    replyToPostId?: string,
     options?: {
       poll?: PollData;
     }
@@ -558,102 +558,102 @@ export class Client {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await createCreateTweetRequestV2(text, this.auth, replyToTweetId, options);
+    return await createCreatePostRequestV2(text, this.auth, replyToPostId, options);
   }
 
   /**
    * Fetches posts and replies from an X user.
    * @param user The user whose posts should be returned.
-   * @param maxTweets The maximum number of posts to return. Defaults to `200`.
+   * @param maxPosts The maximum number of posts to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of posts from the provided user.
    */
-  public getTweetsAndReplies(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
+  public getPostsAndReplies(user: string, maxPosts = 200): AsyncGenerator<Post> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return getTweetsAndReplies(user, maxTweets, this.auth);
+    return getPostsAndReplies(user, maxPosts, this.auth);
   }
 
   /**
    * Fetches posts and replies from an X user using their ID.
    * @param userId The user whose posts should be returned.
-   * @param maxTweets The maximum number of posts to return. Defaults to `200`.
+   * @param maxPosts The maximum number of posts to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of posts from the provided user.
    */
-  public getTweetsAndRepliesByUserId(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
+  public getPostsAndRepliesByUserId(userId: string, maxPosts = 200): AsyncGenerator<Post, void> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return getTweetsAndRepliesByUserId(userId, maxTweets, this.auth);
+    return getPostsAndRepliesByUserId(userId, maxPosts, this.auth);
   }
 
   /**
-   * Fetches the first tweet matching the given query.
+   * Fetches the first post matching the given query.
    *
    * Example:
    * ```js
-   * const timeline = client.getTweets('user', 200);
-   * const retweet = await client.getTweetWhere(timeline, { isRetweet: true });
+   * const timeline = client.getPosts('user', 200);
+   * const repost = await client.getPostWhere(timeline, { isRepost: true });
    * ```
-   * @param tweets The {@link AsyncIterable} of tweets to search through.
-   * @param query A query to test **all** tweets against. This may be either an
+   * @param posts The {@link AsyncIterable} of posts to search through.
+   * @param query A query to test **all** posts against. This may be either an
    * object of key/value pairs or a predicate. If this query is an object, all
-   * key/value pairs must match a {@link Tweet} for it to be returned. If this query
-   * is a predicate, it must resolve to `true` for a {@link Tweet} to be returned.
+   * key/value pairs must match a {@link Post} for it to be returned. If this query
+   * is a predicate, it must resolve to `true` for a {@link Post} to be returned.
    * - All keys are optional.
-   * - If specified, the key must be implemented by that of {@link Tweet}.
+   * - If specified, the key must be implemented by that of {@link Post}.
    */
-  public getTweetWhere(tweets: AsyncIterable<Tweet>, query: TweetQuery): Promise<Tweet | null> {
-    return getTweetWhere(tweets, query);
+  public getPostWhere(posts: AsyncIterable<Post>, query: PostQuery): Promise<Post | null> {
+    return getPostWhere(posts, query);
   }
 
   /**
-   * Fetches all tweets matching the given query.
+   * Fetches all posts matching the given query.
    *
    * Example:
    * ```js
-   * const timeline = client.getTweets('user', 200);
-   * const retweets = await client.getTweetsWhere(timeline, { isRetweet: true });
+   * const timeline = client.getPosts('user', 200);
+   * const reposts = await client.getPostsWhere(timeline, { isRepost: true });
    * ```
-   * @param tweets The {@link AsyncIterable} of tweets to search through.
-   * @param query A query to test **all** tweets against. This may be either an
+   * @param posts The {@link AsyncIterable} of posts to search through.
+   * @param query A query to test **all** posts against. This may be either an
    * object of key/value pairs or a predicate. If this query is an object, all
-   * key/value pairs must match a {@link Tweet} for it to be returned. If this query
-   * is a predicate, it must resolve to `true` for a {@link Tweet} to be returned.
+   * key/value pairs must match a {@link Post} for it to be returned. If this query
+   * is a predicate, it must resolve to `true` for a {@link Post} to be returned.
    * - All keys are optional.
-   * - If specified, the key must be implemented by that of {@link Tweet}.
+   * - If specified, the key must be implemented by that of {@link Post}.
    */
-  public getTweetsWhere(tweets: AsyncIterable<Tweet>, query: TweetQuery): Promise<Tweet[]> {
-    return getTweetsWhere(tweets, query);
+  public getPostsWhere(posts: AsyncIterable<Post>, query: PostQuery): Promise<Post[]> {
+    return getPostsWhere(posts, query);
   }
 
   /**
    * Fetches the most recent post from an X user.
    * @param user The user whose latest post should be returned.
-   * @param includeRetweets Whether or not to include reposts. Defaults to `false`.
-   * @returns The {@link Tweet} object or `null`/`undefined` if it couldn't be fetched.
+   * @param includeReposts Whether or not to include reposts. Defaults to `false`.
+   * @returns The {@link Post} object or `null`/`undefined` if it couldn't be fetched.
    */
-  public getLatestTweet(
+  public getLatestPost(
     user: string,
-    includeRetweets = false,
+    includeReposts = false,
     max = 200
-  ): Promise<Tweet | null | undefined> {
+  ): Promise<Post | null | undefined> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return getLatestTweet(user, includeRetweets, max, this.auth);
+    return getLatestPost(user, includeReposts, max, this.auth);
   }
 
   /**
    * Fetches a single post.
    * @param id The ID of the post to fetch.
-   * @returns The {@link Tweet} object, or `null` if it couldn't be fetched.
+   * @returns The {@link Post} object, or `null` if it couldn't be fetched.
    */
-  public getTweet(id: string): Promise<Tweet | null> {
+  public getPost(id: string): Promise<Post | null> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return getTweet(id, this.auth);
+    return getPost(id, this.auth);
   }
 
   /**
@@ -663,28 +663,28 @@ export class Client {
    * @param {string} id - The ID of the post to fetch.
    * @param {Object} [options] - Optional parameters to customize the post data.
    * @param {string[]} [options.expansions] - Array of expansions to include, e.g., 'attachments.poll_ids'.
-   * @param {string[]} [options.tweetFields] - Array of post fields to include, e.g., 'created_at', 'public_metrics'.
+   * @param {string[]} [options.postFields] - Array of post fields to include, e.g., 'created_at', 'public_metrics'.
    * @param {string[]} [options.pollFields] - Array of poll fields to include, if the post has a poll, e.g., 'options', 'end_datetime'.
    * @param {string[]} [options.mediaFields] - Array of media fields to include, if the post includes media, e.g., 'url', 'preview_image_url'.
    * @param {string[]} [options.userFields] - Array of user fields to include, if user information is requested, e.g., 'username', 'verified'.
    * @param {string[]} [options.placeFields] - Array of place fields to include, if the post includes location data, e.g., 'full_name', 'country'.
-   * @returns {Promise<TweetV2 | null>} - The post data, including requested expansions and fields.
+   * @returns {Promise<PostV2 | null>} - The post data, including requested expansions and fields.
    */
-  async getTweetV2(
+  async getPostV2(
     id: string,
     options: {
-      expansions?: TTweetv2Expansion[];
-      tweetFields?: TTweetv2TweetField[];
-      pollFields?: TTweetv2PollField[];
-      mediaFields?: TTweetv2MediaField[];
-      userFields?: TTweetv2UserField[];
-      placeFields?: TTweetv2PlaceField[];
+      expansions?: TPostv2Expansion[];
+      postFields?: TPostv2PostField[];
+      pollFields?: TPostv2PollField[];
+      mediaFields?: TPostv2MediaField[];
+      userFields?: TPostv2UserField[];
+      placeFields?: TPostv2PlaceField[];
     } = defaultOptions
-  ): Promise<Tweet | null> {
+  ): Promise<Post | null> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await getTweetV2(id, this.auth, options);
+    return await getPostV2(id, this.auth, options);
   }
 
   /**
@@ -694,28 +694,28 @@ export class Client {
    * @param {string[]} ids - Array of post IDs to fetch.
    * @param {Object} [options] - Optional parameters to customize the post data.
    * @param {string[]} [options.expansions] - Array of expansions to include, e.g., 'attachments.poll_ids'.
-   * @param {string[]} [options.tweetFields] - Array of post fields to include, e.g., 'created_at', 'public_metrics'.
+   * @param {string[]} [options.postFields] - Array of post fields to include, e.g., 'created_at', 'public_metrics'.
    * @param {string[]} [options.pollFields] - Array of poll fields to include, if posts contain polls, e.g., 'options', 'end_datetime'.
    * @param {string[]} [options.mediaFields] - Array of media fields to include, if posts contain media, e.g., 'url', 'preview_image_url'.
    * @param {string[]} [options.userFields] - Array of user fields to include, if user information is requested, e.g., 'username', 'verified'.
    * @param {string[]} [options.placeFields] - Array of place fields to include, if posts contain location data, e.g., 'full_name', 'country'.
-   * @returns {Promise<TweetV2[]> } - Array of post data, including requested expansions and fields.
+   * @returns {Promise<PostV2[]> } - Array of post data, including requested expansions and fields.
    */
-  async getTweetsV2(
+  async getPostsV2(
     ids: string[],
     options: {
-      expansions?: TTweetv2Expansion[];
-      tweetFields?: TTweetv2TweetField[];
-      pollFields?: TTweetv2PollField[];
-      mediaFields?: TTweetv2MediaField[];
-      userFields?: TTweetv2UserField[];
-      placeFields?: TTweetv2PlaceField[];
+      expansions?: TPostv2Expansion[];
+      postFields?: TPostv2PostField[];
+      pollFields?: TPostv2PollField[];
+      mediaFields?: TPostv2MediaField[];
+      userFields?: TPostv2UserField[];
+      placeFields?: TPostv2PlaceField[];
     } = defaultOptions
-  ): Promise<Tweet[]> {
+  ): Promise<Post[]> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await getTweetsV2(ids, this.auth, options);
+    return await getPostsV2(ids, this.auth, options);
   }
 
   /**
@@ -789,7 +789,7 @@ export class Client {
       throw new Error("X API v2 credentials are required for authentication");
     }
 
-    // Backward compatible path: build a fixed OAuth1 provider inline.
+    // Build a fixed OAuth1 provider inline.
     const oauth1Provider: XOAuth1Provider = {
       mode: "env",
       getAccessToken: async () => accessToken,
@@ -814,13 +814,13 @@ export class Client {
   /**
    * Sends a quote post.
    * @param text The text of the post.
-   * @param quotedTweetId The ID of the post to quote.
+   * @param quotedPostId The ID of the post to quote.
    * @param options Optional parameters, such as media data.
    * @returns The response from the X API.
    */
-  public async sendQuoteTweet(
+  public async sendQuotePost(
     text: string,
-    quotedTweetId: string,
+    quotedPostId: string,
     options?: {
       mediaData: { data: Buffer; mediaType: string }[];
     }
@@ -828,70 +828,70 @@ export class Client {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await createQuoteTweetRequest(text, quotedTweetId, this.auth, options?.mediaData);
+    return await createQuotePostRequest(text, quotedPostId, this.auth, options?.mediaData);
   }
 
   /**
    * Delete a post with the given ID.
-   * @param tweetId The ID of the post to delete.
+   * @param postId The ID of the post to delete.
    * @returns A promise that resolves when the post is deleted.
    */
-  public async deleteTweet(tweetId: string): Promise<{ success: boolean }> {
-    // Call the deleteTweet function from tweets.ts
+  public async deletePost(postId: string): Promise<{ success: boolean }> {
+    // Call the deletePost function from posts.ts
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    const result = await deleteTweet(tweetId, this.auth);
+    const result = await deletePost(postId, this.auth);
     return { success: result.ok };
   }
 
   /**
    * Likes a post with the given post ID.
-   * @param tweetId The ID of the post to like.
+   * @param postId The ID of the post to like.
    * @returns A promise that resolves when the post is liked.
    */
-  public async likeTweet(tweetId: string): Promise<void> {
-    // Call the likeTweet function from tweets.ts
+  public async likePost(postId: string): Promise<void> {
+    // Call the likePost function from posts.ts
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    await likeTweet(tweetId, this.auth);
+    await likePost(postId, this.auth);
   }
 
   /**
    * Reposts a post with the given post ID.
-   * @param tweetId The ID of the post to repost.
+   * @param postId The ID of the post to repost.
    * @returns A promise that resolves when the post is reposted.
    */
-  public async retweet(tweetId: string): Promise<void> {
+  public async repost(postId: string): Promise<void> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    await retweet(tweetId, this.auth);
+    await repost(postId, this.auth);
   }
 
   /**
    * Unlikes a post with the given post ID.
-   * @param tweetId The ID of the post to unlike.
+   * @param postId The ID of the post to unlike.
    * @returns A promise that resolves when the post is unliked.
    */
-  public async unlikeTweet(tweetId: string): Promise<void> {
+  public async unlikePost(postId: string): Promise<void> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    await unlikeTweet(tweetId, this.auth);
+    await unlikePost(postId, this.auth);
   }
 
   /**
    * Removes a repost of a post with the given post ID.
-   * @param tweetId The ID of the post to unrepost.
+   * @param postId The ID of the post to unrepost.
    * @returns A promise that resolves when the repost is removed.
    */
-  public async unretweet(tweetId: string): Promise<void> {
+  public async unrepost(postId: string): Promise<void> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    await unretweet(tweetId, this.auth);
+    await unrepost(postId, this.auth);
   }
 
   /**
@@ -936,24 +936,24 @@ export class Client {
 
   /**
    * Retrieves all users who reposted the given post.
-   * @param tweetId The ID of the post.
+   * @param postId The ID of the post.
    * @returns An array of users (reposters).
    */
-  public async getRetweetersOfTweet(tweetId: string): Promise<Retweeter[]> {
+  public async getRepostersOfPost(postId: string): Promise<Reposter[]> {
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    return await getAllRetweeters(tweetId, this.auth);
+    return await getAllReposters(postId, this.auth);
   }
 
   /**
    * Fetches all quote posts for a given post ID, handling pagination automatically.
-   * @param tweetId The ID of the post to fetch quotes for.
+   * @param postId The ID of the post to fetch quotes for.
    * @param maxQuotes Maximum number of quotes to return (default: 100).
    * @returns An array of all quote posts.
    */
-  public async fetchAllQuotedTweets(tweetId: string, maxQuotes: number = 100): Promise<Tweet[]> {
-    const allQuotes: Tweet[] = [];
+  public async fetchAllQuotedPosts(postId: string, maxQuotes: number = 100): Promise<Post[]> {
+    const allQuotes: Post[] = [];
 
     try {
       let cursor: string | undefined;
@@ -961,14 +961,14 @@ export class Client {
 
       while (totalFetched < maxQuotes) {
         const batchSize = Math.min(40, maxQuotes - totalFetched);
-        const page = await this.fetchQuotedTweetsPage(tweetId, batchSize, cursor);
+        const page = await this.fetchQuotedPostsPage(postId, batchSize, cursor);
 
-        if (!page.tweets || page.tweets.length === 0) {
+        if (!page.posts || page.posts.length === 0) {
           break;
         }
 
-        allQuotes.push(...page.tweets);
-        totalFetched += page.tweets.length;
+        allQuotes.push(...page.posts);
+        totalFetched += page.posts.length;
 
         // Check if there's a next page
         if (!page.next) {
@@ -980,41 +980,41 @@ export class Client {
 
       return allQuotes.slice(0, maxQuotes);
     } catch (error) {
-      console.error("Error fetching quoted tweets:", error);
+      console.error("Error fetching quoted posts:", error);
       throw error;
     }
   }
 
   /**
    * Fetches quote posts for a given post ID.
-   * This method now uses a generator function internally but maintains backward compatibility.
-   * @param tweetId The ID of the post to fetch quotes for.
+   * This method now uses a generator function internally.
+   * @param postId The ID of the post to fetch quotes for.
    * @param maxQuotes Maximum number of quotes to return.
    * @param cursor Optional cursor for pagination.
-   * @returns A promise that resolves to a QueryTweetsResponse containing posts and the next cursor.
+   * @returns A promise that resolves to a QueryPostsResponse containing posts and the next cursor.
    */
-  public async fetchQuotedTweetsPage(
-    tweetId: string,
+  public async fetchQuotedPostsPage(
+    postId: string,
     maxQuotes: number = 40,
     _cursor?: string
-  ): Promise<QueryTweetsResponse> {
-    // For backward compatibility, collect quotes from the generator
-    const quotes: Tweet[] = [];
+  ): Promise<QueryPostsResponse> {
+    // Collect quotes from the generator
+    const quotes: Post[] = [];
     let count = 0;
 
-    // searchQuotedTweets doesn't support cursor, so we'll collect all quotes up to maxQuotes
+    // searchQuotedPosts doesn't support cursor, so we'll collect all quotes up to maxQuotes
     if (!this.auth) {
       throw new Error("X auth not initialized");
     }
-    for await (const quote of searchQuotedTweets(tweetId, maxQuotes, this.auth)) {
+    for await (const quote of searchQuotedPosts(postId, maxQuotes, this.auth)) {
       quotes.push(quote);
       count++;
       if (count >= maxQuotes) break;
     }
 
     return {
-      tweets: quotes,
-      next: undefined, // Twitter API v2 doesn't provide cursor for quote search
+      posts: quotes,
+      next: undefined, // X API v2 doesn't provide cursor for quote search
     };
   }
 }

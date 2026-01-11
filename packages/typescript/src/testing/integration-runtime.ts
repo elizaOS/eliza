@@ -1,7 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - createIntegrationTestRuntime: try-finally for timeout cleanup - KEEP
-// - withTestRuntime: try-finally for cleanup - KEEP (test resource management)
-
 /**
  * @fileoverview Integration Runtime Factory
  *

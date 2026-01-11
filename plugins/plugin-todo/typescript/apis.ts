@@ -30,7 +30,7 @@ console.log("*** frontPagePath", frontPagePath);
 console.log("*** assetsPath", assetsPath);
 /**
  * Definition of routes with type, path, and handler for each route.
- * Routes include fetching trending tokens, wallet information, tweets, sentiment analysis, and signals.
+ * Routes include fetching trending tokens, wallet information, posts, sentiment analysis, and signals.
  */
 
 export const routes: Route[] = [
