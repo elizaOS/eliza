@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import GoalsPlugin from "../index";
 
 describe("GoalsPlugin Initialization", () => {
-  let mockRuntime: IAgentRuntime;
+  let agentRuntime: IAgentRuntime;
 
   const setupMocks = () => {
-    mockRuntime = {
+    agentRuntime = {
       agentId: "test-agent-uuid-1234-5678-abcd" as UUID,
       getSetting: () => undefined,
       db: null, // No database available
@@ -50,7 +50,7 @@ describe("GoalsPlugin Initialization", () => {
     setupMocks();
 
     // Should not throw when no database is available
-    await expect(GoalsPlugin.init?.({}, mockRuntime)).resolves.toBeUndefined();
+    await expect(GoalsPlugin.init?.({}, agentRuntime)).resolves.toBeUndefined();
   });
 
   it("should have schema with correct tables", () => {

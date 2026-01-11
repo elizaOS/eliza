@@ -17,7 +17,7 @@ vi.mock("node:path", () => ({
 }));
 
 describe("processKnowledgeAction", () => {
-  let mockRuntime: IAgentRuntime;
+  let agentRuntime: IAgentRuntime;
   let mockKnowledgeService: KnowledgeService;
   let mockCallback: ReturnType<typeof vi.fn>;
   let mockState: State;
@@ -32,7 +32,7 @@ describe("processKnowledgeAction", () => {
       serviceType: "knowledge-service",
     } as unknown as KnowledgeService;
 
-    mockRuntime = {
+    agentRuntime = {
       agentId: "test-agent" as UUID,
       getService: vi.fn().mockReturnValue(mockKnowledgeService),
     } as unknown as IAgentRuntime;
@@ -73,7 +73,7 @@ describe("processKnowledgeAction", () => {
         fragmentCount: 5,
       });
 
-      await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(agentRuntime, message, mockState, {}, mockCallback);
 
       expect(fs.existsSync).toHaveBeenCalledWith("/path/to/document.pdf");
       expect(fs.readFileSync).toHaveBeenCalledWith("/path/to/document.pdf");
@@ -106,7 +106,7 @@ describe("processKnowledgeAction", () => {
 
       (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
-      await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(agentRuntime, message, mockState, {}, mockCallback);
 
       expect(fs.existsSync).toHaveBeenCalledWith("/non/existent/file.txt");
       expect(fs.readFileSync).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("processKnowledgeAction", () => {
         fragmentCount: 1,
       });
 
-      await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(agentRuntime, message, mockState, {}, mockCallback);
 
       expect(fs.existsSync).not.toHaveBeenCalled();
       expect(mockKnowledgeService.addKnowledge).toHaveBeenCalledWith({
@@ -163,7 +163,7 @@ describe("processKnowledgeAction", () => {
         roomId: generateMockUuid(12),
       };
 
-      await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(agentRuntime, message, mockState, {}, mockCallback);
 
       expect(fs.existsSync).not.toHaveBeenCalled();
       expect(mockKnowledgeService.addKnowledge).not.toHaveBeenCalled();
@@ -190,7 +190,7 @@ describe("processKnowledgeAction", () => {
         new Error("Service error")
       );
 
-      await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(agentRuntime, message, mockState, {}, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "I encountered an error while processing the knowledge: Service error",
@@ -247,20 +247,20 @@ describe("processKnowledgeAction", () => {
 
       // Process all three messages
       await processKnowledgeAction.handler?.(
-        mockRuntime,
+        agentRuntime,
         fileMessage1,
         mockState,
         {},
         mockCallback
       );
       await processKnowledgeAction.handler?.(
-        mockRuntime,
+        agentRuntime,
         fileMessage2,
         mockState,
         {},
         mockCallback
       );
-      await processKnowledgeAction.handler?.(mockRuntime, textMessage, mockState, {}, mockCallback);
+      await processKnowledgeAction.handler?.(agentRuntime, textMessage, mockState, {}, mockCallback);
 
       // Get all calls to addKnowledge
       const addKnowledgeCalls = (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mock
@@ -324,7 +324,7 @@ describe("processKnowledgeAction", () => {
 
       // Process all three messages
       await processKnowledgeAction.handler?.(
-        mockRuntime,
+        agentRuntime,
         textMessage1,
         mockState,
         {},
@@ -336,7 +336,7 @@ describe("processKnowledgeAction", () => {
       const dateNowSpy2 = vi.spyOn(Date, "now").mockReturnValue(1749491066995);
 
       await processKnowledgeAction.handler?.(
-        mockRuntime,
+        agentRuntime,
         textMessage2,
         mockState,
         {},
@@ -370,7 +370,7 @@ describe("processKnowledgeAction", () => {
 
   describe("validate", () => {
     beforeEach(() => {
-      (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(mockKnowledgeService);
+      (agentRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(mockKnowledgeService);
     });
 
     it("should return true if knowledge keywords are present and service is available", async () => {
@@ -382,9 +382,9 @@ describe("processKnowledgeAction", () => {
         entityId: generateMockUuid(17),
         roomId: generateMockUuid(18),
       };
-      const isValid = await processKnowledgeAction.validate?.(mockRuntime, message, mockState);
+      const isValid = await processKnowledgeAction.validate?.(agentRuntime, message, mockState);
       expect(isValid).toBe(true);
-      expect(mockRuntime.getService).toHaveBeenCalledWith(KnowledgeService.serviceType);
+      expect(agentRuntime.getService).toHaveBeenCalledWith(KnowledgeService.serviceType);
     });
 
     it("should return true if a file path is present and service is available", async () => {
@@ -396,12 +396,12 @@ describe("processKnowledgeAction", () => {
         entityId: generateMockUuid(20),
         roomId: generateMockUuid(21),
       };
-      const isValid = await processKnowledgeAction.validate?.(mockRuntime, message, mockState);
+      const isValid = await processKnowledgeAction.validate?.(agentRuntime, message, mockState);
       expect(isValid).toBe(true);
     });
 
     it("should return false if service is not available", async () => {
-      (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      (agentRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
       const message: Memory = {
         id: generateMockUuid(22),
         content: {
@@ -410,7 +410,7 @@ describe("processKnowledgeAction", () => {
         entityId: generateMockUuid(23),
         roomId: generateMockUuid(24),
       };
-      const isValid = await processKnowledgeAction.validate?.(mockRuntime, message, mockState);
+      const isValid = await processKnowledgeAction.validate?.(agentRuntime, message, mockState);
       expect(isValid).toBe(false);
     });
 
@@ -423,7 +423,7 @@ describe("processKnowledgeAction", () => {
         entityId: generateMockUuid(26),
         roomId: generateMockUuid(27),
       };
-      const isValid = await processKnowledgeAction.validate?.(mockRuntime, message, mockState);
+      const isValid = await processKnowledgeAction.validate?.(agentRuntime, message, mockState);
       expect(isValid).toBe(false);
     });
   });

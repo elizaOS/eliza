@@ -108,7 +108,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
     // Execute the action
     if (helloWorldAction) {
       await helloWorldAction.handler(
-        mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        agentRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         mockMessage,
         mockState,
         {},
@@ -126,7 +126,7 @@ describe("Integration: HelloWorld Action with StarterService", () => {
     }
 
     // Get the service to ensure integration
-    const service = mockRuntime.getService("starter");
+    const service = agentRuntime.getService("starter");
     expect(service).toBeDefined();
     expect(service?.capabilityDescription).toContain("starter service");
   });

@@ -63,16 +63,16 @@ describe("Wallet Provider", () => {
     it("should set wallet address correctly", () => {
       const account = privateKeyToAccount(pk);
       const expectedAddress = account.address;
-      const mockRuntime = createMockRuntime();
+      const agentRuntime = createMockRuntime();
 
-      walletProvider = new WalletProvider(pk, mockRuntime);
+      walletProvider = new WalletProvider(pk, agentRuntime);
 
       expect(walletProvider.getAddress()).toBe(expectedAddress);
     });
 
     it("should initialize with empty chains when no chains provided", () => {
-      const mockRuntime = createMockRuntime();
-      walletProvider = new WalletProvider(pk, mockRuntime);
+      const agentRuntime = createMockRuntime();
+      walletProvider = new WalletProvider(pk, agentRuntime);
 
       // WalletProvider constructor with no chains should result in empty chains
       const supportedChains = walletProvider.getSupportedChains();
@@ -87,9 +87,9 @@ describe("Wallet Provider", () => {
         sepolia: testChains.sepolia,
         baseSepolia: testChains.baseSepolia,
       };
-      const mockRuntime = createMockRuntime();
+      const agentRuntime = createMockRuntime();
 
-      walletProvider = new WalletProvider(pk, mockRuntime, customChains);
+      walletProvider = new WalletProvider(pk, agentRuntime, customChains);
 
       expect(walletProvider.chains.sepolia.id).toEqual(sepolia.id);
       expect(walletProvider.chains.baseSepolia.id).toEqual(baseSepolia.id);

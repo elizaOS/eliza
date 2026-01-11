@@ -47,7 +47,7 @@ describe("Transfer Action", () => {
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
-    const mockRuntime = createMockRuntime();
+    const agentRuntime = createMockRuntime();
 
     // Initialize with Sepolia and Base Sepolia testnets
     const customChains = {
@@ -55,7 +55,7 @@ describe("Transfer Action", () => {
       baseSepolia: testChains.baseSepolia,
     };
 
-    wp = new WalletProvider(pk, mockRuntime, customChains);
+    wp = new WalletProvider(pk, agentRuntime, customChains);
   });
 
   afterEach(() => {

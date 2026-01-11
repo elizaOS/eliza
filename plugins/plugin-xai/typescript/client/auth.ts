@@ -153,8 +153,6 @@ export class XAuth {
   }
 }
 
-// Backward-compatible alias - use a different name to avoid export conflicts
-export { XAuth as TwitterAuth };
-
+// Backward-compatible alias
 /** @deprecated Use XAuth instead */
 export { XAuth as TwitterAuth };

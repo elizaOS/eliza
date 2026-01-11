@@ -91,14 +91,14 @@ import { Telegraf } from "telegraf";
 import { MediaType, MessageManager } from "../src/messageManager";
 
 describe("MessageManager", () => {
-  let mockRuntime: IAgentRuntime;
+  let agentRuntime: IAgentRuntime;
   let mockBot: Telegraf;
   let messageManager: MessageManager;
   const CHAT_ID = 123456789;
 
   beforeEach(() => {
     // Create minimal mock runtime
-    mockRuntime = {
+    agentRuntime = {
       agentId: "test-agent-id",
       getSetting: vi.fn(() => undefined),
       useModel: vi.fn(() =>
@@ -111,7 +111,7 @@ describe("MessageManager", () => {
     } satisfies Partial<IAgentRuntime> as IAgentRuntime;
 
     mockBot = new Telegraf("mock_token");
-    messageManager = new MessageManager(mockBot, mockRuntime);
+    messageManager = new MessageManager(mockBot, agentRuntime);
   });
 
   afterEach(() => {

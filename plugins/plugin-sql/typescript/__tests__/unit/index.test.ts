@@ -110,7 +110,7 @@ async function cleanupGlobalSingletons() {
 }
 
 describe("SQL Plugin", () => {
-  let mockRuntime: MockRuntimeForTesting & IAgentRuntime;
+  let agentRuntime: MockRuntimeForTesting & IAgentRuntime;
   let tempDir: string;
 
   beforeEach(async () => {
@@ -126,7 +126,7 @@ describe("SQL Plugin", () => {
     delete process.env.POSTGRES_PASSWORD;
     delete process.env.PGLITE_DATA_DIR;
 
-    mockRuntime = createMockRuntime();
+    agentRuntime = createMockRuntime();
   });
 
   afterEach(async () => {
@@ -175,21 +175,21 @@ describe("SQL Plugin", () => {
         isReady: async () => true,
         getConnection: async () => ({}),
       } as IDatabaseAdapter;
-      mockRuntime.databaseAdapter = existingAdapter;
+      agentRuntime.databaseAdapter = existingAdapter;
 
       if (plugin.init) {
-        await plugin.init({}, mockRuntime);
+        await plugin.init({}, agentRuntime);
       }
 
       // Logger calls can be tested with vi.spyOn() in vitest
       // Just verify that registerDatabaseAdapter wasn't called
-      expect(mockRuntime.registerDatabaseAdapter).not.toHaveBeenCalled();
+      expect(agentRuntime.registerDatabaseAdapter).not.toHaveBeenCalled();
     });
 
     it("should register database adapter when none exists", async () => {
       // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
       process.env.PGLITE_DATA_DIR = tempDir;
-      mockRuntime.getSetting = vi.fn((key) => {
+      agentRuntime.getSetting = vi.fn((key) => {
         // Return temp directory for database paths to avoid directory creation issues
         if (key === "PGLITE_DATA_DIR") {
           return tempDir;
@@ -198,59 +198,59 @@ describe("SQL Plugin", () => {
       });
 
       if (plugin.init) {
-        await plugin.init({}, mockRuntime);
+        await plugin.init({}, agentRuntime);
       }
 
-      expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
+      expect(agentRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
     it("should use POSTGRES_URL when available", async () => {
-      mockRuntime.getSetting = vi.fn((key) => {
+      agentRuntime.getSetting = vi.fn((key) => {
         if (key === "POSTGRES_URL") return "postgresql://localhost:5432/test";
         return null;
       });
 
       if (plugin.init) {
-        await plugin.init({}, mockRuntime);
+        await plugin.init({}, agentRuntime);
       }
 
-      expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
+      expect(agentRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
     it("should use PGLITE_DATA_DIR when provided", async () => {
       const customDir = path.join(tempDir, "custom-pglite");
-      mockRuntime.getSetting = vi.fn((key) => {
+      agentRuntime.getSetting = vi.fn((key) => {
         if (key === "PGLITE_DATA_DIR") return customDir;
         return null;
       });
 
       if (plugin.init) {
-        await plugin.init({}, mockRuntime);
+        await plugin.init({}, agentRuntime);
       }
 
-      expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
+      expect(agentRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
     it("should use default path if PGLITE_DATA_DIR is not set", async () => {
-      mockRuntime.getSetting = vi.fn(() => null);
+      agentRuntime.getSetting = vi.fn(() => null);
 
       if (plugin.init) {
-        await plugin.init({}, mockRuntime);
+        await plugin.init({}, agentRuntime);
       }
 
-      expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
+      expect(agentRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
     it("should prefer to use PGLITE_DATA_DIR when environment variable is set", async () => {
       // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
       process.env.PGLITE_DATA_DIR = tempDir;
-      mockRuntime.getSetting = vi.fn(() => null);
+      agentRuntime.getSetting = vi.fn(() => null);
 
       if (plugin.init) {
-        await plugin.init({}, mockRuntime);
+        await plugin.init({}, agentRuntime);
       }
 
-      expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
+      expect(agentRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
   });
 
