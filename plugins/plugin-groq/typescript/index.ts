@@ -144,7 +144,7 @@ export const groqPlugin: Plugin = {
         prompt: params.prompt,
         temperature: params.temperature,
       });
-      return object;
+      return object as Record<string, unknown>;
     },
 
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
@@ -157,7 +157,7 @@ export const groqPlugin: Plugin = {
         prompt: params.prompt,
         temperature: params.temperature,
       });
-      return object;
+      return object as Record<string, unknown>;
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {

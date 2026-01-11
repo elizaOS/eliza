@@ -47,12 +47,12 @@ pub mod actions;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use types::*;
-pub use constants::*;
-pub use error::{PolymarketError, PolymarketErrorCode};
-pub use client::ClobClient;
-pub use actions::*;
+// Import directly from submodules:
+// - types::* for all types
+// - constants::* for constants
+// - error::{PolymarketError, PolymarketErrorCode}
+// - client::ClobClient
+// - actions::* for action functions
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "polymarket";

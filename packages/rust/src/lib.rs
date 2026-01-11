@@ -40,15 +40,13 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types for convenience
-pub use character::{
-    build_character_plugins, merge_character_defaults, parse_character, validate_character,
-};
-pub use plugin::{load_plugin, resolve_plugin_dependencies, validate_plugin};
-pub use runtime::{AgentRuntime, LogLevel, RuntimeOptions};
-pub use services::{DefaultMessageService, IMessageService, MessageProcessingOptions, MessageProcessingResult};
-pub use settings::{decrypt_string_value, encrypt_string_value, get_salt};
-pub use types::*;
+// Import directly from submodules:
+// - character for character utilities
+// - plugin for plugin utilities
+// - runtime for AgentRuntime
+// - services for message services
+// - settings for settings utilities
+// - types for type definitions
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)
 pub fn init() {

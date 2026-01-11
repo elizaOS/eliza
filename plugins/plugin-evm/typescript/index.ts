@@ -12,29 +12,6 @@
  * @packageDocumentation
  */
 
-// Re-export actions
-export {
-  BridgeAction,
-  bridgeAction,
-  checkBridgeStatus,
-} from "./actions/bridge";
-export { SwapAction, swapAction } from "./actions/swap";
-export { TransferAction, transferAction } from "./actions/transfer";
-// Re-export constants
-export * from "./constants";
-// Re-export providers
-export { tokenBalanceProvider } from "./providers/get-balance";
-export {
-  evmWalletProvider,
-  initWalletProvider,
-  WalletProvider,
-} from "./providers/wallet";
-// Re-export service
-export { EVMService, type EVMWalletData } from "./service";
-// Re-export templates
-export * from "./templates";
-// Re-export all types
-export * from "./types";
 
 // Import for plugin definition
 import type { Plugin, ServiceClass } from "@elizaos/core";

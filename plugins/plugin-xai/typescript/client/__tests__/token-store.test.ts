@@ -1,9 +1,24 @@
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { FileTokenStore, RuntimeCacheTokenStore } from "../auth-providers/token-store";
+
+// Local type definitions for testing
+type UUID = `${string}-${string}-${string}-${string}-${string}`;
+
+interface TestRuntime {
+  agentId: UUID;
+  getCache: <T>(key: string) => Promise<T | undefined>;
+  setCache: <T>(key: string, value: T) => Promise<boolean>;
+  deleteCache: (key: string) => Promise<boolean>;
+}
+
+/**
+ * Integration tests for token stores.
+ * FileTokenStore tests use the real filesystem.
+ * RuntimeCacheTokenStore tests use a minimal in-memory runtime implementation.
+ */
 
 describe("token-store", () => {
   describe("FileTokenStore", () => {
@@ -38,27 +53,37 @@ describe("token-store", () => {
 
       await store.clear();
     });
+
+    it("returns null for missing file", async () => {
+      const path = join(tmpdir(), `x-oauth2-tokens-${Date.now()}-nonexistent.json`);
+      const store = new FileTokenStore(path);
+      const loaded = await store.load();
+      expect(loaded).toBeNull();
+    });
   });
 
   describe("RuntimeCacheTokenStore", () => {
-    let runtime: Partial<IAgentRuntime> & {
-      getCache: (key: string) => Promise<unknown>;
-      setCache: (key: string, value: unknown) => Promise<void>;
-    };
+    // Minimal in-memory runtime implementation for testing
+    let runtime: Pick<IAgentRuntime, "agentId" | "getCache" | "setCache" | "deleteCache">;
+    let cache: Map<string, unknown>;
 
     beforeEach(() => {
-      const cache = new Map<string, unknown>();
+      cache = new Map<string, unknown>();
       runtime = {
         agentId: "agent-123" as UUID,
-        getCache: vi.fn(async (k: string) => cache.get(k)),
-        setCache: vi.fn(async (k: string, v: unknown) => {
-          cache.set(k, v);
-        }),
+        getCache: async <T>(key: string): Promise<T | undefined> => cache.get(key) as T | undefined,
+        setCache: async <T>(key: string, value: T): Promise<boolean> => {
+          cache.set(key, value);
+          return true;
+        },
+        deleteCache: async (key: string): Promise<boolean> => {
+          return cache.delete(key);
+        },
       };
     });
 
     it("saves and loads via runtime cache", async () => {
-      const store = new RuntimeCacheTokenStore(runtime);
+      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime);
       const tokens = {
         access_token: "a",
         refresh_token: "r",
@@ -68,12 +93,10 @@ describe("token-store", () => {
       await store.save(tokens);
       const loaded = await store.load();
       expect(loaded).toEqual(tokens);
-      expect(runtime.setCache).toHaveBeenCalled();
-      expect(runtime.getCache).toHaveBeenCalled();
     });
 
-    it("clear removes the cached value (via undefined)", async () => {
-      const store = new RuntimeCacheTokenStore(runtime);
+    it("clear removes the cached value", async () => {
+      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime);
       await store.save({
         access_token: "a",
         refresh_token: "r",
@@ -83,7 +106,25 @@ describe("token-store", () => {
       await store.clear();
       const loaded = await store.load();
       expect(loaded).toBeNull();
-      expect(runtime.setCache).toHaveBeenCalledWith(expect.any(String), undefined);
+    });
+
+    it("returns null when no tokens stored", async () => {
+      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime);
+      const loaded = await store.load();
+      expect(loaded).toBeNull();
+    });
+
+    it("uses custom key when provided", async () => {
+      const customKey = "custom/token/path";
+      const store = new RuntimeCacheTokenStore(runtime as IAgentRuntime, customKey);
+
+      await store.save({
+        access_token: "test",
+        expires_at: 999,
+      });
+
+      // Verify the custom key was used
+      expect(cache.has(customKey)).toBe(true);
     });
   });
 });

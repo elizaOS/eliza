@@ -57,7 +57,7 @@ def encrypt_string_value(value: object, salt: str) -> object:
     - other types are returned unchanged
     """
 
-    if value is None or isinstance(value, (bool, int, float)):
+    if value is None or isinstance(value, bool | int | float):
         return value
     if not isinstance(value, str):
         return value

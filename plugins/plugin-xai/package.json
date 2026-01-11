@@ -98,7 +98,7 @@
     "pluginParameters": {
       "XAI_API_KEY": {
         "type": "string",
-        "description": "xAI API key for Grok model access and X (X) integration.",
+        "description": "xAI API key for Grok model access and X (formerly Twitter) integration.",
         "required": true,
         "sensitive": true
       },
@@ -132,44 +132,44 @@
       },
       "X_AUTH_MODE": {
         "type": "string",
-        "description": "X (X) auth mode: 'env' (API keys), 'oauth' (OAuth2 PKCE), or 'bearer'.",
+        "description": "X (formerly Twitter) auth mode: 'env' (API keys), 'oauth' (OAuth2 PKCE), or 'bearer'.",
         "required": false,
         "default": "env",
         "sensitive": false
       },
       "X_API_KEY": {
         "type": "string",
-        "description": "X (X) API key for OAuth 1.0a.",
+        "description": "X (formerly Twitter) API key for OAuth 1.0a.",
         "required": false,
         "sensitive": true
       },
       "X_API_SECRET": {
         "type": "string",
-        "description": "X (X) API secret key for OAuth 1.0a.",
+        "description": "X (formerly Twitter) API secret key for OAuth 1.0a.",
         "required": false,
         "sensitive": true
       },
       "X_ACCESS_TOKEN": {
         "type": "string",
-        "description": "X (X) access token for OAuth 1.0a.",
+        "description": "X (formerly Twitter) access token for OAuth 1.0a.",
         "required": false,
         "sensitive": true
       },
       "X_ACCESS_TOKEN_SECRET": {
         "type": "string",
-        "description": "X (X) access token secret for OAuth 1.0a.",
+        "description": "X (formerly Twitter) access token secret for OAuth 1.0a.",
         "required": false,
         "sensitive": true
       },
       "X_BEARER_TOKEN": {
         "type": "string",
-        "description": "X (X) Bearer token for app-only authentication.",
+        "description": "X (formerly Twitter) Bearer token for app-only authentication.",
         "required": false,
         "sensitive": true
       },
       "X_CLIENT_ID": {
         "type": "string",
-        "description": "X (X) OAuth2 client ID.",
+        "description": "X (formerly Twitter) OAuth2 client ID.",
         "required": false,
         "sensitive": false
       },

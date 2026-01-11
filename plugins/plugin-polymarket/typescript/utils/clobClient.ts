@@ -13,9 +13,6 @@ import { polygon } from "viem/chains";
 import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "../constants";
 import type { ApiKeyCreds } from "../types";
 
-// Re-export types for other modules
-export type { ClobClient } from "@polymarket/clob-client";
-export type { BookParams } from "../types";
 
 /**
  * Get private key from runtime settings

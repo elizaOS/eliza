@@ -328,17 +328,15 @@ fn autonomy_providers() -> Vec<Box<dyn Provider>> {
     ]
 }
 
-/// Re-export commonly used types.
-pub mod prelude {
-    pub use crate::actions::Action;
-    pub use crate::error::{PluginError, PluginResult};
-    pub use crate::evaluators::Evaluator;
-    pub use crate::providers::Provider;
-    pub use crate::runtime::IAgentRuntime;
-    pub use crate::services::{Service, ServiceType};
-    pub use crate::types::*;
-    pub use crate::BootstrapPlugin;
-}
+/// Prelude module - import directly from specific modules:
+/// - actions::Action
+/// - error::{PluginError, PluginResult}
+/// - evaluators::Evaluator
+/// - providers::Provider
+/// - runtime::IAgentRuntime
+/// - services::{Service, ServiceType}
+/// - types::*
+pub mod prelude {}
 
 #[cfg(test)]
 mod tests {

@@ -42,8 +42,6 @@ import {
 import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL } from "./utils/config";
 
-// Re-export types for consumers
-export * from "./types";
 
 // ============================================================================
 // Plugin Definition

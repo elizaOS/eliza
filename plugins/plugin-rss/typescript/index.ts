@@ -28,25 +28,6 @@ import { feedItemsProvider } from "./providers";
 // Service
 import { RssService } from "./service";
 
-// Re-export parser utilities
-export { createEmptyFeed, parseRssToJson } from "./parser";
-
-// Re-export service
-export { RssService, RssService as rssService } from "./service";
-// Re-export types
-export type {
-  FeedItemMetadata,
-  FeedSubscriptionMetadata,
-  RssChannel,
-  RssEnclosure,
-  RssFeed,
-  RssImage,
-  RssItem,
-  RssPluginConfig,
-} from "./types";
-
-// Re-export utilities
-export { createMessageReply, extractUrls, formatRelativeTime } from "./utils";
 
 // Check if subscription actions should be disabled
 const actionsDisabled = process.env.RSS_DISABLE_ACTIONS === "true";

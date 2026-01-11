@@ -44,13 +44,12 @@ pub mod config;
 pub mod error;
 pub mod types;
 
-pub use client::GatewayClient;
-pub use config::model_supports_temperature;
-pub use error::{GatewayError, Result};
-pub use types::*;
-
-// Re-export futures for stream handling
-pub use futures;
+// Import directly from submodules:
+// - client::GatewayClient
+// - config::model_supports_temperature
+// - error::{GatewayError, Result}
+// - types::* for all types
+// - futures for stream handling
 
 use anyhow::Result as AnyhowResult;
 

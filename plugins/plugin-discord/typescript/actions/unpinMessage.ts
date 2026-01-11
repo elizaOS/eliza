@@ -17,8 +17,6 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { unpinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
 
-// Re-export for backwards compatibility
-export { unpinMessageTemplate };
 
 const getMessageRef = async (
   runtime: IAgentRuntime,

@@ -1,6 +1,6 @@
 //! Integration tests for xAI plugin.
 
-use elizaos_plugin_xai::{GrokConfig, XConfig};
+use elizaos_plugin_xai::{GrokConfig, TwitterConfig};
 
 #[test]
 fn test_grok_config_new() {
@@ -26,7 +26,7 @@ fn test_grok_config_builder() {
 
 #[test]
 fn test_x_config_new() {
-    let config = XConfig::new("key", "secret", "token", "token_secret");
+    let config = TwitterConfig::new("key", "secret", "token", "token_secret");
     assert_eq!(config.api_key, "key");
     assert_eq!(config.api_secret, "secret");
     assert_eq!(config.access_token, "token");
@@ -36,7 +36,7 @@ fn test_x_config_new() {
 
 #[test]
 fn test_x_config_builder() {
-    let config = XConfig::new("key", "secret", "token", "token_secret")
+    let config = TwitterConfig::new("key", "secret", "token", "token_secret")
         .bearer_token("bearer")
         .dry_run(true);
 

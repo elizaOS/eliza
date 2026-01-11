@@ -28,9 +28,3 @@ export function getVendor(type: TeeVendorName): TeeVendorInterface {
 }
 
 export { PhalaVendor } from "./phala";
-// Re-export types
-export {
-  type TeeVendorInterface,
-  type TeeVendorName,
-  TeeVendorNames,
-} from "./types";

@@ -66,36 +66,11 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use types::*;
-
-// Re-export error types
-pub use error::{ElizaCloudError, ElizaCloudErrorCode};
-
-// Re-export client and related types
-pub use providers::client::{ElizaCloudClient, ImageDescriptionInput, ImageResult};
-
-// Re-export model handlers for convenience
-pub use models::{
-    // Embeddings
-    handle_batch_text_embedding,
-    handle_text_embedding,
-    // Image
-    handle_image_description,
-    handle_image_generation,
-    // Object
-    handle_object_large,
-    handle_object_small,
-    // Audio
-    handle_text_to_speech,
-    // Text
-    handle_text_large,
-    handle_text_small,
-    // Tokenization
-    handle_tokenizer_decode,
-    handle_tokenizer_encode,
-    handle_transcription,
-};
+// Import directly from submodules:
+// - types::* for all types
+// - error::{ElizaCloudError, ElizaCloudErrorCode}
+// - providers::client::{ElizaCloudClient, ImageDescriptionInput, ImageResult}
+// - models::{handle_text_embedding, handle_text_small, handle_text_large, etc.}
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "elizacloud";

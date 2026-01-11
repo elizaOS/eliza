@@ -16,7 +16,7 @@ import { sendPost } from "../utils";
 export const postAction: Action = {
   name: "POST",
   similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
-  description: "Post content on X (X)",
+  description: "Post content on X (formerly Twitter)",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService("x");

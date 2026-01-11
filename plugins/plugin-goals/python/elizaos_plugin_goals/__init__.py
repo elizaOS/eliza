@@ -6,25 +6,67 @@ This plugin provides goal management functionality for tracking and achieving ob
 
 from elizaos_plugin_goals.prompts import (
     CHECK_SIMILARITY_TEMPLATE,
+    EXTRACT_CANCELLATION_TEMPLATE,
+    EXTRACT_CONFIRMATION_TEMPLATE,
+    EXTRACT_GOAL_SELECTION_TEMPLATE,
     EXTRACT_GOAL_TEMPLATE,
+    EXTRACT_GOAL_UPDATE_TEMPLATE,
     build_check_similarity_prompt,
+    build_extract_cancellation_prompt,
+    build_extract_confirmation_prompt,
     build_extract_goal_prompt,
+    build_extract_goal_selection_prompt,
+    build_extract_goal_update_prompt,
 )
 from elizaos_plugin_goals.service import GoalDataService
-from elizaos_plugin_goals.types import Goal, GoalOwnerType, GoalStatus
+from elizaos_plugin_goals.types import (
+    ConfirmationResult,
+    CreateGoalParams,
+    ExtractedGoalInfo,
+    Goal,
+    GoalFilters,
+    GoalOwnerType,
+    GoalSelectionResult,
+    GoalStatus,
+    GoalTag,
+    SimilarityCheckResult,
+    UpdateGoalParams,
+)
 
 __all__ = [
+    # Types
     "Goal",
+    "GoalTag",
     "GoalStatus",
     "GoalOwnerType",
+    "GoalFilters",
+    "CreateGoalParams",
+    "UpdateGoalParams",
+    "ExtractedGoalInfo",
+    "SimilarityCheckResult",
+    "GoalSelectionResult",
+    "ConfirmationResult",
+    # Service
     "GoalDataService",
+    # Prompt Templates
     "EXTRACT_GOAL_TEMPLATE",
     "CHECK_SIMILARITY_TEMPLATE",
+    "EXTRACT_CANCELLATION_TEMPLATE",
+    "EXTRACT_CONFIRMATION_TEMPLATE",
+    "EXTRACT_GOAL_SELECTION_TEMPLATE",
+    "EXTRACT_GOAL_UPDATE_TEMPLATE",
+    # Prompt Builders
     "build_extract_goal_prompt",
     "build_check_similarity_prompt",
+    "build_extract_cancellation_prompt",
+    "build_extract_confirmation_prompt",
+    "build_extract_goal_selection_prompt",
+    "build_extract_goal_update_prompt",
 ]
 
 __version__ = "1.2.0"
+PLUGIN_NAME = "goals"
+PLUGIN_DESCRIPTION = "Goal management and tracking for elizaOS agents"
 
 
 

@@ -17,8 +17,6 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import { channelInfoTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
 
-// Re-export for backwards compatibility
-export { channelInfoTemplate };
 
 /**
  * Get channel information from the user's request

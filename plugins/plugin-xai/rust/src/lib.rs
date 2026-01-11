@@ -1,20 +1,20 @@
 #![allow(missing_docs)]
 //! elizaOS xAI Plugin
 //!
-//! This crate provides xAI Grok model support and X (X) API v2 integration
+//! This crate provides xAI Grok model support and Twitter API v2 integration
 //! for elizaOS agents.
 //!
 //! # Features
 //!
 //! - xAI Grok models for text generation and embeddings
-//! - Full X (X) API v2 client (posts, timelines, users, search)
+//! - Full Twitter API v2 client for X platform (posts, timelines, users, search)
 //! - OAuth 1.0a and Bearer token authentication
 //! - Async/await with Tokio runtime
 //!
 //! # Example
 //!
 //! ```rust,no_run
-//! use elizaos_plugin_xai::{GrokClient, GrokConfig, XClient, XConfig};
+//! use elizaos_plugin_xai::{GrokClient, GrokConfig, TwitterClient, TwitterConfig};
 //! use elizaos_plugin_xai::grok::TextGenerationParams;
 //!
 //! # async fn example() -> anyhow::Result<()> {
@@ -23,7 +23,7 @@
 //! let result = grok.generate_text(&TextGenerationParams::new("Hello"), false).await?;
 //!
 //! // X client
-//! let mut x = XClient::new(XConfig::from_env()?)?;
+//! let mut x = TwitterClient::new(TwitterConfig::from_env()?)?;
 //! let me = x.me().await?;
 //! println!("Logged in as @{}", me.username);
 //! # Ok(())
@@ -37,23 +37,24 @@ pub mod error;
 pub mod grok;
 pub mod types;
 
-pub use client::XClient;
-pub use error::{XAIError, Result};
-pub use grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingParams};
-pub use types::*;
+// Import directly from submodules:
+// - client::TwitterClient
+// - error::{XAIError, Result}
+// - grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingParams}
+// - types::* for all types
 
 use anyhow::Result as AnyhowResult;
 
-/// Create an X client from environment variables.
+/// Create a Twitter API client for X from environment variables.
 ///
 /// Required environment variables:
 /// - `X_API_KEY`: X API key
 /// - `X_API_SECRET`: X API secret
 /// - `X_ACCESS_TOKEN`: Access token
 /// - `X_ACCESS_TOKEN_SECRET`: Access token secret
-pub fn get_x_client() -> AnyhowResult<XClient> {
-    let config = XConfig::from_env()?;
-    Ok(XClient::new(config)?)
+pub fn get_x_client() -> AnyhowResult<TwitterClient> {
+    let config = TwitterConfig::from_env()?;
+    Ok(TwitterClient::new(config)?)
 }
 
 /// Create a Grok client from environment variables.

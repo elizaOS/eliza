@@ -17,8 +17,6 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 // Import generated prompts
 import { sendDmTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { DiscordService } from "../service";
-// Re-export for backwards compatibility
-export const dmInfoTemplate = sendDmTemplate;
 
 /**
  * Get DM information from the user's request
@@ -34,7 +32,7 @@ const getDMInfo = async (
 ): Promise<{ recipientIdentifier: string; messageContent: string } | null> => {
   const prompt = composePromptFromState({
     state,
-    template: dmInfoTemplate,
+    template: sendDmTemplate,
   });
 
   for (let i = 0; i < 3; i++) {

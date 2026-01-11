@@ -444,7 +444,7 @@ export class ClientBase {
             id: worldId,
             name: `${post.username}'s X`,
             agentId: this.runtime.agentId,
-            serverId: createUniqueUuid(this.runtime, post.userId) as UUID,
+            messageServerId: createUniqueUuid(this.runtime, post.userId) as UUID,
             metadata: {
               ownership: { ownerId: post.userId },
               x: {
@@ -576,7 +576,7 @@ export class ClientBase {
         id: worldId,
         name: `${post.username}'s X`,
         agentId: this.runtime.agentId,
-        serverId: createUniqueUuid(this.runtime, post.userId) as UUID,
+        messageServerId: createUniqueUuid(this.runtime, post.userId) as UUID,
         metadata: {
           ownership: { ownerId: post.userId },
           x: {

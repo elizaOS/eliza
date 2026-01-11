@@ -1,5 +1,5 @@
 """
-X (X) API v2 Client
+X (formerly Twitter) API v2 Client
 
 Async HTTP client for X API v2 interactions using httpx.
 All methods use strong typing and fail-fast error handling.
@@ -29,8 +29,8 @@ from elizaos_plugin_xai.types import (
     Profile,
     QueryPostsResponse,
     QueryProfilesResponse,
+    TwitterConfig,
     Video,
-    XConfig,
 )
 
 
@@ -42,9 +42,9 @@ class XClientError(Exception):
         self.status_code = status_code
 
 
-class XClient:
+class TwitterClient:
     """
-    Async X (X) API v2 client.
+    Async X (formerly Twitter) API v2 client.
 
     All methods are async and use httpx for HTTP requests.
     Errors are raised immediately - no silent failures.
@@ -52,7 +52,7 @@ class XClient:
 
     API_BASE = "https://api.x.com/2"
 
-    def __init__(self, config: XConfig) -> None:
+    def __init__(self, config: TwitterConfig) -> None:
         """Initialize the X client."""
         self._config = config
         self._client: httpx.AsyncClient | None = None
@@ -72,7 +72,7 @@ class XClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> XClient:
+    async def __aenter__(self) -> TwitterClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:

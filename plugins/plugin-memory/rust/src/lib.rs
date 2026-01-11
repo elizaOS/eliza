@@ -46,13 +46,11 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use config::MemoryConfig;
-pub use error::{MemoryError, Result};
-pub use service::MemoryService;
-pub use types::{
-    LongTermMemory, LongTermMemoryCategory, MemoryExtraction, SessionSummary, SummaryResult,
-};
+// Import directly from submodules:
+// - config::MemoryConfig
+// - error::{MemoryError, Result}
+// - service::MemoryService
+// - types::{LongTermMemory, LongTermMemoryCategory, MemoryExtraction, etc.}
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "memory";
