@@ -124,10 +124,7 @@ const VOICE_ADDON =
  * Voice moderation add-on (for admin tier)
  */
 const VOICE_ADMIN_ADDON =
-  VOICE_ADDON |
-  Permissions.MuteMembers |
-  Permissions.DeafenMembers |
-  Permissions.MoveMembers;
+  VOICE_ADDON | Permissions.MuteMembers | Permissions.DeafenMembers | Permissions.MoveMembers;
 
 // ============================================================================
 // PERMISSION TIERS (3x2 Matrix)
@@ -214,7 +211,7 @@ export type DiscordPermissionTier = keyof typeof DiscordPermissionTiers;
  */
 export function generateInviteUrl(
   applicationId: string,
-  tier: DiscordPermissionTier = "MODERATOR_VOICE",
+  tier: DiscordPermissionTier = "MODERATOR_VOICE"
 ): string {
   const permissions = DiscordPermissionTiers[tier];
   return `https://discord.com/api/oauth2/authorize?client_id=${applicationId}&permissions=${permissions}&scope=bot%20applications.commands`;
@@ -261,9 +258,7 @@ export interface DiscordInviteUrls {
 /**
  * Generate all tier invite URLs for display.
  */
-export function generateAllInviteUrls(
-  applicationId: string,
-): DiscordInviteUrls {
+export function generateAllInviteUrls(applicationId: string): DiscordInviteUrls {
   return {
     basic: generateInviteUrl(applicationId, "BASIC"),
     basicVoice: generateInviteUrl(applicationId, "BASIC_VOICE"),

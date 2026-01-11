@@ -45,18 +45,14 @@ class RobloxGameAction(BaseModel):
 
     name: str = Field(..., description="Action name/type")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Action parameters")
-    target_player_ids: list[int] | None = Field(
-        None, description="Target player IDs (empty = all)"
-    )
+    target_player_ids: list[int] | None = Field(None, description="Target player IDs (empty = all)")
 
 
 class RobloxResponse(BaseModel):
     """Response to send back to Roblox."""
 
     content: str = Field(..., description="Response content")
-    action: RobloxGameAction | None = Field(
-        None, description="Optional action to trigger in-game"
-    )
+    action: RobloxGameAction | None = Field(None, description="Optional action to trigger in-game")
     flagged: bool = Field(False, description="Whether the message was flagged")
 
 
@@ -131,5 +127,8 @@ class RobloxExperienceInfo(BaseModel):
     playing: int | None = Field(None, description="Current active player count")
     visits: int | None = Field(None, description="Total visits")
     root_place_id: str = Field(..., description="Root place ID")
+
+
+
 
 

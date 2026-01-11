@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Roblox plugin.
 
 use thiserror::Error;
@@ -102,5 +103,10 @@ impl RobloxError {
         matches!(self, Self::Auth(_))
     }
 }
+
+
+
+
+
 
 

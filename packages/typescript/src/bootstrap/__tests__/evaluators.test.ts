@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChannelType,
   composePrompt,
@@ -8,6 +7,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type MockRuntime, setupActionTest } from "./test-utils";
 
 // Import the actual module first
@@ -511,7 +511,7 @@ describe("Multiple Prompt Evaluator Factory", () => {
           _message: Memory,
           state: State,
         ) => {
-          const results: Record<string, any> = {};
+          const results: Record<string, unknown> = {};
 
           for (const prompt of config.prompts) {
             try {
@@ -650,7 +650,7 @@ describe("Multiple Prompt Evaluator Factory", () => {
           _message: Memory,
           state: State,
         ) => {
-          const results: Record<string, any> = {};
+          const results: Record<string, unknown> = {};
 
           for (const prompt of config.prompts) {
             try {

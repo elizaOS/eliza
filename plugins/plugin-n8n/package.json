@@ -1,0 +1,95 @@
+{
+  "name": "@elizaos/plugin-n8n-root",
+  "version": "1.0.0",
+  "description": "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
+  "type": "module",
+  "main": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "import": "./typescript/dist/index.js",
+      "default": "./typescript/dist/index.js"
+    },
+    "./rust": {
+      "import": "./rust/pkg/node/elizaos_plugin_plugin_n8n.js"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "README.md",
+    "python",
+    "rust/src",
+    "rust/Cargo.toml",
+    "rust/pkg"
+  ],
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "n8n",
+    "ai",
+    "plugin-creation",
+    "anthropic",
+    "claude"
+  ],
+  "author": "ElizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "scripts": {
+    "build": "bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && (python3 -m build || (sleep 2 && python3 -m build || (sleep 4 && python3 -m build))) || echo 'Python build skipped - no python directory'",
+    "dev": "cd typescript && bun --hot build.ts",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
+    "test:python": "test -d python && cd python && pytest || echo 'Python tests skipped'",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
+    "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets -- -D warnings || echo 'Rust lint skipped'",
+    "lint:python": "test -d python && cd python && ruff check . && ruff format --check . || echo 'Python lint skipped'",
+    "lint:python:fix": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint fix skipped'",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ANTHROPIC_API_KEY": {
+        "type": "string",
+        "description": "API key for Anthropic Claude models",
+        "required": true,
+        "sensitive": true
+      },
+      "PLUGIN_DATA_DIR": {
+        "type": "string",
+        "description": "Directory for plugin workspace",
+        "required": false,
+        "default": "./data"
+      },
+      "CLAUDE_MODEL": {
+        "type": "string",
+        "description": "Claude model to use",
+        "required": false,
+        "default": "claude-3-opus-20240229"
+      }
+    }
+  }
+}

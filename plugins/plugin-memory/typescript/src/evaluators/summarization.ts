@@ -1,21 +1,21 @@
 import {
-  type IAgentRuntime,
-  type Memory,
-  type Evaluator,
-  logger,
-  ModelType,
   composePromptFromState,
+  type Evaluator,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
   type UUID,
-} from '@elizaos/core';
-import { MemoryService } from '../services/memory-service';
-import type { SummaryResult } from '../types';
+} from "@elizaos/core";
+import type { MemoryService } from "../services/memory-service";
+import type { SummaryResult } from "../types";
 
 /**
  * Helper function to get dialogue messages count (excluding action results)
  */
 async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Promise<number> {
   const messages = await runtime.getMemories({
-    tableName: 'messages',
+    tableName: "messages",
     roomId,
     count: 100,
     unique: false,
@@ -23,8 +23,12 @@ async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Pr
 
   const dialogueMessages = messages.filter(
     (msg) =>
-      !((msg.content?.type as string) === 'action_result' && (msg.metadata?.type as string) === 'action_result') &&
-      ((msg.metadata?.type as string) === 'agent_response_message' || (msg.metadata?.type as string) === 'user_message')
+      !(
+        (msg.content?.type as string) === "action_result" &&
+        (msg.metadata?.type as string) === "action_result"
+      ) &&
+      ((msg.metadata?.type as string) === "agent_response_message" ||
+        (msg.metadata?.type as string) === "user_message")
   );
 
   return dialogueMessages.length;
@@ -48,10 +52,10 @@ function parseSummaryXML(xml: string): SummaryResult {
   const topicsMatch = xml.match(/<topics>([\s\S]*?)<\/topics>/);
   const keyPointsMatches = xml.matchAll(/<point>([\s\S]*?)<\/point>/g);
 
-  const summary = summaryMatch ? summaryMatch[1].trim() : 'Summary not available';
+  const summary = summaryMatch ? summaryMatch[1].trim() : "Summary not available";
   const topics = topicsMatch
     ? topicsMatch[1]
-        .split(',')
+        .split(",")
         .map((t) => t.trim())
         .filter(Boolean)
     : [];
@@ -64,9 +68,9 @@ function parseSummaryXML(xml: string): SummaryResult {
  * Short-term Memory Summarization Evaluator
  */
 export const summarizationEvaluator: Evaluator = {
-  name: 'MEMORY_SUMMARIZATION',
-  description: 'Automatically summarizes conversations to optimize context usage',
-  similes: ['CONVERSATION_SUMMARY', 'CONTEXT_COMPRESSION', 'MEMORY_OPTIMIZATION'],
+  name: "MEMORY_SUMMARIZATION",
+  description: "Automatically summarizes conversations to optimize context usage",
+  similes: ["CONVERSATION_SUMMARY", "CONTEXT_COMPRESSION", "MEMORY_OPTIMIZATION"],
   alwaysRun: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -74,7 +78,7 @@ export const summarizationEvaluator: Evaluator = {
       return false;
     }
 
-    const memoryService = runtime.getService('memory') as MemoryService | null;
+    const memoryService = runtime.getService("memory") as MemoryService | null;
     if (!memoryService) {
       return false;
     }
@@ -92,9 +96,9 @@ export const summarizationEvaluator: Evaluator = {
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory) => {
-    const memoryService = runtime.getService('memory') as MemoryService;
+    const memoryService = runtime.getService("memory") as MemoryService;
     if (!memoryService) {
-      logger.error('MemoryService not found');
+      logger.error("MemoryService not found");
       return undefined;
     }
 
@@ -108,7 +112,7 @@ export const summarizationEvaluator: Evaluator = {
       const lastOffset = existingSummary?.lastMessageOffset || 0;
 
       const allMessages = await runtime.getMemories({
-        tableName: 'messages',
+        tableName: "messages",
         roomId,
         count: 1000,
         unique: false,
@@ -116,15 +120,19 @@ export const summarizationEvaluator: Evaluator = {
 
       const allDialogueMessages = allMessages.filter(
         (msg) =>
-          !((msg.content?.type as string) === 'action_result' && (msg.metadata?.type as string) === 'action_result') &&
-          ((msg.metadata?.type as string) === 'agent_response_message' || (msg.metadata?.type as string) === 'user_message')
+          !(
+            (msg.content?.type as string) === "action_result" &&
+            (msg.metadata?.type as string) === "action_result"
+          ) &&
+          ((msg.metadata?.type as string) === "agent_response_message" ||
+            (msg.metadata?.type as string) === "user_message")
       );
 
       const totalDialogueCount = allDialogueMessages.length;
       const newDialogueCount = totalDialogueCount - lastOffset;
 
       if (newDialogueCount === 0) {
-        logger.debug('No new dialogue messages to summarize');
+        logger.debug("No new dialogue messages to summarize");
         return undefined;
       }
 
@@ -147,17 +155,16 @@ export const summarizationEvaluator: Evaluator = {
       );
 
       if (newDialogueMessages.length === 0) {
-        logger.debug('No new dialogue messages retrieved after filtering');
+        logger.debug("No new dialogue messages retrieved after filtering");
         return undefined;
       }
 
       const formattedMessages = newDialogueMessages
         .map((msg) => {
-          const sender =
-            msg.entityId === runtime.agentId ? runtime.character.name : 'User';
-          return `${sender}: ${msg.content.text || '[non-text message]'}`;
+          const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+          return `${sender}: ${msg.content.text || "[non-text message]"}`;
         })
-        .join('\n');
+        .join("\n");
 
       const state = await runtime.composeState(message);
       let prompt: string;
@@ -169,7 +176,7 @@ export const summarizationEvaluator: Evaluator = {
           state: {
             ...state,
             existingSummary: existingSummary.summary,
-            existingTopics: existingSummary.topics?.join(', ') || 'None',
+            existingTopics: existingSummary.topics?.join(", ") || "None",
             newMessages: formattedMessages,
           },
           template,
@@ -177,11 +184,10 @@ export const summarizationEvaluator: Evaluator = {
       } else {
         const initialMessages = sortedDialogueMessages
           .map((msg) => {
-            const sender =
-              msg.entityId === runtime.agentId ? runtime.character.name : 'User';
-            return `${sender}: ${msg.content.text || '[non-text message]'}`;
+            const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+            return `${sender}: ${msg.content.text || "[non-text message]"}`;
           })
-          .join('\n');
+          .join("\n");
 
         template = initialSummarizationTemplate;
         prompt = composePromptFromState({
@@ -198,7 +204,7 @@ export const summarizationEvaluator: Evaluator = {
       const summaryResult = parseSummaryXML(response);
 
       logger.info(
-        `${existingSummary ? 'Updated' : 'Generated'} summary: ${summaryResult.summary.substring(0, 100)}...`
+        `${existingSummary ? "Updated" : "Generated"} summary: ${summaryResult.summary.substring(0, 100)}...`
       );
 
       const newOffset = lastOffset + newDialogueMessages.length;
@@ -247,11 +253,10 @@ export const summarizationEvaluator: Evaluator = {
         );
       }
     } catch (error) {
-      logger.error({ error }, 'Error during summarization:');
+      logger.error({ error }, "Error during summarization:");
     }
     return undefined;
   },
 
   examples: [],
 };
-

@@ -9,5 +9,3 @@ __all__ = [
     "PostgresAdapter",
     "PGLiteAdapter",
 ]
-
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS RSS Plugin
 //!
 //! RSS and Atom feed integration for news monitoring.
@@ -39,5 +40,10 @@ pub use types::{
     FeedFormat, FeedItemMetadata, FeedSubscriptionMetadata, RssChannel, RssConfig,
     RssEnclosure, RssFeed, RssImage, RssItem,
 };
+
+
+
+
+
 
 

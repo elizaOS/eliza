@@ -8,15 +8,16 @@ This plugin enables AI agents to interact with Linear's issue tracking and proje
 
 ## Languages
 
-| Language | Package | Directory |
-|----------|---------|-----------|
+| Language   | Package                     | Directory                      |
+| ---------- | --------------------------- | ------------------------------ |
 | TypeScript | `@elizaos/plugin-linear-ts` | [`typescript/`](./typescript/) |
-| Python | `elizaos-plugin-linear` | [`python/`](./python/) |
-| Rust | `elizaos-plugin-linear` | [`rust/`](./rust/) |
+| Python     | `elizaos-plugin-linear`     | [`python/`](./python/)         |
+| Rust       | `elizaos-plugin-linear`     | [`rust/`](./rust/)             |
 
 ## Features
 
 ### 📋 Issue Management
+
 - **Create Issues**: Create new issues with title, description, priority, assignees, and labels
 - **Get Issue Details**: Retrieve comprehensive information about specific issues
 - **Update Issues**: Modify existing issues with new information
@@ -25,14 +26,17 @@ This plugin enables AI agents to interact with Linear's issue tracking and proje
 - **Add Comments**: Comment on existing issues
 
 ### 👥 Team & User Management
+
 - **List Teams**: View all teams in your Linear workspace
 - **Get Team Details**: Retrieve specific team information
 
 ### 📊 Project Management
+
 - **List Projects**: View all projects, optionally filtered by team
 - **Get Project Details**: Retrieve specific project information
 
 ### 📈 Activity Tracking
+
 - **Activity Log**: Track all Linear operations performed by the agent
 - **Clear Activity**: Reset the activity log
 
@@ -53,27 +57,27 @@ LINEAR_DEFAULT_TEAM_KEY=ENG
 
 All languages implement these actions with full parity:
 
-| Action | Description |
-|--------|-------------|
-| `CREATE_LINEAR_ISSUE` | Create a new issue |
-| `GET_LINEAR_ISSUE` | Get issue details by ID or search |
-| `UPDATE_LINEAR_ISSUE` | Update an existing issue |
-| `DELETE_LINEAR_ISSUE` | Archive an issue |
-| `SEARCH_LINEAR_ISSUES` | Search for issues with filters |
-| `CREATE_LINEAR_COMMENT` | Add a comment to an issue |
-| `LIST_LINEAR_TEAMS` | List all teams |
-| `LIST_LINEAR_PROJECTS` | List all projects |
-| `GET_LINEAR_ACTIVITY` | View activity log |
-| `CLEAR_LINEAR_ACTIVITY` | Clear activity log |
+| Action                  | Description                       |
+| ----------------------- | --------------------------------- |
+| `CREATE_LINEAR_ISSUE`   | Create a new issue                |
+| `GET_LINEAR_ISSUE`      | Get issue details by ID or search |
+| `UPDATE_LINEAR_ISSUE`   | Update an existing issue          |
+| `DELETE_LINEAR_ISSUE`   | Archive an issue                  |
+| `SEARCH_LINEAR_ISSUES`  | Search for issues with filters    |
+| `CREATE_LINEAR_COMMENT` | Add a comment to an issue         |
+| `LIST_LINEAR_TEAMS`     | List all teams                    |
+| `LIST_LINEAR_PROJECTS`  | List all projects                 |
+| `GET_LINEAR_ACTIVITY`   | View activity log                 |
+| `CLEAR_LINEAR_ACTIVITY` | Clear activity log                |
 
 ## Providers
 
 All languages implement these providers:
 
-| Provider | Description |
-|----------|-------------|
-| `LINEAR_ISSUES` | Context about recent issues |
-| `LINEAR_TEAMS` | Context about teams |
+| Provider          | Description                   |
+| ----------------- | ----------------------------- |
+| `LINEAR_ISSUES`   | Context about recent issues   |
+| `LINEAR_TEAMS`    | Context about teams           |
 | `LINEAR_PROJECTS` | Context about active projects |
 | `LINEAR_ACTIVITY` | Context about recent activity |
 
@@ -103,7 +107,7 @@ bun add @elizaos/plugin-linear-ts
 ```
 
 ```typescript
-import { linearPlugin } from '@elizaos/plugin-linear-ts';
+import { linearPlugin } from "@elizaos/plugin-linear-ts";
 agent.registerPlugin(linearPlugin);
 ```
 
@@ -136,6 +140,7 @@ let service = LinearService::start(config).await?;
 Each language has its own development workflow:
 
 ### TypeScript
+
 ```bash
 cd typescript
 npm install
@@ -144,6 +149,7 @@ npm test
 ```
 
 ### Python
+
 ```bash
 cd python
 pip install -e ".[dev]"
@@ -151,6 +157,7 @@ pytest
 ```
 
 ### Rust
+
 ```bash
 cd rust
 cargo build
@@ -160,6 +167,7 @@ cargo test
 ## Priority Levels
 
 Linear uses numeric priority levels:
+
 - 0: No priority
 - 1: Urgent
 - 2: High
@@ -169,6 +177,7 @@ Linear uses numeric priority levels:
 ## Error Handling
 
 All implementations provide custom error types:
+
 - `LinearAPIError` / `LinearError::Api`: General API errors
 - `LinearAuthenticationError` / `LinearError::Authentication`: Authentication failures
 - `LinearRateLimitError` / `LinearError::RateLimit`: Rate limit exceeded

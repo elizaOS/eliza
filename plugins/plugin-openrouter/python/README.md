@@ -30,15 +30,15 @@ print(f"Embedding dimension: {len(embedding.embedding)}")
 
 The client can be configured via environment variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENROUTER_API_KEY` | API key for authentication (required) | - |
-| `OPENROUTER_BASE_URL` | Base URL for the API | `https://openrouter.ai/api/v1` |
-| `OPENROUTER_SMALL_MODEL` | Model for small text generation | `google/gemini-2.0-flash-001` |
-| `OPENROUTER_LARGE_MODEL` | Model for large text generation | `google/gemini-2.5-flash` |
-| `OPENROUTER_EMBEDDING_MODEL` | Model for embeddings | `openai/text-embedding-3-small` |
-| `OPENROUTER_EMBEDDING_DIMENSIONS` | Embedding dimensions | `1536` |
-| `OPENROUTER_TIMEOUT_SECONDS` | Request timeout | `60` |
+| Variable                          | Description                           | Default                         |
+| --------------------------------- | ------------------------------------- | ------------------------------- |
+| `OPENROUTER_API_KEY`              | API key for authentication (required) | -                               |
+| `OPENROUTER_BASE_URL`             | Base URL for the API                  | `https://openrouter.ai/api/v1`  |
+| `OPENROUTER_SMALL_MODEL`          | Model for small text generation       | `google/gemini-2.0-flash-001`   |
+| `OPENROUTER_LARGE_MODEL`          | Model for large text generation       | `google/gemini-2.5-flash`       |
+| `OPENROUTER_EMBEDDING_MODEL`      | Model for embeddings                  | `openai/text-embedding-3-small` |
+| `OPENROUTER_EMBEDDING_DIMENSIONS` | Embedding dimensions                  | `1536`                          |
+| `OPENROUTER_TIMEOUT_SECONDS`      | Request timeout                       | `60`                            |
 
 ## Features
 
@@ -55,5 +55,6 @@ The client can be configured via environment variables:
 ## License
 
 MIT
+
 
 

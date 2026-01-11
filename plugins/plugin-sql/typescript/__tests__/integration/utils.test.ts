@@ -1,7 +1,7 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { expandTildePath, resolveEnvFile, resolvePgliteDir } from "../../utils";
 
 describe("Utils Integration Tests", () => {
@@ -119,10 +119,7 @@ describe("Utils Integration Tests", () => {
 
     it("should load .env file if it exists", () => {
       // Create .env file with PGLITE_DATA_DIR
-      fs.writeFileSync(
-        path.join(tempDir, ".env"),
-        "PGLITE_DATA_DIR=/from/env/file",
-      );
+      fs.writeFileSync(path.join(tempDir, ".env"), "PGLITE_DATA_DIR=/from/env/file");
       delete process.env.PGLITE_DATA_DIR;
 
       const result = resolvePgliteDir();
@@ -144,9 +141,7 @@ describe("Utils Integration Tests", () => {
       // Should return new path
       expect(result).toBe(path.join(tempDir, ".eliza", ".elizadb"));
       // Should update env var
-      expect(process.env.PGLITE_DATA_DIR).toBe(
-        path.join(tempDir, ".eliza", ".elizadb"),
-      );
+      expect(process.env.PGLITE_DATA_DIR).toBe(path.join(tempDir, ".eliza", ".elizadb"));
     });
   });
 });

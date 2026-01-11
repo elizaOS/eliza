@@ -1,12 +1,11 @@
-import { Plugin } from "@elizaos/core";
-import { ShellService } from "./services/shellService";
-import { executeCommand, clearHistory } from "./actions";
+import type { Plugin } from "@elizaos/core";
+import { clearHistory, executeCommand } from "./actions";
 import { shellHistoryProvider } from "./providers";
+import { ShellService } from "./services/shellService";
 
 export const shellPlugin: Plugin = {
   name: "shell",
-  description:
-    "Execute shell commands within a restricted directory with history tracking",
+  description: "Execute shell commands within a restricted directory with history tracking",
   services: [ShellService],
   actions: [executeCommand, clearHistory],
   providers: [shellHistoryProvider],
@@ -14,26 +13,23 @@ export const shellPlugin: Plugin = {
 
 export default shellPlugin;
 
+export { clearHistory } from "./actions/clearHistory";
+export { executeCommand } from "./actions/executeCommand";
+export { shellHistoryProvider } from "./providers/shellHistoryProvider";
+export { ShellService } from "./services/shellService";
 // Export types and utilities for external use
 export type {
-  CommandResult,
   CommandHistoryEntry,
+  CommandResult,
   FileOperation,
   FileOperationType,
   ShellConfig,
 } from "./types";
-
-export { ShellService } from "./services/shellService";
-export { executeCommand } from "./actions/executeCommand";
-export { clearHistory } from "./actions/clearHistory";
-export { shellHistoryProvider } from "./providers/shellHistoryProvider";
 export {
-  loadShellConfig,
   DEFAULT_FORBIDDEN_COMMANDS,
-  validatePath,
-  isSafeCommand,
   extractBaseCommand,
   isForbiddenCommand,
+  isSafeCommand,
+  loadShellConfig,
+  validatePath,
 } from "./utils";
-
-

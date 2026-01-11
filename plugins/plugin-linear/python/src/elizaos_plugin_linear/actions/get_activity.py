@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from elizaos_plugin_linear.actions.base import (
-    Action,
     ActionExample,
     ActionResult,
     HandlerCallback,
@@ -64,73 +63,85 @@ async def handler(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             raise RuntimeError("Linear service not available")
-        
+
         content = message.get("content", {}).get("text", "")
         filters: dict[str, Any] = {}
         limit = 10
-        
+
         # Use LLM to parse filters
         if content:
             prompt = GET_ACTIVITY_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
-            
+
             if response:
                 try:
                     cleaned = re.sub(r"^```(?:json)?\n?", "", response)
                     cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                     parsed = json.loads(cleaned)
-                    
+
                     # Handle time range filtering
                     if parsed.get("timeRange"):
                         period = parsed["timeRange"].get("period")
                         now = datetime.now()
                         from_date: datetime | None = None
-                        
+
                         if period == "today":
                             from_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
                         elif period == "yesterday":
-                            from_date = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                            from_date = (now - timedelta(days=1)).replace(
+                                hour=0, minute=0, second=0, microsecond=0
+                            )
                         elif period == "this-week":
-                            from_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                            from_date = (now - timedelta(days=now.weekday())).replace(
+                                hour=0, minute=0, second=0, microsecond=0
+                            )
                         elif period == "last-week":
-                            from_date = (now - timedelta(days=now.weekday() + 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                            from_date = (now - timedelta(days=now.weekday() + 7)).replace(
+                                hour=0, minute=0, second=0, microsecond=0
+                            )
                         elif period == "this-month":
-                            from_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                        
+                            from_date = now.replace(
+                                day=1, hour=0, minute=0, second=0, microsecond=0
+                            )
+
                         if from_date:
                             filters["fromDate"] = from_date.isoformat()
-                    
+
                     if parsed.get("actionTypes"):
                         filters["action"] = parsed["actionTypes"][0]
-                    
+
                     if parsed.get("resourceTypes"):
                         filters["resource_type"] = parsed["resourceTypes"][0]
-                    
+
                     if parsed.get("resourceId"):
                         filters["resource_id"] = parsed["resourceId"]
-                    
+
                     if parsed.get("successFilter") and parsed["successFilter"] != "all":
                         filters["success"] = parsed["successFilter"] == "success"
-                    
+
                     limit = parsed.get("limit", 10)
-                    
+
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse activity filters")
-        
+
         # Get filtered activity
         activity = linear_service.get_activity_log(limit * 2, filters if filters else None)
-        
+
         # Additional client-side filtering for time range
         if filters.get("fromDate"):
             from_time = datetime.fromisoformat(filters["fromDate"])
             activity = [
-                item for item in activity
-                if datetime.fromisoformat(item.timestamp.replace("Z", "+00:00").replace("+00:00", "")) >= from_time
+                item
+                for item in activity
+                if datetime.fromisoformat(
+                    item.timestamp.replace("Z", "+00:00").replace("+00:00", "")
+                )
+                >= from_time
             ]
-        
+
         # Limit results
         activity = activity[:limit]
-        
+
         if not activity:
             no_activity_msg = (
                 "No Linear activity found for the specified filters."
@@ -138,37 +149,40 @@ async def handler(
                 else "No recent Linear activity found."
             )
             if callback:
-                await callback({"text": no_activity_msg, "source": message.get("content", {}).get("source")})
+                await callback(
+                    {"text": no_activity_msg, "source": message.get("content", {}).get("source")}
+                )
             return {"text": no_activity_msg, "success": True, "data": {"activity": []}}
-        
+
         # Format activity list
         activity_text = []
         for i, item in enumerate(activity):
-            time_str = datetime.fromisoformat(item.timestamp.replace("Z", "")).strftime("%Y-%m-%d %H:%M")
-            status = "✅" if item.success else "❌"
-            
-            details_str = ", ".join(
-                f"{k}: {v}" for k, v in item.details.items()
-                if k != "filters"
+            time_str = datetime.fromisoformat(item.timestamp.replace("Z", "")).strftime(
+                "%Y-%m-%d %H:%M"
             )
-            
+            status = "✅" if item.success else "❌"
+
+            details_str = ", ".join(f"{k}: {v}" for k, v in item.details.items() if k != "filters")
+
             activity_text.append(
-                f"{i+1}. {status} {item.action} on {item.resource_type} {item.resource_id}\n"
+                f"{i + 1}. {status} {item.action} on {item.resource_type} {item.resource_id}\n"
                 f"   Time: {time_str}\n"
                 f"   {f'Details: {details_str}' if details_str else ''}"
                 f"{f'\\n   Error: {item.error}' if item.error else ''}"
             )
-        
+
         header_text = (
             f"📊 Linear activity {content}:"
             if filters.get("fromDate")
             else "📊 Recent Linear activity:"
         )
-        
+
         result_message = f"{header_text}\n\n" + "\n\n".join(activity_text)
         if callback:
-            await callback({"text": result_message, "source": message.get("content", {}).get("source")})
-        
+            await callback(
+                {"text": result_message, "source": message.get("content", {}).get("source")}
+            )
+
         return {
             "text": f"Found {len(activity)} activity item{'s' if len(activity) != 1 else ''}",
             "success": True,
@@ -189,12 +203,14 @@ async def handler(
                 "count": len(activity),
             },
         }
-        
+
     except Exception as error:
         logger.error(f"Failed to get activity: {error}")
         error_message = f"❌ Failed to get activity: {error}"
         if callback:
-            await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+            await callback(
+                {"text": error_message, "source": message.get("content", {}).get("source")}
+            )
         return {"text": error_message, "success": False}
 
 
@@ -205,11 +221,20 @@ get_activity_action = create_action(
     examples=[
         [
             ActionExample(name="User", content={"text": "Show me recent Linear activity"}),
-            ActionExample(name="Assistant", content={"text": "I'll show you the recent Linear activity.", "actions": ["GET_LINEAR_ACTIVITY"]}),
+            ActionExample(
+                name="Assistant",
+                content={
+                    "text": "I'll show you the recent Linear activity.",
+                    "actions": ["GET_LINEAR_ACTIVITY"],
+                },
+            ),
         ],
     ],
     validate=validate,
     handler=handler,
 )
+
+
+
 
 

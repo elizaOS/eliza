@@ -1,6 +1,6 @@
-import { Stagehand } from '@browserbasehq/stagehand';
-import { Logger } from './logger.js';
-import { PlaywrightInstaller } from './playwright-installer.js';
+import { Stagehand } from "@browserbasehq/stagehand";
+import type { Logger } from "./logger.js";
+import type { PlaywrightInstaller } from "./playwright-installer.js";
 
 export interface BrowserSession {
   id: string;
@@ -15,18 +15,21 @@ export class SessionManager {
 
   constructor(
     private logger: Logger,
-    private playwrightInstaller: PlaywrightInstaller
+    private playwrightInstaller: PlaywrightInstaller,
   ) {}
 
-  async createSession(sessionId: string, clientId: string): Promise<BrowserSession> {
+  async createSession(
+    sessionId: string,
+    clientId: string,
+  ): Promise<BrowserSession> {
     // Ensure Playwright is installed before creating session
     if (!this.playwrightInstaller.isReady()) {
       try {
         await this.playwrightInstaller.ensurePlaywrightInstalled();
       } catch (error) {
-        this.logger.error('Failed to install Playwright:', error);
+        this.logger.error("Failed to install Playwright:", error);
         throw new Error(
-          'Playwright is not installed and installation failed. Please install Playwright manually.'
+          "Playwright is not installed and installation failed. Please install Playwright manually.",
         );
       }
     }
@@ -36,7 +39,7 @@ export class SessionManager {
     if (clientSessions.length >= this.maxSessionsPerClient) {
       // Remove oldest session
       const oldestSession = clientSessions.sort(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       )[0];
       if (oldestSession) {
         await this.destroySession(oldestSession.id);
@@ -46,12 +49,12 @@ export class SessionManager {
     this.logger.info(`Creating session ${sessionId} for client ${clientId}`);
 
     // Determine environment based on available API keys
-    const env = process.env.BROWSERBASE_API_KEY ? 'BROWSERBASE' : 'LOCAL';
+    const env = process.env.BROWSERBASE_API_KEY ? "BROWSERBASE" : "LOCAL";
 
     // Create Stagehand configuration
     const config: any = {
       env,
-      headless: process.env.BROWSER_HEADLESS !== 'false',
+      headless: process.env.BROWSER_HEADLESS !== "false",
     };
 
     // Add API keys if available
@@ -73,13 +76,13 @@ export class SessionManager {
     // Configure LLM provider
     if (process.env.OLLAMA_BASE_URL) {
       // Use Ollama if available
-      config.modelName = process.env.OLLAMA_MODEL || 'llama3.2-vision';
+      config.modelName = process.env.OLLAMA_MODEL || "llama3.2-vision";
       config.modelBaseUrl = process.env.OLLAMA_BASE_URL;
     } else if (process.env.OPENAI_API_KEY) {
-      config.modelName = 'gpt-4o';
+      config.modelName = "gpt-4o";
       config.openaiApiKey = process.env.OPENAI_API_KEY;
     } else if (process.env.ANTHROPIC_API_KEY) {
-      config.modelName = 'claude-3-5-sonnet-latest';
+      config.modelName = "claude-3-5-sonnet-latest";
       config.anthropicApiKey = process.env.ANTHROPIC_API_KEY;
     }
 
@@ -115,7 +118,9 @@ export class SessionManager {
   }
 
   getClientSessions(clientId: string): BrowserSession[] {
-    return Array.from(this.sessions.values()).filter((session) => session.clientId === clientId);
+    return Array.from(this.sessions.values()).filter(
+      (session) => session.clientId === clientId,
+    );
   }
 
   async cleanupClientSessions(clientId: string): Promise<void> {
@@ -126,7 +131,7 @@ export class SessionManager {
   }
 
   async cleanup(): Promise<void> {
-    this.logger.info('Cleaning up all sessions...');
+    this.logger.info("Cleaning up all sessions...");
     for (const sessionId of this.sessions.keys()) {
       await this.destroySession(sessionId);
     }

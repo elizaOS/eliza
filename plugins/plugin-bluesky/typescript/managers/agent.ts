@@ -2,16 +2,16 @@
  * BlueSky agent manager for polling and automated actions.
  */
 
-import { logger, type IAgentRuntime } from "@elizaos/core";
-import { BlueSkyClient } from "../client";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import type { BlueSkyClient } from "../client";
 import type { BlueSkyConfig, BlueSkyNotification, NotificationReason } from "../types";
 import {
-  getPollInterval,
   getActionInterval,
+  getMaxActionsProcessing,
+  getPollInterval,
+  getPostIntervalRange,
   isPostingEnabled,
   shouldPostImmediately,
-  getPostIntervalRange,
-  getMaxActionsProcessing,
 } from "../utils/config";
 
 export class BlueSkyAgentManager {
@@ -74,7 +74,10 @@ export class BlueSkyAgentManager {
     if (notifications.length === 0) return;
 
     const newNotifications = this.lastSeenAt
-      ? notifications.filter((n) => n.indexedAt > this.lastSeenAt!)
+      ? notifications.filter((n) => {
+          const lastSeen = this.lastSeenAt;
+          return lastSeen !== null && n.indexedAt > lastSeen;
+        })
       : notifications;
 
     if (newNotifications.length > 0) {
@@ -100,10 +103,13 @@ export class BlueSkyAgentManager {
 
     const event = eventMap[notification.reason];
     if (event) {
-      void this.runtime.emitEvent(event as string, {
-        source: "bluesky",
-        data: { notification },
-      } as unknown as Parameters<typeof this.runtime.emitEvent>[1]);
+      void this.runtime.emitEvent(
+        event as string,
+        {
+          source: "bluesky",
+          data: { notification },
+        } as unknown as Parameters<typeof this.runtime.emitEvent>[1]
+      );
     }
   }
 
@@ -121,10 +127,13 @@ export class BlueSkyAgentManager {
 
     for (const notification of notifications) {
       if (notification.reason === "mention" || notification.reason === "reply") {
-        void this.runtime.emitEvent("bluesky.should_respond" as string, {
-          source: "bluesky",
-          data: { notification },
-        } as unknown as Parameters<typeof this.runtime.emitEvent>[1]);
+        void this.runtime.emitEvent(
+          "bluesky.should_respond" as string,
+          {
+            source: "bluesky",
+            data: { notification },
+          } as unknown as Parameters<typeof this.runtime.emitEvent>[1]
+        );
       }
     }
   }
@@ -149,9 +158,12 @@ export class BlueSkyAgentManager {
   }
 
   private createAutomatedPost(): void {
-    void this.runtime.emitEvent("bluesky.create_post" as string, {
-      source: "bluesky",
-      data: { automated: true },
-    } as unknown as Parameters<typeof this.runtime.emitEvent>[1]);
+    void this.runtime.emitEvent(
+      "bluesky.create_post" as string,
+      {
+        source: "bluesky",
+        data: { automated: true },
+      } as unknown as Parameters<typeof this.runtime.emitEvent>[1]
+    );
   }
 }

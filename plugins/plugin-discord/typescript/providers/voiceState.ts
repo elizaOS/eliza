@@ -1,12 +1,5 @@
 import { getVoiceConnection } from "@discordjs/voice";
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
 import type { GuildChannel } from "discord.js";
 import type { DiscordService } from "../service";
@@ -45,12 +38,12 @@ export const voiceStateProvider: Provider = {
     }
 
     const channelId = room.channelId;
-    const agentName = (state && state.agentName) || "The agent";
+    const agentName = state?.agentName || "The agent";
 
     if (!channelId) {
       runtime.logger.warn(
         { src: "plugin:discord:provider:voiceState", roomId: room.id },
-        "No channel ID found",
+        "No channel ID found"
       );
       return {
         data: {
@@ -66,13 +59,11 @@ export const voiceStateProvider: Provider = {
     }
 
     // Look up guild via channel to get the Discord guild ID for voice connection
-    const discordService = runtime.getService(
-      ServiceType.DISCORD,
-    ) as DiscordService;
+    const discordService = runtime.getService(ServiceType.DISCORD) as DiscordService;
     if (!discordService || !discordService.client) {
       runtime.logger.warn(
         { src: "plugin:discord:provider:voiceState" },
-        "Discord service not available",
+        "Discord service not available"
       );
       return {
         data: {
@@ -87,9 +78,7 @@ export const voiceStateProvider: Provider = {
     }
 
     // Try cache first, then fetch if not cached (handles cold start / partial cache scenarios)
-    let channel = discordService.client.channels.cache.get(channelId) as
-      | GuildChannel
-      | undefined;
+    let channel = discordService.client.channels.cache.get(channelId) as GuildChannel | undefined;
     if (!channel) {
       try {
         channel = (await discordService.client.channels.fetch(channelId)) as
@@ -100,21 +89,18 @@ export const voiceStateProvider: Provider = {
           {
             src: "plugin:discord:provider:voiceState",
             channelId,
-            error:
-              fetchError instanceof Error
-                ? fetchError.message
-                : String(fetchError),
+            error: fetchError instanceof Error ? fetchError.message : String(fetchError),
           },
-          "Failed to fetch channel",
+          "Failed to fetch channel"
         );
       }
     }
-    const guildId = channel && channel.guild && channel.guild.id;
+    const guildId = channel?.guild?.id;
 
     if (!guildId) {
       runtime.logger.warn(
         { src: "plugin:discord:provider:voiceState", channelId },
-        "Could not find guild for channel (not in cache and fetch failed)",
+        "Could not find guild for channel (not in cache and fetch failed)"
       );
       return {
         data: {

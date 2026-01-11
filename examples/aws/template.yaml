@@ -1,8 +1,8 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
   elizaOS AWS Lambda Worker
-  
+
   Deploy an elizaOS agent as a serverless Lambda function with API Gateway.
 
 # Global settings
@@ -23,27 +23,27 @@ Parameters:
     Type: String
     Description: OpenAI API key for the LLM provider
     NoEcho: true
-  
+
   OpenAIModel:
     Type: String
     Default: gpt-5-mini
     Description: OpenAI model to use
-  
+
   CharacterName:
     Type: String
     Default: Eliza
     Description: Name of the AI agent
-  
+
   CharacterBio:
     Type: String
     Default: A helpful AI assistant.
     Description: Biography/description of the AI agent
-  
+
   CharacterSystem:
     Type: String
     Default: You are a helpful, concise AI assistant. Respond thoughtfully to user messages.
     Description: System prompt for the AI agent
-  
+
   RuntimeLanguage:
     Type: String
     Default: typescript
@@ -124,7 +124,7 @@ Resources:
         EntryPoints:
           - handler.ts
 
-  # Python Lambda Function  
+  # Python Lambda Function
   ElizaWorkerPython:
     Type: AWS::Serverless::Function
     Condition: IsPython
@@ -209,26 +209,24 @@ Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub "https://${ElizaApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-  
+
   ChatEndpoint:
     Description: Chat endpoint URL
     Value: !Sub "https://${ElizaApi}.execute-api.${AWS::Region}.amazonaws.com/prod/chat"
-  
+
   HealthEndpoint:
     Description: Health check endpoint URL
     Value: !Sub "https://${ElizaApi}.execute-api.${AWS::Region}.amazonaws.com/prod/health"
-  
+
   FunctionArn:
     Description: Lambda function ARN
-    Value: !If 
+    Value: !If
       - IsTypeScript
       - !GetAtt ElizaWorkerTypeScript.Arn
-      - !If 
+      - !If
         - IsPython
         - !GetAtt ElizaWorkerPython.Arn
         - !GetAtt ElizaWorkerRust.Arn
-
-
 
 
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Todo Plugin.
 
 use chrono::{DateTime, Utc};
@@ -16,6 +17,7 @@ pub enum TaskType {
     /// Aspirational long-term goal
     Aspirational,
 }
+
 
 impl Default for TaskType {
     fn default() -> Self {
@@ -37,6 +39,7 @@ pub enum Priority {
     Low = 4,
 }
 
+
 impl Default for Priority {
     fn default() -> Self {
         Self::Medium
@@ -55,21 +58,16 @@ impl From<u8> for Priority {
 }
 
 /// Recurring patterns for daily tasks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RecurringPattern {
     /// Daily recurrence
+    #[default]
     Daily,
     /// Weekly recurrence
     Weekly,
     /// Monthly recurrence
     Monthly,
-}
-
-impl Default for RecurringPattern {
-    fn default() -> Self {
-        Self::Daily
-    }
 }
 
 /// Notification types.
@@ -201,6 +199,7 @@ pub struct CreateTodoParams {
     #[serde(default)]
     pub tags: Vec<String>,
 }
+
 
 impl Default for CreateTodoParams {
     fn default() -> Self {

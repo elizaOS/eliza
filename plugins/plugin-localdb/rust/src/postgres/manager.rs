@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! PostgreSQL connection manager for elizaOS
 
 use anyhow::{Context, Result};
@@ -8,8 +9,6 @@ use tracing::{debug, info};
 /// PostgreSQL connection manager
 pub struct PostgresConnectionManager {
     pool: PgPool,
-    #[allow(dead_code)]
-    connection_string: String,
 }
 
 impl PostgresConnectionManager {
@@ -28,10 +27,7 @@ impl PostgresConnectionManager {
 
         info!("Connected to PostgreSQL successfully");
 
-        Ok(PostgresConnectionManager {
-            pool,
-            connection_string: connection_string.to_string(),
-        })
+        Ok(PostgresConnectionManager { pool })
     }
 
     /// Get the connection pool

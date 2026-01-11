@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS N8n Plugin - Rust Implementation
 //!
 //! This crate provides an AI-powered plugin creation system for elizaOS,
@@ -69,5 +70,10 @@ pub const PLUGIN_DESCRIPTION: &str =
     "AI-powered plugin creation for elizaOS using Claude models";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

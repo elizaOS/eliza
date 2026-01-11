@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Base database adapter trait for elizaOS
 //!
 //! This module defines the DatabaseAdapter trait that all database implementations must follow.

@@ -20,8 +20,8 @@ The API route (`app/api/chat/route.ts`) mirrors `examples/chat/typescript/chat.t
 
 ```typescript
 const character: Character = {
-  name: 'Eliza',
-  bio: 'A helpful AI assistant.',
+  name: "Eliza",
+  bio: "A helpful AI assistant.",
   secrets: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   },
@@ -46,19 +46,17 @@ PGLite's WASM extensions require special handling in Next.js:
 ```javascript
 const nextConfig = {
   swcMinify: false,
-  transpilePackages: [
-    '@electric-sql/pglite-react',
-    '@electric-sql/pglite',
-  ],
+  transpilePackages: ["@electric-sql/pglite-react", "@electric-sql/pglite"],
   // Exclude PGLite from server-side bundling to preserve file paths
-  serverExternalPackages: ['@electric-sql/pglite'],
+  serverExternalPackages: ["@electric-sql/pglite"],
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals = config.externals || [];
       config.externals.push({
-        '@electric-sql/pglite': 'commonjs @electric-sql/pglite',
-        '@electric-sql/pglite/vector': 'commonjs @electric-sql/pglite/vector',
-        '@electric-sql/pglite/contrib/fuzzystrmatch': 'commonjs @electric-sql/pglite/contrib/fuzzystrmatch',
+        "@electric-sql/pglite": "commonjs @electric-sql/pglite",
+        "@electric-sql/pglite/vector": "commonjs @electric-sql/pglite/vector",
+        "@electric-sql/pglite/contrib/fuzzystrmatch":
+          "commonjs @electric-sql/pglite/contrib/fuzzystrmatch",
       });
     }
     return config;
@@ -72,8 +70,8 @@ Environment variables must be passed via `character.secrets` because `runtime.ge
 
 ```typescript
 const character: Character = {
-  name: 'Eliza',
-  bio: 'A helpful AI assistant.',
+  name: "Eliza",
+  bio: "A helpful AI assistant.",
   secrets: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   },
@@ -96,10 +94,10 @@ examples/next/
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENAI_API_KEY` | OpenAI API key | Yes |
-| `PGLITE_DATA_DIR` | PGLite data directory (optional) | No |
+| Variable          | Description                      | Required |
+| ----------------- | -------------------------------- | -------- |
+| `OPENAI_API_KEY`  | OpenAI API key                   | Yes      |
+| `PGLITE_DATA_DIR` | PGLite data directory (optional) | No       |
 
 ## Optional: PostgreSQL
 

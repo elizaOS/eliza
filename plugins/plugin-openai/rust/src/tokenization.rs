@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Tokenization utilities for OpenAI models.
 //!
 //! Uses tiktoken-rs for accurate token counting and encoding.

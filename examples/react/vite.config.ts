@@ -1,5 +1,5 @@
-import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig, type Plugin } from "vite";
 
 /**
  * Plugin to handle PGlite's Node.js-only dynamic imports.
@@ -14,7 +14,10 @@ function pgliteBrowserPlugin(): Plugin {
     resolveId(id) {
       // Only intercept bare module specifiers for Node.js built-ins
       if (
-        (id === "fs" || id === "fs/promises" || id === "path" || id === "url") &&
+        (id === "fs" ||
+          id === "fs/promises" ||
+          id === "path" ||
+          id === "url") &&
         !id.startsWith(".") &&
         !id.startsWith("/")
       ) {

@@ -6,23 +6,18 @@ import { BskyAgent, RichText } from "@atproto/api";
 import { logger } from "@elizaos/core";
 import { LRUCache } from "lru-cache";
 import type {
-  BlueSkyPost,
-  BlueSkyProfile,
-  TimelineRequest,
-  TimelineResponse,
-  CreatePostRequest,
-  BlueSkySession,
-  BlueSkyNotification,
   BlueSkyConversation,
   BlueSkyMessage,
+  BlueSkyNotification,
+  BlueSkyPost,
+  BlueSkyProfile,
+  BlueSkySession,
+  CreatePostRequest,
   SendMessageRequest,
+  TimelineRequest,
+  TimelineResponse,
 } from "./types";
-import {
-  CACHE_TTL,
-  CACHE_SIZE,
-  BLUESKY_CHAT_SERVICE_DID,
-  BlueSkyError,
-} from "./types";
+import { BLUESKY_CHAT_SERVICE_DID, BlueSkyError, CACHE_SIZE, CACHE_TTL } from "./types";
 
 export interface BlueSkyClientConfig {
   service: string;
@@ -104,10 +99,12 @@ export class BlueSkyClient {
       cursor: response.data.cursor,
       feed: response.data.feed.map((item) => ({
         post: item.post as unknown as BlueSkyPost,
-        reply: item.reply ? {
-          root: item.reply.root as unknown as BlueSkyPost,
-          parent: item.reply.parent as unknown as BlueSkyPost,
-        } : undefined,
+        reply: item.reply
+          ? {
+              root: item.reply.root as unknown as BlueSkyPost,
+              parent: item.reply.parent as unknown as BlueSkyPost,
+            }
+          : undefined,
         reason: item.reason as Record<string, unknown>,
       })),
     };
@@ -138,7 +135,10 @@ export class BlueSkyClient {
     }
 
     const response = await this.agent.post(record);
-    const thread = await this.agent.getPostThread({ uri: response.uri, depth: 0 });
+    const thread = await this.agent.getPostThread({
+      uri: response.uri,
+      depth: 0,
+    });
 
     if (thread.data.thread.$type !== "app.bsky.feed.defs#threadViewPost") {
       throw new BlueSkyError("Failed to retrieve created post", "POST_CREATE_FAILED");
@@ -171,7 +171,10 @@ export class BlueSkyClient {
     await this.agent.repost(uri, cid);
   }
 
-  async getNotifications(limit = 50, cursor?: string): Promise<{
+  async getNotifications(
+    limit = 50,
+    cursor?: string
+  ): Promise<{
     notifications: BlueSkyNotification[];
     cursor?: string;
   }> {
@@ -186,7 +189,10 @@ export class BlueSkyClient {
     await this.agent.updateSeenNotifications();
   }
 
-  async getConversations(limit = 50, cursor?: string): Promise<{
+  async getConversations(
+    limit = 50,
+    cursor?: string
+  ): Promise<{
     conversations: BlueSkyConversation[];
     cursor?: string;
   }> {
@@ -200,7 +206,11 @@ export class BlueSkyClient {
     };
   }
 
-  async getMessages(convoId: string, limit = 50, cursor?: string): Promise<{
+  async getMessages(
+    convoId: string,
+    limit = 50,
+    cursor?: string
+  ): Promise<{
     messages: BlueSkyMessage[];
     cursor?: string;
   }> {
@@ -221,7 +231,10 @@ export class BlueSkyClient {
     }
 
     const response = await this.agent.api.chat.bsky.convo.sendMessage(
-      { convoId: request.convoId, message: { text: request.message.text ?? "" } },
+      {
+        convoId: request.convoId,
+        message: { text: request.message.text ?? "" },
+      },
       { headers: { "atproto-proxy": BLUESKY_CHAT_SERVICE_DID } }
     );
     return response.data as BlueSkyMessage;

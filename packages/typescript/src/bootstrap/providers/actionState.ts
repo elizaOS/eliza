@@ -1,8 +1,7 @@
 import {
+  type ActionResult,
   addHeader,
   type IAgentRuntime,
-  type ActionResult,
-  logger,
   type Memory,
   type Provider,
   type ProviderValue,
@@ -61,7 +60,7 @@ export const actionStateProvider: Provider = {
             if (step.error) {
               stepText += `\n   Error: ${step.error}`;
             }
-            if (step.result && step.result.text) {
+            if (step.result?.text) {
               stepText += `\n   Result: ${step.result.text}`;
             }
 
@@ -77,7 +76,7 @@ export const actionStateProvider: Provider = {
     if (actionResults.length > 0) {
       const formattedResults = actionResults
         .map((result, index) => {
-          const actionNameValue = result.data && result.data.actionName;
+          const actionNameValue = result.data?.actionName;
           const actionName =
             typeof actionNameValue === "string"
               ? actionNameValue
@@ -137,32 +136,17 @@ export const actionStateProvider: Provider = {
     }
 
     // Get recent action result memories from the database
-    let recentActionMemories: Memory[] = [];
-    try {
-      // Get messages with type 'action_result' from the room
-      const recentMessages = await runtime.getMemories({
-        tableName: "messages",
-        roomId: message.roomId,
-        count: 20,
-        unique: false,
-      });
+    // Get messages with type 'action_result' from the room
+    const recentMessages = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      count: 20,
+      unique: false,
+    });
 
-      recentActionMemories = recentMessages.filter(
-        (msg) =>
-          msg.content && msg.content.type === "action_result",
-      );
-    } catch (error) {
-      if (logger) {
-        logger.error(
-        {
-          src: "plugin:bootstrap:provider:action_state",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to retrieve action memories",
-      );
-      }
-    }
+    const recentActionMemories = recentMessages.filter(
+      (msg) => msg.content && msg.content.type === "action_result",
+    );
 
     // Format recent action memories
     let actionMemoriesText = "";
@@ -171,7 +155,7 @@ export const actionStateProvider: Provider = {
       const groupedByRun = new Map<string, Memory[]>();
 
       for (const mem of recentActionMemories) {
-        const runId: string = String((mem.content && mem.content.runId) || "unknown");
+        const runId: string = String(mem.content?.runId || "unknown");
         if (!groupedByRun.has(runId)) {
           groupedByRun.set(runId, []);
         }
@@ -190,10 +174,10 @@ export const actionStateProvider: Provider = {
           const runText = sortedMemories
             .map((mem: Memory) => {
               const memContent = mem.content;
-              const actionName = (memContent && memContent.actionName) || "Unknown";
-              const status = (memContent && memContent.actionStatus) || "unknown";
-              const planStep = (memContent && memContent.planStep) || "";
-              const text = (memContent && memContent.text) || "";
+              const actionName = memContent?.actionName || "Unknown";
+              const status = memContent?.actionStatus || "unknown";
+              const planStep = memContent?.planStep || "";
+              const text = memContent?.text || "";
 
               let memText = `  - ${actionName} (${status})`;
               if (planStep) {
@@ -208,7 +192,7 @@ export const actionStateProvider: Provider = {
             .join("\n");
 
           const firstMemory = sortedMemories[0];
-          const thought = (firstMemory && firstMemory.content && firstMemory.content.planThought) || "";
+          const thought = firstMemory?.content?.planThought || "";
           return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
         })
         .join("\n\n");
@@ -234,8 +218,8 @@ export const actionStateProvider: Provider = {
       values: {
         hasActionResults: actionResults.length > 0,
         hasActionPlan: !!actionPlan,
-        currentActionStep: (actionPlan && actionPlan.currentStep) || 0,
-        totalActionSteps: (actionPlan && actionPlan.totalSteps) || 0,
+        currentActionStep: actionPlan?.currentStep || 0,
+        totalActionSteps: actionPlan?.totalSteps || 0,
         actionResults: resultsText,
         completedActions: actionResults.filter((r) => r.success).length,
         failedActions: actionResults.filter((r) => !r.success).length,

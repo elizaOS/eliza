@@ -29,69 +29,41 @@
       },
       "require": "./dist/cjs/index.node.cjs",
       "default": "./dist/node/index.node.js"
-    },
-    "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
-    },
-    "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
-    },
-    "./rust": {
-      "browser": {
-        "import": "../rust/pkg/web/elizaos_plugin_openrouter.js",
-        "default": "../rust/pkg/web/elizaos_plugin_openrouter.js"
-      },
-      "node": {
-        "import": "../rust/pkg/node/elizaos_plugin_openrouter.js",
-        "default": "../rust/pkg/node/elizaos_plugin_openrouter.js"
-      },
-      "default": "../rust/pkg/node/elizaos_plugin_openrouter.js"
     }
   },
   "files": [
-    "dist",
-    "../rust/pkg"
+    "dist"
   ],
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/openai": "^2.0.32",
     "@ai-sdk/ui-utils": "1.2.11",
-    "@elizaos/core": "^1.7.0",
+    "@elizaos/core": "workspace:*",
     "@openrouter/ai-sdk-provider": "^1.2.0",
     "ai": "^5.0.47",
     "undici": "^7.16.0"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.22",
+    "@types/bun": "^1.3.5",
     "@types/json-schema": "^7.0.15",
-    "@types/node": "^24.5.2",
-    "dotenv": "^17.2.2",
-    "prettier": "3.6.2",
-    "typescript": "^5.9.3"
+    "@types/node": "^25.0.3",
+    "dotenv": "^17.2.3",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build": "bun run build.ts && tsc -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
-    "lint": "prettier --write .",
+    "lint": "bunx @biomejs/biome check --write .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
     "test:unit": "bun test __tests__/",
     "test:watch": "bun test --watch",
-    "build:rust": "cd ../rust && cargo build --release",
-    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
-    "test:rust": "cd ../rust && cargo test",
-    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
-    "lint:python": "cd ../python && ruff check . && ruff format --check .",
-    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
-    "test:python": "cd ../python && pytest",
-    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_openrouter"
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
   },
   "publishConfig": {
     "access": "public"

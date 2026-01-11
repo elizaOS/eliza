@@ -55,4 +55,3 @@ Add to your `claude_desktop_config.json`:
 
 - `chat` - Send a message to the agent
 - `get_agent_info` - Get information about the agent
-

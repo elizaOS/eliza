@@ -1,7 +1,14 @@
 // Vision service types and interfaces
 export const VisionServiceType = {
-  VISION: 'VISION' as const,
+  VISION: "VISION" as const,
 };
+
+// Extend the core service types with vision service
+declare module "@elizaos/core" {
+  interface ServiceTypeRegistry {
+    VISION: "VISION";
+  }
+}
 
 // Vision-specific types
 export interface CameraInfo {
@@ -29,8 +36,8 @@ export interface DetectedObject {
 
 export interface PersonInfo {
   id: string;
-  pose: 'sitting' | 'standing' | 'lying' | 'unknown';
-  facing: 'camera' | 'away' | 'left' | 'right' | 'unknown';
+  pose: "sitting" | "standing" | "lying" | "unknown";
+  facing: "camera" | "away" | "left" | "right" | "unknown";
   confidence: number;
   boundingBox: BoundingBox;
   keypoints?: Array<{
@@ -52,15 +59,15 @@ export interface VisionFrame {
   width: number;
   height: number;
   data: Buffer;
-  format: 'rgb' | 'rgba' | 'jpeg' | 'png';
+  format: "rgb" | "rgba" | "jpeg" | "png";
 }
 
 // Vision modes
 export enum VisionMode {
-  OFF = 'OFF',
-  CAMERA = 'CAMERA',
-  SCREEN = 'SCREEN',
-  BOTH = 'BOTH',
+  OFF = "OFF",
+  CAMERA = "CAMERA",
+  SCREEN = "SCREEN",
+  BOTH = "BOTH",
 }
 
 // Screen capture types
@@ -154,7 +161,7 @@ export interface VisionConfig {
   visionMode?: VisionMode;
   screenCaptureInterval?: number; // ms between screen captures
   tileSize?: number; // Size of tiles (e.g., 256 for 256x256)
-  tileProcessingOrder?: 'sequential' | 'priority' | 'random';
+  tileProcessingOrder?: "sequential" | "priority" | "random";
   ocrEnabled?: boolean;
   florence2Enabled?: boolean;
   screenRegion?: {
@@ -181,7 +188,7 @@ export interface VisionConfig {
 // Entity tracking types
 export interface TrackedEntity {
   id: string;
-  entityType: 'person' | 'object' | 'pet';
+  entityType: "person" | "object" | "pet";
   firstSeen: number;
   lastSeen: number;
   lastPosition: BoundingBox;
@@ -215,7 +222,7 @@ export interface EntityAttributes {
   // For objects
   objectType?: string;
   color?: string;
-  size?: 'small' | 'medium' | 'large';
+  size?: "small" | "medium" | "large";
 
   // Common
   description?: string;

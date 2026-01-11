@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! PDF Plugin Types
 //!
 //! Strong types for PDF processing operations.
@@ -135,5 +136,10 @@ pub struct PdfDocumentInfo {
     /// Per-page information
     pub pages: Vec<PdfPageInfo>,
 }
+
+
+
+
+
 
 

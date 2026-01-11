@@ -3,12 +3,12 @@
  * Provides URL validation, input sanitization, and rate limiting
  */
 
-import { SecurityError } from './errors.js';
-import type { SecurityConfig, RateLimitConfig, RateLimitEntry } from '../types.js';
+import type { RateLimitConfig, RateLimitEntry, SecurityConfig } from "../types.js";
+import { SecurityError } from "./errors.js";
 
 const DEFAULT_SECURITY_CONFIG: Required<SecurityConfig> = {
   allowedDomains: [],
-  blockedDomains: ['malware.com', 'phishing.com'],
+  blockedDomains: ["malware.com", "phishing.com"],
   maxUrlLength: 2048,
   allowLocalhost: true,
   allowFileProtocol: false,
@@ -31,7 +31,7 @@ export class UrlValidator {
     try {
       // Check URL length
       if (url.length > this.config.maxUrlLength) {
-        return { valid: false, error: 'URL is too long' };
+        return { valid: false, error: "URL is too long" };
       }
 
       // Parse URL
@@ -40,30 +40,30 @@ export class UrlValidator {
         parsedUrl = new URL(url);
       } catch {
         // Try adding https:// if no protocol
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
           try {
             parsedUrl = new URL(`https://${url}`);
           } catch {
-            return { valid: false, error: 'Invalid URL format' };
+            return { valid: false, error: "Invalid URL format" };
           }
         } else {
-          return { valid: false, error: 'Invalid URL format' };
+          return { valid: false, error: "Invalid URL format" };
         }
       }
 
       // Check protocol
-      if (parsedUrl.protocol === 'file:' && !this.config.allowFileProtocol) {
-        return { valid: false, error: 'File protocol is not allowed' };
+      if (parsedUrl.protocol === "file:" && !this.config.allowFileProtocol) {
+        return { valid: false, error: "File protocol is not allowed" };
       }
 
-      if (!['http:', 'https:', 'file:'].includes(parsedUrl.protocol)) {
-        return { valid: false, error: 'Only HTTP(S) protocols are allowed' };
+      if (!["http:", "https:", "file:"].includes(parsedUrl.protocol)) {
+        return { valid: false, error: "Only HTTP(S) protocols are allowed" };
       }
 
       // Check localhost
-      const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(parsedUrl.hostname);
+      const isLocalhost = ["localhost", "127.0.0.1", "::1"].includes(parsedUrl.hostname);
       if (isLocalhost && !this.config.allowLocalhost) {
-        return { valid: false, error: 'Localhost URLs are not allowed' };
+        return { valid: false, error: "Localhost URLs are not allowed" };
       }
 
       // Check against blocked domains
@@ -79,13 +79,13 @@ export class UrlValidator {
           (allowed) => parsedUrl.hostname === allowed || parsedUrl.hostname.endsWith(`.${allowed}`)
         );
         if (!isAllowed) {
-          return { valid: false, error: 'Domain is not in the allowed list' };
+          return { valid: false, error: "Domain is not in the allowed list" };
         }
       }
 
       return { valid: true, sanitized: parsedUrl.href };
     } catch {
-      return { valid: false, error: 'Error validating URL' };
+      return { valid: false, error: "Error validating URL" };
     }
   }
 
@@ -106,9 +106,9 @@ export const InputSanitizer = {
    */
   sanitizeText(input: string): string {
     return input
-      .replace(/[<>]/g, '')
-      .replace(/javascript:/gi, '')
-      .replace(/on\w+\s*=/gi, '')
+      .replace(/[<>]/g, "")
+      .replace(/javascript:/gi, "")
+      .replace(/on\w+\s*=/gi, "")
       .trim();
   },
 
@@ -116,10 +116,7 @@ export const InputSanitizer = {
    * Sanitize selector strings for browser actions
    */
   sanitizeSelector(selector: string): string {
-    return selector
-      .replace(/['"]/g, '')
-      .replace(/[<>]/g, '')
-      .trim();
+    return selector.replace(/['"]/g, "").replace(/[<>]/g, "").trim();
   },
 
   /**
@@ -127,8 +124,8 @@ export const InputSanitizer = {
    */
   sanitizeFilePath(path: string): string {
     return path
-      .replace(/\.\./g, '')
-      .replace(/[<>:"|?*]/g, '')
+      .replace(/\.\./g, "")
+      .replace(/[<>:"|?*]/g, "")
       .trim();
   },
 };
@@ -210,5 +207,3 @@ export class RateLimiter {
     return true;
   }
 }
-
-

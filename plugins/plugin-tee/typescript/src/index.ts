@@ -20,41 +20,42 @@
  * - TEE_VENDOR: Vendor name (default: "phala")
  */
 
-import { type IAgentRuntime, type Plugin, logger } from "@elizaos/core";
-import { TeeVendorNames, getVendor } from "./vendors";
+import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
-
-// Export all types
-export * from "./types";
-
-// Export providers
-export {
-  DeriveKeyProvider,
-  RemoteAttestationProvider,
-  PhalaDeriveKeyProvider,
-  PhalaRemoteAttestationProvider,
-  phalaDeriveKeyProvider,
-  phalaRemoteAttestationProvider,
-} from "./providers";
+import { getVendor, TeeVendorNames } from "./vendors";
 
 // Export actions
 export { remoteAttestationAction } from "./actions";
 
+// Export providers
+export {
+  DeriveKeyProvider,
+  PhalaDeriveKeyProvider,
+  PhalaRemoteAttestationProvider,
+  phalaDeriveKeyProvider,
+  phalaRemoteAttestationProvider,
+  RemoteAttestationProvider,
+} from "./providers";
 // Export services
 export { TEEService } from "./services";
-
-// Export vendors
-export { TeeVendorNames, getVendor, PhalaVendor, type TeeVendorInterface } from "./vendors";
-
+// Export all types
+export * from "./types";
 // Export utils
 export {
-  hexToUint8Array,
-  uint8ArrayToHex,
   calculateSHA256,
-  sha256Bytes,
   getTeeEndpoint,
+  hexToUint8Array,
+  sha256Bytes,
+  uint8ArrayToHex,
   uploadAttestationQuote,
 } from "./utils";
+// Export vendors
+export {
+  getVendor,
+  PhalaVendor,
+  type TeeVendorInterface,
+  TeeVendorNames,
+} from "./vendors";
 
 /**
  * Get the default vendor.
@@ -66,17 +67,20 @@ const defaultVendor = getVendor(TeeVendorNames.PHALA);
  */
 export const teePlugin: Plugin = {
   name: "tee",
-  description: "Trusted Execution Environment (TEE) integration plugin for secure key management and remote attestation",
+  description:
+    "Trusted Execution Environment (TEE) integration plugin for secure key management and remote attestation",
 
   config: {
-    TEE_MODE: process.env["TEE_MODE"],
-    TEE_VENDOR: process.env["TEE_VENDOR"],
-    WALLET_SECRET_SALT: process.env["WALLET_SECRET_SALT"],
+    TEE_MODE: process.env.TEE_MODE,
+    TEE_VENDOR: process.env.TEE_VENDOR,
+    WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
   },
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    const vendorName = config["TEE_VENDOR"] ?? runtime.getSetting("TEE_VENDOR") ?? TeeVendorNames.PHALA;
-    const teeMode = config["TEE_MODE"] ?? runtime.getSetting("TEE_MODE") ?? "LOCAL";
+    const vendorName =
+      config.TEE_VENDOR ?? runtime.getSetting("TEE_VENDOR") ?? TeeVendorNames.PHALA;
+    const teeModeRaw = config.TEE_MODE ?? runtime.getSetting("TEE_MODE") ?? "LOCAL";
+    const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : String(teeModeRaw);
 
     logger.info(`Initializing TEE plugin with vendor: ${vendorName}, mode: ${teeMode}`);
 
@@ -95,5 +99,3 @@ export const teePlugin: Plugin = {
 };
 
 export default teePlugin;
-
-

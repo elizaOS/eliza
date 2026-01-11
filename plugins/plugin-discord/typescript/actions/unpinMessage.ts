@@ -10,15 +10,10 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import {
-  type Message,
-  PermissionsBitField,
-  type TextChannel,
-} from "discord.js";
+import { type Message, PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
-
 import { unpinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 // Re-export for backwards compatibility
 export { unpinMessageTemplate };
@@ -26,7 +21,7 @@ export { unpinMessageTemplate };
 const getMessageRef = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{
   messageRef: string;
 } | null> => {
@@ -41,7 +36,7 @@ const getMessageRef = async (
     });
 
     const parsedResponse = parseJSONObjectFromText(response);
-    if (parsedResponse && parsedResponse.messageRef) {
+    if (parsedResponse?.messageRef) {
       return {
         messageRef: String(parsedResponse.messageRef),
       };
@@ -52,14 +47,7 @@ const getMessageRef = async (
 
 export const unpinMessage = {
   name: "UNPIN_MESSAGE",
-  similes: [
-    "UNPIN_MESSAGE",
-    "UNPIN_MSG",
-    "UNPIN_THIS",
-    "UNPIN_THAT",
-    "REMOVE_PIN",
-    "DELETE_PIN",
-  ],
+  similes: ["UNPIN_MESSAGE", "UNPIN_MSG", "UNPIN_THIS", "UNPIN_THAT", "REMOVE_PIN", "DELETE_PIN"],
   description: "Unpin a message in a Discord channel.",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     return message.content.source === "discord";
@@ -68,12 +56,10 @@ export const unpinMessage = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -93,8 +79,8 @@ export const unpinMessage = {
     }
 
     try {
-      const room = (state.data && state.data.room) || (await runtime.getRoom(message.roomId));
-      if (!(room && room.channelId)) {
+      const room = state.data?.room || (await runtime.getRoom(message.roomId));
+      if (!room?.channelId) {
         await callback({
           text: "I couldn't determine the current channel.",
           source: "discord",
@@ -102,9 +88,7 @@ export const unpinMessage = {
         return;
       }
 
-      const channel = await discordService.client.channels.fetch(
-        room.channelId,
-      );
+      const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
         await callback({
           text: "I can only unpin messages in text channels.",
@@ -117,9 +101,7 @@ export const unpinMessage = {
 
       // Check bot permissions
       const clientUser = discordService.client.user;
-      const botMember = (textChannel.guild && textChannel.guild.members.cache.get(
-        clientUser && clientUser.id,
-      ));
+      const botMember = textChannel.guild?.members.cache.get(clientUser?.id);
       if (botMember) {
         const permissions = textChannel.permissionsFor(botMember);
         if (permissions && !permissions.has(PermissionsBitField.Flags.ManageMessages)) {
@@ -145,13 +127,10 @@ export const unpinMessage = {
       }
 
       // Find the target message
-      if (
-        messageInfo.messageRef === "last_pinned" ||
-        messageInfo.messageRef === "last"
-      ) {
+      if (messageInfo.messageRef === "last_pinned" || messageInfo.messageRef === "last") {
         // Get the most recently created pinned message (since we can't sort by pin time)
         targetMessage = Array.from(pinnedMessages.values()).sort(
-          (a, b) => b.createdTimestamp - a.createdTimestamp,
+          (a, b) => b.createdTimestamp - a.createdTimestamp
         )[0];
       } else if (/^\d+$/.test(messageInfo.messageRef)) {
         // It's a message ID
@@ -162,12 +141,8 @@ export const unpinMessage = {
 
         targetMessage =
           Array.from(pinnedMessages.values()).find((msg) => {
-            const contentMatch = msg.content
-              .toLowerCase()
-              .includes(searchLower);
-            const authorMatch = msg.author.username
-              .toLowerCase()
-              .includes(searchLower);
+            const contentMatch = msg.content.toLowerCase().includes(searchLower);
+            const authorMatch = msg.author.username.toLowerCase().includes(searchLower);
             return contentMatch || authorMatch;
           }) || null;
       }
@@ -197,7 +172,7 @@ export const unpinMessage = {
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },
-          "Failed to unpin message",
+          "Failed to unpin message"
         );
         await callback({
           text: "I couldn't unpin that message. Please try again.",
@@ -211,7 +186,7 @@ export const unpinMessage = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error unpinning message",
+        "Error unpinning message"
       );
       await callback({
         text: "I encountered an error while trying to unpin the message. Please make sure I have the necessary permissions.",

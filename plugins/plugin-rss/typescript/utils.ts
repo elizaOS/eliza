@@ -2,23 +2,25 @@
  * RSS Plugin Utility Functions
  */
 
-import type { IAgentRuntime, Memory, Content, ChannelType } from '@elizaos/core';
-import { createUniqueUuid } from '@elizaos/core';
+import type { ChannelType, Content, IAgentRuntime, Memory } from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
 
 /**
  * Create a message reply content object
  */
 export function createMessageReply(
-  runtime: IAgentRuntime, 
-  message: Memory, 
+  runtime: IAgentRuntime,
+  message: Memory,
   reply: string
 ): Content {
   return {
     text: reply,
     attachments: [],
-    source: (message as unknown as Record<string, unknown>).source as string || 'unknown',
-    channelType: (message as unknown as Record<string, unknown>).channelType as ChannelType | undefined,
-    inReplyTo: createUniqueUuid(runtime, message.id || '')
+    source: ((message as unknown as Record<string, unknown>).source as string) || "unknown",
+    channelType: (message as unknown as Record<string, unknown>).channelType as
+      | ChannelType
+      | undefined,
+    inReplyTo: createUniqueUuid(runtime, message.id || ""),
   };
 }
 
@@ -40,13 +42,13 @@ export function extractUrls(text: string): string[] {
 
   for (const raw of candidates) {
     // Trim leading wrappers like ( [ { < ' "
-    let candidate = raw.replace(/^[(\[{<'"]+/, "");
+    const candidate = raw.replace(/^[([{<'"]+/, "");
 
     // Add scheme if missing
     let withScheme = candidate.startsWith("www.") ? `http://${candidate}` : candidate;
 
     // Iteratively trim common trailing punctuation until it parses (or give up)
-    const TRAIL = /[)\]\}>,.;!?:'"\u2026]$/; // includes … (ellipsis)
+    const TRAIL = /[)\]}>,.;!?:'"\u2026]$/; // includes … (ellipsis)
     while (withScheme && TRAIL.test(withScheme.slice(-1)) && !isValidUrl(withScheme)) {
       withScheme = withScheme.slice(0, -1);
     }
@@ -67,11 +69,11 @@ export function extractUrls(text: string): string[] {
  * Check if a string is a valid URL
  */
 function isValidUrl(u: string): boolean {
-  try { 
-    new URL(u); 
-    return true; 
-  } catch { 
-    return false; 
+  try {
+    new URL(u);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -85,13 +87,12 @@ export function formatRelativeTime(timestamp: number): string {
   const daysSince = Math.floor(hoursSince / 24);
 
   if (daysSince > 0) {
-    return `${daysSince} day${daysSince > 1 ? 's' : ''} ago`;
+    return `${daysSince} day${daysSince > 1 ? "s" : ""} ago`;
   } else if (hoursSince > 0) {
-    return `${hoursSince} hour${hoursSince > 1 ? 's' : ''} ago`;
+    return `${hoursSince} hour${hoursSince > 1 ? "s" : ""} ago`;
   } else if (minutesSince > 0) {
-    return `${minutesSince} minute${minutesSince > 1 ? 's' : ''} ago`;
+    return `${minutesSince} minute${minutesSince > 1 ? "s" : ""} ago`;
   } else {
-    return 'just now';
+    return "just now";
   }
 }
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! S3 Storage Plugin Types
 //!
 //! Strong types for S3 storage operations.
@@ -148,5 +149,10 @@ pub fn get_content_type(file_path: &str) -> &'static str {
         _ => "application/octet-stream",
     }
 }
+
+
+
+
+
 
 

@@ -1,5 +1,5 @@
-import {  afterEach, beforeEach, describe, expect, test  } from "vitest";
 import path from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   getAllElizaPaths,
   getCharactersDir,

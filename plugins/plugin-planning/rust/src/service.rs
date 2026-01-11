@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Planning Service - Manages plan creation and execution.
 
 use async_trait::async_trait;
@@ -54,8 +55,6 @@ pub struct MessageContent {
 /// Execution context for a plan.
 struct PlanExecution {
     state: PlanState,
-    working_memory: HashMap<String, serde_json::Value>,
-    results: Vec<ActionResult>,
     cancelled: bool,
 }
 
@@ -111,7 +110,7 @@ impl PlanningService {
         }
         executions.clear();
 
-        let mut plans = self.active_plans.write().await;
+        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
         plans.clear();
 
         info!("PlanningService stopped");
@@ -214,7 +213,7 @@ impl PlanningService {
             metadata,
         };
 
-        let mut plans = self.active_plans.write().await;
+        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
         plans.insert(plan_id, plan.clone());
 
         debug!(
@@ -264,7 +263,7 @@ impl PlanningService {
         let parsed_plan = self.parse_planning_response(&planning_response, context)?;
         let enhanced_plan = self.enhance_plan(parsed_plan).await;
 
-        let mut plans = self.active_plans.write().await;
+        let mut plans: tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, ActionPlan>> = self.active_plans.write().await;
         plans.insert(enhanced_plan.id, enhanced_plan.clone());
 
         info!(
@@ -292,8 +291,6 @@ impl PlanningService {
                 start_time: Some(chrono::Utc::now().timestamp_millis()),
                 ..Default::default()
             },
-            working_memory: HashMap::new(),
-            results: Vec::new(),
             cancelled: false,
         };
 
@@ -708,7 +705,7 @@ Focus on:
                 }
                 Err(e) => {
                     error!("[PlanningService] Step {} failed: {}", step.id, e);
-                    errors.push(e.to_string());
+                    errors.push(format!("{}", e));
                     if step.on_error.as_deref() == Some("abort")
                         || step
                             .retry_policy
@@ -727,7 +724,7 @@ Focus on:
     async fn execute_parallel(
         &self,
         plan: &ActionPlan,
-        message: &Message,
+        _message: &Message,
         results: &mut Vec<ActionResult>,
         errors: &mut Vec<String>,
     ) -> Result<()> {
@@ -735,8 +732,6 @@ Focus on:
 
         for step in &plan.steps {
             let step_clone = step.clone();
-            let message_clone = message.clone();
-            let results_clone: Vec<ActionResult> = Vec::new();
 
             handles.push(tokio::spawn(async move {
                 // Simplified execution for parallel
@@ -755,7 +750,9 @@ Focus on:
         for handle in handles {
             match handle.await {
                 Ok(Ok(result)) => results.push(result),
-                Ok(Err(e)) => errors.push(e.to_string()),
+                Ok(Err(e)) => {
+                    errors.push(format!("{}", e));
+                }
                 Err(e) => errors.push(format!("Task join error: {}", e)),
             }
         }
@@ -804,7 +801,7 @@ Focus on:
                         completed.insert(step.id);
                     }
                     Err(e) => {
-                        errors.push(e.to_string());
+                        errors.push(format!("{}", e));
                         pending.remove(&step.id);
                         completed.insert(step.id);
                     }
@@ -819,7 +816,7 @@ Focus on:
         &self,
         step: &ActionStep,
         _message: &Message,
-        previous_results: &[ActionResult],
+        _previous_results: &[ActionResult],
     ) -> Result<ActionResult> {
         // Without runtime, simulate execution
         debug!("[PlanningService] Executing step {}: {}", step.id, step.action_name);

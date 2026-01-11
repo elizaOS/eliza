@@ -1,9 +1,8 @@
 """Tests for service."""
 
-import pytest
 
-from elizaos_plugin_discord.service import DiscordService, split_message, MAX_MESSAGE_LENGTH
 from elizaos_plugin_discord.config import DiscordConfig
+from elizaos_plugin_discord.service import MAX_MESSAGE_LENGTH, DiscordService, split_message
 
 
 class TestSplitMessage:

@@ -9,18 +9,18 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from elizaos_plugin_discord.providers.channel_state import ChannelStateProvider
-from elizaos_plugin_discord.providers.voice_state import VoiceStateProvider
 from elizaos_plugin_discord.providers.guild_info import GuildInfoProvider
+from elizaos_plugin_discord.providers.voice_state import VoiceStateProvider
 
 
 @dataclass(frozen=True)
 class ProviderContext:
     """Context provided to providers."""
 
-    channel_id: Optional[str] = None
-    guild_id: Optional[str] = None
-    user_id: Optional[str] = None
-    room_id: Optional[str] = None
+    channel_id: str | None = None
+    guild_id: str | None = None
+    user_id: str | None = None
+    room_id: str | None = None
 
 
 class DiscordProvider(ABC):

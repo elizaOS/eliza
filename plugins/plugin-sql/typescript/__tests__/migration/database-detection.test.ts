@@ -1,4 +1,4 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 
@@ -23,9 +23,7 @@ describe("RuntimeMigrator - Database Detection", () => {
 
     // Expose the private method for testing
     public testIsRealPostgresDatabase(url: string): boolean {
-      return (
-        this as unknown as TestableRuntimeMigrator
-      ).isRealPostgresDatabase(url);
+      return (this as unknown as TestableRuntimeMigrator).isRealPostgresDatabase(url);
     }
   }
 
@@ -299,17 +297,9 @@ describe("RuntimeMigrator - Database Detection", () => {
 
     it("should handle whitespace appropriately", () => {
       // URLs with leading/trailing whitespace
-      expect(
-        migrator.testIsRealPostgresDatabase(
-          "  postgres://localhost:5432/mydb  ",
-        ),
-      ).toBe(true);
-      expect(
-        migrator.testIsRealPostgresDatabase("\tpostgresql://localhost/db\n"),
-      ).toBe(true);
-      expect(
-        migrator.testIsRealPostgresDatabase("  localhost:5432/mydb  "),
-      ).toBe(true);
+      expect(migrator.testIsRealPostgresDatabase("  postgres://localhost:5432/mydb  ")).toBe(true);
+      expect(migrator.testIsRealPostgresDatabase("\tpostgresql://localhost/db\n")).toBe(true);
+      expect(migrator.testIsRealPostgresDatabase("  localhost:5432/mydb  ")).toBe(true);
 
       // But reject truly empty strings
       expect(migrator.testIsRealPostgresDatabase("   ")).toBe(false);

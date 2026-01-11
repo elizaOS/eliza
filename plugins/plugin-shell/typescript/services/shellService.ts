@@ -1,19 +1,14 @@
-import { type IAgentRuntime, Service, logger } from "@elizaos/core";
+import path from "node:path";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import spawn from "cross-spawn";
-import path from "path";
 import type {
-  CommandResult,
   CommandHistoryEntry,
+  CommandResult,
   FileOperation,
   FileOperationType,
   ShellConfig,
 } from "../types";
-import {
-  loadShellConfig,
-  validatePath,
-  isSafeCommand,
-  isForbiddenCommand,
-} from "../utils";
+import { isForbiddenCommand, isSafeCommand, loadShellConfig, validatePath } from "../utils";
 
 export class ShellService extends Service {
   public static serviceType = "shell";
@@ -23,8 +18,7 @@ export class ShellService extends Service {
   private maxHistoryPerConversation = 100;
 
   constructor(runtime: IAgentRuntime) {
-    super();
-    this.runtime = runtime;
+    super(runtime);
     this.shellConfig = loadShellConfig();
     this.currentDirectory = this.shellConfig.allowedDirectory;
     this.commandHistory = new Map();
@@ -50,10 +44,7 @@ export class ShellService extends Service {
    * @param conversationId Optional conversation ID for history tracking
    * @returns The command execution result
    */
-  async executeCommand(
-    command: string,
-    conversationId?: string
-  ): Promise<CommandResult> {
+  async executeCommand(command: string, conversationId?: string): Promise<CommandResult> {
     // Check if shell is enabled
     if (!this.shellConfig.enabled) {
       return {
@@ -116,10 +107,7 @@ export class ShellService extends Service {
 
     // Track file operations if successful
     if (result.success) {
-      const fileOps = this.detectFileOperations(
-        trimmedCommand,
-        this.currentDirectory
-      );
+      const fileOps = this.detectFileOperations(trimmedCommand, this.currentDirectory);
       if (fileOps && conversationId) {
         this.addToHistory(conversationId, trimmedCommand, result, fileOps);
       } else {
@@ -188,10 +176,7 @@ export class ShellService extends Service {
   private async runCommand(command: string): Promise<CommandResult> {
     return new Promise((resolve) => {
       // For complex commands with redirects or quotes, we need to use shell
-      const useShell =
-        command.includes(">") ||
-        command.includes("<") ||
-        command.includes("|");
+      const useShell = command.includes(">") || command.includes("<") || command.includes("|");
 
       let cmd: string;
       let args: string[];
@@ -200,17 +185,13 @@ export class ShellService extends Service {
         // Use sh -c for commands with redirects/pipes
         cmd = "sh";
         args = ["-c", command];
-        logger.info(
-          `Executing shell command: sh -c "${command}" in ${this.currentDirectory}`
-        );
+        logger.info(`Executing shell command: sh -c "${command}" in ${this.currentDirectory}`);
       } else {
         // For simple commands, split and execute directly
         const parts = command.split(/\s+/);
         cmd = parts[0];
         args = parts.slice(1);
-        logger.info(
-          `Executing command: ${cmd} ${args.join(" ")} in ${this.currentDirectory}`
-        );
+        logger.info(`Executing command: ${cmd} ${args.join(" ")} in ${this.currentDirectory}`);
       }
 
       let stdout = "";
@@ -258,7 +239,7 @@ export class ShellService extends Service {
           resolve({
             success: false,
             stdout,
-            stderr: stderr + "\nCommand timed out",
+            stderr: `${stderr}\nCommand timed out`,
             exitCode: code,
             error: "Command execution timeout",
             executedIn: this.currentDirectory,
@@ -315,7 +296,10 @@ export class ShellService extends Service {
       this.commandHistory.set(conversationId, []);
     }
 
-    const history = this.commandHistory.get(conversationId)!;
+    const history = this.commandHistory.get(conversationId);
+    if (!history) {
+      throw new Error(`No history found for conversation ${conversationId}`);
+    }
     history.push(historyEntry);
 
     // Trim history if it exceeds max length
@@ -327,10 +311,7 @@ export class ShellService extends Service {
   /**
    * Detects file operations from a command
    */
-  private detectFileOperations(
-    command: string,
-    cwd: string
-  ): FileOperation[] | undefined {
+  private detectFileOperations(command: string, cwd: string): FileOperation[] | undefined {
     const operations: FileOperation[] = [];
     const parts = command.trim().split(/\s+/);
     const cmd = parts[0].toLowerCase();
@@ -389,10 +370,7 @@ export class ShellService extends Service {
   /**
    * Gets command history for a conversation
    */
-  getCommandHistory(
-    conversationId: string,
-    limit?: number
-  ): CommandHistoryEntry[] {
+  getCommandHistory(conversationId: string, limit?: number): CommandHistoryEntry[] {
     const history = this.commandHistory.get(conversationId) || [];
     if (limit && limit > 0) {
       return history.slice(-limit);
@@ -422,5 +400,3 @@ export class ShellService extends Service {
     return this.shellConfig.allowedDirectory;
   }
 }
-
-

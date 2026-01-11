@@ -1,9 +1,20 @@
-import * as fs from "fs/promises";
-import * as path from "path";
-import { v4 as uuidv4 } from "uuid";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { stringToUuid, type UUID } from "@elizaos/core";
-import type { Message, ChatRoom, MessageRole, JsonValue, PaneFocus, TaskPaneVisibility } from "../types.js";
-import { ensureSessionIdentity, isUuidString, type SessionIdentity } from "./identity.js";
+import { v4 as uuidv4 } from "uuid";
+import type {
+  ChatRoom,
+  JsonValue,
+  Message,
+  MessageRole,
+  PaneFocus,
+  TaskPaneVisibility,
+} from "../types.js";
+import {
+  ensureSessionIdentity,
+  isUuidString,
+  type SessionIdentity,
+} from "./identity.js";
 
 const SESSION_DIR = ".eliza-code";
 const SESSION_FILE = "session.json";
@@ -68,7 +79,7 @@ function toEpoch(value: Date | number | string | undefined): number {
   if (value instanceof Date) return value.getTime();
   if (typeof value === "string") {
     const parsed = new Date(value).getTime();
-    return isNaN(parsed) ? Date.now() : parsed;
+    return Number.isNaN(parsed) ? Date.now() : parsed;
   }
   return Date.now();
 }
@@ -77,7 +88,7 @@ function toEpoch(value: Date | number | string | undefined): number {
  * Safely convert an epoch timestamp to a Date object.
  */
 function toDate(epoch: number | undefined): Date {
-  if (!epoch || typeof epoch !== "number" || isNaN(epoch)) {
+  if (!epoch || typeof epoch !== "number" || Number.isNaN(epoch)) {
     return new Date();
   }
   return new Date(epoch);
@@ -122,7 +133,8 @@ function deserializeRoom(data: SerializedRoom): ChatRoom {
   // Validate required fields
   const id = data.id || uuidv4();
   const name = data.name || "Chat";
-  const elizaRoomIdRaw = typeof data.elizaRoomId === "string" ? data.elizaRoomId : "";
+  const elizaRoomIdRaw =
+    typeof data.elizaRoomId === "string" ? data.elizaRoomId : "";
   const elizaRoomId: UUID = isUuidString(elizaRoomIdRaw)
     ? elizaRoomIdRaw
     : stringToUuid(`eliza-code:room:legacy:${id}`);
@@ -130,14 +142,16 @@ function deserializeRoom(data: SerializedRoom): ChatRoom {
   return {
     id,
     name,
-    messages: (data.messages || []).map((msg): Message => ({
-      id: msg.id || uuidv4(),
-      role: sanitizeRole(msg.role),
-      content: msg.content || "",
-      timestamp: toDate(msg.timestamp),
-      roomId: msg.roomId || id,
-      taskId: msg.taskId,
-    })),
+    messages: (data.messages || []).map(
+      (msg): Message => ({
+        id: msg.id || uuidv4(),
+        role: sanitizeRole(msg.role),
+        content: msg.content || "",
+        timestamp: toDate(msg.timestamp),
+        roomId: msg.roomId || id,
+        taskId: msg.taskId,
+      }),
+    ),
     createdAt: toDate(data.createdAt),
     taskIds: data.taskIds || [],
     elizaRoomId,
@@ -251,7 +265,8 @@ export async function loadSession(): Promise<SessionState | null> {
           ? (record.worldId as UUID)
           : undefined,
       messageServerId:
-        typeof record.messageServerId === "string" && isUuidString(record.messageServerId)
+        typeof record.messageServerId === "string" &&
+        isUuidString(record.messageServerId)
           ? (record.messageServerId as UUID)
           : undefined,
     });
@@ -262,14 +277,22 @@ export async function loadSession(): Promise<SessionState | null> {
       currentTaskId: data.currentTaskId ?? null,
       cwd: data.cwd || process.cwd(),
       identity,
-      focusedPane: typeof record.focusedPane === "string" ? (record.focusedPane as PaneFocus) : undefined,
+      focusedPane:
+        typeof record.focusedPane === "string"
+          ? (record.focusedPane as PaneFocus)
+          : undefined,
       taskPaneVisibility:
         typeof record.taskPaneVisibility === "string"
           ? (record.taskPaneVisibility as TaskPaneVisibility)
           : undefined,
       taskPaneWidthFraction:
-        typeof record.taskPaneWidthFraction === "number" ? record.taskPaneWidthFraction : undefined,
-      showFinishedTasks: typeof record.showFinishedTasks === "boolean" ? record.showFinishedTasks : undefined,
+        typeof record.taskPaneWidthFraction === "number"
+          ? record.taskPaneWidthFraction
+          : undefined,
+      showFinishedTasks:
+        typeof record.showFinishedTasks === "boolean"
+          ? record.showFinishedTasks
+          : undefined,
     };
 
     // If we repaired invalid UUIDs (e.g. bad elizaRoomId from earlier runs/tests), persist the fixed session.
@@ -312,4 +335,3 @@ export {
   isValidSessionData,
   getSessionPath,
 };
-

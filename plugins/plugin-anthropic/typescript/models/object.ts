@@ -18,10 +18,7 @@ import { ensureReflectionProperties, extractAndParseJSON } from "../utils/json";
 /**
  * Build a system prompt for JSON generation.
  */
-function buildSystemPrompt(
-  characterSystem: string | undefined,
-  isReflection: boolean,
-): string {
+function buildSystemPrompt(characterSystem: string | undefined, isReflection: boolean): string {
   let systemPrompt = characterSystem
     ? `${characterSystem}\nYou must respond with valid JSON only.`
     : "You must respond with valid JSON only.";
@@ -61,7 +58,7 @@ async function generateObjectByModelType(
   params: ObjectGenerationParams,
   modelType: ModelTypeName,
   modelName: ModelName,
-  _modelSize: ModelSize,
+  _modelSize: ModelSize
 ): Promise<Record<string, unknown>> {
   const anthropic = createAnthropicClient(runtime);
 
@@ -116,7 +113,7 @@ async function generateObjectByModelType(
  */
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
-  params: ObjectGenerationParams,
+  params: ObjectGenerationParams
 ): Promise<Record<string, unknown>> {
   const modelName = getSmallModel(runtime);
   return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, modelName, "small");
@@ -131,7 +128,7 @@ export async function handleObjectSmall(
  */
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
-  params: ObjectGenerationParams,
+  params: ObjectGenerationParams
 ): Promise<Record<string, unknown>> {
   const modelName = getLargeModel(runtime);
   return generateObjectByModelType(runtime, params, ModelType.OBJECT_LARGE, modelName, "large");

@@ -1,7 +1,7 @@
-import { execSync, spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { Logger } from './logger.js';
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import type { Logger } from "./logger.js";
 
 export class PlaywrightInstaller {
   private logger: Logger;
@@ -20,18 +20,18 @@ export class PlaywrightInstaller {
       // Check if chromium executable exists
       const playwrightPath =
         process.env.PLAYWRIGHT_BROWSERS_PATH ||
-        join(process.env.HOME || '/home/eliza', '.cache', 'ms-playwright');
+        join(process.env.HOME || "/home/eliza", ".cache", "ms-playwright");
 
       // Check for chromium directory
-      const chromiumPath = join(playwrightPath, 'chromium-*');
+      const _chromiumPath = join(playwrightPath, "chromium-*");
       const hasChromium =
         existsSync(playwrightPath) &&
-        require('fs')
+        require("node:fs")
           .readdirSync(playwrightPath)
-          .some((dir: string) => dir.startsWith('chromium-'));
+          .some((dir: string) => dir.startsWith("chromium-"));
 
       return hasChromium;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   }
@@ -40,52 +40,54 @@ export class PlaywrightInstaller {
    * Install Playwright browsers
    */
   private async installPlaywright(): Promise<void> {
-    this.logger.info('Installing Playwright browsers...');
+    this.logger.info("Installing Playwright browsers...");
 
     return new Promise((resolve, reject) => {
-      const npmPath = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-      const args = ['exec', 'playwright', 'install', 'chromium'];
+      const npmPath = process.platform === "win32" ? "npm.cmd" : "npm";
+      const args = ["exec", "playwright", "install", "chromium"];
 
       this.logger.info(
-        'Installing Playwright browsers (without system deps - should be pre-installed)'
+        "Installing Playwright browsers (without system deps - should be pre-installed)",
       );
 
       const installProcess = spawn(npmPath, args, {
-        stdio: 'pipe',
+        stdio: "pipe",
         env: {
           ...process.env,
-          DISPLAY: process.env.DISPLAY || ':99',
+          DISPLAY: process.env.DISPLAY || ":99",
         },
       });
 
-      let stdout = '';
-      let stderr = '';
+      let _stdout = "";
+      let stderr = "";
 
-      installProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
+      installProcess.stdout.on("data", (data) => {
+        _stdout += data.toString();
         this.logger.debug(`Playwright install: ${data.toString().trim()}`);
       });
 
-      installProcess.stderr.on('data', (data) => {
+      installProcess.stderr.on("data", (data) => {
         stderr += data.toString();
-        this.logger.debug(`Playwright install stderr: ${data.toString().trim()}`);
+        this.logger.debug(
+          `Playwright install stderr: ${data.toString().trim()}`,
+        );
       });
 
-      installProcess.on('close', (code) => {
+      installProcess.on("close", (code) => {
         if (code === 0) {
-          this.logger.info('Playwright browsers installed successfully');
+          this.logger.info("Playwright browsers installed successfully");
           resolve();
         } else {
           const error = new Error(
-            `Playwright installation failed with code ${code}\nstderr: ${stderr}`
+            `Playwright installation failed with code ${code}\nstderr: ${stderr}`,
           );
-          this.logger.error('Playwright installation failed:', error);
+          this.logger.error("Playwright installation failed:", error);
           reject(error);
         }
       });
 
-      installProcess.on('error', (error) => {
-        this.logger.error('Failed to start Playwright installation:', error);
+      installProcess.on("error", (error) => {
+        this.logger.error("Failed to start Playwright installation:", error);
         reject(error);
       });
     });
@@ -96,12 +98,14 @@ export class PlaywrightInstaller {
    */
   async ensurePlaywrightInstalled(): Promise<void> {
     if (this.isPlaywrightInstalled()) {
-      this.logger.info('Playwright browsers already installed');
+      this.logger.info("Playwright browsers already installed");
       return;
     }
 
     if (this.isInstalling && this.installPromise) {
-      this.logger.info('Playwright installation already in progress, waiting...');
+      this.logger.info(
+        "Playwright installation already in progress, waiting...",
+      );
       return this.installPromise;
     }
 

@@ -7,8 +7,8 @@
 
 import type { PGliteOptions } from "@electric-sql/pglite";
 import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
+import { vector } from "@electric-sql/pglite/vector";
 
 // Cache the loaded assets
 let fsBundleCache: Blob | null = null;
@@ -36,12 +36,12 @@ async function loadPGliteAssets(): Promise<{
 
   if (!dataResponse.ok) {
     throw new Error(
-      `Failed to load pglite.data: ${dataResponse.status} ${dataResponse.statusText}`
+      `Failed to load pglite.data: ${dataResponse.status} ${dataResponse.statusText}`,
     );
   }
   if (!wasmResponse.ok) {
     throw new Error(
-      `Failed to load pglite.wasm: ${wasmResponse.status} ${wasmResponse.statusText}`
+      `Failed to load pglite.wasm: ${wasmResponse.status} ${wasmResponse.statusText}`,
     );
   }
 
@@ -53,7 +53,7 @@ async function loadPGliteAssets(): Promise<{
   wasmModuleCache = await WebAssembly.compile(wasmBuffer);
 
   console.log(
-    `[PGlite] Loaded assets: data=${fsBundleCache.size} bytes, wasm compiled`
+    `[PGlite] Loaded assets: data=${fsBundleCache.size} bytes, wasm compiled`,
   );
 
   return { fsBundle: fsBundleCache, wasmModule: wasmModuleCache };
@@ -63,7 +63,7 @@ async function loadPGliteAssets(): Promise<{
  * Create a PGlite instance with pre-loaded assets
  */
 export async function createBrowserPGlite(
-  options: Partial<PGliteOptions> = {}
+  options: Partial<PGliteOptions> = {},
 ): Promise<PGlite> {
   const assets = await loadPGliteAssets();
 
@@ -78,8 +78,4 @@ export async function createBrowserPGlite(
     },
   });
 }
-
-
-
-
 

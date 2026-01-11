@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import TYPE_CHECKING, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
@@ -52,7 +53,7 @@ async def postgres_connection_string() -> AsyncGenerator[str, None]:
 @pytest_asyncio.fixture
 async def postgres_adapter(
     postgres_connection_string: str, agent_id: str
-) -> AsyncGenerator["PostgresAdapter", None]:
+) -> AsyncGenerator[PostgresAdapter, None]:
     """Create a PostgreSQL adapter connected to database."""
     from elizaos_plugin_sql.adapters.postgres import PostgresAdapter
 
@@ -67,12 +68,11 @@ async def postgres_adapter(
 
 @pytest_asyncio.fixture
 async def migration_service(
-    postgres_adapter: "PostgresAdapter",
-) -> AsyncGenerator["MigrationService", None]:
+    postgres_adapter: PostgresAdapter,
+) -> AsyncGenerator[MigrationService, None]:
     """Create a migration service connected to PostgreSQL."""
     from elizaos_plugin_sql.migration_service import MigrationService
 
     service = MigrationService(postgres_adapter.db)
     await service.initialize()
     yield service
-

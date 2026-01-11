@@ -301,3 +301,8 @@ class EphemeralHNSW(IVectorStorage):
         """Get count of vectors in the index."""
         return len(self._nodes)
 
+
+
+
+
+

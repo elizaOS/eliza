@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Audio transcription model handler.
 
 use crate::error::Result;
@@ -21,5 +22,10 @@ pub async fn handle_transcription(
     let client = ElizaCloudClient::new(config)?;
     client.transcribe_audio(params).await
 }
+
+
+
+
+
 
 

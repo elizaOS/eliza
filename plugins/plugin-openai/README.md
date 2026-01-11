@@ -75,23 +75,26 @@ When bundled for the browser, this plugin avoids sending Authorization headers. 
 Example minimal proxy (Express):
 
 ```ts
-import express from 'express';
-import fetch from 'node-fetch';
+import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-app.post('/openai/*', async (req, res) => {
+app.post("/openai/*", async (req, res) => {
   const url = `https://api.openai.com/v1/${req.params[0]}`;
   const r = await fetch(url, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(req.body),
   });
-  res.status(r.status).set(Object.fromEntries(r.headers)).send(await r.text());
+  res
+    .status(r.status)
+    .set(Object.fromEntries(r.headers))
+    .send(await r.text());
 });
 
 app.listen(3000);
@@ -136,7 +139,7 @@ await runtime.useModel(ModelType.IMAGE, {
 ```js
 const transcription = await runtime.useModel(
   ModelType.TRANSCRIPTION,
-  audioBuffer
+  audioBuffer,
 );
 ```
 
@@ -145,7 +148,7 @@ const transcription = await runtime.useModel(
 ```js
 const { title, description } = await runtime.useModel(
   ModelType.IMAGE_DESCRIPTION,
-  "https://example.com/image.jpg"
+  "https://example.com/image.jpg",
 );
 ```
 

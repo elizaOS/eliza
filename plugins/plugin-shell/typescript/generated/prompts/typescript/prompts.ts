@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../../prompts/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -58,4 +58,3 @@ Your response must be formatted as a JSON block:
 \`\`\``;
 
 export const COMMAND_EXTRACTION_TEMPLATE = commandExtractionTemplate;
-

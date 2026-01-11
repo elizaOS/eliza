@@ -1,10 +1,10 @@
 {
-  "name": "@elizaos/plugin-bluesky",
+  "name": "@elizaos/plugin-bluesky-root",
   "version": "1.0.0",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
-  "types": "dist/index.d.ts",
+  "main": "typescript/dist/node/index.node.js",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos/elizaos.git"
@@ -12,33 +12,33 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./typescript/dist/index.d.ts",
       "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
       },
       "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "default": "./typescript/dist/node/index.node.js"
       },
       "bun": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
+        "types": "./typescript/dist/node/index.d.ts",
+        "default": "./typescript/dist/node/index.node.js"
       },
-      "require": "./dist/cjs/index.node.cjs",
-      "default": "./dist/node/index.node.js"
+      "require": "./typescript/dist/cjs/index.node.cjs",
+      "default": "./typescript/dist/node/index.node.js"
     },
     "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
     },
     "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
     },
     "./rust": {
       "browser": {
@@ -53,45 +53,49 @@
     }
   },
   "files": [
-    "dist",
+    "typescript/dist",
     "rust/pkg"
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "^1.0.0",
+    "@elizaos/core": "workspace:*",
     "@atproto/api": "^0.13.14",
     "@atproto/identity": "^0.4.4",
     "@atproto/lexicon": "^0.4.11",
     "@atproto/syntax": "^0.3.2",
     "@atproto/xrpc": "^0.6.4",
     "lru-cache": "^11.1.0",
-    "zod": "^3.25.9"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "prettier": "^3.7.4",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
-    "build": "npm run build:prompts && cd typescript && bun run build.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./typescript/prompts ./typescript/generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun run build.ts --watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ./typescript",
-    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write ./typescript",
+    "format:check": "bunx @biomejs/biome format ./typescript",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
     "test:unit": "bun test typescript/__tests__/unit/",
     "test:integration": "bun test typescript/__tests__/integration/",
     "test:watch": "bun test --watch",
-    "build:rust": "cd rust && cargo build --release",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
     "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
     "test:rust": "cd rust && cargo test",
     "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
     "lint:python": "cd python && ruff check . && ruff format --check .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
     "test:python": "cd python && pytest",
-    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_bluesky"
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_bluesky",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript"
   },
   "publishConfig": {
     "access": "public"

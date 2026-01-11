@@ -1,5 +1,14 @@
 import { logger } from "@elizaos/core";
-import { getTableConfig, pgSchema } from "drizzle-orm/pg-core";
+import { getTableConfig, type PgTable, pgSchema } from "drizzle-orm/pg-core";
+
+// Drizzle schema type - an object mapping names to tables or other schema objects
+type DrizzleSchema = Record<string, unknown>;
+
+// pgSchema object interface
+interface PgSchemaObject {
+  _schema: string;
+  table: (...args: unknown[]) => unknown;
+}
 
 /**
  * Transform a plugin's schema to use the appropriate namespace
@@ -7,7 +16,7 @@ import { getTableConfig, pgSchema } from "drizzle-orm/pg-core";
  * @elizaos/plugin-sql uses 'public' schema (no transformation)
  * Other plugins get their tables wrapped in a namespaced schema
  */
-export function transformPluginSchema(pluginName: string, schema: any): any {
+export function transformPluginSchema(pluginName: string, schema: DrizzleSchema): DrizzleSchema {
   // Core plugin uses public schema - no transformation needed
   if (pluginName === "@elizaos/plugin-sql") {
     return schema;
@@ -20,23 +29,20 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
   if (isAlreadyNamespaced(schema, schemaName)) {
     logger.debug(
       { src: "plugin:sql", pluginName, schemaName },
-      "Plugin already uses expected schema",
+      "Plugin already uses expected schema"
     );
     return schema;
   }
 
-  logger.info(
-    { src: "plugin:sql", pluginName, schemaName },
-    "Transforming plugin to use schema",
-  );
+  logger.info({ src: "plugin:sql", pluginName, schemaName }, "Transforming plugin to use schema");
 
   // Transform the schema object
-  const transformed: any = {};
+  const transformed: DrizzleSchema = {};
 
   for (const [key, value] of Object.entries(schema)) {
     if (isPgTable(value)) {
       // Get the table configuration
-      const config = getTableConfig(value as any);
+      const config = getTableConfig(value as PgTable);
 
       // If the table doesn't have a schema or is in public, warn about it
       if (!config.schema || config.schema === "public") {
@@ -50,7 +56,7 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
             pluginName,
             expectedSchema: schemaName,
           },
-          "Table should use pgSchema for proper isolation - manual migration may be required",
+          "Table should use pgSchema for proper isolation - manual migration may be required"
         );
         transformed[key] = value;
       } else {
@@ -59,8 +65,7 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
       }
     } else if (typeof value === "object" && value !== null) {
       // Check if this is a schema object (created with pgSchema)
-      // Cast to any to access properties since we're doing runtime checks
-      const obj = value as any;
+      const obj = value as PgSchemaObject;
       if (obj._schema && obj.table) {
         // This is already a pgSchema object, keep it
         transformed[key] = value;
@@ -153,7 +158,7 @@ function normalizeSchemaName(input: string): string {
 /**
  * Check if a value is a PgTable
  */
-function isPgTable(value: any): boolean {
+function isPgTable(value: unknown): value is PgTable {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -161,7 +166,7 @@ function isPgTable(value: any): boolean {
   // Check for table-like properties
   // This is a heuristic since we can't use instanceof across module boundaries
   try {
-    const config = getTableConfig(value);
+    const config = getTableConfig(value as PgTable);
     return config && typeof config.name === "string";
   } catch {
     return false;
@@ -171,11 +176,11 @@ function isPgTable(value: any): boolean {
 /**
  * Check if a schema is already properly namespaced
  */
-function isAlreadyNamespaced(schema: any, expectedSchemaName: string): boolean {
+function isAlreadyNamespaced(schema: DrizzleSchema, expectedSchemaName: string): boolean {
   for (const value of Object.values(schema)) {
     if (isPgTable(value)) {
       try {
-        const config = getTableConfig(value as any);
+        const config = getTableConfig(value);
         if (config.schema === expectedSchemaName) {
           return true;
         }

@@ -26,11 +26,11 @@ async function formatRelationships(
 ) {
   // Sort relationships by interaction strength (descending)
   const sortedRelationships = relationships
-    .filter((rel) => rel.metadata && rel.metadata.interactions)
+    .filter((rel) => rel.metadata?.interactions)
     .sort(
       (a, b) =>
-        ((b.metadata && b.metadata.interactions as number | undefined) || 0) -
-        ((a.metadata && a.metadata.interactions as number | undefined) || 0),
+        ((b.metadata && (b.metadata.interactions as number | undefined)) || 0) -
+        ((a.metadata && (a.metadata.interactions as number | undefined)) || 0),
     )
     .slice(0, 30); // Get top 30
 

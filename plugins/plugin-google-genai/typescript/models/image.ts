@@ -1,32 +1,32 @@
-import type { IAgentRuntime, ImageDescriptionParams } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { createGoogleGenAI, getSafetySettings, getImageModel } from '../utils/config';
-import type { GoogleGenAIImageDescriptionResult } from '../types';
+import type { IAgentRuntime, ImageDescriptionParams } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { GoogleGenAIImageDescriptionResult } from "../types";
+import { createGoogleGenAI, getImageModel, getSafetySettings } from "../utils/config";
 
 // Use global fetch for cross-platform compatibility
-const crossFetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : fetch;
+const crossFetch = typeof globalThis.fetch === "function" ? globalThis.fetch : fetch;
 
 export async function handleImageDescription(
   runtime: IAgentRuntime,
   params: ImageDescriptionParams | string
-): Promise<GoogleGenAIImageDescriptionResult | string> {
+): Promise<GoogleGenAIImageDescriptionResult> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
-    throw new Error('Google Generative AI client not initialized');
+    throw new Error("Google Generative AI client not initialized");
   }
 
   let imageUrl: string;
-  let promptText: string | undefined;
+  let promptText: string;
   const modelName = getImageModel(runtime);
   logger.log(`[IMAGE_DESCRIPTION] Using model: ${modelName}`);
 
-  if (typeof params === 'string') {
+  if (typeof params === "string") {
     imageUrl = params;
-    promptText = 'Please analyze this image and provide a title and detailed description.';
+    promptText = "Please analyze this image and provide a title and detailed description.";
   } else {
     imageUrl = params.imageUrl;
     promptText =
-      params.prompt || 'Please analyze this image and provide a title and detailed description.';
+      params.prompt || "Please analyze this image and provide a title and detailed description.";
   }
 
   try {
@@ -37,16 +37,16 @@ export async function handleImageDescription(
     }
 
     const imageData = await imageResponse.arrayBuffer();
-    const base64Image = Buffer.from(imageData).toString('base64');
+    const base64Image = Buffer.from(imageData).toString("base64");
 
     // Determine MIME type from URL or response headers
-    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
 
     const response = await genAI.models.generateContent({
       model: modelName,
       contents: [
         {
-          role: 'user',
+          role: "user",
           parts: [
             { text: promptText },
             {
@@ -67,31 +67,17 @@ export async function handleImageDescription(
       },
     });
 
-    const responseText = response.text || '';
+    const responseText = response.text || "";
 
-    logger.log('Received response for image description');
-
-    // Check if a custom prompt was provided
-    const isCustomPrompt =
-      typeof params === 'object' &&
-      params.prompt &&
-      params.prompt !== 'Please analyze this image and provide a title and detailed description.';
-
-    // If custom prompt is used, return the raw content
-    if (isCustomPrompt) {
-      return responseText;
-    }
+    logger.log("Received response for image description");
 
     // Try to parse the response as JSON first
     try {
       const jsonResponse = JSON.parse(responseText) as Record<string, unknown>;
-      if (
-        typeof jsonResponse['title'] === 'string' &&
-        typeof jsonResponse['description'] === 'string'
-      ) {
+      if (typeof jsonResponse.title === "string" && typeof jsonResponse.description === "string") {
         return {
-          title: jsonResponse['title'],
-          description: jsonResponse['description'],
+          title: jsonResponse.title,
+          description: jsonResponse.description,
         };
       }
     } catch (e) {
@@ -100,18 +86,20 @@ export async function handleImageDescription(
     }
 
     // Extract title and description from text format
+    // For custom prompts, use the full response as description
     const titleMatch = responseText.match(/title[:\s]+(.+?)(?:\n|$)/i);
-    const title = titleMatch?.[1]?.trim() || 'Image Analysis';
-    const description = responseText.replace(/title[:\s]+(.+?)(?:\n|$)/i, '').trim();
+    const title = titleMatch?.[1]?.trim() || "Image Analysis";
+    const description = titleMatch
+      ? responseText.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim()
+      : responseText.trim();
 
     return { title, description };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error analyzing image: ${message}`);
     return {
-      title: 'Failed to analyze image',
+      title: "Failed to analyze image",
       description: `Error: ${message}`,
     };
   }
 }
-

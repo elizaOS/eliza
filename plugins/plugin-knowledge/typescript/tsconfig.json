@@ -15,9 +15,10 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "types": ["node", "bun"],
+    "types": ["node"],
     "allowImportingTsExtensions": true,
-    "typeRoots": ["./types", "./node_modules/@types"]
+    "typeRoots": ["./types", "./node_modules/@types"],
+    "jsx": "react-jsx"
   },
   "include": ["**/*.ts", "**/*.tsx", "types/**/*.d.ts"],
   "exclude": ["node_modules", "dist", "__tests__"]

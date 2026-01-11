@@ -28,7 +28,7 @@ export interface UnifiedMessagingAPI {
   sendMessage: (
     agentId: string,
     message: unknown,
-    options?: { onResponse?: unknown },
+    options?: { onResponse?: unknown }
   ) => Promise<unknown>;
 }
 
@@ -36,11 +36,7 @@ export interface UnifiedMessagingAPI {
  * Type definition for the message service available on newer core versions.
  */
 export interface MessageServiceAPI {
-  handleMessage: (
-    runtime: IAgentRuntime,
-    message: unknown,
-    callback: unknown,
-  ) => Promise<unknown>;
+  handleMessage: (runtime: IAgentRuntime, message: unknown, callback: unknown) => Promise<unknown>;
 }
 
 /**
@@ -50,9 +46,7 @@ export interface MessageServiceAPI {
  */
 export function hasUnifiedMessagingAPI(runtime: IAgentRuntime): boolean {
   const runtimeAny = runtime as { elizaOS?: { sendMessage?: unknown } };
-  return !!(
-    runtimeAny.elizaOS && typeof runtimeAny.elizaOS.sendMessage === "function"
-  );
+  return !!(runtimeAny.elizaOS && typeof runtimeAny.elizaOS.sendMessage === "function");
 }
 
 /**
@@ -61,7 +55,9 @@ export function hasUnifiedMessagingAPI(runtime: IAgentRuntime): boolean {
  * @returns {boolean} True if the message service API is available
  */
 export function hasMessageService(runtime: IAgentRuntime): boolean {
-  const runtimeAny = runtime as { messageService?: { handleMessage?: unknown } };
+  const runtimeAny = runtime as {
+    messageService?: { handleMessage?: unknown };
+  };
   return !!(
     typeof runtimeAny.messageService === "object" &&
     runtimeAny.messageService &&
@@ -74,9 +70,7 @@ export function hasMessageService(runtime: IAgentRuntime): boolean {
  * @param {IAgentRuntime} runtime - The runtime to get the API from
  * @returns {UnifiedMessagingAPI | null} The unified messaging API or null if not available
  */
-export function getUnifiedMessagingAPI(
-  runtime: IAgentRuntime,
-): UnifiedMessagingAPI | null {
+export function getUnifiedMessagingAPI(runtime: IAgentRuntime): UnifiedMessagingAPI | null {
   if (hasUnifiedMessagingAPI(runtime)) {
     return (runtime as unknown as { elizaOS: UnifiedMessagingAPI }).elizaOS;
   }
@@ -88,9 +82,7 @@ export function getUnifiedMessagingAPI(
  * @param {IAgentRuntime} runtime - The runtime to get the service from
  * @returns {MessageServiceAPI | null} The message service or null if not available
  */
-export function getMessageService(
-  runtime: IAgentRuntime,
-): MessageServiceAPI | null {
+export function getMessageService(runtime: IAgentRuntime): MessageServiceAPI | null {
   if (hasMessageService(runtime)) {
     return (runtime as { messageService: MessageServiceAPI }).messageService;
   }
@@ -149,10 +141,7 @@ export function cleanUrl(url: string): string {
     // Strip only specific trailing full-width/CJK punctuation characters
     // that are commonly appended as junk (NOT all non-ASCII characters)
     // Includes: full-width parens （）, brackets ［］【】, punctuation 、。！？etc.
-    clean = clean.replace(
-      /[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/,
-      "",
-    );
+    clean = clean.replace(/[（）［］【】｛｝《》〈〉「」『』、。，．；：！？~～]+$/, "");
   }
 
   return clean;
@@ -217,10 +206,7 @@ export function getAttachmentFileName(media: Media): string {
     const lastDot = media.url.lastIndexOf(".");
     const queryStart = media.url.indexOf("?", lastDot);
     if (lastDot > 0 && (queryStart === -1 || queryStart > lastDot + 1)) {
-      const potentialExt = media.url.substring(
-        lastDot,
-        queryStart > -1 ? queryStart : undefined,
-      );
+      const potentialExt = media.url.substring(lastDot, queryStart > -1 ? queryStart : undefined);
       if (potentialExt.length > 1 && potentialExt.length <= 5) {
         extension = potentialExt;
       }
@@ -263,7 +249,7 @@ export function getAttachmentFileName(media: Media): string {
  */
 export async function generateSummary(
   runtime: IAgentRuntime,
-  text: string,
+  text: string
 ): Promise<{ title: string; description: string }> {
   // make sure text is under 128k characters
   text = await trimTokens(text, 100000, runtime);
@@ -285,7 +271,7 @@ export async function generateSummary(
   }
 
   runtime.logger.info(
-    `[Summarization] Calling TEXT_SMALL for ${text.length} chars: "${text.substring(0, 50).replace(/\n/g, " ")}..."`,
+    `[Summarization] Calling TEXT_SMALL for ${text.length} chars: "${text.substring(0, 50).replace(/\n/g, " ")}..."`
   );
 
   const prompt = `Please generate a concise summary for the following text:
@@ -306,9 +292,16 @@ export async function generateSummary(
     prompt,
   });
 
-  const parsedResponse = parseJSONObjectFromText(response) as { title?: string; summary?: string } | null;
+  const parsedResponse = parseJSONObjectFromText(response) as {
+    title?: string;
+    summary?: string;
+  } | null;
 
-  if (parsedResponse && typeof parsedResponse.title === "string" && typeof parsedResponse.summary === "string") {
+  if (
+    parsedResponse &&
+    typeof parsedResponse.title === "string" &&
+    typeof parsedResponse.summary === "string"
+  ) {
     return {
       title: parsedResponse.title,
       description: parsedResponse.summary,
@@ -358,9 +351,7 @@ function isDiscordJsComponent(component: unknown): component is DiscordJsCompone
  * Safe JSON stringify that handles BigInt values
  */
 function safeStringify(obj: unknown): string {
-  return JSON.stringify(obj, (_, value) =>
-    typeof value === "bigint" ? value.toString() : value,
-  );
+  return JSON.stringify(obj, (_, value) => (typeof value === "bigint" ? value.toString() : value));
 }
 
 /**
@@ -389,21 +380,15 @@ export async function sendMessageInChunks(
   channel: TextChannel,
   content: string,
   inReplyTo: string,
-  files: Array<
-    AttachmentBuilder | { attachment: Buffer | string; name: string }
-  >,
+  files: Array<AttachmentBuilder | { attachment: Buffer | string; name: string }>,
   components?: DiscordActionRow[],
-  runtime?: IAgentRuntime,
+  runtime?: IAgentRuntime
 ): Promise<DiscordMessage[]> {
   const sentMessages: DiscordMessage[] = [];
 
   // Use smart splitting if runtime available and content is complex
   let messages: string[];
-  if (
-    runtime &&
-    content.length > MAX_MESSAGE_LENGTH &&
-    needsSmartSplit(content)
-  ) {
+  if (runtime && content.length > MAX_MESSAGE_LENGTH && needsSmartSplit(content)) {
     messages = await smartSplitMessage(runtime, content);
   } else {
     messages = splitMessage(content);
@@ -439,9 +424,7 @@ export async function sendMessageInChunks(
             logger.info(`Components received: ${safeStringify(components)}`);
 
             if (!Array.isArray(components)) {
-              logger.warn(
-                "Components is not an array, skipping component processing",
-              );
+              logger.warn("Components is not an array, skipping component processing");
               // Instead of continue, maybe return or handle differently?
               // For now, let's proceed assuming it might be an empty message with components
             } else if (
@@ -450,7 +433,8 @@ export async function sendMessageInChunks(
               isDiscordJsComponent(components[0])
             ) {
               // If it looks like discord.js components, pass them directly
-              options.components = components as unknown as ActionRowBuilder<MessageActionRowComponentBuilder>[];
+              options.components =
+                components as unknown as ActionRowBuilder<MessageActionRowComponentBuilder>[];
             } else {
               // Otherwise, build components from the assumed DiscordActionRow[] structure
               const discordComponents = (components as DiscordActionRow[]) // Cast here for building logic
@@ -486,9 +470,7 @@ export async function sendMessageInChunks(
                           if (comp.type === 3) {
                             const selectMenu = new StringSelectMenuBuilder()
                               .setCustomId(comp.custom_id)
-                              .setPlaceholder(
-                                comp.placeholder || "Select an option",
-                              );
+                              .setPlaceholder(comp.placeholder || "Select an option");
 
                             if (typeof comp.min_values === "number") {
                               selectMenu.setMinValues(comp.min_values);
@@ -503,7 +485,7 @@ export async function sendMessageInChunks(
                                   label: option.label,
                                   value: option.value,
                                   description: option.description,
-                                })),
+                                }))
                               );
                             }
 
@@ -543,10 +525,11 @@ export async function sendMessageInChunks(
           if (
             isDiscordAPIError(error) &&
             error.code === 50035 &&
-            (error.message && error.message.includes("Unknown message"))
+            error.message &&
+            error.message.includes("Unknown message")
           ) {
             logger.warn(
-              "Message reference no longer valid (message may have been deleted). Sending without reply threading.",
+              "Message reference no longer valid (message may have been deleted). Sending without reply threading."
             );
             // Retry without the reply reference
             const optionsWithoutReply = { ...options };
@@ -555,10 +538,9 @@ export async function sendMessageInChunks(
               const m = await channel.send(optionsWithoutReply as MessageCreateOptions);
               sentMessages.push(m);
             } catch (retryError: unknown) {
-              const errorMessage = retryError instanceof Error ? retryError.message : String(retryError);
-              logger.error(
-                `Error sending message after removing reply reference: ${errorMessage}`,
-              );
+              const errorMessage =
+                retryError instanceof Error ? retryError.message : String(retryError);
+              logger.error(`Error sending message after removing reply reference: ${errorMessage}`);
               throw retryError;
             }
           } else {
@@ -605,7 +587,7 @@ export function needsSmartSplit(content: string): boolean {
   // Check for very long lines without natural breakpoints
   const lines = content.split("\n");
   const hasLongUnbreakableLines = lines.some(
-    (line) => line.length > 500 && !line.includes(". ") && !line.includes(", "),
+    (line) => line.length > 500 && !line.includes(". ") && !line.includes(", ")
   );
   if (hasLongUnbreakableLines) {
     return true;
@@ -661,7 +643,7 @@ function parseJSONArrayFromText(text: string): JsonValue[] | null {
 export async function smartSplitMessage(
   runtime: IAgentRuntime,
   content: string,
-  maxLength: number = MAX_MESSAGE_LENGTH,
+  maxLength: number = MAX_MESSAGE_LENGTH
 ): Promise<string[]> {
   // If content fits, no splitting needed
   if (content.length <= maxLength) {
@@ -672,9 +654,7 @@ export async function smartSplitMessage(
   const estimatedChunks = Math.ceil(content.length / (maxLength - 100));
 
   try {
-    runtime.logger.debug(
-      `Smart splitting ${content.length} chars into ~${estimatedChunks} chunks`,
-    );
+    runtime.logger.debug(`Smart splitting ${content.length} chars into ~${estimatedChunks} chunks`);
 
     const prompt = `Split the following text into ${estimatedChunks} parts for Discord messages (max ${maxLength} chars each).
 Keep related content together (don't split code blocks, keep list items with their headers, etc.).
@@ -695,9 +675,7 @@ Return format: ["chunk1", "chunk2", ...]`;
       // Filter to only valid, non-empty string chunks within size limit
       const validChunks = parsed.filter(
         (chunk: unknown): chunk is string =>
-          typeof chunk === "string" &&
-          chunk.trim().length > 0 &&
-          chunk.length <= maxLength,
+          typeof chunk === "string" && chunk.trim().length > 0 && chunk.length <= maxLength
       );
 
       // Only use LLM result if we have non-empty chunks
@@ -707,13 +685,11 @@ Return format: ["chunk1", "chunk2", ...]`;
       }
 
       runtime.logger.debug(
-        "Smart split returned empty or invalid chunks, falling back to simple split",
+        "Smart split returned empty or invalid chunks, falling back to simple split"
       );
     }
   } catch (error) {
-    runtime.logger.debug(
-      `Smart split failed, falling back to simple split: ${error}`,
-    );
+    runtime.logger.debug(`Smart split failed, falling back to simple split: ${error}`);
   }
 
   // Fall back to simple splitting
@@ -728,10 +704,7 @@ Return format: ["chunk1", "chunk2", ...]`;
  * @param {number} maxLength - Maximum length per message (default: 1900)
  * @returns {string[]} An array of strings that represent the split messages
  */
-export function splitMessage(
-  content: string,
-  maxLength: number = MAX_MESSAGE_LENGTH,
-): string[] {
+export function splitMessage(content: string, maxLength: number = MAX_MESSAGE_LENGTH): string[] {
   // If content fits, no splitting needed
   if (!content || content.length <= maxLength) {
     return content ? [content] : [];
@@ -865,9 +838,7 @@ export function canSendMessage(channel: SendableChannel | null | undefined): Can
   }
 
   // Check each required permission
-  const missingPermissions = requiredPermissions.filter(
-    (perm) => !permissions.has(perm),
-  );
+  const missingPermissions = requiredPermissions.filter((perm) => !permissions.has(perm));
 
   return {
     canSend: missingPermissions.length === 0,

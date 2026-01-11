@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../../../prompts/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -263,4 +263,3 @@ Your response MUST contain ONLY these top-level keys:
 REMEMBER: This output will be parsed directly as JSON. If the format is incorrect, the operation will fail.`;
 
 export const TOOL_SELECTION_NAME_TEMPLATE = toolSelectionNameTemplate;
-

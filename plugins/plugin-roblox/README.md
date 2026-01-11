@@ -50,15 +50,15 @@ const agent = {
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ROBLOX_API_KEY` | Yes | Roblox Open Cloud API key |
-| `ROBLOX_UNIVERSE_ID` | Yes | Universe ID of your experience |
-| `ROBLOX_PLACE_ID` | No | Specific place ID |
-| `ROBLOX_WEBHOOK_SECRET` | No | Secret for webhook validation |
-| `ROBLOX_MESSAGING_TOPIC` | No | Messaging topic (default: "eliza-agent") |
-| `ROBLOX_POLL_INTERVAL` | No | Poll interval in seconds (default: 30) |
-| `ROBLOX_DRY_RUN` | No | Enable dry run mode (default: false) |
+| Variable                 | Required | Description                              |
+| ------------------------ | -------- | ---------------------------------------- |
+| `ROBLOX_API_KEY`         | Yes      | Roblox Open Cloud API key                |
+| `ROBLOX_UNIVERSE_ID`     | Yes      | Universe ID of your experience           |
+| `ROBLOX_PLACE_ID`        | No       | Specific place ID                        |
+| `ROBLOX_WEBHOOK_SECRET`  | No       | Secret for webhook validation            |
+| `ROBLOX_MESSAGING_TOPIC` | No       | Messaging topic (default: "eliza-agent") |
+| `ROBLOX_POLL_INTERVAL`   | No       | Poll interval in seconds (default: 30)   |
+| `ROBLOX_DRY_RUN`         | No       | Enable dry run mode (default: false)     |
 
 ## Actions
 
@@ -67,6 +67,7 @@ const agent = {
 Send a message to players in a Roblox game.
 
 **Examples:**
+
 - "Tell everyone in the game that there's a special event happening"
 - "Send a welcome message to player123"
 
@@ -75,6 +76,7 @@ Send a message to players in a Roblox game.
 Execute a custom action in a Roblox game.
 
 **Examples:**
+
 - "Start a fireworks show in the game"
 - "Give player456 100 coins as a reward"
 - "Teleport everyone to the lobby"
@@ -84,6 +86,7 @@ Execute a custom action in a Roblox game.
 Look up information about a Roblox player.
 
 **Examples:**
+
 - "Who is player 12345678?"
 - "Look up the Roblox user JohnDoe123"
 
@@ -119,7 +122,7 @@ await service.executeAction(
   runtime.agentId,
   "spawn_item",
   { item: "sword", rarity: "legendary" },
-  [12345678] // Target specific player
+  [12345678], // Target specific player
 );
 ```
 
@@ -135,7 +138,7 @@ local TOPIC = "eliza-agent" -- Must match ROBLOX_MESSAGING_TOPIC
 
 MessagingService:SubscribeAsync(TOPIC, function(message)
     local data = game:GetService("HttpService"):JSONDecode(message.Data)
-    
+
     if data.type == "agent_message" then
         -- Handle agent message
         print("Agent says:", data.content)
@@ -244,5 +247,6 @@ MIT
 - [Roblox Open Cloud API](https://create.roblox.com/docs/cloud)
 - [elizaOS Documentation](https://elizaos.ai/docs)
 - [Plugin Architecture Guide](.cursor/rules/elizaos/elizaos_client_plugins.mdc)
+
 
 

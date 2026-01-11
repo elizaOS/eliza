@@ -134,4 +134,3 @@ async def test_process_actions_skips_action_when_required_param_missing() -> Non
     await runtime.process_actions(message, [response], state=None, callback=None)
 
     assert executed is False
-

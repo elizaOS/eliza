@@ -85,7 +85,7 @@ function parseTimeToTimestamp(input: string | number): number {
 
   // Parse relative time format: "<number> <unit> ago", e.g. "5 minutes ago", "2 hours ago"
   const relativeMatch = input.match(
-    /(\d+\.?\d*)\s*(second|minute|hour|day|week|month|year)s?\s+ago/i,
+    /(\d+\.?\d*)\s*(second|minute|hour|day|week|month|year)s?\s+ago/i
   );
   if (relativeMatch) {
     const value = parseFloat(relativeMatch[1]);
@@ -112,16 +112,14 @@ function parseTimeToTimestamp(input: string | number): number {
 
   // Fallback: return current time if we can't parse
   // Log warning for malformed model output
-  logger.warn(
-    `[parseTimeToTimestamp] Could not parse time value, using current time: ${input}`,
-  );
+  logger.warn(`[parseTimeToTimestamp] Could not parse time value, using current time: ${input}`);
   return Date.now();
 }
 
 // Import generated prompts
 import {
-  summarizationTemplate,
   dateRangeTemplate,
+  summarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
 /**
@@ -135,7 +133,7 @@ import {
 const getDateRange = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{ objective: string; start: number; end: number } | null> => {
   const prompt = composePromptFromState({
     state,
@@ -155,11 +153,7 @@ const getDateRange = async (
     } | null;
     // see if it contains objective, start and end
     if (parsedResponse) {
-      if (
-        parsedResponse.objective &&
-        parsedResponse.start &&
-        parsedResponse.end
-      ) {
+      if (parsedResponse.objective && parsedResponse.start && parsedResponse.end) {
         // Parse start and end into proper timestamps (returns numbers)
         const startRaw = parseTimeToTimestamp(parsedResponse.start);
         const endRaw = parseTimeToTimestamp(parsedResponse.end);
@@ -167,7 +161,7 @@ const getDateRange = async (
         // Validate that both timestamps are finite numbers
         if (!Number.isFinite(startRaw) || !Number.isFinite(endRaw)) {
           logger.warn(
-            `[getDateRange] Invalid timestamps parsed: start=${startRaw}, end=${endRaw}, retrying...`,
+            `[getDateRange] Invalid timestamps parsed: start=${startRaw}, end=${endRaw}, retrying...`
           );
           continue;
         }
@@ -257,15 +251,15 @@ export const summarize = {
       "catch me up",
     ];
     return keywords.some((keyword) =>
-      (message.content.text && message.content.text.toLowerCase().includes(keyword.toLowerCase())),
+      message.content.text?.toLowerCase().includes(keyword.toLowerCase())
     );
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
     const callbackData: Content = {
       text: "", // fill in later
@@ -283,7 +277,7 @@ export const summarize = {
           src: "plugin:discord:action:summarize-conversation",
           agentId: runtime.agentId,
         },
-        "Could not get date range from message",
+        "Could not get date range from message"
       );
       await runtime.createMemory(
         {
@@ -299,7 +293,7 @@ export const summarize = {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
@@ -328,14 +322,15 @@ export const summarize = {
     const formattedMemories = memories
       .map((memory) => {
         const memoryAttachments = memory.content.attachments;
-        const attachments = (memoryAttachments && memoryAttachments
-          .map((attachment: Media) => {
-            return `---\nAttachment: ${attachment.id}\n${attachment.description}\n${attachment.text}\n---`;
-          })
-          .join("\n")) || "";
+        const attachments =
+          memoryAttachments
+            ?.map((attachment: Media) => {
+              return `---\nAttachment: ${attachment.id}\n${attachment.description}\n${attachment.text}\n---`;
+            })
+            .join("\n") || "";
         const entity = actorMap.get(memory.entityId);
-        const entityName = (entity && entity.name) ?? "Unknown User";
-        const entityUsername = (entity && entity.username) ?? "";
+        const entityName = entity?.name ?? "Unknown User";
+        const entityUsername = entity?.username ?? "";
         return `${entityName} (${entityUsername}): ${memory.content.text}\n${attachments}`;
       })
       .join("\n");
@@ -355,11 +350,7 @@ export const summarize = {
       const chunk = chunks[i];
       state.values.currentSummary = currentSummary;
       state.values.currentChunk = chunk;
-      const template = await trimTokens(
-        summarizationTemplate,
-        chunkSize + 500,
-        runtime,
-      );
+      const template = await trimTokens(summarizationTemplate, chunkSize + 500, runtime);
       const prompt = composePromptFromState({
         state,
         // make sure it fits, we can pad the tokens a bit
@@ -379,7 +370,7 @@ export const summarize = {
           src: "plugin:discord:action:summarize-conversation",
           agentId: runtime.agentId,
         },
-        "No summary found",
+        "No summary found"
       );
       await runtime.createMemory(
         {
@@ -395,7 +386,7 @@ export const summarize = {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
@@ -441,7 +432,7 @@ ${currentSummary.trim()}
           src: "plugin:discord:action:summarize-conversation",
           agentId: runtime.agentId,
         },
-        "Empty response from summarize conversation action",
+        "Empty response from summarize conversation action"
       );
     }
 

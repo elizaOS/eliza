@@ -1,4 +1,4 @@
-import type { ActionPlan } from '@elizaos/core';
+import type { ActionPlan } from "@elizaos/core";
 
 /**
  * Benchmark Configuration
@@ -233,10 +233,8 @@ export interface BenchmarkResults {
   };
 
   summary: {
-    status: 'success' | 'partial' | 'failed';
+    status: "success" | "partial" | "failed";
     keyFindings: string[];
     performanceScore: number;
   };
 }
-
-

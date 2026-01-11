@@ -238,12 +238,12 @@ The forms plugin can be integrated with other plugins like AutoCoder:
 ```typescript
 // In the form completion callback
 onComplete: async (runtime, form) => {
-  const autocoderService = runtime.getService('autocoder');
-  if (autocoderService && form.name === 'Project Requirements') {
+  const autocoderService = runtime.getService("autocoder");
+  if (autocoderService && form.name === "Project Requirements") {
     // Trigger AutoCoder with the collected requirements
     await autocoderService.createProject({
-      name: form.getFieldValue('projectName'),
-      requirements: form.getFieldValue('requirements'),
+      name: form.getFieldValue("projectName"),
+      requirements: form.getFieldValue("requirements"),
       // ... other fields
     });
   }

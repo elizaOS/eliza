@@ -12,15 +12,14 @@ import {
 } from "@elizaos/core";
 import type { TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
-
 // Import generated prompts
 import { createPollTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 const getPollInfo = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{
   question: string;
   options: string[];
@@ -38,7 +37,7 @@ const getPollInfo = async (
 
     const parsedResponse = parseJSONObjectFromText(response);
     if (
-      parsedResponse && parsedResponse.question &&
+      parsedResponse?.question &&
       Array.isArray(parsedResponse.options) &&
       parsedResponse.options.length >= 2
     ) {
@@ -76,12 +75,10 @@ export const createPoll = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -102,7 +99,7 @@ export const createPoll = {
 
     try {
       const stateData = state.data;
-      const room = (stateData && stateData.room) || (await runtime.getRoom(message.roomId));
+      const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
         await callback({
           text: "I couldn't determine the current channel.",
@@ -111,9 +108,7 @@ export const createPoll = {
         return;
       }
 
-      const channel = await discordService.client.channels.fetch(
-        room.channelId,
-      );
+      const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
         await callback({
           text: "I can only create polls in text channels.",
@@ -142,9 +137,7 @@ export const createPoll = {
       const pollMessage = [
         `📊 **POLL: ${pollInfo.question}**`,
         "",
-        ...pollInfo.options.map(
-          (option, index) => `${emojis[index]} ${option}`,
-        ),
+        ...pollInfo.options.map((option, index) => `${emojis[index]} ${option}`),
         "",
         "_React to vote!_",
       ].join("\n");
@@ -166,7 +159,7 @@ export const createPoll = {
               emoji: emojis[i],
               error: error instanceof Error ? error.message : String(error),
             },
-            "Failed to add reaction",
+            "Failed to add reaction"
           );
         }
       }
@@ -184,7 +177,7 @@ export const createPoll = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error creating poll",
+        "Error creating poll"
       );
       await callback({
         text: "I encountered an error while creating the poll. Please make sure I have permission to send messages and add reactions.",

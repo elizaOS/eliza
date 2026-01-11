@@ -249,16 +249,16 @@ See the [Terraform example](./terraform/) for infrastructure-as-code deployment.
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | - | Your OpenAI API key |
-| `OPENAI_MODEL` | No | `gpt-5-mini` | Model to use |
-| `OPENAI_BASE_URL` | No | OpenAI default | Custom API endpoint |
-| `CHARACTER_NAME` | No | `Eliza` | Agent's name |
-| `CHARACTER_BIO` | No | `A helpful AI assistant.` | Agent's bio |
-| `CHARACTER_SYSTEM` | No | Default system prompt | Custom system prompt |
-| `PORT` | No | `8080` | Server port (set by Cloud Run) |
-| `LOG_LEVEL` | No | `INFO` | Logging level |
+| Variable           | Required | Default                   | Description                    |
+| ------------------ | -------- | ------------------------- | ------------------------------ |
+| `OPENAI_API_KEY`   | Yes      | -                         | Your OpenAI API key            |
+| `OPENAI_MODEL`     | No       | `gpt-5-mini`              | Model to use                   |
+| `OPENAI_BASE_URL`  | No       | OpenAI default            | Custom API endpoint            |
+| `CHARACTER_NAME`   | No       | `Eliza`                   | Agent's name                   |
+| `CHARACTER_BIO`    | No       | `A helpful AI assistant.` | Agent's bio                    |
+| `CHARACTER_SYSTEM` | No       | Default system prompt     | Custom system prompt           |
+| `PORT`             | No       | `8080`                    | Server port (set by Cloud Run) |
+| `LOG_LEVEL`        | No       | `INFO`                    | Logging level                  |
 
 ### Character Customization
 
@@ -279,6 +279,7 @@ gcloud run deploy eliza-worker \
 Cloud Run cold starts are typically 1-3 seconds. To minimize:
 
 1. **Minimum Instances**: Keep at least one instance warm
+
    ```bash
    gcloud run deploy eliza-worker --min-instances 1
    ```
@@ -294,11 +295,11 @@ Cloud Run cold starts are typically 1-3 seconds. To minimize:
 
 Recommended settings:
 
-| Runtime | Memory | CPU | Timeout |
-|---------|--------|-----|---------|
-| TypeScript | 512 Mi | 1 | 60s |
-| Python | 512 Mi | 1 | 60s |
-| Rust | 256 Mi | 1 | 60s |
+| Runtime    | Memory | CPU | Timeout |
+| ---------- | ------ | --- | ------- |
+| TypeScript | 512 Mi | 1   | 60s     |
+| Python     | 512 Mi | 1   | 60s     |
+| Rust       | 256 Mi | 1   | 60s     |
 
 ```bash
 gcloud run deploy eliza-worker \
@@ -324,6 +325,7 @@ gcloud run logs tail eliza-worker --region $REGION
 ### Cloud Monitoring
 
 Cloud Run automatically provides metrics:
+
 - Request count
 - Request latencies
 - Container instance count
@@ -333,17 +335,19 @@ Cloud Run automatically provides metrics:
 ## Cost Estimation
 
 Cloud Run pricing (as of 2025):
+
 - **CPU**: $0.000024 per vCPU-second
 - **Memory**: $0.0000025 per GiB-second
 - **Requests**: $0.40 per million requests
 
 Example (1 vCPU, 512 MiB, 2s avg duration, 10K requests/month):
+
 - CPU: 10,000 × 2s × $0.000024 = $0.48
 - Memory: 10,000 × 2s × 0.5 × $0.0000025 = $0.025
 - Requests: 10,000 × $0.0000004 = $0.004
 - **Total: ~$0.51/month**
 
-*Note: Free tier includes 2 million requests/month*
+_Note: Free tier includes 2 million requests/month_
 
 ## Authentication
 
@@ -377,6 +381,7 @@ gcloud run domain-mappings create \
 ### Container Fails to Start
 
 Check logs for startup errors:
+
 ```bash
 gcloud run logs read eliza-worker --region $REGION --limit 50
 ```
@@ -384,6 +389,7 @@ gcloud run logs read eliza-worker --region $REGION --limit 50
 ### "Permission Denied" Error
 
 Ensure the service account has required permissions:
+
 ```bash
 gcloud run services add-iam-policy-binding eliza-worker \
   --member="allUsers" \
@@ -394,6 +400,7 @@ gcloud run services add-iam-policy-binding eliza-worker \
 ### API Key Not Found
 
 Verify environment variables are set:
+
 ```bash
 gcloud run services describe eliza-worker \
   --region $REGION \
@@ -403,6 +410,7 @@ gcloud run services describe eliza-worker \
 ### Timeout Errors
 
 Increase request timeout:
+
 ```bash
 gcloud run deploy eliza-worker --timeout 300s
 ```
@@ -423,9 +431,10 @@ gcloud artifacts docker images delete \
 ## Security Best Practices
 
 1. **Use Secret Manager** for API keys:
+
    ```bash
    echo -n "$OPENAI_API_KEY" | gcloud secrets create openai-api-key --data-file=-
-   
+
    gcloud run deploy eliza-worker \
      --set-secrets "OPENAI_API_KEY=openai-api-key:latest"
    ```
@@ -442,6 +451,3 @@ gcloud artifacts docker images delete \
 - [Cloud Run Documentation](https://cloud.google.com/run/docs)
 - [Cloud Build Documentation](https://cloud.google.com/build/docs)
 - [Artifact Registry Documentation](https://cloud.google.com/artifact-registry/docs)
-
-
-

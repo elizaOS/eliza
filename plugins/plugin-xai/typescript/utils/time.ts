@@ -26,4 +26,4 @@ export function getEpochMs(ts: number | undefined): number {
     ts = Math.floor(ts / 1000);
   }
   return ts;
-} 
+}

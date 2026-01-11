@@ -96,12 +96,8 @@ class OCRService:
                         # Expand bounding box
                         min_x = min(current_block_bbox.x, x)
                         min_y = min(current_block_bbox.y, y)
-                        max_x = max(
-                            current_block_bbox.x + current_block_bbox.width, x + w
-                        )
-                        max_y = max(
-                            current_block_bbox.y + current_block_bbox.height, y + h
-                        )
+                        max_x = max(current_block_bbox.x + current_block_bbox.width, x + w)
+                        max_y = max(current_block_bbox.y + current_block_bbox.height, y + h)
                         current_block_bbox = BoundingBox(
                             x=min_x,
                             y=min_y,
@@ -141,9 +137,7 @@ class OCRService:
         logger.debug("[OCR] Using fallback OCR implementation")
         return OCRResult(text="", blocks=[], full_text="")
 
-    async def extract_structured_data(
-        self, image_data: bytes
-    ) -> dict[str, list[dict]]:
+    async def extract_structured_data(self, image_data: bytes) -> dict[str, list[dict]]:
         """Extract structured data (tables, forms, lists)"""
         # Placeholder for structured data extraction
         return {
@@ -160,4 +154,3 @@ class OCRService:
         """Dispose of resources"""
         self._initialized = False
         logger.info("[OCR] Service disposed")
-

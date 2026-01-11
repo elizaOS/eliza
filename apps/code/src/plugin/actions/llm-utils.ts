@@ -1,5 +1,5 @@
-import * as fs from "fs/promises";
-import * as path from "path";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { getCwd } from "../providers/cwd.js";
 
 export function extractFilePathFromText(text: string): string {
@@ -23,7 +23,9 @@ export type ReadFileForPromptResult =
   | { ok: true; filepath: string; content: string; extension: string }
   | { ok: false; error: string };
 
-export async function readFileForPrompt(filepath: string): Promise<ReadFileForPromptResult> {
+export async function readFileForPrompt(
+  filepath: string,
+): Promise<ReadFileForPromptResult> {
   if (!filepath) {
     return { ok: false, error: "No file path provided" };
   }
@@ -38,8 +40,10 @@ export async function readFileForPrompt(filepath: string): Promise<ReadFileForPr
     return { ok: true, filepath, content, extension };
   } catch (err) {
     const error = err as NodeJS.ErrnoException;
-    if (error.code === "ENOENT") return { ok: false, error: `File not found: ${filepath}` };
-    if (error.code === "EACCES") return { ok: false, error: `Permission denied: ${filepath}` };
+    if (error.code === "ENOENT")
+      return { ok: false, error: `File not found: ${filepath}` };
+    if (error.code === "EACCES")
+      return { ok: false, error: `Permission denied: ${filepath}` };
     return { ok: false, error: `Error reading file: ${error.message}` };
   }
 }
@@ -47,6 +51,3 @@ export async function readFileForPrompt(filepath: string): Promise<ReadFileForPr
 export function toTrimmedText(result: string): string {
   return result.trim();
 }
-
-
-

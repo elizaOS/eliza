@@ -12,6 +12,7 @@ from typing import Literal
 
 class VisionMode(str, Enum):
     """Vision processing modes"""
+
     OFF = "OFF"
     CAMERA = "CAMERA"
     SCREEN = "SCREEN"
@@ -21,6 +22,7 @@ class VisionMode(str, Enum):
 @dataclass
 class Point2D:
     """Point in 2D space"""
+
     x: float
     y: float
 
@@ -28,6 +30,7 @@ class Point2D:
 @dataclass
 class BoundingBox:
     """Bounding box for detected objects"""
+
     x: float
     y: float
     width: float
@@ -35,10 +38,7 @@ class BoundingBox:
 
     def center(self) -> Point2D:
         """Get the center point of the bounding box"""
-        return Point2D(
-            x=self.x + self.width / 2,
-            y=self.y + self.height / 2
-        )
+        return Point2D(x=self.x + self.width / 2, y=self.y + self.height / 2)
 
     def area(self) -> float:
         """Get the area of the bounding box"""
@@ -52,6 +52,7 @@ class BoundingBox:
 @dataclass
 class CameraInfo:
     """Camera device information"""
+
     id: str
     name: str
     connected: bool
@@ -60,6 +61,7 @@ class CameraInfo:
 @dataclass
 class VisionFrame:
     """Vision frame captured from camera"""
+
     timestamp: int
     width: int
     height: int
@@ -70,6 +72,7 @@ class VisionFrame:
 @dataclass
 class DetectedObject:
     """Detected object in a scene"""
+
     id: str
     type: str
     confidence: float
@@ -79,6 +82,7 @@ class DetectedObject:
 @dataclass
 class Keypoint:
     """Keypoint for pose detection"""
+
     part: str
     position: Point2D
     score: float
@@ -87,6 +91,7 @@ class Keypoint:
 @dataclass
 class PersonInfo:
     """Detected person information"""
+
     id: str
     pose: Literal["sitting", "standing", "lying", "unknown"]
     facing: Literal["camera", "away", "left", "right", "unknown"]
@@ -98,6 +103,7 @@ class PersonInfo:
 @dataclass
 class SceneDescription:
     """Scene description from vision analysis"""
+
     timestamp: int
     description: str
     objects: list[DetectedObject]
@@ -110,15 +116,17 @@ class SceneDescription:
 @dataclass
 class OCRBlock:
     """OCR text block"""
+
     text: str
     bbox: BoundingBox
     confidence: float
-    words: list["OCRWord"] = field(default_factory=list)
+    words: list[OCRWord] = field(default_factory=list)
 
 
 @dataclass
 class OCRWord:
     """OCR word"""
+
     text: str
     bbox: BoundingBox
     confidence: float
@@ -127,6 +135,7 @@ class OCRWord:
 @dataclass
 class OCRResult:
     """OCR result from text extraction"""
+
     text: str
     blocks: list[OCRBlock]
     full_text: str
@@ -135,6 +144,7 @@ class OCRResult:
 @dataclass
 class Florence2Result:
     """Florence-2 model result"""
+
     caption: str | None = None
     objects: list[dict] = field(default_factory=list)
     regions: list[dict] = field(default_factory=list)
@@ -144,6 +154,7 @@ class Florence2Result:
 @dataclass
 class TileAnalysis:
     """Analysis result for a screen tile"""
+
     timestamp: int
     florence2: Florence2Result | None = None
     ocr: OCRResult | None = None
@@ -155,6 +166,7 @@ class TileAnalysis:
 @dataclass
 class ScreenTile:
     """Screen tile for tiled processing"""
+
     id: str
     row: int
     col: int
@@ -169,6 +181,7 @@ class ScreenTile:
 @dataclass
 class ScreenCapture:
     """Screen capture result"""
+
     timestamp: int
     width: int
     height: int
@@ -179,6 +192,7 @@ class ScreenCapture:
 @dataclass
 class ScreenAnalysis:
     """Screen analysis data"""
+
     full_screen_ocr: str | None = None
     active_tile: TileAnalysis | None = None
     grid_summary: str | None = None
@@ -189,6 +203,7 @@ class ScreenAnalysis:
 @dataclass
 class EnhancedSceneDescription(SceneDescription):
     """Enhanced scene description with screen data"""
+
     screen_capture: ScreenCapture | None = None
     screen_analysis: ScreenAnalysis | None = None
 
@@ -196,6 +211,7 @@ class EnhancedSceneDescription(SceneDescription):
 @dataclass
 class EntityAppearance:
     """Entity appearance record"""
+
     timestamp: int
     bounding_box: BoundingBox
     confidence: float
@@ -206,6 +222,7 @@ class EntityAppearance:
 @dataclass
 class EntityAttributes:
     """Entity attributes"""
+
     # For people
     name: str | None = None
     face_embedding: list[float] | None = None
@@ -227,6 +244,7 @@ class EntityAttributes:
 @dataclass
 class TrackedEntity:
     """Tracked entity"""
+
     id: str
     entity_type: Literal["person", "object", "pet"]
     first_seen: int
@@ -241,6 +259,7 @@ class TrackedEntity:
 @dataclass
 class RecentlyLeftEntity:
     """Recently departed entity"""
+
     entity_id: str
     left_at: int
     last_position: BoundingBox
@@ -249,6 +268,7 @@ class RecentlyLeftEntity:
 @dataclass
 class WorldState:
     """World state for entity tracking"""
+
     world_id: str
     entities: dict[str, TrackedEntity]
     last_update: int
@@ -259,6 +279,7 @@ class WorldState:
 @dataclass
 class VisionConfig:
     """Vision configuration"""
+
     # Camera
     camera_name: str | None = None
     pixel_change_threshold: float = 50.0
@@ -300,4 +321,3 @@ class VisionConfig:
 
     # Logging
     debug_mode: bool = False
-

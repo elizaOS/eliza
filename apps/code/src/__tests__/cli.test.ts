@@ -1,5 +1,5 @@
-import { describe, test, expect } from "vitest";
-import { parseArgs, type CLIOptions } from "../cli.js";
+import { describe, expect, test } from "vitest";
+import { parseArgs } from "../cli.js";
 
 // ============================================================================
 // Argument Parsing Tests
@@ -80,11 +80,15 @@ describe("parseArgs", () => {
     });
 
     test("should throw for --file without value", () => {
-      expect(() => parseArgs(["--file"])).toThrow("--file requires a path argument");
+      expect(() => parseArgs(["--file"])).toThrow(
+        "--file requires a path argument",
+      );
     });
 
     test("should throw for --cwd without value", () => {
-      expect(() => parseArgs(["--cwd"])).toThrow("--cwd requires a path argument");
+      expect(() => parseArgs(["--cwd"])).toThrow(
+        "--cwd requires a path argument",
+      );
     });
   });
 
@@ -124,12 +128,7 @@ describe("parseArgs", () => {
     });
 
     test("should parse all options together", () => {
-      const result = parseArgs([
-        "-j",
-        "-c",
-        "/test/path",
-        "Review this code",
-      ]);
+      const result = parseArgs(["-j", "-c", "/test/path", "Review this code"]);
       expect(result.json).toBe(true);
       expect(result.cwd).toBe("/test/path");
       expect(result.message).toBe("Review this code");
@@ -146,7 +145,9 @@ describe("parseArgs", () => {
 
   describe("error handling", () => {
     test("should throw for unknown option", () => {
-      expect(() => parseArgs(["--unknown"])).toThrow("Unknown option: --unknown");
+      expect(() => parseArgs(["--unknown"])).toThrow(
+        "Unknown option: --unknown",
+      );
     });
 
     test("should throw for unknown short option", () => {
@@ -231,8 +232,8 @@ describe("edge cases", () => {
   });
 
   test("should handle message with special characters", () => {
-    const result = parseArgs(["What's the \"best\" approach?"]);
-    expect(result.message).toBe("What's the \"best\" approach?");
+    const result = parseArgs(['What\'s the "best" approach?']);
+    expect(result.message).toBe('What\'s the "best" approach?');
   });
 
   test("should handle message with newlines", () => {
@@ -251,5 +252,3 @@ describe("edge cases", () => {
     expect(result.cwd).toBe("/path/with spaces/here");
   });
 });
-
-

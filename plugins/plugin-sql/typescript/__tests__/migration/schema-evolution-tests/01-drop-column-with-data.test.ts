@@ -1,5 +1,5 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 // Import the ACTUAL production schemas
@@ -57,7 +57,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
 
   beforeEach(async () => {
     const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
-      "schema_evolution_drop_column_test",
+      "schema_evolution_drop_column_test"
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
@@ -88,10 +88,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
         id: "550e8400-e29b-41d4-a716-446655440001",
         name: "Agent Alpha",
         username: "alpha_bot", // This field will be dropped
-        bio: [
-          "Expert in natural language processing",
-          "Specialized in customer support",
-        ],
+        bio: ["Expert in natural language processing", "Specialized in customer support"],
         enabled: true,
         system: "You are a helpful assistant",
         messageExamples: [],
@@ -163,22 +160,16 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     ]);
 
     // Verify data was inserted
-    const agentsBeforeCount = await db.execute(
-      sql`SELECT COUNT(*) as count FROM agents`,
-    );
-    const memoriesBeforeCount = await db.execute(
-      sql`SELECT COUNT(*) as count FROM memories`,
-    );
+    const agentsBeforeCount = await db.execute(sql`SELECT COUNT(*) as count FROM agents`);
+    const memoriesBeforeCount = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
 
     console.log("\n📊 Production data statistics:");
     console.log(`  - Agents: ${(agentsBeforeCount.rows[0] as CountRow).count}`);
-    console.log(
-      `  - Memories: ${(memoriesBeforeCount.rows[0] as CountRow).count}`,
-    );
+    console.log(`  - Memories: ${(memoriesBeforeCount.rows[0] as CountRow).count}`);
 
     // Check usernames exist
     const usernameCheck = await db.execute(
-      sql`SELECT name, username FROM agents WHERE username IS NOT NULL`,
+      sql`SELECT name, username FROM agents WHERE username IS NOT NULL`
     );
     console.log(`  - Agents with usernames: ${usernameCheck.rows.length}`);
     usernameCheck.rows.forEach((row: any) => {
@@ -187,30 +178,23 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
 
     // Now create V2 schema WITHOUT username column (destructive change!)
     // We need to recreate the agent table definition without username
-    const { pgTable, text, uuid, boolean, timestamp, jsonb, unique } =
-      await import("drizzle-orm/pg-core");
+    const { pgTable, text, uuid, boolean, timestamp, jsonb, unique } = await import(
+      "drizzle-orm/pg-core"
+    );
 
     const agentTableV2 = pgTable(
       "agents",
       {
         id: uuid("id").primaryKey().defaultRandom(),
         enabled: boolean("enabled").default(true).notNull(),
-        createdAt: timestamp("created_at", { withTimezone: true })
-          .default(sql`now()`)
-          .notNull(),
-        updatedAt: timestamp("updated_at", { withTimezone: true })
-          .default(sql`now()`)
-          .notNull(),
+        createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+        updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
         name: text("name").notNull(),
         // username: text('username'), // REMOVED - destructive change!
         system: text("system").default(""),
         bio: jsonb("bio").$type<string | string[]>().default(sql`'[]'::jsonb`),
-        messageExamples: jsonb("message_examples")
-          .default(sql`'[]'::jsonb`)
-          .notNull(),
-        postExamples: jsonb("post_examples")
-          .default(sql`'[]'::jsonb`)
-          .notNull(),
+        messageExamples: jsonb("message_examples").default(sql`'[]'::jsonb`).notNull(),
+        postExamples: jsonb("post_examples").default(sql`'[]'::jsonb`).notNull(),
         topics: jsonb("topics").default(sql`'[]'::jsonb`).notNull(),
         adjectives: jsonb("adjectives").default(sql`'[]'::jsonb`).notNull(),
         knowledge: jsonb("knowledge").default(sql`'[]'::jsonb`).notNull(),
@@ -220,7 +204,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       },
       (table) => ({
         nameUnique: unique("name_unique").on(table.name),
-      }),
+      })
     );
 
     const schemaV2 = {
@@ -230,16 +214,13 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
 
     // Test 1: Check migration for data loss warnings
     console.log("\n🔍 Checking migration for data loss...");
-    const dataLossCheck = await migrator.checkMigration(
-      "@elizaos/production-schema-v1",
-      schemaV2,
-    );
+    const dataLossCheck = await migrator.checkMigration("@elizaos/production-schema-v1", schemaV2);
 
     if (dataLossCheck) {
       expect(dataLossCheck.hasDataLoss).toBe(true);
       expect(dataLossCheck.requiresConfirmation).toBe(true);
       expect(dataLossCheck.warnings).toContain(
-        'Column "username" in table "public.agents" will be dropped',
+        'Column "username" in table "public.agents" will be dropped'
       );
 
       console.log("\n⚠️  Data Loss Detection:");
@@ -261,11 +242,9 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     }
 
     expect(blockedError).not.toBeNull();
-    expect(blockedError && blockedError.message).toContain("Destructive migration blocked");
-    expect(blockedError && blockedError.message).toContain(
-      "ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS",
-    );
-    console.log(`  ✅ Migration blocked: ${blockedError && blockedError.message}`);
+    expect(blockedError?.message).toContain("Destructive migration blocked");
+    expect(blockedError?.message).toContain("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS");
+    console.log(`  ✅ Migration blocked: ${blockedError?.message}`);
 
     // Test 3: Production mode should also block (even with more warnings)
     process.env.NODE_ENV = "production";
@@ -279,13 +258,9 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     }
 
     expect(productionError).not.toBeNull();
-    expect(productionError && productionError.message).toContain("production");
-    expect(productionError && productionError.message).toContain(
-      "ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS",
-    );
-    console.log(
-      `  ✅ Production blocked: ${(productionError && productionError.message && productionError.message.substring(0, 80)) || ""}...`,
-    );
+    expect(productionError?.message).toContain("production");
+    expect(productionError?.message).toContain("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS");
+    console.log(`  ✅ Production blocked: ${productionError?.message?.substring(0, 80) || ""}...`);
 
     // Test 4: Allow migration with environment variable
     process.env.NODE_ENV = "development";
@@ -311,7 +286,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     // Verify column was dropped
     const columnsAfter = await db.execute(
       sql`SELECT column_name FROM information_schema.columns 
-          WHERE table_name = 'agents' AND table_schema = 'public'`,
+          WHERE table_name = 'agents' AND table_schema = 'public'`
     );
 
     const columnNames = columnsAfter.rows.map((r: any) => r.column_name);
@@ -322,20 +297,12 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     console.log("  ❌ Username column has been dropped");
 
     // Verify related data is intact
-    const agentsAfterCount = await db.execute(
-      sql`SELECT COUNT(*) as count FROM agents`,
-    );
-    const memoriesAfterCount = await db.execute(
-      sql`SELECT COUNT(*) as count FROM memories`,
-    );
+    const agentsAfterCount = await db.execute(sql`SELECT COUNT(*) as count FROM agents`);
+    const memoriesAfterCount = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
 
     console.log("\n✅ Data integrity check:");
-    console.log(
-      `  - Agents preserved: ${(agentsAfterCount.rows[0] as CountRow).count}`,
-    );
-    console.log(
-      `  - Memories preserved: ${(memoriesAfterCount.rows[0] as CountRow).count}`,
-    );
+    console.log(`  - Agents preserved: ${(agentsAfterCount.rows[0] as CountRow).count}`);
+    console.log(`  - Memories preserved: ${(memoriesAfterCount.rows[0] as CountRow).count}`);
     console.log("  - Username data: PERMANENTLY LOST");
   });
 });

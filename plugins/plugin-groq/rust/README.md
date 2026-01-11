@@ -27,7 +27,7 @@ use elizaos_plugin_groq::{GroqClient, GenerateTextParams};
 async fn main() -> anyhow::Result<()> {
     // Create client with API key
     let client = GroqClient::new("your-api-key", None)?;
-    
+
     // Generate text with the large model
     let response = client.generate_text_large(GenerateTextParams {
         prompt: "Explain quantum computing in simple terms.".to_string(),
@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
         max_tokens: Some(1024),
         ..Default::default()
     }).await?;
-    
+
     println!("Response: {}", response);
     Ok(())
 }
@@ -52,7 +52,7 @@ async fn transcribe_audio(client: &GroqClient, audio_data: Vec<u8>) -> anyhow::R
         format: "mp3".to_string(),
         model: None,
     }).await?;
-    
+
     Ok(text)
 }
 ```
@@ -68,7 +68,7 @@ async fn generate_speech(client: &GroqClient, text: &str) -> anyhow::Result<Vec<
         model: None,
         voice: None,
     }).await?;
-    
+
     Ok(audio)
 }
 ```
@@ -84,7 +84,7 @@ async fn generate_json(client: &GroqClient) -> anyhow::Result<serde_json::Value>
         temperature: Some(0.7),
         model: None,
     }).await?;
-    
+
     Ok(object)
 }
 ```
@@ -148,4 +148,3 @@ elizaos-plugin-groq = { version = "1.0", default-features = false, features = ["
 ## License
 
 MIT License
-

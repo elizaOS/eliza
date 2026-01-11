@@ -2,18 +2,18 @@
 Integration tests for the Todo Plugin.
 """
 
-import pytest
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+import pytest
+
 from elizaos_plugin_todo import (
+    CacheManager,
+    Priority,
+    TaskType,
     TodoClient,
     TodoConfig,
-    TaskType,
-    Priority,
     TodoDataService,
-    CacheManager,
-    NotificationManager,
 )
 from elizaos_plugin_todo.data_service import create_todo_data_service
 from elizaos_plugin_todo.types import CreateTodoParams, TodoFilters, UpdateTodoParams
@@ -61,9 +61,7 @@ class TestTodoDataService:
         assert not todo.is_completed
 
     @pytest.mark.asyncio
-    async def test_update_todo(
-        self, data_service: TodoDataService, test_params: dict
-    ) -> None:
+    async def test_update_todo(self, data_service: TodoDataService, test_params: dict) -> None:
         """Test updating a todo."""
         params = CreateTodoParams(
             name="Original Name",
@@ -86,9 +84,7 @@ class TestTodoDataService:
         assert todo.priority == Priority.CRITICAL
 
     @pytest.mark.asyncio
-    async def test_complete_todo(
-        self, data_service: TodoDataService, test_params: dict
-    ) -> None:
+    async def test_complete_todo(self, data_service: TodoDataService, test_params: dict) -> None:
         """Test completing a todo."""
         params = CreateTodoParams(
             name="Complete Me",
@@ -110,9 +106,7 @@ class TestTodoDataService:
         assert todo.completed_at is not None
 
     @pytest.mark.asyncio
-    async def test_delete_todo(
-        self, data_service: TodoDataService, test_params: dict
-    ) -> None:
+    async def test_delete_todo(self, data_service: TodoDataService, test_params: dict) -> None:
         """Test deleting a todo."""
         params = CreateTodoParams(
             name="Delete Me",
@@ -356,5 +350,8 @@ class TestTodoClient:
             )
             assert len(one_off) >= 1
             assert all(t.type == TaskType.ONE_OFF for t in one_off)
+
+
+
 
 

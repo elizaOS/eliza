@@ -105,5 +105,3 @@ async with OpenAIPlugin() as plugin:
 ## License
 
 MIT
-
-

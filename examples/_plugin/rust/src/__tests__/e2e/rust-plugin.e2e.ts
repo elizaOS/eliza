@@ -47,11 +47,13 @@ export const RustPluginTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Verify the plugin is loaded by checking for the HELLO_RUST action
         const runtimeActions = runtime.actions;
-        const actionExists = runtimeActions && runtimeActions.some(
+        const actionExists = runtimeActions?.some(
           (a) => a.name === "HELLO_RUST",
         );
         if (!actionExists) {
-          throw new Error("HELLO_RUST action not found in runtime actions - Rust plugin may not be loaded");
+          throw new Error(
+            "HELLO_RUST action not found in runtime actions - Rust plugin may not be loaded",
+          );
         }
       },
     },
@@ -65,13 +67,13 @@ export const RustPluginTestSuite: TestSuite = {
       name: "should_have_hello_rust_action",
       fn: async (runtime: IAgentRuntime) => {
         const runtimeActions = runtime.actions;
-        const helloRustAction = runtimeActions && runtimeActions.find(
+        const helloRustAction = runtimeActions?.find(
           (a) => a.name === "HELLO_RUST",
         );
         if (!helloRustAction) {
           throw new Error("HELLO_RUST action not found in runtime actions");
         }
-        
+
         // Verify action has required properties
         if (!helloRustAction.description) {
           throw new Error("HELLO_RUST action missing description");
@@ -87,7 +89,7 @@ export const RustPluginTestSuite: TestSuite = {
      * --------------------------------
      * This is the KEY test: Simulates asking the agent to say hello
      * and validates that the HELLO_RUST action is called and responds correctly.
-     * 
+     *
      * This test verifies:
      * 1. The agent can respond to a message
      * 2. The HELLO_RUST action is triggered
@@ -119,7 +121,7 @@ export const RustPluginTestSuite: TestSuite = {
 
         // Find the HELLO_RUST action in runtime.actions
         const runtimeActions = runtime.actions;
-        const helloRustAction = runtimeActions && runtimeActions.find(
+        const helloRustAction = runtimeActions?.find(
           (a) => a.name === "HELLO_RUST",
         );
         if (!helloRustAction) {
@@ -152,22 +154,32 @@ export const RustPluginTestSuite: TestSuite = {
 
         // Verify we received a response
         if (!responseReceived) {
-          throw new Error("HELLO_RUST action did not produce a response via callback");
+          throw new Error(
+            "HELLO_RUST action did not produce a response via callback",
+          );
         }
 
         // Verify the action result is successful
         if (!result.success) {
-          const errorMsg = result.error instanceof Error 
-            ? result.error.message 
-            : typeof result.error === 'string' 
-              ? result.error 
-              : "Unknown error";
+          const errorMsg =
+            result.error instanceof Error
+              ? result.error.message
+              : typeof result.error === "string"
+                ? result.error
+                : "Unknown error";
           throw new Error(`HELLO_RUST action failed: ${errorMsg}`);
         }
 
         // Verify the response contains "Hello from Rust" (case-insensitive)
-        const combinedText = (responseText + " " + (result.text || "")).toLowerCase();
-        if (!combinedText.includes("hello from rust") && !combinedText.includes("rust")) {
+        const combinedText = (
+          responseText +
+          " " +
+          (result.text || "")
+        ).toLowerCase();
+        if (
+          !combinedText.includes("hello from rust") &&
+          !combinedText.includes("rust")
+        ) {
           throw new Error(
             `Expected response to contain "Hello from Rust" but got: "${responseText}" / "${result.text}"`,
           );
@@ -211,13 +223,11 @@ export const RustPluginTestSuite: TestSuite = {
 
         // Find the RUST_INFO provider in runtime.providers
         const runtimeProviders = runtime.providers;
-        const rustInfoProvider = runtimeProviders && runtimeProviders.find(
+        const rustInfoProvider = runtimeProviders?.find(
           (p) => p.name === "RUST_INFO",
         );
         if (!rustInfoProvider) {
-          throw new Error(
-            "RUST_INFO provider not found in runtime providers",
-          );
+          throw new Error("RUST_INFO provider not found in runtime providers");
         }
 
         // Test the provider
@@ -228,9 +238,7 @@ export const RustPluginTestSuite: TestSuite = {
         );
 
         if (!result.text) {
-          throw new Error(
-            "RUST_INFO provider did not return text",
-          );
+          throw new Error("RUST_INFO provider did not return text");
         }
 
         // Verify the provider returns information about Rust
@@ -256,7 +264,7 @@ export const RustPluginTestSuite: TestSuite = {
       name: "action_validation_test",
       fn: async (runtime: IAgentRuntime) => {
         const runtimeActions = runtime.actions;
-        const helloRustAction = runtimeActions && runtimeActions.find(
+        const helloRustAction = runtimeActions?.find(
           (a) => a.name === "HELLO_RUST",
         );
         if (!helloRustAction) {
@@ -280,7 +288,9 @@ export const RustPluginTestSuite: TestSuite = {
         );
 
         if (!isValid) {
-          throw new Error("HELLO_RUST action validation failed for valid message");
+          throw new Error(
+            "HELLO_RUST action validation failed for valid message",
+          );
         }
       },
     },
@@ -289,4 +299,3 @@ export const RustPluginTestSuite: TestSuite = {
 
 // Export a default instance of the test suite for the E2E test runner
 export default RustPluginTestSuite;
-

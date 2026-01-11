@@ -60,15 +60,9 @@ export const polymarketMarketsTable = polymarketSchema.table(
     fpmm: text("fpmm"), // Fixed Product Market Maker address
 
     // Tracking fields
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   // Use array syntax like core schema
   (table) => [
@@ -81,7 +75,7 @@ export const polymarketMarketsTable = polymarketSchema.table(
     index("markets_last_synced_idx").on(table.lastSyncedAt),
     // Active markets are most commonly queried
     index("markets_active_closed_idx").on(table.active, table.closed),
-  ],
+  ]
 );
 
 /**
@@ -95,12 +89,8 @@ export const polymarketTokensTable = polymarketSchema.table(
     conditionId: text("condition_id").notNull(),
     outcome: text("outcome").notNull(), // 'YES' or 'NO'
 
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
     // Foreign key to markets
@@ -116,7 +106,7 @@ export const polymarketTokensTable = polymarketSchema.table(
     index("tokens_outcome_idx").on(table.outcome),
     // Compound index for market + outcome lookups
     index("tokens_condition_outcome_idx").on(table.conditionId, table.outcome),
-  ],
+  ]
 );
 
 /**
@@ -139,12 +129,8 @@ export const polymarketRewardsTable = polymarketSchema.table(
     }),
     rewardEpoch: integer("reward_epoch"),
 
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
     // Foreign key and unique constraint
@@ -159,7 +145,7 @@ export const polymarketRewardsTable = polymarketSchema.table(
 
     // Index for epoch queries
     index("rewards_epoch_idx").on(table.rewardEpoch),
-  ],
+  ]
 );
 
 /**
@@ -178,12 +164,8 @@ export const polymarketPricesTable = polymarketSchema.table(
     ask: decimal("ask", { precision: 10, scale: 6 }),
 
     // Timestamps
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
     // Foreign keys
@@ -204,7 +186,7 @@ export const polymarketPricesTable = polymarketSchema.table(
     index("prices_updated_at_idx").on(table.updatedAt),
     // Most recent price per token
     index("prices_token_updated_idx").on(table.tokenId, table.updatedAt),
-  ],
+  ]
 );
 
 /**
@@ -215,9 +197,7 @@ export const polymarketSyncStatusTable = polymarketSchema.table(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     syncType: text("sync_type").notNull(), // 'markets', 'prices', 'volume'
-    lastSyncAt: timestamp("last_sync_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    lastSyncAt: timestamp("last_sync_at", { withTimezone: true }).default(sql`now()`).notNull(),
     syncStatus: text("sync_status").default("pending").notNull(), // 'pending', 'running', 'success', 'error'
     errorMessage: text("error_message"),
     recordsProcessed: integer("records_processed").default(0),
@@ -225,12 +205,8 @@ export const polymarketSyncStatusTable = polymarketSchema.table(
     // Metadata for sync details
     metadata: jsonb("metadata").default(sql`'{}'::jsonb`).notNull(),
 
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
     // Indexes for sync monitoring
@@ -238,11 +214,8 @@ export const polymarketSyncStatusTable = polymarketSchema.table(
     index("sync_status_last_sync_idx").on(table.lastSyncAt),
     index("sync_status_status_idx").on(table.syncStatus),
     // Latest sync per type
-    index("sync_status_type_last_sync_idx").on(
-      table.syncType,
-      table.lastSyncAt,
-    ),
-  ],
+    index("sync_status_type_last_sync_idx").on(table.syncType, table.lastSyncAt),
+  ]
 );
 
 // Export all tables as schema for migration registration

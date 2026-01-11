@@ -13,13 +13,13 @@
  */
 
 import "dotenv/config";
-import * as fs from "fs/promises";
-import * as readline from "readline";
+import * as fs from "node:fs/promises";
+import * as readline from "node:readline";
 import { v4 as uuidv4 } from "uuid";
 import { initializeAgent, shutdownAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
-import { loadSession, saveSession, type SessionState } from "./lib/session.js";
 import { ensureSessionIdentity, getMainRoomElizaId } from "./lib/identity.js";
+import { loadSession, type SessionState, saveSession } from "./lib/session.js";
 import { getCwd, setCwd } from "./plugin/providers/cwd.js";
 import type { ChatRoom, Message, MessageRole } from "./types.js";
 
@@ -180,7 +180,7 @@ async function readStdin(): Promise<string> {
     });
 
     rl.on("line", (line) => {
-      data += line + "\n";
+      data += `${line}\n`;
     });
 
     rl.on("close", () => {
@@ -206,14 +206,8 @@ async function getMessage(options: CLIOptions): Promise<string | null> {
 
   // Message from file
   if (options.file) {
-    try {
-      const content = await fs.readFile(options.file, "utf-8");
-      return content.trim();
-    } catch (error) {
-      throw new Error(
-        `Failed to read file: ${error instanceof Error ? error.message : error}`
-      );
-    }
+    const content = await fs.readFile(options.file, "utf-8");
+    return content.trim();
   }
 
   // Message from stdin (only if not a TTY)
@@ -259,7 +253,12 @@ function getCurrentRoomFromSession(session: SessionState): ChatRoom {
   return fallback;
 }
 
-function appendSessionMessage(session: SessionState, room: ChatRoom, role: MessageRole, content: string): void {
+function appendSessionMessage(
+  session: SessionState,
+  room: ChatRoom,
+  role: MessageRole,
+  content: string,
+): void {
   const message: Message = {
     id: uuidv4(),
     role,
@@ -292,14 +291,7 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
       };
     }
     // In CLI mode, treat --cwd as the project root for session persistence.
-    try {
-      process.chdir(result.path);
-    } catch (err) {
-      return {
-        success: false,
-        error: `Failed to change process working directory: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
+    process.chdir(result.path);
   }
 
   // Get message
@@ -353,11 +345,6 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
         durationMs: completedAt - startedAt,
       },
     };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
   } finally {
     if (runtime) {
       await shutdownAgent(runtime);
@@ -386,51 +373,54 @@ function formatOutput(result: CLIResult, options: CLIOptions): void {
 // Main Entry Point
 // ============================================================================
 
-export async function main(args: string[] = process.argv.slice(2)): Promise<number> {
+export async function main(
+  args: string[] = process.argv.slice(2),
+): Promise<number> {
   // Suppress logs in CLI mode
   process.env.LOG_LEVEL = "fatal";
 
-  try {
-    const options = parseArgs(args);
+  const options = parseArgs(args);
 
-    // Handle help
-    if (options.help) {
-      console.log(HELP_TEXT);
-      return 0;
-    }
+  // Handle help
+  if (options.help) {
+    console.log(HELP_TEXT);
+    return 0;
+  }
 
-    // Handle version
-    if (options.version) {
-      console.log(`eliza-code v${VERSION}`);
-      return 0;
-    }
+  // Handle version
+  if (options.version) {
+    console.log(`eliza-code v${VERSION}`);
+    return 0;
+  }
 
-    // If interactive mode is requested, return special code to indicate TUI should run
-    if (options.interactive) {
-      return -1; // Special code: run TUI
-    }
+  // If interactive mode is requested, return special code to indicate TUI should run
+  if (options.interactive) {
+    return -1; // Special code: run TUI
+  }
 
-    // Check for API key
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.error("Error: ANTHROPIC_API_KEY environment variable is required");
-      console.error("Set it in your environment or in a .env file");
-      return 1;
-    }
-
-    // Run CLI
-    const result = await runCLI(options);
-    formatOutput(result, options);
-
-    return result.success ? 0 : 1;
-  } catch (error) {
-    console.error(`Error: ${error instanceof Error ? error.message : error}`);
+  // Check for API key
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("Error: ANTHROPIC_API_KEY environment variable is required");
+    console.error("Set it in your environment or in a .env file");
     return 1;
   }
+
+  // Run CLI
+  const result = await runCLI(options);
+  formatOutput(result, options);
+
+  return result.success ? 0 : 1;
 }
 
 // ============================================================================
 // Exports for Testing
 // ============================================================================
 
-export { parseArgs, getMessage, runCLI, formatOutput, CLIOptions, CLIResult };
-
+export {
+  parseArgs,
+  getMessage,
+  runCLI,
+  formatOutput,
+  type CLIOptions,
+  type CLIResult,
+};

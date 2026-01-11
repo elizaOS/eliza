@@ -5,10 +5,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type DiscordPermissionValues,
-  getPermissionValues,
-} from "./permissions";
+import { type DiscordPermissionValues, getPermissionValues } from "./permissions";
 
 const ANSI = {
   reset: "\x1b[0m",
@@ -75,6 +72,7 @@ function fmtVal(value: unknown, sensitive: boolean, maxLen: number): string {
   return s;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes are required for terminal formatting
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 /**
@@ -107,6 +105,7 @@ function line(content: string): string {
 
   while (i < content.length && visibleCount < 78) {
     const remaining = content.slice(i);
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes are required for terminal formatting
     const match = remaining.match(/^\x1b\[[0-9;]*m/);
 
     if (match) {
@@ -154,57 +153,27 @@ export function printBanner(options: BannerOptions): void {
   lines.push(top);
   lines.push(row(` ${B}Character: ${runtime.character.name}${R}`));
   lines.push(mid);
+  lines.push(row(`${c2}     ██████╗ ██╗███████╗ ██████╗ ██████╗ ██████╗ ██████╗     ${c3}◖ ◗${R}`));
   lines.push(
-    row(
-      `${c2}     ██████╗ ██╗███████╗ ██████╗ ██████╗ ██████╗ ██████╗     ${c3}◖ ◗${R}`,
-    ),
+    row(`${c2}     ██╔══██╗██║██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔══██╗   ${c3}◖===◗${R}`)
   );
-  lines.push(
-    row(
-      `${c2}     ██╔══██╗██║██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔══██╗   ${c3}◖===◗${R}`,
-    ),
-  );
-  lines.push(
-    row(
-      `${c2}     ██║  ██║██║███████╗██║     ██║   ██║██████╔╝██║  ██║    ${c3}╰─╯${R}`,
-    ),
-  );
-  lines.push(
-    row(
-      `${c2}     ██████╔╝██║╚════██║╚██████╗╚██████╔╝██║  ██║██████╔╝   ${c3}(◠◠)${R}`,
-    ),
-  );
-  lines.push(
-    row(
-      `${c2}     ╚═════╝ ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝     ${c3}‿‿${R}`,
-    ),
-  );
-  lines.push(
-    row(
-      `${D}            Bot Integration  •  Servers  •  Channels  •  Voice${R}`,
-    ),
-  );
+  lines.push(row(`${c2}     ██║  ██║██║███████╗██║     ██║   ██║██████╔╝██║  ██║    ${c3}╰─╯${R}`));
+  lines.push(row(`${c2}     ██████╔╝██║╚════██║╚██████╗╚██████╔╝██║  ██║██████╔╝   ${c3}(◠◠)${R}`));
+  lines.push(row(`${c2}     ╚═════╝ ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝     ${c3}‿‿${R}`));
+  lines.push(row(`${D}            Bot Integration  •  Servers  •  Channels  •  Voice${R}`));
   lines.push(mid);
 
   const NW = 34,
     VW = 26,
     SW = 8;
-  lines.push(
-    row(
-      ` ${B}${pad("ENV VARIABLE", NW)} ${pad("VALUE", VW)} ${pad("STATUS", SW)}${R}`,
-    ),
-  );
-  lines.push(
-    row(` ${D}${"-".repeat(NW)} ${"-".repeat(VW)} ${"-".repeat(SW)}${R}`),
-  );
+  lines.push(row(` ${B}${pad("ENV VARIABLE", NW)} ${pad("VALUE", VW)} ${pad("STATUS", SW)}${R}`));
+  lines.push(row(` ${D}${"-".repeat(NW)} ${"-".repeat(VW)} ${"-".repeat(SW)}${R}`));
 
   for (const s of settings) {
     const set = s.value !== undefined && s.value !== null && s.value !== "";
     // Normalize to string for comparison (e.g., boolean false vs string 'false')
     const isDefault =
-      set &&
-      s.defaultValue !== undefined &&
-      String(s.value) === String(s.defaultValue);
+      set && s.defaultValue !== undefined && String(s.value) === String(s.defaultValue);
 
     let ico: string, st: string;
     if (!set && s.required) {
@@ -222,10 +191,7 @@ export function printBanner(options: BannerOptions): void {
     }
 
     const name = pad(s.name, NW - 2);
-    const val = pad(
-      fmtVal(s.value ?? s.defaultValue, s.sensitive ?? false, VW),
-      VW,
-    );
+    const val = pad(fmtVal(s.value ?? s.defaultValue, s.sensitive ?? false, VW), VW);
     const status = pad(st, SW);
     lines.push(row(` ${ico} ${c2}${name}${R} ${val} ${status}`));
   }
@@ -233,8 +199,8 @@ export function printBanner(options: BannerOptions): void {
   lines.push(mid);
   lines.push(
     row(
-      ` ${D}${ANSI.brightGreen}✓${D} custom  ${ANSI.brightBlue}●${D} default  ○ unset  ${ANSI.brightRed}◆${D} required      → Set in .env${R}`,
-    ),
+      ` ${D}${ANSI.brightGreen}✓${D} custom  ${ANSI.brightBlue}●${D} default  ○ unset  ${ANSI.brightRed}◆${D} required      → Set in .env${R}`
+    )
   );
   lines.push(bot);
 
@@ -247,28 +213,18 @@ export function printBanner(options: BannerOptions): void {
     lines.push(`${B}${ANSI.brightCyan}🔗 Discord Bot Invite${R}`);
     lines.push("");
     lines.push(`   ${B}🎙️  With Voice:${R}`);
-    lines.push(
-      `   ${ANSI.brightGreen}● Basic${R}      ${baseUrl}${p.basicVoice}`,
-    );
-    lines.push(
-      `   ${ANSI.brightYellow}● Moderator${R}  ${baseUrl}${p.moderatorVoice}`,
-    );
-    lines.push(
-      `   ${ANSI.brightRed}● Admin${R}      ${baseUrl}${p.adminVoice}`,
-    );
+    lines.push(`   ${ANSI.brightGreen}● Basic${R}      ${baseUrl}${p.basicVoice}`);
+    lines.push(`   ${ANSI.brightYellow}● Moderator${R}  ${baseUrl}${p.moderatorVoice}`);
+    lines.push(`   ${ANSI.brightRed}● Admin${R}      ${baseUrl}${p.adminVoice}`);
     lines.push("");
     lines.push(`   ${B}💬 Without Voice:${R}`);
     lines.push(`   ${ANSI.brightCyan}○ Basic${R}      ${baseUrl}${p.basic}`);
-    lines.push(
-      `   ${ANSI.brightMagenta}○ Moderator${R}  ${baseUrl}${p.moderator}`,
-    );
+    lines.push(`   ${ANSI.brightMagenta}○ Moderator${R}  ${baseUrl}${p.moderator}`);
     lines.push(`   ${ANSI.brightBlue}○ Admin${R}      ${baseUrl}${p.admin}`);
   } else if (options.discordInviteLink) {
     // Backwards compatibility
     lines.push("");
-    lines.push(
-      `${B}${ANSI.brightCyan}🔗 Discord Bot Invite:${R} ${options.discordInviteLink}`,
-    );
+    lines.push(`${B}${ANSI.brightCyan}🔗 Discord Bot Invite:${R} ${options.discordInviteLink}`);
   }
 
   lines.push("");
@@ -286,9 +242,7 @@ export function printDiscordBanner(runtime: IAgentRuntime): void {
   const applicationId = runtime.getSetting("DISCORD_APPLICATION_ID");
   const ignoreBots = runtime.getSetting("DISCORD_SHOULD_IGNORE_BOT_MESSAGES");
   const ignoreDMs = runtime.getSetting("DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES");
-  const onlyMentions = runtime.getSetting(
-    "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
-  );
+  const onlyMentions = runtime.getSetting("DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS");
   const listenChannels = runtime.getSetting("DISCORD_LISTEN_CHANNEL_IDS");
   const voiceChannelId = runtime.getSetting("DISCORD_VOICE_CHANNEL_ID");
 

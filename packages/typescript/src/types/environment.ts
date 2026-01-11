@@ -1,4 +1,4 @@
-import type { Metadata, UUID } from "./primitives";
+import type { ChannelType, Metadata, UUID } from "./primitives";
 
 export interface Component {
   id: UUID;
@@ -64,20 +64,6 @@ export type World = {
     [key: string]: unknown;
   };
 };
-
-export enum ChannelType {
-  SELF = "SELF", // Messages to self
-  DM = "DM", // Direct messages between two participants
-  GROUP = "GROUP", // Group messages with multiple participants
-  VOICE_DM = "VOICE_DM", // Voice direct messages
-  VOICE_GROUP = "VOICE_GROUP", // Voice channels with multiple participants
-  FEED = "FEED", // Social media feed
-  THREAD = "THREAD", // Threaded conversation
-  WORLD = "WORLD", // World channel
-  FORUM = "FORUM", // Forum discussion
-  // Legacy types - kept for backward compatibility but should be replaced
-  API = "API", // @deprecated - Use DM or GROUP instead
-}
 
 export type Room = {
   id: UUID;

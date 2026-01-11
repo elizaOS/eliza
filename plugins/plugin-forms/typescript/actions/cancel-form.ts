@@ -1,139 +1,127 @@
-import {
+import type {
   Action,
+  HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
-  HandlerCallback,
-  logger,
-  type HandlerOptions,
-} from '@elizaos/core';
-import { FormsService } from '../services/forms-service';
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { FormsService } from "../services/forms-service";
+import type { Form } from "../types";
 
 /**
  * CancelFormAction cancels an active form.
  */
 export const cancelFormAction: Action = {
-  name: 'CANCEL_FORM',
-  similes: ['ABORT_FORM', 'STOP_FORM', 'QUIT_FORM', 'EXIT_FORM'],
-  description: 'Cancels an active form',
+  name: "CANCEL_FORM",
+  similes: ["ABORT_FORM", "STOP_FORM", "QUIT_FORM", "EXIT_FORM"],
+  description: "Cancels an active form",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     // Check if forms service is available
-    const formsService = runtime.getService<FormsService>('forms');
+    const formsService = runtime.getService<FormsService>("forms");
     if (!formsService) {
       return false;
     }
 
     // Check if there are any active forms
-    const activeForms = await formsService.listForms('active');
+    const activeForms = await formsService.listForms("active");
     if (activeForms.length === 0) {
       return false;
     }
 
-    const text = message.content.text?.toLowerCase() || '';
+    const text = message.content.text?.toLowerCase() || "";
 
     // Check if user wants to cancel a form
     const wantsCancel =
-      text.includes('cancel') ||
-      text.includes('stop') ||
-      text.includes('abort') ||
-      text.includes('quit') ||
-      text.includes('exit') ||
-      text.includes('nevermind') ||
-      text.includes('never mind') ||
-      (text.includes("don't") && text.includes('want'));
+      text.includes("cancel") ||
+      text.includes("stop") ||
+      text.includes("abort") ||
+      text.includes("quit") ||
+      text.includes("exit") ||
+      text.includes("nevermind") ||
+      text.includes("never mind") ||
+      (text.includes("don't") && text.includes("want"));
 
     return wantsCancel;
   },
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback
   ) => {
-    try {
-      const formsService = runtime.getService<FormsService>('forms');
-      if (!formsService) {
-        throw new Error('Forms service not available');
-      }
+    const formsService = runtime.getService<FormsService>("forms");
+    if (!formsService) {
+      throw new Error("Forms service not available");
+    }
 
-      // Get active forms
-      const activeForms = await formsService.listForms('active');
-      if (activeForms.length === 0) {
+    // Get active forms
+    const activeForms = await formsService.listForms("active");
+    if (activeForms.length === 0) {
+      await callback?.({
+        text: "No active forms to cancel.",
+        actions: [],
+      });
+      return;
+    }
+
+    // Check if a specific form ID was provided
+    let targetForm: Form | undefined;
+    const specifiedFormId =
+      (options?.parameters as Record<string, unknown> | undefined)?.formId ||
+      state?.data?.activeFormId ||
+      state?.values?.activeFormId;
+
+    if (specifiedFormId) {
+      // Find the specific form
+      targetForm = activeForms.find((f) => f.id === specifiedFormId);
+      if (!targetForm) {
         await callback?.({
-          text: 'No active forms to cancel.',
+          text: "The specified form is no longer active.",
           actions: [],
         });
         return;
       }
+    } else {
+      // For now, cancel the first active form
+      targetForm = activeForms[0];
+    }
 
-      // Check if a specific form ID was provided
-      let targetForm;
-      const specifiedFormId =
-        (options?.parameters as Record<string, unknown> | undefined)?.formId || 
-        state?.data?.activeFormId || 
-        state?.values?.activeFormId;
+    const formId = targetForm.id;
 
-      if (specifiedFormId) {
-        // Find the specific form
-        targetForm = activeForms.find((f) => f.id === specifiedFormId);
-        if (!targetForm) {
-          await callback?.({
-            text: 'The specified form is no longer active.',
-            actions: [],
-          });
-          return;
-        }
-      } else {
-        // For now, cancel the first active form
-        targetForm = activeForms[0];
-      }
+    logger.debug(`Cancelling form ${formId}`);
 
-      const formId = targetForm.id;
+    // Cancel the form
+    const success = await formsService.cancelForm(formId);
 
-      logger.debug(`Cancelling form ${formId}`);
-
-      // Cancel the form
-      const success = await formsService.cancelForm(formId);
-
-      if (success) {
-        await callback?.({
-          text: `I've cancelled the form. Is there anything else I can help you with?`,
-          actions: ['CANCEL_FORM'],
-          data: {
-            formId,
-          },
-        });
-
-        return {
-          success: true,
-          data: {
-            formId,
-          },
-        };
-      } else {
-        await callback?.({
-          text: 'I was unable to cancel the form. It may have already been completed or cancelled.',
-          actions: [],
-        });
-
-        return {
-          success: false,
-          message: 'Failed to cancel form',
-        };
-      }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Error in CANCEL_FORM action:', errorMessage);
+    if (success) {
       await callback?.({
-        text: 'An error occurred while cancelling the form.',
+        text: `I've cancelled the form. Is there anything else I can help you with?`,
+        actions: ["CANCEL_FORM"],
+        data: {
+          formId,
+        },
+      });
+
+      return {
+        success: true,
+        data: {
+          formId,
+        },
+      };
+    } else {
+      await callback?.({
+        text: "I was unable to cancel the form. It may have already been completed or cancelled.",
         actions: [],
       });
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        message: "Failed to cancel form",
       };
     }
   },
@@ -141,31 +129,31 @@ export const cancelFormAction: Action = {
   examples: [
     [
       {
-        name: 'user',
+        name: "user",
         content: {
-          text: 'Actually, cancel the form',
+          text: "Actually, cancel the form",
         },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
           text: "I've cancelled the contact form. Is there anything else I can help you with?",
-          actions: ['CANCEL_FORM'],
+          actions: ["CANCEL_FORM"],
         },
       },
     ],
     [
       {
-        name: 'user',
+        name: "user",
         content: {
           text: "Never mind, I don't want to fill this out",
         },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
           text: "I've cancelled the form. Is there anything else I can help you with?",
-          actions: ['CANCEL_FORM'],
+          actions: ["CANCEL_FORM"],
         },
       },
     ],

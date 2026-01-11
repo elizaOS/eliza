@@ -2,13 +2,13 @@
  * @fileoverview Tests for integration runtime factory
  */
 
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createIntegrationTestRuntime,
-  withTestRuntime,
   DEFAULT_TEST_CHARACTER,
+  withTestRuntime,
 } from "../testing/integration-runtime";
-import type { IDatabaseAdapter, UUID, Plugin } from "../types";
+import type { IDatabaseAdapter, UUID } from "../types";
 
 // Mock database adapter
 function createMockDatabaseAdapter(): IDatabaseAdapter {
@@ -151,7 +151,7 @@ describe("Integration Runtime", () => {
           skipInferenceCheck: true,
           initTimeout: 100,
         });
-        
+
         // If we get here, inference check was skipped
         expect(result.inferenceProvider).toBe(null);
         await result.cleanup();
@@ -197,7 +197,7 @@ describe("Integration Runtime", () => {
       let threwError = false;
       try {
         await withTestRuntime(
-          async (runtime, agentId) => {
+          async (_runtime, _agentId) => {
             // Simulate test that throws
             throw new Error("Test failure");
           },
@@ -206,13 +206,12 @@ describe("Integration Runtime", () => {
             initTimeout: 100,
           },
         );
-      } catch (error) {
+      } catch (_error) {
         threwError = true;
         // Just verify it threw - the specific error depends on initialization
       }
-      
+
       expect(threwError).toBe(true);
     });
   });
 });
-

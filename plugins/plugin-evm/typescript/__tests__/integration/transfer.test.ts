@@ -1,3 +1,4 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import type { Account, Chain } from "viem";
 import { formatEther, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -5,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TransferAction } from "../../actions/transfer";
 import { WalletProvider } from "../../providers/wallet";
+import type { SupportedChain } from "../../types";
 import {
-  anvil,
   ANVIL_ADDRESS,
   ANVIL_ADDRESS_2,
   ANVIL_PRIVATE_KEY,
@@ -17,13 +18,25 @@ import {
 // Test environment - use a funded wallet private key for real testing
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
 
-// Mock the ICacheManager
-const mockCacheManager = {
-  get: vi.fn().mockResolvedValue(null),
-  set: vi.fn(),
-  getCache: vi.fn().mockResolvedValue(null),
-  setCache: vi.fn().mockResolvedValue(undefined),
-};
+// Create a mock runtime for testing
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-id" as IAgentRuntime["agentId"],
+    getCache: vi.fn().mockResolvedValue(null),
+    setCache: vi.fn().mockResolvedValue(undefined),
+    getSetting: vi.fn().mockReturnValue(null),
+    setSetting: vi.fn(),
+    getService: vi.fn().mockReturnValue(null),
+    registerService: vi.fn(),
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      log: vi.fn(),
+    },
+  } as IAgentRuntime;
+}
 
 describe("Transfer Action", () => {
   let wp: WalletProvider;
@@ -31,10 +44,10 @@ describe("Transfer Action", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockCacheManager.get.mockResolvedValue(null);
 
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
+    const mockRuntime = createMockRuntime();
 
     // Initialize with Sepolia and Base Sepolia testnets
     const customChains = {
@@ -42,7 +55,7 @@ describe("Transfer Action", () => {
       baseSepolia: testChains.baseSepolia,
     };
 
-    wp = new WalletProvider(pk, mockCacheManager as any, customChains);
+    wp = new WalletProvider(pk, mockRuntime, customChains);
   });
 
   afterEach(() => {
@@ -85,7 +98,7 @@ describe("Transfer Action", () => {
           fromChain: "sepolia" as const,
           toAddress: receiver.address,
           amount: "1000000", // 1M ETH - definitely insufficient
-        }),
+        })
       ).rejects.toThrow();
     });
 
@@ -95,7 +108,7 @@ describe("Transfer Action", () => {
           fromChain: "sepolia" as const,
           toAddress: "invalid-address" as `0x${string}`,
           amount: "0.001",
-        }),
+        })
       ).rejects.toThrow();
     });
 
@@ -105,7 +118,7 @@ describe("Transfer Action", () => {
           fromChain: "sepolia" as const,
           toAddress: receiver.address,
           amount: "0",
-        }),
+        })
       ).rejects.toThrow();
     });
 
@@ -125,10 +138,7 @@ describe("Transfer Action", () => {
           expect(gasEstimate).toBeGreaterThan(0n);
           console.log(`Estimated gas: ${gasEstimate.toString()}`);
         } catch (error) {
-          console.warn(
-            "Gas estimation failed (likely insufficient funds):",
-            error,
-          );
+          console.warn("Gas estimation failed (likely insufficient funds):", error);
         }
       });
 
@@ -158,18 +168,16 @@ describe("Transfer Action", () => {
     let anvilTa: TransferAction;
 
     beforeEach(() => {
-      anvilWp = new WalletProvider(
-        ANVIL_PRIVATE_KEY,
-        mockCacheManager as any,
-        getAnvilChain(),
-      );
+      anvilWp = new WalletProvider(ANVIL_PRIVATE_KEY, createMockRuntime(), getAnvilChain());
       anvilTa = new TransferAction(anvilWp);
     });
 
     it("should have funded balance on Anvil", async () => {
-      const balance = await anvilWp.getWalletBalanceForChain("anvil" as any);
+      const balance = await anvilWp.getWalletBalanceForChain("anvil" as SupportedChain);
       expect(balance).not.toBeNull();
-      expect(parseFloat(balance!)).toBeGreaterThan(1000); // Anvil starts with 10000 ETH
+      if (balance !== null) {
+        expect(parseFloat(balance)).toBeGreaterThan(1000); // Anvil starts with 10000 ETH
+      }
       console.log(`Anvil balance: ${balance} ETH`);
     });
 
@@ -177,7 +185,7 @@ describe("Transfer Action", () => {
       const receiver = privateKeyToAccount(generatePrivateKey());
 
       const result = await anvilTa.transfer({
-        fromChain: "anvil" as any,
+        fromChain: "anvil" as SupportedChain,
         toAddress: receiver.address,
         amount: "1.0", // 1 ETH
       });
@@ -191,7 +199,7 @@ describe("Transfer Action", () => {
 
     it("should transfer to known Anvil address", async () => {
       const result = await anvilTa.transfer({
-        fromChain: "anvil" as any,
+        fromChain: "anvil" as SupportedChain,
         toAddress: ANVIL_ADDRESS_2,
         amount: "0.5",
       });
@@ -200,7 +208,7 @@ describe("Transfer Action", () => {
       expect(result.to.toLowerCase()).toBe(ANVIL_ADDRESS_2.toLowerCase());
 
       // Wait for confirmation
-      const publicClient = anvilWp.getPublicClient("anvil" as any);
+      const publicClient = anvilWp.getPublicClient("anvil" as SupportedChain);
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: result.hash,
         timeout: 5000,
@@ -211,7 +219,7 @@ describe("Transfer Action", () => {
     });
 
     it("should estimate gas correctly on Anvil", async () => {
-      const publicClient = anvilWp.getPublicClient("anvil" as any);
+      const publicClient = anvilWp.getPublicClient("anvil" as SupportedChain);
       const receiver = privateKeyToAccount(generatePrivateKey());
 
       const gasEstimate = await publicClient.estimateGas({
@@ -226,7 +234,7 @@ describe("Transfer Action", () => {
     });
 
     it("should get gas price from Anvil", async () => {
-      const publicClient = anvilWp.getPublicClient("anvil" as any);
+      const publicClient = anvilWp.getPublicClient("anvil" as SupportedChain);
       const gasPrice = await publicClient.getGasPrice();
 
       expect(typeof gasPrice).toBe("bigint");
@@ -239,13 +247,13 @@ describe("Transfer Action", () => {
       const receiver2 = privateKeyToAccount(generatePrivateKey());
 
       const result1 = await anvilTa.transfer({
-        fromChain: "anvil" as any,
+        fromChain: "anvil" as SupportedChain,
         toAddress: receiver1.address,
         amount: "0.1",
       });
 
       const result2 = await anvilTa.transfer({
-        fromChain: "anvil" as any,
+        fromChain: "anvil" as SupportedChain,
         toAddress: receiver2.address,
         amount: "0.2",
       });

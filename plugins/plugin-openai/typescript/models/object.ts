@@ -4,11 +4,7 @@
  * Provides structured object generation using OpenAI's language models.
  */
 
-import type {
-  IAgentRuntime,
-  ModelTypeName,
-  ObjectGenerationParams,
-} from "@elizaos/core";
+import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateObject } from "ai";
 import { createOpenAIClient } from "../providers";
@@ -69,7 +65,7 @@ async function generateObjectByModelType(
   // Use chat() instead of languageModel() to use the Chat Completions API
   // Note: gpt-5 models don't support temperature parameter - use defaults
   const { object, usage } = await generateObject({
-    model: openai.chat(modelName) as unknown as Parameters<typeof generateObject>[0]['model'],
+    model: openai.chat(modelName) as unknown as Parameters<typeof generateObject>[0]["model"],
     output: "no-schema",
     prompt: params.prompt,
     experimental_repairText: getJsonRepairFunction(),
@@ -81,9 +77,7 @@ async function generateObjectByModelType(
 
   // Validate that we got an object back
   if (typeof object !== "object" || object === null) {
-    throw new Error(
-      `Object generation returned ${typeof object}, expected object`
-    );
+    throw new Error(`Object generation returned ${typeof object}, expected object`);
   }
 
   return object as Record<string, unknown>;
@@ -107,12 +101,7 @@ export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
 ): Promise<Record<string, unknown>> {
-  return generateObjectByModelType(
-    runtime,
-    params,
-    ModelType.OBJECT_SMALL,
-    getSmallModel
-  );
+  return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
 }
 
 /**
@@ -129,10 +118,5 @@ export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
 ): Promise<Record<string, unknown>> {
-  return generateObjectByModelType(
-    runtime,
-    params,
-    ModelType.OBJECT_LARGE,
-    getLargeModel
-  );
+  return generateObjectByModelType(runtime, params, ModelType.OBJECT_LARGE, getLargeModel);
 }

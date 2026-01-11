@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 class RuntimeProtocol(Protocol):
     """Protocol for runtime access"""
 
-    def get_service(self, name: str) -> Any:
-        ...
+    def get_service(self, name: str) -> Any: ...
 
 
 class MemoryProtocol(Protocol):
@@ -139,9 +138,7 @@ class VisionProvider:
             if vision_mode in (VisionMode.CAMERA, VisionMode.BOTH) and scene_description:
                 import time
 
-                age_seconds = (
-                    int(time.time() * 1000) - scene_description.timestamp
-                ) / 1000
+                age_seconds = (int(time.time() * 1000) - scene_description.timestamp) / 1000
                 seconds_ago = round(age_seconds)
 
                 perception_text += (
@@ -149,17 +146,15 @@ class VisionProvider:
                 )
 
                 if scene_description.people:
-                    perception_text += (
-                        f"\n\nPeople detected: {len(scene_description.people)}"
-                    )
-                    poses = [
-                        p.pose for p in scene_description.people if p.pose != "unknown"
-                    ]
+                    perception_text += f"\n\nPeople detected: {len(scene_description.people)}"
+                    poses = [p.pose for p in scene_description.people if p.pose != "unknown"]
                     if poses:
                         from collections import Counter
 
                         pose_counts = Counter(poses)
-                        perception_text += f"\n  Poses: {', '.join(f'{c} {p}' for p, c in pose_counts.items())}"
+                        perception_text += (
+                            f"\n  Poses: {', '.join(f'{c} {p}' for p, c in pose_counts.items())}"
+                        )
 
                 if scene_description.objects:
                     object_types = list(set(o.type for o in scene_description.objects))
@@ -199,18 +194,14 @@ class VisionProvider:
             if vision_mode in (VisionMode.SCREEN, VisionMode.BOTH) and screen_capture:
                 import time
 
-                screen_age = (
-                    int(time.time() * 1000) - screen_capture.timestamp
-                ) / 1000
+                screen_age = (int(time.time() * 1000) - screen_capture.timestamp) / 1000
                 screen_seconds_ago = round(screen_age)
 
                 if vision_mode == VisionMode.BOTH:
                     perception_text += "\n\n---\n\n"
 
                 perception_text += f"Screen capture ({screen_seconds_ago}s ago):\n"
-                perception_text += (
-                    f"Resolution: {screen_capture.width}x{screen_capture.height}\n"
-                )
+                perception_text += f"Resolution: {screen_capture.width}x{screen_capture.height}\n"
 
             values = {
                 "vision_available": True,
@@ -223,13 +214,9 @@ class VisionProvider:
                 ),
                 "camera_id": camera_info.id if camera_info else None,
                 "people_count": len(scene_description.people) if scene_description else 0,
-                "object_count": (
-                    len(scene_description.objects) if scene_description else 0
-                ),
+                "object_count": (len(scene_description.objects) if scene_description else 0),
                 "scene_age": (
-                    round(
-                        (int(time.time() * 1000) - scene_description.timestamp) / 1000
-                    )
+                    round((int(time.time() * 1000) - scene_description.timestamp) / 1000)
                     if scene_description
                     else None
                 ),
@@ -240,26 +227,18 @@ class VisionProvider:
                 ),
                 "has_screen_capture": screen_capture is not None,
                 "screen_resolution": (
-                    f"{screen_capture.width}x{screen_capture.height}"
-                    if screen_capture
-                    else None
+                    f"{screen_capture.width}x{screen_capture.height}" if screen_capture else None
                 ),
-                "active_entities": (
-                    entity_data["active_entities"] if entity_data else []
-                ),
+                "active_entities": (entity_data["active_entities"] if entity_data else []),
                 "recently_left": entity_data["recently_left"] if entity_data else [],
-                "entity_statistics": (
-                    entity_data["statistics"] if entity_data else None
-                ),
+                "entity_statistics": (entity_data["statistics"] if entity_data else None),
             }
 
             data = {
                 "objects": scene_description.objects if scene_description else [],
                 "people": scene_description.people if scene_description else [],
                 "screen_capture": screen_capture,
-                "tracked_entities": (
-                    entity_data["active_entities"] if entity_data else []
-                ),
+                "tracked_entities": (entity_data["active_entities"] if entity_data else []),
                 "world_state": entity_data,
             }
 
@@ -268,4 +247,3 @@ class VisionProvider:
             "text": f"# Visual Perception\n\n{perception_text}",
             "data": data,
         }
-

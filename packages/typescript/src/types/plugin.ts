@@ -42,6 +42,7 @@ export interface RouteResponse {
   send: (data: unknown) => RouteResponse;
   end: () => RouteResponse;
   setHeader?: (name: string, value: string | string[]) => RouteResponse;
+  sendFile?: (path: string) => RouteResponse;
   headersSent?: boolean;
 }
 

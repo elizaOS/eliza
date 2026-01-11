@@ -1,11 +1,3 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import {
   ChannelType,
   type Entity,
@@ -15,6 +7,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
@@ -89,8 +82,8 @@ describe("Embedding Integration Tests", () => {
 
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved).toBeDefined();
-      expect(retrieved && retrieved.embedding).toBeDefined();
-      expect(retrieved && retrieved.embedding && retrieved.embedding.length).toBe(384);
+      expect(retrieved?.embedding).toBeDefined();
+      expect(retrieved?.embedding?.length).toBe(384);
     });
 
     it("should handle different embedding dimensions", async () => {
@@ -112,12 +105,9 @@ describe("Embedding Integration Tests", () => {
         },
       };
 
-      const memoryId = await adapter.createMemory(
-        memory768,
-        "embedding_test_768",
-      );
+      const memoryId = await adapter.createMemory(memory768, "embedding_test_768");
       const retrieved = await adapter.getMemoryById(memoryId);
-      expect(retrieved && retrieved.embedding && retrieved.embedding.length).toBe(768);
+      expect(retrieved?.embedding?.length).toBe(768);
     });
   });
 });

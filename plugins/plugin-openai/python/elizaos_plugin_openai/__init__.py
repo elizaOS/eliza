@@ -10,7 +10,12 @@ from elizaos_plugin_openai.audio import (
     get_filename_for_data,
 )
 from elizaos_plugin_openai.client import OpenAIClient, OpenAIClientError
-from elizaos_plugin_openai.plugin import OpenAIPlugin, create_plugin, get_openai_plugin, create_openai_elizaos_plugin
+from elizaos_plugin_openai.plugin import (
+    OpenAIPlugin,
+    create_openai_elizaos_plugin,
+    create_plugin,
+    get_openai_plugin,
+)
 from elizaos_plugin_openai.tokenization import (
     count_tokens,
     detokenize,
@@ -103,4 +108,3 @@ __all__ = [
     "ModelInfo",
     "ModelsResponse",
 ]
-

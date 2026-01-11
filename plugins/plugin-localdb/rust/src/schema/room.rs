@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Room schema for elizaOS database
 
 /// SQL for creating the rooms table

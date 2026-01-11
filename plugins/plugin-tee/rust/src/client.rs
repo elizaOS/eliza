@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! HTTP client for communicating with TEE services.
 
 use crate::error::{Result, TeeError};
@@ -189,5 +190,10 @@ pub struct UploadResponse {
     /// The checksum of the uploaded file.
     pub checksum: String,
 }
+
+
+
+
+
 
 

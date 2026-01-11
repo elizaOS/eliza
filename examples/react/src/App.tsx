@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  getRuntime,
-  sendMessage,
   getGreeting,
+  getRuntime,
   isRuntimeInitialized,
+  sendMessage,
 } from "./eliza-runtime";
 import "./App.css";
 
@@ -28,31 +28,22 @@ function App() {
     let mounted = true;
 
     const initializeEliza = async () => {
-      try {
-        setBootStatus("Loading elizaOS runtime...");
+      setBootStatus("Loading elizaOS runtime...");
 
-        // Initialize the AgentRuntime
-        await getRuntime();
+      // Initialize the AgentRuntime
+      await getRuntime();
 
-        if (!mounted) return;
+      if (!mounted) return;
 
-        setBootStatus("Runtime initialized");
-        setIsBooted(true);
+      setBootStatus("Runtime initialized");
+      setIsBooted(true);
 
-        // Add initial greeting after boot
-        setTimeout(() => {
-          if (mounted) {
-            addElizaMessage(getGreeting());
-          }
-        }, 500);
-      } catch (error) {
-        console.error("Failed to initialize elizaOS:", error);
+      // Add initial greeting after boot
+      setTimeout(() => {
         if (mounted) {
-          setBootStatus(
-            `Error: ${error instanceof Error ? error.message : "Failed to initialize"}`
-          );
+          addElizaMessage(getGreeting());
         }
-      }
+      }, 500);
     };
 
     initializeEliza();
@@ -60,7 +51,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [addElizaMessage]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -68,14 +59,14 @@ function App() {
       chatContainerRef.current.scrollTop =
         chatContainerRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, []);
 
   // Focus input after boot
   useEffect(() => {
     if (isBooted && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isBooted, isTyping]);
+  }, [isBooted]);
 
   const addElizaMessage = useCallback((text: string) => {
     setMessages((prev) => [
@@ -109,20 +100,12 @@ function App() {
       setInputValue("");
       setIsTyping(true);
 
-      try {
-        // Send message through elizaOS runtime
-        const response = await sendMessage(text);
-        addElizaMessage(response);
-      } catch (error) {
-        console.error("Error sending message:", error);
-        addElizaMessage(
-          "I apologize, but I'm having trouble responding right now. Please try again."
-        );
-      } finally {
-        setIsTyping(false);
-      }
+      // Send message through elizaOS runtime
+      const response = await sendMessage(text);
+      addElizaMessage(response);
+      setIsTyping(false);
     },
-    [inputValue, isTyping, addElizaMessage]
+    [inputValue, isTyping, addElizaMessage],
   );
 
   return (
@@ -166,7 +149,9 @@ function App() {
             </div>
             <div className="boot-line">elizaOS Agent Runtime Loaded</div>
             <div className="boot-line">Pattern matching engine: ACTIVE</div>
-            <div className="boot-line">Database: PGlite (in-browser WASM Postgres)</div>
+            <div className="boot-line">
+              Database: PGlite (in-browser WASM Postgres)
+            </div>
             <div className="boot-line">Mode: Classic ELIZA (No LLM)</div>
             <div className="boot-line">
               ═══════════════════════════════════════

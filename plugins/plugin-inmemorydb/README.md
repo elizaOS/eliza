@@ -64,7 +64,10 @@ const agent = {
 ### Creating an Adapter Manually
 
 ```typescript
-import { InMemoryDatabaseAdapter, MemoryStorage } from "@elizaos/plugin-inmemorydb";
+import {
+  InMemoryDatabaseAdapter,
+  MemoryStorage,
+} from "@elizaos/plugin-inmemorydb";
 
 const storage = new MemoryStorage();
 const adapter = new InMemoryDatabaseAdapter(storage, agentId);
@@ -88,12 +91,12 @@ await adapter.close();
 
 ## Comparison with Other Database Plugins
 
-| Feature | plugin-inmemorydb | plugin-localdb | plugin-sql |
-|---------|------------------|----------------|------------|
-| Persistence | None (ephemeral) | JSON files | PostgreSQL |
-| Setup | Zero configuration | Zero configuration | Requires PostgreSQL |
-| Data on restart | Lost | Preserved | Preserved |
-| Best for | Testing/dev | Local dev | Production |
+| Feature         | plugin-inmemorydb  | plugin-localdb     | plugin-sql          |
+| --------------- | ------------------ | ------------------ | ------------------- |
+| Persistence     | None (ephemeral)   | JSON files         | PostgreSQL          |
+| Setup           | Zero configuration | Zero configuration | Requires PostgreSQL |
+| Data on restart | Lost               | Preserved          | Preserved           |
+| Best for        | Testing/dev        | Local dev          | Production          |
 
 ## How It Works
 
@@ -116,7 +119,7 @@ When the process ends or `close()` is called, all Maps are cleared and data is g
 The plugin includes an ephemeral HNSW (Hierarchical Navigable Small World) implementation for vector similarity search:
 
 - Semantic memory search
-- Similar content retrieval  
+- Similar content retrieval
 - Embedding-based queries
 
 The vector index is also purely in-memory and is cleared with all other data.

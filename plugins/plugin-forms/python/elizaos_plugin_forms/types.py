@@ -4,7 +4,7 @@ Type definitions for the elizaOS Forms Plugin.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Coroutine
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 class FormFieldType(str, Enum):
     """Possible types for form fields."""
-    
+
     TEXT = "text"
     NUMBER = "number"
     EMAIL = "email"
@@ -28,7 +28,7 @@ class FormFieldType(str, Enum):
 
 class FormStatus(str, Enum):
     """Possible statuses for a form."""
-    
+
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -36,7 +36,7 @@ class FormStatus(str, Enum):
 
 class FormField(BaseModel):
     """Represents a single field in a form."""
-    
+
     id: str = Field(..., description="Unique identifier for the field")
     label: str = Field(..., description="Display label for the field")
     type: FormFieldType = Field(..., description="Field type")
@@ -54,7 +54,7 @@ class FormField(BaseModel):
 
 class FormStep(BaseModel):
     """Represents a step in a multi-step form."""
-    
+
     id: str = Field(..., description="Unique identifier for the step")
     name: str = Field(..., description="Display name for the step")
     fields: list[FormField] = Field(..., description="Fields in this step")
@@ -66,7 +66,7 @@ class FormStep(BaseModel):
 
 class Form(BaseModel):
     """Represents a complete form instance."""
-    
+
     id: UUID = Field(..., description="Unique identifier for the form")
     name: str = Field(..., description="Form name/type")
     description: str | None = Field(None, description="Optional form description")
@@ -85,7 +85,7 @@ class Form(BaseModel):
 
 class FormTemplate(BaseModel):
     """Template for creating forms."""
-    
+
     name: str = Field(..., description="Template name")
     description: str | None = Field(None, description="Template description")
     steps: list[FormStep] = Field(..., description="Template steps")
@@ -97,14 +97,14 @@ class FormTemplate(BaseModel):
 
 class FieldError(BaseModel):
     """Validation error for a field."""
-    
+
     field_id: str = Field(..., description="ID of the field with error")
     message: str = Field(..., description="Error message")
 
 
 class FormUpdateResult(BaseModel):
     """Result of a form update operation."""
-    
+
     success: bool = Field(..., description="Whether the update was successful")
     form: Form | None = Field(None, description="Updated form data")
     updated_fields: list[str] | None = Field(None, description="Fields that were updated")
@@ -116,5 +116,8 @@ class FormUpdateResult(BaseModel):
 
     class Config:
         use_enum_values = True
+
+
+
 
 

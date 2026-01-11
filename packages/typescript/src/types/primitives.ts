@@ -1,9 +1,24 @@
-import type { ChannelType } from "./environment";
-
 /**
  * Defines a custom type UUID representing a universally unique identifier
  */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
+
+/**
+ * Channel types for messaging
+ */
+export enum ChannelType {
+  SELF = "SELF", // Messages to self
+  DM = "DM", // Direct messages between two participants
+  GROUP = "GROUP", // Group messages with multiple participants
+  VOICE_DM = "VOICE_DM", // Voice direct messages
+  VOICE_GROUP = "VOICE_GROUP", // Voice channels with multiple participants
+  FEED = "FEED", // Social media feed
+  THREAD = "THREAD", // Threaded conversation
+  WORLD = "WORLD", // World channel
+  FORUM = "FORUM", // Forum discussion
+  // Legacy types - kept for backward compatibility but should be replaced
+  API = "API", // @deprecated - Use DM or GROUP instead
+}
 
 /**
  * The default UUID used when no room or world is specified.
@@ -116,7 +131,13 @@ export interface Content {
   /**
    * Additional dynamic properties for plugin extensions
    */
-  [key: string]: ContentValue | ChannelType | MentionContext | Media[] | Content | undefined;
+  [key: string]:
+    | ContentValue
+    | ChannelType
+    | MentionContext
+    | Media[]
+    | Content
+    | undefined;
 }
 
 /**

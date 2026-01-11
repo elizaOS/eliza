@@ -3,22 +3,22 @@
  */
 
 import {
-  ModelType,
-  logger,
-  type Plugin,
-  type IAgentRuntime,
   type GenerateTextParams,
-  type ObjectGenerationParams,
+  type IAgentRuntime,
   type ImageDescriptionParams,
   type ImageGenerationParams,
+  logger,
+  ModelType,
+  type ObjectGenerationParams,
+  type Plugin,
   type TextEmbeddingParams,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
-import { initializeOpenRouter } from './init';
-import { handleTextSmall, handleTextLarge } from './models/text';
-import { handleObjectSmall, handleObjectLarge } from './models/object';
-import { handleImageDescription, handleImageGeneration } from './models/image';
-import { handleTextEmbedding } from './models/embedding';
+import { initializeOpenRouter } from "./init";
+import { handleTextEmbedding } from "./models/embedding";
+import { handleImageDescription, handleImageGeneration } from "./models/image";
+import { handleObjectLarge, handleObjectSmall } from "./models/object";
+import { handleTextLarge, handleTextSmall } from "./models/text";
 
 /**
  * OpenRouter plugin for elizaOS.
@@ -30,8 +30,8 @@ import { handleTextEmbedding } from './models/embedding';
  * - Text embeddings
  */
 export const openrouterPlugin: Plugin = {
-  name: 'openrouter',
-  description: 'OpenRouter multi-model AI gateway plugin',
+  name: "openrouter",
+  description: "OpenRouter multi-model AI gateway plugin",
 
   config: {
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? null,
@@ -78,7 +78,7 @@ export const openrouterPlugin: Plugin = {
     ) => {
       const description = await handleImageDescription(runtime, params);
       // Return expected format with title and description
-      return { title: '', description };
+      return { title: "", description };
     },
 
     [ModelType.IMAGE]: async (runtime: IAgentRuntime, params: ImageGenerationParams) => {
@@ -97,19 +97,19 @@ export const openrouterPlugin: Plugin = {
 
   tests: [
     {
-      name: 'openrouter_plugin_tests',
+      name: "openrouter_plugin_tests",
       tests: [
         {
-          name: 'openrouter_test_text_small',
+          name: "openrouter_test_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-                prompt: 'What is the nature of reality in 10 words?',
+                prompt: "What is the nature of reality in 10 words?",
               });
               if (text.length === 0) {
-                throw new Error('Failed to generate text');
+                throw new Error("Failed to generate text");
               }
-              logger.log({ text }, 'generated with test_text_small');
+              logger.log({ text }, "generated with test_text_small");
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_small: ${message}`);
@@ -118,16 +118,16 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          name: 'openrouter_test_text_large',
+          name: "openrouter_test_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-                prompt: 'What is the nature of reality in 10 words?',
+                prompt: "What is the nature of reality in 10 words?",
               });
               if (text.length === 0) {
-                throw new Error('Failed to generate text');
+                throw new Error("Failed to generate text");
               }
-              logger.log({ text }, 'generated with test_text_large');
+              logger.log({ text }, "generated with test_text_large");
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_large: ${message}`);
@@ -136,16 +136,16 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          name: 'openrouter_test_object_small',
+          name: "openrouter_test_object_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-                prompt: 'Create a simple JSON object with a message field saying hello',
-                schema: { type: 'object' },
+                prompt: "Create a simple JSON object with a message field saying hello",
+                schema: { type: "object" },
               });
-              logger.log({ result }, 'Generated object with test_object_small');
-              if (!result || (typeof result === 'object' && 'error' in result)) {
-                throw new Error('Failed to generate object');
+              logger.log({ result }, "Generated object with test_object_small");
+              if (!result || (typeof result === "object" && "error" in result)) {
+                throw new Error("Failed to generate object");
               }
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : String(error);
@@ -155,13 +155,13 @@ export const openrouterPlugin: Plugin = {
           },
         },
         {
-          name: 'openrouter_test_text_embedding',
+          name: "openrouter_test_text_embedding",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-                text: 'Hello, world!',
+                text: "Hello, world!",
               });
-              logger.log({ embedding }, 'embedding');
+              logger.log({ embedding }, "embedding");
             } catch (error: unknown) {
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_embedding: ${message}`);

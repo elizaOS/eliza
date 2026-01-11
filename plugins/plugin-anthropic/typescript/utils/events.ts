@@ -28,7 +28,7 @@ export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
   prompt: string,
-  usage: ModelUsage,
+  usage: ModelUsage
 ): void {
   const promptTokens = usage.promptTokens ?? usage.inputTokens ?? 0;
   const completionTokens = usage.completionTokens ?? usage.outputTokens ?? 0;
@@ -36,11 +36,7 @@ export function emitModelUsageEvent(
 
   // Truncate prompt to avoid leaking secrets/PII
   const truncatedPrompt =
-    typeof prompt === "string"
-      ? prompt.length > 200
-        ? `${prompt.slice(0, 200)}…`
-        : prompt
-      : "";
+    typeof prompt === "string" ? (prompt.length > 200 ? `${prompt.slice(0, 200)}…` : prompt) : "";
 
   runtime.emitEvent(EventType.MODEL_USED, {
     runtime,

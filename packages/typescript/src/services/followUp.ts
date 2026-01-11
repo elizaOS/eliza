@@ -1,17 +1,17 @@
 import {
+  createUniqueUuid,
   type IAgentRuntime,
+  logger,
+  type Memory,
+  MemoryType,
   Service,
-  type UUID,
+  type ServiceTypeName,
+  stringToUuid,
   type Task,
   type TaskWorker,
-  logger,
-  stringToUuid,
-  createUniqueUuid,
-  type Memory,
-  type ServiceTypeName,
-  MemoryType,
+  type UUID,
 } from "@elizaos/core";
-import { RolodexService, type ContactInfo } from "./rolodex.ts";
+import type { ContactInfo, RolodexService } from "./rolodex.ts";
 
 export interface FollowUpTask {
   entityId: UUID;
@@ -148,64 +148,55 @@ export class FollowUpService extends Service {
     days: number = 7,
     includeOverdue: boolean = true,
   ): Promise<Array<{ task: Task; contact: ContactInfo }>> {
-    try {
-      const now = Date.now();
-      const futureDate = now + days * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const futureDate = now + days * 24 * 60 * 60 * 1000;
 
-      // Get all follow-up tasks
-      const tasks = await this.runtime.getTasks({
-        entityId: this.runtime.agentId,
-        tags: ["follow-up"],
-      });
+    // Get all follow-up tasks
+    const tasks = await this.runtime.getTasks({
+      entityId: this.runtime.agentId,
+      tags: ["follow-up"],
+    });
 
-      const upcomingFollowUps: Array<{ task: Task; contact: ContactInfo }> = [];
+    const upcomingFollowUps: Array<{ task: Task; contact: ContactInfo }> = [];
 
-      for (const task of tasks) {
-        if (task.metadata?.status !== "pending") continue;
+    for (const task of tasks) {
+      if (task.metadata?.status !== "pending") continue;
 
-        const scheduledAt = task.metadata?.scheduledAt
-          ? new Date(task.metadata.scheduledAt as string).getTime()
-          : 0;
+      const scheduledAt = task.metadata?.scheduledAt
+        ? new Date(task.metadata.scheduledAt as string).getTime()
+        : 0;
 
-        // Check if task is within the time range
-        if (includeOverdue && scheduledAt < now) {
-          // Overdue task
-        } else if (scheduledAt >= now && scheduledAt <= futureDate) {
-          // Upcoming task
-        } else {
-          continue;
-        }
-
-        // Get contact info
-        const targetEntityId = task.metadata?.targetEntityId as UUID;
-        if (targetEntityId) {
-          const contact =
-            await this.rolodexService.getContact(targetEntityId);
-          if (contact) {
-            upcomingFollowUps.push({ task, contact });
-          }
-        }
+      // Check if task is within the time range
+      if (includeOverdue && scheduledAt < now) {
+        // Overdue task
+      } else if (scheduledAt >= now && scheduledAt <= futureDate) {
+        // Upcoming task
+      } else {
+        continue;
       }
 
-      // Sort by scheduled date
-      upcomingFollowUps.sort((a, b) => {
-        const aScheduled = a.task.metadata?.scheduledAt
-          ? new Date(a.task.metadata.scheduledAt as string).getTime()
-          : 0;
-        const bScheduled = b.task.metadata?.scheduledAt
-          ? new Date(b.task.metadata.scheduledAt as string).getTime()
-          : 0;
-        return aScheduled - bScheduled;
-      });
-
-      return upcomingFollowUps;
-    } catch (error) {
-      logger.error(
-        "[FollowUpService] Error getting upcoming follow-ups:",
-        error instanceof Error ? error.message : String(error),
-      );
-      return [];
+      // Get contact info
+      const targetEntityId = task.metadata?.targetEntityId as UUID;
+      if (targetEntityId) {
+        const contact = await this.rolodexService.getContact(targetEntityId);
+        if (contact) {
+          upcomingFollowUps.push({ task, contact });
+        }
+      }
     }
+
+    // Sort by scheduled date
+    upcomingFollowUps.sort((a, b) => {
+      const aScheduled = a.task.metadata?.scheduledAt
+        ? new Date(a.task.metadata.scheduledAt as string).getTime()
+        : 0;
+      const bScheduled = b.task.metadata?.scheduledAt
+        ? new Date(b.task.metadata.scheduledAt as string).getTime()
+        : 0;
+      return aScheduled - bScheduled;
+    });
+
+    return upcomingFollowUps;
   }
 
   async completeFollowUp(taskId: UUID, notes?: string): Promise<void> {
@@ -228,8 +219,7 @@ export class FollowUpService extends Service {
       // Clear next follow-up from contact
       const targetEntityId = task.metadata?.targetEntityId as UUID;
       if (targetEntityId) {
-        const contact =
-          await this.rolodexService.getContact(targetEntityId);
+        const contact = await this.rolodexService.getContact(targetEntityId);
         if (contact) {
           const customFields = { ...contact.customFields };
           delete customFields.nextFollowUpAt;
@@ -272,8 +262,7 @@ export class FollowUpService extends Service {
       // Update contact
       const targetEntityId = task.metadata?.targetEntityId as UUID;
       if (targetEntityId) {
-        const contact =
-          await this.rolodexService.getContact(targetEntityId);
+        const contact = await this.rolodexService.getContact(targetEntityId);
         if (contact) {
           await this.rolodexService.updateContact(targetEntityId, {
             customFields: {
@@ -298,71 +287,61 @@ export class FollowUpService extends Service {
 
   // Smart Follow-up Suggestions
   async getFollowUpSuggestions(): Promise<FollowUpSuggestion[]> {
-    try {
-      const suggestions: FollowUpSuggestion[] = [];
+    const suggestions: FollowUpSuggestion[] = [];
 
-      // Get all contacts
-      const contacts = await this.rolodexService.searchContacts({});
+    // Get all contacts
+    const contacts = await this.rolodexService.searchContacts({});
 
-      for (const contact of contacts) {
-        const entity = await this.runtime.getEntityById(contact.entityId);
-        if (!entity) continue;
+    for (const contact of contacts) {
+      const entity = await this.runtime.getEntityById(contact.entityId);
+      if (!entity) continue;
 
-        // Get relationship insights
-        const insights = await this.rolodexService.getRelationshipInsights(
+      // Get relationship insights
+      const insights = await this.rolodexService.getRelationshipInsights(
+        this.runtime.agentId,
+      );
+
+      // Check if this entity needs attention
+      const needsAttention = insights.needsAttention.find(
+        (item) => item.entity.id === contact.entityId,
+      );
+
+      if (needsAttention && needsAttention.daysSinceContact > 14) {
+        // Get relationship analytics
+        const analytics = await this.rolodexService.analyzeRelationship(
           this.runtime.agentId,
+          contact.entityId,
         );
 
-        // Check if this entity needs attention
-        const needsAttention = insights.needsAttention.find(
-          (item) => item.entity.id === contact.entityId,
-        );
-
-        if (needsAttention && needsAttention.daysSinceContact > 14) {
-          // Get relationship analytics
-          const analytics = await this.rolodexService.analyzeRelationship(
-            this.runtime.agentId,
-            contact.entityId,
-          );
-
-          if (analytics) {
-            suggestions.push({
-              entityId: contact.entityId,
-              entityName: entity.names[0] || "Unknown",
-              reason: this.generateFollowUpReason(
-                contact.categories,
-                needsAttention.daysSinceContact,
-                analytics.strength,
-              ),
-              daysSinceLastContact: needsAttention.daysSinceContact,
-              relationshipStrength: analytics.strength,
-              suggestedMessage: this.generateFollowUpMessage(
-                entity.names[0],
-                contact.categories,
-                needsAttention.daysSinceContact,
-              ),
-            });
-          }
+        if (analytics) {
+          suggestions.push({
+            entityId: contact.entityId,
+            entityName: entity.names[0] || "Unknown",
+            reason: this.generateFollowUpReason(
+              contact.categories,
+              needsAttention.daysSinceContact,
+              analytics.strength,
+            ),
+            daysSinceLastContact: needsAttention.daysSinceContact,
+            relationshipStrength: analytics.strength,
+            suggestedMessage: this.generateFollowUpMessage(
+              entity.names[0],
+              contact.categories,
+              needsAttention.daysSinceContact,
+            ),
+          });
         }
       }
-
-      // Sort by priority (high relationship strength + long time since contact)
-      suggestions.sort((a, b) => {
-        const scoreA =
-          (a.relationshipStrength / 100) * a.daysSinceLastContact;
-        const scoreB =
-          (b.relationshipStrength / 100) * b.daysSinceLastContact;
-        return scoreB - scoreA;
-      });
-
-      return suggestions.slice(0, 10); // Return top 10 suggestions
-    } catch (error) {
-      logger.error(
-        "[FollowUpService] Error getting follow-up suggestions:",
-        error instanceof Error ? error.message : String(error),
-      );
-      return [];
     }
+
+    // Sort by priority (high relationship strength + long time since contact)
+    suggestions.sort((a, b) => {
+      const scoreA = (a.relationshipStrength / 100) * a.daysSinceLastContact;
+      const scoreB = (b.relationshipStrength / 100) * b.daysSinceLastContact;
+      return scoreB - scoreA;
+    });
+
+    return suggestions.slice(0, 10); // Return top 10 suggestions
   }
 
   // Task Workers
@@ -416,7 +395,14 @@ export class FollowUpService extends Service {
           await runtime.createMemory(memory, "reminders");
 
           // Emit follow-up event - cast to avoid event type checking
-          await (runtime as { emitEvent: (event: string, payload: Record<string, unknown>) => Promise<void> }).emitEvent("follow_up:due", {
+          await (
+            runtime as {
+              emitEvent: (
+                event: string,
+                payload: Record<string, unknown>,
+              ) => Promise<void>;
+            }
+          ).emitEvent("follow_up:due", {
             taskId: task.id,
             taskName: task.name,
             entityId: entity.id,
@@ -458,11 +444,11 @@ export class FollowUpService extends Service {
           }
 
           // Schedule next occurrence if updateInterval is set
-          if (task.metadata?.updateInterval) {
+          if (task.metadata?.updateInterval && task.id) {
             const updateInterval = task.metadata.updateInterval as number;
             const nextDate = new Date(Date.now() + updateInterval);
 
-            await runtime.updateTask(task.id!, {
+            await runtime.updateTask(task.id, {
               metadata: {
                 ...task.metadata,
                 scheduledAt: nextDate.toISOString(),
@@ -545,25 +531,17 @@ export class FollowUpService extends Service {
     const tasks: Task[] = [];
 
     for (const followUp of followUps) {
-      try {
-        const task = await this.scheduleFollowUp(
-          followUp.entityId,
-          followUp.scheduledAt,
-          followUp.reason,
-          followUp.priority || "medium",
-          followUp.message,
-        );
-        tasks.push(task);
-      } catch (error) {
-        logger.error(
-          `[FollowUpService] Error scheduling follow-up for ${followUp.entityId}:`,
-          error instanceof Error ? error.message : String(error),
-        );
-      }
+      const task = await this.scheduleFollowUp(
+        followUp.entityId,
+        followUp.scheduledAt,
+        followUp.reason,
+        followUp.priority || "medium",
+        followUp.message,
+      );
+      tasks.push(task);
     }
 
     logger.info(`[FollowUpService] Scheduled ${tasks.length} follow-ups`);
     return tasks;
   }
 }
-

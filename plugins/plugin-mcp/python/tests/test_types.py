@@ -11,7 +11,6 @@ from elizaos_plugin_mcp.types import (
     McpResource,
     McpResourceTemplate,
     McpTool,
-    McpToolInputSchema,
     StdioServerConfig,
 )
 
@@ -199,5 +198,3 @@ class TestMcpError:
         error = McpError.validation_error("Invalid input")
         assert "Invalid input" in str(error)
         assert error.code == "VALIDATION_ERROR"
-
-

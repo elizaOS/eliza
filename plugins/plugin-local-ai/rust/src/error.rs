@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Local AI plugin.
 
 use thiserror::Error;
@@ -32,5 +33,10 @@ pub enum LocalAIError {
     #[error("Tokenization failed: {0}")]
     TokenizationError(String),
 }
+
+
+
+
+
 
 

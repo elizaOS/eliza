@@ -21,7 +21,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["../node_modules/@elizaos/core"],
+      "@elizaos/core": ["../../../packages/typescript/dist"],
       "pdfjs-dist/*": ["../node_modules/pdfjs-dist/*"]
     }
   },

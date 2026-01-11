@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Keypair utilities and wallet configuration.
 
 use crate::error::{SolanaError, SolanaResult};
@@ -142,7 +143,7 @@ impl WalletConfig {
     ///
     /// # Arguments
     /// * `store_callback` - Optional callback to store generated keys.
-    ///                      Signature: `Fn(key: &str, value: &str, is_secret: bool)`
+    ///   Signature: `Fn(key: &str, value: &str, is_secret: bool)`
     ///
     /// # Returns
     /// A wallet configuration with a valid keypair.

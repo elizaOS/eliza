@@ -1,13 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
-import { type Agent, stringToUuid, type UUID } from "@elizaos/core";
+import { type Agent, ChannelType, stringToUuid, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { agentTable } from "../../schema";
@@ -309,9 +302,7 @@ describe("Agent Integration Tests", () => {
         const agents = await adapter.getAgents();
 
         // Verify at least our test agents are included
-        const testAgents = agents.filter(
-          (a) => a.name === agent1.name || a.name === agent2.name,
-        );
+        const testAgents = agents.filter((a) => a.name === agent1.name || a.name === agent2.name);
 
         expect(testAgents.length).toBeGreaterThanOrEqual(2);
         expect(testAgents.some((a) => a.id === agent1.id)).toBe(true);
@@ -347,10 +338,7 @@ describe("Agent Integration Tests", () => {
         expect(updatedAgent).not.toBeNull();
         if (!updatedAgent) throw new Error("Agent should exist");
         expect(updatedAgent.bio).toBe(updateData.bio as string);
-        expect(updatedAgent.settings).toHaveProperty(
-          "updatedSetting",
-          "new value",
-        );
+        expect(updatedAgent.settings).toHaveProperty("updatedSetting", "new value");
       });
 
       it("should merge settings when updating", async () => {
@@ -382,18 +370,9 @@ describe("Agent Integration Tests", () => {
         const updatedAgent = await adapter.getAgent(newAgent.id);
         expect(updatedAgent).not.toBeNull();
         if (!updatedAgent) throw new Error("Agent should exist");
-        expect(updatedAgent.settings).toHaveProperty(
-          "initialSetting",
-          "updated value",
-        );
-        expect(updatedAgent.settings).toHaveProperty(
-          "newSetting",
-          "new value",
-        );
-        expect(updatedAgent.settings).toHaveProperty(
-          "toBeKept",
-          "keep this value",
-        );
+        expect(updatedAgent.settings).toHaveProperty("initialSetting", "updated value");
+        expect(updatedAgent.settings).toHaveProperty("newSetting", "new value");
+        expect(updatedAgent.settings).toHaveProperty("toBeKept", "keep this value");
       });
 
       it("should remove settings when set to null", async () => {
@@ -423,26 +402,24 @@ describe("Agent Integration Tests", () => {
               password: null, // This should be removed
               token: "newToken", // This should be updated
             },
-          } as any,
+          } as Record<string, unknown>,
         };
 
-        await adapter.updateAgent(newAgent.id, updateData as any);
+        await adapter.updateAgent(newAgent.id, updateData);
 
         // Verify the settings were properly updated
         const updatedAgent = await adapter.getAgent(newAgent.id);
         expect(updatedAgent).not.toBeNull();
         if (!updatedAgent) throw new Error("Agent should exist");
-        expect(updatedAgent.settings).toHaveProperty(
-          "initialSetting",
-          "initial value",
-        );
-        expect(updatedAgent.settings).toHaveProperty(
-          "toBeKept",
-          "keep this value",
-        );
+        expect(updatedAgent.settings).toHaveProperty("initialSetting", "initial value");
+        expect(updatedAgent.settings).toHaveProperty("toBeKept", "keep this value");
         expect(updatedAgent.settings).not.toHaveProperty("toBeRemoved");
         // Check secrets only if they exist
-        if (updatedAgent.settings && typeof updatedAgent.settings === "object" && "secrets" in updatedAgent.settings) {
+        if (
+          updatedAgent.settings &&
+          typeof updatedAgent.settings === "object" &&
+          "secrets" in updatedAgent.settings
+        ) {
           const secrets = updatedAgent.settings.secrets as Record<string, unknown>;
           expect(secrets).not.toHaveProperty("password");
           expect(secrets).toHaveProperty("token", "newToken");
@@ -477,10 +454,7 @@ describe("Agent Integration Tests", () => {
         if (!updatedAgent) throw new Error("Agent should exist");
         expect(updatedAgent.bio).toBe(updateData.bio as string);
         expect(updatedAgent.username).toBe(updateData.username as string);
-        expect(updatedAgent.settings).toHaveProperty(
-          "initialSetting",
-          "should remain unchanged",
-        );
+        expect(updatedAgent.settings).toHaveProperty("initialSetting", "should remain unchanged");
       });
 
       it("should update only settings fields", async () => {
@@ -509,14 +483,8 @@ describe("Agent Integration Tests", () => {
         expect(updatedAgent).not.toBeNull();
         if (!updatedAgent) throw new Error("Agent should exist");
         expect(updatedAgent.bio).toBe(newAgent.bio); // Bio should remain unchanged
-        expect(updatedAgent.settings).toHaveProperty(
-          "newSetting",
-          "settings only update",
-        );
-        expect(updatedAgent.settings).toHaveProperty(
-          "testSetting",
-          "test value",
-        ); // Original setting should be kept
+        expect(updatedAgent.settings).toHaveProperty("newSetting", "settings only update");
+        expect(updatedAgent.settings).toHaveProperty("testSetting", "test value"); // Original setting should be kept
       });
 
       it("should remove top-level and nested secret settings when set to null", async () => {
@@ -554,10 +522,10 @@ describe("Agent Integration Tests", () => {
             nestedObject: {
               propToRemove: null,
             },
-          } as any,
+          } as Record<string, unknown>,
         };
 
-        await adapter.updateAgent(agentId, updateData as any);
+        await adapter.updateAgent(agentId, updateData);
 
         const updatedAgent = await adapter.getAgent(agentId);
         expect(updatedAgent).not.toBeNull();
@@ -605,10 +573,7 @@ describe("Agent Integration Tests", () => {
 
         // Verify agent was created before update
         const agentBeforeUpdate = await adapter.getAgent(agentId);
-        expect(
-          agentBeforeUpdate,
-          "Agent not found after creation, before update",
-        ).not.toBeNull();
+        expect(agentBeforeUpdate, "Agent not found after creation, before update").not.toBeNull();
 
         // Update: set some secrets to null, and update one
         const updatePayload: Partial<Agent> = {
@@ -621,10 +586,7 @@ describe("Agent Integration Tests", () => {
           },
         };
 
-        const updateResult = await adapter.updateAgent(
-          agentId,
-          updatePayload as any,
-        );
+        const updateResult = await adapter.updateAgent(agentId, updatePayload);
         expect(updateResult, "Agent update failed").toBe(true);
 
         const updatedAgent = await adapter.getAgent(agentId);
@@ -644,14 +606,12 @@ describe("Agent Integration Tests", () => {
         if (!updatedSecrets) throw new Error("Secrets should exist");
         expect(updatedSecrets).not.toHaveProperty("DISCORD_API_TOKEN");
         expect(updatedSecrets).not.toHaveProperty("ELEVENLABS_VOICE_ID");
-        expect(updatedSecrets.ELEVENLABS_XI_API_KEY).toBe(
-          "elevenlabs_xi_api_key_new",
-        );
+        expect(updatedSecrets.ELEVENLABS_XI_API_KEY).toBe("elevenlabs_xi_api_key_new");
         expect(updatedSecrets.DISCORD_APPLICATION_ID).toBe(
-          initialAgentSettings.secrets.DISCORD_APPLICATION_ID,
+          initialAgentSettings.secrets.DISCORD_APPLICATION_ID
         );
         expect(updatedSecrets.PERPLEXITY_API_KEY).toBe(
-          initialAgentSettings.secrets.PERPLEXITY_API_KEY,
+          initialAgentSettings.secrets.PERPLEXITY_API_KEY
         );
       });
 
@@ -767,9 +727,7 @@ describe("Agent Integration Tests", () => {
         if (!settings) throw new Error("Settings should exist");
         expect(settings.tags).toEqual(["new-tag1", "new-tag2"]);
         if (settings.config) {
-          expect((settings.config as Record<string, unknown>).options).toEqual([
-            4, 5, 6, 7,
-          ]);
+          expect((settings.config as Record<string, unknown>).options).toEqual([4, 5, 6, 7]);
         }
       });
 
@@ -842,7 +800,7 @@ describe("Agent Integration Tests", () => {
               serverId: uuidv4() as UUID,
               worldId: worldId,
               channelId: uuidv4() as UUID,
-              type: "PUBLIC" as any,
+              type: ChannelType.PUBLIC,
               source: "test",
             },
             {
@@ -852,7 +810,7 @@ describe("Agent Integration Tests", () => {
               serverId: uuidv4() as UUID,
               worldId: worldId,
               channelId: uuidv4() as UUID,
-              type: "PRIVATE" as any,
+              type: ChannelType.PRIVATE,
               source: "test",
             },
           ]);
@@ -886,7 +844,7 @@ describe("Agent Integration Tests", () => {
               createdAt: Date.now(),
               embedding: new Array(384).fill(0.1), // Create a test embedding
             },
-            "test_memories",
+            "test_memories"
           );
 
           const memoryId2 = await cascadeAdapter.createMemory(
@@ -899,7 +857,7 @@ describe("Agent Integration Tests", () => {
               createdAt: Date.now(),
               embedding: new Array(384).fill(0.2), // Create a test embedding
             },
-            "test_memories",
+            "test_memories"
           );
 
           // Create components
@@ -953,10 +911,10 @@ describe("Agent Integration Tests", () => {
 
           // Verify all data was created
           expect(await cascadeAdapter.getWorld(worldId)).not.toBeNull();
-          const rooms = await cascadeAdapter.getRoomsByIds([roomId1, roomId2]);
-          expect(rooms && rooms.length).toBe(2);
-          const entities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
-          expect(entities && entities.length).toBe(2);
+          const _rooms = await cascadeAdapter.getRoomsByIds([roomId1, roomId2]);
+          expect(rooms?.length).toBe(2);
+          const _entities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
+          expect(entities?.length).toBe(2);
           expect(await cascadeAdapter.getMemoryById(memoryId1)).not.toBeNull();
           expect(await cascadeAdapter.getMemoryById(memoryId2)).not.toBeNull();
           expect(await cascadeAdapter.getTask(taskId)).not.toBeNull();
@@ -978,10 +936,7 @@ describe("Agent Integration Tests", () => {
           expect(rooms).toEqual([]);
 
           // Entities should be deleted
-          const entities = await cascadeAdapter.getEntitiesByIds([
-            entityId1,
-            entityId2,
-          ]);
+          const entities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
           expect(entities).toEqual([]);
 
           // Memories should be deleted
@@ -992,9 +947,7 @@ describe("Agent Integration Tests", () => {
           expect(await cascadeAdapter.getTask(taskId)).toBeNull();
 
           // Cache should be deleted
-          expect(
-            await cascadeAdapter.getCache("test_cache_key"),
-          ).toBeUndefined();
+          expect(await cascadeAdapter.getCache("test_cache_key")).toBeUndefined();
 
           // Components, participants, relationships, and logs should also be deleted
           // but we don't have direct methods to verify these in the adapter
@@ -1233,12 +1186,12 @@ describe("Agent Integration Tests", () => {
         if (!retrieved1 || !retrieved2) throw new Error("Agents should exist");
         expect(retrieved1.bio).toContain("Updated bio for agent 1");
         const settings1 = retrieved1.settings as Record<string, unknown>;
-        expect(settings1 && settings1.updated).toBe(true);
+        expect(settings1?.updated).toBe(true);
 
         // Agent 2 should be unchanged
         expect(retrieved2.bio).toContain("Original bio 2");
         const settings2 = retrieved2.settings as Record<string, unknown>;
-        expect(settings2 && settings2.updated).toBeUndefined();
+        expect(settings2?.updated).toBeUndefined();
       });
 
       it("should delete only the targeted agent when multiple have the same name", async () => {

@@ -1,6 +1,5 @@
 """Tests for JSONStorage."""
 
-import asyncio
 import os
 import shutil
 import tempfile
@@ -35,10 +34,10 @@ async def test_init(storage, temp_dir):
 async def test_set_and_get(storage):
     """Test setting and getting items."""
     await storage.init()
-    
+
     data = {"name": "Test", "value": 42}
     await storage.set("items", "item-1", data)
-    
+
     retrieved = await storage.get("items", "item-1")
     assert retrieved is not None
     assert retrieved["name"] == "Test"
@@ -49,10 +48,10 @@ async def test_set_and_get(storage):
 async def test_get_all(storage):
     """Test getting all items from a collection."""
     await storage.init()
-    
+
     await storage.set("items", "item-1", {"name": "One"})
     await storage.set("items", "item-2", {"name": "Two"})
-    
+
     all_items = await storage.get_all("items")
     assert len(all_items) == 2
 
@@ -61,13 +60,13 @@ async def test_get_all(storage):
 async def test_delete(storage):
     """Test deleting items."""
     await storage.init()
-    
+
     await storage.set("items", "item-1", {"name": "Test"})
     assert await storage.get("items", "item-1") is not None
-    
+
     deleted = await storage.delete("items", "item-1")
     assert deleted is True
-    
+
     assert await storage.get("items", "item-1") is None
 
 
@@ -75,11 +74,11 @@ async def test_delete(storage):
 async def test_get_where(storage):
     """Test filtering items."""
     await storage.init()
-    
+
     await storage.set("items", "item-1", {"name": "Apple", "type": "fruit"})
     await storage.set("items", "item-2", {"name": "Banana", "type": "fruit"})
     await storage.set("items", "item-3", {"name": "Carrot", "type": "vegetable"})
-    
+
     fruits = await storage.get_where("items", lambda x: x.get("type") == "fruit")
     assert len(fruits) == 2
 
@@ -88,14 +87,14 @@ async def test_get_where(storage):
 async def test_count(storage):
     """Test counting items."""
     await storage.init()
-    
+
     await storage.set("items", "item-1", {"value": 1})
     await storage.set("items", "item-2", {"value": 2})
     await storage.set("items", "item-3", {"value": 3})
-    
+
     count = await storage.count("items")
     assert count == 3
-    
+
     # Count with predicate
     high_count = await storage.count("items", lambda x: x.get("value", 0) > 1)
     assert high_count == 2
@@ -106,7 +105,7 @@ async def test_close(storage):
     """Test closing storage."""
     await storage.init()
     assert storage.is_ready()
-    
+
     await storage.close()
     assert not storage.is_ready()
 

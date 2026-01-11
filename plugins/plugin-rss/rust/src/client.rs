@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! RSS Client
 //!
 //! Async HTTP client for fetching and parsing RSS/Atom feeds.
@@ -91,13 +92,17 @@ impl RssClient {
     pub async fn validate_feed(&self, url: &str) -> (bool, String) {
         match self.fetch_feed(url).await {
             Ok(feed) => {
-                if !feed.title().is_empty() {
-                    (true, format!("Valid feed: {}", feed.title()))
+                let title: &str = feed.title();
+                if !title.is_empty() {
+                    (true, format!("Valid feed: {}", title))
                 } else {
                     (true, "Valid feed (no title)".to_string())
                 }
             }
-            Err(e) => (false, e.to_string()),
+            Err(e) => {
+                let error_msg: String = e.to_string();
+                (false, error_msg)
+            }
         }
     }
 

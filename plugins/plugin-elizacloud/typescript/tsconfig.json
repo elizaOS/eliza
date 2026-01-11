@@ -13,11 +13,16 @@
     "isolatedModules": true,
     "noEmit": true,
     "outDir": "./dist",
-    "rootDir": ".",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noImplicitAny": false,
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "allowImportingTsExtensions": true,
+    "baseUrl": "../../../",
+    "paths": {
+      "@elizaos/core": ["packages/typescript/src"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
+    }
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist"]

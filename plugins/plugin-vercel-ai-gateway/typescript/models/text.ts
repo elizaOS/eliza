@@ -2,9 +2,9 @@
  * Text generation model handlers for Vercel AI Gateway plugin.
  */
 
-import type { IAgentRuntime, GenerateTextParams } from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
-import { buildConfig, getSmallModel, getLargeModel } from "../utils/config";
+import { buildConfig, getLargeModel, getSmallModel } from "../utils/config";
 
 /**
  * Handle TEXT_SMALL model requests.
@@ -87,4 +87,3 @@ export async function handleTextLarge(
     stopSequences: params.stopSequences,
   });
 }
-

@@ -5,14 +5,14 @@ Reminder service for todo notifications.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
-from elizaos_plugin_todo.types import NotificationType, Todo
-from elizaos_plugin_todo.data_service import TodoDataService, create_todo_data_service
-from elizaos_plugin_todo.notification_manager import NotificationManager, NotificationData
 from elizaos_plugin_todo.cache_manager import CacheManager
 from elizaos_plugin_todo.config import TodoConfig
+from elizaos_plugin_todo.data_service import TodoDataService, create_todo_data_service
+from elizaos_plugin_todo.notification_manager import NotificationData, NotificationManager
+from elizaos_plugin_todo.types import NotificationType, Todo
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ class ReminderService:
 
     def __init__(
         self,
-        config: Optional[TodoConfig] = None,
-        runtime: Optional[Any] = None,
+        config: TodoConfig | None = None,
+        runtime: Any | None = None,
     ) -> None:
         """
         Initialize the reminder service.
@@ -43,10 +43,10 @@ class ReminderService:
         """
         self._config = config or TodoConfig.from_env()
         self._runtime = runtime
-        self._notification_manager: Optional[NotificationManager] = None
-        self._cache_manager: Optional[CacheManager] = None
-        self._data_service: Optional[TodoDataService] = None
-        self._reminder_task: Optional[asyncio.Task[None]] = None
+        self._notification_manager: NotificationManager | None = None
+        self._cache_manager: CacheManager | None = None
+        self._data_service: TodoDataService | None = None
+        self._reminder_task: asyncio.Task[None] | None = None
         self._last_reminder_check: dict[UUID, float] = {}
 
     async def start(self) -> None:
@@ -191,12 +191,8 @@ class ReminderService:
             return
 
         try:
-            title = self._notification_manager.format_reminder_title(
-                todo.name, reminder_type
-            )
-            body = self._notification_manager.format_reminder_body(
-                todo.name, reminder_type
-            )
+            title = self._notification_manager.format_reminder_title(todo.name, reminder_type)
+            body = self._notification_manager.format_reminder_body(todo.name, reminder_type)
 
             notification = NotificationData(
                 title=title,
@@ -219,7 +215,7 @@ class ReminderService:
         """Process all pending reminders in a batch."""
         await self.check_tasks_for_reminders()
 
-    def get_last_reminder_time(self, todo_id: UUID) -> Optional[float]:
+    def get_last_reminder_time(self, todo_id: UUID) -> float | None:
         """
         Get the last reminder time for a todo.
 
@@ -237,8 +233,8 @@ class ReminderService:
 
 
 async def create_reminder_service(
-    config: Optional[TodoConfig] = None,
-    runtime: Optional[Any] = None,
+    config: TodoConfig | None = None,
+    runtime: Any | None = None,
 ) -> ReminderService:
     """
     Create and start a reminder service.
@@ -253,5 +249,8 @@ async def create_reminder_service(
     service = ReminderService(config, runtime)
     await service.start()
     return service
+
+
+
 
 

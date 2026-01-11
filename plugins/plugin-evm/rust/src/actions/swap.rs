@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Token swap action implementation
 //!
 //! Handles token swaps on EVM chains using aggregator APIs.

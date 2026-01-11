@@ -6,10 +6,10 @@
  * No API keys or external services required.
  */
 
-import { Elysia } from "elysia";
-import { cors } from "@elysiajs/cors";
-import { v4 as uuidv4 } from "uuid";
 import { generateElizaResponse } from "@elizaos/plugin-eliza-classic";
+import { cors } from "@elysiajs/cors";
+import { Elysia } from "elysia";
+import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
 // Configuration
@@ -35,9 +35,9 @@ interface ChatRequest {
 // Elysia App
 // ============================================================================
 
-const app = new Elysia()
+const _app = new Elysia()
   .use(cors())
-  
+
   // GET / - Info endpoint
   .get("/", () => ({
     name: CHARACTER.name,
@@ -51,39 +51,33 @@ const app = new Elysia()
       "GET /": "This info endpoint",
     },
   }))
-  
+
   // GET /health - Health check
   .get("/health", () => ({
     status: "healthy",
     character: CHARACTER.name,
     timestamp: new Date().toISOString(),
   }))
-  
+
   // POST /chat - Chat with the agent
   .post("/chat", async ({ body, set }) => {
-    try {
-      const { message, userId: clientUserId } = body as ChatRequest;
+    const { message, userId: clientUserId } = body as ChatRequest;
 
-      if (!message || typeof message !== "string") {
-        set.status = 400;
-        return { error: "Message is required and must be a string" };
-      }
-
-      const userId = clientUserId ?? uuidv4();
-      const response = generateElizaResponse(message);
-
-      return {
-        response,
-        character: CHARACTER.name,
-        userId,
-      };
-    } catch (err) {
-      console.error("Chat error:", err);
-      set.status = 500;
-      return { error: err instanceof Error ? err.message : "Internal server error" };
+    if (!message || typeof message !== "string") {
+      set.status = 400;
+      return { error: "Message is required and must be a string" };
     }
+
+    const userId = clientUserId ?? uuidv4();
+    const response = generateElizaResponse(message);
+
+    return {
+      response,
+      character: CHARACTER.name,
+      userId,
+    };
   })
-  
+
   .listen(PORT);
 
 // ============================================================================

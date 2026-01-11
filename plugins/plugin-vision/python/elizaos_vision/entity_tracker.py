@@ -79,9 +79,7 @@ class EntityTracker:
         timestamp: int,
     ) -> TrackedEntity:
         """Track a person entity"""
-        matched_entity = self._find_matching_entity(
-            person.bounding_box, "person", face_profile_id
-        )
+        matched_entity = self._find_matching_entity(person.bounding_box, "person", face_profile_id)
 
         if matched_entity:
             # Update existing entity
@@ -192,11 +190,7 @@ class EntityTracker:
                 continue
 
             # Direct face match for people
-            if (
-                entity_type == "person"
-                and face_profile_id
-                and entity.attributes.face_id
-            ):
+            if entity_type == "person" and face_profile_id and entity.attributes.face_id:
                 if entity.attributes.face_id == face_profile_id:
                     return entity
 
@@ -214,9 +208,7 @@ class EntityTracker:
         center2 = box2.center()
         return math.sqrt((center1.x - center2.x) ** 2 + (center1.y - center2.y) ** 2)
 
-    def _update_world_state(
-        self, seen_entity_ids: set[str], timestamp: int
-    ) -> None:
+    def _update_world_state(self, seen_entity_ids: set[str], timestamp: int) -> None:
         """Update world state with current detections"""
         previous_active = set(self._world_state.active_entities)
         self._world_state.active_entities = list(seen_entity_ids)
@@ -299,4 +291,3 @@ class EntityTracker:
             "people": sum(1 for e in entities if e.entity_type == "person"),
             "objects": sum(1 for e in entities if e.entity_type == "object"),
         }
-

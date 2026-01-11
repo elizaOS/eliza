@@ -191,7 +191,9 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
 
     # Settings
     @abstractmethod
-    def set_setting(self, key: str, value: str | bool | int | float | None, secret: bool = False) -> None:
+    def set_setting(
+        self, key: str, value: str | bool | int | float | None, secret: bool = False
+    ) -> None:
         """Set a runtime setting."""
         ...
 

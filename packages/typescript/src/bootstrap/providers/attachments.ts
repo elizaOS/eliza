@@ -46,7 +46,7 @@ export const attachmentsProvider: Provider = {
 
       if (lastMessageWithAttachment) {
         const lastMessageTime =
-          (lastMessageWithAttachment && lastMessageWithAttachment.createdAt) ?? Date.now();
+          lastMessageWithAttachment?.createdAt ?? Date.now();
         const oneHourBeforeLastMessage = lastMessageTime - 60 * 60 * 1000; // 1 hour before last message
 
         // Create a map of current message attachments by ID for quick lookup

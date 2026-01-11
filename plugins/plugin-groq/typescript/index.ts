@@ -1,38 +1,38 @@
-import { createGroq } from '@ai-sdk/groq';
-import type { IAgentRuntime, Plugin, ObjectGenerationParams } from '@elizaos/core';
-import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
+import { createGroq } from "@ai-sdk/groq";
+import type { IAgentRuntime, ObjectGenerationParams, Plugin } from "@elizaos/core";
+import { type GenerateTextParams, logger, ModelType } from "@elizaos/core";
+import { generateObject, generateText } from "ai";
 
 // Disable AI SDK warning logging by default (can be overridden by setting to true)
 (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
 
 // Default models
-const DEFAULT_SMALL_MODEL = 'llama-3.1-8b-instant';
-const DEFAULT_LARGE_MODEL = 'llama-3.3-70b-versatile';
-const DEFAULT_TTS_MODEL = 'playai-tts';
-const DEFAULT_TTS_VOICE = 'Chip-PlayAI';
-const DEFAULT_TRANSCRIPTION_MODEL = 'distil-whisper-large-v3-en';
-const DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
+const DEFAULT_SMALL_MODEL = "llama-3.1-8b-instant";
+const DEFAULT_LARGE_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_TTS_MODEL = "playai-tts";
+const DEFAULT_TTS_VOICE = "Chip-PlayAI";
+const DEFAULT_TRANSCRIPTION_MODEL = "distil-whisper-large-v3-en";
+const DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
 
 function getBaseURL(runtime: IAgentRuntime): string {
-  const url = runtime.getSetting('GROQ_BASE_URL');
-  return typeof url === 'string' ? url : DEFAULT_BASE_URL;
+  const url = runtime.getSetting("GROQ_BASE_URL");
+  return typeof url === "string" ? url : DEFAULT_BASE_URL;
 }
 
 function getSmallModel(runtime: IAgentRuntime): string {
-  const setting = runtime.getSetting('GROQ_SMALL_MODEL') || runtime.getSetting('SMALL_MODEL');
-  return typeof setting === 'string' ? setting : DEFAULT_SMALL_MODEL;
+  const setting = runtime.getSetting("GROQ_SMALL_MODEL") || runtime.getSetting("SMALL_MODEL");
+  return typeof setting === "string" ? setting : DEFAULT_SMALL_MODEL;
 }
 
 function getLargeModel(runtime: IAgentRuntime): string {
-  const setting = runtime.getSetting('GROQ_LARGE_MODEL') || runtime.getSetting('LARGE_MODEL');
-  return typeof setting === 'string' ? setting : DEFAULT_LARGE_MODEL;
+  const setting = runtime.getSetting("GROQ_LARGE_MODEL") || runtime.getSetting("LARGE_MODEL");
+  return typeof setting === "string" ? setting : DEFAULT_LARGE_MODEL;
 }
 
 function createGroqClient(runtime: IAgentRuntime) {
-  const apiKey = runtime.getSetting('GROQ_API_KEY');
+  const apiKey = runtime.getSetting("GROQ_API_KEY");
   return createGroq({
-    apiKey: typeof apiKey === 'string' ? apiKey : undefined,
+    apiKey: typeof apiKey === "string" ? apiKey : undefined,
     fetch: runtime.fetch ?? undefined,
     baseURL: getBaseURL(runtime),
   });
@@ -65,25 +65,26 @@ async function generateWithRetry(
     stopSequences: string[];
   }
 ): Promise<string> {
-  const generate = () => generateText({
-    model: groq.languageModel(model) as unknown as Parameters<typeof generateText>[0]['model'],
-    prompt: params.prompt,
-    system: params.system,
-    temperature: params.temperature,
-    maxRetries: 3,
-    frequencyPenalty: params.frequencyPenalty,
-    presencePenalty: params.presencePenalty,
-    stopSequences: params.stopSequences,
-  });
+  const generate = () =>
+    generateText({
+      model: groq.languageModel(model) as unknown as Parameters<typeof generateText>[0]["model"],
+      prompt: params.prompt,
+      system: params.system,
+      temperature: params.temperature,
+      maxRetries: 3,
+      frequencyPenalty: params.frequencyPenalty,
+      presencePenalty: params.presencePenalty,
+      stopSequences: params.stopSequences,
+    });
 
   try {
     const { text } = await generate();
     return text;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Rate limit reached')) {
+    if (error instanceof Error && error.message.includes("Rate limit reached")) {
       const delay = extractRetryDelay(error.message);
       logger.warn(`Groq rate limit hit, retrying in ${delay}ms`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       const { text } = await generate();
       return text;
     }
@@ -92,13 +93,13 @@ async function generateWithRetry(
 }
 
 export const groqPlugin: Plugin = {
-  name: 'groq',
-  description: 'Groq LLM provider - fast inference with Llama and other models',
+  name: "groq",
+  description: "Groq LLM provider - fast inference with Llama and other models",
 
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    const apiKey = runtime.getSetting('GROQ_API_KEY');
+    const apiKey = runtime.getSetting("GROQ_API_KEY");
     if (!apiKey) {
-      throw new Error('GROQ_API_KEY is required');
+      throw new Error("GROQ_API_KEY is required");
     }
   },
 
@@ -138,8 +139,10 @@ export const groqPlugin: Plugin = {
       const model = getSmallModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model) as unknown as Parameters<typeof generateObject>[0]['model'],
-        output: 'no-schema',
+        model: groq.languageModel(model) as unknown as Parameters<
+          typeof generateObject
+        >[0]["model"],
+        output: "no-schema",
         prompt: params.prompt,
         temperature: params.temperature,
       });
@@ -151,8 +154,10 @@ export const groqPlugin: Plugin = {
       const model = getLargeModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model) as unknown as Parameters<typeof generateObject>[0]['model'],
-        output: 'no-schema',
+        model: groq.languageModel(model) as unknown as Parameters<
+          typeof generateObject
+        >[0]["model"],
+        output: "no-schema",
         prompt: params.prompt,
         temperature: params.temperature,
       });
@@ -160,17 +165,26 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
-      const audioBuffer = typeof params === 'string' ? Buffer.from(params, 'base64') : 
-        Buffer.isBuffer(params) ? params : (params as unknown as { audioData: Buffer }).audioData;
+      const audioBuffer =
+        typeof params === "string"
+          ? Buffer.from(params, "base64")
+          : Buffer.isBuffer(params)
+            ? params
+            : (params as unknown as { audioData: Buffer }).audioData;
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
-      formData.append('file', new File([audioBuffer as BlobPart], 'audio.mp3', { type: 'audio/mp3' }));
-      formData.append('model', DEFAULT_TRANSCRIPTION_MODEL);
+      formData.append(
+        "file",
+        new File([audioBuffer as BlobPart], "audio.mp3", { type: "audio/mp3" })
+      );
+      formData.append("model", DEFAULT_TRANSCRIPTION_MODEL);
 
-      const apiKey = runtime.getSetting('GROQ_API_KEY');
+      const apiKey = runtime.getSetting("GROQ_API_KEY");
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${typeof apiKey === 'string' ? apiKey : ''}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
+        },
         body: formData,
       });
 
@@ -178,24 +192,24 @@ export const groqPlugin: Plugin = {
         throw new Error(`Transcription failed: ${response.status} ${await response.text()}`);
       }
 
-      const data = await response.json() as { text: string };
+      const data = (await response.json()) as { text: string };
       return data.text;
     },
 
     [ModelType.TEXT_TO_SPEECH]: async (runtime: IAgentRuntime, params) => {
-      const text = typeof params === 'string' ? params : (params as { text: string }).text;
+      const text = typeof params === "string" ? params : (params as { text: string }).text;
       const baseURL = getBaseURL(runtime);
-      const modelSetting = runtime.getSetting('GROQ_TTS_MODEL');
-      const voiceSetting = runtime.getSetting('GROQ_TTS_VOICE');
-      const model = typeof modelSetting === 'string' ? modelSetting : DEFAULT_TTS_MODEL;
-      const voice = typeof voiceSetting === 'string' ? voiceSetting : DEFAULT_TTS_VOICE;
+      const modelSetting = runtime.getSetting("GROQ_TTS_MODEL");
+      const voiceSetting = runtime.getSetting("GROQ_TTS_VOICE");
+      const model = typeof modelSetting === "string" ? modelSetting : DEFAULT_TTS_MODEL;
+      const voice = typeof voiceSetting === "string" ? voiceSetting : DEFAULT_TTS_VOICE;
 
-      const apiKey = runtime.getSetting('GROQ_API_KEY');
+      const apiKey = runtime.getSetting("GROQ_API_KEY");
       const response = await fetch(`${baseURL}/audio/speech`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${typeof apiKey === 'string' ? apiKey : ''}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ model, voice, input: text }),
       });
@@ -211,54 +225,56 @@ export const groqPlugin: Plugin = {
 
   tests: [
     {
-      name: 'groq_plugin_tests',
+      name: "groq_plugin_tests",
       tests: [
         {
-          name: 'validate_api_key',
+          name: "validate_api_key",
           fn: async (runtime) => {
             const baseURL = getBaseURL(runtime);
             const response = await fetch(`${baseURL}/models`, {
-              headers: { Authorization: `Bearer ${runtime.getSetting('GROQ_API_KEY')}` },
+              headers: {
+                Authorization: `Bearer ${runtime.getSetting("GROQ_API_KEY")}`,
+              },
             });
             if (!response.ok) {
               throw new Error(`API key validation failed: ${response.statusText}`);
             }
-            const data = await response.json() as { data: unknown[] };
+            const data = (await response.json()) as { data: unknown[] };
             logger.info(`Groq API validated, ${data.data.length} models available`);
           },
         },
         {
-          name: 'text_small',
+          name: "text_small",
           fn: async (runtime) => {
             const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-              prompt: 'Say hello in exactly 3 words.',
+              prompt: "Say hello in exactly 3 words.",
             });
             if (!text || text.length === 0) {
-              throw new Error('Empty response from TEXT_SMALL');
+              throw new Error("Empty response from TEXT_SMALL");
             }
-            logger.info('TEXT_SMALL:', text);
+            logger.info("TEXT_SMALL:", text);
           },
         },
         {
-          name: 'text_large',
+          name: "text_large",
           fn: async (runtime) => {
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-              prompt: 'What is 2+2? Answer with just the number.',
+              prompt: "What is 2+2? Answer with just the number.",
             });
             if (!text || text.length === 0) {
-              throw new Error('Empty response from TEXT_LARGE');
+              throw new Error("Empty response from TEXT_LARGE");
             }
-            logger.info('TEXT_LARGE:', text);
+            logger.info("TEXT_LARGE:", text);
           },
         },
         {
-          name: 'object_generation',
+          name: "object_generation",
           fn: async (runtime) => {
             const obj = await runtime.useModel(ModelType.OBJECT_SMALL, {
               prompt: 'Return a JSON object with name="test" and value=42',
               temperature: 0.5,
             });
-            logger.info('OBJECT_SMALL:', JSON.stringify(obj));
+            logger.info("OBJECT_SMALL:", JSON.stringify(obj));
           },
         },
       ],

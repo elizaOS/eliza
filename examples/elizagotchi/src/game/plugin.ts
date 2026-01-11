@@ -1,23 +1,23 @@
 /**
  * Elizagotchi Game State Manager
- * 
+ *
  * Manages the game state for the React UI.
  * This is a standalone version - no elizaOS dependencies needed.
- * 
+ *
  * Can be integrated with elizaOS as a plugin by uncommenting the plugin export
  * and adding @elizaos/core as a dependency.
  */
 
 import {
-  createNewPet,
-  tickUpdate,
-  performAction,
   checkHatch,
-  parseCommand,
+  createNewPet,
   formatStatus,
   getHelp,
+  parseCommand,
+  performAction,
+  tickUpdate,
 } from "./engine";
-import type { PetState, Action } from "./types";
+import type { Action, PetState } from "./types";
 
 // ============================================================================
 // GAME STATE MANAGEMENT
@@ -60,7 +60,7 @@ export function resetGame(name?: string): PetState {
 export function updateGame(): PetState {
   const now = Date.now();
   let state = getGameState();
-  
+
   // Check for hatching first
   if (state.stage === "egg") {
     const hatchResult = checkHatch(state);
@@ -70,14 +70,14 @@ export function updateGame(): PetState {
       return state;
     }
   }
-  
+
   // Apply time-based updates
   if (now - lastTickTime >= TICK_INTERVAL) {
     state = tickUpdate(state);
     gameState = state;
     lastTickTime = now;
   }
-  
+
   return state;
 }
 
@@ -92,7 +92,7 @@ export function executeAction(action: Action): {
   const state = getGameState();
   const result = performAction(state, action);
   gameState = result.newState;
-  
+
   return {
     success: result.success,
     message: result.message,
@@ -106,28 +106,30 @@ export function executeAction(action: Action): {
 export function processCommand(text: string): string {
   // Update game state first
   updateGame();
-  
+
   // Parse the command
   const command = parseCommand(text);
-  
+
   if (!command) {
     // Unknown command - show help
     return `I didn't understand that. ${getHelp()}`;
   }
-  
+
   switch (command.action) {
     case "status":
       return formatStatus(getGameState());
-    
+
     case "help":
       return getHelp();
-    
+
     case "reset": {
       const newState = resetGame();
-      return `🥚 A new egg appeared!\n\nMeet ${newState.name}!\n` +
-             `Take good care of them and watch them grow!`;
+      return (
+        `🥚 A new egg appeared!\n\nMeet ${newState.name}!\n` +
+        `Take good care of them and watch them grow!`
+      );
     }
-    
+
     case "name": {
       if (command.parameter) {
         const state = getGameState();
@@ -137,21 +139,17 @@ export function processCommand(text: string): string {
       }
       return `What would you like to name your pet?`;
     }
-    
+
     default: {
       // It's a game action
       const result = executeAction(command.action as Action);
-      return result.message + "\n\n" + formatStatus(result.state);
+      return `${result.message}\n\n${formatStatus(result.state)}`;
     }
   }
 }
 
 // Export for direct use in React components
-export {
-  formatStatus,
-  getHelp,
-  parseCommand,
-};
+export { formatStatus, getHelp, parseCommand };
 
 // ============================================================================
 // ELIZAOS PLUGIN (Optional - uncomment to use with elizaOS runtime)

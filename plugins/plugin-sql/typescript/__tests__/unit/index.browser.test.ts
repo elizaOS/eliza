@@ -1,5 +1,5 @@
-import { describe, expect, it, type Mock, vi } from "vitest";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { describe, expect, it, type Mock, vi } from "vitest";
 import { plugin } from "../../index.browser";
 
 describe("plugin-sql browser entrypoint", () => {

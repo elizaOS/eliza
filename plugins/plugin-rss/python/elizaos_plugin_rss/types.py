@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ============================================================================
 # Enums
 # ============================================================================
@@ -69,9 +68,7 @@ class RssChannel(BaseModel):
     link: str = Field(default="", description="Channel URL")
     language: str = Field(default="", description="Channel language (ISO-639)")
     copyright: str = Field(default="", description="Copyright notice")
-    last_build_date: str = Field(
-        default="", alias="lastBuildDate", description="Last build date"
-    )
+    last_build_date: str = Field(default="", alias="lastBuildDate", description="Last build date")
     generator: str = Field(default="", description="Generator software")
     docs: str = Field(default="", description="RSS specification URL")
     ttl: str = Field(default="", description="Time to live in minutes")
@@ -144,4 +141,3 @@ class RssConfig(BaseModel):
     user_agent: str = Field(
         default="elizaOS-RSS-Plugin/1.0", description="User agent for HTTP requests"
     )
-

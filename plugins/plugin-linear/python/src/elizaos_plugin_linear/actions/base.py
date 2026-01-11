@@ -1,21 +1,25 @@
 """Base types and utilities for actions."""
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Protocol, TypedDict
+from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
+from typing import Any, Protocol, TypedDict
 
 
 class Memory(TypedDict, total=False):
     """Memory/message data structure."""
+
     content: dict[str, Any]
 
 
 class State(TypedDict, total=False):
     """State data structure."""
+
     pass
 
 
 class ActionResult(TypedDict, total=False):
     """Result from an action handler."""
+
     text: str
     success: bool
     data: dict[str, Any]
@@ -23,15 +27,15 @@ class ActionResult(TypedDict, total=False):
 
 class RuntimeProtocol(Protocol):
     """Protocol for ElizaOS runtime."""
-    
+
     def get_setting(self, key: str) -> str | None:
         """Get a setting value."""
         ...
-    
+
     def get_service(self, name: str) -> Any:
         """Get a service by name."""
         ...
-    
+
     async def use_model(self, model_type: str, params: dict[str, Any]) -> str | None:
         """Use an AI model."""
         ...
@@ -39,20 +43,18 @@ class RuntimeProtocol(Protocol):
 
 HandlerCallback = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
 
-ValidateFunc = Callable[
-    [RuntimeProtocol, Memory, State | None],
-    Coroutine[Any, Any, bool]
-]
+ValidateFunc = Callable[[RuntimeProtocol, Memory, State | None], Coroutine[Any, Any, bool]]
 
 HandlerFunc = Callable[
     [RuntimeProtocol, Memory, State | None, dict[str, Any] | None, HandlerCallback | None],
-    Coroutine[Any, Any, ActionResult]
+    Coroutine[Any, Any, ActionResult],
 ]
 
 
 @dataclass
 class ActionExample:
     """Example of action usage."""
+
     name: str
     content: dict[str, Any]
 
@@ -60,6 +62,7 @@ class ActionExample:
 @dataclass
 class Action:
     """Action definition."""
+
     name: str
     description: str
     similes: list[str]
@@ -85,5 +88,8 @@ def create_action(
         validate=validate,
         handler=handler,
     )
+
+
+
 
 

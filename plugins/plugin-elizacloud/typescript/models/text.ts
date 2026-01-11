@@ -7,9 +7,9 @@ import { logger, ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 import { createOpenAIClient } from "../providers/openai";
 import {
-  getSmallModel,
-  getLargeModel,
   getExperimentalTelemetry,
+  getLargeModel,
+  getSmallModel,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -25,8 +25,7 @@ function buildGenerateParams(
   const temperature = params.temperature ?? 0.7;
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
-  const maxTokens =
-    (params as any).maxOutputTokens ?? (params as any).maxTokens ?? 8192;
+  const maxTokens = params.maxTokens ?? 8192;
 
   const openai = createOpenAIClient(runtime);
   const modelName =
@@ -38,7 +37,9 @@ function buildGenerateParams(
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
 
   const generateParams: Parameters<typeof generateText>[0] = {
-    model: openai.languageModel(modelName) as unknown as Parameters<typeof generateText>[0]['model'],
+    model: openai.languageModel(modelName) as unknown as Parameters<
+      typeof generateText
+    >[0]["model"],
     prompt: prompt,
     system: runtime.character.system ?? undefined,
     temperature: temperature,
@@ -84,7 +85,9 @@ function handleStreamingGeneration(
       }
       return undefined;
     }),
-    finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+    finishReason: Promise.resolve(streamResult.finishReason) as Promise<
+      string | undefined
+    >,
   };
 }
 

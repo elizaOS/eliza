@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Roblox Plugin - Rust Implementation
 //!
 //! This crate provides a Roblox client for elizaOS, enabling agents to
@@ -87,5 +88,10 @@ pub mod defaults {
     /// Default polling interval in seconds
     pub const POLL_INTERVAL: u64 = 30;
 }
+
+
+
+
+
 
 

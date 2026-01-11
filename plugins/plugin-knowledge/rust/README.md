@@ -3,6 +3,7 @@
 This is the Rust implementation of the Knowledge plugin for elizaOS.
 
 It provides Retrieval Augmented Generation (RAG) capabilities, including:
+
 - Document processing and chunking
 - Embedding generation via multiple providers
 - Semantic search and knowledge retrieval

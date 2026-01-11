@@ -1,4 +1,4 @@
-import { UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
 
 export interface Post {
   id: string;
@@ -12,7 +12,7 @@ export interface Post {
   quotedPostId?: string;
   metrics?: PostMetrics;
   media?: MediaAttachment[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PostMetrics {
@@ -86,8 +86,5 @@ export interface IPostService {
   /**
    * Get posts that mention the agent
    */
-  getMentions(
-    agentId: UUID,
-    options?: Partial<GetPostsOptions>,
-  ): Promise<Post[]>;
+  getMentions(agentId: UUID, options?: Partial<GetPostsOptions>): Promise<Post[]>;
 }

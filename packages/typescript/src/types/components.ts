@@ -1,5 +1,5 @@
 import type { Memory } from "./memory";
-import type { Content, UUID } from "./primitives";
+import type { Content } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -54,7 +54,11 @@ export type ActionParameterValue = string | number | boolean | null;
  * Supports nested objects and arrays for complex parameter structures.
  */
 export interface ActionParameters {
-  [key: string]: ActionParameterValue | ActionParameters | ActionParameterValue[] | ActionParameters[];
+  [key: string]:
+    | ActionParameterValue
+    | ActionParameters
+    | ActionParameterValue[]
+    | ActionParameters[];
 }
 
 /**
@@ -194,7 +198,14 @@ export interface Evaluator {
 /**
  * Value types allowed in provider results
  */
-export type ProviderValue = string | number | boolean | null | undefined | ProviderValue[] | { [key: string]: ProviderValue | undefined };
+export type ProviderValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ProviderValue[]
+  | { [key: string]: ProviderValue | undefined };
 
 /**
  * Result returned by a provider
@@ -278,7 +289,10 @@ export interface ActionContext {
  * Callback for streaming response chunks during action execution.
  * messageId is a string that can be either a UUID or other identifier.
  */
-export type StreamChunkCallback = (chunk: string, messageId?: string) => Promise<void>;
+export type StreamChunkCallback = (
+  chunk: string,
+  messageId?: string,
+) => Promise<void>;
 
 /**
  * Options passed to action handlers during execution

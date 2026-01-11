@@ -13,7 +13,6 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-
 # ============================================================================
 # Enums
 # ============================================================================
@@ -71,7 +70,7 @@ class XConfig(BaseModel):
     timeout: float = Field(default=30.0)
 
     @classmethod
-    def from_env(cls) -> "XConfig":
+    def from_env(cls) -> XConfig:
         """Create configuration from environment variables."""
         return cls(
             auth_mode=AuthMode(os.getenv("X_AUTH_MODE", "env").lower()),
@@ -253,7 +252,7 @@ class Post(BaseModel):
     is_sensitive: bool = False
 
     # Thread
-    thread: list["Post"] = Field(default_factory=list)
+    thread: list[Post] = Field(default_factory=list)
 
     # Computed
     permanent_url: str = ""

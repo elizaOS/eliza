@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Plugin } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 
 // Mock the logger to avoid console output during tests
@@ -104,7 +104,7 @@ describe("DatabaseMigrationService", () => {
   describe("runAllPluginMigrations", () => {
     it("should throw if database not initialized", async () => {
       await expect(migrationService.runAllPluginMigrations()).rejects.toThrow(
-        "Database or migrator not initialized in DatabaseMigrationService",
+        "Database or migrator not initialized in DatabaseMigrationService"
       );
     });
 

@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.12']
+        python-version: ["3.11", "3.12"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -103,5 +103,6 @@ jobs:
         run: |
           cd python
           pytest
+
 
 

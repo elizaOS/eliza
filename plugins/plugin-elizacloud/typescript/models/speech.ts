@@ -1,14 +1,14 @@
+import type { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { OpenAITextToSpeechParams } from "../types";
 import {
-  getSetting,
-  getBaseURL,
   getAuthHeader,
+  getBaseURL,
+  getSetting,
   isBrowser,
 } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
-import type { OpenAITextToSpeechParams } from "../types";
-import type { Readable } from "node:stream";
 
 /**
  * function for text-to-speech
@@ -72,7 +72,9 @@ async function fetchTextToSpeech(
     return res.body;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to fetch speech from ElizaOS Cloud TTS: ${message}`);
+    throw new Error(
+      `Failed to fetch speech from ElizaOS Cloud TTS: ${message}`,
+    );
   }
 }
 
@@ -91,7 +93,11 @@ export async function handleTextToSpeech(
 
   const resolvedModel =
     options.model ||
-    (getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "gpt-4o-mini-tts") as string);
+    (getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_TTS_MODEL",
+      "gpt-4o-mini-tts",
+    ) as string);
   logger.log(`[ELIZAOS_CLOUD] Using TEXT_TO_SPEECH model: ${resolvedModel}`);
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);

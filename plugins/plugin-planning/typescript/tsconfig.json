@@ -1,12 +1,12 @@
 {
+  "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "declaration": false,
+    "declaration": true,
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -19,9 +19,10 @@
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": false,
     "allowSyntheticDefaultImports": true,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "baseUrl": "../../..",
+    "paths": {}
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/__tests__/**"]
 }
-

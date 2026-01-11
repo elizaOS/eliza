@@ -1,40 +1,39 @@
-import { relations, sql } from 'drizzle-orm';
+import { relations } from "drizzle-orm";
 import {
+  boolean,
+  index,
+  jsonb,
   pgTable,
   text,
-  integer,
-  index,
-  uniqueIndex,
   timestamp,
-  boolean,
-  jsonb,
+  uniqueIndex,
   uuid,
-} from 'drizzle-orm/pg-core';
+} from "drizzle-orm/pg-core";
 
 /**
  * Goals table - stores long-term achievable goals
  */
 export const goalsTable = pgTable(
-  'goals',
+  "goals",
   {
-    id: uuid('id').notNull().primaryKey(),
-    agentId: uuid('agent_id').notNull(), // The agent managing this goal
-    ownerType: text('owner_type').notNull(), // 'agent' or 'entity'
-    ownerId: uuid('owner_id').notNull(), // Either agentId or entityId
-    name: text('name').notNull(),
-    description: text('description'),
-    isCompleted: boolean('is_completed').default(false),
-    completedAt: timestamp('completed_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-    metadata: jsonb('metadata').$type<Record<string, any>>().default({}).notNull(),
+    id: uuid("id").notNull().primaryKey(),
+    agentId: uuid("agent_id").notNull(), // The agent managing this goal
+    ownerType: text("owner_type").notNull(), // 'agent' or 'entity'
+    ownerId: uuid("owner_id").notNull(), // Either agentId or entityId
+    name: text("name").notNull(),
+    description: text("description"),
+    isCompleted: boolean("is_completed").default(false),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
   },
   (table) => ({
-    agentIdIndex: index('idx_goals_agent').on(table.agentId),
-    ownerTypeIndex: index('idx_goals_owner_type').on(table.ownerType),
-    ownerIdIndex: index('idx_goals_owner_id').on(table.ownerId),
-    completedIndex: index('idx_goals_completed').on(table.isCompleted),
-    createdAtIndex: index('idx_goals_created_at').on(table.createdAt),
+    agentIdIndex: index("idx_goals_agent").on(table.agentId),
+    ownerTypeIndex: index("idx_goals_owner_type").on(table.ownerType),
+    ownerIdIndex: index("idx_goals_owner_id").on(table.ownerId),
+    completedIndex: index("idx_goals_completed").on(table.isCompleted),
+    createdAtIndex: index("idx_goals_created_at").on(table.createdAt),
   })
 );
 
@@ -42,21 +41,21 @@ export const goalsTable = pgTable(
  * Goal tags table - stores tags associated with goals
  */
 export const goalTagsTable = pgTable(
-  'goal_tags',
+  "goal_tags",
   {
-    id: uuid('id').notNull().primaryKey(),
-    goalId: uuid('goal_id')
+    id: uuid("id").notNull().primaryKey(),
+    goalId: uuid("goal_id")
       .references(() => goalsTable.id, {
-        onDelete: 'cascade',
+        onDelete: "cascade",
       })
       .notNull(),
-    tag: text('tag').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    tag: text("tag").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
-    goalIdIndex: index('idx_goal_tags_goal').on(table.goalId),
-    tagIndex: index('idx_goal_tags_tag').on(table.tag),
-    uniqueGoalTag: uniqueIndex('unique_goal_tag').on(table.goalId, table.tag),
+    goalIdIndex: index("idx_goal_tags_goal").on(table.goalId),
+    tagIndex: index("idx_goal_tags_tag").on(table.tag),
+    uniqueGoalTag: uniqueIndex("unique_goal_tag").on(table.goalId, table.tag),
   })
 );
 

@@ -2,8 +2,8 @@
  * Event utilities for the OpenRouter plugin.
  */
 
-import type { IAgentRuntime, ModelType } from '@elizaos/core';
-import { logger } from '@elizaos/core';
+import type { IAgentRuntime, ModelType } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 /**
  * Token usage information from AI SDK.
@@ -26,7 +26,7 @@ interface AIUsage {
  */
 export function emitModelUsageEvent(
   _runtime: IAgentRuntime,
-  modelType: typeof ModelType[keyof typeof ModelType],
+  modelType: (typeof ModelType)[keyof typeof ModelType],
   prompt: string,
   usage: AIUsage
 ): void {
@@ -36,9 +36,9 @@ export function emitModelUsageEvent(
 
   // Log usage information instead of emitting
   logger.debug({
-    event: 'model:usage',
+    event: "model:usage",
     modelType,
-    provider: 'openrouter',
+    provider: "openrouter",
     prompt: prompt.substring(0, 100),
     usage: {
       promptTokens: inputTokens,

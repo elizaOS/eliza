@@ -38,4 +38,3 @@ export interface InfoOptions {
   language?: string;
   json?: boolean;
 }
-

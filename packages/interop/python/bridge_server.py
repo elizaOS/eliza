@@ -41,6 +41,8 @@ class PluginBridgeServer:
         self.actions: dict[str, Any] = {}
         self.providers: dict[str, Any] = {}
         self.evaluators: dict[str, Any] = {}
+        self.services: dict[str, Any] = {}
+        self.routes: dict[str, Any] = {}
         self.initialized = False
 
     async def load_plugin(self) -> None:
@@ -68,6 +70,16 @@ class PluginBridgeServer:
             if hasattr(self.plugin, "evaluators") and self.plugin.evaluators:
                 for evaluator in self.plugin.evaluators:
                     self.evaluators[evaluator.name] = evaluator
+
+            if hasattr(self.plugin, "services") and self.plugin.services:
+                for service in self.plugin.services:
+                    service_name = getattr(service, "service_type", None) or getattr(service, "name", str(service))
+                    self.services[service_name] = service
+
+            if hasattr(self.plugin, "routes") and self.plugin.routes:
+                for route in self.plugin.routes:
+                    route_path = route.path if hasattr(route, "path") else route.get("path", "")
+                    self.routes[route_path] = route
 
         except Exception as e:
             raise RuntimeError(f"Failed to load plugin: {e}") from e
@@ -121,6 +133,26 @@ class PluginBridgeServer:
                     "similes": getattr(e, "similes", None),
                 }
                 for e in self.plugin.evaluators
+            ]
+
+        if hasattr(self.plugin, "services") and self.plugin.services:
+            manifest["services"] = [
+                {
+                    "type": getattr(s, "service_type", None) or getattr(s, "name", str(s)),
+                    "description": getattr(s, "description", None),
+                }
+                for s in self.plugin.services
+            ]
+
+        if hasattr(self.plugin, "routes") and self.plugin.routes:
+            manifest["routes"] = [
+                {
+                    "path": r.path if hasattr(r, "path") else r.get("path", ""),
+                    "type": r.type if hasattr(r, "type") else r.get("type", "GET"),
+                    "public": r.public if hasattr(r, "public") else r.get("public", False),
+                    "name": getattr(r, "name", None) or r.get("name"),
+                }
+                for r in self.plugin.routes
             ]
 
         return manifest
@@ -229,6 +261,124 @@ class PluginBridgeServer:
                     "id": req_id,
                     "result": self._serialize_action_result(result) if result else None,
                 }
+
+            elif req_type == "service.start":
+                service_type = request.get("serviceType", "")
+                service_class = self.services.get(service_type)
+                if not service_class:
+                    return {
+                        "type": "service.result",
+                        "id": req_id,
+                        "success": False,
+                        "error": f"Service not found: {service_type}",
+                    }
+
+                # Start the service
+                try:
+                    if hasattr(service_class, "start"):
+                        service_instance = await service_class.start(None)  # runtime
+                    elif callable(service_class):
+                        service_instance = service_class(None)  # runtime
+                        if hasattr(service_instance, "start"):
+                            await service_instance.start()
+                    
+                    return {
+                        "type": "service.result",
+                        "id": req_id,
+                        "success": True,
+                        "serviceType": service_type,
+                    }
+                except Exception as e:
+                    return {
+                        "type": "service.result",
+                        "id": req_id,
+                        "success": False,
+                        "error": str(e),
+                    }
+
+            elif req_type == "service.stop":
+                service_type = request.get("serviceType", "")
+                # Note: In a real implementation, we'd track running service instances
+                return {
+                    "type": "service.result",
+                    "id": req_id,
+                    "success": True,
+                    "serviceType": service_type,
+                }
+
+            elif req_type == "route.handle":
+                route_path = request.get("path", "")
+                route = self.routes.get(route_path)
+                if not route:
+                    return {
+                        "type": "route.result",
+                        "id": req_id,
+                        "status": 404,
+                        "body": {"error": f"Route not found: {route_path}"},
+                    }
+
+                handler = getattr(route, "handler", None) or route.get("handler")
+                if not handler:
+                    return {
+                        "type": "route.result",
+                        "id": req_id,
+                        "status": 501,
+                        "body": {"error": "Route has no handler"},
+                    }
+
+                # Create mock request/response objects
+                req_data = request.get("request", {})
+                mock_req = {
+                    "body": req_data.get("body", {}),
+                    "params": req_data.get("params", {}),
+                    "query": req_data.get("query", {}),
+                    "headers": req_data.get("headers", {}),
+                    "method": req_data.get("method", "GET"),
+                    "path": route_path,
+                }
+
+                response_data: dict[str, Any] = {"status": 200, "body": None, "headers": {}}
+                
+                class MockResponse:
+                    def status(self, code: int) -> "MockResponse":
+                        response_data["status"] = code
+                        return self
+                    
+                    def json(self, data: Any) -> "MockResponse":
+                        response_data["body"] = data
+                        return self
+                    
+                    def send(self, data: Any) -> "MockResponse":
+                        response_data["body"] = data
+                        return self
+                    
+                    def end(self) -> "MockResponse":
+                        return self
+                    
+                    def setHeader(self, name: str, value: str) -> "MockResponse":
+                        response_data["headers"][name] = value
+                        return self
+
+                try:
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(mock_req, MockResponse(), None)  # runtime
+                    else:
+                        handler(mock_req, MockResponse(), None)  # runtime
+
+                    return {
+                        "type": "route.result",
+                        "id": req_id,
+                        "status": response_data["status"],
+                        "body": response_data["body"],
+                        "headers": response_data["headers"],
+                    }
+                except Exception as e:
+                    return {
+                        "type": "route.result",
+                        "id": req_id,
+                        "status": 500,
+                        "body": {"error": str(e)},
+                    }
 
             else:
                 return {

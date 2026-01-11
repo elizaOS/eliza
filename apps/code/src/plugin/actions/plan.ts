@@ -4,10 +4,10 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,
-  logger,
 } from "@elizaos/core";
 
 /**
@@ -51,7 +51,10 @@ OUTPUT FORMAT:
 ## Risks / edge cases
 - Risk one...`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("plan") ||
@@ -67,7 +70,7 @@ OUTPUT FORMAT:
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const request = message.content.text ?? "";
 
@@ -107,7 +110,8 @@ OUTPUT FORMAT:
         temperature: 0.2,
       });
 
-      const planText = typeof result === "string" ? result.trim() : String(result).trim();
+      const planText =
+        typeof result === "string" ? result.trim() : String(result).trim();
       await callback?.({ text: planText });
       return { success: true, text: planText };
     } catch (err) {
@@ -120,10 +124,17 @@ OUTPUT FORMAT:
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "plan how to add OAuth login to this app" } },
-      { name: "{{agent}}", content: { text: "I'll propose a concrete plan first.", actions: ["PLAN"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "plan how to add OAuth login to this app" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll propose a concrete plan first.",
+          actions: ["PLAN"],
+        },
+      },
     ],
   ],
 };
-
-

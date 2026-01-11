@@ -33,12 +33,12 @@ class TestRssParser:
         </rss>"""
 
         feed = parse_rss_to_json(xml)
-        
+
         assert feed.title == "Test Feed"
         assert feed.link == "https://example.com"
         assert feed.description == "A test RSS feed"
         assert len(feed.items) == 1
-        
+
         item = feed.items[0]
         assert item.title == "Test Article"
         assert item.link == "https://example.com/article1"
@@ -61,7 +61,7 @@ class TestRssParser:
         </rss>"""
 
         feed = parse_rss_to_json(xml)
-        
+
         assert len(feed.items) == 1
         assert feed.items[0].category == ["Tech", "News", "AI"]
 
@@ -80,7 +80,7 @@ class TestRssParser:
         </rss>"""
 
         feed = parse_rss_to_json(xml)
-        
+
         assert len(feed.items) == 1
         enclosure = feed.items[0].enclosure
         assert enclosure is not None
@@ -102,7 +102,7 @@ class TestRssParser:
         </rss>"""
 
         feed = parse_rss_to_json(xml)
-        
+
         assert len(feed.items) == 1
         assert "<p>HTML content here</p>" in feed.items[0].description
 
@@ -116,7 +116,7 @@ class TestRssParser:
         xml = """<?xml version="1.0"?>
         <rss version="2.0">
         </rss>"""
-        
+
         with pytest.raises(ValueError, match="No channel element"):
             parse_rss_to_json(xml)
 
@@ -141,12 +141,15 @@ class TestAtomParser:
         </feed>"""
 
         feed = parse_rss_to_json(xml)
-        
+
         assert feed.title == "Atom Test Feed"
         assert len(feed.items) == 1
-        
+
         item = feed.items[0]
         assert item.title == "Atom Entry"
         assert item.guid == "entry-1"
+
+
+
 
 

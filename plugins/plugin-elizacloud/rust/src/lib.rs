@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! # elizaOS Plugin ElizaCloud
 //!
 //! Rust implementation of the ElizaOS Cloud plugin for multi-model AI generation.

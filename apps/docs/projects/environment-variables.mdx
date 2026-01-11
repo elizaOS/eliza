@@ -16,8 +16,9 @@ ELIZA_SERVER_AUTH_TOKEN=your-secret-token
 ```
 
 **How it works:**
+
 - Set this as your server's required API key
-- External apps must send `X-API-KEY: your-secret-token` header when calling your `/api/*` endpoints  
+- External apps must send `X-API-KEY: your-secret-token` header when calling your `/api/*` endpoints
 - Server rejects requests with wrong/missing keys (401 Unauthorized)
 
 - **Default**: Unset (no authentication required)
@@ -25,6 +26,7 @@ ELIZA_SERVER_AUTH_TOKEN=your-secret-token
 - **CORS**: OPTIONS requests are always allowed for preflight
 
 **Example:**
+
 ```bash
 # API call with authentication
 curl -H "X-API-KEY: mysecrettoken123" \
@@ -46,21 +48,25 @@ Controls whether the web user interface is served by the server.
   - Development (`NODE_ENV=development`): UI enabled
   - Production (`NODE_ENV=production`): UI disabled for security
 - **Usage**:
+
   ```bash
   # Force enable in production
   ELIZA_UI_ENABLE=true
-  
-  # Force disable in development  
+
+  # Force disable in development
   ELIZA_UI_ENABLE=false
-  
+
   # Use automatic behavior
   ELIZA_UI_ENABLE=
   ```
+
 - **Security**: Disabling UI reduces attack surface by removing web interface
 - **API Access**: API endpoints remain available regardless of UI setting
 
 <Info>
-  When the UI is disabled, non-API routes return a 403 Forbidden response with a message explaining that the web UI is disabled. The dashboard URL is only shown on startup when the UI is enabled.
+  When the UI is disabled, non-API routes return a 403 Forbidden response with a
+  message explaining that the web UI is disabled. The dashboard URL is only
+  shown on startup when the UI is enabled.
 </Info>
 
 ## Environment Mode
@@ -113,7 +119,8 @@ ELIZA_UI_ENABLE=true
 ## Security Considerations
 
 <Warning>
-  **API Authentication**: In production, always set `ELIZA_SERVER_AUTH_TOKEN` to prevent unauthorized access to your agent's API endpoints.
+  **API Authentication**: In production, always set `ELIZA_SERVER_AUTH_TOKEN` to
+  prevent unauthorized access to your agent's API endpoints.
 </Warning>
 
 1. **Default Security**: In production mode with default settings:
@@ -126,7 +133,7 @@ ELIZA_UI_ENABLE=true
    - Keep `ELIZA_UI_ENABLE=false` unless you need the web interface
    - Use HTTPS in production (configure via reverse proxy)
 
-3. **Development Convenience**: 
+3. **Development Convenience**:
    - Default settings optimize for easy development
    - UI is enabled automatically
    - No authentication required
@@ -134,13 +141,14 @@ ELIZA_UI_ENABLE=true
 ## Related Configuration
 
 For a complete list of all available environment variables including database connections, model providers, and plugin settings, see:
+
 - [Project Overview - Environment Configuration](/projects/overview#environment-configuration)
 - [`.env.example`](https://github.com/elizaos/eliza/blob/main/.env.example) in the repository - Template file showing all available environment variables with example values
 
 <Note>
-  **`.env` vs `.env.example`**: 
-  - `.env` - Your actual working environment file with real secret values (never commit this file)
-  - `.env.example` - Template file with example/placeholder values (safe to commit as reference)
+  **`.env` vs `.env.example`**: - `.env` - Your actual working environment file
+  with real secret values (never commit this file) - `.env.example` - Template
+  file with example/placeholder values (safe to commit as reference)
 </Note>
 
 ## See Also
@@ -149,15 +157,19 @@ For a complete list of all available environment variables including database co
   <Card title="Deploy a Project" icon="rocket" href="/guides/deploy-a-project">
     Learn to deploy your ElizaOS project securely
   </Card>
-  
-  <Card title="CLI Environment Commands" icon="terminal" href="/cli-reference/env">
-    Manage environment variables with the CLI
-  </Card>
-  
-  <Card title="REST Reference" icon="code" href="/rest-reference">
-    Explore the REST API that these variables protect
-  </Card>
-  
+
+<Card
+  title="CLI Environment Commands"
+  icon="terminal"
+  href="/cli-reference/env"
+>
+  Manage environment variables with the CLI
+</Card>
+
+<Card title="REST Reference" icon="code" href="/rest-reference">
+  Explore the REST API that these variables protect
+</Card>
+
   <Card title="Project Overview" icon="folder" href="/projects/overview">
     Return to the complete project documentation
   </Card>

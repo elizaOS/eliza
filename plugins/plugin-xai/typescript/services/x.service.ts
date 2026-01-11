@@ -1,10 +1,10 @@
-import { Service, type IAgentRuntime, logger, parseBooleanFromText } from "@elizaos/core";
+import { type IAgentRuntime, logger, parseBooleanFromText, Service } from "@elizaos/core";
+import { ClientBase } from "../base";
+import { TwitterDiscoveryClient } from "../discovery";
+import { validateXConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
 import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
-import { TwitterDiscoveryClient } from "../discovery";
-import { validateXConfig } from "../environment";
-import { ClientBase } from "../base";
 import type { IXClient } from "../types";
 import { getSetting } from "../utils/settings";
 

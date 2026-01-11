@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! High-level client for the Todo Plugin.
 
 use crate::cache_manager::CacheManager;
@@ -9,7 +10,7 @@ use crate::reminder_service::ReminderService;
 use crate::types::{
     CreateTodoParams, Priority, TaskType, Todo, TodoFilters, TodoMetadata, UpdateTodoParams,
 };
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -345,5 +346,10 @@ impl TodoClient {
         self.data_service.remove_tags(todo_id, tags).await
     }
 }
+
+
+
+
+
 
 

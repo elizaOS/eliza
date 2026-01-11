@@ -19,7 +19,7 @@ native = ["tokio/full", "serenity/client", "serenity/gateway", "serenity/voice"]
 
 [dependencies]
 # Core elizaOS dependency
-elizaos = { version = "2.0.0", path = "../../core/rust" }
+# elizaos = { version = "2.0.0", path = "../../packages/rust" }
 
 # Discord API client
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "cache", "rustls_backend"] }

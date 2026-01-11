@@ -2,8 +2,8 @@
  * Integration tests for the N8n Plugin.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginCreationService } from "../../services/plugin-creation-service";
 import type { PluginSpecification } from "../../types";
 
@@ -50,16 +50,12 @@ describe("PluginCreationService", () => {
 
     it("should reject invalid plugin names", async () => {
       const invalidSpec = { ...testSpec, name: "invalid-name" };
-      await expect(service.createPlugin(invalidSpec)).rejects.toThrow(
-        "Invalid plugin name"
-      );
+      await expect(service.createPlugin(invalidSpec)).rejects.toThrow("Invalid plugin name");
     });
 
     it("should reject path traversal attempts", async () => {
       const invalidSpec = { ...testSpec, name: "@scope/../plugin-evil" };
-      await expect(service.createPlugin(invalidSpec)).rejects.toThrow(
-        "Invalid plugin name"
-      );
+      await expect(service.createPlugin(invalidSpec)).rejects.toThrow("Invalid plugin name");
     });
   });
 
@@ -114,5 +110,3 @@ describe("PluginCreationService", () => {
     });
   });
 });
-
-

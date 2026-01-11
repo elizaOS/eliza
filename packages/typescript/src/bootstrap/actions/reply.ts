@@ -44,8 +44,8 @@ export const replyAction = {
     responses?: Memory[],
   ): Promise<ActionResult> => {
     // Access previous action results from context if available
-    const actionContext = _options && _options.actionContext;
-    const previousResults = (actionContext && actionContext.previousResults) || [];
+    const actionContext = _options?.actionContext;
+    const previousResults = actionContext?.previousResults || [];
 
     if (previousResults.length > 0) {
       logger.debug(
@@ -60,7 +60,7 @@ export const replyAction = {
 
     // Check if any responses had providers associated with them
     const allProviders =
-      (responses && responses.flatMap((res) => (res.content && res.content.providers) || [])) || [];
+      responses?.flatMap((res) => res.content?.providers || []) || [];
 
     // Only generate response using LLM if no suitable response was found
     state = await runtime.composeState(message, [
@@ -71,75 +71,50 @@ export const replyAction = {
 
     const prompt = composePromptFromState({
       state,
-      template: (runtime.character.templates && runtime.character.templates.replyTemplate) || replyTemplate,
+      template: runtime.character.templates?.replyTemplate || replyTemplate,
     });
 
-    try {
-      // Streaming is automatic via streaming context (set by MessageService)
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
+    // Streaming is automatic via streaming context (set by MessageService)
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
 
-      // Parse XML response
-      const parsedXml = parseKeyValueXml(response);
-      const thoughtValue = parsedXml?.thought;
-      const textValue = parsedXml?.text;
-      const thought: string = typeof thoughtValue === "string" ? thoughtValue : "";
-      const text: string = typeof textValue === "string" ? textValue : "";
+    // Parse XML response
+    const parsedXml = parseKeyValueXml(response);
+    const thoughtValue = parsedXml?.thought;
+    const textValue = parsedXml?.text;
+    const thought: string =
+      typeof thoughtValue === "string" ? thoughtValue : "";
+    const text: string = typeof textValue === "string" ? textValue : "";
 
-      const responseContent = {
-        thought,
-        text,
-        actions: ["REPLY"] as string[],
-      };
+    const responseContent = {
+      thought,
+      text,
+      actions: ["REPLY"] as string[],
+    };
 
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return {
-        text: `Generated reply: ${responseContent.text}`,
-        values: {
-          success: true,
-          responded: true,
-          lastReply: responseContent.text,
-          lastReplyTime: Date.now(),
-          thoughtProcess: thought,
-        },
-        data: {
-          actionName: "REPLY",
-          responseThought: thought,
-          responseText: text,
-          thought,
-          messageGenerated: true,
-        },
-        success: true,
-      };
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:bootstrap:action:reply",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error generating response",
-      );
-
-      return {
-        text: "Error generating reply",
-        values: {
-          success: false,
-          responded: false,
-          error: true,
-        },
-        data: {
-          actionName: "REPLY",
-          error: error instanceof Error ? error.message : String(error),
-        },
-        success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
+    if (callback) {
+      await callback(responseContent);
     }
+
+    return {
+      text: `Generated reply: ${responseContent.text}`,
+      values: {
+        success: true,
+        responded: true,
+        lastReply: responseContent.text,
+        lastReplyTime: Date.now(),
+        thoughtProcess: thought,
+      },
+      data: {
+        actionName: "REPLY",
+        responseThought: thought,
+        responseText: text,
+        thought,
+        messageGenerated: true,
+      },
+      success: true,
+    };
   },
   examples: [
     [

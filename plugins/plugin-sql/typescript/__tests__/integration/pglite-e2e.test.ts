@@ -1,14 +1,7 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import type {
-  Agent,
-  ChannelType,
-  Component,
-  Entity,
-  Memory,
-  UUID,
-} from "@elizaos/core";
+import type { Agent, ChannelType, Component, Entity, Memory, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PGliteClientManager } from "../../pglite/manager";
@@ -74,8 +67,8 @@ describe("PostgreSQL E2E Tests", () => {
 
       const retrieved = await adapter.getAgent(agentId);
       expect(retrieved).toBeDefined();
-      expect(retrieved!.name).toBe("Test Agent");
-      expect(retrieved!.settings).toEqual(agent.settings!);
+      expect(retrieved?.name).toBe("Test Agent");
+      expect(retrieved?.settings).toEqual(agent.settings!);
 
       await adapter.close();
     });
@@ -99,9 +92,9 @@ describe("PostgreSQL E2E Tests", () => {
 
       const retrieved = await adapter.getAgent(agentId);
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.name).toBe("Updated Name");
-      const retrievedSettings = retrieved!.settings;
-      expect(retrievedSettings && retrievedSettings.newSetting).toBe("value");
+      expect(retrieved?.name).toBe("Updated Name");
+      const retrievedSettings = retrieved?.settings;
+      expect(retrievedSettings?.newSetting).toBe("value");
 
       await adapter.close();
     });
@@ -153,17 +146,13 @@ describe("PostgreSQL E2E Tests", () => {
       const created = await adapter.createEntities(entities);
       expect(created).toBe(true);
 
-      const entityIds = entities
-        .map((e) => e.id)
-        .filter((id): id is UUID => id !== undefined);
+      const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
       const retrieved = await adapter.getEntitiesByIds(entityIds);
       expect(retrieved).toHaveLength(2);
 
       // Sort by name to ensure consistent order
       expect(retrieved).not.toBeNull();
-      const sortedRetrieved = retrieved!.sort((a, b) =>
-        a.names[0].localeCompare(b.names[0]),
-      );
+      const sortedRetrieved = retrieved?.sort((a, b) => a.names[0].localeCompare(b.names[0]));
       expect(sortedRetrieved[0].names).toContain("Entity One");
       expect(sortedRetrieved[1].metadata).toEqual({ custom: "data" });
 
@@ -196,8 +185,8 @@ describe("PostgreSQL E2E Tests", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved).not.toBeNull();
-      expect(retrieved![0].names).toContain("Updated");
-      expect(retrieved![0].metadata).toEqual({ updated: true });
+      expect(retrieved?.[0].names).toContain("Updated");
+      expect(retrieved?.[0].metadata).toEqual({ updated: true });
 
       await adapter.close();
     });
@@ -267,7 +256,7 @@ describe("PostgreSQL E2E Tests", () => {
 
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved).toBeDefined();
-      expect(retrieved!.content).toEqual({ text: "Test memory content" });
+      expect(retrieved?.content).toEqual({ text: "Test memory content" });
     });
 
     it("should search memories by embedding", async () => {
@@ -322,8 +311,8 @@ describe("PostgreSQL E2E Tests", () => {
 
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.content).toEqual({ text: "Updated content" });
-      expect(retrieved!.metadata).toMatchObject({
+      expect(retrieved?.content).toEqual({ text: "Updated content" });
+      expect(retrieved?.metadata).toMatchObject({
         type: "custom",
         edited: true,
       });
@@ -432,10 +421,10 @@ describe("PostgreSQL E2E Tests", () => {
         entityId,
         "test-component",
         worldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(retrieved).toBeDefined();
-      expect(retrieved!.data).toEqual({ value: "test data" });
+      expect(retrieved?.data).toEqual({ value: "test data" });
     });
 
     it("should update a component", async () => {
@@ -460,10 +449,10 @@ describe("PostgreSQL E2E Tests", () => {
         entityId,
         "update-test",
         worldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.data).toEqual({ updated: true });
+      expect(retrieved?.data).toEqual({ updated: true });
     });
 
     it("should delete a component", async () => {
@@ -486,7 +475,7 @@ describe("PostgreSQL E2E Tests", () => {
         entityId,
         "delete-test",
         worldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(retrieved).toBeNull();
     });
@@ -541,9 +530,7 @@ describe("PostgreSQL E2E Tests", () => {
       const created = await adapter.createEntities(entities);
       expect(created).toBe(true);
 
-      const entityIds = entities
-        .map((e) => e.id)
-        .filter((id): id is UUID => id !== undefined);
+      const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
       const retrieved = await adapter.getEntitiesByIds(entityIds);
       expect(retrieved).toHaveLength(100);
 

@@ -3,17 +3,17 @@
  * Provides structured error handling with user-friendly messages
  */
 
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
 
 export type ErrorCode =
-  | 'SERVICE_NOT_AVAILABLE'
-  | 'SESSION_ERROR'
-  | 'NAVIGATION_ERROR'
-  | 'ACTION_ERROR'
-  | 'SECURITY_ERROR'
-  | 'CAPTCHA_ERROR'
-  | 'TIMEOUT_ERROR'
-  | 'NO_URL_FOUND';
+  | "SERVICE_NOT_AVAILABLE"
+  | "SESSION_ERROR"
+  | "NAVIGATION_ERROR"
+  | "ACTION_ERROR"
+  | "SECURITY_ERROR"
+  | "CAPTCHA_ERROR"
+  | "TIMEOUT_ERROR"
+  | "NO_URL_FOUND";
 
 export class BrowserError extends Error {
   public readonly code: ErrorCode;
@@ -29,7 +29,7 @@ export class BrowserError extends Error {
     details?: Record<string, unknown>
   ) {
     super(message);
-    this.name = 'BrowserError';
+    this.name = "BrowserError";
     this.code = code;
     this.userMessage = userMessage;
     this.recoverable = recoverable;
@@ -40,9 +40,9 @@ export class BrowserError extends Error {
 export class ServiceNotAvailableError extends BrowserError {
   constructor() {
     super(
-      'Browser service is not available',
-      'SERVICE_NOT_AVAILABLE',
-      'The browser automation service is not available. Please ensure the plugin is properly configured.',
+      "Browser service is not available",
+      "SERVICE_NOT_AVAILABLE",
+      "The browser automation service is not available. Please ensure the plugin is properly configured.",
       false
     );
   }
@@ -52,8 +52,8 @@ export class SessionError extends BrowserError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(
       message,
-      'SESSION_ERROR',
-      'There was an error with the browser session. Please try again.',
+      "SESSION_ERROR",
+      "There was an error with the browser session. Please try again.",
       true,
       details
     );
@@ -68,7 +68,7 @@ export class NavigationError extends BrowserError {
 
     super(
       message,
-      'NAVIGATION_ERROR',
+      "NAVIGATION_ERROR",
       "I couldn't navigate to the requested page. Please check the URL and try again.",
       true,
       { url, originalError: originalError?.message }
@@ -84,7 +84,7 @@ export class ActionError extends BrowserError {
 
     super(
       message,
-      'ACTION_ERROR',
+      "ACTION_ERROR",
       `I couldn't ${action} on the requested element. Please check if the element exists and try again.`,
       true,
       { action, target, originalError: originalError?.message }
@@ -94,13 +94,25 @@ export class ActionError extends BrowserError {
 
 export class SecurityError extends BrowserError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'SECURITY_ERROR', 'This action was blocked for security reasons.', false, details);
+    super(
+      message,
+      "SECURITY_ERROR",
+      "This action was blocked for security reasons.",
+      false,
+      details
+    );
   }
 }
 
 export class CaptchaError extends BrowserError {
   constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 'CAPTCHA_ERROR', 'Failed to solve the CAPTCHA. Please try again.', true, details);
+    super(
+      message,
+      "CAPTCHA_ERROR",
+      "Failed to solve the CAPTCHA. Please try again.",
+      true,
+      details
+    );
   }
 }
 
@@ -108,7 +120,7 @@ export class TimeoutError extends BrowserError {
   constructor(operation: string, timeoutMs: number) {
     super(
       `${operation} timed out after ${timeoutMs}ms`,
-      'TIMEOUT_ERROR',
+      "TIMEOUT_ERROR",
       `The operation timed out. Please try again.`,
       true,
       { operation, timeoutMs }
@@ -119,8 +131,8 @@ export class TimeoutError extends BrowserError {
 export class NoUrlFoundError extends BrowserError {
   constructor() {
     super(
-      'No URL found in message',
-      'NO_URL_FOUND',
+      "No URL found in message",
+      "NO_URL_FOUND",
       "I couldn't find a URL in your request. Please provide a valid URL to navigate to.",
       false
     );
@@ -147,9 +159,8 @@ export function handleBrowserError(
     void callback?.({
       text: action
         ? `I encountered an error while trying to ${action}. Please try again.`
-        : 'I encountered an unexpected error. Please try again.',
+        : "I encountered an unexpected error. Please try again.",
       error: true,
     });
   }
 }
-

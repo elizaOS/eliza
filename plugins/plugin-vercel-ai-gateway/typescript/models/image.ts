@@ -2,9 +2,19 @@
  * Image model handlers for Vercel AI Gateway plugin.
  */
 
-import type { IAgentRuntime, ImageGenerationParams as CoreImageParams, ImageDescriptionParams as CoreImageDescParams } from "@elizaos/core";
+import type {
+  ImageDescriptionParams as CoreImageDescParams,
+  ImageGenerationParams as CoreImageParams,
+  IAgentRuntime,
+} from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
-import type { ImageGenerationResult, ImageDescriptionResult, ImageSize, ImageQuality, ImageStyle } from "../types";
+import type {
+  ImageDescriptionResult,
+  ImageGenerationResult,
+  ImageQuality,
+  ImageSize,
+  ImageStyle,
+} from "../types";
 import { buildConfig, getImageModel } from "../utils/config";
 
 /**
@@ -55,4 +65,3 @@ export async function handleImageDescription(
     prompt,
   });
 }
-

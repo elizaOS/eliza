@@ -1,4 +1,3 @@
-import {  beforeEach, describe, expect, it, type Mock  } from "vitest";
 import {
   type ActionResult,
   type Content,
@@ -11,6 +10,7 @@ import {
   type Service,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { beforeEach, describe, expect, it, type Mock } from "vitest";
 import { z } from "zod";
 import { StarterService, starterPlugin } from "../index";
 import {
@@ -32,20 +32,20 @@ describe("Plugin Configuration", () => {
     expect(starterPlugin.description.length).toBeGreaterThan(0);
     expect(starterPlugin.actions).toBeDefined();
     const starterPluginActions = starterPlugin.actions;
-    expect(starterPluginActions && starterPluginActions.length).toBeGreaterThan(0);
+    expect(starterPluginActions?.length).toBeGreaterThan(0);
     expect(starterPlugin.providers).toBeDefined();
     const starterPluginProviders = starterPlugin.providers;
-    expect(starterPluginProviders && starterPluginProviders.length).toBeGreaterThan(0);
+    expect(starterPluginProviders?.length).toBeGreaterThan(0);
     expect(starterPlugin.services).toBeDefined();
     const starterPluginServices = starterPlugin.services;
-    expect(starterPluginServices && starterPluginServices.length).toBeGreaterThan(0);
+    expect(starterPluginServices?.length).toBeGreaterThan(0);
     expect(starterPlugin.models).toBeDefined();
     const starterPluginModels = starterPlugin.models;
-    expect(starterPluginModels && starterPluginModels[ModelType.TEXT_SMALL]).toBeDefined();
-    expect(starterPluginModels && starterPluginModels[ModelType.TEXT_LARGE]).toBeDefined();
+    expect(starterPluginModels?.[ModelType.TEXT_SMALL]).toBeDefined();
+    expect(starterPluginModels?.[ModelType.TEXT_LARGE]).toBeDefined();
     expect(starterPlugin.routes).toBeDefined();
     const starterPluginRoutes = starterPlugin.routes;
-    expect(starterPluginRoutes && starterPluginRoutes.length).toBeGreaterThan(0);
+    expect(starterPluginRoutes?.length).toBeGreaterThan(0);
     expect(starterPlugin.events).toBeDefined();
   });
 
@@ -97,7 +97,7 @@ describe("Plugin Configuration", () => {
 describe("Hello World Action", () => {
   let runtime: IAgentRuntime;
   const starterPluginActions = starterPlugin.actions;
-  const helloWorldAction = starterPluginActions && starterPluginActions[0];
+  const helloWorldAction = starterPluginActions?.[0];
 
   beforeEach(() => {
     runtime = createMockRuntime();
@@ -105,7 +105,7 @@ describe("Hello World Action", () => {
 
   it("should have hello world action", () => {
     expect(helloWorldAction).toBeDefined();
-    expect(helloWorldAction && helloWorldAction.name).toBe("HELLO_WORLD");
+    expect(helloWorldAction?.name).toBe("HELLO_WORLD");
   });
 
   it("should always validate messages (current implementation)", async () => {
@@ -306,7 +306,7 @@ describe("Hello World Action", () => {
 
 describe("Hello World Provider", () => {
   const starterPluginProviders = starterPlugin.providers;
-  const provider = starterPluginProviders && starterPluginProviders[0];
+  const provider = starterPluginProviders?.[0];
   let runtime: IAgentRuntime;
 
   beforeEach(() => {
@@ -315,7 +315,7 @@ describe("Hello World Provider", () => {
 
   it("should have hello world provider", () => {
     expect(provider).toBeDefined();
-    expect(provider && provider.name).toBe("HELLO_WORLD_PROVIDER");
+    expect(provider?.name).toBe("HELLO_WORLD_PROVIDER");
   });
 
   it("should provide hello world data", async () => {
@@ -386,7 +386,7 @@ describe("Model Handlers", () => {
 
   it("should handle TEXT_SMALL model", async () => {
     const starterPluginModels = starterPlugin.models;
-    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_SMALL];
+    const handler = starterPluginModels?.[ModelType.TEXT_SMALL];
     if (!handler) {
       throw new Error("TEXT_SMALL model handler not found");
     }
@@ -406,7 +406,7 @@ describe("Model Handlers", () => {
 
   it("should handle TEXT_LARGE model with custom parameters", async () => {
     const starterPluginModels = starterPlugin.models;
-    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_LARGE];
+    const handler = starterPluginModels?.[ModelType.TEXT_LARGE];
     if (!handler) {
       throw new Error("TEXT_LARGE model handler not found");
     }
@@ -427,7 +427,7 @@ describe("Model Handlers", () => {
 
   it("should handle empty prompt", async () => {
     const starterPluginModels = starterPlugin.models;
-    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_SMALL];
+    const handler = starterPluginModels?.[ModelType.TEXT_SMALL];
     if (!handler) {
       throw new Error("TEXT_SMALL model handler not found");
     }
@@ -448,7 +448,7 @@ describe("Model Handlers", () => {
 
   it("should handle missing parameters", async () => {
     const starterPluginModels = starterPlugin.models;
-    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_LARGE];
+    const handler = starterPluginModels?.[ModelType.TEXT_LARGE];
     if (!handler) {
       throw new Error("TEXT_LARGE model handler not found");
     }
@@ -476,7 +476,7 @@ describe("API Routes", () => {
 
   it("should handle hello world route", async () => {
     const starterPluginRoutes = starterPlugin.routes;
-    const helloRoute = starterPluginRoutes && starterPluginRoutes.find(
+    const helloRoute = starterPluginRoutes?.find(
       (r) => r.name === "hello-world-route",
     );
     if (!helloRoute || !helloRoute.handler) {
@@ -498,20 +498,20 @@ describe("API Routes", () => {
 
   it("should validate route configuration", () => {
     const starterPluginRoutes = starterPlugin.routes;
-    const helloRoute = starterPluginRoutes && starterPluginRoutes.find(
+    const helloRoute = starterPluginRoutes?.find(
       (r) => r.name === "hello-world-route",
     );
 
     expect(helloRoute).toBeDefined();
-    expect(helloRoute && helloRoute.path).toBe("/helloworld");
-    expect(helloRoute && helloRoute.type).toBe("GET");
+    expect(helloRoute?.path).toBe("/helloworld");
+    expect(helloRoute?.type).toBe("GET");
     // Routes don't have a public property in the current implementation
-    expect(helloRoute && helloRoute.handler).toBeDefined();
+    expect(helloRoute?.handler).toBeDefined();
   });
 
   it("should handle request with query parameters", async () => {
     const starterPluginRoutes = starterPlugin.routes;
-    const helloRoute = starterPluginRoutes && starterPluginRoutes.find(
+    const helloRoute = starterPluginRoutes?.find(
       (r) => r.name === "hello-world-route",
     );
     if (!helloRoute || !helloRoute.handler) {
@@ -556,8 +556,9 @@ describe("Event Handlers", () => {
 
   it("should log when MESSAGE_RECEIVED event is triggered", async () => {
     const starterPluginEvents = starterPlugin.events;
-    const messageReceivedEvents = starterPluginEvents && starterPluginEvents[EventType.MESSAGE_RECEIVED];
-    const handler = messageReceivedEvents && messageReceivedEvents[0];
+    const messageReceivedEvents =
+      starterPluginEvents?.[EventType.MESSAGE_RECEIVED];
+    const handler = messageReceivedEvents?.[0];
     if (!handler) {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }
@@ -570,8 +571,9 @@ describe("Event Handlers", () => {
 
   it("should handle malformed event payload", async () => {
     const starterPluginEvents = starterPlugin.events;
-    const messageReceivedEvents = starterPluginEvents && starterPluginEvents[EventType.MESSAGE_RECEIVED];
-    const handler = messageReceivedEvents && messageReceivedEvents[0];
+    const messageReceivedEvents =
+      starterPluginEvents?.[EventType.MESSAGE_RECEIVED];
+    const handler = messageReceivedEvents?.[0];
     if (!handler) {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }
@@ -588,8 +590,9 @@ describe("Event Handlers", () => {
 
   it("should handle event with empty message content", async () => {
     const starterPluginEvents = starterPlugin.events;
-    const messageReceivedEvents = starterPluginEvents && starterPluginEvents[EventType.MESSAGE_RECEIVED];
-    const handler = messageReceivedEvents && messageReceivedEvents[0];
+    const messageReceivedEvents =
+      starterPluginEvents?.[EventType.MESSAGE_RECEIVED];
+    const handler = messageReceivedEvents?.[0];
     if (!handler) {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }
@@ -657,7 +660,7 @@ describe("StarterService", () => {
     expect(service1).toBeInstanceOf(StarterService);
 
     const runtimeWithService1 = createMockRuntime({
-      getService: () => service1 as any,
+      getService: () => service1 as Service,
     });
     await StarterService.stop(runtimeWithService1);
 
@@ -666,7 +669,7 @@ describe("StarterService", () => {
     expect(service2).toBeInstanceOf(StarterService);
 
     const runtimeWithService2 = createMockRuntime({
-      getService: () => service2 as any,
+      getService: () => service2 as Service,
     });
     await StarterService.stop(runtimeWithService2);
   });

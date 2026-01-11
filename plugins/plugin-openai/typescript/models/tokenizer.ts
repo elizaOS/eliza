@@ -4,11 +4,7 @@
  * Provides text tokenization and detokenization functionality.
  */
 
-import type {
-  DetokenizeTextParams,
-  IAgentRuntime,
-  TokenizeTextParams,
-} from "@elizaos/core";
+import type { DetokenizeTextParams, IAgentRuntime, TokenizeTextParams } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { detokenizeText, tokenizeText } from "../utils/tokenization";
 

@@ -29,9 +29,6 @@ export function getDb(adapter: IDatabaseAdapter): DrizzleDatabase {
  * Type-safe row extraction from query results.
  * Avoids verbose `as unknown as T` casts.
  */
-export function getRow<T>(
-  result: { rows: unknown[] },
-  index = 0,
-): T | undefined {
+export function getRow<T>(result: { rows: unknown[] }, index = 0): T | undefined {
   return result.rows[index] as T | undefined;
 }

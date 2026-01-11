@@ -35,9 +35,7 @@ class TestKnowledgeService:
         assert service.config.chunk_size == 100
         assert service.config.chunk_overlap == 20
 
-    def test_generate_content_id_deterministic(
-        self, service: KnowledgeService
-    ) -> None:
+    def test_generate_content_id_deterministic(self, service: KnowledgeService) -> None:
         """Test that content IDs are deterministic."""
         content = "This is test content for ID generation."
         agent_id = "agent-123"
@@ -48,9 +46,7 @@ class TestKnowledgeService:
 
         assert id1 == id2
 
-    def test_generate_content_id_different_content(
-        self, service: KnowledgeService
-    ) -> None:
+    def test_generate_content_id_different_content(self, service: KnowledgeService) -> None:
         """Test that different content produces different IDs."""
         agent_id = "agent-123"
         filename = "test.txt"
@@ -71,9 +67,7 @@ class TestKnowledgeService:
         for chunk in result.chunks:
             assert len(chunk) > 0
 
-    def test_split_into_chunks_preserves_content(
-        self, service: KnowledgeService
-    ) -> None:
+    def test_split_into_chunks_preserves_content(self, service: KnowledgeService) -> None:
         """Test that chunking preserves all content (with overlap)."""
         text = "Word " * 100
         result = service._split_into_chunks(text)
@@ -163,6 +157,8 @@ class TestKnowledgeService:
         # Orthogonal vectors should have similarity 0.0
         sim_ortho = service._cosine_similarity(vec1, vec3)
         assert abs(sim_ortho) < 0.001
+
+
 
 
 

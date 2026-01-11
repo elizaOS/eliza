@@ -51,17 +51,17 @@ class Model:
         self._default_max_tokens = self._infer_max_tokens(model_id)
 
     @classmethod
-    def small(cls) -> "Model":
+    def small(cls) -> Model:
         """Create the default small model (Gemini 2.0 Flash)."""
         return cls(cls.GEMINI_2_0_FLASH)
 
     @classmethod
-    def large(cls) -> "Model":
+    def large(cls) -> Model:
         """Create the default large model (Gemini 2.5 Pro)."""
         return cls(cls.GEMINI_2_5_PRO)
 
     @classmethod
-    def embedding(cls) -> "Model":
+    def embedding(cls) -> Model:
         """Create the default embedding model."""
         return cls(cls.TEXT_EMBEDDING_004)
 
@@ -127,5 +127,8 @@ class Model:
     def __hash__(self) -> int:
         """Hash by model ID."""
         return hash(self._id)
+
+
+
 
 

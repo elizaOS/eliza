@@ -1,4 +1,3 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -14,6 +13,7 @@ import {
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Helper types for database query result rows
 interface VectorColumnRow {
@@ -55,19 +55,15 @@ const testBaseTable = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
     active: boolean("active").default(true).notNull(),
     metadata: jsonb("metadata").default({}).notNull(),
   },
   (table) => [
     unique("base_entities_name_unique").on(table.name),
     index("idx_base_entities_active").on(table.active),
-  ],
+  ]
 );
 
 const testDependentTable = pgTable(
@@ -85,7 +81,7 @@ const testDependentTable = pgTable(
     unique("dependent_entities_base_type_unique").on(table.base_id, table.type),
     index("idx_dependent_entities_type").on(table.type),
     check("value_positive", sql`value >= 0`),
-  ],
+  ]
 );
 
 const testVectorTable = pgTable(
@@ -98,9 +94,7 @@ const testVectorTable = pgTable(
     dim_384: vector("dim_384", { dimensions: 384 }),
     dim_512: vector("dim_512", { dimensions: 512 }),
     dim_1024: vector("dim_1024", { dimensions: 1024 }),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
     index("idx_vector_embeddings_entity").on(table.entity_id),
@@ -109,7 +103,7 @@ const testVectorTable = pgTable(
       columns: [table.entity_id],
       foreignColumns: [testBaseTable.id],
     }).onDelete("cascade"),
-  ],
+  ]
 );
 
 const testComplexDependencyTable = pgTable(
@@ -127,13 +121,10 @@ const testComplexDependencyTable = pgTable(
     strength: integer("strength").default(1),
   },
   (table) => [
-    unique("complex_relations_base_dependent_unique").on(
-      table.base_id,
-      table.dependent_id,
-    ),
+    unique("complex_relations_base_dependent_unique").on(table.base_id, table.dependent_id),
     check("strength_range", sql`strength >= 1 AND strength <= 10`),
     index("idx_complex_relations_type").on(table.relation_type),
-  ],
+  ]
 );
 
 const testSchema = {
@@ -149,9 +140,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
   let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
-    const testSetup = await createIsolatedTestDatabaseForMigration(
-      "comprehensive_migration_tests",
-    );
+    const testSetup = await createIsolatedTestDatabaseForMigration("comprehensive_migration_tests");
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
@@ -193,7 +182,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
       // Verify all tables were created
       const result = await db.execute(
-        sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`,
+        sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`
       );
 
       const tableNames = result.rows.map((row: any) => row.table_name);
@@ -211,7 +200,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
             WHERE table_schema = 'public' 
             AND table_name = 'vector_embeddings' 
             AND column_name LIKE 'dim_%'
-            ORDER BY column_name`,
+            ORDER BY column_name`
       );
 
       const vectorColumns = result.rows as VectorColumnRow[];
@@ -234,7 +223,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
               ON ccu.constraint_name = tc.constraint_name
             WHERE tc.constraint_type = 'FOREIGN KEY' 
             AND tc.table_schema = 'public'
-            ORDER BY tc.table_name, tc.constraint_name`,
+            ORDER BY tc.table_name, tc.constraint_name`
       );
 
       const foreignKeys = result.rows as ForeignKeyRow[];
@@ -242,9 +231,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
       // Check specific foreign keys
       const dependentFk = foreignKeys.find(
-        (fk) =>
-          fk.table_name === "dependent_entities" &&
-          fk.column_name === "base_id",
+        (fk) => fk.table_name === "dependent_entities" && fk.column_name === "base_id"
       );
       expect(dependentFk).toBeDefined();
       expect(dependentFk.referenced_table).toBe("base_entities");
@@ -257,7 +244,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
             FROM information_schema.table_constraints AS tc
             WHERE tc.constraint_type = 'UNIQUE' 
             AND tc.table_schema = 'public'
-            ORDER BY tc.table_name, tc.constraint_name`,
+            ORDER BY tc.table_name, tc.constraint_name`
       );
 
       const uniqueConstraints = result.rows as UniqueConstraintRow[];
@@ -266,8 +253,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       // Check specific unique constraints
       const baseNameUnique = uniqueConstraints.find(
         (uc) =>
-          uc.table_name === "base_entities" &&
-          uc.constraint_name === "base_entities_name_unique",
+          uc.table_name === "base_entities" && uc.constraint_name === "base_entities_name_unique"
       );
       expect(baseNameUnique).toBeDefined();
     });
@@ -279,7 +265,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
             FROM information_schema.table_constraints AS tc
             WHERE tc.constraint_type = 'CHECK' 
             AND tc.table_schema = 'public'
-            ORDER BY tc.table_name, tc.constraint_name`,
+            ORDER BY tc.table_name, tc.constraint_name`
       );
 
       const checkConstraints = result.rows as CheckConstraintRow[];
@@ -287,9 +273,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
       // Check specific check constraints
       const valuePositive = checkConstraints.find(
-        (cc) =>
-          cc.table_name === "dependent_entities" &&
-          cc.constraint_name === "value_positive",
+        (cc) => cc.table_name === "dependent_entities" && cc.constraint_name === "value_positive"
       );
       expect(valuePositive).toBeDefined();
     });
@@ -298,7 +282,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       // Insert test data with vector embeddings
       await db.execute(
         sql`INSERT INTO public.base_entities (id, name) VALUES 
-            ('550e8400-e29b-41d4-a716-446655440000', 'test-entity')`,
+            ('550e8400-e29b-41d4-a716-446655440000', 'test-entity')`
       );
 
       // Insert vector embedding
@@ -308,7 +292,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
         .join(",");
       await db.execute(
         sql`INSERT INTO public.vector_embeddings (entity_id, dim_384) VALUES 
-            ('550e8400-e29b-41d4-a716-446655440000', '[${sql.raw(testVector)}]')`,
+            ('550e8400-e29b-41d4-a716-446655440000', '[${sql.raw(testVector)}]')`
       );
 
       // Test vector similarity query
@@ -317,7 +301,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
             FROM public.vector_embeddings 
             WHERE dim_384 IS NOT NULL 
             ORDER BY distance 
-            LIMIT 1`,
+            LIMIT 1`
       );
 
       expect(result.rows).toHaveLength(1);
@@ -334,7 +318,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       try {
         await db.execute(
           sql`INSERT INTO public.dependent_entities (base_id, type) VALUES 
-              ('99999999-9999-9999-9999-999999999999', 'test')`,
+              ('99999999-9999-9999-9999-999999999999', 'test')`
         );
       } catch (_error) {
         errorThrown = true;
@@ -346,7 +330,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       // Insert a base entity
       await db.execute(
         sql`INSERT INTO public.base_entities (id, name) VALUES 
-            ('550e8400-e29b-41d4-a716-446655440001', 'unique-test')`,
+            ('550e8400-e29b-41d4-a716-446655440001', 'unique-test')`
       );
 
       // Try to insert another with the same name
@@ -354,7 +338,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       try {
         await db.execute(
           sql`INSERT INTO public.base_entities (id, name) VALUES 
-              ('550e8400-e29b-41d4-a716-446655440002', 'unique-test')`,
+              ('550e8400-e29b-41d4-a716-446655440002', 'unique-test')`
         );
       } catch (_error) {
         errorThrown = true;
@@ -366,7 +350,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       // Insert base entity first
       await db.execute(
         sql`INSERT INTO public.base_entities (id, name) VALUES 
-            ('550e8400-e29b-41d4-a716-446655440003', 'check-test')`,
+            ('550e8400-e29b-41d4-a716-446655440003', 'check-test')`
       );
 
       // Try to insert dependent with negative value (should fail)
@@ -374,7 +358,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       try {
         await db.execute(
           sql`INSERT INTO public.dependent_entities (base_id, type, value) VALUES 
-              ('550e8400-e29b-41d4-a716-446655440003', 'test', -1)`,
+              ('550e8400-e29b-41d4-a716-446655440003', 'test', -1)`
         );
       } catch (_error) {
         errorThrown = true;
@@ -399,7 +383,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
       // Tables should still exist
       const result = await db.execute(
-        sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+        sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       expect(result.rows.length).toBeGreaterThanOrEqual(4);
     });
@@ -422,9 +406,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       const testMixedTable = pgTable("mixed_test_table", {
         id: uuid("id").primaryKey().defaultRandom(),
         name: text("name").notNull(),
-        created_at: timestamp("created_at", { withTimezone: true })
-          .default(sql`now()`)
-          .notNull(),
+        created_at: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
       });
 
       const mixedSchema = {
@@ -447,11 +429,11 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
       // Should only create the actual table
       const result = await db.execute(
-        sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
+        sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       // Should have mixed_test_table plus any tables from previous tests
       const mixedTableExists = result.rows.some(
-        (row: any) => row.table_name === "mixed_test_table",
+        (row: any) => row.table_name === "mixed_test_table"
       );
       expect(mixedTableExists).toBe(true);
     });

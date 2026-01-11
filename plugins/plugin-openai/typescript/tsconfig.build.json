@@ -18,7 +18,13 @@
     "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
-    "types": ["node"]
+    "types": ["node"],
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]

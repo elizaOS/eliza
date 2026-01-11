@@ -1,35 +1,34 @@
 import {
-  Service,
-  type IAgentRuntime,
+  type ActionContext,
   type ActionResult,
-  type Memory,
-  type State,
-  type Content,
-  type UUID,
-  type HandlerCallback,
   asUUID,
+  type Content,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   ModelType,
   parseKeyValueXml,
-  logger,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import type { 
-  RetryPolicy,
-  PlanningContext as LocalPlanningContext,
-} from '../types';
+  Service,
+  type State,
+  type UUID,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { PlanningContext as LocalPlanningContext, RetryPolicy } from "../types";
 
 // Local type definitions for the planning service
 interface ActionStep {
   id?: string;
   action?: string;
   actionName?: string;
-  status?: 'pending' | 'completed' | 'failed';
+  status?: "pending" | "completed" | "failed";
   error?: string;
   result?: ActionResult;
   parameters?: Record<string, unknown>;
   dependencies?: (string | UUID)[];
   retryPolicy?: RetryPolicy;
-  onError?: 'abort' | 'continue' | 'skip';
+  onError?: "abort" | "continue" | "skip";
   _originalId?: string;
   _dependencyStrings?: string[];
 }
@@ -41,9 +40,10 @@ interface ActionPlan {
   totalSteps: number;
   currentStep: number;
   steps: ActionStep[];
-  executionModel?: 'sequential' | 'parallel' | 'dag';
+  executionModel?: "sequential" | "parallel" | "dag";
   createdAt?: number;
   state?: PlanState;
+  metadata?: Record<string, unknown>;
 }
 
 interface PlanningContext extends LocalPlanningContext {
@@ -51,7 +51,7 @@ interface PlanningContext extends LocalPlanningContext {
 }
 
 interface PlanState {
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   currentStepIndex?: number;
   startTime?: number;
   endTime?: number;
@@ -114,10 +114,10 @@ class PlanWorkingMemory {
  * Provides unified planning capabilities with full runtime integration
  */
 export class PlanningService extends Service {
-  static serviceType = 'planning';
+  static serviceType = "planning";
 
-  serviceType = 'planning';
-  capabilityDescription = 'Provides comprehensive planning and action coordination capabilities';
+  serviceType = "planning";
+  capabilityDescription = "Provides comprehensive planning and action coordination capabilities";
 
   private activePlans = new Map<UUID, ActionPlan>();
   private planExecutions = new Map<
@@ -130,13 +130,9 @@ export class PlanningService extends Service {
     }
   >();
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   static async start(runtime: IAgentRuntime): Promise<PlanningService> {
     const service = new PlanningService(runtime);
-    logger.info('PlanningService started successfully');
+    logger.info("PlanningService started successfully");
     return service;
   }
 
@@ -144,30 +140,33 @@ export class PlanningService extends Service {
    * Creates a simple plan for basic message handling (backwards compatibility)
    */
   async createSimplePlan(
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
-    state: State,
+    _state: State,
     responseContent?: Content
   ): Promise<ActionPlan | null> {
     try {
-      logger.debug('[PlanningService] Creating simple plan for message handling');
+      logger.debug("[PlanningService] Creating simple plan for message handling");
 
       let actions: string[] = [];
       if (responseContent?.actions && responseContent.actions.length > 0) {
         actions = responseContent.actions;
       } else {
-        const text = message.content.text?.toLowerCase() || '';
+        const text = message.content.text?.toLowerCase() || "";
         logger.debug(`[PlanningService] Analyzing text: "${text}"`);
-        if (text.includes('email')) {
-          actions = ['SEND_EMAIL'];
-        } else if (text.includes('research') && (text.includes('send') || text.includes('summary'))) {
-          actions = ['SEARCH', 'REPLY'];
-        } else if (text.includes('search') || text.includes('find') || text.includes('research')) {
-          actions = ['SEARCH'];
-        } else if (text.includes('analyze')) {
-          actions = ['THINK', 'REPLY'];
+        if (text.includes("email")) {
+          actions = ["SEND_EMAIL"];
+        } else if (
+          text.includes("research") &&
+          (text.includes("send") || text.includes("summary"))
+        ) {
+          actions = ["SEARCH", "REPLY"];
+        } else if (text.includes("search") || text.includes("find") || text.includes("research")) {
+          actions = ["SEARCH"];
+        } else if (text.includes("analyze")) {
+          actions = ["THINK", "REPLY"];
         } else {
-          actions = ['REPLY'];
+          actions = ["REPLY"];
         }
       }
 
@@ -194,15 +193,18 @@ export class PlanningService extends Service {
 
       const plan: ActionPlan = {
         id: planId,
-        goal: responseContent?.text || `Execute actions: ${actions.join(', ')}`,
+        goal: responseContent?.text || `Execute actions: ${actions.join(", ")}`,
+        thought: responseContent?.thought || `Executing ${actions.length} action(s)`,
+        totalSteps: steps.length,
+        currentStep: 0,
         steps,
-        executionModel: 'sequential',
-        state: { status: 'pending' },
+        executionModel: "sequential",
+        state: { status: "pending" },
         metadata: {
           createdAt: Date.now(),
           estimatedDuration: steps.length * 5000,
           priority: 1,
-          tags: ['simple', 'message-handling'],
+          tags: ["simple", "message-handling"],
         },
       };
 
@@ -211,7 +213,7 @@ export class PlanningService extends Service {
 
       return plan;
     } catch (error) {
-      logger.error('[PlanningService] Error creating simple plan:', error);
+      logger.error("[PlanningService] Error creating simple plan:", error);
       return null;
     }
   }
@@ -226,17 +228,17 @@ export class PlanningService extends Service {
     state?: State
   ): Promise<ActionPlan> {
     try {
-      if (!context.goal || context.goal.trim() === '') {
-        throw new Error('Planning context must have a non-empty goal');
+      if (!context.goal || context.goal.trim() === "") {
+        throw new Error("Planning context must have a non-empty goal");
       }
       if (!Array.isArray(context.constraints)) {
-        throw new Error('Planning context constraints must be an array');
+        throw new Error("Planning context constraints must be an array");
       }
       if (!Array.isArray(context.availableActions)) {
-        throw new Error('Planning context availableActions must be an array');
+        throw new Error("Planning context availableActions must be an array");
       }
-      if (!context.preferences || typeof context.preferences !== 'object') {
-        throw new Error('Planning context preferences must be an object');
+      if (!context.preferences || typeof context.preferences !== "object") {
+        throw new Error("Planning context preferences must be an object");
       }
 
       logger.info(`[PlanningService] Creating comprehensive plan for goal: ${context.goal}`);
@@ -252,7 +254,11 @@ export class PlanningService extends Service {
       const parsedPlan = this.parsePlanningResponse(planningResponse as string, context);
       const enhancedPlan = await this.enhancePlan(runtime, parsedPlan, context);
 
-      this.activePlans.set(enhancedPlan.id, enhancedPlan);
+      if (!enhancedPlan.id) {
+        throw new Error("Enhanced plan missing id");
+      }
+
+      this.activePlans.set(enhancedPlan.id as UUID, enhancedPlan);
 
       logger.info(
         `[PlanningService] Created comprehensive plan ${enhancedPlan.id} with ${enhancedPlan.steps.length} steps`
@@ -260,8 +266,8 @@ export class PlanningService extends Service {
 
       return enhancedPlan;
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error('[PlanningService] Error creating comprehensive plan:', error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error("[PlanningService] Error creating comprehensive plan:", err.message);
       throw new Error(`Failed to create comprehensive plan: ${err.message}`);
     }
   }
@@ -282,12 +288,12 @@ export class PlanningService extends Service {
     const abortController = new AbortController();
 
     const executionState: PlanState = {
-      status: 'running',
+      status: "running",
       startTime,
       currentStepIndex: 0,
     };
 
-    this.planExecutions.set(plan.id, {
+    this.planExecutions.set(plan.id as UUID, {
       state: executionState,
       workingMemory,
       results,
@@ -295,29 +301,50 @@ export class PlanningService extends Service {
     });
 
     try {
-      logger.info(`[PlanningService] Starting execution of plan ${plan.id}`);
+      logger.info(`[PlanningService] Starting execution of plan ${plan.id as string}`);
 
-      if (plan.executionModel === 'sequential') {
+      if (plan.executionModel === "sequential") {
         await this.executeSequential(
-          runtime, plan, message, workingMemory, results, errors, callback, abortController.signal
+          runtime,
+          plan,
+          message,
+          workingMemory,
+          results,
+          errors,
+          callback,
+          abortController.signal
         );
-      } else if (plan.executionModel === 'parallel') {
+      } else if (plan.executionModel === "parallel") {
         await this.executeParallel(
-          runtime, plan, message, workingMemory, results, errors, callback, abortController.signal
+          runtime,
+          plan,
+          message,
+          workingMemory,
+          results,
+          errors,
+          callback,
+          abortController.signal
         );
-      } else if (plan.executionModel === 'dag') {
+      } else if (plan.executionModel === "dag") {
         await this.executeDAG(
-          runtime, plan, message, workingMemory, results, errors, callback, abortController.signal
+          runtime,
+          plan,
+          message,
+          workingMemory,
+          results,
+          errors,
+          callback,
+          abortController.signal
         );
       } else {
         throw new Error(`Unsupported execution model: ${plan.executionModel}`);
       }
 
-      executionState.status = errors.length > 0 ? 'failed' : 'completed';
+      executionState.status = errors.length > 0 ? "failed" : "completed";
       executionState.endTime = Date.now();
 
       const result: PlanExecutionResult = {
-        planId: plan.id,
+        planId: plan.id as UUID,
         success: errors.length === 0,
         completedSteps: results.length,
         totalSteps: plan.steps.length,
@@ -334,21 +361,21 @@ export class PlanningService extends Service {
     } catch (error) {
       logger.error(`[PlanningService] Plan ${plan.id} execution failed:`, error);
 
-      executionState.status = 'failed';
+      executionState.status = "failed";
       executionState.endTime = Date.now();
-      executionState.error = error as Error;
+      executionState.error = error instanceof Error ? error.message : String(error);
 
       return {
-        planId: plan.id,
+        planId: plan.id as UUID,
         success: false,
         completedSteps: results.length,
         totalSteps: plan.steps.length,
         results,
-        errors: [error as Error, ...errors],
+        errors: [error instanceof Error ? error : new Error(String(error)), ...errors],
         duration: Date.now() - startTime,
       };
     } finally {
-      this.planExecutions.delete(plan.id);
+      this.planExecutions.delete(plan.id as UUID);
     }
   }
 
@@ -358,16 +385,16 @@ export class PlanningService extends Service {
   async validatePlan(
     runtime: IAgentRuntime,
     plan: ActionPlan
-  ): Promise<{ valid: boolean; issues?: string[] }> {
+  ): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> {
     const issues: string[] = [];
 
     try {
       if (!plan.id || !plan.goal || !plan.steps) {
-        issues.push('Plan missing required fields (id, goal, or steps)');
+        issues.push("Plan missing required fields (id, goal, or steps)");
       }
 
       if (plan.steps.length === 0) {
-        issues.push('Plan has no steps');
+        issues.push("Plan has no steps");
       }
 
       for (const step of plan.steps) {
@@ -382,34 +409,36 @@ export class PlanningService extends Service {
         }
       }
 
-      const stepIds = new Set(plan.steps.map((s) => s.id));
+      const stepIds = new Set(plan.steps.map((s) => s.id as UUID));
       for (const step of plan.steps) {
         if (step.dependencies) {
           for (const depId of step.dependencies) {
-            if (!stepIds.has(depId)) {
+            if (!stepIds.has(depId as UUID)) {
               issues.push(`Step '${step.id}' has invalid dependency '${depId}'`);
             }
           }
         }
       }
 
-      if (plan.executionModel === 'dag') {
+      if (plan.executionModel === "dag") {
         const hasCycle = this.detectCycles(plan.steps);
         if (hasCycle) {
-          issues.push('Plan has circular dependencies');
+          issues.push("Plan has circular dependencies");
         }
       }
 
       return {
         valid: issues.length === 0,
-        issues: issues.length > 0 ? issues : undefined,
+        errors: issues.length > 0 ? issues : [],
+        warnings: [],
       };
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error('[PlanningService] Error validating plan:', error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error("[PlanningService] Error validating plan:", err.message);
       return {
         valid: false,
-        issues: [`Validation error: ${err.message}`],
+        errors: [`Validation error: ${err.message}`],
+        warnings: [],
       };
     }
   }
@@ -441,14 +470,14 @@ export class PlanningService extends Service {
         currentStepIndex
       );
 
-      this.activePlans.set(plan.id, adaptedPlan);
+      this.activePlans.set(plan.id as UUID, adaptedPlan);
 
       logger.info(`[PlanningService] Plan ${plan.id} adapted successfully`);
 
       return adaptedPlan;
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error(`[PlanningService] Error adapting plan ${plan.id}:`, error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`[PlanningService] Error adapting plan ${plan.id}:`, err.message);
       throw new Error(`Failed to adapt plan: ${err.message}`);
     }
   }
@@ -471,7 +500,7 @@ export class PlanningService extends Service {
     }
 
     execution.abortController?.abort();
-    execution.state.status = 'cancelled';
+    execution.state.status = "cancelled";
     execution.state.endTime = Date.now();
 
     logger.info(`[PlanningService] Plan ${planId} cancelled`);
@@ -484,29 +513,29 @@ export class PlanningService extends Service {
   async stop(): Promise<void> {
     for (const [, execution] of this.planExecutions) {
       execution.abortController?.abort();
-      execution.state.status = 'cancelled';
+      execution.state.status = "cancelled";
       execution.state.endTime = Date.now();
     }
 
     this.planExecutions.clear();
     this.activePlans.clear();
 
-    logger.info('PlanningService stopped');
+    logger.info("PlanningService stopped");
   }
 
   // Private helper methods
 
   private buildPlanningPrompt(
     context: PlanningContext,
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message?: Memory,
     state?: State
   ): string {
-    const availableActions = (context.availableActions || []).join(', ');
-    const availableProviders = (context.availableProviders || []).join(', ');
+    const availableActions = (context.availableActions || []).join(", ");
+    const availableProviders = (context.availableProviders || []).join(", ");
     const constraints = (context.constraints || [])
       .map((c) => `${c.type}: ${c.description || c.value}`)
-      .join(', ');
+      .join(", ");
 
     return `You are an expert AI planning system. Create a comprehensive action plan to achieve the following goal.
 
@@ -516,16 +545,16 @@ AVAILABLE ACTIONS: ${availableActions}
 AVAILABLE PROVIDERS: ${availableProviders}
 CONSTRAINTS: ${constraints}
 
-EXECUTION MODEL: ${context.preferences?.executionModel || 'sequential'}
+EXECUTION MODEL: ${context.preferences?.executionModel || "sequential"}
 MAX STEPS: ${context.preferences?.maxSteps || 10}
 
-${message ? `CONTEXT MESSAGE: ${message.content.text}` : ''}
-${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ''}
+${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
+${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ""}
 
 Create a detailed plan with the following structure:
 <plan>
 <goal>${context.goal}</goal>
-<execution_model>${context.preferences?.executionModel || 'sequential'}</execution_model>
+<execution_model>${context.preferences?.executionModel || "sequential"}</execution_model>
 <steps>
 <step>
 <id>step_1</id>
@@ -553,10 +582,18 @@ Focus on:
       const planId = asUUID(uuidv4());
       const steps: ActionStep[] = [];
 
-      const goal = parsedXml?.goal || context.goal;
+      const goal = (typeof parsedXml?.goal === "string" ? parsedXml.goal : null) || context.goal;
       const executionModel =
-        parsedXml?.execution_model || context.preferences?.executionModel || 'sequential';
-      const estimatedDuration = parseInt(parsedXml?.estimated_duration, 10) || 30000;
+        (typeof parsedXml?.execution_model === "string" ? parsedXml.execution_model : null) ||
+        context.preferences?.executionModel ||
+        "sequential";
+      const estimatedDuration =
+        parseInt(
+          typeof parsedXml?.estimated_duration === "string"
+            ? parsedXml.estimated_duration
+            : "30000",
+          10
+        ) || 30000;
 
       const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
       const stepIdMap = new Map<string, UUID>();
@@ -577,7 +614,7 @@ Focus on:
             if (dependenciesMatch?.[1]) {
               try {
                 const depArray = JSON.parse(dependenciesMatch[1]);
-                dependencyStrings = depArray.filter((dep: string) => dep && dep.trim());
+                dependencyStrings = depArray.filter((dep: string) => dep?.trim());
               } catch {
                 dependencyStrings = [];
               }
@@ -616,67 +653,74 @@ Focus on:
         delete (step as ActionStep & { _originalId?: string })._originalId;
       }
 
-      if (steps.length === 0 && response.includes('<step>')) {
-        logger.warn('XML parsing failed, creating fallback plan');
+      if (steps.length === 0 && response.includes("<step>")) {
+        logger.warn("XML parsing failed, creating fallback plan");
         steps.push({
           id: asUUID(uuidv4()),
-          actionName: 'ANALYZE_INPUT',
+          actionName: "ANALYZE_INPUT",
           parameters: { goal: context.goal },
           dependencies: [],
         });
 
-        if (context.goal.includes('plan') || context.goal.includes('strategy')) {
+        if (context.goal.includes("plan") || context.goal.includes("strategy")) {
           steps.push({
             id: asUUID(uuidv4()),
-            actionName: 'PROCESS_ANALYSIS',
-            parameters: { type: 'strategic_planning' },
-            dependencies: [steps[0].id],
+            actionName: "PROCESS_ANALYSIS",
+            parameters: { type: "strategic_planning" },
+            dependencies: [steps[0].id as UUID],
           });
 
           steps.push({
             id: asUUID(uuidv4()),
-            actionName: 'EXECUTE_FINAL',
-            parameters: { deliverable: 'strategy_document' },
-            dependencies: [steps[1].id],
+            actionName: "EXECUTE_FINAL",
+            parameters: { deliverable: "strategy_document" },
+            dependencies: [steps[1].id as UUID],
           });
         }
       }
 
       return {
         id: planId,
-        goal,
+        goal: goal as string,
+        thought: `Plan to achieve: ${goal}`,
+        totalSteps: steps.length,
+        currentStep: 0,
         steps,
-        executionModel: executionModel as 'sequential' | 'parallel' | 'dag',
-        state: { status: 'pending' },
+        executionModel: executionModel as "sequential" | "parallel" | "dag",
+        state: { status: "pending" },
         metadata: {
           createdAt: Date.now(),
           estimatedDuration,
           priority: 1,
-          tags: ['comprehensive'],
+          tags: ["comprehensive"],
         },
       };
     } catch (error) {
-      logger.error('Failed to parse planning response:', error);
+      logger.error("Failed to parse planning response:", error);
 
       const planId = asUUID(uuidv4());
+      const fallbackSteps = [
+        {
+          id: asUUID(uuidv4()),
+          actionName: "REPLY",
+          parameters: { text: "I will help you with this request step by step." },
+          dependencies: [],
+        },
+      ];
       return {
         id: planId,
         goal: context.goal,
-        steps: [
-          {
-            id: asUUID(uuidv4()),
-            actionName: 'REPLY',
-            parameters: { text: 'I will help you with this request step by step.' },
-            dependencies: [],
-          },
-        ],
-        executionModel: 'sequential',
-        state: { status: 'pending' },
+        thought: "Fallback plan created due to parsing error",
+        totalSteps: fallbackSteps.length,
+        currentStep: 0,
+        steps: fallbackSteps,
+        executionModel: "sequential",
+        state: { status: "pending" },
         metadata: {
           createdAt: Date.now(),
           estimatedDuration: 10000,
           priority: 1,
-          tags: ['fallback'],
+          tags: ["fallback"],
         },
       };
     }
@@ -693,7 +737,7 @@ Focus on:
         logger.warn(
           `[PlanningService] Action '${step.actionName}' not found, replacing with REPLY`
         );
-        step.actionName = 'REPLY';
+        step.actionName = "REPLY";
         step.parameters = { text: `Unable to find action: ${step.actionName}` };
       }
     }
@@ -705,7 +749,7 @@ Focus on:
           maxRetries: 2,
           backoffMs: 1000,
           backoffMultiplier: 2,
-          onError: 'abort',
+          onError: "abort",
         };
       }
     }
@@ -725,27 +769,33 @@ Focus on:
   ): Promise<void> {
     for (let i = 0; i < plan.steps.length; i++) {
       if (abortSignal?.aborted) {
-        throw new Error('Plan execution aborted');
+        throw new Error("Plan execution aborted");
       }
 
       const step = plan.steps[i];
 
       try {
         const result = await this.executeStep(
-          runtime, step, message, workingMemory, results, callback, abortSignal
+          runtime,
+          step,
+          message,
+          workingMemory,
+          results,
+          callback,
+          abortSignal
         );
         results.push(result);
 
-        const execution = this.planExecutions.get(plan.id);
+        const execution = this.planExecutions.get(plan.id as UUID);
         if (execution) {
           execution.state.currentStepIndex = i + 1;
         }
       } catch (error) {
         logger.error(`[PlanningService] Step ${step.id} failed:`, error);
-        errors.push(error as Error);
+        errors.push(error instanceof Error ? error : new Error(String(error)));
 
         const extendedStep = step as ActionStep & { onError?: string; retryPolicy?: RetryPolicy };
-        if (extendedStep.onError === 'abort' || extendedStep.retryPolicy?.onError === 'abort') {
+        if (extendedStep.onError === "abort" || extendedStep.retryPolicy?.onError === "abort") {
           throw error;
         }
       }
@@ -765,7 +815,13 @@ Focus on:
     const promises = plan.steps.map(async (step) => {
       try {
         const result = await this.executeStep(
-          runtime, step, message, workingMemory, results, callback, abortSignal
+          runtime,
+          step,
+          message,
+          workingMemory,
+          results,
+          callback,
+          abortSignal
         );
         return { result, error: null };
       } catch (error) {
@@ -795,34 +851,45 @@ Focus on:
     abortSignal?: AbortSignal
   ): Promise<void> {
     const completed = new Set<UUID>();
-    const pending = new Set(plan.steps.map((s) => s.id));
+    const pending = new Set(plan.steps.map((s) => s.id as UUID));
 
     while (pending.size > 0 && !abortSignal?.aborted) {
       const readySteps = plan.steps.filter(
         (step) =>
-          pending.has(step.id) && (step.dependencies || []).every((depId) => completed.has(depId))
+          pending.has(step.id as UUID) &&
+          (step.dependencies || []).every((depId) => completed.has(depId as UUID))
       );
 
       if (readySteps.length === 0) {
-        throw new Error('No steps ready to execute - possible circular dependency');
+        throw new Error("No steps ready to execute - possible circular dependency");
       }
 
       const promises = readySteps.map(async (step) => {
         try {
           const result = await this.executeStep(
-            runtime, step, message, workingMemory, results, callback, abortSignal
+            runtime,
+            step,
+            message,
+            workingMemory,
+            results,
+            callback,
+            abortSignal
           );
-          return { stepId: step.id, result, error: null };
+          return { stepId: step.id as UUID, result, error: null };
         } catch (error) {
-          return { stepId: step.id, result: null, error: error as Error };
+          return {
+            stepId: step.id as UUID,
+            result: null,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
         }
       });
 
       const stepResults = await Promise.all(promises);
 
       for (const { stepId, result, error } of stepResults) {
-        pending.delete(stepId);
-        completed.add(stepId);
+        pending.delete(stepId as UUID);
+        completed.add(stepId as UUID);
 
         if (error) {
           errors.push(error);
@@ -837,10 +904,10 @@ Focus on:
     runtime: IAgentRuntime,
     step: ActionStep,
     message: Memory,
-    workingMemory: WorkingMemory,
+    _workingMemory: WorkingMemory,
     previousResults: ActionResult[],
     callback?: HandlerCallback,
-    abortSignal?: AbortSignal
+    _abortSignal?: AbortSignal
   ): Promise<ActionResult> {
     const action = runtime.actions.find((a) => a.name === step.actionName);
     if (!action) {
@@ -848,15 +915,12 @@ Focus on:
     }
 
     const actionContext: ActionContext = {
-      planId: step.id,
-      stepId: step.id,
-      workingMemory,
       previousResults,
-      abortSignal,
-      updateMemory: (key: string, value: unknown) => workingMemory.set(key, value),
-      getMemory: (key: string) => workingMemory.get(key),
-      getPreviousResult: (stepId: UUID) =>
-        previousResults.find((r) => (r.data as Record<string, unknown>)?.stepId === stepId),
+      getPreviousResult: (actionName: string) =>
+        previousResults.find((r) => {
+          const data = r.data as Record<string, unknown>;
+          return data?.actionName === actionName || data?.stepId === step.id;
+        }),
     };
 
     const extendedStep = step as ActionStep & { retryPolicy?: RetryPolicy };
@@ -868,22 +932,19 @@ Focus on:
         const result = await action.handler(
           runtime,
           message,
-          { values: {}, data: {}, text: '' },
+          { values: {}, data: {}, text: "" },
           {
             ...step.parameters,
-            context: actionContext,
-            previousResults,
-            workingMemory,
-            abortSignal,
-          },
+            actionContext,
+          } as HandlerOptions,
           callback
         );
 
         let actionResult: ActionResult;
-        if (typeof result === 'object' && result !== null) {
+        if (typeof result === "object" && result !== null) {
           actionResult = result as ActionResult;
         } else {
-          actionResult = { text: String(result) };
+          actionResult = { text: String(result), success: true };
         }
 
         if (!actionResult.data) {
@@ -903,12 +964,12 @@ Focus on:
 
         const backoffMs =
           (extendedStep.retryPolicy?.backoffMs || 1000) *
-          Math.pow(extendedStep.retryPolicy?.backoffMultiplier || 2, retries - 1);
+          (extendedStep.retryPolicy?.backoffMultiplier || 2) ** (retries - 1);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     }
 
-    throw new Error('Maximum retries exceeded');
+    throw new Error("Maximum retries exceeded");
   }
 
   private detectCycles(steps: ActionStep[]): boolean {
@@ -929,7 +990,7 @@ Focus on:
       const step = steps.find((s) => s.id === stepId);
       if (step?.dependencies) {
         for (const depId of step.dependencies) {
-          if (dfs(depId)) {
+          if (dfs(depId as UUID)) {
             return true;
           }
         }
@@ -940,7 +1001,7 @@ Focus on:
     };
 
     for (const step of steps) {
-      if (dfs(step.id)) {
+      if (step.id && dfs(step.id as UUID)) {
         return true;
       }
     }
@@ -959,7 +1020,7 @@ Focus on:
 ORIGINAL PLAN: ${JSON.stringify(plan, null, 2)}
 CURRENT STEP INDEX: ${currentStepIndex}
 COMPLETED RESULTS: ${JSON.stringify(results, null, 2)}
-${error ? `ERROR: ${error.message}` : ''}
+${error ? `ERROR: ${error.message}` : ""}
 
 Analyze the situation and provide an adapted plan that:
 1. Addresses the current issue
@@ -996,7 +1057,7 @@ Return the adapted plan in the same XML format as the original planning response
             if (dependenciesMatch?.[1]) {
               try {
                 const depArray = JSON.parse(dependenciesMatch[1]);
-                dependencyStrings = depArray.filter((dep: string) => dep && dep.trim());
+                dependencyStrings = depArray.filter((dep: string) => dep?.trim());
               } catch {
                 dependencyStrings = [];
               }
@@ -1036,8 +1097,8 @@ Return the adapted plan in the same XML format as the original planning response
       if (adaptedSteps.length === 0) {
         const fallbackStep: ActionStep = {
           id: asUUID(uuidv4()),
-          actionName: 'REPLY',
-          parameters: { text: 'Plan adaptation completed successfully' },
+          actionName: "REPLY",
+          parameters: { text: "Plan adaptation completed successfully" },
           dependencies: [],
         };
 
@@ -1048,8 +1109,9 @@ Return the adapted plan in the same XML format as the original planning response
           metadata: {
             ...originalPlan.metadata,
             adaptations: [
-              ...((originalPlan.metadata as Record<string, unknown>)?.adaptations as string[] || []),
-              'Fallback adaptation',
+              ...(((originalPlan.metadata as Record<string, unknown>)?.adaptations as string[]) ||
+                []),
+              "Fallback adaptation",
             ],
           },
         };
@@ -1062,18 +1124,19 @@ Return the adapted plan in the same XML format as the original planning response
         metadata: {
           ...originalPlan.metadata,
           adaptations: [
-            ...((originalPlan.metadata as Record<string, unknown>)?.adaptations as string[] || []),
+            ...(((originalPlan.metadata as Record<string, unknown>)?.adaptations as string[]) ||
+              []),
             `Adapted at step ${currentStepIndex}`,
           ],
         },
       };
     } catch (error) {
-      logger.error('Failed to parse adaptation response:', error);
+      logger.error("Failed to parse adaptation response:", error);
 
       const fallbackStep: ActionStep = {
         id: asUUID(uuidv4()),
-        actionName: 'REPLY',
-        parameters: { text: 'Plan adaptation completed successfully' },
+        actionName: "REPLY",
+        parameters: { text: "Plan adaptation completed successfully" },
         dependencies: [],
       };
 
@@ -1084,12 +1147,12 @@ Return the adapted plan in the same XML format as the original planning response
         metadata: {
           ...originalPlan.metadata,
           adaptations: [
-            ...((originalPlan.metadata as Record<string, unknown>)?.adaptations as string[] || []),
-            'Emergency fallback adaptation',
+            ...(((originalPlan.metadata as Record<string, unknown>)?.adaptations as string[]) ||
+              []),
+            "Emergency fallback adaptation",
           ],
         },
       };
     }
   }
 }
-

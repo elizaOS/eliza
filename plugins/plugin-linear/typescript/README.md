@@ -32,7 +32,7 @@ LINEAR_DEFAULT_TEAM_KEY=ENG          # Optional
 ## Usage
 
 ```typescript
-import { linearPlugin } from '@elizaos/plugin-linear-ts';
+import { linearPlugin } from "@elizaos/plugin-linear-ts";
 
 // Register with your ElizaOS agent
 agent.registerPlugin(linearPlugin);
@@ -40,26 +40,26 @@ agent.registerPlugin(linearPlugin);
 
 ## Actions
 
-| Action | Description |
-|--------|-------------|
-| `CREATE_LINEAR_ISSUE` | Create a new issue |
-| `GET_LINEAR_ISSUE` | Get issue details |
-| `UPDATE_LINEAR_ISSUE` | Update an existing issue |
-| `DELETE_LINEAR_ISSUE` | Archive an issue |
-| `SEARCH_LINEAR_ISSUES` | Search for issues |
+| Action                  | Description               |
+| ----------------------- | ------------------------- |
+| `CREATE_LINEAR_ISSUE`   | Create a new issue        |
+| `GET_LINEAR_ISSUE`      | Get issue details         |
+| `UPDATE_LINEAR_ISSUE`   | Update an existing issue  |
+| `DELETE_LINEAR_ISSUE`   | Archive an issue          |
+| `SEARCH_LINEAR_ISSUES`  | Search for issues         |
 | `CREATE_LINEAR_COMMENT` | Add a comment to an issue |
-| `LIST_LINEAR_TEAMS` | List teams |
-| `LIST_LINEAR_PROJECTS` | List projects |
-| `GET_LINEAR_ACTIVITY` | View activity log |
-| `CLEAR_LINEAR_ACTIVITY` | Clear activity log |
+| `LIST_LINEAR_TEAMS`     | List teams                |
+| `LIST_LINEAR_PROJECTS`  | List projects             |
+| `GET_LINEAR_ACTIVITY`   | View activity log         |
+| `CLEAR_LINEAR_ACTIVITY` | Clear activity log        |
 
 ## Providers
 
-| Provider | Description |
-|----------|-------------|
-| `LINEAR_ISSUES` | Context about recent issues |
-| `LINEAR_TEAMS` | Context about teams |
-| `LINEAR_PROJECTS` | Context about projects |
+| Provider          | Description                   |
+| ----------------- | ----------------------------- |
+| `LINEAR_ISSUES`   | Context about recent issues   |
+| `LINEAR_TEAMS`    | Context about teams           |
+| `LINEAR_PROJECTS` | Context about projects        |
 | `LINEAR_ACTIVITY` | Context about recent activity |
 
 ## Development
@@ -78,5 +78,6 @@ npm run dev
 ## License
 
 MIT
+
 
 

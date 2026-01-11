@@ -26,7 +26,7 @@ import { mockCharacter } from "./fixtures";
  */
 export async function createTestDatabase(
   testAgentId: UUID,
-  testPlugins: Plugin[] = [],
+  testPlugins: Plugin[] = []
 ): Promise<{
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   runtime: AgentRuntime;
@@ -41,9 +41,7 @@ export async function createTestDatabase(
     superuserUrl.password = "postgres";
 
     console.log("[TEST] Using PostgreSQL (superuser) for test database");
-    const connectionManager = new PostgresConnectionManager(
-      superuserUrl.toString(),
-    );
+    const connectionManager = new PostgresConnectionManager(superuserUrl.toString());
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
@@ -64,10 +62,7 @@ export async function createTestDatabase(
 
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
-    migrationService.discoverAndRegisterPluginSchemas([
-      sqlPlugin,
-      ...testPlugins,
-    ]);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
     await adapter.createAgent({
@@ -100,10 +95,7 @@ export async function createTestDatabase(
 
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.getDatabase());
-    migrationService.discoverAndRegisterPluginSchemas([
-      sqlPlugin,
-      ...testPlugins,
-    ]);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
     await adapter.createAgent({
@@ -132,7 +124,7 @@ export async function createTestDatabase(
  */
 export async function createIsolatedTestDatabase(
   testName: string,
-  testPlugins: Plugin[] = [],
+  testPlugins: Plugin[] = []
 ): Promise<{
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   runtime: AgentRuntime;
@@ -154,9 +146,7 @@ export async function createIsolatedTestDatabase(
 
     console.log(`[TEST] Using PostgreSQL with superuser for: ${testId}`);
 
-    const connectionManager = new PostgresConnectionManager(
-      superuserUrl.toString(),
-    );
+    const connectionManager = new PostgresConnectionManager(superuserUrl.toString());
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
@@ -178,7 +168,7 @@ export async function createIsolatedTestDatabase(
           EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
         END LOOP;
       END $$;
-    `),
+    `)
     );
 
     const runtime = new AgentRuntime({
@@ -191,10 +181,7 @@ export async function createIsolatedTestDatabase(
     // Run migrations on clean database
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
-    migrationService.discoverAndRegisterPluginSchemas([
-      sqlPlugin,
-      ...testPlugins,
-    ]);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
     // Create test agent
@@ -215,10 +202,7 @@ export async function createIsolatedTestDatabase(
     return { adapter, runtime, cleanup, testAgentId };
   } else {
     // PGLite - use unique directory per test
-    const tempDir = path.join(
-      os.tmpdir(),
-      `eliza-test-${testId}-${Date.now()}`,
-    );
+    const tempDir = path.join(os.tmpdir(), `eliza-test-${testId}-${Date.now()}`);
     console.log(`[TEST] Creating isolated PGLite database: ${tempDir}`);
 
     const connectionManager = new PGliteClientManager({ dataDir: tempDir });
@@ -236,10 +220,7 @@ export async function createIsolatedTestDatabase(
     // Run migrations
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.getDatabase());
-    migrationService.discoverAndRegisterPluginSchemas([
-      sqlPlugin,
-      ...testPlugins,
-    ]);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
     // Create test agent
@@ -255,10 +236,7 @@ export async function createIsolatedTestDatabase(
       try {
         fs.rmSync(tempDir, { recursive: true, force: true });
       } catch (error) {
-        console.error(
-          `[TEST] Failed to remove temp directory ${tempDir}:`,
-          error,
-        );
+        console.error(`[TEST] Failed to remove temp directory ${tempDir}:`, error);
       }
     };
 
@@ -274,9 +252,7 @@ export async function createIsolatedTestDatabase(
  * @param testName - A unique name for this test to ensure isolation
  * @returns Database connection, adapter, and cleanup function
  */
-export async function createIsolatedTestDatabaseForMigration(
-  testName: string,
-): Promise<{
+export async function createIsolatedTestDatabaseForMigration(testName: string): Promise<{
   db: any; // DrizzleDatabase
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   cleanup: () => Promise<void>;
@@ -319,7 +295,7 @@ export async function createIsolatedTestDatabaseForMigration(
           EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
         END LOOP;
       END $$;
-    `),
+    `)
     );
 
     // Ensure grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
@@ -342,9 +318,7 @@ export async function createIsolatedTestDatabaseForMigration(
         // This is needed because migration tests run as superuser and may affect schema ownership
         await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
         await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
-        await db.execute(
-          sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`),
-        );
+        await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
       } catch (error) {
         console.error(`[MIGRATION TEST] Failed to cleanup:`, error);
       }
@@ -354,13 +328,8 @@ export async function createIsolatedTestDatabaseForMigration(
     return { db, adapter, cleanup, testAgentId };
   } else {
     // PGLite - use unique directory per test
-    const tempDir = path.join(
-      os.tmpdir(),
-      `eliza-migration-test-${testId}-${Date.now()}`,
-    );
-    console.log(
-      `[MIGRATION TEST] Creating isolated PGLite database: ${tempDir}`,
-    );
+    const tempDir = path.join(os.tmpdir(), `eliza-migration-test-${testId}-${Date.now()}`);
+    console.log(`[MIGRATION TEST] Creating isolated PGLite database: ${tempDir}`);
 
     const connectionManager = new PGliteClientManager({ dataDir: tempDir });
     await connectionManager.initialize();
@@ -374,10 +343,7 @@ export async function createIsolatedTestDatabaseForMigration(
       try {
         fs.rmSync(tempDir, { recursive: true, force: true });
       } catch (error) {
-        console.error(
-          `[MIGRATION TEST] Failed to remove temp directory ${tempDir}:`,
-          error,
-        );
+        console.error(`[MIGRATION TEST] Failed to remove temp directory ${tempDir}:`, error);
       }
     };
 
@@ -393,9 +359,7 @@ export async function createIsolatedTestDatabaseForMigration(
  * @param testName - A unique name for this test to ensure isolation
  * @returns Database connection, adapter, cleanup function, and environment management
  */
-export async function createIsolatedTestDatabaseForSchemaEvolutionTests(
-  testName: string,
-): Promise<{
+export async function createIsolatedTestDatabaseForSchemaEvolutionTests(testName: string): Promise<{
   db: any; // DrizzleDatabase
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   cleanup: () => Promise<void>;
@@ -403,8 +367,7 @@ export async function createIsolatedTestDatabaseForSchemaEvolutionTests(
   originalDestructiveSetting?: string;
 }> {
   // Save original environment variable
-  const originalDestructiveSetting =
-    process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+  const originalDestructiveSetting = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
 
   // Get the base setup
   const baseSetup = await createIsolatedTestDatabaseForMigration(testName);
@@ -413,8 +376,7 @@ export async function createIsolatedTestDatabaseForSchemaEvolutionTests(
   const enhancedCleanup = async () => {
     // Restore original environment variable
     if (originalDestructiveSetting !== undefined) {
-      process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS =
-        originalDestructiveSetting;
+      process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = originalDestructiveSetting;
     } else {
       delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
     }

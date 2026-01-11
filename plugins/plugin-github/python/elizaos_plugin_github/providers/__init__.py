@@ -4,8 +4,8 @@ GitHub Providers for elizaOS.
 All available providers for the GitHub plugin.
 """
 
-from elizaos_plugin_github.providers.repository_state import RepositoryStateProvider
 from elizaos_plugin_github.providers.issue_context import IssueContextProvider
+from elizaos_plugin_github.providers.repository_state import RepositoryStateProvider
 
 __all__ = [
     "RepositoryStateProvider",
@@ -17,5 +17,8 @@ all_providers = [
     RepositoryStateProvider(),
     IssueContextProvider(),
 ]
+
+
+
 
 

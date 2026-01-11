@@ -1,7 +1,8 @@
 """Tests for shell service."""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, patch
 
 from elizaos_plugin_shell import ShellConfig, ShellService
 from elizaos_plugin_shell.types import CommandResult

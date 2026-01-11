@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration for the Farcaster plugin.
 
 use crate::defaults;
@@ -14,6 +15,7 @@ pub enum FarcasterMode {
     /// Webhook mode - receive push notifications
     Webhook,
 }
+
 
 impl Default for FarcasterMode {
     fn default() -> Self {

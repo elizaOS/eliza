@@ -110,61 +110,67 @@ Commands go through multiple permission checks in this order:
 ### Registering Commands
 
 ```typescript
-import { PermissionFlagsBits } from 'discord.js';
+import { PermissionFlagsBits } from "discord.js";
 
 // Simple command (works everywhere)
 const helpCommand = {
-  name: 'help',
-  description: 'Show help information'
+  name: "help",
+  description: "Show help information",
 };
 
 // Guild-only command
 const serverInfoCommand = {
-  name: 'serverinfo',
-  description: 'Show server information',
-  guildOnly: true
+  name: "serverinfo",
+  description: "Show server information",
+  guildOnly: true,
 };
 
 // Requires Discord permission
 const configCommand = {
-  name: 'config',
-  description: 'Configure bot settings',
-  requiredPermissions: PermissionFlagsBits.ManageGuild
+  name: "config",
+  description: "Configure bot settings",
+  requiredPermissions: PermissionFlagsBits.ManageGuild,
 };
 
 // Bypasses channel whitelist
 const utilityCommand = {
-  name: 'export',
-  description: 'Export data',
-  bypassChannelWhitelist: true
+  name: "export",
+  description: "Export data",
+  bypassChannelWhitelist: true,
 };
 
 // Advanced: custom validation
 const adminCommand = {
-  name: 'admin',
-  description: 'Admin-only command',
+  name: "admin",
+  description: "Admin-only command",
   validator: async (interaction, runtime) => {
-    const adminIds = runtime.getSetting('ADMIN_USER_IDS')?.split(',') ?? [];
+    const adminIds = runtime.getSetting("ADMIN_USER_IDS")?.split(",") ?? [];
     return adminIds.includes(interaction.user.id);
-  }
+  },
 };
 
 // Register commands
-await runtime.emitEvent(['DISCORD_REGISTER_COMMANDS'], {
-  commands: [helpCommand, serverInfoCommand, configCommand, utilityCommand, adminCommand]
+await runtime.emitEvent(["DISCORD_REGISTER_COMMANDS"], {
+  commands: [
+    helpCommand,
+    serverInfoCommand,
+    configCommand,
+    utilityCommand,
+    adminCommand,
+  ],
 });
 ```
 
 ### Permission Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `guildOnly` | `boolean` | If true, command only works in guilds (not DMs) |
-| `bypassChannelWhitelist` | `boolean` | If true, bypasses `CHANNEL_IDS` restrictions |
-| `requiredPermissions` | `bigint \| string` | Discord permission bitfield (e.g., `PermissionFlagsBits.ManageGuild`) |
-| `contexts` | `number[]` | Raw Discord contexts (0=Guild, 1=BotDM, 2=PrivateChannel) |
-| `guildIds` | `string[]` | Register only in specific guilds (instant updates) |
-| `validator` | `function` | Custom validation function for advanced logic |
+| Option                   | Type               | Description                                                           |
+| ------------------------ | ------------------ | --------------------------------------------------------------------- |
+| `guildOnly`              | `boolean`          | If true, command only works in guilds (not DMs)                       |
+| `bypassChannelWhitelist` | `boolean`          | If true, bypasses `CHANNEL_IDS` restrictions                          |
+| `requiredPermissions`    | `bigint \| string` | Discord permission bitfield (e.g., `PermissionFlagsBits.ManageGuild`) |
+| `contexts`               | `number[]`         | Raw Discord contexts (0=Guild, 1=BotDM, 2=PrivateChannel)             |
+| `guildIds`               | `string[]`         | Register only in specific guilds (instant updates)                    |
+| `validator`              | `function`         | Custom validation function for advanced logic                         |
 
 ### Common Permission Values
 
@@ -182,16 +188,19 @@ From Discord.js `PermissionFlagsBits`:
 ### Design Rationale
 
 **Why Hybrid Approach?**
+
 - Discord's native permissions are powerful but limited to role-based access
 - ElizaOS needs programmatic control for channel restrictions and custom logic
 - Combining both gives developers the best of both worlds
 
 **Why Simple Flags?**
+
 - `guildOnly: true` is clearer than `contexts: [0]`
 - Abstracts Discord API details
 - Sensible defaults: zero config should "just work"
 
 **Why Keep Channel Whitelist?**
+
 - Discord's channel permissions are UI-based (Server Settings > Integrations)
 - Programmatic control is better for developer experience
 - Allows dynamic, runtime-based channel restrictions
@@ -200,24 +209,24 @@ From Discord.js `PermissionFlagsBits`:
 
 The plugin provides the following actions:
 
-| Action | Description |
-|--------|-------------|
-| **chatWithAttachments** | Handle messages with Discord attachments |
-| **createPoll** | Create a poll in a Discord channel |
-| **downloadMedia** | Download media files from Discord messages |
-| **getUserInfo** | Get information about a Discord user |
-| **joinVoice** | Join a voice channel |
-| **leaveVoice** | Leave a voice channel |
-| **listChannels** | List channels in a Discord server |
-| **pinMessage** | Pin a message in a channel |
-| **reactToMessage** | Add a reaction to a message |
-| **readChannel** | Read messages from a channel |
-| **searchMessages** | Search for messages in a channel |
-| **sendDM** | Send a direct message to a user |
-| **serverInfo** | Get information about the current server |
-| **summarize** | Summarize conversation history |
-| **transcribeMedia** | Transcribe audio/video media to text |
-| **unpinMessage** | Unpin a message from a channel |
+| Action                  | Description                                |
+| ----------------------- | ------------------------------------------ |
+| **chatWithAttachments** | Handle messages with Discord attachments   |
+| **createPoll**          | Create a poll in a Discord channel         |
+| **downloadMedia**       | Download media files from Discord messages |
+| **getUserInfo**         | Get information about a Discord user       |
+| **joinVoice**           | Join a voice channel                       |
+| **leaveVoice**          | Leave a voice channel                      |
+| **listChannels**        | List channels in a Discord server          |
+| **pinMessage**          | Pin a message in a channel                 |
+| **reactToMessage**      | Add a reaction to a message                |
+| **readChannel**         | Read messages from a channel               |
+| **searchMessages**      | Search for messages in a channel           |
+| **sendDM**              | Send a direct message to a user            |
+| **serverInfo**          | Get information about the current server   |
+| **summarize**           | Summarize conversation history             |
+| **transcribeMedia**     | Transcribe audio/video media to text       |
+| **unpinMessage**        | Unpin a message from a channel             |
 
 ### Providers
 
@@ -230,30 +239,31 @@ The plugin includes two state providers:
 
 The plugin emits the following Discord-specific events:
 
-| Event | Description |
-|-------|-------------|
-| `DISCORD_MESSAGE_RECEIVED` | When a message is received |
-| `DISCORD_MESSAGE_SENT` | When a message is sent |
-| `DISCORD_SLASH_COMMAND` | When a slash command is invoked |
-| `DISCORD_MODAL_SUBMIT` | When a modal form is submitted |
-| `DISCORD_REACTION_RECEIVED` | When a reaction is added to a message |
-| `DISCORD_REACTION_REMOVED` | When a reaction is removed from a message |
-| `DISCORD_WORLD_JOINED` | When the bot joins a guild |
-| `DISCORD_SERVER_CONNECTED` | When connected to a server |
-| `DISCORD_USER_JOINED` | When a user joins a guild |
-| `DISCORD_USER_LEFT` | When a user leaves a guild |
-| `DISCORD_VOICE_STATE_CHANGED` | When voice state changes |
-| `DISCORD_CHANNEL_PERMISSIONS_CHANGED` | When channel permissions change |
-| `DISCORD_ROLE_PERMISSIONS_CHANGED` | When role permissions change |
-| `DISCORD_MEMBER_ROLES_CHANGED` | When a member's roles change |
-| `DISCORD_ROLE_CREATED` | When a role is created |
-| `DISCORD_ROLE_DELETED` | When a role is deleted |
+| Event                                 | Description                               |
+| ------------------------------------- | ----------------------------------------- |
+| `DISCORD_MESSAGE_RECEIVED`            | When a message is received                |
+| `DISCORD_MESSAGE_SENT`                | When a message is sent                    |
+| `DISCORD_SLASH_COMMAND`               | When a slash command is invoked           |
+| `DISCORD_MODAL_SUBMIT`                | When a modal form is submitted            |
+| `DISCORD_REACTION_RECEIVED`           | When a reaction is added to a message     |
+| `DISCORD_REACTION_REMOVED`            | When a reaction is removed from a message |
+| `DISCORD_WORLD_JOINED`                | When the bot joins a guild                |
+| `DISCORD_SERVER_CONNECTED`            | When connected to a server                |
+| `DISCORD_USER_JOINED`                 | When a user joins a guild                 |
+| `DISCORD_USER_LEFT`                   | When a user leaves a guild                |
+| `DISCORD_VOICE_STATE_CHANGED`         | When voice state changes                  |
+| `DISCORD_CHANNEL_PERMISSIONS_CHANGED` | When channel permissions change           |
+| `DISCORD_ROLE_PERMISSIONS_CHANGED`    | When role permissions change              |
+| `DISCORD_MEMBER_ROLES_CHANGED`        | When a member's roles change              |
+| `DISCORD_ROLE_CREATED`                | When a role is created                    |
+| `DISCORD_ROLE_DELETED`                | When a role is deleted                    |
 
 ## Key Components
 
 ### DiscordService
 
 Main service class that extends ElizaOS Service:
+
 - Handles authentication and session management
 - Manages Discord client connection
 - Processes events and interactions
@@ -287,23 +297,23 @@ Register slash commands via the `DISCORD_REGISTER_COMMANDS` event, then listen f
 
 ```typescript
 // Register custom slash commands
-await runtime.emitEvent(['DISCORD_REGISTER_COMMANDS'], {
+await runtime.emitEvent(["DISCORD_REGISTER_COMMANDS"], {
   commands: [
     {
-      name: 'mycommand',
-      description: 'My custom command',
+      name: "mycommand",
+      description: "My custom command",
       options: [
         {
-          name: 'input',
-          description: 'User input',
+          name: "input",
+          description: "User input",
           type: 3, // STRING type
           required: true,
         },
       ],
     },
     {
-      name: 'serverinfo',
-      description: 'Get server information',
+      name: "serverinfo",
+      description: "Get server information",
       guildOnly: true, // Only works in guilds, not DMs
     },
   ],
@@ -311,12 +321,12 @@ await runtime.emitEvent(['DISCORD_REGISTER_COMMANDS'], {
 
 // Listen for slash command events to handle the interaction
 runtime.registerEvent({
-  name: 'DISCORD_SLASH_COMMAND',
+  name: "DISCORD_SLASH_COMMAND",
   handler: async (payload) => {
     const { interaction, client, commands } = payload;
-    
-    if (interaction.commandName === 'mycommand') {
-      const input = interaction.options.getString('input');
+
+    if (interaction.commandName === "mycommand") {
+      const input = interaction.options.getString("input");
       await interaction.reply(`You said: ${input}`);
     }
   },
@@ -333,15 +343,15 @@ The `DISCORD_LISTEN_CHANNEL_IDS` setting creates "listen-only" channels where th
 
 ```typescript
 // Check if a channel is listen-only
-const listenChannels = runtime.getSetting('DISCORD_LISTEN_CHANNEL_IDS');
-const listenChannelIds = listenChannels?.split(',').map(s => s.trim()) || [];
+const listenChannels = runtime.getSetting("DISCORD_LISTEN_CHANNEL_IDS");
+const listenChannelIds = listenChannels?.split(",").map((s) => s.trim()) || [];
 
 runtime.registerEvent({
-  name: 'DISCORD_MESSAGE_RECEIVED',
+  name: "DISCORD_MESSAGE_RECEIVED",
   handler: async (payload) => {
     const { message } = payload;
     const channelId = message.content.channelId;
-    
+
     if (listenChannelIds.includes(channelId)) {
       // This is a listen-only channel - process without responding
       await processMessageSilently(message);
@@ -357,10 +367,10 @@ Modal submits and message components (buttons, select menus) bypass channel whit
 ```typescript
 // Listen for modal submissions
 runtime.registerEvent({
-  name: 'DISCORD_MODAL_SUBMIT',
+  name: "DISCORD_MODAL_SUBMIT",
   handler: async (payload) => {
     const { interaction } = payload;
-    const fieldValue = interaction.fields.getTextInputValue('myField');
+    const fieldValue = interaction.fields.getTextInputValue("myField");
     await interaction.reply(`Received: ${fieldValue}`);
   },
 });
@@ -383,14 +393,18 @@ interface ChannelPermissionsChangedPayload {
   runtime: IAgentRuntime;
   guild: { id: string; name: string };
   channel: { id: string; name: string };
-  target: { type: 'role' | 'user'; id: string; name: string };
-  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  target: { type: "role" | "user"; id: string; name: string };
+  action: "CREATE" | "UPDATE" | "DELETE";
   changes: Array<{
-    permission: string;      // e.g., 'ManageMessages', 'Administrator'
-    oldState: 'ALLOW' | 'DENY' | 'NEUTRAL';
-    newState: 'ALLOW' | 'DENY' | 'NEUTRAL';
+    permission: string; // e.g., 'ManageMessages', 'Administrator'
+    oldState: "ALLOW" | "DENY" | "NEUTRAL";
+    newState: "ALLOW" | "DENY" | "NEUTRAL";
   }>;
-  audit: { executorId: string; executorTag: string; reason: string | null } | null;
+  audit: {
+    executorId: string;
+    executorTag: string;
+    reason: string | null;
+  } | null;
 }
 ```
 
@@ -433,21 +447,24 @@ interface RoleLifecyclePayload {
 #### Example: Security Monitoring
 
 ```typescript
-import { DiscordEventTypes } from '@elizaos/plugin-discord';
+import { DiscordEventTypes } from "@elizaos/plugin-discord";
 
 // Alert on dangerous permission grants
 runtime.registerEvent({
   name: DiscordEventTypes.CHANNEL_PERMISSIONS_CHANGED,
   handler: async (payload) => {
-    const dangerousPerms = ['Administrator', 'ManageGuild', 'ManageRoles'];
-    
+    const dangerousPerms = ["Administrator", "ManageGuild", "ManageRoles"];
+
     for (const change of payload.changes) {
-      if (dangerousPerms.includes(change.permission) && change.newState === 'ALLOW') {
+      if (
+        dangerousPerms.includes(change.permission) &&
+        change.newState === "ALLOW"
+      ) {
         console.warn(`⚠️ Dangerous permission granted!`, {
           channel: payload.channel.name,
           target: payload.target.name,
           permission: change.permission,
-          grantedBy: payload.audit?.executorTag || 'Unknown',
+          grantedBy: payload.audit?.executorTag || "Unknown",
         });
       }
     }
@@ -458,14 +475,14 @@ runtime.registerEvent({
 runtime.registerEvent({
   name: DiscordEventTypes.MEMBER_ROLES_CHANGED,
   handler: async (payload) => {
-    const adminRoles = payload.added.filter(r => 
-      r.permissions.includes('Administrator')
+    const adminRoles = payload.added.filter((r) =>
+      r.permissions.includes("Administrator"),
     );
-    
+
     if (adminRoles.length > 0) {
       console.warn(`⚠️ Admin role granted to ${payload.member.tag}`, {
-        roles: adminRoles.map(r => r.name),
-        grantedBy: payload.audit?.executorTag || 'Unknown',
+        roles: adminRoles.map((r) => r.name),
+        grantedBy: payload.audit?.executorTag || "Unknown",
       });
     }
   },
@@ -477,7 +494,7 @@ runtime.registerEvent({
   handler: async (payload) => {
     console.log(`New role created: ${payload.role.name}`, {
       permissions: payload.role.permissions,
-      createdBy: payload.audit?.executorTag || 'Unknown',
+      createdBy: payload.audit?.executorTag || "Unknown",
     });
   },
 });
@@ -491,12 +508,12 @@ Monitor when the bot's own permissions change:
 runtime.registerEvent({
   name: DiscordEventTypes.MEMBER_ROLES_CHANGED,
   handler: async (payload) => {
-    const botId = runtime.getSetting('DISCORD_APPLICATION_ID');
-    
+    const botId = runtime.getSetting("DISCORD_APPLICATION_ID");
+
     if (payload.member.id === botId && payload.removed.length > 0) {
       console.error(`🚨 Bot roles removed!`, {
-        removed: payload.removed.map(r => r.name),
-        by: payload.audit?.executorTag || 'Unknown',
+        removed: payload.removed.map((r) => r.name),
+        by: payload.audit?.executorTag || "Unknown",
       });
       // Could trigger alerts, notifications, etc.
     }

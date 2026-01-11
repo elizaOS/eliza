@@ -13,9 +13,20 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "outDir": "./dist",
-    "rootDir": "./typescript",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "rootDir": ".",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
   },
-  "include": ["typescript/**/*.ts"],
-  "exclude": ["node_modules", "dist", "python", "rust", "**/__tests__/**", "**/*.test.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "python",
+    "rust",
+    "**/__tests__/**",
+    "**/*.test.ts"
+  ]
 }

@@ -1,4 +1,4 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { UUID } from "../../types";
 import { stringToUuid } from "../../utils";
 

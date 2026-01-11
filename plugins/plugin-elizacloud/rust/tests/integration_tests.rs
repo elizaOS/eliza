@@ -97,3 +97,8 @@ async fn test_embedding_batch() {
 }
 
 
+
+
+
+
+

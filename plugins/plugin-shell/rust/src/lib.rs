@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Shell Plugin - Shell command execution with directory restrictions and history tracking.
 //!
 //! This crate provides a secure way to execute shell commands within a restricted directory,
@@ -40,5 +41,10 @@ pub mod prelude {
         Result,
     };
 }
+
+
+
+
+
 
 

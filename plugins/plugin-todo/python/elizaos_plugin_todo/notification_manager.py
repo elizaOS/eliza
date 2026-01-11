@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from elizaos_plugin_todo.types import NotificationType
@@ -28,9 +28,7 @@ class NotificationPreferences:
             "daily": True,
         }
     )
-    quiet_hours: Optional[dict[str, int]] = field(
-        default_factory=lambda: {"start": 22, "end": 8}
-    )
+    quiet_hours: dict[str, int] | None = field(default_factory=lambda: {"start": 22, "end": 8})
 
 
 @dataclass
@@ -41,9 +39,9 @@ class NotificationData:
     body: str
     type: NotificationType
     priority: str = "medium"  # 'low' | 'medium' | 'high'
-    task_id: Optional[UUID] = None
-    room_id: Optional[UUID] = None
-    actions: Optional[list[dict[str, str]]] = None
+    task_id: UUID | None = None
+    room_id: UUID | None = None
+    actions: list[dict[str, str]] | None = None
 
 
 class NotificationManager:
@@ -57,7 +55,7 @@ class NotificationManager:
     - Multi-channel delivery (in-app, browser)
     """
 
-    def __init__(self, runtime: Optional[Any] = None) -> None:
+    def __init__(self, runtime: Any | None = None) -> None:
         """
         Initialize the notification manager.
 
@@ -68,7 +66,7 @@ class NotificationManager:
         self._user_preferences: dict[UUID, NotificationPreferences] = {}
         self._notification_queue: list[NotificationData] = []
         self._is_processing = False
-        self._queue_task: Optional[asyncio.Task[None]] = None
+        self._queue_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start the notification manager."""
@@ -153,9 +151,7 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
 
-    async def _send_in_app_notification(
-        self, notification: NotificationData
-    ) -> None:
+    async def _send_in_app_notification(self, notification: NotificationData) -> None:
         """
         Send an in-app notification.
 
@@ -168,13 +164,9 @@ class NotificationManager:
         if self._runtime:
             # In a real implementation, this would emit an event
             # to the runtime for in-app notification display
-            logger.debug(
-                f"In-app notification: {notification.title} - {notification.body}"
-            )
+            logger.debug(f"In-app notification: {notification.title} - {notification.body}")
 
-    async def _send_browser_notification(
-        self, notification: NotificationData
-    ) -> None:
+    async def _send_browser_notification(self, notification: NotificationData) -> None:
         """
         Send a browser notification.
 
@@ -182,13 +174,9 @@ class NotificationManager:
             notification: Notification data
         """
         # Browser notifications would be handled by the frontend
-        logger.debug(
-            f"Browser notification would be sent: {notification.title}"
-        )
+        logger.debug(f"Browser notification would be sent: {notification.title}")
 
-    def _should_send_browser_notification(
-        self, notification: NotificationData
-    ) -> bool:
+    def _should_send_browser_notification(self, notification: NotificationData) -> bool:
         """
         Check if browser notifications should be sent.
 
@@ -209,7 +197,7 @@ class NotificationManager:
         type_key = notification.type.value
         return prefs.reminder_types.get(type_key, False)
 
-    def _is_in_quiet_hours(self, room_id: Optional[UUID]) -> bool:
+    def _is_in_quiet_hours(self, room_id: UUID | None) -> bool:
         """
         Check if we're in quiet hours.
 
@@ -271,9 +259,7 @@ class NotificationManager:
         # In a real implementation, this would persist to database
         logger.debug(f"Updated preferences for {user_or_room_id}")
 
-    def format_reminder_title(
-        self, todo_name: str, reminder_type: str
-    ) -> str:
+    def format_reminder_title(self, todo_name: str, reminder_type: str) -> str:
         """
         Format a reminder notification title.
 
@@ -293,9 +279,7 @@ class NotificationManager:
         else:
             return f"📋 Reminder: {todo_name}"
 
-    def format_reminder_body(
-        self, todo_name: str, reminder_type: str
-    ) -> str:
+    def format_reminder_body(self, todo_name: str, reminder_type: str) -> str:
         """
         Format a reminder notification body.
 
@@ -314,5 +298,8 @@ class NotificationManager:
             return "Don't forget to complete your daily tasks today!"
         else:
             return f"Reminder about your task: {todo_name}"
+
+
+
 
 

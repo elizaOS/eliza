@@ -62,7 +62,7 @@ AWS_S3_FORCE_PATH_STYLE=boolean(true|false)
 ## Usage
 
 ```typescript
-import { createNodePlugin } from '@elizaos-plugins/plugin-node';
+import { createNodePlugin } from "@elizaos-plugins/plugin-node";
 
 // Initialize the plugin
 const nodePlugin = createNodePlugin();
@@ -157,8 +157,8 @@ Analyzes and generates descriptions for images.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction('DESCRIBE_IMAGE', {
-  imageUrl: 'path/to/image.jpg',
+const result = await runtime.executeAction("DESCRIBE_IMAGE", {
+  imageUrl: "path/to/image.jpg",
 });
 ```
 
@@ -234,7 +234,7 @@ Error: AWS credentials not configured
 Enable debug logging for detailed troubleshooting:
 
 ```typescript
-process.env.DEBUG = 'eliza:plugin-node:*';
+process.env.DEBUG = "eliza:plugin-node:*";
 ```
 
 ### System Requirements
@@ -247,13 +247,11 @@ process.env.DEBUG = 'eliza:plugin-node:*';
 ### Performance Optimization
 
 1. **Cache Management**
-
    - Regular cleanup of `content_cache` directory
    - Implement cache size limits
    - Monitor disk usage
 
 2. **Memory Usage**
-
    - Configure max buffer sizes
    - Implement streaming for large files
    - Monitor memory consumption
@@ -277,7 +275,6 @@ For issues and feature requests, please:
 ## Future Enhancements
 
 1. **File Operations**
-
    - Enhanced streaming capabilities
    - Advanced compression options
    - Batch file processing
@@ -286,7 +283,6 @@ For issues and feature requests, please:
    - Version control integration
 
 2. **Media Processing**
-
    - Additional video formats
    - Advanced image processing
    - Audio enhancement tools
@@ -295,7 +291,6 @@ For issues and feature requests, please:
    - Format conversion
 
 3. **Cloud Integration**
-
    - Multi-cloud support
    - Advanced caching
    - CDN optimization
@@ -304,7 +299,6 @@ For issues and feature requests, please:
    - Backup automation
 
 4. **Speech Services**
-
    - Additional voice models
    - Language expansion
    - Emotion detection
@@ -313,7 +307,6 @@ For issues and feature requests, please:
    - Custom voice training
 
 5. **Browser Automation**
-
    - Headless optimization
    - Parallel processing
    - Session management
@@ -322,7 +315,6 @@ For issues and feature requests, please:
    - Resource optimization
 
 6. **Security Features**
-
    - Enhanced encryption
    - Access control
    - Audit logging
@@ -331,7 +323,6 @@ For issues and feature requests, please:
    - Compliance tools
 
 7. **Performance Optimization**
-
    - Memory management
    - CPU utilization
    - Concurrent operations

@@ -63,5 +63,3 @@ class Transport(ABC):
     ) -> None:
         """Async context manager exit."""
         await self.close()
-
-

@@ -32,8 +32,8 @@ environment variable before server initialization:
 
 ```typescript
 // Disable pino logger features that cause issues in test environment
-process.env.DISABLE_LOG_STREAMING = 'true';
-process.env.LOG_JSON_FORMAT = 'false';
+process.env.DISABLE_LOG_STREAMING = "true";
+process.env.LOG_JSON_FORMAT = "false";
 ```
 
 ### 2. Update Server Code to Respect the Flag
@@ -42,7 +42,7 @@ In `packages/server/src/api/index.ts`, wrap the setupLogStreaming call:
 
 ```typescript
 // Setup log streaming integration with the logger - but only if not disabled
-if (process.env.DISABLE_LOG_STREAMING !== 'true') {
+if (process.env.DISABLE_LOG_STREAMING !== "true") {
   setupLogStreaming(io, router);
 }
 ```
@@ -54,12 +54,12 @@ state:
 
 ```typescript
 // Check if log streaming is disabled
-if (process.env.DISABLE_LOG_STREAMING === 'true') {
+if (process.env.DISABLE_LOG_STREAMING === "true") {
   return res.status(200).json({
     logs: [],
     count: 0,
     total: 0,
-    message: 'Log streaming is disabled in test mode',
+    message: "Log streaming is disabled in test mode",
   });
 }
 ```
@@ -71,13 +71,13 @@ test harness:
 
 ```typescript
 // test-e2e-harness.ts
-import { AgentRuntime, asUUID } from '@elizaos/core';
-import { createAdaptiveDatabaseAdapterV2 } from '@elizaos/plugin-sql';
-import { formsPlugin } from './src/index';
-import FormsPluginTestSuite from './src/__tests__/e2e/forms-plugin.test';
+import { AgentRuntime, asUUID } from "@elizaos/core";
+import { createAdaptiveDatabaseAdapterV2 } from "@elizaos/plugin-sql";
+import { formsPlugin } from "./src/index";
+import FormsPluginTestSuite from "./src/__tests__/e2e/forms-plugin.test";
 
 // Disable log streaming to avoid pino issues
-process.env.DISABLE_LOG_STREAMING = 'true';
+process.env.DISABLE_LOG_STREAMING = "true";
 
 // ... create runtime and run tests
 ```

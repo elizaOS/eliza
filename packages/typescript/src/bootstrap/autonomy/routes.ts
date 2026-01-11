@@ -1,17 +1,21 @@
 /**
  * Autonomy Routes for elizaOS
- * 
+ *
  * API routes for controlling autonomy via REST.
  */
 
 import type { Route } from "../../types";
-import { AutonomyService, AUTONOMY_SERVICE_TYPE } from "./service";
+import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service";
 
 /**
  * Get autonomy service from runtime with fallback
  */
-function getAutonomyService(runtime: { getService: (name: string) => AutonomyService | null }): AutonomyService | null {
-  return runtime.getService(AUTONOMY_SERVICE_TYPE) || runtime.getService("autonomy");
+function getAutonomyService(runtime: {
+  getService: (name: string) => AutonomyService | null;
+}): AutonomyService | null {
+  return (
+    runtime.getService(AUTONOMY_SERVICE_TYPE) || runtime.getService("autonomy")
+  );
 }
 
 /**
@@ -158,10 +162,15 @@ export const autonomyRoutes: Route[] = [
 
       const { interval } = req.body as { interval?: number };
 
-      if (typeof interval !== "number" || interval < 5000 || interval > 600000) {
+      if (
+        typeof interval !== "number" ||
+        interval < 5000 ||
+        interval > 600000
+      ) {
         res.status(400).json({
           success: false,
-          error: "Interval must be a number between 5000ms (5s) and 600000ms (10m)",
+          error:
+            "Interval must be a number between 5000ms (5s) and 600000ms (10m)",
         });
         return;
       }
@@ -180,4 +189,3 @@ export const autonomyRoutes: Route[] = [
     },
   },
 ];
-

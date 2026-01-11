@@ -71,7 +71,7 @@ class GoogleGenAIConfig:
         self._timeout_seconds = timeout_seconds
 
     @classmethod
-    def from_env(cls) -> "GoogleGenAIConfig":
+    def from_env(cls) -> GoogleGenAIConfig:
         """
         Load configuration from environment variables.
 
@@ -174,7 +174,7 @@ class GoogleGenAIConfig:
         """Get the full embedContent endpoint URL for a model."""
         return f"{self._base_url}/{self._api_version}/models/{model.id}:embedContent?key={self._api_key}"
 
-    def with_base_url(self, base_url: str) -> "GoogleGenAIConfig":
+    def with_base_url(self, base_url: str) -> GoogleGenAIConfig:
         """Create a new config with a different base URL."""
         return GoogleGenAIConfig(
             api_key=self._api_key,
@@ -187,7 +187,7 @@ class GoogleGenAIConfig:
             timeout_seconds=self._timeout_seconds,
         )
 
-    def with_timeout(self, seconds: int) -> "GoogleGenAIConfig":
+    def with_timeout(self, seconds: int) -> GoogleGenAIConfig:
         """Create a new config with a different timeout."""
         return GoogleGenAIConfig(
             api_key=self._api_key,
@@ -199,5 +199,8 @@ class GoogleGenAIConfig:
             image_model=self._image_model,
             timeout_seconds=seconds,
         )
+
+
+
 
 

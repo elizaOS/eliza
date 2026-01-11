@@ -18,7 +18,7 @@
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
   -webkit-backdrop-filter: blur(12px);
-          backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .page_headerContent__vImKI {
@@ -42,7 +42,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Geist Mono', monospace;
+  font-family: "Geist Mono", monospace;
   font-weight: 600;
   font-size: 1.25rem;
   color: white;
@@ -255,7 +255,9 @@
   font-family: inherit;
   font-size: 0.95rem;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .page_input__lx_gt:focus {
@@ -283,7 +285,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s, transform 0.1s;
+  transition:
+    background 0.2s,
+    transform 0.1s;
 }
 
 .page_sendButton__VuU1n:hover:not(:disabled) {
@@ -309,7 +313,9 @@
 }
 
 @keyframes page_spin__OXxwq {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .page_footerMeta__1GEs7 {
@@ -361,5 +367,3 @@
     height: 44px;
   }
 }
-
-

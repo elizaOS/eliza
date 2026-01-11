@@ -1,11 +1,11 @@
 """SAM TTS Service - Retro text-to-speech using SAM."""
 
-import struct
 import logging
+import struct
 from typing import Protocol
 
-from ..types import SamTTSOptions, DEFAULT_SAM_OPTIONS
 from ..sam_engine import SamEngine
+from ..types import DEFAULT_SAM_OPTIONS, SamTTSOptions
 
 logger = logging.getLogger(__name__)
 

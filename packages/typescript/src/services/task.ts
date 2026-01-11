@@ -1,7 +1,7 @@
 // registered to runtime through plugin
 
-import type { IAgentRuntime } from "../types/runtime";
 import type { Memory } from "../types/memory";
+import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { State } from "../types/state";
 import type { Task } from "../types/task";
@@ -135,18 +135,7 @@ export class TaskService extends Service {
     }
 
     this.timer = setInterval(async () => {
-      try {
-        await this.checkTasks();
-      } catch (error) {
-        this.runtime.logger.error(
-          {
-            src: "plugin:bootstrap:service:task",
-            agentId: this.runtime.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error in task timer",
-        );
-      }
+      await this.checkTasks();
     }, this.TICK_INTERVAL) as NodeJS.Timeout;
   }
 
@@ -176,26 +165,13 @@ export class TaskService extends Service {
 
       // If worker has validate function, run validation
       if (worker.validate) {
-        try {
-          // Pass empty message and state since validation is time-based
-          const isValid = await worker.validate(
-            this.runtime,
-            {} as Memory,
-            {} as State,
-          );
-          if (!isValid) {
-            continue;
-          }
-        } catch (error) {
-          this.runtime.logger.error(
-            {
-              src: "plugin:bootstrap:service:task",
-              agentId: this.runtime.agentId,
-              taskName: task.name,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Error validating task",
-          );
+        // Pass empty message and state since validation is time-based
+        const isValid = await worker.validate(
+          this.runtime,
+          {} as Memory,
+          {} as State,
+        );
+        if (!isValid) {
           continue;
         }
       }
@@ -212,97 +188,86 @@ export class TaskService extends Service {
    * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
    */
   private async checkTasks() {
-    try {
-      // Get all tasks with "queue" tag
-      const allTasks = await this.runtime.getTasks({
-        tags: ["queue"],
-      });
+    // Get all tasks with "queue" tag
+    const allTasks = await this.runtime.getTasks({
+      tags: ["queue"],
+    });
 
-      if (!allTasks) {
-        return;
+    if (!allTasks) {
+      return;
+    }
+
+    // validate the tasks and sort them
+    const tasks = await this.validateTasks(allTasks);
+
+    const now = Date.now();
+
+    for (const task of tasks) {
+      // First check task.updatedAt (for newer task format)
+      // Then fall back to task.metadata.updatedAt (for older tasks)
+      // Finally default to 0 if neither exists
+      let taskStartTime: number;
+
+      // if tags does not contain "repeat", execute immediately
+      if (!task.tags?.includes("repeat")) {
+        // does not contain repeat
+        await this.executeTask(task);
+        continue;
       }
 
-      // validate the tasks and sort them
-      const tasks = await this.validateTasks(allTasks);
+      if (typeof task.updatedAt === "number") {
+        taskStartTime = task.updatedAt;
+      } else if (
+        task.metadata?.updatedAt &&
+        typeof task.metadata.updatedAt === "number"
+      ) {
+        taskStartTime = task.metadata.updatedAt;
+      } else if (task.updatedAt) {
+        taskStartTime = new Date(task.updatedAt).getTime();
+      } else {
+        taskStartTime = 0; // Default to immediate execution if no timestamp found
+      }
 
-      const now = Date.now();
+      // Get updateInterval from metadata
+      const taskMetadata = task.metadata;
+      const updateIntervalMs = taskMetadata?.updateInterval ?? 0; // update immediately
 
-      for (const task of tasks) {
-        // First check task.updatedAt (for newer task format)
-        // Then fall back to task.metadata.updatedAt (for older tasks)
-        // Finally default to 0 if neither exists
-        let taskStartTime: number;
+      // if tags does not contain "repeat", execute immediately
+      if (!task.tags?.includes("repeat")) {
+        await this.executeTask(task);
+        continue;
+      }
 
-        // if tags does not contain "repeat", execute immediately
-        if (!(task.tags && task.tags.includes("repeat"))) {
-          // does not contain repeat
-          await this.executeTask(task);
-          continue;
-        }
-
-        if (typeof task.updatedAt === "number") {
-          taskStartTime = task.updatedAt;
-        } else if (
-          task.metadata && task.metadata.updatedAt &&
-          typeof task.metadata.updatedAt === "number"
-        ) {
-          taskStartTime = task.metadata.updatedAt;
-        } else if (task.updatedAt) {
-          taskStartTime = new Date(task.updatedAt).getTime();
-        } else {
-          taskStartTime = 0; // Default to immediate execution if no timestamp found
-        }
-
-        // Get updateInterval from metadata
-        const taskMetadata = task.metadata;
-        const updateIntervalMs = (taskMetadata && taskMetadata.updateInterval) ?? 0; // update immediately
-
-        // if tags does not contain "repeat", execute immediately
-        if (!(task.tags && task.tags.includes("repeat"))) {
-          await this.executeTask(task);
-          continue;
-        }
-
-        const taskMetadataUpdatedAt = taskMetadata && taskMetadata.updatedAt;
-        const taskMetadataCreatedAt = taskMetadata && taskMetadata.createdAt;
-        if (taskMetadataUpdatedAt === taskMetadataCreatedAt) {
-          if (task.tags && task.tags.includes("immediate")) {
-            this.runtime.logger.debug(
-              {
-                src: "plugin:bootstrap:service:task",
-                agentId: this.runtime.agentId,
-                taskName: task.name,
-              },
-              "Immediately running task",
-            );
-            await this.executeTask(task);
-            continue;
-          }
-        }
-
-        // Check if enough time has passed since last update
-        if (now - taskStartTime >= updateIntervalMs) {
+      const taskMetadataUpdatedAt = taskMetadata?.updatedAt;
+      const taskMetadataCreatedAt = taskMetadata?.createdAt;
+      if (taskMetadataUpdatedAt === taskMetadataCreatedAt) {
+        if (task.tags?.includes("immediate")) {
           this.runtime.logger.debug(
             {
               src: "plugin:bootstrap:service:task",
               agentId: this.runtime.agentId,
               taskName: task.name,
-              intervalMs: updateIntervalMs,
             },
-            "Executing task - interval elapsed",
+            "Immediately running task",
           );
           await this.executeTask(task);
+          continue;
         }
       }
-    } catch (error) {
-      this.runtime.logger.error(
-        {
-          src: "plugin:bootstrap:service:task",
-          agentId: this.runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error checking tasks",
-      );
+
+      // Check if enough time has passed since last update
+      if (now - taskStartTime >= updateIntervalMs) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:bootstrap:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            intervalMs: updateIntervalMs,
+          },
+          "Executing task - interval elapsed",
+        );
+        await this.executeTask(task);
+      }
     }
   }
 
@@ -312,51 +277,39 @@ export class TaskService extends Service {
    * @param {Task} task - The task to be executed.
    */
   private async executeTask(task: Task) {
-    try {
-      if (!task || !task.id) {
-        this.runtime.logger.debug(
-          {
-            src: "plugin:bootstrap:service:task",
-            agentId: this.runtime.agentId,
-          },
-          "Task not found",
-        );
-        return;
-      }
+    if (!task || !task.id) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:bootstrap:service:task",
+          agentId: this.runtime.agentId,
+        },
+        "Task not found",
+      );
+      return;
+    }
 
-      const worker = this.runtime.getTaskWorker(task.name);
-      if (!worker) {
-        this.runtime.logger.debug(
-          {
-            src: "plugin:bootstrap:service:task",
-            agentId: this.runtime.agentId,
-            taskName: task.name,
-          },
-          "No worker found for task type",
-        );
-        return;
-      }
+    const worker = this.runtime.getTaskWorker(task.name);
+    if (!worker) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:bootstrap:service:task",
+          agentId: this.runtime.agentId,
+          taskName: task.name,
+        },
+        "No worker found for task type",
+      );
+      return;
+    }
 
-      // Handle repeating vs non-repeating tasks
-      if (task.tags && task.tags.includes("repeat")) {
-        // For repeating tasks, update the updatedAt timestamp
-        await this.runtime.updateTask(task.id, {
-          metadata: {
-            ...task.metadata,
-            updatedAt: Date.now(),
-          },
-        });
-        this.runtime.logger.debug(
-          {
-            src: "plugin:bootstrap:service:task",
-            agentId: this.runtime.agentId,
-            taskName: task.name,
-            taskId: task.id,
-          },
-          "Updated repeating task with new timestamp",
-        );
-      }
-
+    // Handle repeating vs non-repeating tasks
+    if (task.tags?.includes("repeat")) {
+      // For repeating tasks, update the updatedAt timestamp
+      await this.runtime.updateTask(task.id, {
+        metadata: {
+          ...task.metadata,
+          updatedAt: Date.now(),
+        },
+      });
       this.runtime.logger.debug(
         {
           src: "plugin:bootstrap:service:task",
@@ -364,34 +317,34 @@ export class TaskService extends Service {
           taskName: task.name,
           taskId: task.id,
         },
-        "Executing task",
+        "Updated repeating task with new timestamp",
       );
-      await worker.execute(this.runtime, task.metadata || {}, task);
-      //this.runtime.logger.debug('task.tags are', task.tags);
+    }
 
-      // Handle repeating vs non-repeating tasks
-      if (!(task.tags && task.tags.includes("repeat"))) {
-        // For non-repeating tasks, delete the task after execution
-        await this.runtime.deleteTask(task.id);
-        this.runtime.logger.debug(
-          {
-            src: "plugin:bootstrap:service:task",
-            agentId: this.runtime.agentId,
-            taskName: task.name,
-            taskId: task.id,
-          },
-          "Deleted non-repeating task after execution",
-        );
-      }
-    } catch (error) {
-      this.runtime.logger.error(
+    this.runtime.logger.debug(
+      {
+        src: "plugin:bootstrap:service:task",
+        agentId: this.runtime.agentId,
+        taskName: task.name,
+        taskId: task.id,
+      },
+      "Executing task",
+    );
+    await worker.execute(this.runtime, task.metadata || {}, task);
+    //this.runtime.logger.debug('task.tags are', task.tags);
+
+    // Handle repeating vs non-repeating tasks
+    if (!task.tags?.includes("repeat")) {
+      // For non-repeating tasks, delete the task after execution
+      await this.runtime.deleteTask(task.id);
+      this.runtime.logger.debug(
         {
           src: "plugin:bootstrap:service:task",
           agentId: this.runtime.agentId,
+          taskName: task.name,
           taskId: task.id,
-          error: error instanceof Error ? error.message : String(error),
         },
-        "Error executing task",
+        "Deleted non-repeating task after execution",
       );
     }
   }

@@ -33,9 +33,7 @@ class HttpTransport(Transport):
         if self._connected:
             raise McpError("Transport already connected", "ALREADY_CONNECTED")
 
-        self._client = httpx.AsyncClient(
-            timeout=httpx.Timeout(self._config.timeout_ms / 1000)
-        )
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(self._config.timeout_ms / 1000))
 
         # Start SSE listener
         self._sse_task = asyncio.create_task(self._sse_listener())
@@ -113,7 +111,7 @@ class HttpTransport(Transport):
                 future,
                 timeout=self._config.timeout_ms / 1000,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending_responses.pop(request_id, None)
             raise McpError.timeout_error(f"Request {request_id}")
 
@@ -143,4 +141,3 @@ class HttpTransport(Transport):
         """Generate the next request ID."""
         self._request_id += 1
         return self._request_id
-

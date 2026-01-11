@@ -10,7 +10,7 @@ type _Int32List = Int32Array | ArrayLike<number>;
 type _Uint32List = Uint32Array | ArrayLike<number>;
 
 // Fix pg-protocol
-declare module 'pg-protocol/dist/messages' {
+declare module "pg-protocol/dist/messages" {
   export interface NoticeMessage {
     length: number;
     name: string;
@@ -35,14 +35,10 @@ declare module 'pg-protocol/dist/messages' {
 }
 
 // React types for React Router
-declare module 'react' {
-  export interface FC<P = {}> {
-    (props: P): ReactElement | null;
-  }
+declare module "react" {
+  export type FC<P = {}> = (props: P) => ReactElement | null;
 
-  export interface ComponentType<P = {}> {
-    (props: P): ReactElement | null;
-  }
+  export type ComponentType<P = {}> = (props: P) => ReactElement | null;
 
   export interface ReactElement {
     type: any;
@@ -54,7 +50,7 @@ declare module 'react' {
 }
 
 // Fix React Router types
-declare module 'react-router' {
+declare module "react-router" {
   export interface match<Params = {}> {
     params: Params;
     isExact: boolean;
@@ -130,7 +126,7 @@ declare module 'react-router' {
 }
 
 // Fix MDX types
-declare module 'mdx' {
+declare module "mdx" {
   export type MDXComponents = {
     [key: string]: any;
   };

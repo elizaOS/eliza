@@ -1,11 +1,17 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, useCallback, FormEvent } from 'react';
-import styles from './page.module.css';
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import styles from "./page.module.css";
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: Date;
 }
@@ -18,7 +24,7 @@ interface StreamChunk {
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,45 +33,49 @@ export default function Home() {
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [scrollToBottom]);
 
   // Initialize runtime on mount
   useEffect(() => {
     const initRuntime = async () => {
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'init' }),
-        });
-        
-        const data = await response.json() as { success?: boolean; error?: string; mode?: string };
-        
-        if (data.success) {
-          setIsInitialized(true);
-          const statusEl = document.getElementById('status-text');
-          if (statusEl) {
-            statusEl.textContent = data.mode === 'elizaos' ? 'elizaOS' : 'Classic';
-          }
-          const welcomeMsg = data.mode === 'elizaos'
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "init" }),
+      });
+
+      const data = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        mode?: string;
+      };
+
+      if (data.success) {
+        setIsInitialized(true);
+        const statusEl = document.getElementById("status-text");
+        if (statusEl) {
+          statusEl.textContent =
+            data.mode === "elizaos" ? "elizaOS" : "Classic";
+        }
+        const welcomeMsg =
+          data.mode === "elizaos"
             ? "Hello! I'm Eliza, powered by elizaOS. How can I help you today?"
             : "Hello! I'm Eliza (classic mode). For LLM responses, set POSTGRES_URL or run `elizaos start`.";
-          setMessages([{
-            id: 'welcome',
-            role: 'assistant',
+        setMessages([
+          {
+            id: "welcome",
+            role: "assistant",
             content: welcomeMsg,
             timestamp: new Date(),
-          }]);
-        } else {
-          setError(data.error || 'Failed to initialize');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to connect to server');
+          },
+        ]);
+      } else {
+        setError(data.error || "Failed to initialize");
       }
     };
 
@@ -81,85 +91,82 @@ export default function Home() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     const text = input.trim();
     if (!text || isLoading || !isInitialized) return;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
-      role: 'user',
+      role: "user",
       content: text,
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
     setIsLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
+    }
 
-      // Handle streaming response
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response stream');
-      }
+    // Handle streaming response
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("No response stream");
+    }
 
-      const assistantMessageId = `assistant-${Date.now()}`;
-      let fullContent = '';
+    const assistantMessageId = `assistant-${Date.now()}`;
+    let fullContent = "";
 
-      // Add empty assistant message
-      setMessages(prev => [...prev, {
+    // Add empty assistant message
+    setMessages((prev) => [
+      ...prev,
+      {
         id: assistantMessageId,
-        role: 'assistant',
-        content: '',
+        role: "assistant",
+        content: "",
         timestamp: new Date(),
-      }]);
+      },
+    ]);
 
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    const decoder = new TextDecoder();
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line.slice(6)) as StreamChunk;
-            if (data.text) {
-              fullContent += data.text;
-              setMessages(prev => prev.map(msg => 
-                msg.id === assistantMessageId 
-                  ? { ...msg, content: fullContent }
-                  : msg
-              ));
-            }
-            if (data.error) {
-              throw new Error(data.error);
-            }
-          } catch {
-            // Ignore parse errors for incomplete chunks
-          }
+      const chunk = decoder.decode(value);
+      const lines = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("data: "));
+
+      for (const line of lines) {
+        const data = JSON.parse(line.slice(6)) as StreamChunk;
+        if (data.text) {
+          fullContent += data.text;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: fullContent }
+                : msg,
+            ),
+          );
+        }
+        if (data.error) {
+          throw new Error(data.error);
         }
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
-      // Remove the pending assistant message if error
-      setMessages(prev => prev.filter(msg => msg.role !== 'assistant' || msg.content !== ''));
-    } finally {
-      setIsLoading(false);
     }
+
+    setIsLoading(false);
   };
 
   return (
@@ -175,9 +182,11 @@ export default function Home() {
             </div>
           </div>
           <div className={styles.status}>
-            <span className={`${styles.statusDot} ${isInitialized ? styles.online : styles.offline}`} />
+            <span
+              className={`${styles.statusDot} ${isInitialized ? styles.online : styles.offline}`}
+            />
             <span className={styles.statusText} id="status-text">
-              {isInitialized ? 'Ready' : 'Initializing...'}
+              {isInitialized ? "Ready" : "Initializing..."}
             </span>
           </div>
         </div>
@@ -187,29 +196,31 @@ export default function Home() {
       <main className={styles.main}>
         <div className={styles.messagesContainer}>
           {messages.map((message) => (
-            <div 
-              key={message.id} 
+            <div
+              key={message.id}
               className={`${styles.message} ${styles[message.role]}`}
             >
               <div className={styles.messageAvatar}>
-                {message.role === 'assistant' ? '🤖' : '👤'}
+                {message.role === "assistant" ? "🤖" : "👤"}
               </div>
               <div className={styles.messageContent}>
                 <div className={styles.messageMeta}>
                   <span className={styles.messageRole}>
-                    {message.role === 'assistant' ? 'Eliza' : 'You'}
+                    {message.role === "assistant" ? "Eliza" : "You"}
                   </span>
                   <span className={styles.messageTime}>
-                    {message.timestamp.toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
+                    {message.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })}
                   </span>
                 </div>
                 <div className={styles.messageText}>
                   {message.content || (
                     <span className={styles.typingIndicator}>
-                      <span>●</span><span>●</span><span>●</span>
+                      <span>●</span>
+                      <span>●</span>
+                      <span>●</span>
                     </span>
                   )}
                 </div>
@@ -223,7 +234,9 @@ export default function Home() {
         {error && (
           <div className={styles.errorBanner}>
             <span>⚠️ {error}</span>
-            <button onClick={() => setError(null)}>×</button>
+            <button type="button" onClick={() => setError(null)}>
+              ×
+            </button>
           </div>
         )}
       </main>
@@ -236,30 +249,38 @@ export default function Home() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isInitialized ? "Send a message..." : "Initializing..."}
+            placeholder={
+              isInitialized ? "Send a message..." : "Initializing..."
+            }
             disabled={!isInitialized || isLoading}
             className={styles.input}
             autoComplete="off"
           />
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={!isInitialized || isLoading || !input.trim()}
             className={styles.sendButton}
           >
             {isLoading ? (
               <span className={styles.spinner} />
             ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-label="Send message"
+                role="img"
+              >
                 <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
               </svg>
             )}
           </button>
         </form>
-        <div className={styles.footerMeta}>
-          Powered by elizaOS AgentRuntime
-        </div>
+        <div className={styles.footerMeta}>Powered by elizaOS AgentRuntime</div>
       </footer>
     </div>
   );
 }
-

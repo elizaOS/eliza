@@ -2,7 +2,7 @@
  * Abstract base classes for TEE providers.
  */
 
-import type { RemoteAttestationQuote, TdxQuoteHashAlgorithm, DeriveKeyResult } from "../types";
+import type { DeriveKeyResult, RemoteAttestationQuote, TdxQuoteHashAlgorithm } from "../types";
 
 /**
  * Abstract class for deriving keys from the TEE.
@@ -47,5 +47,3 @@ export abstract class RemoteAttestationProvider {
     hashAlgorithm?: TdxQuoteHashAlgorithm
   ): Promise<RemoteAttestationQuote>;
 }
-
-

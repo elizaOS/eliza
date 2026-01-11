@@ -7,7 +7,7 @@ Provides a high-level interface to OpenAI APIs.
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from elizaos_plugin_openai.client import OpenAIClient
 from elizaos_plugin_openai.tokenization import (
@@ -25,7 +25,6 @@ from elizaos_plugin_openai.types import (
     ImageQuality,
     ImageSize,
     ImageStyle,
-    ObjectGenerationParams,
     OpenAIConfig,
     TextGenerationParams,
     TextToSpeechParams,
@@ -67,9 +66,7 @@ class OpenAIPlugin:
         """
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
-            raise ValueError(
-                "OPENAI_API_KEY must be provided or set in environment variables"
-            )
+            raise ValueError("OPENAI_API_KEY must be provided or set in environment variables")
 
         self._config = OpenAIConfig(
             api_key=key,
@@ -85,7 +82,7 @@ class OpenAIPlugin:
         """Close the plugin and release resources."""
         await self._client.close()
 
-    async def __aenter__(self) -> "OpenAIPlugin":
+    async def __aenter__(self) -> OpenAIPlugin:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -448,13 +445,14 @@ def create_plugin(
 # elizaOS Plugin (for use with AgentRuntime)
 # ============================================================================
 
-def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
+
+def create_openai_elizaos_plugin() -> ElizaOSPlugin:
     """
     Create an elizaOS-compatible plugin for OpenAI.
-    
+
     This creates a proper elizaOS Plugin that can be passed to AgentRuntime.
     The plugin registers model handlers for TEXT_LARGE, TEXT_SMALL, and TEXT_EMBEDDING.
-    
+
     Configuration is read from environment variables:
     - OPENAI_API_KEY (required)
     - OPENAI_BASE_URL (optional)
@@ -462,13 +460,14 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
     - OPENAI_LARGE_MODEL (optional, default: gpt-5)
     """
     from typing import Any
+
     from elizaos import Plugin
     from elizaos.types.model import ModelType
     from elizaos.types.runtime import IAgentRuntime
-    
+
     # Client instance (created lazily on first use)
     _client: OpenAIPlugin | None = None
-    
+
     def _get_client() -> OpenAIPlugin:
         nonlocal _client
         if _client is None:
@@ -479,7 +478,7 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
                 large_model=os.environ.get("OPENAI_LARGE_MODEL", "gpt-5"),
             )
         return _client
-    
+
     async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
         # Note: gpt-5 models don't support temperature - use defaults
@@ -488,7 +487,7 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
             system=params.get("system"),
             max_tokens=params.get("maxTokens"),
         )
-    
+
     async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
         # Note: gpt-5-mini doesn't support temperature - use defaults
@@ -497,11 +496,11 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
             system=params.get("system"),
             max_tokens=params.get("maxTokens"),
         )
-    
+
     async def embedding_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> list[float]:
         client = _get_client()
         return await client.create_embedding(params.get("text", ""))
-    
+
     return Plugin(
         name="openai",
         description="OpenAI model provider for elizaOS",
@@ -514,12 +513,12 @@ def create_openai_elizaos_plugin() -> "ElizaOSPlugin":
 
 
 # Lazy plugin singleton
-_openai_plugin_instance: "Plugin | None" = None
+_openai_plugin_instance: Plugin | None = None
 
-def get_openai_plugin() -> "Plugin":
+
+def get_openai_plugin() -> Plugin:
     """Get the singleton elizaOS OpenAI plugin instance."""
     global _openai_plugin_instance
     if _openai_plugin_instance is None:
         _openai_plugin_instance = create_openai_elizaos_plugin()
     return _openai_plugin_instance
-

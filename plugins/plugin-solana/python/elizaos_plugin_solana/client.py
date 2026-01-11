@@ -1,7 +1,6 @@
 """Solana client for RPC operations."""
 
 from decimal import Decimal
-from typing import Optional
 
 import httpx
 from solana.rpc.async_api import AsyncClient
@@ -9,7 +8,6 @@ from solana.rpc.commitment import Confirmed
 from solana.rpc.types import TokenAccountOpts
 from solders.message import MessageV0
 from solders.pubkey import Pubkey
-from solders.signature import Signature
 from solders.system_program import TransferParams as SystemTransferParams
 from solders.system_program import transfer
 from solders.transaction import VersionedTransaction
@@ -18,6 +16,8 @@ from spl.token.instructions import TransferParams as SplTransferParams
 from spl.token.instructions import (
     create_associated_token_account,
     get_associated_token_address,
+)
+from spl.token.instructions import (
     transfer as spl_transfer,
 )
 
@@ -25,7 +25,6 @@ from elizaos_plugin_solana.config import WalletConfig
 from elizaos_plugin_solana.errors import (
     ConfigError,
     InsufficientBalanceError,
-    InvalidPublicKeyError,
     RpcError,
     SwapError,
     TransactionError,
@@ -104,9 +103,7 @@ class SolanaClient:
         except Exception as e:
             raise RpcError(f"Failed to get balance: {e}") from e
 
-    async def get_balances_for_addresses(
-        self, addresses: list[str]
-    ) -> dict[str, Decimal]:
+    async def get_balances_for_addresses(self, addresses: list[str]) -> dict[str, Decimal]:
         """Get SOL balances for multiple addresses.
 
         Args:
@@ -129,9 +126,7 @@ class SolanaClient:
         """Get token accounts for the configured wallet."""
         return await self.get_token_accounts_for(self._config.public_key)
 
-    async def get_token_accounts_for(
-        self, owner: Pubkey
-    ) -> list[TokenAccountInfo]:
+    async def get_token_accounts_for(self, owner: Pubkey) -> list[TokenAccountInfo]:
         """Get token accounts for any address.
 
         Args:
@@ -164,9 +159,7 @@ class SolanaClient:
         except Exception as e:
             raise RpcError(f"Failed to get token accounts: {e}") from e
 
-    async def transfer_sol(
-        self, recipient: Pubkey, amount_sol: Decimal
-    ) -> TransferResult:
+    async def transfer_sol(self, recipient: Pubkey, amount_sol: Decimal) -> TransferResult:
         """Transfer SOL to another address.
 
         Args:
@@ -187,9 +180,7 @@ class SolanaClient:
         # Check balance
         balance = await self._rpc.get_balance(keypair.pubkey())
         if balance.value is None or balance.value < lamports:
-            raise InsufficientBalanceError(
-                required=lamports, available=balance.value or 0
-            )
+            raise InsufficientBalanceError(required=lamports, available=balance.value or 0)
 
         try:
             # Create transfer instruction
@@ -206,9 +197,7 @@ class SolanaClient:
             blockhash = blockhash_resp.value.blockhash
 
             # Create and sign transaction
-            msg = MessageV0.try_compile(
-                keypair.pubkey(), [ix], [], blockhash
-            )
+            msg = MessageV0.try_compile(keypair.pubkey(), [ix], [], blockhash)
             tx = VersionedTransaction(msg, [keypair])
 
             # Send transaction
@@ -256,7 +245,7 @@ class SolanaClient:
             else:
                 decimals = 9  # Default to 9 if we can't parse
 
-            raw_amount = int(amount * Decimal(10 ** decimals))
+            raw_amount = int(amount * Decimal(10**decimals))
 
             # Get source and destination ATAs
             source_ata = get_associated_token_address(keypair.pubkey(), mint)
@@ -293,9 +282,7 @@ class SolanaClient:
             blockhash = blockhash_resp.value.blockhash
 
             # Create and sign transaction
-            msg = MessageV0.try_compile(
-                keypair.pubkey(), instructions, [], blockhash
-            )
+            msg = MessageV0.try_compile(keypair.pubkey(), instructions, [], blockhash)
             tx = VersionedTransaction(msg, [keypair])
 
             # Send transaction
@@ -383,6 +370,7 @@ class SolanaClient:
 
             # Decode and sign the transaction
             import base64
+
             tx_bytes = base64.b64decode(swap_tx.swap_transaction)
             tx = VersionedTransaction.from_bytes(tx_bytes)
 
@@ -453,7 +441,7 @@ class SolanaClient:
             return False
 
     @staticmethod
-    def is_on_curve(address: str) -> Optional[bool]:
+    def is_on_curve(address: str) -> bool | None:
         """Check if an address is on the Ed25519 curve.
 
         Args:
@@ -479,11 +467,9 @@ class SolanaClient:
 
     async def __aexit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[object],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
     ) -> None:
         """Async context manager exit."""
         await self.close()
-
-

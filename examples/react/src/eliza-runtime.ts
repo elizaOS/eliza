@@ -11,18 +11,18 @@
 import {
   AgentRuntime,
   ChannelType,
-  createMessageMemory,
-  stringToUuid,
-  ModelType,
   type Character,
+  createMessageMemory,
+  ModelType,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import { v4 as uuidv4 } from "uuid";
 import {
   elizaClassicPlugin,
   getElizaGreeting,
 } from "@elizaos/plugin-eliza-classic";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
 import { createBrowserPGlite } from "./pglite-browser";
 
 // ============================================================================
@@ -141,13 +141,9 @@ export async function getRuntime(): Promise<AgentRuntime> {
 
   // Start initialization
   initializationPromise = initializeRuntime();
-
-  try {
-    runtimeInstance = await initializationPromise;
-    return runtimeInstance;
-  } finally {
-    initializationPromise = null;
-  }
+  runtimeInstance = await initializationPromise;
+  initializationPromise = null;
+  return runtimeInstance;
 }
 
 /**
@@ -197,7 +193,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
  */
 export async function sendMessage(
   text: string,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
 ): Promise<string> {
   const runtime = await getRuntime();
 
@@ -210,11 +206,7 @@ export async function sendMessage(
   });
 
   // Store the user message
-  try {
-    await runtime.createMemory(message, "messages");
-  } catch (error) {
-    console.warn("[elizaOS] Could not store user message:", error);
-  }
+  await runtime.createMemory(message, "messages");
 
   // Use the model directly - our ELIZA plugin handles TEXT_LARGE
   const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -230,17 +222,13 @@ export async function sendMessage(
   }
 
   // Store the ELIZA response
-  try {
-    const elizaMessage = createMessageMemory({
-      id: uuidv4() as UUID,
-      entityId: runtime.agentId,
-      roomId,
-      content: { text: responseText },
-    });
-    await runtime.createMemory(elizaMessage, "messages");
-  } catch (error) {
-    console.warn("[elizaOS] Could not store ELIZA response:", error);
-  }
+  const elizaMessage = createMessageMemory({
+    id: uuidv4() as UUID,
+    entityId: runtime.agentId,
+    roomId,
+    content: { text: responseText },
+  });
+  await runtime.createMemory(elizaMessage, "messages");
 
   return responseText;
 }

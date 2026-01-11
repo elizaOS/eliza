@@ -601,8 +601,7 @@ export const PolymarketErrorCode = {
   CONFIG_ERROR: "CONFIG_ERROR",
 } as const;
 
-export type PolymarketErrorCode =
-  (typeof PolymarketErrorCode)[keyof typeof PolymarketErrorCode];
+export type PolymarketErrorCode = (typeof PolymarketErrorCode)[keyof typeof PolymarketErrorCode];
 
 /**
  * Structured Polymarket error
@@ -625,11 +624,7 @@ export class PolymarketError extends Error {
 /**
  * WebSocket subscription type
  */
-export type WebSocketSubscriptionType =
-  | "market"
-  | "user"
-  | "price"
-  | "trade";
+export type WebSocketSubscriptionType = "market" | "user" | "price" | "trade";
 
 /**
  * WebSocket message
@@ -706,5 +701,3 @@ export function isValidConditionId(id: string): boolean {
 export function isValidTokenId(id: string): boolean {
   return /^\d+$/.test(id) || /^0x[a-fA-F0-9]+$/.test(id);
 }
-
-

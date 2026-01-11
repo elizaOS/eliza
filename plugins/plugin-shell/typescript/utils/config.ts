@@ -1,7 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
-import path from "path";
-import fs from "fs";
 import type { ShellConfig } from "../types";
 
 // Environment validation schema using Zod
@@ -58,9 +58,7 @@ export function loadShellConfig(): ShellConfig {
     : [];
 
   // Combine default and custom forbidden commands
-  const forbiddenCommands = [
-    ...new Set([...DEFAULT_FORBIDDEN_COMMANDS, ...customForbidden]),
-  ];
+  const forbiddenCommands = [...new Set([...DEFAULT_FORBIDDEN_COMMANDS, ...customForbidden])];
 
   const config: ShellConfig = {
     enabled,
@@ -72,11 +70,12 @@ export function loadShellConfig(): ShellConfig {
   // Validate configuration
   const parseResult = configSchema.safeParse(config);
   if (!parseResult.success) {
-    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
+    const zodError = parseResult.error as {
+      issues?: Array<{ message: string }>;
+      toString: () => string;
+    };
     const errorMessage = zodError.issues?.[0]?.message || zodError.toString();
-    throw new Error(
-      `Shell plugin configuration error: ${errorMessage}`
-    );
+    throw new Error(`Shell plugin configuration error: ${errorMessage}`);
   }
 
   // Additional validation for allowed directory
@@ -85,26 +84,20 @@ export function loadShellConfig(): ShellConfig {
       // Check if directory exists
       const stats = fs.statSync(allowedDirectory);
       if (!stats.isDirectory()) {
-        throw new Error(
-          `SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`
-        );
+        throw new Error(`SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`);
       }
 
       // Resolve to absolute path
       config.allowedDirectory = path.resolve(allowedDirectory);
 
-      logger.info(
-        `Shell plugin enabled with allowed directory: ${config.allowedDirectory}`
-      );
+      logger.info(`Shell plugin enabled with allowed directory: ${config.allowedDirectory}`);
     } catch (error: unknown) {
       if (
         error instanceof Error &&
         "code" in error &&
         (error as NodeJS.ErrnoException).code === "ENOENT"
       ) {
-        throw new Error(
-          `SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`
-        );
+        throw new Error(`SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`);
       }
       throw error;
     }
@@ -116,4 +109,3 @@ export function loadShellConfig(): ShellConfig {
 
   return config;
 }
-

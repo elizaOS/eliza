@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Task schema for elizaOS database
 
 /// SQL for creating the tasks table

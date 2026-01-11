@@ -7,15 +7,15 @@
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { ClobClient } from "@polymarket/clob-client";
+import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
-import { createWalletClient, http } from "viem";
 import {
-  POLYMARKET_SERVICE_NAME,
-  POLYGON_CHAIN_ID,
+  CACHE_REFRESH_INTERVAL_MS,
   DEFAULT_CLOB_API_URL,
   DEFAULT_CLOB_WS_URL,
-  CACHE_REFRESH_INTERVAL_MS,
+  POLYGON_CHAIN_ID,
+  POLYMARKET_SERVICE_NAME,
   POLYMARKET_WALLET_DATA_CACHE_KEY,
 } from "../constants";
 import type { ApiKeyCreds } from "../types";
@@ -56,12 +56,12 @@ export class PolymarketService extends Service {
   private clobClient: ClobClient | null = null;
   private authenticatedClient: ClobClient | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly runtime: IAgentRuntime;
+  protected polymarketRuntime: IAgentRuntime;
   private walletAddress: string | null = null;
 
   constructor(runtime: IAgentRuntime) {
-    super();
-    this.runtime = runtime;
+    super(runtime);
+    this.polymarketRuntime = runtime;
   }
 
   /**
@@ -76,14 +76,7 @@ export class PolymarketService extends Service {
     await service.initializeClobClient();
 
     // Try to initialize authenticated client if credentials are available
-    try {
-      await service.initializeAuthenticatedClient();
-    } catch (error) {
-      logger.warn(
-        "Authenticated client not available - some features will be disabled:",
-        error instanceof Error ? error.message : "Unknown error"
-      );
-    }
+    await service.initializeAuthenticatedClient();
 
     // Set up refresh interval for wallet data
     if (service.refreshInterval) {
@@ -133,9 +126,9 @@ export class PolymarketService extends Service {
    */
   private getPrivateKey(): `0x${string}` {
     const privateKey =
-      this.runtime.getSetting("POLYMARKET_PRIVATE_KEY") ||
-      this.runtime.getSetting("EVM_PRIVATE_KEY") ||
-      this.runtime.getSetting("WALLET_PRIVATE_KEY");
+      this.polymarketRuntime.getSetting("POLYMARKET_PRIVATE_KEY") ||
+      this.polymarketRuntime.getSetting("EVM_PRIVATE_KEY") ||
+      this.polymarketRuntime.getSetting("WALLET_PRIVATE_KEY");
 
     if (!privateKey) {
       throw new Error(
@@ -182,10 +175,8 @@ export class PolymarketService extends Service {
    * Initialize the basic CLOB client for read operations
    */
   private async initializeClobClient(): Promise<void> {
-    const clobApiUrl =
-      this.runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
-    const clobWsUrl =
-      this.runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
+    const clobApiUrl = this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
+    const clobWsUrl = this.polymarketRuntime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
 
     const privateKey = this.getPrivateKey();
     const account = privateKeyToAccount(privateKey);
@@ -210,22 +201,20 @@ export class PolymarketService extends Service {
    * Initialize authenticated client with API credentials
    */
   private async initializeAuthenticatedClient(): Promise<void> {
-    const apiKey = this.runtime.getSetting("CLOB_API_KEY");
+    const apiKey = this.polymarketRuntime.getSetting("CLOB_API_KEY");
     const apiSecret =
-      this.runtime.getSetting("CLOB_API_SECRET") ||
-      this.runtime.getSetting("CLOB_SECRET");
+      this.polymarketRuntime.getSetting("CLOB_API_SECRET") ||
+      this.polymarketRuntime.getSetting("CLOB_SECRET");
     const apiPassphrase =
-      this.runtime.getSetting("CLOB_API_PASSPHRASE") ||
-      this.runtime.getSetting("CLOB_PASS_PHRASE");
+      this.polymarketRuntime.getSetting("CLOB_API_PASSPHRASE") ||
+      this.polymarketRuntime.getSetting("CLOB_PASS_PHRASE");
 
     if (!apiKey || !apiSecret || !apiPassphrase) {
       throw new Error("API credentials not configured");
     }
 
-    const clobApiUrl =
-      this.runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
-    const clobWsUrl =
-      this.runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
+    const clobApiUrl = this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
+    const clobWsUrl = this.polymarketRuntime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
 
     const privateKey = this.getPrivateKey();
     const enhancedWallet = this.createEnhancedWallet(privateKey);
@@ -297,10 +286,11 @@ export class PolymarketService extends Service {
         timestamp: Date.now(),
       };
 
-      await this.runtime.setCache(POLYMARKET_WALLET_DATA_CACHE_KEY, walletData);
+      await this.polymarketRuntime.setCache(POLYMARKET_WALLET_DATA_CACHE_KEY, walletData);
       logger.debug("Polymarket wallet data refreshed");
-    } catch (error) {
-      logger.error("Failed to refresh wallet data:", error);
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error("Error refreshing wallet data:", errorMsg);
     }
   }
 
@@ -308,9 +298,7 @@ export class PolymarketService extends Service {
    * Get cached wallet data
    */
   async getCachedData(): Promise<PolymarketWalletData | undefined> {
-    return this.runtime.getCache<PolymarketWalletData>(
-      POLYMARKET_WALLET_DATA_CACHE_KEY
-    );
+    return this.polymarketRuntime.getCache<PolymarketWalletData>(POLYMARKET_WALLET_DATA_CACHE_KEY);
   }
 
   /**

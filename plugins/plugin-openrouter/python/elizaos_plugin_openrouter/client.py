@@ -31,7 +31,6 @@ from elizaos_plugin_openrouter.types import (
     ObjectGenerationResponse,
     TextGenerationParams,
     TextGenerationResponse,
-    TokenUsage,
 )
 
 
@@ -72,7 +71,7 @@ class OpenRouterClient:
         """Close the HTTP client."""
         await self._http_client.aclose()
 
-    async def __aenter__(self) -> "OpenRouterClient":
+    async def __aenter__(self) -> OpenRouterClient:
         """Context manager entry."""
         return self
 
@@ -238,9 +237,7 @@ class OpenRouterClient:
             usage=response.usage,
         )
 
-    async def generate_embedding(
-        self, params: EmbeddingParams | str
-    ) -> EmbeddingResponse:
+    async def generate_embedding(self, params: EmbeddingParams | str) -> EmbeddingResponse:
         """
         Generate an embedding for the given text.
 
@@ -371,5 +368,8 @@ class OpenRouterClient:
                         best = candidate
 
         return best
+
+
+
 
 

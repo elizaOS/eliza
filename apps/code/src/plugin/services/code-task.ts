@@ -1,9 +1,5 @@
-import {
-  Service,
-  type IAgentRuntime,
-  type UUID,
-} from "@elizaos/core";
-import { EventEmitter } from "events";
+import { EventEmitter } from "node:events";
+import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { createElizaSubAgent } from "../../lib/sub-agents/eliza-sub-agent.js";
 import { createTools } from "../../lib/sub-agents/tools.js";
@@ -16,8 +12,8 @@ import type {
   TaskEventType,
   TaskResult,
   TaskStatus,
-  TaskTraceEvent,
   TaskStep,
+  TaskTraceEvent,
   TaskUserStatus,
 } from "../../types.js";
 import { getCwd } from "../providers/cwd.js";
@@ -46,7 +42,8 @@ export interface TaskExecutionOptions {
 
 export class CodeTaskService extends Service {
   static serviceType = "CODE_TASK";
-  capabilityDescription = "Manages code development tasks with sub-agent execution";
+  capabilityDescription =
+    "Manages code development tasks with sub-agent execution";
 
   private currentTaskId: string | null = null;
   private emitter = new EventEmitter();
@@ -86,7 +83,7 @@ export class CodeTaskService extends Service {
     name: string,
     description: string,
     roomId?: UUID,
-    subAgentType: "eliza" | "claude" = "eliza"
+    subAgentType: "eliza" | "claude" = "eliza",
   ): Promise<CodeTask> {
     // NOTE: The SQL adapter requires `worldId` when creating tasks.
     // When we have a roomId, prefer the room's worldId; otherwise fall back to the agentId.
@@ -161,12 +158,13 @@ export class CodeTaskService extends Service {
   async searchTasks(query: string): Promise<CodeTask[]> {
     const tasks = await this.getTasks();
     const q = query.toLowerCase();
-    
-    return tasks.filter(t => 
-      t.id?.toLowerCase().startsWith(q) ||
-      t.name.toLowerCase().includes(q) ||
-      t.description?.toLowerCase().includes(q) ||
-      t.tags?.some(tag => tag.toLowerCase().includes(q))
+
+    return tasks.filter(
+      (t) =>
+        t.id?.toLowerCase().startsWith(q) ||
+        t.name.toLowerCase().includes(q) ||
+        t.description?.toLowerCase().includes(q) ||
+        t.tags?.some((tag) => tag.toLowerCase().includes(q)),
     );
   }
 
@@ -179,7 +177,9 @@ export class CodeTaskService extends Service {
 
   async getTasksByStatus(status: TaskStatus): Promise<CodeTask[]> {
     const tasks = await this.getTasks();
-    return tasks.filter(t => (t.metadata as CodeTaskMetadata)?.status === status);
+    return tasks.filter(
+      (t) => (t.metadata as CodeTaskMetadata)?.status === status,
+    );
   }
 
   // ============================================================================
@@ -196,7 +196,11 @@ export class CodeTaskService extends Service {
     if (status === "running" && !metadata.startedAt) {
       metadata.startedAt = Date.now();
     }
-    if (status === "completed" || status === "failed" || status === "cancelled") {
+    if (
+      status === "completed" ||
+      status === "failed" ||
+      status === "cancelled"
+    ) {
       metadata.completedAt = Date.now();
     }
 
@@ -220,7 +224,7 @@ export class CodeTaskService extends Service {
     if (!task) return;
 
     const metadata = { ...task.metadata } as CodeTaskMetadata;
-    const lines = output.split("\n").filter(l => l.length > 0);
+    const lines = output.split("\n").filter((l) => l.length > 0);
     metadata.output = [...metadata.output, ...lines].slice(-500); // Keep last 500 lines
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
@@ -257,19 +261,26 @@ export class CodeTaskService extends Service {
     return step;
   }
 
-  async updateStep(taskId: string, stepId: string, status: TaskStatus, output?: string): Promise<void> {
+  async updateStep(
+    taskId: string,
+    stepId: string,
+    status: TaskStatus,
+    output?: string,
+  ): Promise<void> {
     const task = await this.getTask(taskId);
     if (!task) return;
 
     const metadata = { ...task.metadata } as CodeTaskMetadata;
-    const step = metadata.steps.find(s => s.id === stepId);
+    const step = metadata.steps.find((s) => s.id === stepId);
     if (!step) return;
 
     step.status = status;
     if (output) step.output = output;
 
     // Update progress based on completed steps
-    const completed = metadata.steps.filter(s => s.status === "completed").length;
+    const completed = metadata.steps.filter(
+      (s) => s.status === "completed",
+    ).length;
     metadata.progress = Math.round((completed / metadata.steps.length) * 100);
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
@@ -298,7 +309,9 @@ export class CodeTaskService extends Service {
     if (metadata.status === "cancelled") {
       this.emit("task:cancelled", taskId, { result });
     } else {
-      this.emit(result.success ? "task:completed" : "task:failed", taskId, { result });
+      this.emit(result.success ? "task:completed" : "task:failed", taskId, {
+        result,
+      });
     }
   }
 
@@ -314,10 +327,17 @@ export class CodeTaskService extends Service {
     }
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
-    this.emit(metadata.status === "cancelled" ? "task:cancelled" : "task:failed", taskId, { error });
+    this.emit(
+      metadata.status === "cancelled" ? "task:cancelled" : "task:failed",
+      taskId,
+      { error },
+    );
   }
 
-  async setUserStatus(taskId: string, userStatus: TaskUserStatus): Promise<void> {
+  async setUserStatus(
+    taskId: string,
+    userStatus: TaskUserStatus,
+  ): Promise<void> {
     const task = await this.getTask(taskId);
     if (!task) return;
 
@@ -380,7 +400,10 @@ export class CodeTaskService extends Service {
    * - Concurrency-safe: if the task is already executing in this process, returns the existing promise.
    * - Clears any paused/cancelled control state before starting.
    */
-  startTaskExecution(taskId: string, options?: TaskExecutionOptions): Promise<void> {
+  startTaskExecution(
+    taskId: string,
+    options?: TaskExecutionOptions,
+  ): Promise<void> {
     // Allow disabling background execution for tests and constrained environments.
     if (process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION === "1") {
       return Promise.resolve();
@@ -409,7 +432,9 @@ export class CodeTaskService extends Service {
    */
   async detectAndPauseInterruptedTasks(): Promise<CodeTask[]> {
     const running = await this.getTasksByStatus("running");
-    const candidates = running.filter((t) => (t.metadata.userStatus ?? "open") !== "done");
+    const candidates = running.filter(
+      (t) => (t.metadata.userStatus ?? "open") !== "done",
+    );
 
     const paused: CodeTask[] = [];
     for (const task of candidates) {
@@ -424,7 +449,10 @@ export class CodeTaskService extends Service {
     return paused;
   }
 
-  private async runTaskExecution(taskId: string, options?: TaskExecutionOptions): Promise<void> {
+  private async runTaskExecution(
+    taskId: string,
+    options?: TaskExecutionOptions,
+  ): Promise<void> {
     const task = await this.getTask(taskId);
     if (!task) return;
 
@@ -436,7 +464,10 @@ export class CodeTaskService extends Service {
     const wasPaused = task.metadata.status === "paused";
 
     await this.updateTaskStatus(taskId, "running");
-    await this.appendOutput(taskId, wasPaused ? `Resuming: ${task.name}` : `Starting: ${task.name}`);
+    await this.appendOutput(
+      taskId,
+      wasPaused ? `Resuming: ${task.name}` : `Starting: ${task.name}`,
+    );
 
     const subAgent = options?.subAgent ?? createElizaSubAgent();
     const tools = options?.tools ?? createTools(workingDirectory);
@@ -490,8 +521,13 @@ export class CodeTaskService extends Service {
     this.controlStates.delete(taskId);
   }
 
-  private setControlState(taskId: string, updates: Partial<TaskExecutionControlState>): void {
-    const current: TaskExecutionControlState = this.controlStates.get(taskId) ?? {
+  private setControlState(
+    taskId: string,
+    updates: Partial<TaskExecutionControlState>,
+  ): void {
+    const current: TaskExecutionControlState = this.controlStates.get(
+      taskId,
+    ) ?? {
       cancelled: false,
       paused: false,
     };
@@ -510,7 +546,11 @@ export class CodeTaskService extends Service {
     this.emitter.off(event, handler);
   }
 
-  private emit(type: TaskEventType, taskId: string, data?: Record<string, JsonValue>): void {
+  private emit(
+    type: TaskEventType,
+    taskId: string,
+    data?: Record<string, JsonValue>,
+  ): void {
     const event: TaskEvent = { type, taskId, data };
     this.emitter.emit(type, event);
     this.emitter.emit("task", event);
@@ -528,7 +568,8 @@ export class CodeTaskService extends Service {
       return "No tasks have been created yet.";
     }
 
-    const maxOutputCharsRaw = process.env.ELIZA_CODE_TASK_CONTEXT_MAX_OUTPUT_CHARS;
+    const maxOutputCharsRaw =
+      process.env.ELIZA_CODE_TASK_CONTEXT_MAX_OUTPUT_CHARS;
     const maxOutputChars = (() => {
       if (!maxOutputCharsRaw) return 20000;
       const parsed = Number.parseInt(maxOutputCharsRaw, 10);
@@ -545,13 +586,17 @@ export class CodeTaskService extends Service {
       lines.push(`## Current Task (selected): ${current.name}`);
       lines.push(`- **ID**: ${shortId}`);
       lines.push(`- **User status**: ${m.userStatus ?? "open"}`);
-      lines.push(`- **Execution status**: ${getStatusEmoji(m.status)} ${m.status}`);
+      lines.push(
+        `- **Execution status**: ${getStatusEmoji(m.status)} ${m.status}`,
+      );
       lines.push(`- **Progress**: ${m.progress}%`);
       lines.push(`- **Working directory**: ${m.workingDirectory}`);
       if (m.subAgentType) lines.push(`- **Sub-agent**: ${m.subAgentType}`);
       lines.push(`- **Created**: ${formatTimestamp(m.createdAt)}`);
-      if (m.startedAt) lines.push(`- **Started**: ${formatTimestamp(m.startedAt)}`);
-      if (m.completedAt) lines.push(`- **Completed**: ${formatTimestamp(m.completedAt)}`);
+      if (m.startedAt)
+        lines.push(`- **Started**: ${formatTimestamp(m.startedAt)}`);
+      if (m.completedAt)
+        lines.push(`- **Completed**: ${formatTimestamp(m.completedAt)}`);
       lines.push("");
 
       if (current.description) {
@@ -563,17 +608,26 @@ export class CodeTaskService extends Service {
       if (m.steps.length > 0) {
         lines.push("### Plan / Steps");
         for (const step of m.steps) {
-          const outputSuffix = step.output ? ` — ${truncate(step.output, 140)}` : "";
-          lines.push(`- [${getStatusEmoji(step.status)}] ${step.description}${outputSuffix}`);
+          const outputSuffix = step.output
+            ? ` — ${truncate(step.output, 140)}`
+            : "";
+          lines.push(
+            `- [${getStatusEmoji(step.status)}] ${step.description}${outputSuffix}`,
+          );
         }
         lines.push("");
       }
 
       if (m.output.length > 0) {
         const totalLines = m.output.length;
-        const { included, omitted } = takeTailByCharBudget(m.output, maxOutputChars);
+        const { included, omitted } = takeTailByCharBudget(
+          m.output,
+          maxOutputChars,
+        );
         lines.push(`### Task Output (history)`);
-        lines.push(`Total lines stored: ${totalLines}. Showing last ${included.length}${omitted > 0 ? ` (omitted ${omitted} earlier)` : ""}.`);
+        lines.push(
+          `Total lines stored: ${totalLines}. Showing last ${included.length}${omitted > 0 ? ` (omitted ${omitted} earlier)` : ""}.`,
+        );
         lines.push("```");
         lines.push(...included);
         lines.push("```");
@@ -593,10 +647,14 @@ export class CodeTaskService extends Service {
       if (created.length > 0 || modified.length > 0) {
         lines.push("### Files");
         if (created.length > 0) {
-          lines.push(`- Created: ${created.slice(0, 30).join(", ")}${created.length > 30 ? "..." : ""}`);
+          lines.push(
+            `- Created: ${created.slice(0, 30).join(", ")}${created.length > 30 ? "..." : ""}`,
+          );
         }
         if (modified.length > 0) {
-          lines.push(`- Modified: ${modified.slice(0, 30).join(", ")}${modified.length > 30 ? "..." : ""}`);
+          lines.push(
+            `- Modified: ${modified.slice(0, 30).join(", ")}${modified.length > 30 ? "..." : ""}`,
+          );
         }
         lines.push("");
       }
@@ -610,26 +668,34 @@ export class CodeTaskService extends Service {
     }
 
     // Summary of other tasks
-    const others = tasks.filter(t => t.id !== current?.id);
+    const others = tasks.filter((t) => t.id !== current?.id);
     if (others.length > 0) {
       lines.push("## Other Tasks");
       for (const task of others.slice(0, 5)) {
         const m = task.metadata;
         const id = task.id ? String(task.id).slice(0, 8) : "unknown";
-        lines.push(`- [${getStatusEmoji(m.status)}] **${task.name}** (${m.progress}%) — ${id}`);
+        lines.push(
+          `- [${getStatusEmoji(m.status)}] **${task.name}** (${m.progress}%) — ${id}`,
+        );
       }
       lines.push("");
     }
 
     // Stats
-    const running = tasks.filter(t => t.metadata.status === "running").length;
-    const completed = tasks.filter(t => t.metadata.status === "completed").length;
-    const failed = tasks.filter(t => t.metadata.status === "failed").length;
-    const cancelled = tasks.filter(t => t.metadata.status === "cancelled").length;
-    const pending = tasks.filter(t => t.metadata.status === "pending").length;
+    const running = tasks.filter((t) => t.metadata.status === "running").length;
+    const completed = tasks.filter(
+      (t) => t.metadata.status === "completed",
+    ).length;
+    const failed = tasks.filter((t) => t.metadata.status === "failed").length;
+    const cancelled = tasks.filter(
+      (t) => t.metadata.status === "cancelled",
+    ).length;
+    const pending = tasks.filter((t) => t.metadata.status === "pending").length;
 
     lines.push(`## Summary`);
-    lines.push(`${running} running, ${completed} done, ${failed} failed, ${cancelled} cancelled, ${pending} pending`);
+    lines.push(
+      `${running} running, ${completed} done, ${failed} failed, ${cancelled} cancelled, ${pending} pending`,
+    );
 
     return lines.join("\n").trim();
   }
@@ -653,13 +719,20 @@ function getTaskTraceMaxEvents(): number {
 
 function getStatusEmoji(status: TaskStatus): string {
   switch (status) {
-    case "pending": return "⏳";
-    case "running": return "🔄";
-    case "completed": return "✅";
-    case "failed": return "❌";
-    case "paused": return "⏸️";
-    case "cancelled": return "🛑";
-    default: return "❓";
+    case "pending":
+      return "⏳";
+    case "running":
+      return "🔄";
+    case "completed":
+      return "✅";
+    case "failed":
+      return "❌";
+    case "paused":
+      return "⏸️";
+    case "cancelled":
+      return "🛑";
+    default:
+      return "❓";
   }
 }
 
@@ -677,7 +750,10 @@ function formatTimestamp(ms: number | undefined): string {
   }
 }
 
-function takeTailByCharBudget(lines: string[], maxChars: number): { included: string[]; omitted: number } {
+function takeTailByCharBudget(
+  lines: string[],
+  maxChars: number,
+): { included: string[]; omitted: number } {
   // Include as many lines from the end as will fit within maxChars (including newlines).
   const included: string[] = [];
   let used = 0;
@@ -699,4 +775,3 @@ function takeTailByCharBudget(lines: string[], maxChars: number): { included: st
   const omitted = Math.max(0, lines.length - included.length);
   return { included, omitted };
 }
-

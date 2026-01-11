@@ -25,25 +25,25 @@ use elizaos_plugin_n8n::{N8nConfig, PluginCreationClient, PluginSpecification};
 async fn main() -> anyhow::Result<()> {
     // Create configuration from environment
     let config = N8nConfig::from_env()?;
-    
+
     // Create client
     let client = PluginCreationClient::new(config)?;
-    
+
     // Define plugin specification
     let spec = PluginSpecification::builder()
         .name("@elizaos/plugin-weather")
         .description("Weather information plugin")
         .build()?;
-    
+
     // Create plugin
     let job_id = client.create_plugin(spec, None).await?;
     println!("Job started: {}", job_id);
-    
+
     // Check status
     if let Some(job) = client.get_job_status(&job_id).await {
         println!("Status: {}", job.status);
     }
-    
+
     Ok(())
 }
 ```
@@ -127,5 +127,6 @@ cargo fmt
 ## License
 
 MIT
+
 
 

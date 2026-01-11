@@ -27,15 +27,15 @@ pip install elizaos-plugin-farcaster[dev]
 
 The plugin requires the following environment variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `FARCASTER_FID` | Yes | Your Farcaster ID (FID) |
-| `FARCASTER_SIGNER_UUID` | Yes | Neynar signer UUID for signing casts |
-| `FARCASTER_NEYNAR_API_KEY` | Yes | Neynar API key for API access |
-| `FARCASTER_DRY_RUN` | No | Enable dry run mode (default: false) |
-| `FARCASTER_MODE` | No | Operation mode: 'polling' or 'webhook' (default: polling) |
-| `MAX_CAST_LENGTH` | No | Maximum cast length (default: 320) |
-| `FARCASTER_POLL_INTERVAL` | No | Polling interval in seconds (default: 120) |
+| Variable                   | Required | Description                                               |
+| -------------------------- | -------- | --------------------------------------------------------- |
+| `FARCASTER_FID`            | Yes      | Your Farcaster ID (FID)                                   |
+| `FARCASTER_SIGNER_UUID`    | Yes      | Neynar signer UUID for signing casts                      |
+| `FARCASTER_NEYNAR_API_KEY` | Yes      | Neynar API key for API access                             |
+| `FARCASTER_DRY_RUN`        | No       | Enable dry run mode (default: false)                      |
+| `FARCASTER_MODE`           | No       | Operation mode: 'polling' or 'webhook' (default: polling) |
+| `MAX_CAST_LENGTH`          | No       | Maximum cast length (default: 320)                        |
+| `FARCASTER_POLL_INTERVAL`  | No       | Polling interval in seconds (default: 120)                |
 
 ## Usage
 
@@ -54,7 +54,7 @@ client = FarcasterClient(config)
 async def main():
     cast = await client.send_cast("Hello from elizaOS! 🤖")
     print(f"Cast sent: {cast.hash}")
-    
+
     # Get your profile
     profile = await client.get_profile(config.fid)
     print(f"Username: {profile.username}")

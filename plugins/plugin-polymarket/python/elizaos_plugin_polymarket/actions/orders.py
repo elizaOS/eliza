@@ -4,8 +4,9 @@ Order placement actions for Polymarket.
 
 from typing import Protocol
 
-from py_clob_client.constants import SELL, BUY
+from py_clob_client.constants import BUY, SELL
 
+from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_authenticated_clob_client
 from elizaos_plugin_polymarket.types import (
     OrderParams,
@@ -13,7 +14,6 @@ from elizaos_plugin_polymarket.types import (
     OrderSide,
     OrderType,
 )
-from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 
 
 class RuntimeProtocol(Protocol):
@@ -233,5 +233,8 @@ async def get_order_details(
             f"Failed to fetch order details: {e}",
             cause=e,
         ) from e
+
+
+
 
 

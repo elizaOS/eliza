@@ -1,0 +1,14 @@
+# Summarized so far (we are adding to this)
+{{currentSummary}}
+
+# Current conversation chunk we are summarizing (includes attachments)
+{{memoriesWithAttachments}}
+
+Summarization objective: {{objective}}
+
+# Instructions: Summarize the conversation so far. Return the summary. Do not acknowledge this request, just summarize and continue the existing summary if there is one. Capture any important details to the objective. Only respond with the new summary text.
+Your response should be extremely detailed and include any and all relevant information.
+
+
+
+

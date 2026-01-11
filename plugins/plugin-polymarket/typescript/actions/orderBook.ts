@@ -9,20 +9,20 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
-import { initializeClobClient } from "../utils/clobClient";
 import {
-  getOrderBookTemplate,
-  getOrderBookDepthTemplate,
   getBestPriceTemplate,
   getMidpointPriceTemplate,
+  getOrderBookDepthTemplate,
+  getOrderBookTemplate,
   getSpreadTemplate,
 } from "../templates";
 import type { OrderBook } from "../types";
+import { initializeClobClient } from "../utils/clobClient";
+import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
 // =============================================================================
 // Type Definitions
@@ -58,13 +58,7 @@ interface SpreadResponse {
 
 export const getOrderBookSummaryAction: Action = {
   name: "POLYMARKET_GET_ORDER_BOOK",
-  similes: [
-    "ORDER_BOOK",
-    "GET_ORDER_BOOK",
-    "SHOW_ORDER_BOOK",
-    "BOOK",
-    "ORDERS",
-  ],
+  similes: ["ORDER_BOOK", "GET_ORDER_BOOK", "SHOW_ORDER_BOOK", "BOOK", "ORDERS"],
   description: "Retrieve order book summary for a specific token",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -97,14 +91,13 @@ export const getOrderBookSummaryAction: Action = {
       tokenId = llmResult.tokenId;
 
       const clobClient = await initializeClobClient(runtime);
-      const orderBook = await clobClient.getOrderBook(tokenId) as OrderBook;
+      const orderBook = (await clobClient.getOrderBook(tokenId)) as OrderBook;
 
       // Calculate summary stats
       const topBid = orderBook.bids[0];
       const topAsk = orderBook.asks[0];
-      const spread = topBid && topAsk
-        ? (parseFloat(topAsk.price) - parseFloat(topBid.price)).toFixed(4)
-        : "N/A";
+      const spread =
+        topBid && topAsk ? (parseFloat(topAsk.price) - parseFloat(topBid.price)).toFixed(4) : "N/A";
 
       let responseText = `📚 **Order Book for Token ${tokenId.slice(0, 16)}...**\n\n`;
 
@@ -140,8 +133,7 @@ export const getOrderBookSummaryAction: Action = {
 
       return responseContent;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getOrderBookSummaryAction] Error:", error);
 
       const errorContent: Content = {
@@ -185,12 +177,7 @@ interface DepthData {
 
 export const getOrderBookDepthAction: Action = {
   name: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
-  similes: [
-    "ORDER_BOOK_DEPTH",
-    "DEPTH",
-    "MARKET_DEPTH",
-    "LIQUIDITY",
-  ],
+  similes: ["ORDER_BOOK_DEPTH", "DEPTH", "MARKET_DEPTH", "LIQUIDITY"],
   description: "Retrieve order book depth for multiple tokens",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -223,7 +210,7 @@ export const getOrderBookDepthAction: Action = {
       tokenIds = llmResult.tokenIds;
 
       const clobClient = await initializeClobClient(runtime);
-      const depths = await clobClient.getOrderBooksDepth(tokenIds) as Record<string, DepthData>;
+      const depths = (await clobClient.getOrderBooksDepth(tokenIds)) as Record<string, DepthData>;
 
       let responseText = `📊 **Order Book Depth**\n\n`;
 
@@ -249,8 +236,7 @@ export const getOrderBookDepthAction: Action = {
 
       return responseContent;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getOrderBookDepthAction] Error:", error);
 
       const errorContent: Content = {
@@ -289,12 +275,7 @@ export const getOrderBookDepthAction: Action = {
 
 export const getBestPriceAction: Action = {
   name: "POLYMARKET_GET_BEST_PRICE",
-  similes: [
-    "BEST_PRICE",
-    "TOP_PRICE",
-    "BID_PRICE",
-    "ASK_PRICE",
-  ],
+  similes: ["BEST_PRICE", "TOP_PRICE", "BID_PRICE", "ASK_PRICE"],
   description: "Get the best bid or ask price for a token",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -331,7 +312,7 @@ export const getBestPriceAction: Action = {
       const clobClient = await initializeClobClient(runtime);
 
       // Get order book to find best price
-      const orderBook = await clobClient.getOrderBook(tokenId) as OrderBook;
+      const orderBook = (await clobClient.getOrderBook(tokenId)) as OrderBook;
 
       let bestPrice: string;
       let bestSize: string;
@@ -346,7 +327,8 @@ export const getBestPriceAction: Action = {
         bestSize = topBid?.size ?? "N/A";
       }
 
-      const responseText = `💰 **Best ${side.toUpperCase()} Price**\n\n` +
+      const responseText =
+        `💰 **Best ${side.toUpperCase()} Price**\n\n` +
         `• Token: \`${tokenId}\`\n` +
         `• Side: ${side.toUpperCase()}\n` +
         `• Best Price: $${bestPrice}\n` +
@@ -370,8 +352,7 @@ export const getBestPriceAction: Action = {
 
       return responseContent;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getBestPriceAction] Error:", error);
 
       const errorContent: Content = {
@@ -410,11 +391,7 @@ export const getBestPriceAction: Action = {
 
 export const getMidpointPriceAction: Action = {
   name: "POLYMARKET_GET_MIDPOINT",
-  similes: [
-    "MIDPOINT",
-    "MID_PRICE",
-    "MIDDLE_PRICE",
-  ],
+  similes: ["MIDPOINT", "MID_PRICE", "MIDDLE_PRICE"],
   description: "Get the midpoint price between best bid and ask",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -447,9 +424,10 @@ export const getMidpointPriceAction: Action = {
       tokenId = llmResult.tokenId;
 
       const clobClient = await initializeClobClient(runtime);
-      const midpointResponse = await clobClient.getMidpoint(tokenId) as MidpointResponse;
+      const midpointResponse = (await clobClient.getMidpoint(tokenId)) as MidpointResponse;
 
-      const responseText = `📍 **Midpoint Price**\n\n` +
+      const responseText =
+        `📍 **Midpoint Price**\n\n` +
         `• Token: \`${tokenId}\`\n` +
         `• Midpoint: $${midpointResponse.mid}`;
 
@@ -469,8 +447,7 @@ export const getMidpointPriceAction: Action = {
 
       return responseContent;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getMidpointPriceAction] Error:", error);
 
       const errorContent: Content = {
@@ -509,11 +486,7 @@ export const getMidpointPriceAction: Action = {
 
 export const getSpreadAction: Action = {
   name: "POLYMARKET_GET_SPREAD",
-  similes: [
-    "SPREAD",
-    "BID_ASK_SPREAD",
-    "MARKET_SPREAD",
-  ],
+  similes: ["SPREAD", "BID_ASK_SPREAD", "MARKET_SPREAD"],
   description: "Get the bid-ask spread for a token",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -546,9 +519,10 @@ export const getSpreadAction: Action = {
       tokenId = llmResult.tokenId;
 
       const clobClient = await initializeClobClient(runtime);
-      const spreadResponse = await clobClient.getSpread(tokenId) as SpreadResponse;
+      const spreadResponse = (await clobClient.getSpread(tokenId)) as SpreadResponse;
 
-      const responseText = `📏 **Bid-Ask Spread**\n\n` +
+      const responseText =
+        `📏 **Bid-Ask Spread**\n\n` +
         `• Token: \`${tokenId}\`\n` +
         `• Spread: ${spreadResponse.spread}`;
 
@@ -568,8 +542,7 @@ export const getSpreadAction: Action = {
 
       return responseContent;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getSpreadAction] Error:", error);
 
       const errorContent: Content = {

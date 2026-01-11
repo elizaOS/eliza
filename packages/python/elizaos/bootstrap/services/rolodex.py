@@ -285,4 +285,3 @@ class RolodexService(Service):
 
         self._analytics[key] = analytics
         return analytics
-

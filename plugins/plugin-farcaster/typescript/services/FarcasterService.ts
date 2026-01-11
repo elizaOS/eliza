@@ -2,12 +2,12 @@
  * Main Farcaster service implementation.
  */
 
-import { Service, type UUID, type IAgentRuntime } from "@elizaos/core";
-import { FARCASTER_SERVICE_NAME, type FarcasterConfig } from "../types";
+import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { FarcasterAgentManager } from "../managers/AgentManager";
+import { FARCASTER_SERVICE_NAME } from "../types";
 import { getFarcasterFid, hasFarcasterEnabled, validateFarcasterConfig } from "../utils/config";
-import { FarcasterMessageService } from "./MessageService";
 import { FarcasterCastService } from "./CastService";
+import { FarcasterMessageService } from "./MessageService";
 
 /**
  * Main Farcaster service for elizaOS.
@@ -107,7 +107,10 @@ export class FarcasterService extends Service {
     return this.castServices.get(agentId);
   }
 
-  async healthCheck(): Promise<{ healthy: boolean; details: Record<string, unknown> }> {
+  async healthCheck(): Promise<{
+    healthy: boolean;
+    details: Record<string, unknown>;
+  }> {
     const managerStatuses: Record<string, unknown> = {};
     let overallHealthy = true;
 
@@ -145,5 +148,3 @@ export class FarcasterService extends Service {
     return new Map(this.managers);
   }
 }
-
-

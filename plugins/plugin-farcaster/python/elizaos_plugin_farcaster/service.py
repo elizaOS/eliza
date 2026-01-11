@@ -7,9 +7,8 @@ Provides the main service interface for Farcaster integration.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable
 
 from elizaos_plugin_farcaster.client import FarcasterClient
 from elizaos_plugin_farcaster.config import FarcasterConfig

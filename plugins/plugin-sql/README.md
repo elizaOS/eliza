@@ -67,15 +67,17 @@ async function findDatabaseAdapter(runtime: IAgentRuntime) {
   let adapter = runtime;
 
   if (!adapter) {
-    const drizzleAdapterPlugin = await import('@elizaos/plugin-sql');
+    const drizzleAdapterPlugin = await import("@elizaos/plugin-sql");
     const drizzleAdapterPluginDefault = drizzleAdapterPlugin.default;
     adapter = drizzleAdapterPluginDefault.adapter;
     if (!adapter) {
-      throw new Error('Internal error: No database adapter found for default plugin-sql');
+      throw new Error(
+        "Internal error: No database adapter found for default plugin-sql",
+      );
     }
   } else if (!adapter) {
     throw new Error(
-      'Multiple database adapters found. You must have no more than one. Adjust your plugins configuration.'
+      "Multiple database adapters found. You must have no more than one. Adjust your plugins configuration.",
     );
   }
 
@@ -151,16 +153,16 @@ elizaOS v1.0.0 introduces **dynamic runtime migrations** - automatic schema mana
 
 ```typescript
 // In your plugin's schema.ts
-import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, uuid } from "drizzle-orm/pg-core";
 
-export const myTable = pgTable('my_table', {
-  id: uuid('id').primaryKey(),
-  name: text('name').notNull(),
+export const myTable = pgTable("my_table", {
+  id: uuid("id").primaryKey(),
+  name: text("name").notNull(),
 });
 
 // Export schema in your plugin
 export const plugin = {
-  name: '@your-org/plugin-name',
+  name: "@your-org/plugin-name",
   schema: schema, // Your Drizzle schema object
   // ... rest of plugin
 };
@@ -244,10 +246,10 @@ Plugins automatically get namespaced schemas for isolation:
 To use a custom schema:
 
 ```typescript
-import { pgSchema } from 'drizzle-orm/pg-core';
+import { pgSchema } from "drizzle-orm/pg-core";
 
-const mySchema = pgSchema('my_custom_schema');
-export const myTable = mySchema.table('my_table', {
+const mySchema = pgSchema("my_custom_schema");
+export const myTable = mySchema.table("my_table", {
   // ... columns
 });
 ```
@@ -258,7 +260,7 @@ Check migration status:
 
 ```typescript
 const migrator = migrationService.getMigrator();
-const status = await migrator.getStatus('@your-org/plugin-name');
+const status = await migrator.getStatus("@your-org/plugin-name");
 console.log(status);
 // {
 //   hasRun: true,
@@ -271,9 +273,9 @@ console.log(status);
 Preview changes without applying:
 
 ```typescript
-const check = await migrator.checkMigration('@your-org/plugin-name', schema);
+const check = await migrator.checkMigration("@your-org/plugin-name", schema);
 if (check?.hasDataLoss) {
-  console.log('Warning: Destructive changes:', check.warnings);
+  console.log("Warning: Destructive changes:", check.warnings);
 }
 ```
 
@@ -339,7 +341,7 @@ This pattern is particularly important in monorepo setups or when the package is
 
 ```typescript
 // Example of the singleton pattern implementation
-const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
+const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 
 // Store managers in a global symbol registry
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
@@ -348,7 +350,9 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 
 // Reuse existing managers or create new ones when needed
 if (!globalSingletons.postgresConnectionManager) {
-  globalSingletons.postgresConnectionManager = new PostgresConnectionManager(config.postgresUrl);
+  globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
+    config.postgresUrl,
+  );
 }
 ```
 

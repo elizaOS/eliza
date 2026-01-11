@@ -73,7 +73,9 @@ class ScheduleFollowUpAction:
     )
     description: str = "Schedule a follow-up reminder for a contact"
 
-    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         follow_up_service = runtime.get_service("follow_up")
@@ -220,4 +222,3 @@ schedule_follow_up_action = Action(
     handler=ScheduleFollowUpAction().handler,
     examples=ScheduleFollowUpAction().examples,
 )
-

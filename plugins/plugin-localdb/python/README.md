@@ -36,5 +36,3 @@ await adapter.close()
 
 
 
-
-

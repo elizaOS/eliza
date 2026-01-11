@@ -1,5 +1,4 @@
-import stringify from "json-stable-stringify";
-import { type RequestApiResult } from "./api-types";
+import type { RequestApiResult } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { TwitterApiErrorRaw } from "./errors";
 
@@ -142,10 +141,7 @@ function getAvatarOriginalSizeUrl(avatarUrl: string | undefined) {
   return avatarUrl ? avatarUrl.replace("_normal", "") : undefined;
 }
 
-export function parseProfile(
-  user: LegacyUserRaw,
-  isBlueVerified?: boolean,
-): Profile {
+export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Profile {
   const profile: Profile = {
     avatar: getAvatarOriginalSizeUrl(user.profile_image_url_https),
     banner: user.profile_banner_url,
@@ -181,10 +177,12 @@ export function parseProfile(
   return profile;
 }
 
+import type { UserV2 } from "twitter-api-v2";
+
 /**
  * Convert Twitter API v2 user data to Profile format
  */
-function parseV2Profile(user: any): Profile {
+function parseV2Profile(user: UserV2): Profile {
   const profile: Profile = {
     avatar: getAvatarOriginalSizeUrl(user.profile_image_url),
     biography: user.description,
@@ -209,8 +207,8 @@ function parseV2Profile(user: any): Profile {
     profile.joined = new Date(user.created_at);
   }
 
-  if (user.entities?.url?.urls?.length > 0) {
-    profile.website = user.entities.url.urls[0].expanded_url;
+  if (user.entities?.url?.urls && user.entities.url.urls.length > 0) {
+    profile.website = user.entities.url.urls[0]?.expanded_url;
   }
 
   return profile;
@@ -218,7 +216,7 @@ function parseV2Profile(user: any): Profile {
 
 export async function getProfile(
   username: string,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<RequestApiResult<Profile>> {
   if (!auth) {
     return {
@@ -259,10 +257,10 @@ export async function getProfile(
       success: true,
       value: parseV2Profile(user.data),
     };
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
-      err: new Error(error.message || "Failed to fetch profile"),
+      err: new Error(error instanceof Error ? error.message : "Failed to fetch profile"),
     };
   }
 }
@@ -271,7 +269,7 @@ const idCache = new Map<string, string>();
 
 export async function getScreenNameByUserId(
   userId: string,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<RequestApiResult<string>> {
   if (!auth) {
     return {
@@ -297,17 +295,17 @@ export async function getScreenNameByUserId(
       success: true,
       value: user.data.username,
     };
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
-      err: new Error(error.message || "Failed to fetch user"),
+      err: new Error(error instanceof Error ? error.message : "Failed to fetch user"),
     };
   }
 }
 
 export async function getEntityIdByScreenName(
   screenName: string,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): Promise<RequestApiResult<string>> {
   const cached = idCache.get(screenName);
   if (cached != null) {
@@ -316,7 +314,7 @@ export async function getEntityIdByScreenName(
 
   const profileRes = await getProfile(screenName, auth);
   if (!profileRes.success) {
-    return profileRes as any;
+    return { success: false, err: profileRes.err };
   }
 
   const profile = profileRes.value;

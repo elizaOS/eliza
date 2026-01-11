@@ -1,17 +1,17 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  logger,
-  parseKeyValueXml,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   ModelType,
-  type ActionResult,
+  parseKeyValueXml,
+  type State,
 } from "@elizaos/core";
-import { RolodexService, type ContactInfo } from "../../services/rolodex.ts";
+import type { ContactInfo, RolodexService } from "../../services/rolodex.ts";
 
 interface UpdateContactXmlResult {
   contactName?: string;
@@ -213,13 +213,13 @@ export const updateContactAction: Action = {
 
         return {
           success: true,
-          values: { 
-            contactId: contact.entityId, 
+          values: {
+            contactId: contact.entityId,
             categoriesStr: updateData.categories?.join(",") ?? "",
             tagsStr: updateData.tags?.join(",") ?? "",
           },
-          data: { 
-            success: true, 
+          data: {
+            success: true,
             updatedFieldsStr: Object.keys(updateData).join(","),
           },
           text: responseText,
@@ -272,4 +272,3 @@ export const updateContactAction: Action = {
     ],
   ],
 };
-

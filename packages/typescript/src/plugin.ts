@@ -102,11 +102,10 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
       "Plugin installation failed",
     );
     return false;
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
+  } catch (error) {
     logger.error(
-      { src: "core:plugin", pluginName, error: message },
-      "Unexpected error during auto-install",
+      { src: "core:plugin", pluginName, error },
+      "Error during plugin installation",
     );
     return false;
   }
@@ -511,7 +510,8 @@ async function resolvePluginsImpl(
   const seenDependencies = new Set<string>();
 
   while (queue.length > 0) {
-    const next = queue.shift()!;
+    const next = queue.shift();
+    if (!next) continue;
     const loaded = await loadPlugin(next);
     if (!loaded) continue;
 

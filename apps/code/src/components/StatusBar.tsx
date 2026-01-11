@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect } from "react";
 import { Box, Text, useStdout } from "ink";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../lib/store.js";
 import { getCwd } from "../plugin/providers/cwd.js";
 
@@ -11,14 +11,14 @@ export function StatusBar() {
   const tasks = useStore((state) => state.tasks);
   const rooms = useStore((state) => state.rooms);
   const currentRoomId = useStore((state) => state.currentRoomId);
-  
+
   const currentRoom = useMemo(
     () => rooms.find((r) => r.id === currentRoomId),
-    [rooms, currentRoomId]
+    [rooms, currentRoomId],
   );
   const roomIndex = useMemo(
     () => rooms.findIndex((r) => r.id === currentRoomId) + 1,
-    [rooms, currentRoomId]
+    [rooms, currentRoomId],
   );
 
   // Track CWD changes
@@ -41,7 +41,7 @@ export function StatusBar() {
       failed: tasks.filter((t) => t.metadata?.status === "failed").length,
       cancelled: tasks.filter((t) => t.metadata?.status === "cancelled").length,
     }),
-    [tasks]
+    [tasks],
   );
 
   const showFullRight = terminalWidth >= 80;
@@ -59,14 +59,14 @@ export function StatusBar() {
   const maxCwdLen = Math.max(10, terminalWidth - rightTextPlain.length - 24);
 
   const shortCwd =
-    cwd.length > maxCwdLen ? "..." + cwd.slice(-(maxCwdLen - 3)) : cwd;
+    cwd.length > maxCwdLen ? `...${cwd.slice(-(maxCwdLen - 3))}` : cwd;
 
   // Truncate room name if too long
   const maxRoomNameLen = 20;
   const roomName = currentRoom?.name ?? "Chat";
   const shortRoomName =
     roomName.length > maxRoomNameLen
-      ? roomName.slice(0, maxRoomNameLen - 1) + "…"
+      ? `${roomName.slice(0, maxRoomNameLen - 1)}…`
       : roomName;
 
   return (

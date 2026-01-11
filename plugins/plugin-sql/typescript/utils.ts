@@ -65,7 +65,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
 
   // cwd might be plugin-sql if we're running tests from monorepo
   // are we in monorepo config?
-  let monoPath;
+  let monoPath: string | undefined;
   if (existsSync(path.join(process.cwd(), "packages", "core"))) {
     monoPath = process.cwd();
   } else {

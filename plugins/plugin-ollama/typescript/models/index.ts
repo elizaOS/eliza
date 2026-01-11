@@ -2,9 +2,7 @@
  * Model handler exports for Ollama.
  */
 
-export { handleTextSmall, handleTextLarge } from './text';
-export { handleObjectSmall, handleObjectLarge } from './object';
-export { handleTextEmbedding } from './embedding';
-export { ensureModelAvailable } from './availability';
-
-
+export { ensureModelAvailable } from "./availability";
+export { handleTextEmbedding } from "./embedding";
+export { handleObjectLarge, handleObjectSmall } from "./object";
+export { handleTextLarge, handleTextSmall } from "./text";

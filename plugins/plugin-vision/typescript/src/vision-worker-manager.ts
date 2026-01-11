@@ -1,14 +1,14 @@
-import { Worker } from 'worker_threads';
-import * as path from 'path';
-import { TextDecoder } from 'util';
-import { logger } from '@elizaos/core';
+import * as path from "node:path";
+import { TextDecoder } from "node:util";
+import { Worker } from "node:worker_threads";
+import { logger } from "@elizaos/core";
 import type {
-  VisionConfig,
-  ScreenCapture,
+  EnhancedSceneDescription,
   Florence2Result,
   OCRResult,
-  EnhancedSceneDescription,
-} from './types';
+  ScreenCapture,
+  VisionConfig,
+} from "./types";
 
 interface WorkerStats {
   fps: number;
@@ -46,7 +46,6 @@ export class VisionWorkerManager {
   private readonly HEIGHT_INDEX = 3;
   private readonly DISPLAY_INDEX = 4;
   private readonly TIMESTAMP_INDEX = 5;
-  private readonly DATA_OFFSET = 24;
 
   // Worker stats
   private workerStats = new Map<string, WorkerStats>();
@@ -77,7 +76,7 @@ export class VisionWorkerManager {
   }
 
   async initialize(): Promise<void> {
-    logger.info('[VisionWorkerManager] Initializing worker threads...');
+    logger.info("[VisionWorkerManager] Initializing worker threads...");
 
     try {
       // Start screen capture worker
@@ -93,15 +92,15 @@ export class VisionWorkerManager {
         await this.startOCRWorker();
       }
 
-      logger.info('[VisionWorkerManager] All workers initialized');
+      logger.info("[VisionWorkerManager] All workers initialized");
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to initialize workers:', error);
+      logger.error("[VisionWorkerManager] Failed to initialize workers:", error);
       throw error;
     }
   }
 
   private async startScreenCaptureWorker(): Promise<void> {
-    const workerPath = path.join(__dirname, 'workers', 'screen-capture-worker.js');
+    const workerPath = path.join(__dirname, "workers", "screen-capture-worker.js");
 
     this.screenCaptureWorker = new Worker(workerPath, {
       workerData: {
@@ -115,28 +114,31 @@ export class VisionWorkerManager {
       },
     });
 
-    this.screenCaptureWorker.on('message', (msg) => {
-      if (msg.type === 'fps') {
-        this.workerStats.set('screenCapture', {
+    this.screenCaptureWorker.on("message", (msg) => {
+      if (msg.type === "fps") {
+        this.workerStats.set("screenCapture", {
           fps: msg.fps,
           frameCount: msg.frameCount,
           lastUpdate: Date.now(),
         });
-      } else if (msg.type === 'error') {
-        logger.error('[ScreenCaptureWorker] Error:', msg.error);
-      } else if (msg.type === 'log') {
+      } else if (msg.type === "error") {
+        logger.error("[ScreenCaptureWorker] Error:", msg.error);
+      } else if (msg.type === "log") {
         // Handle worker log messages
-        this.handleWorkerLog('ScreenCaptureWorker', msg);
+        this.handleWorkerLog("ScreenCaptureWorker", msg);
       }
     });
 
-    this.screenCaptureWorker.on('error', (error) => {
-      logger.error('[ScreenCaptureWorker] Worker error:', error);
+    this.screenCaptureWorker.on("error", (error) => {
+      logger.error(
+        "[ScreenCaptureWorker] Worker error:",
+        error instanceof Error ? error.message : String(error)
+      );
       // Attempt to restart worker after error
       setTimeout(() => this.restartScreenCaptureWorker(), 1000);
     });
 
-    this.screenCaptureWorker.on('exit', (code) => {
+    this.screenCaptureWorker.on("exit", (code) => {
       if (code !== 0) {
         logger.error(`[ScreenCaptureWorker] Worker stopped with exit code ${code}`);
         // Attempt to restart worker after crash
@@ -146,7 +148,7 @@ export class VisionWorkerManager {
   }
 
   private async startFlorence2Worker(): Promise<void> {
-    const workerPath = path.join(__dirname, 'workers', 'florence2-worker.js');
+    const workerPath = path.join(__dirname, "workers", "florence2-worker.js");
 
     // Calculate priority tiles (center tiles)
     const priorityTiles: number[] = [];
@@ -175,31 +177,34 @@ export class VisionWorkerManager {
       },
     });
 
-    this.florence2Worker.on('message', (msg) => {
-      if (msg.type === 'fps') {
-        this.workerStats.set('florence2', {
+    this.florence2Worker.on("message", (msg) => {
+      if (msg.type === "fps") {
+        this.workerStats.set("florence2", {
           fps: msg.fps,
           frameCount: msg.frameCount,
           lastUpdate: Date.now(),
         });
-      } else if (msg.type === 'tile_analyzed') {
+      } else if (msg.type === "tile_analyzed") {
         // Update latest results cache
         this.updateFlorence2Cache(msg);
-      } else if (msg.type === 'error') {
-        logger.error('[Florence2Worker] Error:', msg.error);
-      } else if (msg.type === 'log') {
+      } else if (msg.type === "error") {
+        logger.error("[Florence2Worker] Error:", msg.error);
+      } else if (msg.type === "log") {
         // Handle worker log messages
-        this.handleWorkerLog('Florence2Worker', msg);
+        this.handleWorkerLog("Florence2Worker", msg);
       }
     });
 
-    this.florence2Worker.on('error', (error) => {
-      logger.error('[Florence2Worker] Worker error:', error);
+    this.florence2Worker.on("error", (error) => {
+      logger.error(
+        "[Florence2Worker] Worker error:",
+        error instanceof Error ? error.message : String(error)
+      );
       // Attempt to restart worker after error
       setTimeout(() => this.restartFlorence2Worker(), 1000);
     });
 
-    this.florence2Worker.on('exit', (code) => {
+    this.florence2Worker.on("exit", (code) => {
       if (code !== 0) {
         logger.error(`[Florence2Worker] Worker stopped with exit code ${code}`);
         // Attempt to restart worker after crash
@@ -209,7 +214,7 @@ export class VisionWorkerManager {
   }
 
   private async startOCRWorker(): Promise<void> {
-    const workerPath = path.join(__dirname, 'workers', 'ocr-worker.js');
+    const workerPath = path.join(__dirname, "workers", "ocr-worker.js");
 
     this.ocrWorker = new Worker(workerPath, {
       workerData: {
@@ -223,31 +228,34 @@ export class VisionWorkerManager {
       },
     });
 
-    this.ocrWorker.on('message', (msg) => {
-      if (msg.type === 'fps') {
-        this.workerStats.set('ocr', {
+    this.ocrWorker.on("message", (msg) => {
+      if (msg.type === "fps") {
+        this.workerStats.set("ocr", {
           fps: msg.fps,
           frameCount: msg.frameCount,
           lastUpdate: Date.now(),
         });
-      } else if (msg.type === 'ocr_complete') {
+      } else if (msg.type === "ocr_complete") {
         // Update latest OCR cache
         this.updateOCRCache(msg);
-      } else if (msg.type === 'error') {
-        logger.error('[OCRWorker] Error:', msg.error);
-      } else if (msg.type === 'log') {
+      } else if (msg.type === "error") {
+        logger.error("[OCRWorker] Error:", msg.error);
+      } else if (msg.type === "log") {
         // Handle worker log messages
-        this.handleWorkerLog('OCRWorker', msg);
+        this.handleWorkerLog("OCRWorker", msg);
       }
     });
 
-    this.ocrWorker.on('error', (error) => {
-      logger.error('[OCRWorker] Worker error:', error);
+    this.ocrWorker.on("error", (error) => {
+      logger.error(
+        "[OCRWorker] Worker error:",
+        error instanceof Error ? error.message : String(error)
+      );
       // Attempt to restart worker after error
       setTimeout(() => this.restartOCRWorker(), 1000);
     });
 
-    this.ocrWorker.on('exit', (code) => {
+    this.ocrWorker.on("exit", (code) => {
       if (code !== 0) {
         logger.error(`[OCRWorker] Worker stopped with exit code ${code}`);
         // Attempt to restart worker after crash
@@ -265,7 +273,7 @@ export class VisionWorkerManager {
         this.latestFlorence2Results.set(tileId, result);
       }
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to update Florence2 cache:', error);
+      logger.error("[VisionWorkerManager] Failed to update Florence2 cache:", error);
     }
   }
 
@@ -277,7 +285,7 @@ export class VisionWorkerManager {
         this.latestOCRResult = result;
       }
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to update OCR cache:', error);
+      logger.error("[VisionWorkerManager] Failed to update OCR cache:", error);
     }
   }
 
@@ -312,7 +320,7 @@ export class VisionWorkerManager {
       const json = new TextDecoder().decode(bytes);
       return JSON.parse(json);
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to read Florence2 result:', error);
+      logger.error("[VisionWorkerManager] Failed to read Florence2 result:", error);
       return null;
     }
   }
@@ -342,7 +350,7 @@ export class VisionWorkerManager {
       const json = new TextDecoder().decode(bytes);
       return JSON.parse(json);
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to read OCR result:', error);
+      logger.error("[VisionWorkerManager] Failed to read OCR result:", error);
       return null;
     }
   }
@@ -374,7 +382,7 @@ export class VisionWorkerManager {
 
       this.lastProcessedFrameId = frameId;
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to read screen capture:', error);
+      logger.error("[VisionWorkerManager] Failed to read screen capture:", error);
     }
 
     return this.latestScreenCapture;
@@ -404,7 +412,7 @@ export class VisionWorkerManager {
 
     return {
       timestamp: Date.now(),
-      description: florence2Captions.join('. '),
+      description: florence2Captions.join(". "),
       objects: allObjects,
       people: [], // Could be populated by TensorFlow worker
       sceneChanged: true,
@@ -420,7 +428,7 @@ export class VisionWorkerManager {
         gridSummary: `${screenCapture?.tiles.length || 0} tiles analyzed`,
         uiElements: allObjects.map((obj) => ({
           type: obj.label,
-          text: '',
+          text: "",
           position: obj.bbox,
         })),
       },
@@ -476,7 +484,7 @@ export class VisionWorkerManager {
   async setDisplayIndex(index: number): Promise<void> {
     if (this.screenCaptureWorker) {
       this.screenCaptureWorker.postMessage({
-        type: 'set_display',
+        type: "set_display",
         displayIndex: index,
       });
     }
@@ -487,22 +495,22 @@ export class VisionWorkerManager {
   ): Promise<void> {
     if (this.ocrWorker) {
       this.ocrWorker.postMessage({
-        type: 'update_regions',
+        type: "update_regions",
         regions,
       });
     }
   }
 
   async stop(): Promise<void> {
-    logger.info('[VisionWorkerManager] Stopping all workers...');
+    logger.info("[VisionWorkerManager] Stopping all workers...");
 
     const stopPromises: Promise<void>[] = [];
 
     if (this.screenCaptureWorker) {
       stopPromises.push(
         new Promise((resolve) => {
-          this.screenCaptureWorker!.once('exit', () => resolve());
-          this.screenCaptureWorker!.postMessage({ type: 'stop' });
+          this.screenCaptureWorker?.once("exit", () => resolve());
+          this.screenCaptureWorker?.postMessage({ type: "stop" });
         })
       );
     }
@@ -510,8 +518,8 @@ export class VisionWorkerManager {
     if (this.florence2Worker) {
       stopPromises.push(
         new Promise((resolve) => {
-          this.florence2Worker!.once('exit', () => resolve());
-          this.florence2Worker!.postMessage({ type: 'stop' });
+          this.florence2Worker?.once("exit", () => resolve());
+          this.florence2Worker?.postMessage({ type: "stop" });
         })
       );
     }
@@ -519,14 +527,14 @@ export class VisionWorkerManager {
     if (this.ocrWorker) {
       stopPromises.push(
         new Promise((resolve) => {
-          this.ocrWorker!.once('exit', () => resolve());
-          this.ocrWorker!.postMessage({ type: 'stop' });
+          this.ocrWorker?.once("exit", () => resolve());
+          this.ocrWorker?.postMessage({ type: "stop" });
         })
       );
     }
 
     await Promise.all(stopPromises);
-    logger.info('[VisionWorkerManager] All workers stopped');
+    logger.info("[VisionWorkerManager] All workers stopped");
   }
 
   private handleWorkerLog(workerName: string, msg: any): void {
@@ -534,30 +542,30 @@ export class VisionWorkerManager {
     const formattedMessage = `[${workerName}] ${message}`;
 
     switch (level) {
-      case 'info':
+      case "info":
         logger.info(formattedMessage, ...args);
         break;
-      case 'warn':
+      case "warn":
         logger.warn(formattedMessage, ...args);
         break;
-      case 'error':
+      case "error":
         logger.error(formattedMessage, ...args);
         break;
-      case 'debug':
+      case "debug":
         logger.debug(formattedMessage, ...args);
         break;
     }
   }
 
   private async restartScreenCaptureWorker(): Promise<void> {
-    const attempts = this.restartAttempts.get('screenCapture') || 0;
+    const attempts = this.restartAttempts.get("screenCapture") || 0;
 
     if (attempts >= this.MAX_RESTART_ATTEMPTS) {
-      logger.error('[VisionWorkerManager] Max restart attempts reached for screen capture worker');
+      logger.error("[VisionWorkerManager] Max restart attempts reached for screen capture worker");
       return;
     }
 
-    this.restartAttempts.set('screenCapture', attempts + 1);
+    this.restartAttempts.set("screenCapture", attempts + 1);
     logger.info(`[VisionWorkerManager] Restarting screen capture worker (attempt ${attempts + 1})`);
 
     try {
@@ -571,21 +579,21 @@ export class VisionWorkerManager {
       await this.startScreenCaptureWorker();
 
       // Reset restart counter on successful start
-      this.restartAttempts.set('screenCapture', 0);
+      this.restartAttempts.set("screenCapture", 0);
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to restart screen capture worker:', error);
+      logger.error("[VisionWorkerManager] Failed to restart screen capture worker:", error);
     }
   }
 
   private async restartFlorence2Worker(): Promise<void> {
-    const attempts = this.restartAttempts.get('florence2') || 0;
+    const attempts = this.restartAttempts.get("florence2") || 0;
 
     if (attempts >= this.MAX_RESTART_ATTEMPTS) {
-      logger.error('[VisionWorkerManager] Max restart attempts reached for Florence2 worker');
+      logger.error("[VisionWorkerManager] Max restart attempts reached for Florence2 worker");
       return;
     }
 
-    this.restartAttempts.set('florence2', attempts + 1);
+    this.restartAttempts.set("florence2", attempts + 1);
     logger.info(`[VisionWorkerManager] Restarting Florence2 worker (attempt ${attempts + 1})`);
 
     try {
@@ -599,21 +607,21 @@ export class VisionWorkerManager {
       await this.startFlorence2Worker();
 
       // Reset restart counter on successful start
-      this.restartAttempts.set('florence2', 0);
+      this.restartAttempts.set("florence2", 0);
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to restart Florence2 worker:', error);
+      logger.error("[VisionWorkerManager] Failed to restart Florence2 worker:", error);
     }
   }
 
   private async restartOCRWorker(): Promise<void> {
-    const attempts = this.restartAttempts.get('ocr') || 0;
+    const attempts = this.restartAttempts.get("ocr") || 0;
 
     if (attempts >= this.MAX_RESTART_ATTEMPTS) {
-      logger.error('[VisionWorkerManager] Max restart attempts reached for OCR worker');
+      logger.error("[VisionWorkerManager] Max restart attempts reached for OCR worker");
       return;
     }
 
-    this.restartAttempts.set('ocr', attempts + 1);
+    this.restartAttempts.set("ocr", attempts + 1);
     logger.info(`[VisionWorkerManager] Restarting OCR worker (attempt ${attempts + 1})`);
 
     try {
@@ -627,9 +635,9 @@ export class VisionWorkerManager {
       await this.startOCRWorker();
 
       // Reset restart counter on successful start
-      this.restartAttempts.set('ocr', 0);
+      this.restartAttempts.set("ocr", 0);
     } catch (error) {
-      logger.error('[VisionWorkerManager] Failed to restart OCR worker:', error);
+      logger.error("[VisionWorkerManager] Failed to restart OCR worker:", error);
     }
   }
 }

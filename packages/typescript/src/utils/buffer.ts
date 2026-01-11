@@ -94,7 +94,7 @@ export function toHex(buffer: BufferLike): string {
  * @param encoding - The encoding to use (default: 'utf8')
  * @returns A string
  */
-export function toString(
+export function bufferToString(
   buffer: BufferLike,
   encoding: "utf8" | "utf-8" | "base64" | "hex" = "utf8",
 ): string {
@@ -266,7 +266,8 @@ export const BufferUtils = {
   fromString,
   fromBytes,
   toHex,
-  toString,
+  bufferToString,
+  toString: bufferToString,
   isBuffer,
   alloc,
   concat,

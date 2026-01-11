@@ -14,14 +14,21 @@
   padding: 0;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: 'VT323', 'Fira Code', monospace;
-  background: radial-gradient(ellipse at center, #0d0d0d 0%, #050505 50%, #000 100%);
+  font-family: "VT323", "Fira Code", monospace;
+  background: radial-gradient(
+    ellipse at center,
+    #0d0d0d 0%,
+    #050505 50%,
+    #000 100%
+  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -30,7 +37,7 @@ body {
 
 /* Global text glow */
 .glow-text {
-  text-shadow: 
+  text-shadow:
     0 0 5px var(--phosphor-glow),
     0 0 10px var(--phosphor-glow),
     0 0 15px var(--phosphor-glow);
@@ -38,32 +45,68 @@ body {
 
 /* Animations */
 @keyframes flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.85; }
-  94% { opacity: 1; }
-  97% { opacity: 0.9; }
-  98% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.85;
+  }
+  94% {
+    opacity: 1;
+  }
+  97% {
+    opacity: 0.9;
+  }
+  98% {
+    opacity: 1;
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--phosphor-glow); }
-  50% { opacity: 0.6; box-shadow: 0 0 4px var(--phosphor-glow); }
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px var(--phosphor-glow);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 4px var(--phosphor-glow);
+  }
 }
 
 @keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
 }
 
 @keyframes cursor-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 @keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
 }
 
 @keyframes boot {
@@ -86,11 +129,11 @@ body {
 }
 
 @keyframes typewriter {
-  from { width: 0; }
-  to { width: 100%; }
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
 }
-
-
-
-
 

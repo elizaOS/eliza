@@ -29,16 +29,14 @@ export const stringJsonb = customType<{ data: string; driverData: string }>({
  * @param {Function} options.fromDriver - A function that converts a timestamp string to a number using the Date object's getTime method.
  * @returns {Object} - The custom type for number to timestamp conversion.
  */
-export const numberTimestamp = customType<{ data: number; driverData: string }>(
-  {
-    dataType() {
-      return "timestamptz";
-    },
-    toDriver(value: number): string {
-      return new Date(value).toISOString();
-    },
-    fromDriver(value: string): number {
-      return new Date(value).getTime();
-    },
+export const numberTimestamp = customType<{ data: number; driverData: string }>({
+  dataType() {
+    return "timestamptz";
   },
-);
+  toDriver(value: number): string {
+    return new Date(value).toISOString();
+  },
+  fromDriver(value: string): number {
+    return new Date(value).getTime();
+  },
+});

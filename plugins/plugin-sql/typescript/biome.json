@@ -1,0 +1,66 @@
+{
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noInvalidUseBeforeDeclaration": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn"
+      },
+      "a11y": {
+        "useButtonType": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "complexity": {
+        "noCommaOperator": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off",
+            "useIterableCallbackReturn": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "correctness": {
+            "noInvalidUseBeforeDeclaration": "off",
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    }
+  ],
+  "formatter": {
+    "enabled": true,
+    "indentWidth": 2,
+    "indentStyle": "space",
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "es5",
+      "semicolons": "always"
+    }
+  }
+}

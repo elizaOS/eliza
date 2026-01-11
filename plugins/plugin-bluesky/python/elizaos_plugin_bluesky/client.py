@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -11,21 +11,18 @@ import httpx
 from elizaos_plugin_bluesky.config import BlueSkyConfig
 from elizaos_plugin_bluesky.errors import (
     AuthenticationError,
-    MessageError,
     NetworkError,
-    NotificationError,
     PostError,
-    ProfileError,
     RateLimitError,
 )
 from elizaos_plugin_bluesky.types import (
+    BLUESKY_CHAT_SERVICE_DID,
     BlueSkyConversation,
     BlueSkyMessage,
     BlueSkyNotification,
     BlueSkyPost,
     BlueSkyProfile,
     BlueSkySession,
-    BLUESKY_CHAT_SERVICE_DID,
     CreatePostRequest,
     NotificationReason,
     PostRecord,
@@ -54,7 +51,7 @@ class BlueSkyClient:
         await self._http.aclose()
         self._session = None
 
-    async def __aenter__(self) -> "BlueSkyClient":
+    async def __aenter__(self) -> BlueSkyClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -120,7 +117,7 @@ class BlueSkyClient:
         record: dict[str, Any] = {
             "$type": "app.bsky.feed.post",
             "text": request.content.text,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "createdAt": datetime.now(UTC).isoformat(),
         }
         if request.reply_to:
             record["reply"] = {
@@ -128,6 +125,8 @@ class BlueSkyClient:
                 "parent": {"uri": request.reply_to.uri, "cid": request.reply_to.cid},
             }
 
+        if not self._session:
+            raise ValueError("Session not initialized")
         response = await self._request(
             "POST",
             "com.atproto.repo.createRecord",
@@ -145,6 +144,8 @@ class BlueSkyClient:
         if self.config.dry_run:
             logger.info("Dry run: would delete post", extra={"uri": uri})
             return
+        if not self._session:
+            raise ValueError("Session not initialized")
         rkey = uri.split("/")[-1]
         await self._request(
             "POST",
@@ -155,6 +156,8 @@ class BlueSkyClient:
     async def like_post(self, uri: str, cid: str) -> None:
         if self.config.dry_run:
             return
+        if not self._session:
+            raise ValueError("Session not initialized")
         await self._request(
             "POST",
             "com.atproto.repo.createRecord",
@@ -164,7 +167,7 @@ class BlueSkyClient:
                 "record": {
                     "$type": "app.bsky.feed.like",
                     "subject": {"uri": uri, "cid": cid},
-                    "createdAt": datetime.now(timezone.utc).isoformat(),
+                    "createdAt": datetime.now(UTC).isoformat(),
                 },
             },
         )
@@ -172,6 +175,8 @@ class BlueSkyClient:
     async def repost(self, uri: str, cid: str) -> None:
         if self.config.dry_run:
             return
+        if not self._session:
+            raise ValueError("Session not initialized")
         await self._request(
             "POST",
             "com.atproto.repo.createRecord",
@@ -181,7 +186,7 @@ class BlueSkyClient:
                 "record": {
                     "$type": "app.bsky.feed.repost",
                     "subject": {"uri": uri, "cid": cid},
-                    "createdAt": datetime.now(timezone.utc).isoformat(),
+                    "createdAt": datetime.now(UTC).isoformat(),
                 },
             },
         )
@@ -193,7 +198,9 @@ class BlueSkyClient:
         if cursor:
             params["cursor"] = cursor
 
-        response = await self._request("GET", "app.bsky.notification.listNotifications", params=params)
+        response = await self._request(
+            "GET", "app.bsky.notification.listNotifications", params=params
+        )
         notifications = [
             BlueSkyNotification(
                 uri=n["uri"],
@@ -217,7 +224,7 @@ class BlueSkyClient:
         await self._request(
             "POST",
             "app.bsky.notification.updateSeen",
-            json={"seenAt": datetime.now(timezone.utc).isoformat()},
+            json={"seenAt": datetime.now(UTC).isoformat()},
         )
 
     async def get_conversations(
@@ -227,7 +234,9 @@ class BlueSkyClient:
         if cursor:
             params["cursor"] = cursor
 
-        response = await self._request("GET", "chat.bsky.convo.listConvos", params=params, chat=True)
+        response = await self._request(
+            "GET", "chat.bsky.convo.listConvos", params=params, chat=True
+        )
         convos = [
             BlueSkyConversation(
                 id=c["id"],
@@ -256,7 +265,9 @@ class BlueSkyClient:
         if cursor:
             params["cursor"] = cursor
 
-        response = await self._request("GET", "chat.bsky.convo.getMessages", params=params, chat=True)
+        response = await self._request(
+            "GET", "chat.bsky.convo.getMessages", params=params, chat=True
+        )
         messages = [
             BlueSkyMessage(
                 id=m["id"],
@@ -277,7 +288,10 @@ class BlueSkyClient:
         response = await self._request(
             "POST",
             "chat.bsky.convo.sendMessage",
-            json={"convoId": request.convo_id, "message": {"text": request.message.get("text") or ""}},
+            json={
+                "convoId": request.convo_id,
+                "message": {"text": request.message.get("text") or ""},
+            },
             chat=True,
         )
         return BlueSkyMessage(
@@ -315,7 +329,8 @@ class BlueSkyClient:
                 raise RateLimitError()
             if not response.is_success:
                 raise Exception(f"Request failed: {response.status_code}")
-            return response.json()
+            result: dict[str, Any] = response.json()
+            return result
 
         except httpx.TimeoutException as e:
             raise NetworkError(f"Timeout: {e}") from e
@@ -340,7 +355,7 @@ class BlueSkyClient:
         )
 
     def _mock_post(self, text: str) -> BlueSkyPost:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         return BlueSkyPost(
             uri=f"mock://post/{now}",
             cid=f"mock-cid-{now}",
@@ -354,9 +369,9 @@ class BlueSkyClient:
 
     def _mock_message(self, text: str) -> BlueSkyMessage:
         return BlueSkyMessage(
-            id=f"mock-msg-{datetime.now(timezone.utc).timestamp()}",
+            id=f"mock-msg-{datetime.now(UTC).timestamp()}",
             rev="1",
             text=text,
             sender={"did": self._session.did if self._session else "did:plc:mock"},
-            sent_at=datetime.now(timezone.utc).isoformat(),
+            sent_at=datetime.now(UTC).isoformat(),
         )

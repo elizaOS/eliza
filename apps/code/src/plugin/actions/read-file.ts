@@ -1,15 +1,15 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
 import { getCwd } from "../providers/cwd.js";
 
 /**
@@ -61,7 +61,10 @@ BEHAVIOR:
 
 OUTPUT: File contents wrapped in markdown code block with appropriate language tag.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("read") ||
@@ -78,12 +81,13 @@ OUTPUT: File contents wrapped in markdown code block with appropriate language t
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const filepath = extractFilePath(message.content.text ?? "");
 
     if (!filepath) {
-      const msg = "Could not determine which file to read. Please specify a file path.";
+      const msg =
+        "Could not determine which file to read. Please specify a file path.";
       await callback?.({ text: msg });
       return { success: false, text: msg };
     }
@@ -104,7 +108,11 @@ OUTPUT: File contents wrapped in markdown code block with appropriate language t
       const result = `**File: ${filepath}**\n\`\`\`${ext}\n${content}\n\`\`\``;
 
       await callback?.({ text: result });
-      return { success: true, text: result, data: { filepath, content, size: stats.size } };
+      return {
+        success: true,
+        text: result,
+        data: { filepath, content, size: stats.size },
+      };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       let msg: string;
@@ -126,11 +134,17 @@ OUTPUT: File contents wrapped in markdown code block with appropriate language t
   examples: [
     [
       { name: "{{user1}}", content: { text: "read the package.json" } },
-      { name: "{{agent}}", content: { text: "Reading package.json...", actions: ["READ_FILE"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Reading package.json...", actions: ["READ_FILE"] },
+      },
     ],
     [
       { name: "{{user1}}", content: { text: "show me src/index.ts" } },
-      { name: "{{agent}}", content: { text: "Here's src/index.ts:", actions: ["READ_FILE"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Here's src/index.ts:", actions: ["READ_FILE"] },
+      },
     ],
   ],
 };

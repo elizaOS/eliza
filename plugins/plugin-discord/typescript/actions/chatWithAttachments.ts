@@ -10,15 +10,15 @@ import {
   type IAgentRuntime,
   type Media,
   type Memory,
+  MemoryType,
   ModelType,
   parseJSONObjectFromText,
   type State,
   trimTokens,
-  MemoryType,
 } from "@elizaos/core";
 import {
-  attachmentSummarizationTemplate as summarizationTemplate,
   attachmentIdsTemplate,
+  attachmentSummarizationTemplate as summarizationTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
 // Re-export for backwards compatibility
@@ -34,7 +34,7 @@ export { summarizationTemplate, attachmentIdsTemplate };
 const getAttachmentIds = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{ objective: string; attachmentIds: string[] } | null> => {
   const prompt = composePromptFromState({
     state,
@@ -51,7 +51,7 @@ const getAttachmentIds = async (
       attachmentIds: string[];
     } | null;
     // see if it contains objective and attachmentIds
-    if (parsedResponse && parsedResponse.objective && parsedResponse.attachmentIds) {
+    if (parsedResponse?.objective && parsedResponse.attachmentIds) {
       return parsedResponse;
     }
   }
@@ -127,15 +127,15 @@ export const chatWithAttachments = {
     ];
     const messageContentText = message.content.text;
     return keywords.some((keyword) =>
-      messageContentText && messageContentText.toLowerCase().includes(keyword.toLowerCase()),
+      messageContentText?.toLowerCase().includes(keyword.toLowerCase())
     );
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
     const callbackData: Content = {
       text: "", // fill in later
@@ -152,7 +152,7 @@ export const chatWithAttachments = {
           src: "plugin:discord:action:chat-with-attachments",
           agentId: runtime.agentId,
         },
-        "Could not get attachment IDs from message",
+        "Could not get attachment IDs from message"
       );
       await runtime.createMemory(
         {
@@ -161,15 +161,14 @@ export const chatWithAttachments = {
           roomId: message.roomId,
           content: {
             source: message.content.source,
-            thought:
-              "I tried to chat with attachments but I couldn't get attachment IDs",
+            thought: "I tried to chat with attachments but I couldn't get attachment IDs",
             actions: ["CHAT_WITH_ATTACHMENTS_FAILED"],
           },
           metadata: {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
@@ -187,9 +186,7 @@ export const chatWithAttachments = {
 
     // This is pretty gross but it can catch cases where the returned generated UUID is stupidly wrong for some reason
     const attachments = recentMessages
-      .filter(
-        (msg) => msg.content.attachments && msg.content.attachments.length > 0,
-      )
+      .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
       .flatMap((msg) => msg.content.attachments)
       // Ensure attachment is not undefined before accessing properties
       .filter(
@@ -202,16 +199,13 @@ export const chatWithAttachments = {
             attachmentIds.some((id) => {
               const attachmentId = id.toLowerCase().slice(0, 5);
               // Add check here too
-              return attachment && attachment.id && attachment.id.toLowerCase().includes(attachmentId);
-            })),
+              return attachment?.id?.toLowerCase().includes(attachmentId);
+            }))
       );
 
     const attachmentsWithText = attachments
       // Ensure attachment is not undefined before accessing properties
-      .filter(
-        (attachment): attachment is NonNullable<typeof attachment> =>
-          !!attachment,
-      )
+      .filter((attachment): attachment is NonNullable<typeof attachment> => !!attachment)
       .map((attachment) => `# ${attachment.title}\n${attachment.text}`)
       .join("\n\n");
 
@@ -221,11 +215,7 @@ export const chatWithAttachments = {
 
     state.values.attachmentsWithText = attachmentsWithText;
     state.values.objective = objective;
-    const template = await trimTokens(
-      summarizationTemplate,
-      chunkSize,
-      runtime,
-    );
+    const template = await trimTokens(summarizationTemplate, chunkSize, runtime);
     const prompt = composePromptFromState({
       state,
       // make sure it fits, we can pad the tokens a bit
@@ -245,7 +235,7 @@ export const chatWithAttachments = {
           src: "plugin:discord:action:chat-with-attachments",
           agentId: runtime.agentId,
         },
-        "No summary found",
+        "No summary found"
       );
       await runtime.createMemory(
         {
@@ -254,15 +244,14 @@ export const chatWithAttachments = {
           roomId: message.roomId,
           content: {
             source: message.content.source,
-            thought:
-              "I tried to chat with attachments but I couldn't get a summary",
+            thought: "I tried to chat with attachments but I couldn't get a summary",
             actions: ["CHAT_WITH_ATTACHMENTS_FAILED"],
           },
           metadata: {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
@@ -313,7 +302,7 @@ ${currentSummary.trim()}
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },
-          "Error in file/cache process",
+          "Error in file/cache process"
         );
         throw error;
       }
@@ -323,7 +312,7 @@ ${currentSummary.trim()}
           src: "plugin:discord:action:chat-with-attachments",
           agentId: runtime.agentId,
         },
-        "Empty response from chat with attachments action",
+        "Empty response from chat with attachments action"
       );
     }
 

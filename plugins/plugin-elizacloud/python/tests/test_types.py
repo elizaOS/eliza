@@ -1,7 +1,5 @@
 """Tests for type definitions."""
 
-import pytest
-
 from elizaos_plugin_elizacloud.types import (
     DetokenizeTextParams,
     ElizaCloudConfig,
@@ -20,7 +18,7 @@ from elizaos_plugin_elizacloud.types import (
 def test_eliza_cloud_config_defaults() -> None:
     """Test ElizaCloudConfig default values."""
     config = ElizaCloudConfig(api_key="test_key")
-    
+
     assert config.api_key == "test_key"
     assert config.base_url == "https://www.elizacloud.ai/api/v1"
     assert config.small_model == "gpt-4o-mini"
@@ -36,7 +34,7 @@ def test_eliza_cloud_config_defaults() -> None:
 def test_text_generation_params_defaults() -> None:
     """Test TextGenerationParams default values."""
     params = TextGenerationParams(prompt="Test prompt")
-    
+
     assert params.prompt == "Test prompt"
     assert params.temperature == 0.7
     assert params.max_tokens == 8192
@@ -49,7 +47,7 @@ def test_text_generation_params_defaults() -> None:
 def test_object_generation_params_defaults() -> None:
     """Test ObjectGenerationParams default values."""
     params = ObjectGenerationParams(prompt="Generate a JSON object")
-    
+
     assert params.prompt == "Generate a JSON object"
     assert params.temperature == 0.0
     assert params.schema is None
@@ -61,7 +59,7 @@ def test_text_embedding_params() -> None:
     single = TextEmbeddingParams(text="Hello")
     assert single.text == "Hello"
     assert single.texts is None
-    
+
     # Batch texts
     batch = TextEmbeddingParams(texts=["Hello", "World"])
     assert batch.text is None
@@ -71,7 +69,7 @@ def test_text_embedding_params() -> None:
 def test_image_generation_params() -> None:
     """Test ImageGenerationParams."""
     params = ImageGenerationParams(prompt="A sunset")
-    
+
     assert params.prompt == "A sunset"
     assert params.count == 1
     assert params.size == "1024x1024"
@@ -82,10 +80,10 @@ def test_image_generation_params() -> None:
 def test_image_description_params() -> None:
     """Test ImageDescriptionParams."""
     params = ImageDescriptionParams(image_url="https://example.com/image.jpg")
-    
+
     assert params.image_url == "https://example.com/image.jpg"
     assert params.prompt is None
-    
+
     # With custom prompt
     params_with_prompt = ImageDescriptionParams(
         image_url="https://example.com/image.jpg",
@@ -97,7 +95,7 @@ def test_image_description_params() -> None:
 def test_image_description_result() -> None:
     """Test ImageDescriptionResult."""
     result = ImageDescriptionResult(title="Sunset", description="A beautiful sunset")
-    
+
     assert result.title == "Sunset"
     assert result.description == "A beautiful sunset"
 
@@ -105,7 +103,7 @@ def test_image_description_result() -> None:
 def test_text_to_speech_params() -> None:
     """Test TextToSpeechParams."""
     params = TextToSpeechParams(text="Hello world")
-    
+
     assert params.text == "Hello world"
     assert params.model is None
     assert params.voice is None
@@ -116,7 +114,7 @@ def test_text_to_speech_params() -> None:
 def test_transcription_params() -> None:
     """Test TranscriptionParams."""
     params = TranscriptionParams(audio=b"audio_data")
-    
+
     assert params.audio == b"audio_data"
     assert params.model is None
     assert params.language is None
@@ -128,10 +126,10 @@ def test_transcription_params() -> None:
 def test_tokenize_text_params() -> None:
     """Test TokenizeTextParams."""
     params = TokenizeTextParams(prompt="Hello tokenizer!")
-    
+
     assert params.prompt == "Hello tokenizer!"
     assert params.model_type == "TEXT_LARGE"
-    
+
     # With small model
     small_params = TokenizeTextParams(prompt="Test", model_type="TEXT_SMALL")
     assert small_params.model_type == "TEXT_SMALL"
@@ -140,6 +138,6 @@ def test_tokenize_text_params() -> None:
 def test_detokenize_text_params() -> None:
     """Test DetokenizeTextParams."""
     params = DetokenizeTextParams(tokens=[1, 2, 3, 4])
-    
+
     assert params.tokens == [1, 2, 3, 4]
     assert params.model_type == "TEXT_LARGE"

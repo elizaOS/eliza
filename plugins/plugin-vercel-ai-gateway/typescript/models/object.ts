@@ -4,7 +4,7 @@
 
 import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
 import { GatewayClient } from "../providers/client";
-import { buildConfig, getSmallModel, getLargeModel } from "../utils/config";
+import { buildConfig, getLargeModel, getSmallModel } from "../utils/config";
 
 /**
  * Handle OBJECT_SMALL model requests.
@@ -43,5 +43,3 @@ export async function handleObjectLarge(
     temperature: params.temperature,
   });
 }
-
-

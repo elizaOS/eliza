@@ -467,3 +467,8 @@ def validate_wasm_plugin(wasm_path: str | Path) -> dict[str, Any]:
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
+
+
+
+
+

@@ -37,14 +37,14 @@ from elizaos_plugin_evm import (
 async def main():
     # Initialize provider with private key
     provider = EVMWalletProvider("your_private_key")
-    
+
     # Get wallet address
     print(f"Address: {provider.address}")
-    
+
     # Get balance on mainnet
     balance = await provider.get_balance(SupportedChain.MAINNET)
     print(f"Balance: {balance.native_balance} ETH")
-    
+
     # Transfer tokens
     params = TransferParams(
         from_chain=SupportedChain.SEPOLIA,
@@ -59,22 +59,22 @@ asyncio.run(main())
 
 ## Supported Chains
 
-| Chain | ID | Native Token |
-|-------|------|--------------|
-| Ethereum Mainnet | 1 | ETH |
-| Sepolia | 11155111 | ETH |
-| Base | 8453 | ETH |
-| Base Sepolia | 84532 | ETH |
-| Arbitrum | 42161 | ETH |
-| Optimism | 10 | ETH |
-| Polygon | 137 | MATIC |
-| Avalanche | 43114 | AVAX |
-| BSC | 56 | BNB |
-| Gnosis | 100 | xDAI |
-| Fantom | 250 | FTM |
-| Linea | 59144 | ETH |
-| Scroll | 534352 | ETH |
-| zkSync Era | 324 | ETH |
+| Chain            | ID       | Native Token |
+| ---------------- | -------- | ------------ |
+| Ethereum Mainnet | 1        | ETH          |
+| Sepolia          | 11155111 | ETH          |
+| Base             | 8453     | ETH          |
+| Base Sepolia     | 84532    | ETH          |
+| Arbitrum         | 42161    | ETH          |
+| Optimism         | 10       | ETH          |
+| Polygon          | 137      | MATIC        |
+| Avalanche        | 43114    | AVAX         |
+| BSC              | 56       | BNB          |
+| Gnosis           | 100      | xDAI         |
+| Fantom           | 250      | FTM          |
+| Linea            | 59144    | ETH          |
+| Scroll           | 534352   | ETH          |
+| zkSync Era       | 324      | ETH          |
 
 ## API Reference
 
@@ -229,5 +229,3 @@ ruff format .
 ## License
 
 MIT
-
-

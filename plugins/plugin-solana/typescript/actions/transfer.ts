@@ -52,12 +52,10 @@ function isTransferContent(content: unknown): content is TransferContent {
   const c = content as Partial<Record<keyof TransferContent, unknown>>;
   // Base validation
   if (typeof c.recipient !== "string") return false;
-  if (!(typeof c.amount === "string" || typeof c.amount === "number"))
-    return false;
+  if (!(typeof c.amount === "string" || typeof c.amount === "number")) return false;
 
   // Don’t mutate here; just validate. Treat 'null' as valid string; normalize later.
-  if (c.tokenAddress !== null && typeof c.tokenAddress !== "string")
-    return false;
+  if (c.tokenAddress !== null && typeof c.tokenAddress !== "string") return false;
 
   return true;
 }
@@ -119,7 +117,7 @@ export default {
     _message: Memory,
     state: State,
     _options: { [key: string]: unknown },
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<undefined | ActionResult | undefined> => {
     logger.log("Starting TRANSFER handler...");
 
@@ -210,19 +208,13 @@ export default {
         const mintPubkey = new PublicKey(content.tokenAddress);
         const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
         const mintInfoValue = mintInfo.value;
-        const mintInfoData = mintInfoValue && mintInfoValue.data as { parsed: { info: { decimals: number } } };
-        const decimals =
-          (mintInfoData && mintInfoData.parsed && mintInfoData.parsed.info && mintInfoData.parsed.info.decimals) ?? 9;
+        const mintInfoData =
+          mintInfoValue && (mintInfoValue.data as { parsed: { info: { decimals: number } } });
+        const decimals = mintInfoData?.parsed?.info?.decimals ?? 9;
         const adjustedAmount = BigInt(Number(content.amount) * 10 ** decimals);
 
-        const senderATA = getAssociatedTokenAddressSync(
-          mintPubkey,
-          senderKeypair.publicKey,
-        );
-        const recipientATA = getAssociatedTokenAddressSync(
-          mintPubkey,
-          recipientPubkey,
-        );
+        const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
+        const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
 
         const instructions = [];
 
@@ -233,8 +225,8 @@ export default {
               senderKeypair.publicKey,
               recipientATA,
               recipientPubkey,
-              mintPubkey,
-            ),
+              mintPubkey
+            )
           );
         }
 
@@ -243,8 +235,8 @@ export default {
             senderATA,
             recipientATA,
             senderKeypair.publicKey,
-            adjustedAmount,
-          ),
+            adjustedAmount
+          )
         );
 
         const messageV0 = new TransactionMessage({

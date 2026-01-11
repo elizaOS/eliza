@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class MessageClassifierProvider:
     """
     Classifies incoming messages by complexity and planning requirements.
-    
+
     Uses LLM analysis to determine if strategic planning, sequential execution,
     or direct action is needed.
     """
@@ -167,7 +167,7 @@ CONFIDENCE: [0.0-1.0]"""
     def _classify_heuristically(self, text: str) -> str:
         """Heuristic classification for testing."""
         text_lower = text.lower()
-        
+
         if any(word in text_lower for word in ["strategy", "plan", "strategic"]):
             complexity = "complex"
             planning_type = "strategic_planning"
@@ -228,5 +228,8 @@ CONFIDENCE: {confidence}"""
             "text": f"Message classified as: {classification} with confidence: {confidence} (fallback)",
             "data": result,
         }
+
+
+
 
 

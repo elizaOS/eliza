@@ -1,6 +1,7 @@
 """elizaOS MCP Plugin - Model Context Protocol client for elizaOS agents."""
 
 from elizaos_plugin_mcp.client import McpClient
+from elizaos_plugin_mcp.transports import HttpTransport, StdioTransport, Transport
 from elizaos_plugin_mcp.types import (
     ConnectionStatus,
     HttpServerConfig,
@@ -13,7 +14,6 @@ from elizaos_plugin_mcp.types import (
     McpToolResult,
     StdioServerConfig,
 )
-from elizaos_plugin_mcp.transports import HttpTransport, StdioTransport, Transport
 
 __version__ = "1.7.0"
 
@@ -36,5 +36,3 @@ __all__ = [
     "StdioTransport",
     "HttpTransport",
 ]
-
-

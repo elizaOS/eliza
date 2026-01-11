@@ -49,7 +49,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_adapter() {
-        let adapter = create_database_adapter("test-agent");
+        let mut adapter = create_database_adapter("test-agent");
         adapter.init().await.unwrap();
         assert!(adapter.is_ready().await);
     }

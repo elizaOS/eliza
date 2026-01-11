@@ -16,27 +16,24 @@ async def get_projects(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             return ProviderResult(text="Linear service is not available")
-        
+
         projects = await linear_service.get_projects()
-        
+
         if not projects:
             return ProviderResult(text="No Linear projects found")
-        
+
         # Filter active projects
-        active_projects = [
-            p for p in projects
-            if p.get("state") in ("started", "planned", None)
-        ]
-        
+        active_projects = [p for p in projects if p.get("state") in ("started", "planned", None)]
+
         projects_list = [
             f"- {project['name']}: {project.get('state') or 'active'} "
             f"({project.get('startDate', 'No start date')[:10] if project.get('startDate') else 'No start date'} - "
             f"{project.get('targetDate', 'No target date')[:10] if project.get('targetDate') else 'No target date'})"
             for project in active_projects[:10]
         ]
-        
-        text = f"Active Linear Projects:\n" + "\n".join(projects_list)
-        
+
+        text = "Active Linear Projects:\n" + "\n".join(projects_list)
+
         return ProviderResult(
             text=text,
             data={
@@ -55,5 +52,8 @@ linear_projects_provider = Provider(
     description="Provides context about active Linear projects",
     get=get_projects,
 )
+
+
+
 
 

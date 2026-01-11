@@ -1,5 +1,5 @@
-import {  describe, expect, it  } from "vitest";
 import { stringToUuid } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 /**
  * Server RLS Unit Tests
@@ -25,27 +25,19 @@ describe("Server RLS Helper Functions", () => {
       expect(uuid1a).not.toBe(uuid2);
 
       // UUIDs should be valid format
-      expect(uuid1a).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
-      expect(uuid2).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+      expect(uuid1a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(uuid2).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("should handle empty tokens", () => {
       const emptyUuid = stringToUuid("");
-      expect(emptyUuid).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+      expect(emptyUuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("should handle special characters in tokens", () => {
       const specialToken = "token-with-special-chars-!@#$%^&*()";
       const uuid = stringToUuid(specialToken);
-      expect(uuid).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+      expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
   });
 
@@ -80,9 +72,7 @@ describe("Server RLS Helper Functions", () => {
 
       testCases.forEach(({ rlsEnabled, authToken, postgresUrl, expected }) => {
         const isValid =
-          rlsEnabled === "true" &&
-          authToken !== "" &&
-          postgresUrl.startsWith("postgresql://");
+          rlsEnabled === "true" && authToken !== "" && postgresUrl.startsWith("postgresql://");
         expect(isValid).toBe(expected);
       });
     });
@@ -94,8 +84,7 @@ describe("Server RLS Helper Functions", () => {
       const serverId_value = "c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01";
       const defaultServerId = "00000000-0000-0000-0000-000000000000";
 
-      const serverId =
-        rlsEnabled && serverId_value ? serverId_value : defaultServerId;
+      const serverId = rlsEnabled && serverId_value ? serverId_value : defaultServerId;
 
       expect(serverId).toBe(serverId_value);
       expect(serverId).not.toBe(defaultServerId);
@@ -106,8 +95,7 @@ describe("Server RLS Helper Functions", () => {
       const serverId_value = "c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01";
       const defaultServerId = "00000000-0000-0000-0000-000000000000";
 
-      const serverId =
-        rlsEnabled && serverId_value ? serverId_value : defaultServerId;
+      const serverId = rlsEnabled && serverId_value ? serverId_value : defaultServerId;
 
       expect(serverId).toBe(defaultServerId);
       expect(serverId).not.toBe(serverId_value);
@@ -118,8 +106,7 @@ describe("Server RLS Helper Functions", () => {
       const serverId_value = undefined;
       const defaultServerId = "00000000-0000-0000-0000-000000000000";
 
-      const serverId =
-        rlsEnabled && serverId_value ? serverId_value : defaultServerId;
+      const serverId = rlsEnabled && serverId_value ? serverId_value : defaultServerId;
 
       expect(serverId).toBe(defaultServerId);
     });
@@ -154,11 +141,7 @@ describe("Server RLS Helper Functions", () => {
 
   describe("Table Exclusions", () => {
     it("should define correct tables excluded from Server RLS", () => {
-      const excludedTables = [
-        "servers",
-        "drizzle_migrations",
-        "__drizzle_migrations",
-      ];
+      const excludedTables = ["servers", "drizzle_migrations", "__drizzle_migrations"];
 
       // Tables that should NOT have Server RLS
       expect(excludedTables).toContain("servers");
@@ -266,12 +249,8 @@ describe("Server RLS Security Properties", () => {
       expect(server1Id).not.toBe(server2Id);
 
       // Both should be valid UUIDs
-      expect(server1Id).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
-      expect(server2Id).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-      );
+      expect(server1Id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(server2Id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
   });
 });

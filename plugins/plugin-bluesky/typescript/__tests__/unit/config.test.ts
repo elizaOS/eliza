@@ -2,11 +2,11 @@
  * Tests for BlueSky configuration.
  */
 
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
-  BlueSkyConfigSchema,
   BLUESKY_DEFAULT_SERVICE_URL,
   BLUESKY_MAX_POST_LENGTH,
+  BlueSkyConfigSchema,
 } from "../../types";
 
 describe("BlueSkyConfigSchema", () => {
@@ -73,5 +73,3 @@ describe("Constants", () => {
     expect(BLUESKY_MAX_POST_LENGTH).toBe(300);
   });
 });
-
-

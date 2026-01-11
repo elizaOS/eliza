@@ -107,7 +107,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install build tools
         run: |
@@ -164,19 +164,19 @@ jobs:
           release_name: "v${{ needs.verify_version.outputs.version }}"
           body: |
             ## Release v${{ needs.verify_version.outputs.version }}
-            
+
             ### Installation
-            
+
             **npm (TypeScript/JavaScript):**
             ```bash
             npm install @elizaos/plugin-elizacloud@${{ needs.verify_version.outputs.version }}
             ```
-            
+
             **PyPI (Python):**
             ```bash
             pip install elizaos-plugin-elizacloud==${{ needs.verify_version.outputs.version }}
             ```
-            
+
             **crates.io (Rust):**
             ```toml
             [dependencies]
@@ -184,5 +184,6 @@ jobs:
             ```
           draft: false
           prerelease: false
+
 
 

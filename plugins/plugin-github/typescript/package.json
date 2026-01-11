@@ -16,55 +16,38 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
-    },
-    "./rust": {
-      "node": {
-        "import": "../rust/pkg/node/elizaos_plugin_github.js",
-        "default": "../rust/pkg/node/elizaos_plugin_github.js"
-      },
-      "default": "../rust/pkg/node/elizaos_plugin_github.js"
     }
   },
   "files": [
-    "dist",
-    "../rust/pkg",
-    "python"
+    "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.7.0",
+    "@elizaos/core": "workspace:*",
     "@octokit/rest": "^21.0.0",
     "@octokit/types": "^13.0.0",
     "@octokit/webhooks-types": "^7.5.0",
     "glob": "^11.0.0",
     "simple-git": "^3.27.0",
-    "zod": "^3.25.0"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.8.3"
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "bun run build.ts && tsc -p tsconfig.build.json",
-    "dev": "bun run build.ts --watch",
+    "dev": "bun --hot build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
     "test:unit": "bun test __tests__/",
     "test:integration": "elizaos test",
-    "lint": "biome check --write typescript/",
-    "lint:check": "biome check typescript/",
+    "lint": "biome check --write .",
+    "lint:check": "biome check .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "biome format --write typescript/",
-    "format:check": "biome format typescript/",
-    "build:rust": "cd ../rust && cargo build --release",
-    "build:rust:wasm": "cd ../rust && wasm-pack build --target nodejs --out-dir pkg/node",
-    "test:rust": "cd ../rust && cargo test",
-    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
-    "typecheck:rust": "cd ../rust && cargo check --all-targets --all-features",
-    "lint:python": "cd ../python && ruff check . && ruff format --check .",
-    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
-    "test:python": "cd ../python && pytest",
-    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_github || echo 'mypy not installed, skipping typecheck'"
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
   },
   "publishConfig": {
     "access": "public"

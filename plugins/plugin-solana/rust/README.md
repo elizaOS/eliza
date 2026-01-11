@@ -32,13 +32,13 @@ async fn main() -> anyhow::Result<()> {
         "https://api.mainnet-beta.solana.com".to_string(),
         "YourPublicKeyHere",
     )?;
-    
+
     let client = SolanaClient::new(config)?;
-    
+
     // Get balance
     let balance = client.get_sol_balance().await?;
     println!("Balance: {} SOL", balance);
-    
+
     Ok(())
 }
 ```
@@ -58,14 +58,14 @@ async fn main() -> anyhow::Result<()> {
         "https://api.mainnet-beta.solana.com".to_string(),
         "YourBase58PrivateKey",
     )?;
-    
+
     let client = SolanaClient::new(config)?;
-    
+
     // Transfer SOL
     let recipient = Pubkey::from_str("RecipientAddress")?;
     let result = client.transfer_sol(&recipient, Decimal::new(1, 1)).await?;
     println!("Transfer signature: {:?}", result.signature);
-    
+
     Ok(())
 }
 ```
@@ -79,13 +79,16 @@ let config = WalletConfig::from_env()?;
 ```
 
 Required:
+
 - `SOLANA_RPC_URL` - Solana RPC endpoint
 
 One of:
+
 - `SOLANA_PRIVATE_KEY` / `WALLET_PRIVATE_KEY` - For signing capability
 - `SOLANA_PUBLIC_KEY` / `WALLET_PUBLIC_KEY` - For read-only mode
 
 Optional:
+
 - `SLIPPAGE` - Slippage in basis points (default: 50)
 - `HELIUS_API_KEY` - Enhanced RPC features
 - `BIRDEYE_API_KEY` - Token price data
@@ -130,5 +133,3 @@ cargo clippy --all-targets -- -D warnings
 ## License
 
 MIT
-
-

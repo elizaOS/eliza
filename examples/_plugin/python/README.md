@@ -42,11 +42,11 @@ await runtime.register_plugin(plugin)
 The TypeScript runtime can load Python plugins via IPC:
 
 ```typescript
-import { loadPythonPlugin } from '@elizaos/interop';
+import { loadPythonPlugin } from "@elizaos/interop";
 
 const plugin = await loadPythonPlugin({
-  moduleName: 'elizaos_plugin_starter',
-  pythonPath: 'python3',
+  moduleName: "elizaos_plugin_starter",
+  pythonPath: "python3",
 });
 
 await runtime.registerPlugin(plugin);
@@ -81,7 +81,7 @@ async def my_action_handler(runtime, message, state, options, callback, response
     """Execute the action."""
     # Your action logic here
     result = do_something_cool()
-    
+
     return ActionResult(
         success=True,
         text="Action completed!",
@@ -123,17 +123,17 @@ from elizaos.types.service import Service
 
 class MyService(Service):
     service_type = "my-service"
-    
+
     def __init__(self, runtime):
         super().__init__(runtime)
         self.initialized = False
-    
+
     @classmethod
     async def start(cls, runtime):
         service = cls(runtime)
         service.initialized = True
         return service
-    
+
     async def stop(self):
         self.initialized = False
 ```
@@ -197,11 +197,10 @@ ProviderResult(
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `EXAMPLE_PLUGIN_VARIABLE` | Example configuration variable | No |
+| Variable                  | Description                    | Required |
+| ------------------------- | ------------------------------ | -------- |
+| `EXAMPLE_PLUGIN_VARIABLE` | Example configuration variable | No       |
 
 ## License
 
 MIT
-

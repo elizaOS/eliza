@@ -7,7 +7,6 @@ All types are designed for fail-fast validation using Pydantic.
 from enum import Enum
 from typing import Annotated
 
-from eth_typing import ChecksumAddress, HexStr
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -290,5 +289,3 @@ class VoteParams(BaseModel):
     governor: Address
     proposal_id: str
     support: VoteType
-
-

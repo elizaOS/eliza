@@ -12,14 +12,14 @@ import {
 } from "@elizaos/core";
 import type { GuildMember } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import type { DiscordService } from "../service";
 // Import generated prompts
 import { getUserInfoTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { DiscordService } from "../service";
 
 const getUserIdentifier = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<{
   userIdentifier: string;
   detailed: boolean;
@@ -35,7 +35,7 @@ const getUserIdentifier = async (
     });
 
     const parsedResponse = parseJSONObjectFromText(response);
-    if (parsedResponse && parsedResponse.userIdentifier) {
+    if (parsedResponse?.userIdentifier) {
       return {
         userIdentifier: String(parsedResponse.userIdentifier),
         detailed: parsedResponse.detailed === true,
@@ -45,14 +45,9 @@ const getUserIdentifier = async (
   return null;
 };
 
-const formatUserInfo = (
-  member: GuildMember,
-  detailed: boolean = false,
-): string => {
+const formatUserInfo = (member: GuildMember, detailed: boolean = false): string => {
   const user = member.user;
-  const joinedAt = member.joinedAt
-    ? new Date(member.joinedAt).toLocaleDateString()
-    : "Unknown";
+  const joinedAt = member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "Unknown";
   const createdAt = new Date(user.createdAt).toLocaleDateString();
   const roles =
     member.roles.cache
@@ -79,7 +74,7 @@ const formatUserInfo = (
       `**Highest Role:** ${member.roles.highest.name}`,
       `**Permissions:** ${member.permissions.toArray().slice(0, 5).join(", ")}${member.permissions.toArray().length > 5 ? "..." : ""}`,
       `**Voice Channel:** ${member.voice.channel ? member.voice.channel.name : "Not in voice"}`,
-      `**Status:** ${(member.presence && member.presence.status) || "offline"}`,
+      `**Status:** ${member.presence?.status || "offline"}`,
     ];
     return [...basicInfo, ...serverInfo].join("\n");
   }
@@ -107,12 +102,10 @@ export const getUserInfo = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
-    const discordService = runtime.getService(
-      DISCORD_SERVICE_NAME,
-    ) as DiscordService;
+    const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
       await callback({
@@ -132,8 +125,8 @@ export const getUserInfo = {
     }
 
     try {
-      const room = (state.data && state.data.room) || (await runtime.getRoom(message.roomId));
-      const serverId = room && room.messageServerId;
+      const room = state.data?.room || (await runtime.getRoom(message.roomId));
+      const serverId = room?.messageServerId;
       if (!serverId) {
         await callback({
           text: "I couldn't determine the current server.",
@@ -148,8 +141,8 @@ export const getUserInfo = {
 
       // Handle "self" request
       if (userInfo.userIdentifier === "self") {
-        const authorId =
-          (message.content as any).user_id || (message.content as any).userId;
+        const content = message.content as { user_id?: string; userId?: string };
+        const authorId = content.user_id || content.userId;
         if (authorId && typeof authorId === "string") {
           const cleanId = authorId.replace("discord:", "");
           try {
@@ -177,13 +170,11 @@ export const getUserInfo = {
           member =
             members.find(
               (m) =>
-                m.user.username.toLowerCase() ===
-                  userInfo.userIdentifier.toLowerCase() ||
-                m.displayName.toLowerCase() ===
-                  userInfo.userIdentifier.toLowerCase() ||
+                m.user.username.toLowerCase() === userInfo.userIdentifier.toLowerCase() ||
+                m.displayName.toLowerCase() === userInfo.userIdentifier.toLowerCase() ||
                 (m.user.discriminator !== "0" &&
                   `${m.user.username}#${m.user.discriminator}`.toLowerCase() ===
-                    userInfo.userIdentifier.toLowerCase()),
+                    userInfo.userIdentifier.toLowerCase())
             ) || null;
         }
       }
@@ -211,7 +202,7 @@ export const getUserInfo = {
           agentId: runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error getting user info",
+        "Error getting user info"
       );
       await callback({
         text: "I encountered an error while getting user information. Please try again.",

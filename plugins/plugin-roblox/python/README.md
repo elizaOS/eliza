@@ -54,15 +54,15 @@ asyncio.run(main())
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ROBLOX_API_KEY` | Yes | Roblox Open Cloud API key |
-| `ROBLOX_UNIVERSE_ID` | Yes | Universe ID of the experience |
-| `ROBLOX_PLACE_ID` | No | Specific place ID |
-| `ROBLOX_WEBHOOK_SECRET` | No | Secret for webhook validation |
-| `ROBLOX_MESSAGING_TOPIC` | No | Messaging topic (default: "eliza-agent") |
-| `ROBLOX_POLL_INTERVAL` | No | Poll interval in seconds (default: 30) |
-| `ROBLOX_DRY_RUN` | No | Enable dry run mode (default: false) |
+| Variable                 | Required | Description                              |
+| ------------------------ | -------- | ---------------------------------------- |
+| `ROBLOX_API_KEY`         | Yes      | Roblox Open Cloud API key                |
+| `ROBLOX_UNIVERSE_ID`     | Yes      | Universe ID of the experience            |
+| `ROBLOX_PLACE_ID`        | No       | Specific place ID                        |
+| `ROBLOX_WEBHOOK_SECRET`  | No       | Secret for webhook validation            |
+| `ROBLOX_MESSAGING_TOPIC` | No       | Messaging topic (default: "eliza-agent") |
+| `ROBLOX_POLL_INTERVAL`   | No       | Poll interval in seconds (default: 30)   |
+| `ROBLOX_DRY_RUN`         | No       | Enable dry run mode (default: false)     |
 
 ## API Reference
 
@@ -134,5 +134,6 @@ ruff format .
 ## License
 
 MIT
+
 
 

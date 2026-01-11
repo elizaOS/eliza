@@ -21,5 +21,3 @@ export const formatTimeline = (character: Character, timeline: Cast[]): string =
   `# ${character.name}'s Home Timeline
 ${timeline.map(formatCast).join("\n")}
 `;
-
-

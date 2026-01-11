@@ -4,10 +4,10 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,
-  logger,
 } from "@elizaos/core";
 
 export const askAction: Action = {
@@ -29,7 +29,10 @@ DO NOT USE WHEN:
 
 This action is read-only and will never modify the filesystem.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("how") ||
@@ -45,7 +48,7 @@ This action is read-only and will never modify the filesystem.`,
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const question = message.content.text ?? "";
     const prompt = [
@@ -56,13 +59,15 @@ This action is read-only and will never modify the filesystem.`,
     ].join("\n");
 
     try {
+      // biome-ignore lint/correctness/useHookAtTopLevel: useModel is a runtime method, not a React hook
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
         maxTokens: 1200,
         temperature: 0.2,
       });
 
-      const text = typeof result === "string" ? result.trim() : String(result).trim();
+      const text =
+        typeof result === "string" ? result.trim() : String(result).trim();
       await callback?.({ text });
       return { success: true, text };
     } catch (err) {
@@ -75,8 +80,14 @@ This action is read-only and will never modify the filesystem.`,
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "How do I write a for loop in JavaScript?" } },
-      { name: "{{agent}}", content: { text: "I'll explain with an example.", actions: ["ASK"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "How do I write a for loop in JavaScript?" },
+      },
+      {
+        name: "{{agent}}",
+        content: { text: "I'll explain with an example.", actions: ["ASK"] },
+      },
     ],
   ],
 };

@@ -2,6 +2,4 @@
  * Client exports for Roblox plugin
  */
 
-export { RobloxClient, RobloxApiError } from "./RobloxClient";
-
-
+export { RobloxApiError, RobloxClient } from "./RobloxClient";

@@ -82,13 +82,9 @@ async function main(): Promise<void> {
 
       for (const line of lines) {
         if (line.startsWith("data: ")) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.text) {
-              process.stdout.write(data.text);
-            }
-          } catch {
-            // Ignore parse errors
+          const data = JSON.parse(line.slice(6));
+          if (data.text) {
+            process.stdout.write(data.text);
           }
         }
       }
@@ -100,4 +96,3 @@ async function main(): Promise<void> {
 }
 
 main().catch(console.error);
-

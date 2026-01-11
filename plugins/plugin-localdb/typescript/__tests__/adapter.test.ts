@@ -2,12 +2,12 @@
  * Tests for LocalDatabaseAdapter
  */
 
-import {  describe, it, expect, beforeEach, afterEach  } from "vitest";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalDatabaseAdapter } from "../adapter";
 import { NodeStorage } from "../storage-node";
-import type { UUID } from "@elizaos/core";
 
 const TEST_DATA_DIR = join(process.cwd(), ".test-data");
 const TEST_AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -234,9 +234,7 @@ describe("LocalDatabaseAdapter", () => {
     });
 
     it("should get rooms by IDs", async () => {
-      const ids = await adapter.createRooms([
-        { name: "Room 1", worldId: "world1" as UUID },
-      ]);
+      const ids = await adapter.createRooms([{ name: "Room 1", worldId: "world1" as UUID }]);
 
       const rooms = await adapter.getRoomsByIds(ids);
       expect(rooms).not.toBeNull();
@@ -245,9 +243,7 @@ describe("LocalDatabaseAdapter", () => {
     });
 
     it("should delete a room", async () => {
-      const ids = await adapter.createRooms([
-        { name: "To delete", worldId: "world1" as UUID },
-      ]);
+      const ids = await adapter.createRooms([{ name: "To delete", worldId: "world1" as UUID }]);
 
       await adapter.deleteRoom(ids[0]);
       const rooms = await adapter.getRoomsByIds(ids);
@@ -433,8 +429,3 @@ describe("LocalDatabaseAdapter", () => {
     });
   });
 });
-
-
-
-
-

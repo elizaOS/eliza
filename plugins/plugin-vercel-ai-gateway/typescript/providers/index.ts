@@ -3,5 +3,3 @@
  */
 
 export { GatewayClient } from "./client";
-
-

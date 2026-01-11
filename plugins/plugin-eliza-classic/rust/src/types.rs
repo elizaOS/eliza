@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Types for ELIZA Classic Plugin.
 
 use regex::Regex;
@@ -51,6 +52,11 @@ pub struct ElizaMatchResult {
     /// Captured groups from the regex.
     pub captures: Vec<String>,
 }
+
+
+
+
+
 
 
 

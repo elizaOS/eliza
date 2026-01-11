@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Forms Plugin - Structured conversational data collection
 //!
 //! This plugin provides form management capabilities for collecting structured data

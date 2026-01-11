@@ -11,10 +11,10 @@ async def test_fetch_real_rss_feed() -> None:
     config = RssConfig()
     async with RssClient(config) as client:
         feed = await client.fetch_feed("https://hnrss.org/frontpage")
-        
+
         assert feed.title
         assert len(feed.items) > 0
-        
+
         print(f"✅ Fetched '{feed.title}' with {len(feed.items)} items")
         print(f"   First item: {feed.items[0].title if feed.items else 'N/A'}")
 
@@ -25,10 +25,10 @@ async def test_fetch_github_blog() -> None:
     config = RssConfig()
     async with RssClient(config) as client:
         feed = await client.fetch_feed("https://github.blog/feed/")
-        
+
         # Just verify we got content (may be RSS or Atom)
         assert feed is not None
-        
+
         print(f"✅ Fetched GitHub blog with {len(feed.items)} items")
 
 
@@ -38,10 +38,13 @@ async def test_validate_feed() -> None:
     config = RssConfig()
     async with RssClient(config) as client:
         is_valid, message = await client.validate_feed("https://hnrss.org/frontpage")
-        
+
         assert is_valid
         assert "Hacker News" in message
-        
+
         print(f"✅ Validation passed: {message}")
+
+
+
 
 

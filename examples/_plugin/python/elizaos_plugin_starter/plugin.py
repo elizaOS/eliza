@@ -54,37 +54,29 @@ async def hello_python_handler(
     responses: list[Memory] | None,
 ) -> ActionResult | None:
     """Handle the HELLO_PYTHON action."""
-    try:
-        # Get the user's message
-        user_text = message.content.text if message.content else "friend"
+    # Get the user's message
+    user_text = message.content.text if message.content else "friend"
 
-        response_text = f"Hello from Python, {user_text}! 🐍"
+    response_text = f"Hello from Python, {user_text}! 🐍"
 
-        # Optionally call the callback to stream the response
-        if callback:
-            await callback(
-                {
-                    "text": response_text,
-                    "actions": ["HELLO_PYTHON"],
-                    "source": message.content.source if message.content else None,
-                }
-            )
-
-        return ActionResult(
-            success=True,
-            text=response_text,
-            data={
-                "language": "python",
-                "greeting": response_text,
-            },
+    # Optionally call the callback to stream the response
+    if callback:
+        await callback(
+            {
+                "text": response_text,
+                "actions": ["HELLO_PYTHON"],
+                "source": message.content.source if message.content else None,
+            }
         )
 
-    except Exception as e:
-        logger.error(f"Error in HELLO_PYTHON action: {e}")
-        return ActionResult(
-            success=False,
-            error=str(e),
-        )
+    return ActionResult(
+        success=True,
+        text=response_text,
+        data={
+            "language": "python",
+            "greeting": response_text,
+        },
+    )
 
 
 hello_python_action = Action(

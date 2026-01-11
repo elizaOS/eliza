@@ -59,30 +59,18 @@ export const choiceAction: Action = {
       return false;
     }
 
-    try {
-      // Get all tasks with options metadata
-      const pendingTasks = await runtime.getTasks({
-        roomId: message.roomId,
-        tags: ["AWAITING_CHOICE"],
-      });
+    // Get all tasks with options metadata
+    const pendingTasks = await runtime.getTasks({
+      roomId: message.roomId,
+      tags: ["AWAITING_CHOICE"],
+    });
 
-      // Only validate if there are pending tasks with options
-      return (
-        pendingTasks &&
-        pendingTasks.length > 0 &&
-        pendingTasks.some((task) => task.metadata && task.metadata.options)
-      );
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:bootstrap:action:choice",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error validating choice action",
-      );
-      return false;
-    }
+    // Only validate if there are pending tasks with options
+    return (
+      pendingTasks &&
+      pendingTasks.length > 0 &&
+      pendingTasks.some((task) => task.metadata?.options)
+    );
   },
 
   handler: async (
@@ -114,7 +102,7 @@ export const choiceAction: Action = {
     }
 
     const tasksWithOptions = pendingTasks.filter(
-      (task) => task.metadata && task.metadata.options,
+      (task) => task.metadata?.options,
     );
 
     if (!tasksWithOptions.length) {
@@ -135,12 +123,14 @@ export const choiceAction: Action = {
     // Format tasks with their options for the LLM, using shortened UUIDs
     // Filter out tasks without IDs (fail-fast: tasks must have IDs)
     const formattedTasks = tasksWithOptions
-      .filter((task): task is typeof task & { id: NonNullable<typeof task.id> } => {
-        if (!task.id) {
-          throw new Error(`Task "${task.name}" is missing required id field`);
-        }
-        return true;
-      })
+      .filter(
+        (task): task is typeof task & { id: NonNullable<typeof task.id> } => {
+          if (!task.id) {
+            throw new Error(`Task "${task.name}" is missing required id field`);
+          }
+          return true;
+        },
+      )
       .map((task) => {
         // Generate a short ID from the task UUID (first 8 characters should be unique enough)
         const shortId = task.id.substring(0, 8);
@@ -252,7 +242,9 @@ export const choiceAction: Action = {
 
       // Ensure selectedTask has an id (required for all operations)
       if (!selectedTask.id) {
-        throw new Error(`Selected task "${selectedTask.name}" is missing required id field`);
+        throw new Error(
+          `Selected task "${selectedTask.name}" is missing required id field`,
+        );
       }
       const selectedTaskId = selectedTask.id;
 
@@ -283,71 +275,38 @@ export const choiceAction: Action = {
         };
       }
 
-      try {
-        const taskWorker = runtime.getTaskWorker(selectedTask.name);
-        if (taskWorker) {
-          await taskWorker.execute(
-            runtime,
-            { option: selectedOption },
-            selectedTask,
-          );
-        }
-        if (callback) {
-          await callback({
-            text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
-            actions: ["CHOOSE_OPTION"],
-            source: message.content.source,
-          });
-        }
-        return {
-          text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
-          values: {
-            success: true,
-            selectedOption,
-            taskId: selectedTaskId,
-            taskName: selectedTask.name,
-            taskExecuted: true,
-          },
-          data: {
-            actionName: "CHOOSE_OPTION",
-            selectedOption,
-            taskId: selectedTaskId,
-            taskName: selectedTask.name,
-          },
-          success: true,
-        };
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:bootstrap:action:choice",
-            agentId: runtime.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Error executing task with option",
+      const taskWorker = runtime.getTaskWorker(selectedTask.name);
+      if (taskWorker) {
+        await taskWorker.execute(
+          runtime,
+          { option: selectedOption },
+          selectedTask,
         );
-        if (callback) {
-          await callback({
-            text: "There was an error processing your selection.",
-            actions: ["SELECT_OPTION_ERROR"],
-            source: message.content.source,
-          });
-        }
-        return {
-          text: "Error processing selection",
-          values: {
-            success: false,
-            error: "EXECUTION_ERROR",
-          },
-          data: {
-            actionName: "CHOOSE_OPTION",
-            error: error instanceof Error ? error.message : String(error),
-            taskId: selectedTaskId,
-            selectedOption,
-          },
-          success: false,
-          error: error instanceof Error ? error : new Error(String(error)),
-        };
       }
+      if (callback) {
+        await callback({
+          text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
+          actions: ["CHOOSE_OPTION"],
+          source: message.content.source,
+        });
+      }
+      return {
+        text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
+        values: {
+          success: true,
+          selectedOption,
+          taskId: selectedTaskId,
+          taskName: selectedTask.name,
+          taskExecuted: true,
+        },
+        data: {
+          actionName: "CHOOSE_OPTION",
+          selectedOption,
+          taskId: selectedTaskId,
+          taskName: selectedTask.name,
+        },
+        success: true,
+      };
     }
 
     // If no task/option was selected, list available options
@@ -356,13 +315,15 @@ export const choiceAction: Action = {
 
     tasksWithOptions.forEach((task) => {
       // Create a shortened UUID for display
-      const shortId = (task.id && task.id.substring(0, 8));
+      const shortId = task.id?.substring(0, 8);
 
       optionsText += `**${task.name}** (ID: ${shortId}):\n`;
       const taskMetadata = task.metadata;
-      const options = (taskMetadata && taskMetadata.options) ? taskMetadata.options.map((opt) =>
-        typeof opt === "string" ? opt : opt.name,
-      ) : [];
+      const options = taskMetadata?.options
+        ? taskMetadata.options.map((opt) =>
+            typeof opt === "string" ? opt : opt.name,
+          )
+        : [];
       options.push("ABORT");
       optionsText += options.map((opt) => `- ${opt}`).join("\n");
       optionsText += "\n\n";

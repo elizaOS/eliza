@@ -73,7 +73,7 @@ export const createTestRelationship = (
   sourceId: UUID,
   targetId: UUID,
   tags: string[] = [],
-  metadata: Record<string, any> = {},
+  metadata: Record<string, any> = {}
 ): Relationship => {
   return {
     id: uuidv4() as UUID,

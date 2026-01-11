@@ -5,17 +5,16 @@
  * Services and managers that require Node.js are not exported.
  */
 
+// Export the plugin definition
+export { default, farcasterPlugin } from "./index";
 // Export types (safe for browser)
 export type {
   Cast,
   CastEmbed,
   CastId,
-  Profile,
   FarcasterConfig,
-  FidRequest,
-  FarcasterMessageType,
   FarcasterEventTypes,
+  FarcasterMessageType,
+  FidRequest,
+  Profile,
 } from "./types";
-
-// Export the plugin definition
-export { farcasterPlugin, default } from "./index";

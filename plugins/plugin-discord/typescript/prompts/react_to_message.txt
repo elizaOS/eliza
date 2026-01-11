@@ -1,0 +1,24 @@
+# Adding reactions to Discord messages
+{{recentMessages}}
+
+# Instructions: {{senderName}} wants to add a reaction to a message. Extract:
+1. Which message to react to (last, specific message reference, or by content)
+2. What emoji/reaction to add
+
+Examples:
+- "react with 👍 to the last message" -> messageRef: "last", emoji: "👍"
+- "add :fire: reaction" -> messageRef: "last", emoji: "🔥" or ":fire:"
+- "react to that message with ❤️" -> messageRef: "previous", emoji: "❤️"
+- "add a thumbs up to john's message about the meeting" -> messageRef: "john meeting", emoji: "👍"
+
+Your response must be formatted as a JSON block:
+```json
+{
+  "messageRef": "<last|previous|message-id|search-text>",
+  "emoji": "<emoji-character|:emoji-name:>"
+}
+```
+
+
+
+

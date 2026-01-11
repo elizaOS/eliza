@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Simple HNSW (Hierarchical Navigable Small World) implementation.
 //!
 //! This is a basic implementation for local testing and development.
@@ -31,6 +32,7 @@ pub struct HNSWConfig {
     /// Level multiplier
     pub ml: f32,
 }
+
 
 impl Default for HNSWConfig {
     fn default() -> Self {
@@ -463,6 +465,7 @@ impl SimpleHNSW {
         self.nodes.len()
     }
 }
+
 
 impl Default for SimpleHNSW {
     fn default() -> Self {

@@ -1,7 +1,7 @@
 """Tests for GitHub config."""
 
-import os
 import pytest
+
 from elizaos_plugin_github.config import GitHubConfig
 
 
@@ -102,5 +102,8 @@ class TestGitHubConfig:
 
         with pytest.raises(ValueError, match="empty"):
             config.validate()
+
+
+
 
 

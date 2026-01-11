@@ -107,7 +107,12 @@ export interface CharacterSettings {
   ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
 
   /** Allow additional settings */
-  [key: string]: string | boolean | number | Record<string, unknown> | undefined;
+  [key: string]:
+    | string
+    | boolean
+    | number
+    | Record<string, unknown>
+    | undefined;
 }
 
 export type TemplateType =

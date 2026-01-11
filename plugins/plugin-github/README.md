@@ -41,17 +41,18 @@ elizaos-plugin-github = "1.0.0"
 
 Set the following environment variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITHUB_API_TOKEN` | Yes | GitHub personal access token |
-| `GITHUB_OWNER` | No | Default repository owner |
-| `GITHUB_REPO` | No | Default repository name |
-| `GITHUB_BRANCH` | No | Default branch (default: main) |
-| `GITHUB_PATH` | No | Local path for cloning repos |
+| Variable           | Required | Description                    |
+| ------------------ | -------- | ------------------------------ |
+| `GITHUB_API_TOKEN` | Yes      | GitHub personal access token   |
+| `GITHUB_OWNER`     | No       | Default repository owner       |
+| `GITHUB_REPO`      | No       | Default repository name        |
+| `GITHUB_BRANCH`    | No       | Default branch (default: main) |
+| `GITHUB_PATH`      | No       | Local path for cloning repos   |
 
 ### Token Permissions
 
 Your GitHub token should have the following scopes:
+
 - `repo` - Full control of private repositories
 - `workflow` - Update GitHub Actions workflows (optional)
 - `write:packages` - Upload packages (optional)
@@ -61,7 +62,7 @@ Your GitHub token should have the following scopes:
 ### TypeScript
 
 ```typescript
-import { githubPlugin } from '@elizaos/plugin-github';
+import { githubPlugin } from "@elizaos/plugin-github";
 
 // Register with your agent
 const agent = new AgentRuntime({
@@ -113,22 +114,22 @@ let issue = service.create_issue(CreateIssueParams {
 
 All implementations provide these actions:
 
-| Action | Description |
-|--------|-------------|
-| `CREATE_GITHUB_ISSUE` | Create a new issue |
-| `CREATE_GITHUB_PULL_REQUEST` | Create a new pull request |
-| `CREATE_GITHUB_COMMENT` | Comment on an issue or PR |
-| `CREATE_GITHUB_BRANCH` | Create a new branch |
-| `PUSH_CODE` | Push code changes to a branch |
-| `MERGE_GITHUB_PULL_REQUEST` | Merge a pull request |
-| `REVIEW_GITHUB_PULL_REQUEST` | Review a pull request |
+| Action                       | Description                   |
+| ---------------------------- | ----------------------------- |
+| `CREATE_GITHUB_ISSUE`        | Create a new issue            |
+| `CREATE_GITHUB_PULL_REQUEST` | Create a new pull request     |
+| `CREATE_GITHUB_COMMENT`      | Comment on an issue or PR     |
+| `CREATE_GITHUB_BRANCH`       | Create a new branch           |
+| `PUSH_CODE`                  | Push code changes to a branch |
+| `MERGE_GITHUB_PULL_REQUEST`  | Merge a pull request          |
+| `REVIEW_GITHUB_PULL_REQUEST` | Review a pull request         |
 
 ## Providers
 
-| Provider | Description |
-|----------|-------------|
+| Provider          | Description                               |
+| ----------------- | ----------------------------------------- |
 | `repositoryState` | Current repository information and status |
-| `issueContext` | Context about recent issues |
+| `issueContext`    | Context about recent issues               |
 
 ## Project Structure
 
@@ -196,16 +197,16 @@ bun run test:rust    # Rust
 
 All three implementations maintain feature parity:
 
-| Feature | TypeScript | Python | Rust |
-|---------|------------|--------|------|
-| Issue CRUD | ✅ | ✅ | ✅ |
-| PR Management | ✅ | ✅ | ✅ |
-| Branch Operations | ✅ | ✅ | ✅ |
-| Code Push | ✅ | ✅ | ✅ |
-| Reviews | ✅ | ✅ | ✅ |
-| Comments | ✅ | ✅ | ✅ |
-| Webhooks | ✅ | ✅ | 🔄 |
-| Local Git | ✅ | ✅ | 🔄 |
+| Feature           | TypeScript | Python | Rust |
+| ----------------- | ---------- | ------ | ---- |
+| Issue CRUD        | ✅         | ✅     | ✅   |
+| PR Management     | ✅         | ✅     | ✅   |
+| Branch Operations | ✅         | ✅     | ✅   |
+| Code Push         | ✅         | ✅     | ✅   |
+| Reviews           | ✅         | ✅     | ✅   |
+| Comments          | ✅         | ✅     | ✅   |
+| Webhooks          | ✅         | ✅     | 🔄   |
+| Local Git         | ✅         | ✅     | 🔄   |
 
 ✅ = Implemented | 🔄 = Planned
 
@@ -215,10 +216,10 @@ All implementations use strongly-typed errors with no `unknown` or `any` types:
 
 ```typescript
 // TypeScript
-import { GitHubError, RepositoryNotFoundError } from '@elizaos/plugin-github';
+import { GitHubError, RepositoryNotFoundError } from "@elizaos/plugin-github";
 
 try {
-  await service.getRepository('owner', 'repo');
+  await service.getRepository("owner", "repo");
 } catch (error) {
   if (error instanceof RepositoryNotFoundError) {
     console.log(`Repository not found: ${error.owner}/${error.repo}`);

@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
  * Build script for @elizaos/plugin-elizacloud
- * 
+ *
  * Builds the TypeScript implementation for Node.js and Browser environments.
  * For multi-language builds (Rust, Python), see respective folders.
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, writeFile, rename } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const externalDeps = ["@elizaos/core", "@ai-sdk/openai", "ai", "js-tiktoken"];
@@ -27,7 +27,7 @@ async function build() {
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
   const nodeResult = await Bun.build({
-    entrypoints: ["typescript/index.node.ts"],
+    entrypoints: ["index.node.ts"],
     outdir: "dist/node",
     target: "node",
     format: "esm",
@@ -40,14 +40,14 @@ async function build() {
     throw new Error("Node build failed");
   }
   console.log(
-    `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`
+    `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
 
   // Browser build
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
   const browserResult = await Bun.build({
-    entrypoints: ["typescript/index.browser.ts"],
+    entrypoints: ["index.browser.ts"],
     outdir: "dist/browser",
     target: "browser",
     format: "esm",
@@ -60,14 +60,14 @@ async function build() {
     throw new Error("Browser build failed");
   }
   console.log(
-    `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`
+    `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
   );
 
   // Node CJS build
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
   const cjsResult = await Bun.build({
-    entrypoints: ["typescript/index.node.ts"],
+    entrypoints: ["index.node.ts"],
     outdir: "dist/cjs",
     target: "node",
     format: "cjs",
@@ -87,7 +87,7 @@ async function build() {
     console.warn("CJS rename step warning:", e);
   }
   console.log(
-    `✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`
+    `✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
   );
 
   // TypeScript declarations
@@ -102,26 +102,26 @@ async function build() {
     "dist/node/index.d.ts",
     `export * from '../index';
 export { default } from '../index';
-`
+`,
   );
   await writeFile(
     "dist/browser/index.d.ts",
     `export * from '../index';
 export { default } from '../index';
-`
+`,
   );
   await writeFile(
     "dist/cjs/index.d.ts",
     `export * from '../index';
 export { default } from '../index';
-`
+`,
   );
   console.log(
-    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`
+    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
   );
 
   console.log(
-    `🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`
+    `🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
   );
 }
 

@@ -1,0 +1,18 @@
+# Messages we are summarizing
+{{recentMessages}}
+
+# Instructions: {{senderName}} is requesting a summary of specific attachments. Your goal is to determine their objective, along with the list of attachment IDs to summarize.
+The "objective" is a detailed description of what the user wants to summarize based on the conversation.
+The "attachmentIds" is an array of attachment IDs that the user wants to summarize. If not specified, default to including all attachments from the conversation.
+
+Your response must be formatted as a JSON block with this structure:
+```json
+{
+  "objective": "<What the user wants to summarize>",
+  "attachmentIds": ["<Attachment ID 1>", "<Attachment ID 2>", ...]
+}
+```
+
+
+
+

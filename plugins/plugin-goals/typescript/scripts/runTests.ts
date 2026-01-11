@@ -5,9 +5,9 @@
  * This script runs all tests and generates detailed reports
  */
 
-import { execSync } from 'child_process';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
-import path from 'path';
+import { execSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 interface TestSuite {
   name: string;
@@ -33,37 +33,37 @@ interface TestResult {
 
 const TEST_SUITES: TestSuite[] = [
   {
-    name: 'Unit Tests',
-    description: 'Core reminder service unit tests with mocks',
-    command: 'vitest run src/tests/reminderService.unit.test.ts --coverage',
+    name: "Unit Tests",
+    description: "Core reminder service unit tests with mocks",
+    command: "vitest run src/tests/reminderService.unit.test.ts --coverage",
     timeout: 30000,
     required: true,
   },
   {
-    name: 'Rolodex Integration',
-    description: 'Integration tests with rolodex plugin for cross-platform messaging',
-    command: 'vitest run src/tests/rolodexIntegration.test.ts --coverage',
+    name: "Rolodex Integration",
+    description: "Integration tests with rolodex plugin for cross-platform messaging",
+    command: "vitest run src/tests/rolodexIntegration.test.ts --coverage",
     timeout: 45000,
     required: true,
   },
   {
-    name: 'Task Integration',
-    description: 'Integration tests with plugin-task for confirmation workflows',
-    command: 'vitest run src/tests/taskIntegration.test.ts --coverage',
+    name: "Task Integration",
+    description: "Integration tests with plugin-task for confirmation workflows",
+    command: "vitest run src/tests/taskIntegration.test.ts --coverage",
     timeout: 45000,
     required: true,
   },
   {
-    name: 'Queue Management',
-    description: 'Comprehensive tests for reminder queue processing and task completion',
-    command: 'vitest run src/tests/reminderQueue.test.ts --coverage',
+    name: "Queue Management",
+    description: "Comprehensive tests for reminder queue processing and task completion",
+    command: "vitest run src/tests/reminderQueue.test.ts --coverage",
     timeout: 60000,
     required: true,
   },
   {
-    name: 'E2E Tests',
-    description: 'End-to-end integration tests with real plugin instances',
-    command: 'vitest run src/__tests__/e2e/ --coverage',
+    name: "E2E Tests",
+    description: "End-to-end integration tests with real plugin instances",
+    command: "vitest run src/__tests__/e2e/ --coverage",
     timeout: 120000,
     required: false,
   },
@@ -75,7 +75,7 @@ class TestRunner {
   private outputDir: string;
 
   constructor() {
-    this.outputDir = path.join(process.cwd(), 'test-results');
+    this.outputDir = path.join(process.cwd(), "test-results");
     this.ensureOutputDir();
   }
 
@@ -86,7 +86,7 @@ class TestRunner {
   }
 
   async runAllTests(): Promise<void> {
-    console.log('🚀 Starting comprehensive goals plugin reminder service tests...\n');
+    console.log("🚀 Starting comprehensive goals plugin reminder service tests...\n");
     this.startTime = Date.now();
 
     // Run each test suite
@@ -108,7 +108,7 @@ class TestRunner {
       console.log(`\n❌ ${failedRequired.length} required test suite(s) failed`);
       process.exit(1);
     } else {
-      console.log('\n✅ All required tests passed!');
+      console.log("\n✅ All required tests passed!");
       process.exit(0);
     }
   }
@@ -117,17 +117,17 @@ class TestRunner {
     console.log(`📋 Running ${suite.name}: ${suite.description}`);
 
     const startTime = Date.now();
-    let result: TestResult = {
+    const result: TestResult = {
       suite: suite.name,
       passed: false,
       duration: 0,
-      output: '',
+      output: "",
     };
 
     try {
       // Run the test command
       const output = execSync(suite.command, {
-        encoding: 'utf8',
+        encoding: "utf8",
         timeout: suite.timeout,
         cwd: process.cwd(),
       });
@@ -140,11 +140,12 @@ class TestRunner {
       result.coverage = this.extractCoverage(output);
 
       console.log(`   ✅ Passed (${result.duration}ms)`);
-    } catch (error: any) {
+    } catch (error) {
       result.passed = false;
       result.duration = Date.now() - startTime;
-      result.error = error.message;
-      result.output = error.stdout || error.stderr || '';
+      const execError = error as { message?: string; stdout?: string; stderr?: string };
+      result.error = execError.message || "Unknown error";
+      result.output = execError.stdout || execError.stderr || "";
 
       if (suite.required) {
         console.log(`   ❌ Failed (${result.duration}ms): ${error.message}`);
@@ -154,10 +155,10 @@ class TestRunner {
     }
 
     this.results.push(result);
-    console.log(''); // Empty line for readability
+    console.log(""); // Empty line for readability
   }
 
-  private extractCoverage(output: string): TestResult['coverage'] | undefined {
+  private extractCoverage(output: string): TestResult["coverage"] | undefined {
     // Look for coverage percentages in the output
     const coverageRegex =
       /Statements\s*:\s*(\d+\.?\d*)%.*Branches\s*:\s*(\d+\.?\d*)%.*Functions\s*:\s*(\d+\.?\d*)%.*Lines\s*:\s*(\d+\.?\d*)%/s;
@@ -183,45 +184,45 @@ class TestRunner {
       (r) => !r.passed && TEST_SUITES.find((s) => s.name === r.suite)?.required
     ).length;
 
-    console.log('\n📊 Test Summary Report');
-    console.log('========================');
+    console.log("\n📊 Test Summary Report");
+    console.log("========================");
     console.log(`Total Duration: ${totalDuration}ms`);
     console.log(`Test Suites: ${this.results.length}`);
     console.log(`Passed: ${passed}`);
     console.log(`Failed: ${failed}`);
     console.log(`Required Failed: ${requiredFailed}`);
-    console.log('');
+    console.log("");
 
     // Coverage summary
     const coverageResults = this.results.filter((r) => r.coverage);
     if (coverageResults.length > 0) {
       const avgStatements =
-        coverageResults.reduce((sum, r) => sum + r.coverage!.statements, 0) /
+        coverageResults.reduce((sum, r) => sum + r.coverage?.statements, 0) /
         coverageResults.length;
       const avgBranches =
-        coverageResults.reduce((sum, r) => sum + r.coverage!.branches, 0) / coverageResults.length;
+        coverageResults.reduce((sum, r) => sum + r.coverage?.branches, 0) / coverageResults.length;
       const avgFunctions =
-        coverageResults.reduce((sum, r) => sum + r.coverage!.functions, 0) / coverageResults.length;
+        coverageResults.reduce((sum, r) => sum + r.coverage?.functions, 0) / coverageResults.length;
       const avgLines =
-        coverageResults.reduce((sum, r) => sum + r.coverage!.lines, 0) / coverageResults.length;
+        coverageResults.reduce((sum, r) => sum + r.coverage?.lines, 0) / coverageResults.length;
 
-      console.log('📈 Coverage Summary');
-      console.log('===================');
+      console.log("📈 Coverage Summary");
+      console.log("===================");
       console.log(`Statements: ${avgStatements.toFixed(2)}%`);
       console.log(`Branches: ${avgBranches.toFixed(2)}%`);
       console.log(`Functions: ${avgFunctions.toFixed(2)}%`);
       console.log(`Lines: ${avgLines.toFixed(2)}%`);
-      console.log('');
+      console.log("");
     }
 
     // Individual results
-    console.log('📋 Individual Results');
-    console.log('=====================');
+    console.log("📋 Individual Results");
+    console.log("=====================");
     for (const result of this.results) {
-      const status = result.passed ? '✅' : '❌';
+      const status = result.passed ? "✅" : "❌";
       const required = TEST_SUITES.find((s) => s.name === result.suite)?.required
-        ? ''
-        : ' (optional)';
+        ? ""
+        : " (optional)";
       console.log(`${status} ${result.suite}${required}: ${result.duration}ms`);
 
       if (result.coverage) {
@@ -231,13 +232,13 @@ class TestRunner {
       }
 
       if (!result.passed && result.error) {
-        console.log(`   Error: ${result.error.split('\n')[0]}`);
+        console.log(`   Error: ${result.error.split("\n")[0]}`);
       }
     }
   }
 
   private generateDetailedReport(): void {
-    const reportPath = path.join(this.outputDir, 'detailed-report.json');
+    const reportPath = path.join(this.outputDir, "detailed-report.json");
     const report = {
       timestamp: new Date().toISOString(),
       totalDuration: Date.now() - this.startTime,
@@ -263,21 +264,21 @@ class TestRunner {
     const coverageResults = this.results.filter((r) => r.coverage);
     if (coverageResults.length === 0) return;
 
-    const reportPath = path.join(this.outputDir, 'coverage-report.json');
+    const reportPath = path.join(this.outputDir, "coverage-report.json");
     const report = {
       timestamp: new Date().toISOString(),
       overall: {
         statements:
-          coverageResults.reduce((sum, r) => sum + r.coverage!.statements, 0) /
+          coverageResults.reduce((sum, r) => sum + r.coverage?.statements, 0) /
           coverageResults.length,
         branches:
-          coverageResults.reduce((sum, r) => sum + r.coverage!.branches, 0) /
+          coverageResults.reduce((sum, r) => sum + r.coverage?.branches, 0) /
           coverageResults.length,
         functions:
-          coverageResults.reduce((sum, r) => sum + r.coverage!.functions, 0) /
+          coverageResults.reduce((sum, r) => sum + r.coverage?.functions, 0) /
           coverageResults.length,
         lines:
-          coverageResults.reduce((sum, r) => sum + r.coverage!.lines, 0) / coverageResults.length,
+          coverageResults.reduce((sum, r) => sum + r.coverage?.lines, 0) / coverageResults.length,
       },
       bySuite: coverageResults.map((result) => ({
         suite: result.suite,
@@ -294,7 +295,7 @@ class TestRunner {
 if (require.main === module) {
   const runner = new TestRunner();
   runner.runAllTests().catch((error) => {
-    console.error('❌ Test runner failed:', error);
+    console.error("❌ Test runner failed:", error);
     process.exit(1);
   });
 }

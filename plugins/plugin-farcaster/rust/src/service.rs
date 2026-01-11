@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Farcaster service for elizaOS.
 //!
 //! Provides the main service interface for Farcaster integration.
@@ -5,7 +6,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::client::FarcasterClient;
 use crate::config::FarcasterConfig;
@@ -96,7 +97,7 @@ impl FarcasterService {
     fn start_poll_loop(&self) {
         let running = Arc::clone(&self.running);
         let client = Arc::clone(&self.client);
-        let callback = Arc::clone(&self.mention_callback);
+        let callback: Arc<RwLock<Option<MentionCallback>>> = Arc::clone(&self.mention_callback);
         let poll_interval = self.config.poll_interval;
         let fid = self.config.fid;
 

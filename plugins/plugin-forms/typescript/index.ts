@@ -1,14 +1,14 @@
-import type { Plugin } from '@elizaos/core';
-import { FormsService } from './services/forms-service';
-import { formsProvider } from './providers/forms-provider';
-import { createFormAction } from './actions/create-form';
-import { updateFormAction } from './actions/update-form';
-import { cancelFormAction } from './actions/cancel-form';
-import { FormsPluginTestSuite } from './tests';
-import { formsSchema } from './schema';
+import type { Plugin } from "@elizaos/core";
+import { cancelFormAction } from "./actions/cancel-form";
+import { createFormAction } from "./actions/create-form";
+import { updateFormAction } from "./actions/update-form";
+import { formsProvider } from "./providers/forms-provider";
+import { formsSchema } from "./schema";
+import { FormsService } from "./services/forms-service";
+import { FormsPluginTestSuite } from "./tests";
 
 // Export types
-export * from './types';
+export * from "./types";
 
 // Export service
 export { FormsService };
@@ -44,8 +44,8 @@ export { formsSchema };
  * 4. Other plugins can use the FormsService to create custom forms
  */
 export const formsPlugin: Plugin = {
-  name: '@elizaos/plugin-forms',
-  description: 'Structured form collection capabilities for conversational data gathering',
+  name: "@elizaos/plugin-forms",
+  description: "Structured form collection capabilities for conversational data gathering",
 
   services: [FormsService],
   providers: [formsProvider],
@@ -61,8 +61,8 @@ export const formsPlugin: Plugin = {
   tests: [FormsPluginTestSuite],
 
   // Dependencies
-  dependencies: ['@elizaos/plugin-sql'],
-  testDependencies: ['@elizaos/plugin-sql'],
+  dependencies: ["@elizaos/plugin-sql"],
+  testDependencies: ["@elizaos/plugin-sql"],
 };
 
 export default formsPlugin;

@@ -2,7 +2,7 @@
  * Webhook route handler for Farcaster.
  */
 
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 
 export const farcasterWebhookRoutes: Route[] = [
   {
@@ -15,20 +15,25 @@ export const farcasterWebhookRoutes: Route[] = [
         const eventType = webhookData.type;
 
         const farcasterService = runtime?.getService?.("farcaster") as {
-          managers?: { get?: (id: string) => { interactions?: { mode?: string; processWebhookData?: (data: unknown) => Promise<void> } } };
+          managers?: {
+            get?: (id: string) => {
+              interactions?: {
+                mode?: string;
+                processWebhookData?: (data: unknown) => Promise<void>;
+              };
+            };
+          };
         };
 
         if (farcasterService) {
           const agentManager = farcasterService.managers?.get?.(runtime.agentId ?? "");
 
-          if (agentManager && agentManager.interactions) {
+          if (agentManager?.interactions) {
             if (agentManager.interactions.mode === "webhook") {
               console.log("Processing webhook through FarcasterInteractionManager...");
               await agentManager.interactions.processWebhookData?.(webhookData);
             } else {
-              console.warn(
-                `Agent is in ${agentManager.interactions.mode} mode, not webhook mode`
-              );
+              console.warn(`Agent is in ${agentManager.interactions.mode} mode, not webhook mode`);
             }
           } else {
             console.warn(`FarcasterAgentManager not found for agent ${runtime.agentId}`);
@@ -53,4 +58,3 @@ export const farcasterWebhookRoutes: Route[] = [
     },
   },
 ];
-

@@ -16,7 +16,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["native"]
 native = ["tokio/full"]
-wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "getrandom/js"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "console_error_panic_hook", "getrandom/js"]
 
 [dependencies]
 # Serialization
@@ -50,6 +50,7 @@ wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
 getrandom = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }

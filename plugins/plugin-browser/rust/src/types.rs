@@ -7,20 +7,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// CAPTCHA types supported by the plugin
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum CaptchaType {
     Turnstile,
     RecaptchaV2,
     RecaptchaV3,
     Hcaptcha,
+    #[default]
     None,
-}
-
-impl Default for CaptchaType {
-    fn default() -> Self {
-        CaptchaType::None
-    }
 }
 
 /// Error codes for browser operations

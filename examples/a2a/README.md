@@ -6,11 +6,11 @@ This directory contains A2A (Agent-to-Agent) server implementations that expose 
 
 ## Available Examples
 
-| Framework | Language | Directory |
-|-----------|----------|-----------|
+| Framework                   | Language   | Directory     |
+| --------------------------- | ---------- | ------------- |
 | [Express.js](./typescript/) | TypeScript | `typescript/` |
-| [FastAPI](./python/) | Python | `python/` |
-| [Axum](./rust/) | Rust | `rust/` |
+| [FastAPI](./python/)        | Python     | `python/`     |
+| [Axum](./rust/)             | Rust       | `rust/`       |
 
 ## What is A2A?
 
@@ -26,6 +26,7 @@ A2A (Agent-to-Agent) is a pattern where AI agents communicate with each other ov
 All implementations expose the same REST API:
 
 ### `GET /`
+
 Returns information about the agent.
 
 ```bash
@@ -33,6 +34,7 @@ curl http://localhost:3000/
 ```
 
 Response:
+
 ```json
 {
   "name": "Eliza",
@@ -44,6 +46,7 @@ Response:
 ```
 
 ### `GET /health`
+
 Health check endpoint.
 
 ```bash
@@ -51,6 +54,7 @@ curl http://localhost:3000/health
 ```
 
 ### `POST /chat`
+
 Send a message to the agent and receive a response.
 
 ```bash
@@ -60,6 +64,7 @@ curl -X POST http://localhost:3000/chat \
 ```
 
 Response:
+
 ```json
 {
   "response": "Hello! I'm doing well, thank you for asking. How can I help you today?",
@@ -70,6 +75,7 @@ Response:
 ```
 
 ### `POST /chat/stream`
+
 Stream a response from the agent (SSE).
 
 ```bash
@@ -115,6 +121,7 @@ export OPENAI_API_KEY=your-key
 ```
 
 Optional configuration:
+
 - `PORT` - Server port (default: 3000)
 - `OPENAI_BASE_URL` - Custom OpenAI-compatible endpoint
 - `OPENAI_SMALL_MODEL` - Model for quick responses
@@ -155,4 +162,3 @@ curl -X POST http://agent-b:3000/chat \
     "context": {"source": "agent-a", "task": "data-analysis"}
   }'
 ```
-

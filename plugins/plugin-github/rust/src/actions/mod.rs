@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! GitHub actions for elizaOS
 //!
 //! All available actions for the GitHub plugin.
@@ -87,5 +88,10 @@ pub trait GitHubAction: Send + Sync {
         service: &GitHubService,
     ) -> Result<ActionResult>;
 }
+
+
+
+
+
 
 

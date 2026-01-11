@@ -57,10 +57,10 @@ npm run build:rust
 ### TypeScript
 
 ```typescript
-import { REPLY_TEMPLATE, CHOOSE_OPTION_TEMPLATE } from '@elizaos/prompts';
+import { REPLY_TEMPLATE, CHOOSE_OPTION_TEMPLATE } from "@elizaos/prompts";
 
 const prompt = composePrompt({
-  state: { agentName: 'Alice' },
+  state: { agentName: "Alice" },
   template: REPLY_TEMPLATE,
 });
 ```
@@ -119,4 +119,3 @@ Respond using XML format like this:
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
 ```
-

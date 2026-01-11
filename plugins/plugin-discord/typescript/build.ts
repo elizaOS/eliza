@@ -59,11 +59,9 @@ async function buildAll(): Promise<boolean> {
 
   // Root types alias
   const rootIndexDtsPath = join(distDir, "index.d.ts");
-  const rootAlias = [
-    'export * from "./index";',
-    'export { default } from "./index";',
-    "",
-  ].join("\n");
+  const rootAlias = ['export * from "./index";', 'export { default } from "./index";', ""].join(
+    "\n"
+  );
   await writeFile(rootIndexDtsPath, rootAlias, "utf8");
 
   return true;
@@ -77,5 +75,3 @@ buildAll()
     console.error("Build script error:", error);
     process.exit(1);
   });
-
-

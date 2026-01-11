@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { getTableColumns } from 'drizzle-orm';
-import { goalsTable, goalTagsTable, goalSchema } from '../schema';
+import { getTableColumns } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { goalSchema, goalsTable, goalTagsTable } from "../schema";
 
-describe('Goals Schema Tests', () => {
-  describe('goalsTable', () => {
-    it('should have correct columns', () => {
+describe("Goals Schema Tests", () => {
+  describe("goalsTable", () => {
+    it("should have correct columns", () => {
       const columns = getTableColumns(goalsTable);
 
       expect(columns.id).toBeDefined();
@@ -20,16 +20,16 @@ describe('Goals Schema Tests', () => {
       expect(columns.metadata).toBeDefined();
     });
 
-    it('should have correct defaults', () => {
+    it("should have correct defaults", () => {
       const columns = getTableColumns(goalsTable);
 
       expect(columns.isCompleted.default).toBe(false);
-      expect(columns.metadata.default).toBe('{}');
+      expect(columns.metadata.default).toBe("{}");
     });
   });
 
-  describe('goalTagsTable', () => {
-    it('should have correct columns', () => {
+  describe("goalTagsTable", () => {
+    it("should have correct columns", () => {
       const columns = getTableColumns(goalTagsTable);
 
       expect(columns.id).toBeDefined();
@@ -38,7 +38,7 @@ describe('Goals Schema Tests', () => {
       expect(columns.createdAt).toBeDefined();
     });
 
-    it('should have foreign key reference to goals', () => {
+    it("should have foreign key reference to goals", () => {
       const columns = getTableColumns(goalTagsTable);
       const goalIdColumn = columns.goalId;
 
@@ -46,8 +46,8 @@ describe('Goals Schema Tests', () => {
     });
   });
 
-  describe('goalSchema export', () => {
-    it('should export all tables correctly', () => {
+  describe("goalSchema export", () => {
+    it("should export all tables correctly", () => {
       expect(goalSchema).toBeDefined();
       expect(goalSchema.goalsTable).toBeDefined();
       expect(goalSchema.goalTagsTable).toBeDefined();

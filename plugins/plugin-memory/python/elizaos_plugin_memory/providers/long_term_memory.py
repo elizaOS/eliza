@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
     from elizaos_plugin_memory.services.memory_service import MemoryService
-    from elizaos_plugin_memory.types import LongTermMemory
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +52,7 @@ class LongTermMemoryProvider:
                     text="",
                 )
 
-            memories = await self._memory_service.get_long_term_memories(
-                entity_id, None, 25
-            )
+            memories = await self._memory_service.get_long_term_memories(entity_id, None, 25)
 
             if not memories:
                 return ProviderResult(
@@ -74,9 +71,7 @@ class LongTermMemoryProvider:
                 cat = memory.category.value
                 category_counts[cat] = category_counts.get(cat, 0) + 1
 
-            category_list = ", ".join(
-                f"{cat}: {count}" for cat, count in category_counts.items()
-            )
+            category_list = ", ".join(f"{cat}: {count}" for cat, count in category_counts.items())
 
             return ProviderResult(
                 data={
@@ -104,5 +99,8 @@ class LongTermMemoryProvider:
                 values={"longTermMemories": ""},
                 text="",
             )
+
+
+
 
 

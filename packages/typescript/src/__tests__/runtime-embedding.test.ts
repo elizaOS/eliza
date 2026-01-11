@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime.ts";
-import { EventType, type IDatabaseAdapter, type Memory, type UUID } from "../types";
+import {
+  EventType,
+  type IDatabaseAdapter,
+  type Memory,
+  type UUID,
+} from "../types";
 import type { EmbeddingGenerationPayload } from "../types/events.ts";
 import { stringToUuid } from "../utils.ts";
 
@@ -68,7 +73,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
       expect(event).toBeDefined();
-      expect(event && event.payload).toMatchObject({
+      expect(event?.payload).toMatchObject({
         runtime,
         memory,
         priority: "normal",
@@ -187,9 +192,9 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
       const event = emittedEvents.find(
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
-      expect((event && event.payload as EmbeddingGenerationPayload).priority).toBe(
-        "normal",
-      );
+      expect(
+        (event && (event.payload as EmbeddingGenerationPayload)).priority,
+      ).toBe("normal");
     });
 
     it("should be non-blocking", async () => {
@@ -245,16 +250,16 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
   describe("Integration with addEmbeddingToMemory", () => {
     it("should work alongside synchronous embedding generation", async () => {
       // Mock the useModel for synchronous embedding with a simulated delay
-      runtime.useModel = vi.fn().mockImplementation(
-        async (modelType: string) => {
+      runtime.useModel = vi
+        .fn()
+        .mockImplementation(async (modelType: string) => {
           if (modelType === "TEXT_EMBEDDING") {
             // Simulate a realistic embedding generation delay
             await new Promise((resolve) => setTimeout(resolve, 5));
             return [0.1, 0.2, 0.3, 0.4, 0.5];
           }
           return Promise.resolve("mock response");
-        },
-      );
+        });
 
       const syncMemory: Memory = {
         id: "sync-memory" as UUID,
@@ -299,9 +304,9 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
       expect(event).toBeDefined();
-      expect((event && event.payload as EmbeddingGenerationPayload).memory.id).toBe(
-        asyncMemory.id,
-      );
+      expect(
+        (event && (event.payload as EmbeddingGenerationPayload)).memory.id,
+      ).toBe(asyncMemory.id);
     });
   });
 

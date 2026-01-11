@@ -1,13 +1,7 @@
 /**
  * Seed data for log integration tests
  */
-import {
-  type Agent,
-  AgentStatus,
-  ChannelType,
-  type Log,
-  type UUID,
-} from "@elizaos/core";
+import { type Agent, AgentStatus, ChannelType, type Log, type UUID } from "@elizaos/core";
 import { v4 } from "uuid";
 
 /**

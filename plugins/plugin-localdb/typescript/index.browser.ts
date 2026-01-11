@@ -1,6 +1,6 @@
 /**
  * Browser entry point for plugin-localdb
- * 
+ *
  * Uses localStorage-based JSON storage for persistence.
  */
 
@@ -30,7 +30,7 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 /**
  * Creates a local database adapter for browsers
- * 
+ *
  * @param config Configuration options
  * @param config.prefix localStorage key prefix (default: "elizaos")
  * @param agentId The agent ID
@@ -41,7 +41,7 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   const prefix = config.prefix ?? "elizaos";
-  
+
   // Create or reuse storage manager
   if (!globalSingletons.storageManager) {
     globalSingletons.storageManager = new BrowserStorage(prefix);
@@ -56,7 +56,7 @@ export function createDatabaseAdapter(
 export const plugin: Plugin = {
   name: "@elizaos/plugin-localdb",
   description: "Simple JSON-based local database storage for elizaOS (browser)",
-  
+
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:localdb" }, "Initializing local database plugin (browser)");
 
@@ -68,8 +68,8 @@ export const plugin: Plugin = {
       databaseAdapter?: IDatabaseAdapter;
     }
     const runtimeWithAdapter = runtime as RuntimeWithAdapter;
-    
-    const hasAdapter = 
+
+    const hasAdapter =
       runtimeWithAdapter.adapter !== undefined ||
       runtimeWithAdapter.databaseAdapter !== undefined ||
       (runtimeWithAdapter.hasDatabaseAdapter?.() ?? false);
@@ -84,27 +84,20 @@ export const plugin: Plugin = {
 
     // Get prefix from settings
     const prefix = runtime.getSetting("LOCALDB_PREFIX") as string | undefined;
-    
+
     // Create and register adapter
-    const adapter = createDatabaseAdapter(
-      { prefix },
-      runtime.agentId
-    );
+    const adapter = createDatabaseAdapter({ prefix }, runtime.agentId);
 
     await adapter.init();
     runtime.registerDatabaseAdapter(adapter);
 
-    logger.success(
-      { src: "plugin:localdb" },
-      "Local database adapter registered successfully"
-    );
+    logger.success({ src: "plugin:localdb" }, "Local database adapter registered successfully");
   },
 };
 
 export { LocalDatabaseAdapter } from "./adapter";
-export { BrowserStorage } from "./storage-browser";
 export { SimpleHNSW } from "./hnsw";
+export { BrowserStorage } from "./storage-browser";
 export * from "./types";
 
 export default plugin;
-

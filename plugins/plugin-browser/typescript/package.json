@@ -39,23 +39,25 @@
   "dependencies": {
     "ws": "^8.18.0",
     "axios": "^1.7.7",
-    "zod": "^3.23.8"
+    "zod": "^4.3.5"
   },
   "peerDependencies": {
-    "@elizaos/core": "*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/ws": "^8.5.10",
-    "typescript": "5.8.3",
-    "tsup": "^8.3.5"
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "dev": "bun --hot build.ts",
     "test": "bun test",
-    "lint": "eslint src --fix",
+    "lint": "bunx @biomejs/biome check --write .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -93,4 +95,3 @@
     }
   }
 }
-

@@ -38,96 +38,75 @@ const factsProvider: Provider = {
   description: "Key facts that the agent knows",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    try {
-      // Parallelize initial data fetching operations including recentInteractions
-      const recentMessages = await runtime.getMemories({
-        tableName: "messages",
+    // Parallelize initial data fetching operations including recentInteractions
+    const recentMessages = await runtime.getMemories({
+      tableName: "messages",
+      roomId: message.roomId,
+      count: 10,
+      unique: false,
+    });
+
+    // join the text of the last 5 messages
+    const last5Messages = recentMessages
+      .slice(-5)
+      .map((message) => message.content.text)
+      .join("\n");
+
+    const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: last5Messages,
+    });
+
+    const [relevantFacts, recentFactsData] = await Promise.all([
+      runtime.searchMemories({
+        tableName: "facts",
+        embedding,
         roomId: message.roomId,
-        count: 10,
-        unique: false,
-      });
+        worldId: message.worldId,
+        count: 6,
+        query: message.content.text,
+      }),
+      runtime.searchMemories({
+        embedding,
+        query: message.content.text,
+        tableName: "facts",
+        roomId: message.roomId,
+        entityId: message.entityId,
+        count: 6,
+      }),
+    ]);
 
-      // join the text of the last 5 messages
-      const last5Messages = recentMessages
-        .slice(-5)
-        .map((message) => message.content.text)
-        .join("\n");
+    // join the two and deduplicate
+    const allFacts = [...relevantFacts, ...recentFactsData].filter(
+      (fact, index, self) => index === self.findIndex((t) => t.id === fact.id),
+    );
 
-      const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text: last5Messages,
-      });
-
-      const [relevantFacts, recentFactsData] = await Promise.all([
-        runtime.searchMemories({
-          tableName: "facts",
-          embedding,
-          roomId: message.roomId,
-          worldId: message.worldId,
-          count: 6,
-          query: message.content.text,
-        }),
-        runtime.searchMemories({
-          embedding,
-          query: message.content.text,
-          tableName: "facts",
-          roomId: message.roomId,
-          entityId: message.entityId,
-          count: 6,
-        }),
-      ]);
-
-      // join the two and deduplicate
-      const allFacts = [...relevantFacts, ...recentFactsData].filter(
-        (fact, index, self) =>
-          index === self.findIndex((t) => t.id === fact.id),
-      );
-
-      if (allFacts.length === 0) {
-        return {
-          values: {
-            facts: "",
-          },
-          data: {
-            facts: allFacts as unknown as ProviderValue,
-          },
-          text: "No facts available.",
-        };
-      }
-
-      const formattedFacts = formatFacts(allFacts);
-
-      const text = "Key facts that {{agentName}} knows:\n{{formattedFacts}}"
-        .replace("{{agentName}}", runtime.character.name)
-        .replace("{{formattedFacts}}", formattedFacts);
-
-      return {
-        values: {
-          facts: formattedFacts,
-        },
-        data: {
-          facts: allFacts as unknown as ProviderValue,
-        },
-        text,
-      };
-    } catch (error) {
-      runtime.logger.error(
-        {
-          src: "plugin:bootstrap:provider:facts",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error in factsProvider",
-      );
+    if (allFacts.length === 0) {
       return {
         values: {
           facts: "",
         },
         data: {
-          facts: [] as unknown as ProviderValue,
+          facts: allFacts as unknown as ProviderValue,
         },
-        text: "Error retrieving facts.",
+        text: "No facts available.",
       };
     }
+
+    const formattedFacts = formatFacts(allFacts);
+
+    const text = "Key facts that {{agentName}} knows:\n{{formattedFacts}}"
+      .replace("{{agentName}}", runtime.character.name)
+      .replace("{{formattedFacts}}", formattedFacts);
+
+    return {
+      values: {
+        facts: formattedFacts,
+      },
+      data: {
+        facts: allFacts as unknown as ProviderValue,
+      },
+      text,
+    };
   },
 };
 

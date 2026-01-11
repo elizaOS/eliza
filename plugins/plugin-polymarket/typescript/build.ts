@@ -25,7 +25,7 @@ async function runBuild(): Promise<boolean> {
 
   // Build the TypeScript code
   const result = await Bun.build({
-    entrypoints: ["typescript/index.ts"],
+    entrypoints: ["index.ts"],
     outdir: distDir,
     target: "node",
     format: "esm",
@@ -68,7 +68,9 @@ async function runBuild(): Promise<boolean> {
 
   // Generate TypeScript declarations using tsc
   console.log("Generating TypeScript declarations...");
-  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json`.quiet().nothrow();
+  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json`
+    .quiet()
+    .nothrow();
 
   if (tscResult.exitCode !== 0) {
     console.warn("Warning: TypeScript declaration generation had issues:");
@@ -80,8 +82,8 @@ async function runBuild(): Promise<boolean> {
   if (!existsSync(indexDtsPath)) {
     await writeFile(
       indexDtsPath,
-      `export * from "./typescript/index";
-export { default } from "./typescript/index";
+      `export * from "./index";
+export { default } from "./index";
 `,
       "utf8"
     );
@@ -99,4 +101,3 @@ runBuild()
     console.error("Build script error:", error);
     process.exit(1);
   });
-

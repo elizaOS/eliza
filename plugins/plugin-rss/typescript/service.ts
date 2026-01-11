@@ -1,17 +1,20 @@
-import { type IAgentRuntime, Service, logger, type Memory, createUniqueUuid, type TaskWorker } from '@elizaos/core';
-import type { RssFeed, FeedSubscriptionMetadata } from './types';
-import { parseRssToJson, createEmptyFeed } from './parser';
-
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  MemoryType,
+  Service,
+  type TaskWorker,
+} from "@elizaos/core";
+import { createEmptyFeed, parseRssToJson } from "./parser";
+import type { FeedSubscriptionMetadata, RssFeed } from "./types";
 
 export class RssService extends Service {
   private isRunning = false;
 
-  static serviceType = 'RSS';
-  capabilityDescription = 'The agent is able to deal with RSS/atom feeds';
-
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
+  static serviceType = "RSS";
+  capabilityDescription = "The agent is able to deal with RSS/atom feeds";
 
   /**
    * Fetch and parse an RSS feed from a URL
@@ -23,21 +26,21 @@ export class RssService extends Service {
     try {
       const resp = await fetch(urlToFetch);
       response = await resp.text();
-      
+
       if (!response) {
-        logger.warn({ url: urlToFetch }, 'No response for feed URL');
+        logger.warn({ url: urlToFetch }, "No response for feed URL");
         return null;
       }
 
       const data = parseRssToJson(response);
       if (!data || !data.title) {
-        logger.warn({ url: urlToFetch }, 'No RSS data found in response');
+        logger.warn({ url: urlToFetch }, "No RSS data found in response");
         return createEmptyFeed();
       }
-      
+
       return data;
     } catch (error) {
-      logger.error({ error, url: urlToFetch }, 'Error fetching RSS feed');
+      logger.error({ error, url: urlToFetch }, "Error fetching RSS feed");
       return null;
     }
   }
@@ -50,11 +53,11 @@ export class RssService extends Service {
   async subscribeFeed(url: string, title?: string): Promise<boolean> {
     try {
       const feedId = createUniqueUuid(this.runtime, `feed_sub_${url}`);
-      
+
       // Check if already subscribed
-      const existing = await this.runtime.getMemoriesByIds([feedId], 'feedsubscriptions');
+      const existing = await this.runtime.getMemoriesByIds([feedId], "feedsubscriptions");
       if (existing && existing.length > 0) {
-        logger.info({ url }, 'Already subscribed to feed');
+        logger.info({ url }, "Already subscribed to feed");
         return true;
       }
 
@@ -73,23 +76,23 @@ export class RssService extends Service {
         agentId: this.runtime.agentId,
         content: {
           text: feedTitle || url,
-          url: url
+          url: url,
         },
         roomId: this.runtime.agentId,
         createdAt: Date.now(),
         metadata: {
-          type: 'custom',
+          type: MemoryType.CUSTOM,
           subscribedAt: Date.now(),
           lastChecked: 0,
-          lastItemCount: 0
-        } as any
+          lastItemCount: 0,
+        },
       };
 
-      await this.runtime.createMemory(subscriptionMemory, 'feedsubscriptions');
-      logger.info({ url, title: feedTitle }, 'Subscribed to RSS feed');
+      await this.runtime.createMemory(subscriptionMemory, "feedsubscriptions");
+      logger.info({ url, title: feedTitle }, "Subscribed to RSS feed");
       return true;
     } catch (error) {
-      logger.error({ error, url }, 'Error subscribing to feed');
+      logger.error({ error, url }, "Error subscribing to feed");
       return false;
     }
   }
@@ -101,19 +104,19 @@ export class RssService extends Service {
   async unsubscribeFeed(url: string): Promise<boolean> {
     try {
       const feedId = createUniqueUuid(this.runtime, `feed_sub_${url}`);
-      
+
       // Check if subscribed
-      const existing = await this.runtime.getMemoriesByIds([feedId], 'feedsubscriptions');
+      const existing = await this.runtime.getMemoriesByIds([feedId], "feedsubscriptions");
       if (!existing || existing.length === 0) {
-        logger.warn({ url }, 'Not subscribed to feed');
+        logger.warn({ url }, "Not subscribed to feed");
         return false;
       }
 
       await this.runtime.deleteMemory(feedId);
-      logger.info({ url }, 'Unsubscribed from RSS feed');
+      logger.info({ url }, "Unsubscribed from RSS feed");
       return true;
     } catch (error) {
-      logger.error({ error, url }, 'Error unsubscribing from feed');
+      logger.error({ error, url }, "Error unsubscribing from feed");
       return false;
     }
   }
@@ -124,12 +127,12 @@ export class RssService extends Service {
   async getSubscribedFeeds(): Promise<Memory[]> {
     try {
       const feeds = await this.runtime.getMemories({
-        tableName: 'feedsubscriptions',
+        tableName: "feedsubscriptions",
         unique: false,
       });
       return feeds || [];
     } catch (error) {
-      logger.error({ error }, 'Error getting subscribed feeds');
+      logger.error({ error }, "Error getting subscribed feeds");
       return [];
     }
   }
@@ -140,21 +143,21 @@ export class RssService extends Service {
   async checkAllFeeds(): Promise<void> {
     try {
       const feeds = await this.getSubscribedFeeds();
-      logger.info({ count: feeds.length }, 'Checking subscribed RSS feeds');
+      logger.info({ count: feeds.length }, "Checking subscribed RSS feeds");
 
       for (const feed of feeds) {
         try {
           const url = feed.content.url;
           if (!url) {
-            logger.warn({ feedId: feed.id }, 'Feed subscription missing URL');
+            logger.warn({ feedId: feed.id }, "Feed subscription missing URL");
             continue;
           }
 
-          logger.debug({ url }, 'Fetching feed');
+          logger.debug({ url }, "Fetching feed");
           const feedData = await this.fetchUrl(url);
-          
+
           if (!feedData || !feedData.items) {
-            logger.warn({ url }, 'No data returned for feed');
+            logger.warn({ url }, "No data returned for feed");
             continue;
           }
 
@@ -164,18 +167,25 @@ export class RssService extends Service {
           for (const item of feedData.items) {
             // Primary ID: based on guid
             const primaryId = createUniqueUuid(this.runtime, `${url}_${item.guid}`);
-            
+
             // Fallback ID: based on title and pubDate (for feeds with inconsistent guids)
-            const fallbackId = createUniqueUuid(this.runtime, `${url}_${item.title}_${item.pubDate}`);
+            const fallbackId = createUniqueUuid(
+              this.runtime,
+              `${url}_${item.title}_${item.pubDate}`
+            );
 
             // Check both IDs to avoid duplicates
-            const existingByGuid = await this.runtime.getMemoriesByIds([primaryId], 'feeditems');
-            const existingByTitleDate = await this.runtime.getMemoriesByIds([fallbackId], 'feeditems');
+            const existingByGuid = await this.runtime.getMemoriesByIds([primaryId], "feeditems");
+            const existingByTitleDate = await this.runtime.getMemoriesByIds(
+              [fallbackId],
+              "feeditems"
+            );
 
             // Only create if item doesn't exist by either method
-            if ((!existingByGuid || existingByGuid.length === 0) && 
-                (!existingByTitleDate || existingByTitleDate.length === 0)) {
-              
+            if (
+              (!existingByGuid || existingByGuid.length === 0) &&
+              (!existingByTitleDate || existingByTitleDate.length === 0)
+            ) {
               // Use primary ID if guid exists, otherwise use fallback
               const itemId = item.guid ? primaryId : fallbackId;
 
@@ -185,49 +195,61 @@ export class RssService extends Service {
                 agentId: this.runtime.agentId,
                 content: {
                   text: item.title,
-                  url: item.link
+                  url: item.link,
                 },
                 roomId: this.runtime.agentId,
                 createdAt: Date.now(),
                 metadata: {
-                  ...item,
+                  type: MemoryType.CUSTOM,
                   feedUrl: url,
                   feedTitle: feedData.title,
-                  type: 'custom'
-                } as any
+                  title: item.title,
+                  link: item.link,
+                  pubDate: item.pubDate,
+                  description: item.description,
+                  author: item.author,
+                  category: item.category.join(","),
+                  comments: item.comments,
+                  guid: item.guid,
+                },
               };
 
-              await this.runtime.createMemory(itemMemory, 'feeditems');
+              await this.runtime.createMemory(itemMemory, "feeditems");
               newItemCount++;
             }
           }
 
           // Update feed subscription metadata
+          if (!feed.id) {
+            continue;
+          }
           const currentMetadata = feed.metadata as FeedSubscriptionMetadata;
           await this.runtime.updateMemory({
-            id: feed.id!,
+            id: feed.id,
             metadata: {
-              ...currentMetadata,
+              type: MemoryType.CUSTOM,
+              subscribedAt: currentMetadata.subscribedAt ?? Date.now(),
               lastChecked: Date.now(),
-              lastItemCount: feedData.items.length
-            } as any
+              lastItemCount: feedData.items.length,
+            },
           });
 
           if (newItemCount > 0) {
-            logger.info({ count: newItemCount, feed: feedData.title || url }, 'Found new items from feed');
+            logger.info(
+              { count: newItemCount, feed: feedData.title || url },
+              "Found new items from feed"
+            );
           } else {
-            logger.debug({ feed: feedData.title || url }, 'No new items from feed');
+            logger.debug({ feed: feedData.title || url }, "No new items from feed");
           }
-
         } catch (error) {
-          logger.error({ error, url: feed.content.url }, 'Error checking feed');
-          continue;
+          logger.error({ error, url: feed.content.url }, "Error checking feed");
         }
       }
 
-      logger.info('Completed checking all RSS feeds');
+      logger.info("Completed checking all RSS feeds");
     } catch (error) {
-      logger.error({ error }, 'Error in checkAllFeeds');
+      logger.error({ error }, "Error in checkAllFeeds");
     }
   }
 
@@ -235,10 +257,10 @@ export class RssService extends Service {
    * Load initial feeds from environment configuration
    */
   private async loadInitialFeeds(): Promise<void> {
-    const rssFeeds = this.runtime.getSetting('RSS_FEEDS');
-    
+    const rssFeeds = this.runtime.getSetting("RSS_FEEDS");
+
     if (!rssFeeds) {
-      logger.debug('No RSS_FEEDS configured in environment');
+      logger.debug("No RSS_FEEDS configured in environment");
       return;
     }
 
@@ -246,32 +268,38 @@ export class RssService extends Service {
       let feedUrls: string[] = [];
 
       // Try to parse as JSON array first
-      if (typeof rssFeeds === 'string') {
+      if (typeof rssFeeds === "string") {
         try {
           const parsed = JSON.parse(rssFeeds);
           if (Array.isArray(parsed)) {
             feedUrls = parsed;
           } else {
             // Treat as comma-separated list
-            feedUrls = rssFeeds.split(',').map(url => url.trim()).filter(url => url.length > 0);
+            feedUrls = rssFeeds
+              .split(",")
+              .map((url) => url.trim())
+              .filter((url) => url.length > 0);
           }
         } catch {
           // Not JSON, treat as comma-separated
-          feedUrls = rssFeeds.split(',').map(url => url.trim()).filter(url => url.length > 0);
+          feedUrls = rssFeeds
+            .split(",")
+            .map((url) => url.trim())
+            .filter((url) => url.length > 0);
         }
       } else if (Array.isArray(rssFeeds)) {
         feedUrls = rssFeeds;
       }
 
-      logger.info({ count: feedUrls.length }, 'Loading RSS feeds from configuration');
+      logger.info({ count: feedUrls.length }, "Loading RSS feeds from configuration");
 
       for (const url of feedUrls) {
         await this.subscribeFeed(url);
       }
 
-      logger.info('Completed loading initial RSS feeds');
+      logger.info("Completed loading initial RSS feeds");
     } catch (error) {
-      logger.error({ error }, 'Error loading initial RSS feeds from configuration');
+      logger.error({ error }, "Error loading initial RSS feeds from configuration");
     }
   }
 
@@ -280,27 +308,69 @@ export class RssService extends Service {
    */
   private registerFeedCheckWorker(): void {
     const worker: TaskWorker = {
-      name: 'RSS_FEED_CHECK',
+      name: "RSS_FEED_CHECK",
       validate: async (_runtime, _message) => {
         return true;
       },
       execute: async (runtime) => {
         try {
-          logger.debug('Executing RSS feed check task');
-          const rssService = runtime.getService('RSS') as RssService;
+          logger.debug("Executing RSS feed check task");
+          const rssService = runtime.getService("RSS") as RssService;
           if (rssService) {
             await rssService.checkAllFeeds();
           }
         } catch (error) {
-          logger.error({ error }, 'Error executing RSS feed check task');
+          logger.error({ error }, "Error executing RSS feed check task");
         }
       },
     };
 
     this.runtime.registerTaskWorker(worker);
-    logger.info('Registered RSS_FEED_CHECK task worker');
+    logger.info("Registered RSS_FEED_CHECK task worker");
   }
 
+  async start(): Promise<void> {
+    if (this.isRunning) {
+      logger.warn("RSS service is already running");
+      return;
+    }
+
+    try {
+      logger.info("Starting RSS service...");
+
+      // Register the feed check task worker
+      this.registerFeedCheckWorker();
+
+      // Load initial feeds from environment configuration
+      await this.loadInitialFeeds();
+
+      // Create periodic feed check task
+      const checkIntervalSetting = this.runtime.getSetting("RSS_CHECK_INTERVAL_MINUTES");
+      const checkIntervalMinutes =
+        typeof checkIntervalSetting === "number" ? checkIntervalSetting : 15;
+      const intervalInMs = checkIntervalMinutes * 60 * 1000;
+
+      await this.runtime.createTask({
+        name: "RSS_FEED_CHECK",
+        description: "Periodically check RSS feeds for new items",
+        worldId: this.runtime.agentId,
+        metadata: {
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          updateInterval: intervalInMs,
+        },
+        tags: ["queue", "repeat", "rss"],
+      });
+
+      logger.info({ interval: checkIntervalMinutes }, "RSS periodic feed check task created");
+
+      this.isRunning = true;
+      logger.info("RSS service started successfully");
+    } catch (error) {
+      logger.error({ error }, "Error starting RSS service");
+      throw error;
+    }
+  }
 
   /**
    * Start the RSS service with the given runtime.
@@ -311,76 +381,32 @@ export class RssService extends Service {
     return service;
   }
 
+  async stop(): Promise<void> {
+    if (!this.isRunning) {
+      logger.warn("RSS service is not running");
+      return;
+    }
+
+    try {
+      logger.info("Stopping RSS service...");
+
+      this.isRunning = false;
+      logger.info("RSS service stopped successfully");
+    } catch (error) {
+      logger.error({ error }, "Error stopping RSS service");
+      throw error;
+    }
+  }
+
   /**
    * Stops the RSS service associated with the given runtime.
    */
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(this.serviceType);
+    const service = runtime.getService(RssService.serviceType);
     if (!service) {
-      throw new Error(this.serviceType + ' service not found');
+      throw new Error(`${RssService.serviceType} service not found`);
     }
     await service.stop();
-  }
-
-  async start(): Promise<void> {
-    if (this.isRunning) {
-      logger.warn('RSS service is already running');
-      return;
-    }
-
-    try {
-      logger.info('Starting RSS service...');
-
-      // Register the feed check task worker
-      this.registerFeedCheckWorker();
-
-      // Load initial feeds from environment configuration
-      await this.loadInitialFeeds();
-
-      // Create periodic feed check task
-      const checkIntervalSetting = this.runtime.getSetting('RSS_CHECK_INTERVAL_MINUTES');
-      const checkIntervalMinutes = typeof checkIntervalSetting === 'number' 
-        ? checkIntervalSetting 
-        : 15;
-      const intervalInMs = checkIntervalMinutes * 60 * 1000;
-
-      await this.runtime.createTask({
-        name: 'RSS_FEED_CHECK',
-        description: 'Periodically check RSS feeds for new items',
-        worldId: this.runtime.agentId,
-        metadata: {
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          updateInterval: intervalInMs,
-        },
-        tags: ['queue', 'repeat', 'rss'],
-      });
-
-      logger.info({ interval: checkIntervalMinutes }, 'RSS periodic feed check task created');
-
-      this.isRunning = true;
-      logger.info('RSS service started successfully');
-    } catch (error) {
-      logger.error({ error }, 'Error starting RSS service');
-      throw error;
-    }
-  }
-
-  async stop(): Promise<void> {
-    if (!this.isRunning) {
-      logger.warn('RSS service is not running');
-      return;
-    }
-
-    try {
-      logger.info('Stopping RSS service...');
-
-      this.isRunning = false;
-      logger.info('RSS service stopped successfully');
-    } catch (error) {
-      logger.error({ error }, 'Error stopping RSS service');
-      throw error;
-    }
   }
 
   isServiceRunning(): boolean {
@@ -390,4 +416,3 @@ export class RssService extends Service {
 
 // Legacy export for backwards compatibility
 export const rssService = RssService;
-

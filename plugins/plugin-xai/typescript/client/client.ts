@@ -6,20 +6,15 @@ import type {
   TTweetv2TweetField,
   TTweetv2UserField,
 } from "twitter-api-v2";
-import {
-  type FetchTransformOptions,
-  type QueryProfilesResponse,
-  type QueryTweetsResponse,
-  type RequestApiResult,
-} from "./api-types";
+import type { FetchTransformOptions, RequestApiResult } from "./api-types";
 import { TwitterAuth } from "./auth";
-import type { TwitterAuthProvider } from "./auth-providers/types";
+import type { TwitterAuthProvider, TwitterOAuth1Provider } from "./auth-providers/types";
 // Removed messages imports - using Twitter API v2 instead
 import {
-  type Profile,
   getEntityIdByScreenName,
   getProfile,
   getScreenNameByUserId,
+  type Profile,
 } from "./profile";
 import {
   fetchProfileFollowers,
@@ -28,18 +23,8 @@ import {
   getFollowers,
   getFollowing,
 } from "./relationships";
+import { SearchMode, searchProfiles, searchQuotedTweets, searchTweets } from "./search";
 import {
-  SearchMode,
-  searchProfiles,
-  searchTweets,
-  searchQuotedTweets,
-} from "./search";
-
-import {
-  type PollData,
-  type Retweeter,
-  type Tweet,
-  type TweetQuery,
   createCreateLongTweetRequest,
   createCreateNoteTweetRequest,
   createCreateTweetRequest,
@@ -51,20 +36,25 @@ import {
   getAllRetweeters,
   getLatestTweet,
   getTweet,
-  getTweetV2,
   getTweets,
   getTweetsAndReplies,
   getTweetsAndRepliesByUserId,
   getTweetsByUserId,
   getTweetsV2,
   getTweetsWhere,
-  likeTweet,
-  retweet,
+  getTweetV2,
   getTweetWhere,
+  likeTweet,
+  type PollData,
   parseTweetV2ToV1,
+  type Retweeter,
+  retweet,
+  type Tweet,
+  type TweetQuery,
 } from "./tweets";
+import type { QueryProfilesResponse, QueryTweetsResponse } from "./types";
 
-const twUrl = "https://twitter.com";
+const _twUrl = "https://twitter.com";
 
 /**
  * An alternative fetch function to use instead of the default fetch function. This may be useful
@@ -100,7 +90,7 @@ export class Client {
    * Creates a new Client object.
    * - Reusing Client objects is recommended to minimize the time spent authenticating unnecessarily.
    */
-  constructor(private readonly options?: Partial<ClientOptions>) {}
+  constructor(readonly _options?: Partial<ClientOptions>) {}
 
   /**
    * Fetches a Twitter profile.
@@ -108,6 +98,9 @@ export class Client {
    * @returns The requested {@link Profile}.
    */
   public async getProfile(username: string): Promise<Profile> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     const res = await getProfile(username, this.auth);
     return this.handleResponse(res);
   }
@@ -118,6 +111,9 @@ export class Client {
    * @returns The ID of the corresponding account.
    */
   public async getEntityIdByScreenName(screenName: string): Promise<string> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     const res = await getEntityIdByScreenName(screenName, this.auth);
     return this.handleResponse(res);
   }
@@ -128,6 +124,9 @@ export class Client {
    * @returns The screen name of the corresponding account.
    */
   public async getScreenNameByUserId(userId: string): Promise<string> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     const response = await getScreenNameByUserId(userId, this.auth);
     return this.handleResponse(response);
   }
@@ -143,8 +142,11 @@ export class Client {
   public searchTweets(
     query: string,
     maxTweets: number,
-    searchMode: SearchMode = SearchMode.Top,
+    searchMode: SearchMode = SearchMode.Top
   ): AsyncGenerator<Tweet, void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return searchTweets(query, maxTweets, searchMode, this.auth);
   }
 
@@ -154,10 +156,10 @@ export class Client {
    * @param maxProfiles The maximum number of profiles to return.
    * @returns An {@link AsyncGenerator} of tweets matching the provided filter(s).
    */
-  public searchProfiles(
-    query: string,
-    maxProfiles: number,
-  ): AsyncGenerator<Profile, void> {
+  public searchProfiles(query: string, maxProfiles: number): AsyncGenerator<Profile, void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return searchProfiles(query, maxProfiles, this.auth);
   }
 
@@ -174,10 +176,13 @@ export class Client {
     query: string,
     maxTweets: number,
     searchMode: SearchMode,
-    cursor?: string,
+    _cursor?: string
   ): Promise<QueryTweetsResponse> {
     // Use the generator and collect results
     const tweets: Tweet[] = [];
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     const generator = searchTweets(query, maxTweets, searchMode, this.auth);
 
     for await (const tweet of generator) {
@@ -201,8 +206,11 @@ export class Client {
   public async fetchSearchProfiles(
     query: string,
     maxProfiles: number,
-    cursor?: string,
+    _cursor?: string
   ): Promise<QueryProfilesResponse> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     // Use the generator and collect results
     const profiles: Profile[] = [];
     const generator = searchProfiles(query, maxProfiles, this.auth);
@@ -228,8 +236,11 @@ export class Client {
   public fetchListTweets(
     listId: string,
     maxTweets: number,
-    cursor?: string,
+    cursor?: string
   ): Promise<QueryTweetsResponse> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return fetchListTweets(listId, maxTweets, cursor, this.auth);
   }
 
@@ -239,10 +250,10 @@ export class Client {
    * @param maxProfiles The maximum number of profiles to return.
    * @returns An {@link AsyncGenerator} of following profiles for the provided user.
    */
-  public getFollowing(
-    userId: string,
-    maxProfiles: number,
-  ): AsyncGenerator<Profile, void> {
+  public getFollowing(userId: string, maxProfiles: number): AsyncGenerator<Profile, void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getFollowing(userId, maxProfiles, this.auth);
   }
 
@@ -252,10 +263,10 @@ export class Client {
    * @param maxProfiles The maximum number of profiles to return.
    * @returns An {@link AsyncGenerator} of profiles following the provided user.
    */
-  public getFollowers(
-    userId: string,
-    maxProfiles: number,
-  ): AsyncGenerator<Profile, void> {
+  public getFollowers(userId: string, maxProfiles: number): AsyncGenerator<Profile, void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getFollowers(userId, maxProfiles, this.auth);
   }
 
@@ -269,8 +280,11 @@ export class Client {
   public fetchProfileFollowing(
     userId: string,
     maxProfiles: number,
-    cursor?: string,
+    cursor?: string
   ): Promise<QueryProfilesResponse> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return fetchProfileFollowing(userId, maxProfiles, this.auth, cursor);
   }
 
@@ -284,8 +298,11 @@ export class Client {
   public fetchProfileFollowers(
     userId: string,
     maxProfiles: number,
-    cursor?: string,
+    cursor?: string
   ): Promise<QueryProfilesResponse> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return fetchProfileFollowers(userId, maxProfiles, this.auth, cursor);
   }
 
@@ -296,10 +313,7 @@ export class Client {
    * @param seenTweetIds An array of tweet IDs that have already been seen (not used in v2).
    * @returns A promise that resolves to an array of tweets.
    */
-  public async fetchHomeTimeline(
-    count: number,
-    seenTweetIds: string[],
-  ): Promise<Tweet[]> {
+  public async fetchHomeTimeline(count: number, _seenTweetIds: string[]): Promise<Tweet[]> {
     if (!this.auth) {
       throw new Error("Not authenticated");
     }
@@ -322,11 +336,7 @@ export class Client {
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
-        expansions: [
-          "author_id",
-          "attachments.media_keys",
-          "referenced_tweets.id",
-        ],
+        expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       });
 
       const tweets: Tweet[] = [];
@@ -349,10 +359,7 @@ export class Client {
    * @param seenTweetIds An array of tweet IDs that have already been seen (not used in v2).
    * @returns A promise that resolves to an array of tweets.
    */
-  public async fetchFollowingTimeline(
-    count: number,
-    seenTweetIds: string[],
-  ): Promise<Tweet[]> {
+  public async fetchFollowingTimeline(count: number, seenTweetIds: string[]): Promise<Tweet[]> {
     // In v2 API, there's no separate following timeline endpoint
     // Use the same home timeline endpoint
     return this.fetchHomeTimeline(count, seenTweetIds);
@@ -361,7 +368,7 @@ export class Client {
   async getUserTweets(
     userId: string,
     maxTweets = 200,
-    cursor?: string,
+    cursor?: string
   ): Promise<{ tweets: Tweet[]; next?: string }> {
     if (!this.auth) {
       throw new Error("Not authenticated");
@@ -385,11 +392,7 @@ export class Client {
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
-        expansions: [
-          "author_id",
-          "attachments.media_keys",
-          "referenced_tweets.id",
-        ],
+        expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
         pagination_token: cursor,
       });
 
@@ -409,19 +412,12 @@ export class Client {
     }
   }
 
-  async *getUserTweetsIterator(
-    userId: string,
-    maxTweets = 200,
-  ): AsyncGenerator<Tweet, void> {
+  async *getUserTweetsIterator(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
     let cursor: string | undefined;
     let retrievedTweets = 0;
 
     while (retrievedTweets < maxTweets) {
-      const response = await this.getUserTweets(
-        userId,
-        maxTweets - retrievedTweets,
-        cursor,
-      );
+      const response = await this.getUserTweets(userId, maxTweets - retrievedTweets, cursor);
 
       for (const tweet of response.tweets) {
         yield tweet;
@@ -456,6 +452,9 @@ export class Client {
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
   public getTweets(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getTweets(user, maxTweets, this.auth);
   }
 
@@ -465,10 +464,10 @@ export class Client {
    * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
-  public getTweetsByUserId(
-    userId: string,
-    maxTweets = 200,
-  ): AsyncGenerator<Tweet, void> {
+  public getTweetsByUserId(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getTweetsByUserId(userId, maxTweets, this.auth);
   }
 
@@ -484,40 +483,41 @@ export class Client {
     text: string,
     replyToTweetId?: string,
     mediaData?: { data: Buffer; mediaType: string }[],
-    hideLinkPreview?: boolean,
+    hideLinkPreview?: boolean
   ) {
     if (!text || text.trim().length === 0) {
       throw new Error("Text is required");
     }
     if (text.toLowerCase().startsWith("error:")) {
-      throw new Error("Error sending tweet: " + text);
+      throw new Error(`Error sending tweet: ${text}`);
+    }
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
     }
     return await createCreateTweetRequest(
       text,
       this.auth,
       replyToTweetId,
       mediaData,
-      hideLinkPreview,
+      hideLinkPreview
     );
   }
 
   async sendNoteTweet(
     text: string,
     replyToTweetId?: string,
-    mediaData?: { data: Buffer; mediaType: string }[],
+    mediaData?: { data: Buffer; mediaType: string }[]
   ) {
     if (!text || text.trim().length === 0) {
       throw new Error("Text is required");
     }
     if (text.toLowerCase().startsWith("error:")) {
-      throw new Error("Error sending note tweet: " + text);
+      throw new Error(`Error sending note tweet: ${text}`);
     }
-    return await createCreateNoteTweetRequest(
-      text,
-      this.auth,
-      replyToTweetId,
-      mediaData,
-    );
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    return await createCreateNoteTweetRequest(text, this.auth, replyToTweetId, mediaData);
   }
 
   /**
@@ -530,14 +530,12 @@ export class Client {
   async sendLongTweet(
     text: string,
     replyToTweetId?: string,
-    mediaData?: { data: Buffer; mediaType: string }[],
+    mediaData?: { data: Buffer; mediaType: string }[]
   ) {
-    return await createCreateLongTweetRequest(
-      text,
-      this.auth,
-      replyToTweetId,
-      mediaData,
-    );
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    return await createCreateLongTweetRequest(text, this.auth, replyToTweetId, mediaData);
   }
 
   /**
@@ -553,14 +551,12 @@ export class Client {
     replyToTweetId?: string,
     options?: {
       poll?: PollData;
-    },
+    }
   ) {
-    return await createCreateTweetRequestV2(
-      text,
-      this.auth,
-      replyToTweetId,
-      options,
-    );
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    return await createCreateTweetRequestV2(text, this.auth, replyToTweetId, options);
   }
 
   /**
@@ -569,10 +565,10 @@ export class Client {
    * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
-  public getTweetsAndReplies(
-    user: string,
-    maxTweets = 200,
-  ): AsyncGenerator<Tweet> {
+  public getTweetsAndReplies(user: string, maxTweets = 200): AsyncGenerator<Tweet> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getTweetsAndReplies(user, maxTweets, this.auth);
   }
 
@@ -582,10 +578,10 @@ export class Client {
    * @param maxTweets The maximum number of tweets to return. Defaults to `200`.
    * @returns An {@link AsyncGenerator} of tweets from the provided user.
    */
-  public getTweetsAndRepliesByUserId(
-    userId: string,
-    maxTweets = 200,
-  ): AsyncGenerator<Tweet, void> {
+  public getTweetsAndRepliesByUserId(userId: string, maxTweets = 200): AsyncGenerator<Tweet, void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getTweetsAndRepliesByUserId(userId, maxTweets, this.auth);
   }
 
@@ -605,10 +601,7 @@ export class Client {
    * - All keys are optional.
    * - If specified, the key must be implemented by that of {@link Tweet}.
    */
-  public getTweetWhere(
-    tweets: AsyncIterable<Tweet>,
-    query: TweetQuery,
-  ): Promise<Tweet | null> {
+  public getTweetWhere(tweets: AsyncIterable<Tweet>, query: TweetQuery): Promise<Tweet | null> {
     return getTweetWhere(tweets, query);
   }
 
@@ -628,10 +621,7 @@ export class Client {
    * - All keys are optional.
    * - If specified, the key must be implemented by that of {@link Tweet}.
    */
-  public getTweetsWhere(
-    tweets: AsyncIterable<Tweet>,
-    query: TweetQuery,
-  ): Promise<Tweet[]> {
+  public getTweetsWhere(tweets: AsyncIterable<Tweet>, query: TweetQuery): Promise<Tweet[]> {
     return getTweetsWhere(tweets, query);
   }
 
@@ -644,8 +634,11 @@ export class Client {
   public getLatestTweet(
     user: string,
     includeRetweets = false,
-    max = 200,
+    max = 200
   ): Promise<Tweet | null | undefined> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getLatestTweet(user, includeRetweets, max, this.auth);
   }
 
@@ -655,6 +648,9 @@ export class Client {
    * @returns The {@link Tweet} object, or `null` if it couldn't be fetched.
    */
   public getTweet(id: string): Promise<Tweet | null> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return getTweet(id, this.auth);
   }
 
@@ -681,8 +677,11 @@ export class Client {
       mediaFields?: TTweetv2MediaField[];
       userFields?: TTweetv2UserField[];
       placeFields?: TTweetv2PlaceField[];
-    } = defaultOptions,
+    } = defaultOptions
   ): Promise<Tweet | null> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return await getTweetV2(id, this.auth, options);
   }
 
@@ -709,8 +708,11 @@ export class Client {
       mediaFields?: TTweetv2MediaField[];
       userFields?: TTweetv2UserField[];
       placeFields?: TTweetv2PlaceField[];
-    } = defaultOptions,
+    } = defaultOptions
   ): Promise<Tweet[]> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return await getTweetsV2(ids, this.auth, options);
   }
 
@@ -733,7 +735,7 @@ export class Client {
    * @returns {TwitterAuth | null} Current authentication or null if not authenticated
    */
   public getAuth(): TwitterAuth | null {
-    return this.auth;
+    return this.auth ?? null;
   }
 
   /**
@@ -750,6 +752,7 @@ export class Client {
    * @returns `true` if the client is logged in with a real user account; otherwise `false`.
    */
   public async isLoggedIn(): Promise<boolean> {
+    if (!this.auth) return false;
     return await this.auth.isLoggedIn();
   }
 
@@ -758,6 +761,7 @@ export class Client {
    * @returns The currently logged in user
    */
   public async me(): Promise<Profile | undefined> {
+    if (!this.auth) return undefined;
     return this.auth.me();
   }
 
@@ -769,33 +773,33 @@ export class Client {
    * @param accessSecret The access token secret
    */
   public async login(
-    username: string,
-    password: string,
-    email?: string,
-    twoFactorSecret?: string,
+    _username: string,
+    _password: string,
+    _email?: string,
+    _twoFactorSecret?: string,
     appKey?: string,
     appSecret?: string,
     accessToken?: string,
-    accessSecret?: string,
+    accessSecret?: string
   ): Promise<void> {
     // Only use API credentials for v2 authentication
     if (!appKey || !appSecret || !accessToken || !accessSecret) {
-      throw new Error(
-        "Twitter API v2 credentials are required for authentication",
-      );
+      throw new Error("Twitter API v2 credentials are required for authentication");
     }
 
     // Backward compatible path: build a fixed OAuth1 provider inline.
-    this.auth = new TwitterAuth({
+    // Note: These values are guaranteed to be defined by the check above
+    const oauth1Provider: TwitterOAuth1Provider = {
       mode: "env",
-      getAccessToken: async () => accessToken!,
+      getAccessToken: async () => accessToken,
       getOAuth1Credentials: async () => ({
-        appKey: appKey!,
-        appSecret: appSecret!,
-        accessToken: accessToken!,
-        accessSecret: accessSecret!,
+        appKey: appKey,
+        appSecret: appSecret,
+        accessToken: accessToken,
+        accessSecret: accessSecret,
       }),
-    } as any);
+    };
+    this.auth = new TwitterAuth(oauth1Provider);
   }
 
   /**
@@ -804,9 +808,7 @@ export class Client {
    */
   public async logout(): Promise<void> {
     // With API v2 credentials, there's no logout process
-    console.warn(
-      "Logout is not applicable when using Twitter API v2 credentials",
-    );
+    console.warn("Logout is not applicable when using Twitter API v2 credentials");
   }
 
   /**
@@ -821,14 +823,12 @@ export class Client {
     quotedTweetId: string,
     options?: {
       mediaData: { data: Buffer; mediaType: string }[];
-    },
+    }
   ) {
-    return await createQuoteTweetRequest(
-      text,
-      quotedTweetId,
-      this.auth,
-      options?.mediaData,
-    );
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    return await createQuoteTweetRequest(text, quotedTweetId, this.auth, options?.mediaData);
   }
 
   /**
@@ -836,9 +836,13 @@ export class Client {
    * @param tweetId The ID of the tweet to delete.
    * @returns A promise that resolves when the tweet is deleted.
    */
-  public async deleteTweet(tweetId: string): Promise<any> {
+  public async deleteTweet(tweetId: string): Promise<{ success: boolean }> {
     // Call the deleteTweet function from tweets.ts
-    return await deleteTweet(tweetId, this.auth);
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    const result = await deleteTweet(tweetId, this.auth);
+    return { success: result.ok };
   }
 
   /**
@@ -848,6 +852,9 @@ export class Client {
    */
   public async likeTweet(tweetId: string): Promise<void> {
     // Call the likeTweet function from tweets.ts
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     await likeTweet(tweetId, this.auth);
   }
 
@@ -857,6 +864,9 @@ export class Client {
    * @returns A promise that resolves when the tweet is retweeted.
    */
   public async retweet(tweetId: string): Promise<void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     // Call the retweet function from tweets.ts
     await retweet(tweetId, this.auth);
   }
@@ -867,6 +877,9 @@ export class Client {
    * @returns A promise that resolves when the user is followed.
    */
   public async followUser(userName: string): Promise<void> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     // Call the followUser function from relationships.ts
     await followUser(userName, this.auth);
   }
@@ -879,12 +892,10 @@ export class Client {
    * @returns Array of DM conversations
    */
   public async getDirectMessageConversations(
-    userId: string,
-    cursor?: string,
-  ): Promise<any> {
-    console.warn(
-      "Direct message conversations not implemented for Twitter API v2",
-    );
+    _userId: string,
+    _cursor?: string
+  ): Promise<{ conversations: unknown[] }> {
+    console.warn("Direct message conversations not implemented for Twitter API v2");
     return { conversations: [] };
   }
 
@@ -895,24 +906,14 @@ export class Client {
    * @param text The text of the message
    * @returns The response from the Twitter API
    */
-  public async sendDirectMessage(
-    conversationId: string,
-    text: string,
-  ): Promise<any> {
+  public async sendDirectMessage(_conversationId: string, _text: string): Promise<never> {
     console.warn("Sending direct messages not implemented for Twitter API v2");
     throw new Error("Direct message sending not implemented");
   }
 
-  private getAuthOptions(): Partial<{ fetch?: typeof fetch; transform?: any }> {
-    return {
-      fetch: this.options?.fetch,
-      transform: this.options?.transform,
-    };
-  }
-
   private handleResponse<T>(res: RequestApiResult<T>): T {
     if (!res.success) {
-      throw (res as any).err;
+      throw res.err;
     }
 
     return res.value;
@@ -924,6 +925,9 @@ export class Client {
    * @returns An array of users (retweeters).
    */
   public async getRetweetersOfTweet(tweetId: string): Promise<Retweeter[]> {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
     return await getAllRetweeters(tweetId, this.auth);
   }
 
@@ -933,10 +937,7 @@ export class Client {
    * @param maxQuotes Maximum number of quotes to return (default: 100).
    * @returns An array of all quoted tweets.
    */
-  public async fetchAllQuotedTweets(
-    tweetId: string,
-    maxQuotes: number = 100,
-  ): Promise<Tweet[]> {
+  public async fetchAllQuotedTweets(tweetId: string, maxQuotes: number = 100): Promise<Tweet[]> {
     const allQuotes: Tweet[] = [];
 
     try {
@@ -945,11 +946,7 @@ export class Client {
 
       while (totalFetched < maxQuotes) {
         const batchSize = Math.min(40, maxQuotes - totalFetched);
-        const page = await this.fetchQuotedTweetsPage(
-          tweetId,
-          batchSize,
-          cursor,
-        );
+        const page = await this.fetchQuotedTweetsPage(tweetId, batchSize, cursor);
 
         if (!page.tweets || page.tweets.length === 0) {
           break;
@@ -984,18 +981,17 @@ export class Client {
   public async fetchQuotedTweetsPage(
     tweetId: string,
     maxQuotes: number = 40,
-    cursor?: string,
+    _cursor?: string
   ): Promise<QueryTweetsResponse> {
     // For backward compatibility, collect quotes from the generator
     const quotes: Tweet[] = [];
     let count = 0;
 
     // searchQuotedTweets doesn't support cursor, so we'll collect all quotes up to maxQuotes
-    for await (const quote of searchQuotedTweets(
-      tweetId,
-      maxQuotes,
-      this.auth,
-    )) {
+    if (!this.auth) {
+      throw new Error("Twitter auth not initialized");
+    }
+    for await (const quote of searchQuotedTweets(tweetId, maxQuotes, this.auth)) {
       quotes.push(quote);
       count++;
       if (count >= maxQuotes) break;

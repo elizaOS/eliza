@@ -80,12 +80,12 @@ class TestKeypairUtils:
         assert sol_mint in keys
         assert usdc_mint in keys
 
-    def test_is_on_curve(self, sol_mint: str, test_pubkey: str) -> None:
+    def test_is_on_curve(self, test_pubkey: str) -> None:
         """Test on-curve check."""
         # System program is not on curve (PDA)
         result = KeypairUtils.is_on_curve(test_pubkey)
         assert result is not None
-        
+
         # Invalid address returns None
         assert KeypairUtils.is_on_curve("invalid") is None
 
@@ -94,9 +94,7 @@ class TestSolanaClient:
     """Tests for SolanaClient."""
 
     @pytest.mark.asyncio
-    async def test_read_only_balance(
-        self, devnet_rpc: str, test_pubkey: str
-    ) -> None:
+    async def test_read_only_balance(self, devnet_rpc: str, test_pubkey: str) -> None:
         """Test querying balance with read-only wallet."""
         config = WalletConfig.read_only(devnet_rpc, test_pubkey)
         async with SolanaClient(config) as client:
@@ -111,9 +109,7 @@ class TestSolanaClient:
         """Test querying multiple balances."""
         config = WalletConfig.read_only(devnet_rpc, test_pubkey)
         async with SolanaClient(config) as client:
-            balances = await client.get_balances_for_addresses(
-                [test_pubkey, sol_mint]
-            )
+            balances = await client.get_balances_for_addresses([test_pubkey, sol_mint])
             assert len(balances) == 2
 
     def test_is_valid_address(self, sol_mint: str) -> None:
@@ -125,7 +121,7 @@ class TestSolanaClient:
         """Test on-curve check."""
         result = SolanaClient.is_on_curve(test_pubkey)
         assert result is not None
-        
+
         assert SolanaClient.is_on_curve("invalid") is None
 
 
@@ -137,9 +133,7 @@ class TestSolanaClient:
 class TestSwapQuote:
     """Tests for swap functionality (requires funded wallet)."""
 
-    async def test_get_swap_quote(
-        self, devnet_rpc: str, sol_mint: str, usdc_mint: str
-    ) -> None:
+    async def test_get_swap_quote(self, devnet_rpc: str, sol_mint: str, usdc_mint: str) -> None:
         """Test getting a swap quote from Jupiter."""
         private_key = os.environ["SOLANA_PRIVATE_KEY"]
         config = WalletConfig.with_keypair(devnet_rpc, private_key)
@@ -181,14 +175,10 @@ class TestTransfer:
 
             # Transfer a tiny amount
             try:
-                result = await client.transfer_sol(
-                    recipient, Decimal("0.000001")
-                )
+                result = await client.transfer_sol(recipient, Decimal("0.000001"))
                 assert result.success
                 assert result.signature
                 print(f"Transfer successful: {result.signature}")
             except Exception as e:
                 # May fail if wallet not funded
                 print(f"Transfer failed (expected if not funded): {e}")
-
-

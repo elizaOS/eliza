@@ -35,7 +35,7 @@ export interface ExtractResult {
 export interface ScreenshotResult {
   success: boolean;
   data?: string;
-  mimeType?: 'image/png' | 'image/jpeg';
+  mimeType?: "image/png" | "image/jpeg";
   url?: string;
   title?: string;
   error?: string;
@@ -50,7 +50,7 @@ export interface CaptchaResult {
   error?: string;
 }
 
-export type CaptchaType = 'turnstile' | 'recaptcha-v2' | 'recaptcha-v3' | 'hcaptcha' | 'none';
+export type CaptchaType = "turnstile" | "recaptcha-v2" | "recaptcha-v3" | "hcaptcha" | "none";
 
 // Configuration Types
 export interface SecurityConfig {
@@ -125,4 +125,4 @@ export interface RateLimitEntry {
 }
 
 // Browser Service Type (matches core's ServiceType.BROWSER)
-export const BROWSER_SERVICE_TYPE = 'browser' as const;
+export const BROWSER_SERVICE_TYPE = "browser" as const;

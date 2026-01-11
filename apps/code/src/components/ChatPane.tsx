@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../lib/store.js";
 import type { Message } from "../types.js";
 
@@ -75,7 +75,7 @@ function formatTime(timestamp: Date | number | string | undefined): string {
       return "";
     }
 
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return "";
     }
 
@@ -93,7 +93,7 @@ function truncateToWidth(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
   if (width <= 3) return text.slice(0, width);
-  return text.slice(0, width - 3) + "...";
+  return `${text.slice(0, width - 3)}...`;
 }
 
 function wrapText(text: string, maxWidth: number): string[] {
@@ -184,11 +184,23 @@ function toRenderLines(messages: Message[], maxWidth: number): RenderLine[] {
 
 const MAX_VISIBLE_SUGGESTIONS = 8;
 
-export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: ChatPaneProps) {
+export function ChatPane({
+  onSendMessage,
+  isFocused,
+  paneWidth,
+  paneHeight,
+}: ChatPaneProps) {
   const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
 
-  const { rooms, currentRoomId, isAgentTyping, isLoading, inputValue, setInputValue } = useStore();
+  const {
+    rooms,
+    currentRoomId,
+    isAgentTyping,
+    isLoading,
+    inputValue,
+    setInputValue,
+  } = useStore();
 
   const currentRoom = rooms.find((r) => r.id === currentRoomId);
   const messages = currentRoom?.messages ?? [];
@@ -197,7 +209,9 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
   const allSuggestions = useMemo(() => {
     if (!inputValue.startsWith("/")) return [];
     const query = inputValue.toLowerCase();
-    return COMMANDS.filter((cmd) => cmd.command.toLowerCase().startsWith(query));
+    return COMMANDS.filter((cmd) =>
+      cmd.command.toLowerCase().startsWith(query),
+    );
   }, [inputValue]);
 
   // Calculate visible window of suggestions
@@ -208,7 +222,10 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
     // Keep selected item in view with some context
     const halfWindow = Math.floor(MAX_VISIBLE_SUGGESTIONS / 2);
     let startIndex = Math.max(0, selectedSuggestion - halfWindow);
-    const endIndex = Math.min(allSuggestions.length, startIndex + MAX_VISIBLE_SUGGESTIONS);
+    const endIndex = Math.min(
+      allSuggestions.length,
+      startIndex + MAX_VISIBLE_SUGGESTIONS,
+    );
     // Adjust start if we're near the end
     if (endIndex - startIndex < MAX_VISIBLE_SUGGESTIONS) {
       startIndex = Math.max(0, endIndex - MAX_VISIBLE_SUGGESTIONS);
@@ -217,12 +234,13 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
   }, [allSuggestions, selectedSuggestion]);
 
   const isCommandMode = inputValue.trimStart().startsWith("/");
-  const showSuggestions = isCommandMode && allSuggestions.length > 0 && !isLoading;
+  const showSuggestions =
+    isCommandMode && allSuggestions.length > 0 && !isLoading;
 
   // Reset selection when suggestions change
   useEffect(() => {
     setSelectedSuggestion(0);
-  }, [inputValue, allSuggestions.length]);
+  }, []);
 
   const paddingX = 1;
   const innerWidth = Math.max(1, paneWidth - paddingX * 2);
@@ -232,7 +250,7 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
 
   const wrappedInputLines = useMemo(
     () => wrapText(inputValue, inputInnerWidth),
-    [inputValue, inputInnerWidth]
+    [inputValue, inputInnerWidth],
   );
 
   const inputPreviewLines = useMemo(() => {
@@ -258,27 +276,34 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
 
   // Calculate suggestions height: border(2) + visible items + help(1) + scroll indicators (up to 2)
   const hasScrollUp = visibleSuggestions.startIndex > 0;
-  const hasScrollDown = visibleSuggestions.startIndex + visibleSuggestions.items.length < allSuggestions.length;
+  const hasScrollDown =
+    visibleSuggestions.startIndex + visibleSuggestions.items.length <
+    allSuggestions.length;
   const scrollIndicatorLines = (hasScrollUp ? 1 : 0) + (hasScrollDown ? 1 : 0);
-  const suggestionsHeight = showSuggestions ? visibleSuggestions.items.length + 3 + scrollIndicatorLines : 0;
+  const suggestionsHeight = showSuggestions
+    ? visibleSuggestions.items.length + 3 + scrollIndicatorLines
+    : 0;
   const inputHeight = 3 + inputPreviewLines.length; // border(2) + input line + preview lines
   const headerHeight = 1;
   const helpHeight = 1;
-  const messageAreaHeight = Math.max(1, paneHeight - headerHeight - suggestionsHeight - inputHeight - helpHeight);
+  const messageAreaHeight = Math.max(
+    1,
+    paneHeight - headerHeight - suggestionsHeight - inputHeight - helpHeight,
+  );
 
   const maxScrollOffset = Math.max(0, allLines.length - messageAreaHeight);
   const clampedScrollOffset = Math.min(scrollOffsetLines, maxScrollOffset);
 
   // Handle input
   useInput(
-    (char, key) => {
+    (_char, key) => {
       if (!isFocused) return;
 
       // Tab to autocomplete
       if (key.tab && showSuggestions) {
         const selected = allSuggestions[selectedSuggestion];
         if (selected) {
-          setInputValue(selected.command + " ");
+          setInputValue(`${selected.command} `);
         }
         return;
       }
@@ -290,7 +315,9 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
           return;
         }
         if (key.downArrow && !key.ctrl) {
-          setSelectedSuggestion((prev) => Math.min(allSuggestions.length - 1, prev + 1));
+          setSelectedSuggestion((prev) =>
+            Math.min(allSuggestions.length - 1, prev + 1),
+          );
           return;
         }
       }
@@ -305,7 +332,7 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
             setInputValue("");
             onSendMessage(text);
           } else {
-            setInputValue(selected.command + " ");
+            setInputValue(`${selected.command} `);
           }
         } else {
           const text = inputValue.trim();
@@ -329,27 +356,39 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
         setScrollOffsetLines((prev) => Math.max(prev - 1, 0));
       }
     },
-    { isActive: isFocused }
+    { isActive: isFocused },
   );
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     setScrollOffsetLines(0);
-  }, [messages.length]);
+  }, []);
 
   const visibleLines = useMemo(() => {
-    const startIndex = Math.max(0, allLines.length - messageAreaHeight - clampedScrollOffset);
+    const startIndex = Math.max(
+      0,
+      allLines.length - messageAreaHeight - clampedScrollOffset,
+    );
     const endIndex = Math.max(0, allLines.length - clampedScrollOffset);
     return allLines.slice(startIndex, endIndex);
   }, [allLines, messageAreaHeight, clampedScrollOffset]);
 
   return (
-    <Box flexDirection="column" height={paneHeight} width={paneWidth} paddingX={paddingX} overflow="hidden">
+    <Box
+      flexDirection="column"
+      height={paneHeight}
+      width={paneWidth}
+      paddingX={paddingX}
+      overflow="hidden"
+    >
       {/* Header */}
       <Box overflow="hidden">
         <Text bold color={isFocused ? "cyan" : "white"} wrap="truncate">
-          Chat: {currentRoom?.name ?? "Unknown"} <Text dimColor>({messages.length})</Text>
-          {clampedScrollOffset > 0 && <Text dimColor> [↑ {clampedScrollOffset}]</Text>}
+          Chat: {currentRoom?.name ?? "Unknown"}{" "}
+          <Text dimColor>({messages.length})</Text>
+          {clampedScrollOffset > 0 && (
+            <Text dimColor> [↑ {clampedScrollOffset}]</Text>
+          )}
         </Text>
       </Box>
 
@@ -408,9 +447,13 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
               </Box>
             );
           })}
-          {visibleSuggestions.startIndex + visibleSuggestions.items.length < allSuggestions.length && (
+          {visibleSuggestions.startIndex + visibleSuggestions.items.length <
+            allSuggestions.length && (
             <Text dimColor>
-              ↓ {allSuggestions.length - visibleSuggestions.startIndex - visibleSuggestions.items.length}
+              ↓{" "}
+              {allSuggestions.length -
+                visibleSuggestions.startIndex -
+                visibleSuggestions.items.length}
             </Text>
           )}
         </Box>
@@ -434,7 +477,10 @@ export function ChatPane({ onSendMessage, isFocused, paneWidth, paneHeight }: Ch
                 {truncateToWidth(line, inputInnerWidth)}
               </Text>
             ))}
-            <Box width={Math.max(1, innerWidth - 2 - inputBorderPaddingX * 2)} overflow="hidden">
+            <Box
+              width={Math.max(1, innerWidth - 2 - inputBorderPaddingX * 2)}
+              overflow="hidden"
+            >
               <Text color="cyan">{">"} </Text>
               <Box flexGrow={1}>
                 <TextInput

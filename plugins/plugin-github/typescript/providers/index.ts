@@ -4,15 +4,16 @@
  * All available providers for the GitHub plugin.
  */
 
-export { repositoryStateProvider, default as repositoryState } from "./repositoryState";
-export { issueContextProvider, default as issueContext } from "./issueContext";
+export { default as issueContext, issueContextProvider } from "./issueContext";
+export {
+  default as repositoryState,
+  repositoryStateProvider,
+} from "./repositoryState";
 
-import { repositoryStateProvider } from "./repositoryState";
 import { issueContextProvider } from "./issueContext";
+import { repositoryStateProvider } from "./repositoryState";
 
 /**
  * All GitHub providers
  */
 export const allProviders = [repositoryStateProvider, issueContextProvider];
-
-

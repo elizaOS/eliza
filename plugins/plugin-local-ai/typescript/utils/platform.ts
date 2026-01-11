@@ -1,7 +1,7 @@
-import { exec } from 'node:child_process';
-import os from 'node:os';
-import { promisify } from 'node:util';
-import { logger } from '@elizaos/core';
+import { exec } from "node:child_process";
+import os from "node:os";
+import { promisify } from "node:util";
+import { logger } from "@elizaos/core";
 
 const execAsync = promisify(exec);
 
@@ -17,7 +17,7 @@ const execAsync = promisify(exec);
 export interface SystemGPU {
   name: string;
   memory?: number;
-  type: 'cuda' | 'metal' | 'directml' | 'none';
+  type: "cuda" | "metal" | "directml" | "none";
   version?: string;
   isAppleSilicon?: boolean;
 }
@@ -58,8 +58,8 @@ export interface SystemCapabilities {
   platform: NodeJS.Platform;
   cpu: SystemCPU;
   gpu: SystemGPU | null;
-  recommendedModelSize: 'small' | 'medium' | 'large';
-  supportedBackends: Array<'cuda' | 'metal' | 'directml' | 'cpu'>;
+  recommendedModelSize: "small" | "medium" | "large";
+  supportedBackends: Array<"cuda" | "metal" | "directml" | "cpu">;
 }
 
 /**
@@ -95,7 +95,7 @@ export class PlatformManager {
    */
   async initialize(): Promise<void> {
     try {
-      logger.info('Initializing platform detection...');
+      logger.info("Initializing platform detection...");
       this.capabilities = await this.detectSystemCapabilities();
       // logger.info("Platform detection completed", {
       //   platform: this.capabilities.platform,
@@ -103,7 +103,7 @@ export class PlatformManager {
       //   recommendedModel: this.capabilities.recommendedModelSize,
       // });
     } catch (error) {
-      logger.error('Platform detection failed', { error });
+      logger.error("Platform detection failed", { error });
       throw error;
     }
   }
@@ -161,17 +161,17 @@ export class PlatformManager {
 
     try {
       switch (platform) {
-        case 'darwin':
+        case "darwin":
           return await this.detectMacGPU();
-        case 'win32':
+        case "win32":
           return await this.detectWindowsGPU();
-        case 'linux':
+        case "linux":
           return await this.detectLinuxGPU();
         default:
           return null;
       }
     } catch (error) {
-      logger.error('GPU detection failed', { error });
+      logger.error("GPU detection failed", { error });
       return null;
     }
   }
@@ -182,29 +182,29 @@ export class PlatformManager {
    */
   private async detectMacGPU(): Promise<SystemGPU> {
     try {
-      const { stdout } = await execAsync('sysctl -n machdep.cpu.brand_string');
-      const isAppleSilicon = stdout.toLowerCase().includes('apple');
+      const { stdout } = await execAsync("sysctl -n machdep.cpu.brand_string");
+      const isAppleSilicon = stdout.toLowerCase().includes("apple");
 
       if (isAppleSilicon) {
         return {
-          name: 'Apple Silicon',
-          type: 'metal',
+          name: "Apple Silicon",
+          type: "metal",
           isAppleSilicon: true,
         };
       }
 
       // For Intel Macs with discrete GPU
-      const { stdout: gpuInfo } = await execAsync('system_profiler SPDisplaysDataType');
+      const { stdout: gpuInfo } = await execAsync("system_profiler SPDisplaysDataType");
       return {
-        name: gpuInfo.split('Chipset Model:')[1]?.split('\n')[0]?.trim() || 'Unknown GPU',
-        type: 'metal',
+        name: gpuInfo.split("Chipset Model:")[1]?.split("\n")[0]?.trim() || "Unknown GPU",
+        type: "metal",
         isAppleSilicon: false,
       };
     } catch (error) {
-      logger.error('Mac GPU detection failed', { error });
+      logger.error("Mac GPU detection failed", { error });
       return {
-        name: 'Unknown Mac GPU',
-        type: 'metal',
+        name: "Unknown Mac GPU",
+        type: "metal",
         isAppleSilicon: false,
       };
     }
@@ -217,21 +217,21 @@ export class PlatformManager {
    */
   private async detectWindowsGPU(): Promise<SystemGPU | null> {
     try {
-      const { stdout } = await execAsync('wmic path win32_VideoController get name');
-      const gpuName = stdout.split('\n')[1].trim();
+      const { stdout } = await execAsync("wmic path win32_VideoController get name");
+      const gpuName = stdout.split("\n")[1].trim();
 
       // Check for NVIDIA GPU
-      if (gpuName.toLowerCase().includes('nvidia')) {
+      if (gpuName.toLowerCase().includes("nvidia")) {
         const { stdout: nvidiaInfo } = await execAsync(
-          'nvidia-smi --query-gpu=name,memory.total --format=csv,noheader'
+          "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader"
         );
-        const [name, memoryStr] = nvidiaInfo.split(',').map((s) => s.trim());
-        const memory = Number.parseInt(memoryStr);
+        const [name, memoryStr] = nvidiaInfo.split(",").map((s) => s.trim());
+        const memory = Number.parseInt(memoryStr, 10);
 
         return {
           name,
           memory,
-          type: 'cuda',
+          type: "cuda",
           version: await this.getNvidiaDriverVersion(),
         };
       }
@@ -239,10 +239,10 @@ export class PlatformManager {
       // Default to DirectML for other GPUs
       return {
         name: gpuName,
-        type: 'directml',
+        type: "directml",
       };
     } catch (error) {
-      logger.error('Windows GPU detection failed', { error });
+      logger.error("Windows GPU detection failed", { error });
       return null;
     }
   }
@@ -260,29 +260,29 @@ export class PlatformManager {
     try {
       // Try NVIDIA first
       const { stdout } = await execAsync(
-        'nvidia-smi --query-gpu=name,memory.total --format=csv,noheader'
+        "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader"
       );
       if (stdout) {
-        const [name, memoryStr] = stdout.split(',').map((s) => s.trim());
-        const memory = Number.parseInt(memoryStr);
+        const [name, memoryStr] = stdout.split(",").map((s) => s.trim());
+        const memory = Number.parseInt(memoryStr, 10);
 
         return {
           name,
           memory,
-          type: 'cuda',
+          type: "cuda",
           version: await this.getNvidiaDriverVersion(),
         };
       }
     } catch {
       // If nvidia-smi fails, check for other GPUs
       try {
-        const { stdout } = await execAsync('lspci | grep -i vga');
+        const { stdout } = await execAsync("lspci | grep -i vga");
         return {
-          name: stdout.split(':').pop()?.trim() || 'Unknown GPU',
-          type: 'none',
+          name: stdout.split(":").pop()?.trim() || "Unknown GPU",
+          type: "none",
         };
       } catch (error) {
-        logger.error('Linux GPU detection failed', { error });
+        logger.error("Linux GPU detection failed", { error });
         return null;
       }
     }
@@ -297,11 +297,11 @@ export class PlatformManager {
   private async getNvidiaDriverVersion(): Promise<string> {
     try {
       const { stdout } = await execAsync(
-        'nvidia-smi --query-gpu=driver_version --format=csv,noheader'
+        "nvidia-smi --query-gpu=driver_version --format=csv,noheader"
       );
       return stdout.trim();
     } catch {
-      return 'unknown';
+      return "unknown";
     }
   }
 
@@ -314,23 +314,23 @@ export class PlatformManager {
   private async getSupportedBackends(
     platform: NodeJS.Platform,
     gpu: SystemGPU | null
-  ): Promise<Array<'cuda' | 'metal' | 'directml' | 'cpu'>> {
-    const backends: Array<'cuda' | 'metal' | 'directml' | 'cpu'> = ['cpu'];
+  ): Promise<Array<"cuda" | "metal" | "directml" | "cpu">> {
+    const backends: Array<"cuda" | "metal" | "directml" | "cpu"> = ["cpu"];
 
     if (gpu) {
       switch (platform) {
-        case 'darwin':
-          backends.push('metal');
+        case "darwin":
+          backends.push("metal");
           break;
-        case 'win32':
-          if (gpu.type === 'cuda') {
-            backends.push('cuda');
+        case "win32":
+          if (gpu.type === "cuda") {
+            backends.push("cuda");
           }
-          backends.push('directml');
+          backends.push("directml");
           break;
-        case 'linux':
-          if (gpu.type === 'cuda') {
-            backends.push('cuda');
+        case "linux":
+          if (gpu.type === "cuda") {
+            backends.push("cuda");
           }
           break;
       }
@@ -348,24 +348,24 @@ export class PlatformManager {
   private getRecommendedModelSize(
     cpu: SystemCPU,
     gpu: SystemGPU | null
-  ): 'small' | 'medium' | 'large' {
+  ): "small" | "medium" | "large" {
     // For Apple Silicon
     if (gpu?.isAppleSilicon) {
-      return cpu.memory.total > 16 * 1024 * 1024 * 1024 ? 'medium' : 'small';
+      return cpu.memory.total > 16 * 1024 * 1024 * 1024 ? "medium" : "small";
     }
 
     // For NVIDIA GPUs
-    if (gpu?.type === 'cuda') {
+    if (gpu?.type === "cuda") {
       const gpuMemGB = (gpu.memory || 0) / 1024;
-      if (gpuMemGB >= 16) return 'large';
-      if (gpuMemGB >= 8) return 'medium';
+      if (gpuMemGB >= 16) return "large";
+      if (gpuMemGB >= 8) return "medium";
     }
 
     // For systems with significant RAM but no powerful GPU
-    if (cpu.memory.total > 32 * 1024 * 1024 * 1024) return 'medium';
+    if (cpu.memory.total > 32 * 1024 * 1024 * 1024) return "medium";
 
     // Default to small model
-    return 'small';
+    return "small";
   }
 
   /**
@@ -376,7 +376,7 @@ export class PlatformManager {
    */
   getCapabilities(): SystemCapabilities {
     if (!this.capabilities) {
-      throw new Error('PlatformManager not initialized');
+      throw new Error("PlatformManager not initialized");
     }
     return this.capabilities;
   }
@@ -403,7 +403,7 @@ export class PlatformManager {
    * @returns {boolean} True if the system supports CUDA, false otherwise.
    */
   supportsCUDA(): boolean {
-    return this.capabilities?.gpu?.type === 'cuda';
+    return this.capabilities?.gpu?.type === "cuda";
   }
 
   /**
@@ -411,7 +411,7 @@ export class PlatformManager {
    * @returns {boolean} True if the device supports Metal, false otherwise.
    */
   supportsMetal(): boolean {
-    return this.capabilities?.gpu?.type === 'metal';
+    return this.capabilities?.gpu?.type === "metal";
   }
 
   /**
@@ -420,7 +420,7 @@ export class PlatformManager {
    * @returns {boolean} True if the device supports DirectML, false otherwise.
    */
   supportsDirectML(): boolean {
-    return this.capabilities?.gpu?.type === 'directml';
+    return this.capabilities?.gpu?.type === "directml";
   }
 
   /**
@@ -428,17 +428,17 @@ export class PlatformManager {
    * @returns {"cuda" | "metal" | "directml" | "cpu"} The recommended backend for computation.
    * @throws {Error} Throws an error if PlatformManager is not initialized.
    */
-  getRecommendedBackend(): 'cuda' | 'metal' | 'directml' | 'cpu' {
+  getRecommendedBackend(): "cuda" | "metal" | "directml" | "cpu" {
     if (!this.capabilities) {
-      throw new Error('PlatformManager not initialized');
+      throw new Error("PlatformManager not initialized");
     }
 
     const { gpu, supportedBackends } = this.capabilities;
 
-    if (gpu?.type === 'cuda') return 'cuda';
-    if (gpu?.type === 'metal') return 'metal';
-    if (supportedBackends.includes('directml')) return 'directml';
-    return 'cpu';
+    if (gpu?.type === "cuda") return "cuda";
+    if (gpu?.type === "metal") return "metal";
+    if (supportedBackends.includes("directml")) return "directml";
+    return "cpu";
   }
 }
 

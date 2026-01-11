@@ -18,9 +18,9 @@ import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
   bootstrapPlugin,
-  type Plugin,
   type IAgentRuntime,
   ModelType,
+  type Plugin,
 } from "@elizaos/core";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
@@ -86,7 +86,7 @@ function minimax(
   board: Board,
   isMaximizing: boolean,
   aiPlayer: Player,
-  depth: number = 0
+  depth: number = 0,
 ): MinimaxResult {
   const humanPlayer: Player = aiPlayer === "X" ? "O" : "X";
   const winner = checkWinner(board);
@@ -160,7 +160,7 @@ function parseBoardFromText(text: string): Board | null {
   const lines = text.split("\n");
 
   // Look for a 3x3 grid pattern
-  const gridPattern = /[XO_.\s|]+/gi;
+  const _gridPattern = /[XO_.\s|]+/gi;
   const boardChars: Cell[] = [];
 
   for (const line of lines) {
@@ -189,7 +189,7 @@ function parseBoardFromText(text: string): Board | null {
       const arr = JSON.parse(jsonMatch[0].replace(/'/g, '"'));
       if (arr.length === 9) {
         return arr.map((v: string | null) =>
-          v === "X" || v === "O" ? v : null
+          v === "X" || v === "O" ? v : null,
         ) as Board;
       }
     } catch {
@@ -202,7 +202,7 @@ function parseBoardFromText(text: string): Board | null {
   const positions = new Map<number, Cell>();
   let match;
   while ((match = positionPattern.exec(text)) !== null) {
-    const pos = parseInt(match[1]);
+    const pos = parseInt(match[1], 10);
     const val = match[2].toUpperCase();
     positions.set(pos, val === "X" || val === "O" ? (val as Player) : null);
   }
@@ -247,7 +247,7 @@ function detectAIPlayer(text: string): Player {
  */
 async function ticTacToeModelHandler(
   _runtime: IAgentRuntime,
-  params: { prompt?: string; messages?: Array<{ content: string }> }
+  params: { prompt?: string; messages?: Array<{ content: string }> },
 ): Promise<string> {
   // Extract the prompt text
   let promptText = "";
@@ -407,7 +407,7 @@ async function createSession(): Promise<GameSession> {
   const game = new TicTacToeGame();
 
   task.stop(
-    `✅ Agent "${runtime.character.name}" ready! (No LLM - pure minimax)`
+    `✅ Agent "${runtime.character.name}" ready! (No LLM - pure minimax)`,
   );
 
   return { runtime, game };
@@ -437,8 +437,8 @@ Choose the optimal position (0-8) for your next move.
   });
 
   // Parse the move from response
-  const move = parseInt(response.trim());
-  if (isNaN(move) || move < 0 || move > 8) {
+  const move = parseInt(response.trim(), 10);
+  if (Number.isNaN(move) || move < 0 || move > 8) {
     // Fallback: pick first available
     const available = getAvailableMoves(state.board);
     return available[0];
@@ -475,13 +475,13 @@ function showBoard(game: TicTacToeGame): void {
 }
 
 function showResult(winner: "X" | "O" | "draw"): void {
-  console.log("\n" + "═".repeat(40));
+  console.log(`\n${"═".repeat(40)}`);
   if (winner === "draw") {
     console.log("🤝 It's a DRAW!");
   } else {
     console.log(`🏆 ${winner} WINS!`);
   }
-  console.log("═".repeat(40) + "\n");
+  console.log(`${"═".repeat(40)}\n`);
 }
 
 // ============================================================================
@@ -503,8 +503,8 @@ async function playHumanVsAI(session: GameSession): Promise<void> {
         message: "Your move (0-8):",
         placeholder: "Enter position number",
         validate: (value) => {
-          const pos = parseInt(value);
-          if (isNaN(pos) || pos < 0 || pos > 8) {
+          const pos = parseInt(value, 10);
+          if (Number.isNaN(pos) || pos < 0 || pos > 8) {
             return "Please enter a number 0-8";
           }
           if (state.board[pos] !== null) {
@@ -518,7 +518,7 @@ async function playHumanVsAI(session: GameSession): Promise<void> {
         return;
       }
 
-      game.makeMove(parseInt(input));
+      game.makeMove(parseInt(input, 10));
     } else {
       // AI's turn
       const spinner = clack.spinner();
@@ -602,9 +602,19 @@ function parseArgs(): { mode?: GameMode; noPrompt?: boolean } {
     const lower = arg.toLowerCase();
     if (lower === "--watch" || lower === "-w" || lower === "watch") {
       mode = "watch";
-    } else if (lower === "--human" || lower === "-h" || lower === "human" || lower === "play") {
+    } else if (
+      lower === "--human" ||
+      lower === "-h" ||
+      lower === "human" ||
+      lower === "play"
+    ) {
       mode = "human";
-    } else if (lower === "--bench" || lower === "-b" || lower === "bench" || lower === "benchmark") {
+    } else if (
+      lower === "--bench" ||
+      lower === "-b" ||
+      lower === "bench" ||
+      lower === "benchmark"
+    ) {
       mode = "bench";
     } else if (lower === "--no-prompt" || lower === "-y") {
       noPrompt = true;
@@ -691,4 +701,3 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
-

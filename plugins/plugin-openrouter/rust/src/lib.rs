@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS Plugin OpenRouter - Rust Implementation
 //!
 //! This crate provides an OpenRouter API client for elizaOS,
@@ -63,5 +64,10 @@ pub const PLUGIN_DESCRIPTION: &str =
     "OpenRouter multi-model AI gateway with text, object generation, and embedding support";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+
+
+
+
 
 

@@ -25,7 +25,7 @@ class N8nConfig:
     rate_limit_per_hour: int = 10
 
     @classmethod
-    def from_env(cls) -> "N8nConfig":
+    def from_env(cls) -> N8nConfig:
         """
         Create configuration from environment variables.
 
@@ -76,5 +76,8 @@ class N8nConfig:
         """
         if not self.api_key:
             raise ApiKeyError("ANTHROPIC")
+
+
+
 
 

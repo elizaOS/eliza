@@ -1,0 +1,19 @@
+Given the user's request, extract the information needed to create a Linear issue.
+
+User request: "{{userMessage}}"
+
+Extract and return ONLY a JSON object (no markdown formatting, no code blocks) with the following structure:
+{
+  "title": "Brief, clear issue title",
+  "description": "Detailed description of the issue (optional, omit or use null if not provided)",
+  "teamKey": "Team key if mentioned (e.g., ENG, PROD) - omit or use null if not mentioned",
+  "priority": "Priority level if mentioned (1=urgent, 2=high, 3=normal, 4=low) - omit or use null if not mentioned",
+  "labels": ["label1", "label2"] (if any labels are mentioned, empty array if none),
+  "assignee": "Assignee username or email if mentioned - omit or use null if not mentioned"
+}
+
+Return only the JSON object, no other text.
+
+
+
+

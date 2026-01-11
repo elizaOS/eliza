@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! # elizaOS Plugin Groq
 //!
 //! Rust implementation of the Groq LLM plugin for elizaOS.

@@ -1,21 +1,21 @@
 /**
  * Elizagotchi Game Engine
- * 
+ *
  * Core game logic for the virtual pet, implementing all Tamagotchi mechanics.
  */
 
 import type {
-  PetState,
-  PetStats,
-  LifeStage,
-  Mood,
   Action,
   ActionResult,
   AnimationType,
-  Personality,
   EvolutionData,
-  GameConfig,
   GameCommand,
+  GameConfig,
+  LifeStage,
+  Mood,
+  Personality,
+  PetState,
+  PetStats,
 } from "./types";
 
 // ============================================================================
@@ -25,15 +25,15 @@ import type {
 const DEFAULT_CONFIG: GameConfig = {
   // Stage durations in milliseconds (accelerated for demo - real Tamagotchi used days)
   stagedurations: {
-    egg: 60_000,           // 1 minute
-    baby: 180_000,         // 3 minutes
-    child: 300_000,        // 5 minutes
-    teen: 600_000,         // 10 minutes
-    adult: 1_800_000,      // 30 minutes
-    elder: 3_600_000,      // 60 minutes until natural death
+    egg: 60_000, // 1 minute
+    baby: 180_000, // 3 minutes
+    child: 300_000, // 5 minutes
+    teen: 600_000, // 10 minutes
+    adult: 1_800_000, // 30 minutes
+    elder: 3_600_000, // 60 minutes until natural death
     dead: Infinity,
   },
-  
+
   // Points lost per minute
   decayRates: {
     hunger: 2.0,
@@ -41,7 +41,7 @@ const DEFAULT_CONFIG: GameConfig = {
     energy: 1.0,
     cleanliness: 0.8,
   },
-  
+
   thresholds: {
     hungry: 40,
     sad: 35,
@@ -89,7 +89,7 @@ export function createNewPet(name: string = "Elizagotchi"): PetState {
     stats: createInitialStats(),
     evolution: createInitialEvolution(),
     personality: "normal",
-    
+
     birthTime: now,
     lastUpdate: now,
     stageStartTime: now,
@@ -97,13 +97,13 @@ export function createNewPet(name: string = "Elizagotchi"): PetState {
     lastPlayed: now,
     lastCleaned: now,
     lastSlept: now,
-    
+
     isSick: false,
     isSleeping: false,
     lightsOn: true,
     needsAttention: false,
     poop: 0,
-    
+
     causeOfDeath: null,
   };
 }
@@ -135,25 +135,31 @@ function calculateMood(state: PetState): Mood {
   if (state.stage === "dead") return "dead";
   if (state.isSleeping) return "sleeping";
   if (state.isSick) return "sick";
-  
+
   const { stats } = state;
   const config = DEFAULT_CONFIG;
-  
+
   // Check critical conditions
   if (stats.hunger < config.thresholds.critical) return "hungry";
   if (stats.cleanliness < config.thresholds.critical) return "dirty";
   if (stats.health < config.thresholds.sick) return "sick";
-  
+
   // Check negative moods
   if (stats.hunger < config.thresholds.hungry) return "hungry";
   if (stats.happiness < config.thresholds.sad) return "sad";
   if (stats.cleanliness < config.thresholds.dirty) return "dirty";
-  
+
   // Check positive moods
-  const avgStats = (stats.hunger + stats.happiness + stats.health + stats.energy + stats.cleanliness) / 5;
+  const avgStats =
+    (stats.hunger +
+      stats.happiness +
+      stats.health +
+      stats.energy +
+      stats.cleanliness) /
+    5;
   if (avgStats > 80) return "happy";
   if (avgStats > 60) return "content";
-  
+
   return "neutral";
 }
 
@@ -176,7 +182,7 @@ function getNextStage(current: LifeStage): LifeStage {
 
 function calculatePersonality(evolution: EvolutionData): Personality {
   const { careScore, sickCount, missedCare } = evolution;
-  
+
   if (careScore > 80 && sickCount < 2 && missedCare < 5) return "angel";
   if (sickCount > 5) return "sickly";
   if (missedCare > 10 || careScore < 30) return "rebel";
@@ -185,14 +191,14 @@ function calculatePersonality(evolution: EvolutionData): Personality {
 
 function checkEvolution(state: PetState): PetState {
   if (state.stage === "dead") return state;
-  
+
   const config = DEFAULT_CONFIG;
   const timeInStage = Date.now() - state.stageStartTime;
   const stageDuration = config.stagedurations[state.stage];
-  
+
   if (timeInStage >= stageDuration) {
     const nextStage = getNextStage(state.stage);
-    
+
     if (nextStage === "dead") {
       return {
         ...state,
@@ -201,10 +207,10 @@ function checkEvolution(state: PetState): PetState {
         causeOfDeath: "Passed away peacefully of old age",
       };
     }
-    
+
     // Update personality on evolution
     const personality = calculatePersonality(state.evolution);
-    
+
     return {
       ...state,
       stage: nextStage,
@@ -217,7 +223,7 @@ function checkEvolution(state: PetState): PetState {
       }),
     };
   }
-  
+
   return state;
 }
 
@@ -227,16 +233,16 @@ function checkEvolution(state: PetState): PetState {
 
 export function tickUpdate(state: PetState): PetState {
   if (state.stage === "dead" || state.stage === "egg") return state;
-  
+
   const now = Date.now();
   const elapsed = (now - state.lastUpdate) / 60_000; // Minutes elapsed
   const config = DEFAULT_CONFIG;
-  
+
   // Don't decay if sleeping (except energy recharges)
   if (state.isSleeping) {
     const energyGain = elapsed * 5; // Gain energy while sleeping
     const newStats = updateStats(state.stats, { energy: energyGain });
-    
+
     // Wake up when fully rested
     if (newStats.energy >= 100) {
       return {
@@ -247,14 +253,14 @@ export function tickUpdate(state: PetState): PetState {
         mood: calculateMood({ ...state, isSleeping: false }),
       };
     }
-    
+
     return {
       ...state,
       stats: newStats,
       lastUpdate: now,
     };
   }
-  
+
   // Apply decay
   const newStats = updateStats(state.stats, {
     hunger: -elapsed * config.decayRates.hunger,
@@ -262,7 +268,7 @@ export function tickUpdate(state: PetState): PetState {
     energy: -elapsed * config.decayRates.energy,
     cleanliness: -elapsed * config.decayRates.cleanliness,
   });
-  
+
   // Poop accumulation (every ~3 minutes)
   let poop = state.poop;
   const timeSinceCleaned = (now - state.lastCleaned) / 60_000;
@@ -270,28 +276,27 @@ export function tickUpdate(state: PetState): PetState {
   if (expectedPoops > poop && poop < 4) {
     poop = Math.min(4, expectedPoops);
   }
-  
+
   // Check for sickness
   let isSick = state.isSick;
   let health = newStats.health;
-  
+
   if (!isSick) {
     // Get sick if conditions are bad
-    const sickChance = (
+    const sickChance =
       (poop > 2 ? 0.3 : 0) +
       (newStats.cleanliness < 20 ? 0.3 : 0) +
-      (newStats.hunger < 20 ? 0.2 : 0)
-    );
+      (newStats.hunger < 20 ? 0.2 : 0);
     if (Math.random() < sickChance * elapsed) {
       isSick = true;
     }
   }
-  
+
   // Health decay when sick
   if (isSick) {
     health = clampStat(health - elapsed * 2);
   }
-  
+
   // Check for death
   if (health <= 0 || newStats.hunger <= 0) {
     return {
@@ -303,21 +308,21 @@ export function tickUpdate(state: PetState): PetState {
       lastUpdate: now,
     };
   }
-  
+
   // Check for attention calls
-  const needsAttention = 
+  const needsAttention =
     newStats.hunger < config.thresholds.hungry ||
     newStats.happiness < config.thresholds.sad ||
     newStats.cleanliness < config.thresholds.dirty ||
     isSick;
-  
+
   // Update evolution care score
-  let evolution = { ...state.evolution };
+  const evolution = { ...state.evolution };
   if (needsAttention && !state.needsAttention) {
     evolution.missedCare++;
     evolution.careScore = Math.max(0, evolution.careScore - 2);
   }
-  
+
   let newState: PetState = {
     ...state,
     stats: { ...newStats, health },
@@ -327,13 +332,13 @@ export function tickUpdate(state: PetState): PetState {
     evolution,
     lastUpdate: now,
   };
-  
+
   // Check for evolution
   newState = checkEvolution(newState);
-  
+
   // Recalculate mood
   newState.mood = calculateMood(newState);
-  
+
   return newState;
 }
 
@@ -351,14 +356,14 @@ export function performAction(state: PetState, action: Action): ActionResult {
       animation: "idle",
     };
   }
-  
+
   const now = Date.now();
-  let newState = { ...state };
+  const newState = { ...state };
   let message = "";
   let statChanges: Partial<PetStats> = {};
   let animation: AnimationType = "idle";
   let success = true;
-  
+
   switch (action) {
     case "feed": {
       if (state.stage === "egg") {
@@ -367,14 +372,14 @@ export function performAction(state: PetState, action: Action): ActionResult {
         animation = "refusing";
         break;
       }
-      
+
       if (state.isSleeping) {
         message = `${state.name} is sleeping! Let them rest.`;
         success = false;
         animation = "sleeping";
         break;
       }
-      
+
       if (state.stats.hunger > DEFAULT_CONFIG.thresholds.overfed) {
         message = `${state.name} is too full to eat!`;
         success = false;
@@ -382,16 +387,19 @@ export function performAction(state: PetState, action: Action): ActionResult {
         newState.evolution.overfeedings++;
         break;
       }
-      
+
       statChanges = { hunger: 30, happiness: 5 };
       newState.stats = updateStats(state.stats, statChanges);
       newState.lastFed = now;
       message = `${state.name} enjoyed the meal! 🍔`;
       animation = "eating";
-      newState.evolution.careScore = Math.min(100, newState.evolution.careScore + 1);
+      newState.evolution.careScore = Math.min(
+        100,
+        newState.evolution.careScore + 1,
+      );
       break;
     }
-    
+
     case "play": {
       if (state.stage === "egg") {
         message = "The egg can't play yet!";
@@ -399,38 +407,41 @@ export function performAction(state: PetState, action: Action): ActionResult {
         animation = "refusing";
         break;
       }
-      
+
       if (state.isSleeping) {
         message = `${state.name} is sleeping! Let them rest.`;
         success = false;
         animation = "sleeping";
         break;
       }
-      
+
       if (state.isSick) {
         message = `${state.name} is too sick to play. Give them medicine!`;
         success = false;
         animation = "sick";
         break;
       }
-      
+
       if (state.stats.energy < 20) {
         message = `${state.name} is too tired to play!`;
         success = false;
         animation = "refusing";
         break;
       }
-      
+
       statChanges = { happiness: 25, energy: -15, hunger: -10 };
       newState.stats = updateStats(state.stats, statChanges);
       newState.lastPlayed = now;
       newState.evolution.playCount++;
-      newState.evolution.careScore = Math.min(100, newState.evolution.careScore + 2);
+      newState.evolution.careScore = Math.min(
+        100,
+        newState.evolution.careScore + 2,
+      );
       message = `${state.name} had a great time playing! 🎮`;
       animation = "playing";
       break;
     }
-    
+
     case "clean": {
       if (state.stage === "egg") {
         message = "The egg is already clean!";
@@ -438,17 +449,20 @@ export function performAction(state: PetState, action: Action): ActionResult {
         animation = "refusing";
         break;
       }
-      
+
       statChanges = { cleanliness: 100 - state.stats.cleanliness };
       newState.stats = updateStats(state.stats, statChanges);
       newState.poop = 0;
       newState.lastCleaned = now;
-      newState.evolution.careScore = Math.min(100, newState.evolution.careScore + 1);
+      newState.evolution.careScore = Math.min(
+        100,
+        newState.evolution.careScore + 1,
+      );
       message = `${state.name} is now sparkling clean! ✨`;
       animation = "cleaning";
       break;
     }
-    
+
     case "sleep": {
       if (state.stage === "egg") {
         message = "The egg is resting inside...";
@@ -456,14 +470,14 @@ export function performAction(state: PetState, action: Action): ActionResult {
         animation = "idle";
         break;
       }
-      
+
       if (state.isSleeping) {
         message = `${state.name} is already sleeping! 💤`;
         success = false;
         animation = "sleeping";
         break;
       }
-      
+
       if (!state.lightsOn) {
         newState.isSleeping = true;
         newState.lastSlept = now;
@@ -476,7 +490,7 @@ export function performAction(state: PetState, action: Action): ActionResult {
       }
       break;
     }
-    
+
     case "medicine": {
       if (!state.isSick) {
         message = `${state.name} doesn't need medicine!`;
@@ -484,7 +498,7 @@ export function performAction(state: PetState, action: Action): ActionResult {
         animation = "refusing";
         break;
       }
-      
+
       statChanges = { health: 30 };
       newState.stats = updateStats(state.stats, statChanges);
       newState.isSick = false;
@@ -493,7 +507,7 @@ export function performAction(state: PetState, action: Action): ActionResult {
       animation = "happy";
       break;
     }
-    
+
     case "discipline": {
       if (state.stage === "egg") {
         message = "You can't discipline an egg!";
@@ -501,7 +515,7 @@ export function performAction(state: PetState, action: Action): ActionResult {
         animation = "refusing";
         break;
       }
-      
+
       if (state.needsAttention && !state.isSick && state.stats.hunger > 50) {
         // Pet was misbehaving, discipline is appropriate
         statChanges = { discipline: 15, happiness: -5 };
@@ -519,7 +533,7 @@ export function performAction(state: PetState, action: Action): ActionResult {
       }
       break;
     }
-    
+
     case "light_toggle": {
       newState.lightsOn = !state.lightsOn;
       if (newState.lightsOn && newState.isSleeping) {
@@ -535,10 +549,10 @@ export function performAction(state: PetState, action: Action): ActionResult {
       break;
     }
   }
-  
+
   // Recalculate mood
   newState.mood = calculateMood(newState);
-  
+
   return {
     success,
     message,
@@ -552,11 +566,14 @@ export function performAction(state: PetState, action: Action): ActionResult {
 // EGG HATCHING
 // ============================================================================
 
-export function checkHatch(state: PetState): { hatched: boolean; newState: PetState } {
+export function checkHatch(state: PetState): {
+  hatched: boolean;
+  newState: PetState;
+} {
   if (state.stage !== "egg") {
     return { hatched: false, newState: state };
   }
-  
+
   const timeAsEgg = Date.now() - state.stageStartTime;
   if (timeAsEgg >= DEFAULT_CONFIG.stagedurations.egg) {
     const newState: PetState = {
@@ -567,7 +584,7 @@ export function checkHatch(state: PetState): { hatched: boolean; newState: PetSt
     };
     return { hatched: true, newState };
   }
-  
+
   return { hatched: false, newState: state };
 }
 
@@ -577,63 +594,65 @@ export function checkHatch(state: PetState): { hatched: boolean; newState: PetSt
 
 export function parseCommand(input: string): GameCommand | null {
   const text = input.toLowerCase().trim();
-  
+
   // Feed variations
-  if (/\b(feed|eat|food|hungry|meal|dinner|breakfast|lunch|snack)\b/.test(text)) {
+  if (
+    /\b(feed|eat|food|hungry|meal|dinner|breakfast|lunch|snack)\b/.test(text)
+  ) {
     return { action: "feed" };
   }
-  
+
   // Play variations
   if (/\b(play|fun|game|ball|toy|exercise)\b/.test(text)) {
     return { action: "play" };
   }
-  
+
   // Clean variations
   if (/\b(clean|wash|bath|shower|poop|dirty|mess)\b/.test(text)) {
     return { action: "clean" };
   }
-  
+
   // Sleep variations
   if (/\b(sleep|rest|nap|tired|bed|night)\b/.test(text)) {
     return { action: "sleep" };
   }
-  
+
   // Medicine variations
   if (/\b(medicine|heal|cure|sick|doctor|pill|treat)\b/.test(text)) {
     return { action: "medicine" };
   }
-  
+
   // Discipline variations
   if (/\b(discipline|scold|punish|train|no|bad)\b/.test(text)) {
     return { action: "discipline" };
   }
-  
+
   // Light toggle
   if (/\b(light|lamp|dark|bright)\b/.test(text)) {
     return { action: "light_toggle" };
   }
-  
+
   // Status check
   if (/\b(status|stats|how|health|check|info)\b/.test(text)) {
     return { action: "status" };
   }
-  
+
   // Help
   if (/\b(help|what|commands|options)\b/.test(text)) {
     return { action: "help" };
   }
-  
+
   // Reset
   if (/\b(reset|restart|new|again)\b/.test(text)) {
     return { action: "reset" };
   }
-  
+
   // Name
   const nameMatch = text.match(/\b(?:name|call)\s+(?:it|them|pet)?\s*(.+)/);
   if (nameMatch) {
     return { action: "name", parameter: nameMatch[1].trim() };
   }
-  
+
   return null;
 }
 
@@ -643,38 +662,42 @@ export function parseCommand(input: string): GameCommand | null {
 
 export function formatStatus(state: PetState): string {
   if (state.stage === "dead") {
-    return `💀 ${state.name} has passed away.\n` +
-           `Cause: ${state.causeOfDeath}\n` +
-           `Age: ${getAge(state)}\n` +
-           `Say "reset" to start over with a new pet.`;
+    return (
+      `💀 ${state.name} has passed away.\n` +
+      `Cause: ${state.causeOfDeath}\n` +
+      `Age: ${getAge(state)}\n` +
+      `Say "reset" to start over with a new pet.`
+    );
   }
-  
+
   const { stats } = state;
   const bars = (value: number) => {
     const filled = Math.round(value / 10);
     return "█".repeat(filled) + "░".repeat(10 - filled);
   };
-  
-  return `🐣 ${state.name} (${state.stage.toUpperCase()})\n` +
-         `Age: ${getAge(state)}\n\n` +
-         `🍔 Hunger:     ${bars(stats.hunger)} ${Math.round(stats.hunger)}%\n` +
-         `😊 Happiness:  ${bars(stats.happiness)} ${Math.round(stats.happiness)}%\n` +
-         `❤️ Health:     ${bars(stats.health)} ${Math.round(stats.health)}%\n` +
-         `⚡ Energy:     ${bars(stats.energy)} ${Math.round(stats.energy)}%\n` +
-         `✨ Clean:      ${bars(stats.cleanliness)} ${Math.round(stats.cleanliness)}%\n` +
-         `📚 Discipline: ${bars(stats.discipline)} ${Math.round(stats.discipline)}%\n\n` +
-         `Mood: ${state.mood} ${getMoodEmoji(state.mood)}\n` +
-         (state.isSick ? "⚠️ SICK - Needs medicine!\n" : "") +
-         (state.poop > 0 ? `💩 Poop count: ${state.poop}\n` : "") +
-         (state.isSleeping ? "💤 Currently sleeping\n" : "") +
-         (!state.lightsOn ? "🌙 Lights are off\n" : "");
+
+  return (
+    `🐣 ${state.name} (${state.stage.toUpperCase()})\n` +
+    `Age: ${getAge(state)}\n\n` +
+    `🍔 Hunger:     ${bars(stats.hunger)} ${Math.round(stats.hunger)}%\n` +
+    `😊 Happiness:  ${bars(stats.happiness)} ${Math.round(stats.happiness)}%\n` +
+    `❤️ Health:     ${bars(stats.health)} ${Math.round(stats.health)}%\n` +
+    `⚡ Energy:     ${bars(stats.energy)} ${Math.round(stats.energy)}%\n` +
+    `✨ Clean:      ${bars(stats.cleanliness)} ${Math.round(stats.cleanliness)}%\n` +
+    `📚 Discipline: ${bars(stats.discipline)} ${Math.round(stats.discipline)}%\n\n` +
+    `Mood: ${state.mood} ${getMoodEmoji(state.mood)}\n` +
+    (state.isSick ? "⚠️ SICK - Needs medicine!\n" : "") +
+    (state.poop > 0 ? `💩 Poop count: ${state.poop}\n` : "") +
+    (state.isSleeping ? "💤 Currently sleeping\n" : "") +
+    (!state.lightsOn ? "🌙 Lights are off\n" : "")
+  );
 }
 
 function getAge(state: PetState): string {
   const ms = Date.now() - state.birthTime;
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes % 60}m`;
   }
@@ -698,17 +721,19 @@ function getMoodEmoji(mood: Mood): string {
 }
 
 export function getHelp(): string {
-  return `🎮 ELIZAGOTCHI COMMANDS:\n\n` +
-         `🍔 "feed" - Feed your pet\n` +
-         `🎮 "play" - Play with your pet\n` +
-         `🧹 "clean" - Clean up messes\n` +
-         `😴 "sleep" - Put your pet to bed (lights must be off)\n` +
-         `💊 "medicine" - Give medicine when sick\n` +
-         `📚 "discipline" - Discipline misbehavior\n` +
-         `💡 "light" - Toggle lights on/off\n` +
-         `📊 "status" - Check pet stats\n` +
-         `🔄 "reset" - Start over with new pet\n\n` +
-         `Keep your pet fed, happy, and clean to help them evolve!`;
+  return (
+    `🎮 ELIZAGOTCHI COMMANDS:\n\n` +
+    `🍔 "feed" - Feed your pet\n` +
+    `🎮 "play" - Play with your pet\n` +
+    `🧹 "clean" - Clean up messes\n` +
+    `😴 "sleep" - Put your pet to bed (lights must be off)\n` +
+    `💊 "medicine" - Give medicine when sick\n` +
+    `📚 "discipline" - Discipline misbehavior\n` +
+    `💡 "light" - Toggle lights on/off\n` +
+    `📊 "status" - Check pet stats\n` +
+    `🔄 "reset" - Start over with new pet\n\n` +
+    `Keep your pet fed, happy, and clean to help them evolve!`
+  );
 }
 
 // ============================================================================
@@ -716,5 +741,4 @@ export function getHelp(): string {
 // ============================================================================
 
 export const CONFIG = DEFAULT_CONFIG;
-
 

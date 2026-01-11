@@ -1,4 +1,3 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import {
   type AgentRuntime,
   ChannelType,
@@ -10,6 +9,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -87,13 +87,10 @@ describe("Component Integration Tests", () => {
       };
 
       await adapter.createComponent(component);
-      const retrieved = await adapter.getComponent(
-        testEntityId,
-        "test_component",
-      );
+      const retrieved = await adapter.getComponent(testEntityId, "test_component");
       expect(retrieved).toBeDefined();
-      expect(retrieved && retrieved.id).toBe(component.id);
-      expect(retrieved && retrieved.data).toEqual({ value: "test" });
+      expect(retrieved?.id).toBe(component.id);
+      expect(retrieved?.data).toEqual({ value: "test" });
     });
 
     it("should update an existing component", async () => {
@@ -116,12 +113,9 @@ describe("Component Integration Tests", () => {
       };
       await adapter.updateComponent(updatedComponent);
 
-      const retrieved = await adapter.getComponent(
-        testEntityId,
-        "updatable_component",
-      );
+      const retrieved = await adapter.getComponent(testEntityId, "updatable_component");
       expect(retrieved).toBeDefined();
-      expect(retrieved && retrieved.data).toEqual({ value: "updated" });
+      expect(retrieved?.data).toEqual({ value: "updated" });
     });
 
     it("should delete a component", async () => {
@@ -137,17 +131,11 @@ describe("Component Integration Tests", () => {
         createdAt: new Date(),
       };
       await adapter.createComponent(component);
-      let retrieved = await adapter.getComponent(
-        testEntityId,
-        "deletable_component",
-      );
+      let retrieved = await adapter.getComponent(testEntityId, "deletable_component");
       expect(retrieved).toBeDefined();
 
       await adapter.deleteComponent(component.id);
-      retrieved = await adapter.getComponent(
-        testEntityId,
-        "deletable_component",
-      );
+      retrieved = await adapter.getComponent(testEntityId, "deletable_component");
       expect(retrieved).toBeNull();
     });
   });

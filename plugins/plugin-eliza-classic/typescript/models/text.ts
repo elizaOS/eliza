@@ -375,12 +375,7 @@ const elizaPatterns: ElizaPattern[] = [
     rules: [
       {
         pattern: /.*/,
-        responses: [
-          "You seem quite positive.",
-          "You are sure.",
-          "I see.",
-          "I understand.",
-        ],
+        responses: ["You seem quite positive.", "You are sure.", "I see.", "I understand."],
       },
     ],
   },
@@ -601,9 +596,7 @@ const responseHistory: string[] = [];
 const MAX_HISTORY = 10;
 
 function getRandomResponse(responses: string[]): string {
-  const availableResponses = responses.filter(
-    (r) => !responseHistory.includes(r)
-  );
+  const availableResponses = responses.filter((r) => !responseHistory.includes(r));
   const pool = availableResponses.length > 0 ? availableResponses : responses;
 
   const response = pool[Math.floor(Math.random() * pool.length)];
@@ -747,8 +740,3 @@ export async function handleTextSmall(
 ): Promise<string> {
   return handleTextLarge(runtime, params);
 }
-
-
-
-
-

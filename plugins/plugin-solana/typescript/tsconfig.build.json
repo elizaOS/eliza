@@ -6,17 +6,9 @@
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "outDir": "../dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "moduleResolution": "bundler"
   },
-  "include": [
-    "./**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "__tests__",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
 }
-
-

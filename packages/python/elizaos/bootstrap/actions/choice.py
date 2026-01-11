@@ -38,7 +38,9 @@ class ChooseOptionAction:
         "and decision-making when multiple options are presented."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that options are available to choose from."""
         # Check if message contains options
         if message.content and message.content.options:
@@ -181,4 +183,3 @@ choose_option_action = Action(
     handler=ChooseOptionAction().handler,
     examples=ChooseOptionAction().examples,
 )
-

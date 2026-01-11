@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Audio utilities for OpenAI plugin.
 //!
 //! Provides audio format detection from binary data.

@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OAuth2PKCEAuthProvider } from "../auth-providers/oauth2-pkce";
-import type { TokenStore, StoredOAuth2Tokens } from "../auth-providers/token-store";
+import type { StoredOAuth2Tokens, TokenStore } from "../auth-providers/token-store";
 
 describe("OAuth2PKCEAuthProvider", () => {
-  let runtime: any;
+  let runtime: IAgentRuntime;
 
   beforeEach(() => {
     runtime = {
@@ -32,8 +33,8 @@ describe("OAuth2PKCEAuthProvider", () => {
       clear: vi.fn(async () => {}),
     };
 
-    const fetchImpl = vi.fn();
-    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as any);
+    const fetchImpl = vi.fn() as typeof fetch;
+    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl);
 
     const token = await provider.getAccessToken();
     expect(token).toBe("access");
@@ -65,7 +66,7 @@ describe("OAuth2PKCEAuthProvider", () => {
       }),
     }));
 
-    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as any);
+    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as typeof fetch);
 
     const token = await provider.getAccessToken();
     expect(token).toBe("new-access");
@@ -91,11 +92,9 @@ describe("OAuth2PKCEAuthProvider", () => {
       json: async () => ({ error: "invalid_grant" }),
     }));
 
-    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as any);
+    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as typeof fetch);
 
-    await expect(provider.getAccessToken()).rejects.toThrow(
-      "Twitter token refresh failed",
-    );
+    await expect(provider.getAccessToken()).rejects.toThrow("Twitter token refresh failed");
   });
 
   it("includes status/body on exchange failure", async () => {
@@ -114,24 +113,24 @@ describe("OAuth2PKCEAuthProvider", () => {
     const provider = new OAuth2PKCEAuthProvider(
       runtime,
       store,
-      fetchImpl as any,
+      fetchImpl as typeof fetch,
       // stub interactive login to call the real token exchange path by returning a failure via fetch
       async () => {
         // simulate what interactiveLogin would do: return tokens after exchange;
         // here we force a call to the exchange endpoint by invoking getAccessToken without stored tokens.
         // We can't access private methods, so we just throw an error consistent with exchange failure.
-        const res: any = await (fetchImpl as any)("https://api.twitter.com/2/oauth2/token", {
+        const res = await fetchImpl("https://api.twitter.com/2/oauth2/token", {
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: "grant_type=authorization_code",
         });
         const body = await res.json();
         throw new Error(`Twitter token exchange failed (${res.status}): ${JSON.stringify(body)}`);
-      },
+      }
     );
 
     await expect(provider.getAccessToken()).rejects.toThrow(
-      'Twitter token exchange failed (401): {"error":"unauthorized_client"}',
+      'Twitter token exchange failed (401): {"error":"unauthorized_client"}'
     );
   });
 
@@ -158,13 +157,13 @@ describe("OAuth2PKCEAuthProvider", () => {
       }),
     }));
 
-    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as any);
+    const provider = new OAuth2PKCEAuthProvider(runtime, store, fetchImpl as typeof fetch);
     const token = await provider.getAccessToken();
     expect(token).toBe("new-access");
 
     // ensure we persisted rotated refresh token
     expect(store.save).toHaveBeenCalledWith(
-      expect.objectContaining({ refresh_token: "refresh-new" }),
+      expect.objectContaining({ refresh_token: "refresh-new" })
     );
   });
 
@@ -189,8 +188,8 @@ describe("OAuth2PKCEAuthProvider", () => {
     const provider = new OAuth2PKCEAuthProvider(
       runtime,
       store,
-      vi.fn() as any,
-      interactiveLoginFn,
+      vi.fn() as typeof fetch,
+      interactiveLoginFn
     );
 
     const token = await provider.getAccessToken();
@@ -199,4 +198,3 @@ describe("OAuth2PKCEAuthProvider", () => {
     expect(interactiveLoginFn).toHaveBeenCalled();
   });
 });
-

@@ -5,14 +5,16 @@ description: "Give your agent superpowers with Actions, Providers, Evaluators, a
 
 ## The Problem
 
-Your agent can talk, but can it *do* things? Out of the box, an LLM can only generate text. To make it useful, you need:
+Your agent can talk, but can it _do_ things? Out of the box, an LLM can only generate text. To make it useful, you need:
+
 - **Actions** - Execute tasks (send emails, query APIs, generate images)
 - **Context** - Know what's happening (user preferences, conversation history, external data)
 - **Learning** - Extract and remember information from conversations
 - **Connections** - Maintain state with external services
 
 <Tip>
-**Each component type has one job.** Actions *do*, Providers *supply*, Evaluators *learn*, Services *connect*.
+  **Each component type has one job.** Actions *do*, Providers *supply*,
+  Evaluators *learn*, Services *connect*.
 </Tip>
 
 ## Overview
@@ -21,12 +23,12 @@ Plugin components are the building blocks that give agents their capabilities. E
 
 ## Component Types
 
-| Component | Purpose | When Executed |
-|-----------|---------|---------------|
-| **Actions** | Tasks agents can perform | When agent decides to take action |
-| **Providers** | Supply contextual data | Before actions/decisions |
-| **Evaluators** | Process and extract from responses | After agent generates response |
-| **Services** | Manage stateful connections | Throughout agent lifecycle |
+| Component      | Purpose                            | When Executed                     |
+| -------------- | ---------------------------------- | --------------------------------- |
+| **Actions**    | Tasks agents can perform           | When agent decides to take action |
+| **Providers**  | Supply contextual data             | Before actions/decisions          |
+| **Evaluators** | Process and extract from responses | After agent generates response    |
+| **Services**   | Manage stateful connections        | Throughout agent lifecycle        |
 
 ## Actions
 
@@ -54,33 +56,37 @@ For complete interface definitions, see [Plugin Reference](/plugins/reference#ac
 The bootstrap plugin provides 13 essential actions:
 
 #### Communication Actions
-| Action | Description | Example Trigger |
-|--------|-------------|----------------|
-| `REPLY` | Generate response | "Tell me about..." |
+
+| Action         | Description           | Example Trigger       |
+| -------------- | --------------------- | --------------------- |
+| `REPLY`        | Generate response     | "Tell me about..."    |
 | `SEND_MESSAGE` | Send to specific room | "Message the team..." |
-| `NONE` | Acknowledge silently | "Thanks!" |
-| `IGNORE` | Skip message | Spam/irrelevant |
+| `NONE`         | Acknowledge silently  | "Thanks!"             |
+| `IGNORE`       | Skip message          | Spam/irrelevant       |
 
 #### Room Management
-| Action | Description | Example Trigger |
-|--------|-------------|----------------|
-| `FOLLOW_ROOM` | Subscribe to updates | "Join #general" |
-| `UNFOLLOW_ROOM` | Unsubscribe | "Leave #general" |
-| `MUTE_ROOM` | Mute notifications | "Mute this channel" |
-| `UNMUTE_ROOM` | Unmute | "Unmute #general" |
+
+| Action          | Description          | Example Trigger     |
+| --------------- | -------------------- | ------------------- |
+| `FOLLOW_ROOM`   | Subscribe to updates | "Join #general"     |
+| `UNFOLLOW_ROOM` | Unsubscribe          | "Leave #general"    |
+| `MUTE_ROOM`     | Mute notifications   | "Mute this channel" |
+| `UNMUTE_ROOM`   | Unmute               | "Unmute #general"   |
 
 #### Data & Configuration
-| Action | Description | Example Trigger |
-|--------|-------------|----------------|
-| `UPDATE_CONTACT` | Update contact info | "Remember that I..." |
-| `UPDATE_ROLE` | Change roles | "Make me admin" |
-| `UPDATE_SETTINGS` | Modify settings | "Set model to gpt-4" |
+
+| Action            | Description         | Example Trigger      |
+| ----------------- | ------------------- | -------------------- |
+| `UPDATE_CONTACT`  | Update contact info | "Remember that I..." |
+| `UPDATE_ROLE`     | Change roles        | "Make me admin"      |
+| `UPDATE_SETTINGS` | Modify settings     | "Set model to gpt-4" |
 
 #### Media & Utilities
-| Action | Description | Example Trigger |
-|--------|-------------|----------------|
-| `GENERATE_IMAGE` | Create AI images | "Draw a cat" |
-| `CHOICE` | Present options | "Should I A or B?" |
+
+| Action           | Description      | Example Trigger    |
+| ---------------- | ---------------- | ------------------ |
+| `GENERATE_IMAGE` | Create AI images | "Draw a cat"       |
+| `CHOICE`         | Present options  | "Should I A or B?" |
 
 ### Creating Actions
 
@@ -90,15 +96,15 @@ For advanced patterns, see [Plugin Patterns](/plugins/patterns).
 
 ```typescript
 const action: Action = {
-  name: 'MY_ACTION',
-  description: 'Does something',
+  name: "MY_ACTION",
+  description: "Does something",
   validate: async () => true,
   handler: async (runtime, message) => {
-    return { 
-      success: true,  // REQUIRED
-      text: "Done!" 
+    return {
+      success: true, // REQUIRED
+      text: "Done!",
     };
-  }
+  },
 };
 ```
 
@@ -106,23 +112,22 @@ const action: Action = {
 
 ```typescript
 const sendTokenAction: Action = {
-  name: 'SEND_TOKEN',
-  description: 'Send tokens to address',
-  
+  name: "SEND_TOKEN",
+  description: "Send tokens to address",
+
   validate: async (runtime, message) => {
-    return message.content.includes('send') && 
-           message.content.includes('0x');
+    return message.content.includes("send") && message.content.includes("0x");
   },
-  
+
   handler: async (runtime, message) => {
     const address = extractAddress(message.content);
     const amount = extractAmount(message.content);
     await sendToken(address, amount);
     return {
       success: true,
-      text: `Sent ${amount} tokens to ${address}`
+      text: `Sent ${amount} tokens to ${address}`,
     };
-  }
+  },
 };
 ```
 
@@ -130,22 +135,24 @@ const sendTokenAction: Action = {
 
 ```typescript
 const action: Action = {
-  name: 'WEATHER',
-  description: 'Get weather info',
-  examples: [[
-    { name: "user", content: { text: "What's the weather?" } },
-    { name: "agent", content: { text: "Let me check the weather for you." } }
-  ]],
+  name: "WEATHER",
+  description: "Get weather info",
+  examples: [
+    [
+      { name: "user", content: { text: "What's the weather?" } },
+      { name: "agent", content: { text: "Let me check the weather for you." } },
+    ],
+  ],
   validate: async (runtime, message) => {
-    return message.content.toLowerCase().includes('weather');
+    return message.content.toLowerCase().includes("weather");
   },
   handler: async (runtime, message) => {
     const weather = await fetchWeather();
-    return { 
+    return {
       success: true,
-      text: `It's ${weather.temp}°C and ${weather.condition}` 
+      text: `It's ${weather.temp}°C and ${weather.condition}`,
     };
-  }
+  },
 };
 ```
 
@@ -159,22 +166,22 @@ handler: async (runtime, message, state, options, callback) => {
     await callback({ text: result }, []);
   }
   return { success: true, text: result };
-}
+};
 
 // Using services
 handler: async (runtime, message) => {
-  const service = runtime.getService<TwitterService>('twitter');
+  const service = runtime.getService<TwitterService>("twitter");
   return service.post(message.content);
-}
+};
 
 // Using database
 handler: async (runtime, message) => {
   const memories = await runtime.databaseAdapter.searchMemories({
     query: message.content,
-    limit: 5
+    limit: 5,
   });
   return { success: true, data: { memories } };
-}
+};
 ```
 
 ### HandlerOptions Interface
@@ -188,15 +195,15 @@ interface HandlerOptions {
 
   /** Multi-step action plan information */
   actionPlan?: {
-    totalSteps: number;           // Total steps in plan
-    currentStep: number;          // Current step (1-based)
+    totalSteps: number; // Total steps in plan
+    currentStep: number; // Current step (1-based)
     steps: Array<{
       action: string;
-      status: 'pending' | 'completed' | 'failed';
+      status: "pending" | "completed" | "failed";
       result?: ActionResult;
       error?: string;
     }>;
-    thought: string;              // AI's reasoning for this plan
+    thought: string; // AI's reasoning for this plan
   };
 
   /** Allow plugin extensions */
@@ -227,7 +234,7 @@ handler: async (runtime, message, state, options, callback) => {
   }
 
   return { success: true, text: "Done" };
-}
+};
 ```
 
 ### Best Practices for Actions
@@ -261,15 +268,15 @@ For complete interface definitions, see the [Provider Interface in the Reference
 
 ### Core Providers (Bootstrap Plugin)
 
-| Provider | Returns | Example Use |
-|----------|---------|-------------|
-| `characterProvider` | Agent personality | Name, bio, traits |
-| `timeProvider` | Current date/time | "What time is it?" |
-| `knowledgeProvider` | Knowledge base | Documentation, facts |
-| `recentMessagesProvider` | Chat history | Context awareness |
-| `actionsProvider` | Available actions | "What can you do?" |
-| `factsProvider` | Stored facts | User preferences |
-| `settingsProvider` | Configuration | Model settings |
+| Provider                 | Returns           | Example Use          |
+| ------------------------ | ----------------- | -------------------- |
+| `characterProvider`      | Agent personality | Name, bio, traits    |
+| `timeProvider`           | Current date/time | "What time is it?"   |
+| `knowledgeProvider`      | Knowledge base    | Documentation, facts |
+| `recentMessagesProvider` | Chat history      | Context awareness    |
+| `actionsProvider`        | Available actions | "What can you do?"   |
+| `factsProvider`          | Stored facts      | User preferences     |
+| `settingsProvider`       | Configuration     | Model settings       |
 
 ### Creating Providers
 
@@ -277,13 +284,13 @@ For complete interface definitions, see the [Provider Interface in the Reference
 
 ```typescript
 const provider: Provider = {
-  name: 'MY_DATA',
+  name: "MY_DATA",
   get: async (runtime, message, state) => {
     return {
       text: "Contextual information",
-      data: { key: "value" }
+      data: { key: "value" },
     };
-  }
+  },
 };
 ```
 
@@ -291,12 +298,12 @@ const provider: Provider = {
 
 ```typescript
 const dynamicProvider: Provider = {
-  name: 'LIVE_DATA',
-  dynamic: true,  // Re-fetched each time
+  name: "LIVE_DATA",
+  dynamic: true, // Re-fetched each time
   get: async (runtime) => {
     const data = await fetchLatestData();
     return { data };
-  }
+  },
 };
 ```
 
@@ -304,11 +311,11 @@ const dynamicProvider: Provider = {
 
 ```typescript
 const secretProvider: Provider = {
-  name: 'INTERNAL_STATE',
-  private: true,  // Not shown in provider list
+  name: "INTERNAL_STATE",
+  private: true, // Not shown in provider list
   get: async (runtime) => {
     return runtime.getInternalState();
-  }
+  },
 };
 ```
 
@@ -316,9 +323,9 @@ const secretProvider: Provider = {
 
 ```typescript
 // Lower numbers = higher priority
-position: -100  // Loads first
-position: 0     // Default
-position: 100   // Loads last
+position: -100; // Loads first
+position: 0; // Default
+position: 100; // Loads last
 ```
 
 ### Provider Execution Flow
@@ -360,11 +367,11 @@ For complete interface definitions, see the [Evaluator Interface in the Referenc
 
 ### Core Evaluators (Bootstrap Plugin)
 
-| Evaluator | Purpose | Extracts |
-|-----------|---------|----------|
-| `reflectionEvaluator` | Self-awareness | Insights about interactions |
-| `factEvaluator` | Fact extraction | Important information |
-| `goalEvaluator` | Goal tracking | User objectives |
+| Evaluator             | Purpose         | Extracts                    |
+| --------------------- | --------------- | --------------------------- |
+| `reflectionEvaluator` | Self-awareness  | Insights about interactions |
+| `factEvaluator`       | Fact extraction | Important information       |
+| `goalEvaluator`       | Goal tracking   | User objectives             |
 
 ### Evaluator Flow
 
@@ -377,13 +384,13 @@ flowchart TD
     Extract --> Store[Store in Memory]
     Store --> Continue[Continue]
     Skip --> Continue
-    
+
     classDef input fill:#2196f3,color:#fff
     classDef decision fill:#ff9800,color:#fff
     classDef processing fill:#4caf50,color:#fff
     classDef storage fill:#9c27b0,color:#fff
     classDef result fill:#607d8b,color:#fff
-    
+
     class Response input
     class Validate decision
     class Handler,Extract processing
@@ -394,18 +401,21 @@ flowchart TD
 ### Common Use Cases
 
 #### Memory Building
+
 - Extract facts from conversations
 - Track user preferences
 - Update relationship status
 - Record important events
 
 #### Content Filtering
+
 - Remove sensitive data
 - Filter profanity
 - Ensure compliance
 - Validate accuracy
 
 #### Analytics
+
 - Track sentiment
 - Measure engagement
 - Monitor topics
@@ -417,21 +427,21 @@ flowchart TD
 
 ```typescript
 const evaluator: Evaluator = {
-  name: 'my-evaluator',
-  description: 'Processes responses',
-  examples: [],  // Training examples
-  
+  name: "my-evaluator",
+  description: "Processes responses",
+  examples: [], // Training examples
+
   validate: async (runtime, message) => {
-    return true;  // Run on all messages
+    return true; // Run on all messages
   },
-  
+
   handler: async (runtime, message) => {
     // Process and extract
     const result = await analyze(message);
     // Store findings
     await storeResult(result);
     return result;
-  }
+  },
 };
 ```
 
@@ -439,16 +449,18 @@ const evaluator: Evaluator = {
 
 ```typescript
 const evaluator: Evaluator = {
-  name: 'fact-extractor',
-  description: 'Extracts facts from conversations',
-  examples: [{
-    prompt: 'Extract facts from this conversation',
-    messages: [
-      { name: 'user', content: { text: 'I live in NYC' } },
-      { name: 'agent', content: { text: 'NYC is a great city!' } }
-    ],
-    outcome: 'User lives in New York City'
-  }],
+  name: "fact-extractor",
+  description: "Extracts facts from conversations",
+  examples: [
+    {
+      prompt: "Extract facts from this conversation",
+      messages: [
+        { name: "user", content: { text: "I live in NYC" } },
+        { name: "agent", content: { text: "NYC is a great city!" } },
+      ],
+      outcome: "User lives in New York City",
+    },
+  ],
   validate: async () => true,
   handler: async (runtime, message, state) => {
     const facts = await extractFacts(state);
@@ -456,7 +468,7 @@ const evaluator: Evaluator = {
       await runtime.factsManager.addFact(fact);
     }
     return facts;
-  }
+  },
 };
 ```
 
@@ -489,6 +501,7 @@ For the complete Service class definition, see the [Service Abstract Class in th
 ### Service Types
 
 The system includes predefined service types:
+
 - TRANSCRIPTION, VIDEO, BROWSER, PDF
 - REMOTE_FILES (AWS S3)
 - WEB_SEARCH, EMAIL, TEE
@@ -499,11 +512,11 @@ The system includes predefined service types:
 ### Creating Services
 
 ```typescript
-import { Service, IAgentRuntime, logger } from '@elizaos/core';
+import { Service, IAgentRuntime, logger } from "@elizaos/core";
 
 export class MyService extends Service {
-  static serviceType = 'my-service';
-  capabilityDescription = 'Description of what this service provides';
+  static serviceType = "my-service";
+  capabilityDescription = "Description of what this service provides";
 
   private client: any;
   private refreshInterval: NodeJS.Timer | null = null;
@@ -513,7 +526,7 @@ export class MyService extends Service {
   }
 
   static async start(runtime: IAgentRuntime): Promise<MyService> {
-    logger.info('Initializing MyService');
+    logger.info("Initializing MyService");
     const service = new MyService(runtime);
 
     // Initialize connections, clients, etc.
@@ -522,7 +535,7 @@ export class MyService extends Service {
     // Set up periodic tasks if needed
     service.refreshInterval = setInterval(
       () => service.refreshData(),
-      60000 // 1 minute
+      60000, // 1 minute
     );
 
     return service;
@@ -537,14 +550,14 @@ export class MyService extends Service {
     if (this.client) {
       await this.client.disconnect();
     }
-    logger.info('MyService stopped');
+    logger.info("MyService stopped");
   }
 
   private async initialize(): Promise<void> {
     // Service initialization logic
-    const apiKey = this.runtime.getSetting('MY_API_KEY');
+    const apiKey = this.runtime.getSetting("MY_API_KEY");
     if (!apiKey) {
-      throw new Error('MY_API_KEY not configured');
+      throw new Error("MY_API_KEY not configured");
     }
 
     this.client = new MyClient({ apiKey });
@@ -561,7 +574,7 @@ Sometimes services need to wait for other services or perform startup tasks:
 
 ```typescript
 export class MyService extends Service {
-  static serviceType = 'my-service';
+  static serviceType = "my-service";
 
   static async start(runtime: IAgentRuntime): Promise<MyService> {
     const service = new MyService(runtime);
@@ -574,9 +587,9 @@ export class MyService extends Service {
       try {
         await service.loadCachedData();
         await service.syncWithRemote();
-        logger.info('MyService: Delayed initialization complete');
+        logger.info("MyService: Delayed initialization complete");
       } catch (error) {
-        logger.error('MyService: Delayed init failed', error);
+        logger.error("MyService: Delayed init failed", error);
         // Don't throw - service is still functional
       }
     }, 5000);
@@ -609,9 +622,9 @@ export class MyService extends Service {
 ```typescript
 // Providers contribute to state
 const state = await runtime.composeState(message, [
-  'RECENT_MESSAGES',
-  'CHARACTER',
-  'KNOWLEDGE'
+  "RECENT_MESSAGES",
+  "CHARACTER",
+  "KNOWLEDGE",
 ]);
 
 // Actions receive composed state
@@ -625,63 +638,67 @@ await evaluator.handler(runtime, message, state);
 
 ```typescript
 // Actions and providers can access services
-const service = runtime.getService<MyService>('my-service');
+const service = runtime.getService<MyService>("my-service");
 const data = await service.getData();
 ```
 
 ## Plugin Example with All Components
 
 ```typescript
-import type { Plugin } from '@elizaos/core';
+import type { Plugin } from "@elizaos/core";
 
 export const myPlugin: Plugin = {
-  name: 'my-complete-plugin',
-  description: 'Example plugin with all component types',
-  
+  name: "my-complete-plugin",
+  description: "Example plugin with all component types",
+
   services: [MyService],
-  
-  actions: [{
-    name: 'MY_ACTION',
-    description: 'Performs an action using the service',
-    validate: async (runtime) => {
-      return runtime.getService('my-service') !== null;
+
+  actions: [
+    {
+      name: "MY_ACTION",
+      description: "Performs an action using the service",
+      validate: async (runtime) => {
+        return runtime.getService("my-service") !== null;
+      },
+      handler: async (runtime, message) => {
+        const service = runtime.getService<MyService>("my-service");
+        const result = await service.doSomething();
+        return { success: true, text: result };
+      },
     },
-    handler: async (runtime, message) => {
-      const service = runtime.getService<MyService>('my-service');
-      const result = await service.doSomething();
-      return { success: true, text: result };
-    }
-  }],
-  
-  providers: [{
-    name: 'MY_PROVIDER',
-    get: async (runtime) => {
-      const service = runtime.getService<MyService>('my-service');
-      const data = await service.getCurrentState();
-      return {
-        text: `Current state: ${JSON.stringify(data)}`,
-        data
-      };
-    }
-  }],
-  
-  evaluators: [{
-    name: 'MY_EVALUATOR',
-    description: 'Extracts relevant information',
-    examples: [],
-    validate: async () => true,
-    handler: async (runtime, message) => {
-      const extracted = await extractInfo(message);
-      await runtime.storeExtracted(extracted);
-      return extracted;
-    }
-  }]
+  ],
+
+  providers: [
+    {
+      name: "MY_PROVIDER",
+      get: async (runtime) => {
+        const service = runtime.getService<MyService>("my-service");
+        const data = await service.getCurrentState();
+        return {
+          text: `Current state: ${JSON.stringify(data)}`,
+          data,
+        };
+      },
+    },
+  ],
+
+  evaluators: [
+    {
+      name: "MY_EVALUATOR",
+      description: "Extracts relevant information",
+      examples: [],
+      validate: async () => true,
+      handler: async (runtime, message) => {
+        const extracted = await extractInfo(message);
+        await runtime.storeExtracted(extracted);
+        return extracted;
+      },
+    },
+  ],
 };
 ```
 
-<Tip>
-  **Guide**: [Create a Plugin](/guides/create-a-plugin)
-</Tip>
+<Tip>**Guide**: [Create a Plugin](/guides/create-a-plugin)</Tip>
 
 ## See Also
 
@@ -690,29 +707,33 @@ export const myPlugin: Plugin = {
     Understand overall plugin system design
   </Card>
 
-  <Card title="Development Guide" icon="code" href="/plugins/development">
-    Build your first plugin step by step
-  </Card>
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build your first plugin step by step
+</Card>
 
-  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
-    Learn proven plugin development patterns
-  </Card>
+<Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+  Learn proven plugin development patterns
+</Card>
 
-  <Card title="Plugin Reference" icon="book" href="/plugins/reference">
-    Complete API reference for all interfaces
-  </Card>
+<Card title="Plugin Reference" icon="book" href="/plugins/reference">
+  Complete API reference for all interfaces
+</Card>
 
-  <Card title="Action Planning" icon="list-check" href="/guides/action-planning">
-    Multi-step action workflows with HandlerOptions
-  </Card>
+<Card title="Action Planning" icon="list-check" href="/guides/action-planning">
+  Multi-step action workflows with HandlerOptions
+</Card>
 
-  <Card title="Streaming Responses" icon="wave-pulse" href="/guides/streaming-responses">
-    Stream action outputs in real-time
-  </Card>
+<Card
+  title="Streaming Responses"
+  icon="wave-pulse"
+  href="/guides/streaming-responses"
+>
+  Stream action outputs in real-time
+</Card>
 
-  <Card title="Background Tasks" icon="clock" href="/guides/background-tasks">
-    Long-running operations with task workers
-  </Card>
+<Card title="Background Tasks" icon="clock" href="/guides/background-tasks">
+  Long-running operations with task workers
+</Card>
 
   <Card title="Core Runtime" icon="microchip" href="/runtime/core">
     How components integrate with the runtime

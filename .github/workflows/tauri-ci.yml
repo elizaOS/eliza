@@ -14,8 +14,8 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - 'packages/app/**'
-      - '.github/workflows/**'
+      - "packages/app/**"
+      - ".github/workflows/**"
 
 jobs:
   # Platform-specific builds run in parallel
@@ -37,7 +37,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

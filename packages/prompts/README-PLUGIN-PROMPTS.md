@@ -75,6 +75,7 @@ npm run build:prompts
 ```
 
 This generates:
+
 - `dist/prompts/typescript/prompts.ts` - TypeScript exports
 - `dist/prompts/python/prompts.py` - Python module
 - `dist/prompts/rust/prompts.rs` - Rust constants
@@ -84,16 +85,16 @@ This generates:
 ### TypeScript
 
 ```typescript
-import { MY_ACTION_TEMPLATE } from '../dist/prompts/typescript/prompts.js';
-import { composePrompt } from '@elizaos/core';
+import { MY_ACTION_TEMPLATE } from "../dist/prompts/typescript/prompts.js";
+import { composePrompt } from "@elizaos/core";
 
 const prompt = composePrompt({
   state: {
-    actionName: 'create',
-    context: 'user request',
-    instructions: 'be helpful'
+    actionName: "create",
+    context: "user request",
+    instructions: "be helpful",
   },
-  template: MY_ACTION_TEMPLATE
+  template: MY_ACTION_TEMPLATE,
 });
 ```
 
@@ -123,7 +124,11 @@ let prompt = MY_ACTION_TEMPLATE
 The `@elizaos/core` package exports shared types for prompt building:
 
 ```typescript
-import type { PromptFieldInfo, BuildPromptOptions, BuiltPrompt } from '@elizaos/core';
+import type {
+  PromptFieldInfo,
+  BuildPromptOptions,
+  BuiltPrompt,
+} from "@elizaos/core";
 ```
 
 ### PromptFieldInfo
@@ -132,11 +137,11 @@ Used when building prompts that extract or format field values:
 
 ```typescript
 const field: PromptFieldInfo = {
-  id: 'email',
-  type: 'email',
-  label: 'Email Address',
-  description: 'Your email address',
-  criteria: 'Must be a valid email'
+  id: "email",
+  type: "email",
+  label: "Email Address",
+  description: "Your email address",
+  criteria: "Must be a valid email",
 };
 ```
 
@@ -148,12 +153,12 @@ Options for building a prompt from a template:
 const options: BuildPromptOptions = {
   template: MY_TEMPLATE,
   state: {
-    userName: 'Alice',
-    userAge: 30
+    userName: "Alice",
+    userAge: 30,
   },
   defaults: {
-    userName: 'User'
-  }
+    userName: "User",
+  },
 };
 ```
 
@@ -205,5 +210,6 @@ To migrate an existing plugin:
 - Use Handlebars syntax: `{{variableName}}`
 - Ensure variable names use camelCase
 - Check that `composePrompt` is used for TypeScript (handles Handlebars)
+
 
 

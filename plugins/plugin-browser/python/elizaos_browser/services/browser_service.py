@@ -9,10 +9,9 @@ import logging
 import random
 import time
 from datetime import datetime
-from typing import Any
 
-from elizaos_browser.types import BrowserConfig, BrowserSession
 from elizaos_browser.services.websocket_client import BrowserWebSocketClient
+from elizaos_browser.types import BrowserConfig, BrowserSession
 
 logger = logging.getLogger(__name__)
 
@@ -128,5 +127,6 @@ class BrowserService:
                 await asyncio.sleep(delay_seconds)
 
         raise RuntimeError(f"Browser server did not become ready after {max_attempts} attempts")
+
 
 

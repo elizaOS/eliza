@@ -55,7 +55,7 @@ function getNodeCrypto(): typeof import("node:crypto") {
  */
 function getWebCryptoSubtle(): SubtleCrypto {
   const globalThisCrypto = globalThis.crypto;
-  const subtle = globalThisCrypto && globalThisCrypto.subtle;
+  const subtle = globalThisCrypto?.subtle;
   if (!subtle) {
     throw new Error(
       "Web Crypto API not available. This browser may not support cryptographic operations.",
@@ -110,7 +110,11 @@ async function webCryptoEncrypt(
     ["encrypt"],
   );
 
-  const encrypted = await subtle.encrypt({ name: "AES-CBC", iv: ivCopy }, cryptoKey, dataCopy);
+  const encrypted = await subtle.encrypt(
+    { name: "AES-CBC", iv: ivCopy },
+    cryptoKey,
+    dataCopy,
+  );
   return new Uint8Array(encrypted);
 }
 
@@ -138,7 +142,11 @@ async function webCryptoDecrypt(
     ["decrypt"],
   );
 
-  const decrypted = await subtle.decrypt({ name: "AES-CBC", iv: ivCopy }, cryptoKey, dataCopy);
+  const decrypted = await subtle.decrypt(
+    { name: "AES-CBC", iv: ivCopy },
+    cryptoKey,
+    dataCopy,
+  );
   return new Uint8Array(decrypted);
 }
 
@@ -251,8 +259,16 @@ export function createCipheriv(
     const crypto = getNodeCrypto();
     const cipher = crypto.createCipheriv(algorithm, key, iv);
     return {
-      update(data: string, inputEncoding: string, outputEncoding: string): string {
-        return cipher.update(data, inputEncoding as BufferEncoding, outputEncoding as BufferEncoding);
+      update(
+        data: string,
+        inputEncoding: string,
+        outputEncoding: string,
+      ): string {
+        return cipher.update(
+          data,
+          inputEncoding as BufferEncoding,
+          outputEncoding as BufferEncoding,
+        );
       },
       final(encoding: string): string {
         return cipher.final(encoding as BufferEncoding);
@@ -264,7 +280,11 @@ export function createCipheriv(
   const cryptoBrowserify = require("crypto-browserify");
   const cipher = cryptoBrowserify.createCipheriv(algorithm, key, iv);
   return {
-    update(data: string, inputEncoding: string, outputEncoding: string): string {
+    update(
+      data: string,
+      inputEncoding: string,
+      outputEncoding: string,
+    ): string {
       const result = cipher.update(
         Buffer.from(data, inputEncoding as BufferEncoding),
         undefined,
@@ -309,8 +329,16 @@ export function createDecipheriv(
     const crypto = getNodeCrypto();
     const decipher = crypto.createDecipheriv(algorithm, key, iv);
     return {
-      update(data: string, inputEncoding: string, outputEncoding: string): string {
-        return decipher.update(data, inputEncoding as BufferEncoding, outputEncoding as BufferEncoding);
+      update(
+        data: string,
+        inputEncoding: string,
+        outputEncoding: string,
+      ): string {
+        return decipher.update(
+          data,
+          inputEncoding as BufferEncoding,
+          outputEncoding as BufferEncoding,
+        );
       },
       final(encoding: string): string {
         return decipher.final(encoding as BufferEncoding);
@@ -322,7 +350,11 @@ export function createDecipheriv(
   const cryptoBrowserify = require("crypto-browserify");
   const decipher = cryptoBrowserify.createDecipheriv(algorithm, key, iv);
   return {
-    update(data: string, inputEncoding: string, outputEncoding: string): string {
+    update(
+      data: string,
+      inputEncoding: string,
+      outputEncoding: string,
+    ): string {
       const result = decipher.update(
         Buffer.from(data, inputEncoding as BufferEncoding),
         undefined,

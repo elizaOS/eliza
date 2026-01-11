@@ -29,7 +29,7 @@ export interface GatewayPluginConfig {
  * @param runtime - Agent runtime
  */
 export function initializeGateway(
-  config: GatewayPluginConfig | undefined,
+  _config: GatewayPluginConfig | undefined,
   runtime: IAgentRuntime
 ): void {
   const apiKey = getApiKeyOptional(runtime);
@@ -42,5 +42,3 @@ export function initializeGateway(
     );
   }
 }
-
-

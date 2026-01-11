@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Shared XML prompts for the elizaOS Forms Plugin.
 //!
 //! These prompts are auto-generated from prompts/*.txt files.
@@ -8,11 +9,8 @@
 //!
 //! The generated prompts.rs file should be copied to this location during build.
 
-// Include the generated prompts module
-mod generated;
-
-// Re-export the generated prompts
-pub use generated::prompts::*;
+// Re-export the generated prompts (generated module is declared in lib.rs)
+pub use crate::generated::prompts::*;
 
 // Re-export for backwards compatibility  
 pub use FORM_EXTRACTION_TEMPLATE as FORM_EXTRACTION_PROMPT;

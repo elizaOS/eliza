@@ -35,7 +35,9 @@ class TestSettingsCrypto:
         salt = "test-salt-value"
         assert decrypt_string_value("not-encrypted", salt) == "not-encrypted"
 
-    def test_runtime_get_setting_decrypts_secret_strings(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_runtime_get_setting_decrypts_secret_strings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         salt = "test-salt-value"
         monkeypatch.setenv("SECRET_SALT", salt)
 
@@ -50,7 +52,9 @@ class TestSettingsCrypto:
         runtime = AgentRuntime(character=character)
         assert runtime.get_setting("API_KEY") == "super-secret"
 
-    def test_runtime_get_setting_coerces_true_false_strings(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_runtime_get_setting_coerces_true_false_strings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         salt = "test-salt-value"
         monkeypatch.setenv("SECRET_SALT", salt)
 
@@ -67,5 +71,3 @@ class TestSettingsCrypto:
         runtime = AgentRuntime(character=character)
         assert runtime.get_setting("FLAG_TRUE") is True
         assert runtime.get_setting("FLAG_FALSE") is False
-
-

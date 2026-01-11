@@ -137,5 +137,3 @@ ruff check elizaos_plugin_sql
 ## License
 
 MIT
-
-

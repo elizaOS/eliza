@@ -3,21 +3,21 @@
  */
 
 import type {
-  Plugin,
-  IAgentRuntime,
   GenerateTextParams,
+  IAgentRuntime,
   ObjectGenerationParams,
+  Plugin,
   TextEmbeddingParams,
-} from '@elizaos/core';
-import { ModelType, logger } from '@elizaos/core';
+} from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 
 // Disable AI SDK warning logging by default (can be overridden by setting to true)
 (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
 
-import { handleTextSmall, handleTextLarge } from './models/text';
-import { handleObjectSmall, handleObjectLarge } from './models/object';
-import { handleTextEmbedding } from './models/embedding';
-import { getBaseURL, getApiBase } from './utils/config';
+import { handleTextEmbedding } from "./models/embedding";
+import { handleObjectLarge, handleObjectSmall } from "./models/object";
+import { handleTextLarge, handleTextSmall } from "./models/text";
+import { getApiBase, getBaseURL } from "./utils/config";
 
 /**
  * Ollama plugin for elizaOS.
@@ -28,8 +28,8 @@ import { getBaseURL, getApiBase } from './utils/config';
  * - Text embeddings
  */
 export const ollamaPlugin: Plugin = {
-  name: 'ollama',
-  description: 'Ollama plugin for local LLM inference',
+  name: "ollama",
+  description: "Ollama plugin for local LLM inference",
 
   config: {
     OLLAMA_API_ENDPOINT: process.env.OLLAMA_API_ENDPOINT ?? null,
@@ -44,11 +44,11 @@ export const ollamaPlugin: Plugin = {
     const apiBase = getApiBase(runtime);
 
     // Check if endpoint is configured
-    if (!baseURL || baseURL === 'http://localhost:11434/api') {
-      const endpoint = runtime.getSetting('OLLAMA_API_ENDPOINT');
+    if (!baseURL || baseURL === "http://localhost:11434/api") {
+      const endpoint = runtime.getSetting("OLLAMA_API_ENDPOINT");
       if (!endpoint) {
         logger.warn(
-          'OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434'
+          "OLLAMA_API_ENDPOINT is not set in environment - Ollama functionality will use default localhost:11434"
         );
       }
     }
@@ -56,13 +56,13 @@ export const ollamaPlugin: Plugin = {
     try {
       // Validate Ollama API endpoint by checking if it's accessible
       const response = await fetch(`${apiBase}/api/tags`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
       });
 
       if (!response.ok) {
         logger.warn(`Ollama API endpoint validation failed: ${response.statusText}`);
-        logger.warn('Ollama functionality will be limited until a valid endpoint is provided');
+        logger.warn("Ollama functionality will be limited until a valid endpoint is provided");
       } else {
         const data = (await response.json()) as {
           models?: Array<{ name: string }>;
@@ -120,17 +120,17 @@ export const ollamaPlugin: Plugin = {
 
   tests: [
     {
-      name: 'ollama_plugin_tests',
+      name: "ollama_plugin_tests",
       tests: [
         {
-          name: 'ollama_test_url_validation',
+          name: "ollama_test_url_validation",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const apiBase = getApiBase(runtime);
               const response = await fetch(`${apiBase}/api/tags`);
               const data = await response.json();
               const modelCount =
-                data && typeof data === 'object' && 'models' in data && Array.isArray(data.models)
+                data && typeof data === "object" && "models" in data && Array.isArray(data.models)
                   ? data.models.length
                   : 0;
               logger.log(`Models Available: ${modelCount}`);
@@ -138,84 +138,86 @@ export const ollamaPlugin: Plugin = {
                 logger.error(`Failed to validate Ollama API: ${response.statusText}`);
               }
             } catch (error) {
-              logger.error({ error }, 'Error in ollama_test_url_validation');
+              logger.error({ error }, "Error in ollama_test_url_validation");
             }
           },
         },
         {
-          name: 'ollama_test_text_embedding',
+          name: "ollama_test_text_embedding",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-                text: 'Hello, world!',
+                text: "Hello, world!",
               });
-              logger.log({ embedding }, 'Generated embedding');
+              logger.log({ embedding }, "Generated embedding");
             } catch (error) {
-              logger.error({ error }, 'Error in test_text_embedding');
+              logger.error({ error }, "Error in test_text_embedding");
             }
           },
         },
         {
-          name: 'ollama_test_text_large',
+          name: "ollama_test_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-                prompt: 'What is the nature of reality in 10 words?',
+                prompt: "What is the nature of reality in 10 words?",
               });
               if (text.length === 0) {
-                logger.error('Failed to generate text');
+                logger.error("Failed to generate text");
                 return;
               }
-              logger.log({ text }, 'Generated with test_text_large');
+              logger.log({ text }, "Generated with test_text_large");
             } catch (error) {
-              logger.error({ error }, 'Error in test_text_large');
+              logger.error({ error }, "Error in test_text_large");
             }
           },
         },
         {
-          name: 'ollama_test_text_small',
+          name: "ollama_test_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-                prompt: 'What is the nature of reality in 10 words?',
+                prompt: "What is the nature of reality in 10 words?",
               });
               if (text.length === 0) {
-                logger.error('Failed to generate text');
+                logger.error("Failed to generate text");
                 return;
               }
-              logger.log({ text }, 'Generated with test_text_small');
+              logger.log({ text }, "Generated with test_text_small");
             } catch (error) {
-              logger.error({ error }, 'Error in test_text_small');
+              logger.error({ error }, "Error in test_text_small");
             }
           },
         },
         {
-          name: 'ollama_test_object_small',
+          name: "ollama_test_object_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const object = await runtime.useModel(ModelType.OBJECT_SMALL, {
-                prompt: 'Generate a JSON object representing a user profile with name, age, and hobbies',
+                prompt:
+                  "Generate a JSON object representing a user profile with name, age, and hobbies",
                 temperature: 0.7,
                 schema: undefined,
               });
-              logger.log({ object }, 'Generated object');
+              logger.log({ object }, "Generated object");
             } catch (error) {
-              logger.error({ error }, 'Error in test_object_small');
+              logger.error({ error }, "Error in test_object_small");
             }
           },
         },
         {
-          name: 'ollama_test_object_large',
+          name: "ollama_test_object_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
-                prompt: 'Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews',
+                prompt:
+                  "Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews",
                 temperature: 0.7,
                 schema: undefined,
               });
-              logger.log({ object }, 'Generated object');
+              logger.log({ object }, "Generated object");
             } catch (error) {
-              logger.error({ error }, 'Error in test_object_large');
+              logger.error({ error }, "Error in test_object_large");
             }
           },
         },
@@ -223,4 +225,3 @@ export const ollamaPlugin: Plugin = {
     },
   ],
 };
-

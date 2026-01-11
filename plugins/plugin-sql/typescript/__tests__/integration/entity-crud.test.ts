@@ -1,13 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import type { Entity, Metadata, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -81,7 +74,7 @@ describe("Entity CRUD Operations", () => {
 
       const retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved[0].names).toContain("Updated Name");
-      expect(retrieved[0].metadata && retrieved[0].metadata.version).toBe(2);
+      expect(retrieved[0].metadata?.version).toBe(2);
     });
 
     it("should delete an entity", async () => {
@@ -180,9 +173,7 @@ describe("Entity CRUD Operations", () => {
 
       expect(results).toHaveLength(2);
       expect(
-        results.every((e) =>
-          e.names.some((name) => name.toLowerCase().includes("alex")),
-        ),
+        results.every((e) => e.names.some((name) => name.toLowerCase().includes("alex")))
       ).toBe(true);
     });
 
@@ -206,7 +197,8 @@ describe("Entity CRUD Operations", () => {
       const retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved[0].metadata).toEqual(entity.metadata as Metadata);
       expect(
-        (retrieved[0].metadata && retrieved[0].metadata.nested && (retrieved[0].metadata.nested as Record<string, unknown>).array),
+        retrieved[0].metadata?.nested &&
+          (retrieved[0].metadata.nested as Record<string, unknown>).array
       ).toEqual([1, 2, 3]);
     });
 

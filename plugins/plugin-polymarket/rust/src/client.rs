@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! CLOB Client for Polymarket API
 //!
 //! Provides HTTP client for interacting with the Polymarket CLOB API.
@@ -15,6 +16,7 @@ use crate::types::{
 };
 
 /// CLOB Client for Polymarket
+#[allow(dead_code)]
 pub struct ClobClient {
     /// HTTP client
     http: Client,
@@ -379,5 +381,8 @@ mod tests {
         assert_eq!(POLYGON_CHAIN_ID, 137);
     }
 }
+
+
+
 
 

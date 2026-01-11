@@ -1,15 +1,15 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
 import { getCwd } from "../providers/cwd.js";
 
 interface FileEntry {
@@ -60,7 +60,10 @@ BEHAVIOR:
 
 OUTPUT: Formatted list with directories marked with / and file sizes in human-readable format.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("list") ||
@@ -77,7 +80,7 @@ OUTPUT: Formatted list with directories marked with / and file sizes in human-re
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const dirPath = extractDirPath(message.content.text ?? "");
     const fullPath = path.resolve(getCwd(), dirPath);
@@ -144,11 +147,20 @@ OUTPUT: Formatted list with directories marked with / and file sizes in human-re
   examples: [
     [
       { name: "{{user1}}", content: { text: "list files in src" } },
-      { name: "{{agent}}", content: { text: "Here are the files:", actions: ["LIST_FILES"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Here are the files:", actions: ["LIST_FILES"] },
+      },
     ],
     [
       { name: "{{user1}}", content: { text: "ls" } },
-      { name: "{{agent}}", content: { text: "Listing current directory:", actions: ["LIST_FILES"] } },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Listing current directory:",
+          actions: ["LIST_FILES"],
+        },
+      },
     ],
   ],
 };

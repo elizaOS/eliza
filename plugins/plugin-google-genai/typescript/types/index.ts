@@ -89,4 +89,3 @@ export interface ObjectGenerationResponse {
   usage: TokenUsage;
   model: string;
 }
-

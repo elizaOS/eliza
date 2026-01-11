@@ -23,43 +23,39 @@
  * - @elizaos/plugin-rolodex (optional) for external notifications
  */
 
-import type { Plugin } from '@elizaos/core';
-import { type IAgentRuntime, logger } from '@elizaos/core';
-
-import { routes } from './apis';
+import type { Plugin } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 
 // Import actions
-import { cancelTodoAction } from './actions/cancelTodo';
-import { completeTodoAction } from './actions/completeTodo';
-import { confirmTodoAction } from './actions/confirmTodo';
-import { createTodoAction } from './actions/createTodo';
-import { updateTodoAction } from './actions/updateTodo';
+import { cancelTodoAction } from "./actions/cancelTodo";
+import { completeTodoAction } from "./actions/completeTodo";
+import { confirmTodoAction } from "./actions/confirmTodo";
+import { createTodoAction } from "./actions/createTodo";
+import { updateTodoAction } from "./actions/updateTodo";
 
 // Import providers
-import { todosProvider } from './providers/todos';
-
-// Import services
-import { TodoReminderService } from './services/reminderService';
-import { TodoIntegrationBridge } from './services/integrationBridge';
-
+import { todosProvider } from "./providers/todos";
 // Import schema
-import { todoSchema } from './schema';
+import { todoSchema } from "./schema";
+import { TodoIntegrationBridge } from "./services/integrationBridge";
+// Import services
+import { TodoReminderService } from "./services/reminderService";
 
 // Tests import removed for type checking
 
 // Re-export types for consumers
-export * from './types';
+export * from "./types";
 
 /**
  * The TodoPlugin provides task management functionality with daily recurring and one-off tasks,
  * including creating, completing, updating, and deleting tasks, as well as reminder notifications.
  */
 export const todoPlugin: Plugin = {
-  name: 'todo',
-  description: 'Provides task management functionality with daily recurring and one-off tasks.',
+  name: "todo",
+  description: "Provides task management functionality with daily recurring and one-off tasks.",
   providers: [todosProvider],
-  dependencies: ['@elizaos/plugin-sql', '@elizaos/plugin-rolodex'],
-  testDependencies: ['@elizaos/plugin-sql', '@elizaos/plugin-rolodex'],
+  dependencies: ["@elizaos/plugin-sql", "@elizaos/plugin-rolodex"],
+  testDependencies: ["@elizaos/plugin-sql", "@elizaos/plugin-rolodex"],
   actions: [
     createTodoAction,
     completeTodoAction,
@@ -68,29 +64,32 @@ export const todoPlugin: Plugin = {
     cancelTodoAction,
   ],
   services: [TodoReminderService, TodoIntegrationBridge],
-  routes,
+  routes: [],
   schema: todoSchema,
 
-  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     try {
       // Database migrations are handled by the SQL plugin
       if (runtime.db) {
-        logger.info('Database available, TodoPlugin ready for operation');
+        logger.info("Database available, TodoPlugin ready for operation");
       } else {
-        logger.warn('No database instance available, operations will be limited');
+        logger.warn("No database instance available, operations will be limited");
       }
 
       // Check for rolodex plugin availability
-      const messageDeliveryService = runtime.getService('MESSAGE_DELIVERY' as never);
+      const messageDeliveryService = runtime.getService("MESSAGE_DELIVERY" as never);
       if (messageDeliveryService) {
-        logger.info('Rolodex message delivery service available - external notifications enabled');
+        logger.info("Rolodex message delivery service available - external notifications enabled");
       } else {
-        logger.warn('Rolodex not available - only in-app notifications will work');
+        logger.warn("Rolodex not available - only in-app notifications will work");
       }
 
-      logger.info('TodoPlugin initialized with reminder and integration capabilities');
+      logger.info("TodoPlugin initialized with reminder and integration capabilities");
     } catch (error) {
-      logger.error('Error initializing TodoPlugin:', error);
+      logger.error(
+        "Error initializing TodoPlugin:",
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   },
@@ -98,22 +97,20 @@ export const todoPlugin: Plugin = {
 
 export default todoPlugin;
 
-// Export discoverable services for external use
-export { TodoReminderService } from './services/reminderService';
-export { TodoIntegrationBridge } from './services/integrationBridge';
-
-// Export internal managers for advanced usage
-export { NotificationManager } from './services/notificationManager';
-export { CacheManager } from './services/cacheManager';
-
-// Export data service utilities
-export { createTodoDataService } from './services/todoDataService';
-export type { TodoData } from './services/todoDataService';
-
-// Export types from managers
-export type { CacheEntry, CacheStats } from './services/cacheManager';
-export type { NotificationData, NotificationPreferences } from './services/notificationManager';
-
 // Export schema
-export { todoSchema } from './schema';
-
+export { todoSchema } from "./schema";
+// Export types from managers
+export type { CacheEntry, CacheStats } from "./services/cacheManager";
+export { CacheManager } from "./services/cacheManager";
+export { TodoIntegrationBridge } from "./services/integrationBridge";
+export type {
+  NotificationData,
+  NotificationPreferences,
+} from "./services/notificationManager";
+// Export internal managers for advanced usage
+export { NotificationManager } from "./services/notificationManager";
+// Export discoverable services for external use
+export { TodoReminderService } from "./services/reminderService";
+export type { TodoData } from "./services/todoDataService";
+// Export data service utilities
+export { createTodoDataService } from "./services/todoDataService";

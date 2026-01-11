@@ -55,7 +55,11 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL = (
     isBrowser() && browserURL
       ? browserURL
-      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://www.elizacloud.ai/api/v1")
+      : getSetting(
+          runtime,
+          "ELIZAOS_CLOUD_BASE_URL",
+          "https://www.elizacloud.ai/api/v1",
+        )
   ) as string;
   return baseURL;
 }
@@ -100,7 +104,10 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
  * @returns The configured API key
  */
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
-  const embeddingApiKey = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_API_KEY");
+  const embeddingApiKey = getSetting(
+    runtime,
+    "ELIZAOS_CLOUD_EMBEDDING_API_KEY",
+  );
   if (embeddingApiKey) {
     logger.debug("[ELIZAOS_CLOUD] Using specific embedding API key (present)");
     return embeddingApiKey;
@@ -147,8 +154,11 @@ export function getLargeModel(runtime: IAgentRuntime): string {
  */
 export function getImageDescriptionModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL", "gpt-4o-mini") ??
-    "gpt-4o-mini"
+    getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL",
+      "gpt-4o-mini",
+    ) ?? "gpt-4o-mini"
   );
 }
 
@@ -160,8 +170,11 @@ export function getImageDescriptionModel(runtime: IAgentRuntime): string {
  */
 export function getImageGenerationModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL", "google/gemini-2.5-flash-image") ??
-    "google/gemini-2.5-flash-image"
+    getSetting(
+      runtime,
+      "ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL",
+      "google/gemini-2.5-flash-image",
+    ) ?? "google/gemini-2.5-flash-image"
   );
 }
 

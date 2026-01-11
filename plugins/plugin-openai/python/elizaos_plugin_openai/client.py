@@ -8,7 +8,8 @@ All methods use strong typing and fail-fast error handling.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -70,7 +71,7 @@ class OpenAIClient:
         """Close the HTTP client."""
         await self._client.aclose()
 
-    async def __aenter__(self) -> "OpenAIClient":
+    async def __aenter__(self) -> OpenAIClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -166,7 +167,9 @@ class OpenAIClient:
     # =========================================================================
 
     # Models that don't support temperature/sampling parameters (reasoning models)
-    _NO_TEMPERATURE_MODELS = frozenset({"o1", "o1-preview", "o1-mini", "o3", "o3-mini", "gpt-5", "gpt-5-mini"})
+    _NO_TEMPERATURE_MODELS = frozenset(
+        {"o1", "o1-preview", "o1-mini", "o3", "o3-mini", "gpt-5", "gpt-5-mini"}
+    )
 
     @staticmethod
     def _model_supports_temperature(model: str) -> bool:
@@ -228,9 +231,7 @@ class OpenAIClient:
 
         return content
 
-    async def stream_text(
-        self, params: TextGenerationParams
-    ) -> AsyncIterator[str]:
+    async def stream_text(self, params: TextGenerationParams) -> AsyncIterator[str]:
         """
         Stream text generation using the chat completions API.
 
@@ -269,9 +270,7 @@ class OpenAIClient:
             if params.max_tokens is not None:
                 request_body["max_completion_tokens"] = params.max_tokens
 
-        async with self._client.stream(
-            "POST", "/chat/completions", json=request_body
-        ) as response:
+        async with self._client.stream("POST", "/chat/completions", json=request_body) as response:
             self._raise_for_status(response)
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):
@@ -292,9 +291,7 @@ class OpenAIClient:
     # Image Generation
     # =========================================================================
 
-    async def generate_image(
-        self, params: ImageGenerationParams
-    ) -> list[ImageGenerationResult]:
+    async def generate_image(self, params: ImageGenerationParams) -> list[ImageGenerationResult]:
         """
         Generate images using DALL-E.
 
@@ -376,7 +373,9 @@ class OpenAIClient:
         title_match = re.search(r"title[:\s]+(.+?)(?:\n|$)", content, re.IGNORECASE)
         if title_match:
             title = title_match.group(1).strip()
-            description = re.sub(r"title[:\s]+.+?(?:\n|$)", "", content, flags=re.IGNORECASE).strip()
+            description = re.sub(
+                r"title[:\s]+.+?(?:\n|$)", "", content, flags=re.IGNORECASE
+            ).strip()
 
         return ImageDescriptionResult(title=title, description=description)
 
@@ -433,7 +432,7 @@ class OpenAIClient:
 
     async def transcribe_audio_file(
         self,
-        file_path: "Path",
+        file_path: Path,
         params: TranscriptionParams,
     ) -> str:
         """
@@ -490,7 +489,7 @@ class OpenAIClient:
     async def text_to_speech_file(
         self,
         params: TextToSpeechParams,
-        output_path: "Path",
+        output_path: Path,
     ) -> None:
         """
         Convert text to speech and save to file.
@@ -507,4 +506,3 @@ class OpenAIClient:
         audio_data = await self.text_to_speech(params)
         async with aiofiles.open(output_path, "wb") as f:
             await f.write(audio_data)
-

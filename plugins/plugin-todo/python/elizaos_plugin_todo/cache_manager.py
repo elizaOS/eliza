@@ -5,9 +5,10 @@ High-performance caching manager with LRU eviction and TTL support.
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ class CacheManager:
         self._misses = 0
         self._evictions = 0
         self._expired = 0
-        self._cleanup_task: Optional[asyncio.Task[None]] = None
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start the cache manager and cleanup task."""
@@ -120,9 +121,7 @@ class CacheManager:
         if to_delete:
             logger.debug(f"Cleaned up {len(to_delete)} expired cache entries")
 
-    def _is_expired(
-        self, entry: CacheEntry, now: Optional[float] = None
-    ) -> bool:
+    def _is_expired(self, entry: CacheEntry, now: float | None = None) -> bool:
         """Check if an entry is expired."""
         if now is None:
             now = datetime.utcnow().timestamp()
@@ -140,7 +139,7 @@ class CacheManager:
         del self._cache[oldest_key]
         self._evictions += 1
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """
         Get a value from the cache.
 
@@ -172,7 +171,7 @@ class CacheManager:
         self,
         key: str,
         data: Any,
-        ttl_ms: Optional[int] = None,
+        ttl_ms: int | None = None,
     ) -> None:
         """
         Set a value in the cache.
@@ -242,7 +241,7 @@ class CacheManager:
         self,
         key: str,
         fetcher: Callable[[], Any],
-        ttl_ms: Optional[int] = None,
+        ttl_ms: int | None = None,
     ) -> Any:
         """
         Get a value from cache, or fetch and cache if missing.
@@ -287,7 +286,7 @@ class CacheManager:
     async def mset(
         self,
         entries: dict[str, Any],
-        ttl_ms: Optional[int] = None,
+        ttl_ms: int | None = None,
     ) -> None:
         """
         Set multiple values in the cache.
@@ -371,7 +370,7 @@ class CacheManager:
         """Cache an entity."""
         await self.set(f"entity:{entity_id}", entity, ttl_ms)
 
-    async def get_cached_entity(self, entity_id: UUID) -> Optional[Any]:
+    async def get_cached_entity(self, entity_id: UUID) -> Any | None:
         """Get a cached entity."""
         return await self.get(f"entity:{entity_id}")
 
@@ -384,9 +383,7 @@ class CacheManager:
         """Cache a reminder recommendation."""
         await self.set(f"recommendation:{todo_id}", recommendation, ttl_ms)
 
-    async def get_cached_reminder_recommendation(
-        self, todo_id: UUID
-    ) -> Optional[Any]:
+    async def get_cached_reminder_recommendation(self, todo_id: UUID) -> Any | None:
         """Get a cached reminder recommendation."""
         return await self.get(f"recommendation:{todo_id}")
 
@@ -399,10 +396,11 @@ class CacheManager:
         """Cache service health status."""
         await self.set(f"health:{service_name}", health, ttl_ms)
 
-    async def get_cached_service_health(
-        self, service_name: str
-    ) -> Optional[Any]:
+    async def get_cached_service_health(self, service_name: str) -> Any | None:
         """Get cached service health status."""
         return await self.get(f"health:{service_name}")
+
+
+
 
 

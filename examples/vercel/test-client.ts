@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Test client for elizaOS Vercel Edge Functions
  *
@@ -10,8 +11,8 @@
  *   VERCEL_URL - Base URL for the Vercel deployment
  */
 
-import { parseArgs } from "util";
-import * as readline from "readline";
+import * as readline from "node:readline";
+import { parseArgs } from "node:util";
 
 // Types
 interface ChatResponse {
@@ -76,7 +77,7 @@ console.log(`🔗 Using endpoint: ${baseUrl}\n`);
 async function apiRequest<T>(
   path: string,
   method: string = "GET",
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
 ): Promise<{ status: number; data: T }> {
   const url = `${baseUrl}${path}`;
   const options: RequestInit = {
@@ -121,7 +122,9 @@ async function runTests(): Promise<void> {
       failed++;
     }
   } catch (error) {
-    console.log(`   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`);
+    console.log(
+      `   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`,
+    );
     failed++;
   }
 
@@ -129,15 +132,21 @@ async function runTests(): Promise<void> {
   console.log("2️⃣  Testing chat endpoint...");
   try {
     const start = Date.now();
-    const { status, data } = await apiRequest<ChatResponse>("/api/chat", "POST", {
-      message: "Hello! What's 2 + 2?",
-    });
+    const { status, data } = await apiRequest<ChatResponse>(
+      "/api/chat",
+      "POST",
+      {
+        message: "Hello! What's 2 + 2?",
+      },
+    );
     const duration = Date.now() - start;
 
     console.log(`   Status: ${status}`);
     console.log(`   Duration: ${duration}ms`);
     console.log(`   Conversation ID: ${data.conversationId}`);
-    console.log(`   Response: ${data.response.slice(0, 100)}${data.response.length > 100 ? "..." : ""}`);
+    console.log(
+      `   Response: ${data.response.slice(0, 100)}${data.response.length > 100 ? "..." : ""}`,
+    );
 
     if (status === 200 && data.response) {
       console.log("   ✅ Chat endpoint passed\n");
@@ -147,16 +156,22 @@ async function runTests(): Promise<void> {
       failed++;
     }
   } catch (error) {
-    console.log(`   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`);
+    console.log(
+      `   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`,
+    );
     failed++;
   }
 
   // Test 3: Validation (empty message)
   console.log("3️⃣  Testing validation (empty message)...");
   try {
-    const { status, data } = await apiRequest<ErrorResponse>("/api/chat", "POST", {
-      message: "",
-    });
+    const { status, data } = await apiRequest<ErrorResponse>(
+      "/api/chat",
+      "POST",
+      {
+        message: "",
+      },
+    );
     console.log(`   Status: ${status}`);
     console.log(`   Error: ${data.error}`);
 
@@ -168,7 +183,9 @@ async function runTests(): Promise<void> {
       failed++;
     }
   } catch (error) {
-    console.log(`   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`);
+    console.log(
+      `   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`,
+    );
     failed++;
   }
 
@@ -186,14 +203,19 @@ async function runTests(): Promise<void> {
       failed++;
     }
   } catch (error) {
-    console.log(`   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`);
+    console.log(
+      `   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`,
+    );
     failed++;
   }
 
   // Test 5: Method not allowed
   console.log("5️⃣  Testing method not allowed...");
   try {
-    const { status, data } = await apiRequest<ErrorResponse>("/api/chat", "GET");
+    const { status, data } = await apiRequest<ErrorResponse>(
+      "/api/chat",
+      "GET",
+    );
     console.log(`   Status: ${status}`);
 
     if (status === 405 && data.code === "METHOD_NOT_ALLOWED") {
@@ -204,7 +226,9 @@ async function runTests(): Promise<void> {
       failed++;
     }
   } catch (error) {
-    console.log(`   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`);
+    console.log(
+      `   ❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`,
+    );
     failed++;
   }
 
@@ -249,17 +273,13 @@ async function interactiveMode(): Promise<void> {
         return;
       }
 
-      try {
-        const { data } = await apiRequest<ChatResponse>("/api/chat", "POST", {
-          message,
-          conversationId,
-        });
+      const { data } = await apiRequest<ChatResponse>("/api/chat", "POST", {
+        message,
+        conversationId,
+      });
 
-        conversationId = data.conversationId;
-        console.log(`\nEliza: ${data.response}\n`);
-      } catch (error) {
-        console.log(`\n❌ Error: ${error instanceof Error ? error.message : "Unknown"}\n`);
-      }
+      conversationId = data.conversationId;
+      console.log(`\nEliza: ${data.response}\n`);
 
       prompt();
     });
@@ -274,8 +294,3 @@ if (args.interactive) {
 } else {
   runTests();
 }
-
-
-
-
-

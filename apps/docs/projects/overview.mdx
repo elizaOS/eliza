@@ -1,15 +1,19 @@
 ---
-title: 'Overview'
-description: 'Understanding and building with elizaOS projects'
+title: "Overview"
+description: "Understanding and building with elizaOS projects"
 ---
 
 <Info>
-  **Projects** are the primary deployable unit in elizaOS. Each project contains one or more agents, and plugins can be managed either at the agent level or shared across the project. A project is container template that you develop locally and ship to production.
+  **Projects** are the primary deployable unit in elizaOS. Each project contains
+  one or more agents, and plugins can be managed either at the agent level or
+  shared across the project. A project is container template that you develop
+  locally and ship to production.
 </Info>
 
 ## What is a Project?
 
 A project in elizaOS is your **development workspace and deployment unit**. It's where you:
+
 - Configure and run one or more agents
 - Develop and test plugins
 - Manage environment settings
@@ -18,7 +22,9 @@ A project in elizaOS is your **development workspace and deployment unit**. It's
 Projects can include a fully customizable chat interface for user interaction, or run as headless services connecting to platforms like Discord or Twitter. The framework is flexible enough to support both frontend applications and background services.
 
 <Note>
-  Think of a project as a TypeScript application that orchestrates agents. Each agent can have unique plugins, creating specialized capabilities within your application.
+  Think of a project as a TypeScript application that orchestrates agents. Each
+  agent can have unique plugins, creating specialized capabilities within your
+  application.
 </Note>
 
 ## Development Pattern
@@ -88,6 +94,7 @@ multi-agent-project/
 ├── .eliza/              # 💾 Runtime data
 └── scripts/             # 🛠️ Utilities
 ```
+
 </CodeGroup>
 
 <AccordionGroup>
@@ -142,7 +149,9 @@ multi-agent-project/
 </AccordionGroup>
 
 <Note>
-  **Clean Slate:** Run `rm -rf node_modules dist .eliza` to completely reset your project's generated files. Then `bun install` and your next `elizaos start` will rebuild automatically.
+  **Clean Slate:** Run `rm -rf node_modules dist .eliza` to completely reset
+  your project's generated files. Then `bun install` and your next `elizaos
+  start` will rebuild automatically.
 </Note>
 
 ## Project Definition
@@ -166,52 +175,52 @@ export const projectAgent: ProjectAgent = {
 };
 
 const project: Project = {
-  agents: [projectAgent],
+agents: [projectAgent],
 };
 
 export default project;
 ```
 
 ```typescript src/index.ts (Multi-Agent)
-import { Project, ProjectAgent } from '@elizaos/core';
-import { eliza, spartan, billy, bobby } from './agents';
+import { Project, ProjectAgent } from "@elizaos/core";
+import { eliza, spartan, billy, bobby } from "./agents";
 
 const elizaAgent: ProjectAgent = {
   character: eliza,
   init: async (runtime) => {
     await setupElizaKnowledge(runtime);
-  }
+  },
 };
 
 const spartanAgent: ProjectAgent = {
   character: spartan,
   init: async (runtime) => {
     await initializeSpartanProtocols(runtime);
-  }
+  },
 };
 
 const billyAgent: ProjectAgent = {
   character: billy,
   init: async (runtime) => {
     await connectBillySystems(runtime);
-  }
+  },
 };
 
 const bobbyAgent: ProjectAgent = {
   character: bobby,
   init: async (runtime) => {
     await setupBobbyCapabilities(runtime);
-  }
+  },
 };
 
 const project: Project = {
-  agents: [elizaAgent, spartanAgent, billyAgent, bobbyAgent]
+  agents: [elizaAgent, spartanAgent, billyAgent, bobbyAgent],
 };
 
 export default project;
 ```
-</CodeGroup>
 
+</CodeGroup>
 
 ## Environment Configuration
 
@@ -222,7 +231,7 @@ Projects come with `.env` files for API keys and configuration, plus `.env.examp
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Platform Integrations  
+# Platform Integrations
 DISCORD_API_TOKEN=...
 TELEGRAM_BOT_TOKEN=...
 TWITTER_API_KEY=...
@@ -237,7 +246,9 @@ NODE_ENV=production
 ```
 
 <Tip>
-  For detailed information about server security, authentication, and UI configuration environment variables, see the [Environment Variables](/projects/environment-variables) documentation.
+  For detailed information about server security, authentication, and UI
+  configuration environment variables, see the [Environment
+  Variables](/projects/environment-variables) documentation.
 </Tip>
 
 ## Running Projects Locally
@@ -256,7 +267,8 @@ elizaos start --character ./custom-character.ts
 ```
 
 <Tip>
-  See the [CLI Reference](/cli-reference/overview) for all available options and flags.
+  See the [CLI Reference](/cli-reference/overview) for all available options and
+  flags.
 </Tip>
 
 ## Advanced Project Examples
@@ -265,52 +277,45 @@ Explore these real-world projects showcasing different elizaOS capabilities:
 
 <CardGroup cols={2}>
   <Card title="Spartan" icon="github" href="https://github.com/elizaos/spartan">
-    **Onchain Trading Agent**
-    
-    Advanced capabilities for blockchain trading:
-    - Multi-modal reasoning across data types
-    - Strategic decision-making framework
-    - Long-term memory with retrieval strategies  
-    - Complex action chaining
-    - Advanced prompt engineering
+    **Onchain Trading Agent** Advanced capabilities for blockchain trading: -
+    Multi-modal reasoning across data types - Strategic decision-making
+    framework - Long-term memory with retrieval strategies - Complex action
+    chaining - Advanced prompt engineering
   </Card>
-  
-  <Card title="The Org" icon="github" href="https://github.com/elizaos/the-org">
-    **Business Profiles Swarm**
-    
-    Swarm of business profiles who collaborate and work together:
-    - Executive, department, and operational layers
-    - Inter-agent communication protocols
-    - Specialized role-based expertise
-    - Coordinated decision-making
-    - Shared knowledge management
-  </Card>
-  
-  <Card title="3D Hyperfy Starter" icon="github" href="https://github.com/elizaOS/eliza-3d-hyperfy-starter">
-    **3D World Integration**
-    
-    Agent that connects to 3D virtual worlds:
-    - WebSocket connection to Hyperfy worlds
-    - Voice chat support (ElevenLabs/OpenAI)
-    - Screen perception capabilities
-    - 3D MMO development prototyping
-    - Real-time interaction in virtual spaces
-  </Card>
-  
-  <Card title="Next.js Starter" icon="github" href="https://github.com/elizaOS/eliza-nextjs-starter">
-    **Web Application Template**
-    
-    Production-ready web interface for agents:
-    - Real-time chat with Socket.IO
-    - Document management system
-    - Automatic API proxying
-    - Debug panel for development
-    - Ready for Vercel/Netlify deployment
+
+<Card title="The Org" icon="github" href="https://github.com/elizaos/the-org">
+  **Business Profiles Swarm** Swarm of business profiles who collaborate and
+  work together: - Executive, department, and operational layers - Inter-agent
+  communication protocols - Specialized role-based expertise - Coordinated
+  decision-making - Shared knowledge management
+</Card>
+
+<Card
+  title="3D Hyperfy Starter"
+  icon="github"
+  href="https://github.com/elizaOS/eliza-3d-hyperfy-starter"
+>
+  **3D World Integration** Agent that connects to 3D virtual worlds: - WebSocket
+  connection to Hyperfy worlds - Voice chat support (ElevenLabs/OpenAI) - Screen
+  perception capabilities - 3D MMO development prototyping - Real-time
+  interaction in virtual spaces
+</Card>
+
+  <Card
+    title="Next.js Starter"
+    icon="github"
+    href="https://github.com/elizaOS/eliza-nextjs-starter"
+  >
+    **Web Application Template** Production-ready web interface for agents: -
+    Real-time chat with Socket.IO - Document management system - Automatic API
+    proxying - Debug panel for development - Ready for Vercel/Netlify deployment
   </Card>
 </CardGroup>
 
 <Info>
-  **Want more inspiration?** Check out [What You Can Build](/what-you-can-build) to see other agents you can create: trading bots, content creators, business automation, virtual NPCs, and more.
+  **Want more inspiration?** Check out [What You Can Build](/what-you-can-build)
+  to see other agents you can create: trading bots, content creators, business
+  automation, virtual NPCs, and more.
 </Info>
 
 ## Testing Projects
@@ -332,7 +337,8 @@ elizaos test --name "character configuration"
 ```
 
 <Tip>
-  See the [Test a Project](/guides/test-a-project) guide for comprehensive testing strategies.
+  See the [Test a Project](/guides/test-a-project) guide for comprehensive
+  testing strategies.
 </Tip>
 
 ## Deployment Options
@@ -406,15 +412,19 @@ See the [Deploy a Project](/guides/deploy-a-project) guide for detailed instruct
   <Card title="Quickstart" icon="play" href="/quickstart">
     Get started in under 5 minutes
   </Card>
-  
-  <Card title="Customize an Agent" icon="palette" href="/guides/customize-an-agent">
-    Learn to configure agent personalities
-  </Card>
-  
-  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
-    Complete command reference
-  </Card>
-  
+
+<Card
+  title="Customize an Agent"
+  icon="palette"
+  href="/guides/customize-an-agent"
+>
+  Learn to configure agent personalities
+</Card>
+
+<Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+  Complete command reference
+</Card>
+
   <Card title="REST Reference" icon="code" href="/rest-reference">
     REST API documentation
   </Card>

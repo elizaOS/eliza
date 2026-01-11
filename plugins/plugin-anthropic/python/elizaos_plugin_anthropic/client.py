@@ -30,11 +30,9 @@ from elizaos_plugin_anthropic.types import (
     MessagesResponse,
     ObjectGenerationParams,
     ObjectGenerationResponse,
-    Role,
     StopReason,
     TextGenerationParams,
     TextGenerationResponse,
-    TokenUsage,
 )
 
 
@@ -74,7 +72,7 @@ class AnthropicClient:
         """Close the HTTP client."""
         await self._http_client.aclose()
 
-    async def __aenter__(self) -> "AnthropicClient":
+    async def __aenter__(self) -> AnthropicClient:
         """Context manager entry."""
         return self
 
@@ -359,5 +357,3 @@ class AnthropicClient:
                         best = candidate
 
         return best
-
-

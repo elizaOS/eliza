@@ -8,3 +8,4 @@ from elizaos_browser.services.websocket_client import BrowserWebSocketClient
 __all__ = ["BrowserService", "BrowserWebSocketClient"]
 
 
+

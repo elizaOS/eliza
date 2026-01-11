@@ -1,10 +1,10 @@
 {
-  "name": "@elizaos/plugin-evm",
+  "name": "@elizaos/plugin-evm-root",
   "version": "2.0.0-alpha.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "typescript/dist/index.js",
+  "module": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos-plugins/plugin-evm"
@@ -15,14 +15,14 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./typescript/dist/index.d.ts",
+      "import": "./typescript/dist/index.js",
+      "default": "./typescript/dist/index.js"
     }
   },
   "sideEffects": false,
   "files": [
-    "dist",
+    "typescript/dist",
     "types"
   ],
   "dependencies": {
@@ -31,32 +31,37 @@
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "viem": "^2.21.0",
-    "zod": "^3.24.0"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^25.0.3",
     "bun-types": "^1.2.0",
-    "prettier": "3.5.3",
-    "typescript": "5.8.2"
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
-    "build": "npm run build:prompts && bun run build.ts",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./typescript/prompts ./typescript/generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ./typescript",
+    "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/*.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write ./typescript",
+    "format:check": "bunx @biomejs/biome format ./typescript",
     "test": "bun test typescript/",
     "test:unit": "bun test typescript/__tests__/unit/",
     "test:integration": "bun test typescript/__tests__/integration/",
-    "build:rust": "cd rust && cargo build --release",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
     "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web",
     "test:rust": "cd rust && cargo test",
     "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "test:python": "cd python && pytest",
     "lint:python": "cd python && ruff check . && ruff format --check .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
-    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_evm"
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_evm",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"

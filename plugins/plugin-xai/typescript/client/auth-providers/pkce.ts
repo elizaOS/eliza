@@ -1,11 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 export function base64UrlEncode(input: Buffer): string {
-  return input
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+  return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 export function createCodeVerifier(byteLength = 32): string {
@@ -21,4 +17,3 @@ export function createCodeChallenge(verifier: string): string {
 export function createState(byteLength = 16): string {
   return base64UrlEncode(randomBytes(byteLength));
 }
-

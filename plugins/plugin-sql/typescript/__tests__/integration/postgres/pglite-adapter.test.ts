@@ -1,7 +1,7 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import type { UUID } from "@elizaos/core";
+import type { Agent, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../../migration-service";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import { PGliteClientManager } from "../../../pglite/manager";
@@ -66,8 +66,13 @@ describe("PostgreSQL Adapter Integration Tests", () => {
   });
 
   describe("Database Operations", () => {
+    // Test interface to access protected method
+    interface TestableAdapter extends PgliteDatabaseAdapter {
+      withDatabase<T>(operation: () => Promise<T>): Promise<T>;
+    }
+
     it("should perform withDatabase operation", async () => {
-      const result = await (adapter as any).withDatabase(async () => {
+      const result = await (adapter as TestableAdapter).withDatabase(async () => {
         // Simple operation to test
         return "success";
       });
@@ -78,7 +83,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
     it("should handle withDatabase errors", async () => {
       let errorCaught = false;
       try {
-        await (adapter as any).withDatabase(async () => {
+        await (adapter as TestableAdapter).withDatabase(async () => {
           throw new Error("Test error");
         });
       } catch (error) {
@@ -91,7 +96,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
 
     it("should handle database operations", async () => {
       // Test a simple database operation
-      const result = await (adapter as any).withDatabase(async () => {
+      const result = await (adapter as TestableAdapter).withDatabase(async () => {
         return { status: "ok" };
       });
 
@@ -102,7 +107,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
       let errorCaught = false;
 
       try {
-        await (adapter as any).withDatabase(async () => {
+        await (adapter as TestableAdapter).withDatabase(async () => {
           throw new Error("Database operation failed");
         });
       } catch (error) {
@@ -148,11 +153,8 @@ describe("PostgreSQL Adapter Integration Tests", () => {
     it("should handle query failures", async () => {
       // PGLite adapter init doesn't actually run queries, so we test a different operation
       const mockClient = new PGlite();
-      const mockManager = new PGliteClientManager(mockClient as any);
-      const mockAdapter = new PgliteDatabaseAdapter(
-        uuidv4() as UUID,
-        mockManager,
-      );
+      const mockManager = new PGliteClientManager(mockClient as PGlite);
+      const mockAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, mockManager);
 
       // Close the manager to simulate a connection issue
       await mockManager.close();
@@ -171,7 +173,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         bio: "Test agent bio",
-      } as any);
+      } as Partial<Agent>);
 
       expect(result).toBe(true);
     });
@@ -184,7 +186,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         bio: "Test agent bio",
-      } as any);
+      } as Partial<Agent>);
 
       const agent = await adapter.getAgent(agentId);
       expect(agent).toBeDefined();
@@ -199,7 +201,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         bio: "Test agent bio",
-      } as any);
+      } as Partial<Agent>);
 
       // Update agent
       await adapter.updateAgent(agentId, {
@@ -218,7 +220,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         bio: "Test agent bio",
-      } as any);
+      } as Partial<Agent>);
 
       const deleted = await adapter.deleteAgent(agentId);
       expect(deleted).toBe(true);

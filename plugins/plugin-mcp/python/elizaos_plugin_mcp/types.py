@@ -182,4 +182,3 @@ class McpError(Exception):
     def timeout_error(cls, operation: str) -> McpError:
         """Create a timeout error."""
         return cls(f"Operation timed out: {operation}", "TIMEOUT_ERROR")
-

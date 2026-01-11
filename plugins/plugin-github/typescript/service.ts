@@ -4,20 +4,10 @@
  * Provides the main GitHubService for interacting with the GitHub API.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Metadata, Service } from "@elizaos/core";
 import { Octokit } from "@octokit/rest";
-import { GitHubPluginConfig, validateGitHubConfig } from "./config";
-import {
-  BranchExistsError,
-  BranchNotFoundError,
-  FileNotFoundError,
-  GitHubApiError,
-  IssueNotFoundError,
-  mapOctokitError,
-  MergeConflictError,
-  PullRequestNotFoundError,
-  RepositoryNotFoundError,
-} from "./error";
+import { type GitHubPluginConfig, validateGitHubConfig } from "./config";
+import { FileNotFoundError } from "./error";
 import type {
   CreateBranchParams,
   CreateCommentParams,
@@ -25,7 +15,6 @@ import type {
   CreateIssueParams,
   CreatePullRequestParams,
   CreateReviewParams,
-  FileChange,
   GetFileParams,
   GitHubBranch,
   GitHubComment,
@@ -56,9 +45,15 @@ export const GITHUB_SERVICE_NAME = "github";
  */
 export class GitHubService extends Service {
   static override serviceType = GITHUB_SERVICE_NAME;
-  
+
   private octokit: Octokit | null = null;
-  private config: GitHubPluginConfig | null = null;
+  private _config: GitHubPluginConfig | null = null;
+
+  // Override config to be compatible with base class
+  declare config?: Metadata;
+
+  capabilityDescription =
+    "GitHub integration for repository management, issues, pull requests, and code reviews";
 
   /**
    * Get the service name.
@@ -71,10 +66,10 @@ export class GitHubService extends Service {
    * Get the current configuration.
    */
   getConfig(): GitHubPluginConfig {
-    if (!this.config) {
+    if (!this._config) {
       throw new Error("GitHub service not initialized");
     }
-    return this.config;
+    return this._config;
   }
 
   /**
@@ -90,27 +85,32 @@ export class GitHubService extends Service {
   /**
    * Start the GitHub service.
    */
-  override async start(runtime: IAgentRuntime): Promise<void> {
+  async start(runtime: IAgentRuntime): Promise<void> {
     logger.info("Starting GitHub service...");
 
     // Validate and store config
-    this.config = validateGitHubConfig(runtime);
+    this._config = validateGitHubConfig(runtime);
+    const settings = this._config.toSettings();
+    this.config = {
+      apiToken: settings.apiToken ?? "",
+      owner: settings.owner ?? undefined,
+      repo: settings.repo ?? undefined,
+      branch: settings.branch ?? "main",
+      webhookSecret: settings.webhookSecret ?? undefined,
+      appId: settings.appId ?? undefined,
+      appPrivateKey: settings.appPrivateKey ?? undefined,
+      installationId: settings.installationId ?? undefined,
+    };
 
     // Create Octokit client
     this.octokit = new Octokit({
-      auth: this.config.apiToken,
+      auth: this._config.apiToken,
       userAgent: "elizaos-plugin-github/1.0.0",
     });
 
     // Verify authentication
-    try {
-      const { data: user } = await this.octokit.users.getAuthenticated();
-      logger.info(`GitHub service started - authenticated as ${user.login}`);
-    } catch (error) {
-      const ghError = mapOctokitError(error, "", "");
-      logger.error(`GitHub authentication failed: ${ghError.message}`);
-      throw ghError;
-    }
+    const { data: user } = await this.octokit.users.getAuthenticated();
+    logger.info(`GitHub service started - authenticated as ${user.login}`);
   }
 
   /**
@@ -119,7 +119,8 @@ export class GitHubService extends Service {
   override async stop(): Promise<void> {
     logger.info("Stopping GitHub service...");
     this.octokit = null;
-    this.config = null;
+    this._config = null;
+    this.config = undefined;
     logger.info("GitHub service stopped");
   }
 
@@ -134,12 +135,8 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.repos.get({ owner, repo });
-      return this.mapRepository(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    const { data } = await client.repos.get({ owner, repo });
+    return this.mapRepository(data);
   }
 
   /**
@@ -147,28 +144,28 @@ export class GitHubService extends Service {
    */
   async listRepositories(
     username?: string,
-    options?: { type?: "all" | "owner" | "member"; perPage?: number; page?: number },
+    options?: {
+      type?: "all" | "owner" | "member";
+      perPage?: number;
+      page?: number;
+    }
   ): Promise<GitHubRepository[]> {
     const client = this.getClient();
 
-    try {
-      const { data } = username
-        ? await client.repos.listForUser({
-            username,
-            type: options?.type ?? "owner",
-            per_page: options?.perPage ?? 30,
-            page: options?.page ?? 1,
-          })
-        : await client.repos.listForAuthenticatedUser({
-            type: options?.type ?? "all",
-            per_page: options?.perPage ?? 30,
-            page: options?.page ?? 1,
-          });
+    const { data } = username
+      ? await client.repos.listForUser({
+          username,
+          type: options?.type ?? "owner",
+          per_page: options?.perPage ?? 30,
+          page: options?.page ?? 1,
+        })
+      : await client.repos.listForAuthenticatedUser({
+          type: options?.type ?? "all",
+          per_page: options?.perPage ?? 30,
+          page: options?.page ?? 1,
+        });
 
-      return data.map((r) => this.mapRepository(r));
-    } catch (error) {
-      throw mapOctokitError(error, username ?? "", "");
-    }
+    return data.map((r) => this.mapRepository(r));
   }
 
   // ===========================================================================
@@ -182,21 +179,17 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.issues.create({
-        owner,
-        repo,
-        title: params.title,
-        body: params.body,
-        assignees: params.assignees,
-        labels: params.labels,
-        milestone: params.milestone,
-      });
+    const { data } = await client.issues.create({
+      owner,
+      repo,
+      title: params.title,
+      body: params.body,
+      assignees: params.assignees,
+      labels: params.labels,
+      milestone: params.milestone,
+    });
 
-      return this.mapIssue(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return this.mapIssue(data);
   }
 
   /**
@@ -206,21 +199,13 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.issues.get({
-        owner,
-        repo,
-        issue_number: params.issueNumber,
-      });
+    const { data } = await client.issues.get({
+      owner,
+      repo,
+      issue_number: params.issueNumber,
+    });
 
-      return this.mapIssue(data);
-    } catch (error) {
-      const ghError = mapOctokitError(error, owner, repo);
-      if (ghError instanceof RepositoryNotFoundError) {
-        throw new IssueNotFoundError(params.issueNumber, owner, repo);
-      }
-      throw ghError;
-    }
+    return this.mapIssue(data);
   }
 
   /**
@@ -230,24 +215,20 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.issues.update({
-        owner,
-        repo,
-        issue_number: params.issueNumber,
-        title: params.title,
-        body: params.body,
-        state: params.state,
-        state_reason: params.stateReason,
-        assignees: params.assignees,
-        labels: params.labels,
-        milestone: params.milestone ?? undefined,
-      });
+    const { data } = await client.issues.update({
+      owner,
+      repo,
+      issue_number: params.issueNumber,
+      title: params.title,
+      body: params.body,
+      state: params.state,
+      state_reason: params.stateReason,
+      assignees: params.assignees,
+      labels: params.labels,
+      milestone: params.milestone ?? undefined,
+    });
 
-      return this.mapIssue(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return this.mapIssue(data);
   }
 
   /**
@@ -257,35 +238,32 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.issues.listForRepo({
-        owner,
-        repo,
-        state: params.state ?? "open",
-        labels: params.labels,
-        sort: params.sort ?? "created",
-        direction: params.direction ?? "desc",
-        assignee: params.assignee,
-        creator: params.creator,
-        mentioned: params.mentioned,
-        per_page: params.perPage ?? 30,
-        page: params.page ?? 1,
-      });
+    const { data } = await client.issues.listForRepo({
+      owner,
+      repo,
+      state: params.state ?? "open",
+      labels: params.labels,
+      sort: params.sort ?? "created",
+      direction: params.direction ?? "desc",
+      assignee: params.assignee,
+      creator: params.creator,
+      mentioned: params.mentioned,
+      per_page: params.perPage ?? 30,
+      page: params.page ?? 1,
+    });
 
-      // Filter out pull requests (GitHub API includes them in issues)
-      return data
-        .filter((issue) => !issue.pull_request)
-        .map((issue) => this.mapIssue(issue));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    // Filter out pull requests (GitHub API includes them in issues)
+    return data.filter((issue) => !issue.pull_request).map((issue) => this.mapIssue(issue));
   }
 
   /**
    * Close an issue.
    */
   async closeIssue(
-    params: RepositoryRef & { issueNumber: number; reason?: "completed" | "not_planned" },
+    params: RepositoryRef & {
+      issueNumber: number;
+      reason?: "completed" | "not_planned";
+    }
   ): Promise<GitHubIssue> {
     return this.updateIssue({
       ...params,
@@ -297,9 +275,7 @@ export class GitHubService extends Service {
   /**
    * Reopen an issue.
    */
-  async reopenIssue(
-    params: RepositoryRef & { issueNumber: number },
-  ): Promise<GitHubIssue> {
+  async reopenIssue(params: RepositoryRef & { issueNumber: number }): Promise<GitHubIssue> {
     return this.updateIssue({
       ...params,
       state: "open",
@@ -314,150 +290,114 @@ export class GitHubService extends Service {
   /**
    * Create a pull request.
    */
-  async createPullRequest(
-    params: CreatePullRequestParams,
-  ): Promise<GitHubPullRequest> {
+  async createPullRequest(params: CreatePullRequestParams): Promise<GitHubPullRequest> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.create({
-        owner,
-        repo,
-        title: params.title,
-        body: params.body,
-        head: params.head,
-        base: params.base,
-        draft: params.draft,
-        maintainer_can_modify: params.maintainerCanModify,
-      });
+    const { data } = await client.pulls.create({
+      owner,
+      repo,
+      title: params.title,
+      body: params.body,
+      head: params.head,
+      base: params.base,
+      draft: params.draft,
+      maintainer_can_modify: params.maintainerCanModify,
+    });
 
-      return this.mapPullRequest(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return this.mapPullRequest(data);
   }
 
   /**
    * Get a pull request by number.
    */
-  async getPullRequest(
-    params: RepositoryRef & { pullNumber: number },
-  ): Promise<GitHubPullRequest> {
+  async getPullRequest(params: RepositoryRef & { pullNumber: number }): Promise<GitHubPullRequest> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.get({
-        owner,
-        repo,
-        pull_number: params.pullNumber,
-      });
+    const { data } = await client.pulls.get({
+      owner,
+      repo,
+      pull_number: params.pullNumber,
+    });
 
-      return this.mapPullRequest(data);
-    } catch (error) {
-      const ghError = mapOctokitError(error, owner, repo);
-      if (ghError instanceof RepositoryNotFoundError) {
-        throw new PullRequestNotFoundError(params.pullNumber, owner, repo);
-      }
-      throw ghError;
-    }
+    return this.mapPullRequest(data);
   }
 
   /**
    * Update a pull request.
    */
-  async updatePullRequest(
-    params: UpdatePullRequestParams,
-  ): Promise<GitHubPullRequest> {
+  async updatePullRequest(params: UpdatePullRequestParams): Promise<GitHubPullRequest> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.update({
-        owner,
-        repo,
-        pull_number: params.pullNumber,
-        title: params.title,
-        body: params.body,
-        state: params.state,
-        base: params.base,
-        maintainer_can_modify: params.maintainerCanModify,
-      });
+    const { data } = await client.pulls.update({
+      owner,
+      repo,
+      pull_number: params.pullNumber,
+      title: params.title,
+      body: params.body,
+      state: params.state,
+      base: params.base,
+      maintainer_can_modify: params.maintainerCanModify,
+    });
 
-      return this.mapPullRequest(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return this.mapPullRequest(data);
   }
 
   /**
    * List pull requests.
    */
-  async listPullRequests(
-    params: ListPullRequestsParams,
-  ): Promise<GitHubPullRequest[]> {
+  async listPullRequests(params: ListPullRequestsParams): Promise<GitHubPullRequest[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.list({
-        owner,
-        repo,
-        state: params.state ?? "open",
-        head: params.head,
-        base: params.base,
-        sort: params.sort ?? "created",
-        direction: params.direction ?? "desc",
-        per_page: params.perPage ?? 30,
-        page: params.page ?? 1,
-      });
+    const { data } = await client.pulls.list({
+      owner,
+      repo,
+      state: params.state ?? "open",
+      head: params.head,
+      base: params.base,
+      sort: params.sort ?? "created",
+      direction: params.direction ?? "desc",
+      per_page: params.perPage ?? 30,
+      page: params.page ?? 1,
+    });
 
-      return data.map((pr) => this.mapPullRequest(pr));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return data.map((pr) => this.mapPullRequest(pr));
   }
 
   /**
    * Merge a pull request.
    */
   async mergePullRequest(
-    params: MergePullRequestParams,
+    params: MergePullRequestParams
   ): Promise<{ sha: string; merged: boolean; message: string }> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.merge({
-        owner,
-        repo,
-        pull_number: params.pullNumber,
-        commit_title: params.commitTitle,
-        commit_message: params.commitMessage,
-        merge_method: params.mergeMethod ?? "merge",
-        sha: params.sha,
-      });
+    const { data } = await client.pulls.merge({
+      owner,
+      repo,
+      pull_number: params.pullNumber,
+      commit_title: params.commitTitle,
+      commit_message: params.commitMessage,
+      merge_method: params.mergeMethod ?? "merge",
+      sha: params.sha,
+    });
 
-      return {
-        sha: data.sha,
-        merged: data.merged,
-        message: data.message,
-      };
-    } catch (error) {
-      const ghError = mapOctokitError(error, owner, repo);
-      if (ghError instanceof GitHubApiError && ghError.status === 405) {
-        throw new MergeConflictError(params.pullNumber, owner, repo);
-      }
-      throw ghError;
-    }
+    return {
+      sha: data.sha,
+      merged: data.merged,
+      message: data.message,
+    };
   }
 
   /**
    * Close a pull request without merging.
    */
   async closePullRequest(
-    params: RepositoryRef & { pullNumber: number },
+    params: RepositoryRef & { pullNumber: number }
   ): Promise<GitHubPullRequest> {
     return this.updatePullRequest({
       ...params,
@@ -476,50 +416,40 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.createReview({
-        owner,
-        repo,
-        pull_number: params.pullNumber,
-        body: params.body,
-        event: params.event,
-        commit_id: params.commitId,
-        comments: params.comments?.map((c) => ({
-          path: c.path,
-          line: c.line,
-          body: c.body,
-          side: c.side,
-          start_line: c.startLine,
-          start_side: c.startSide,
-        })),
-      });
+    const { data } = await client.pulls.createReview({
+      owner,
+      repo,
+      pull_number: params.pullNumber,
+      body: params.body,
+      event: params.event,
+      commit_id: params.commitId,
+      comments: params.comments?.map((c) => ({
+        path: c.path,
+        line: c.line,
+        body: c.body,
+        side: c.side,
+        start_line: c.startLine,
+        start_side: c.startSide,
+      })),
+    });
 
-      return this.mapReview(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return this.mapReview(data);
   }
 
   /**
    * List reviews on a pull request.
    */
-  async listReviews(
-    params: RepositoryRef & { pullNumber: number },
-  ): Promise<GitHubReview[]> {
+  async listReviews(params: RepositoryRef & { pullNumber: number }): Promise<GitHubReview[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.pulls.listReviews({
-        owner,
-        repo,
-        pull_number: params.pullNumber,
-      });
+    const { data } = await client.pulls.listReviews({
+      owner,
+      repo,
+      pull_number: params.pullNumber,
+    });
 
-      return data.map((r) => this.mapReview(r));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return data.map((r) => this.mapReview(r));
   }
 
   // ===========================================================================
@@ -533,42 +463,38 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.issues.createComment({
-        owner,
-        repo,
-        issue_number: params.issueNumber,
-        body: params.body,
-      });
+    const { data } = await client.issues.createComment({
+      owner,
+      repo,
+      issue_number: params.issueNumber,
+      body: params.body,
+    });
 
-      return this.mapComment(data);
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return this.mapComment(data);
   }
 
   /**
    * List comments on an issue or pull request.
    */
   async listComments(
-    params: RepositoryRef & { issueNumber: number; perPage?: number; page?: number },
+    params: RepositoryRef & {
+      issueNumber: number;
+      perPage?: number;
+      page?: number;
+    }
   ): Promise<GitHubComment[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.issues.listComments({
-        owner,
-        repo,
-        issue_number: params.issueNumber,
-        per_page: params.perPage ?? 30,
-        page: params.page ?? 1,
-      });
+    const { data } = await client.issues.listComments({
+      owner,
+      repo,
+      issue_number: params.issueNumber,
+      per_page: params.perPage ?? 30,
+      page: params.page ?? 1,
+    });
 
-      return data.map((c) => this.mapComment(c));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return data.map((c) => this.mapComment(c));
   }
 
   // ===========================================================================
@@ -582,94 +508,72 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      // First, get the SHA of the source ref
-      let sha: string;
+    // First, get the SHA of the source ref
+    let sha: string;
 
-      if (params.fromRef.match(/^[0-9a-f]{40}$/i)) {
-        // It's already a SHA
-        sha = params.fromRef;
-      } else {
-        // It's a branch name, get its SHA
-        const { data: refData } = await client.git.getRef({
-          owner,
-          repo,
-          ref: `heads/${params.fromRef}`,
-        });
-        sha = refData.object.sha;
-      }
-
-      // Create the new branch
-      await client.git.createRef({
+    if (params.fromRef.match(/^[0-9a-f]{40}$/i)) {
+      // It's already a SHA
+      sha = params.fromRef;
+    } else {
+      // It's a branch name, get its SHA
+      const { data: refData } = await client.git.getRef({
         owner,
         repo,
-        ref: `refs/heads/${params.branchName}`,
-        sha,
+        ref: `heads/${params.fromRef}`,
       });
-
-      return {
-        name: params.branchName,
-        sha,
-        protected: false,
-      };
-    } catch (error) {
-      const ghError = mapOctokitError(error, owner, repo);
-      if (ghError.message.includes("already exists")) {
-        throw new BranchExistsError(params.branchName, owner, repo);
-      }
-      throw ghError;
+      sha = refData.object.sha;
     }
+
+    // Create the new branch
+    await client.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${params.branchName}`,
+      sha,
+    });
+
+    return {
+      name: params.branchName,
+      sha,
+      protected: false,
+    };
   }
 
   /**
    * Delete a branch.
    */
-  async deleteBranch(
-    params: RepositoryRef & { branchName: string },
-  ): Promise<void> {
+  async deleteBranch(params: RepositoryRef & { branchName: string }): Promise<void> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      await client.git.deleteRef({
-        owner,
-        repo,
-        ref: `heads/${params.branchName}`,
-      });
-    } catch (error) {
-      const ghError = mapOctokitError(error, owner, repo);
-      if (ghError instanceof RepositoryNotFoundError) {
-        throw new BranchNotFoundError(params.branchName, owner, repo);
-      }
-      throw ghError;
-    }
+    await client.git.deleteRef({
+      owner,
+      repo,
+      ref: `heads/${params.branchName}`,
+    });
   }
 
   /**
    * List branches.
    */
   async listBranches(
-    params: RepositoryRef & { perPage?: number; page?: number },
+    params: RepositoryRef & { perPage?: number; page?: number }
   ): Promise<GitHubBranch[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.repos.listBranches({
-        owner,
-        repo,
-        per_page: params.perPage ?? 30,
-        page: params.page ?? 1,
-      });
+    const { data } = await client.repos.listBranches({
+      owner,
+      repo,
+      per_page: params.perPage ?? 30,
+      page: params.page ?? 1,
+    });
 
-      return data.map((b) => ({
-        name: b.name,
-        sha: b.commit.sha,
-        protected: b.protected,
-      }));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return data.map((b) => ({
+      name: b.name,
+      sha: b.commit.sha,
+      protected: b.protected,
+    }));
   }
 
   // ===========================================================================
@@ -683,93 +587,67 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.repos.getContent({
-        owner,
-        repo,
-        path: params.path,
-        ref: params.branch,
-      });
+    const { data } = await client.repos.getContent({
+      owner,
+      repo,
+      path: params.path,
+      ref: params.branch,
+    });
 
-      if (Array.isArray(data)) {
-        throw new FileNotFoundError(
-          `${params.path} is a directory, not a file`,
-          owner,
-          repo,
-        );
-      }
-
-      if (data.type !== "file") {
-        throw new FileNotFoundError(
-          `${params.path} is not a file`,
-          owner,
-          repo,
-        );
-      }
-
-      // Decode content
-      let content = "";
-      if ("content" in data && data.content) {
-        content = Buffer.from(data.content, "base64").toString("utf-8");
-      }
-
-      return {
-        name: data.name,
-        path: data.path,
-        content,
-        sha: data.sha,
-        size: data.size,
-        type: data.type as "file",
-        encoding: "encoding" in data ? (data.encoding ?? "base64") : "base64",
-        htmlUrl: data.html_url ?? "",
-        downloadUrl: data.download_url,
-      };
-    } catch (error) {
-      const ghError = mapOctokitError(error, owner, repo);
-      if (ghError instanceof RepositoryNotFoundError) {
-        throw new FileNotFoundError(params.path, owner, repo);
-      }
-      throw ghError;
+    if (Array.isArray(data)) {
+      throw new FileNotFoundError(`${params.path} is a directory, not a file`, owner, repo);
     }
+
+    if (data.type !== "file") {
+      throw new FileNotFoundError(`${params.path} is not a file`, owner, repo);
+    }
+
+    // Decode content
+    let content = "";
+    if ("content" in data && data.content) {
+      content = Buffer.from(data.content, "base64").toString("utf-8");
+    }
+
+    return {
+      name: data.name,
+      path: data.path,
+      content,
+      sha: data.sha,
+      size: data.size,
+      type: data.type as "file",
+      encoding: "encoding" in data ? (data.encoding ?? "base64") : "base64",
+      htmlUrl: data.html_url ?? "",
+      downloadUrl: data.download_url,
+    };
   }
 
   /**
    * List directory contents.
    */
-  async listDirectory(
-    params: GetFileParams,
-  ): Promise<GitHubDirectoryEntry[]> {
+  async listDirectory(params: GetFileParams): Promise<GitHubDirectoryEntry[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      const { data } = await client.repos.getContent({
-        owner,
-        repo,
-        path: params.path,
-        ref: params.branch,
-      });
+    const { data } = await client.repos.getContent({
+      owner,
+      repo,
+      path: params.path,
+      ref: params.branch,
+    });
 
-      if (!Array.isArray(data)) {
-        throw new FileNotFoundError(
-          `${params.path} is a file, not a directory`,
-          owner,
-          repo,
-        );
-      }
-
-      return data.map((entry) => ({
-        name: entry.name,
-        path: entry.path,
-        sha: entry.sha,
-        size: entry.size,
-        type: entry.type as "file" | "dir" | "symlink" | "submodule",
-        htmlUrl: entry.html_url ?? "",
-        downloadUrl: entry.download_url,
-      }));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
+    if (!Array.isArray(data)) {
+      throw new FileNotFoundError(`${params.path} is a file, not a directory`, owner, repo);
     }
+
+    return data.map((entry) => ({
+      name: entry.name,
+      path: entry.path,
+      sha: entry.sha,
+      size: entry.size,
+      type: entry.type as "file" | "dir" | "symlink" | "submodule",
+      htmlUrl: entry.html_url ?? "",
+      downloadUrl: entry.download_url,
+    }));
   }
 
   // ===========================================================================
@@ -783,105 +661,101 @@ export class GitHubService extends Service {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
 
-    try {
-      // Get the current commit SHA for the branch
-      let parentSha = params.parentSha;
-      if (!parentSha) {
-        const { data: refData } = await client.git.getRef({
-          owner,
-          repo,
-          ref: `heads/${params.branch}`,
-        });
-        parentSha = refData.object.sha;
-      }
-
-      // Get the tree of the parent commit
-      const { data: parentCommit } = await client.git.getCommit({
-        owner,
-        repo,
-        commit_sha: parentSha,
-      });
-
-      // Create blobs for each file
-      const treeItems: Array<{
-        path: string;
-        mode: "100644" | "100755" | "040000" | "160000" | "120000";
-        type: "blob" | "tree" | "commit";
-        sha?: string;
-      }> = [];
-
-      for (const file of params.files) {
-        if (file.operation === "delete") {
-          // For deletions, we simply don't include the file in the new tree
-          continue;
-        }
-
-        const { data: blob } = await client.git.createBlob({
-          owner,
-          repo,
-          content: file.content,
-          encoding: file.encoding ?? "utf-8",
-        });
-
-        treeItems.push({
-          path: file.path,
-          mode: "100644",
-          type: "blob",
-          sha: blob.sha,
-        });
-      }
-
-      // Create a new tree
-      const { data: newTree } = await client.git.createTree({
-        owner,
-        repo,
-        base_tree: parentCommit.tree.sha,
-        tree: treeItems,
-      });
-
-      // Create the commit
-      const { data: commit } = await client.git.createCommit({
-        owner,
-        repo,
-        message: params.message,
-        tree: newTree.sha,
-        parents: [parentSha],
-        author: params.authorName
-          ? {
-              name: params.authorName,
-              email: params.authorEmail ?? `${params.authorName}@users.noreply.github.com`,
-            }
-          : undefined,
-      });
-
-      // Update the branch reference
-      await client.git.updateRef({
+    // Get the current commit SHA for the branch
+    let parentSha = params.parentSha;
+    if (!parentSha) {
+      const { data: refData } = await client.git.getRef({
         owner,
         repo,
         ref: `heads/${params.branch}`,
-        sha: commit.sha,
+      });
+      parentSha = refData.object.sha;
+    }
+
+    // Get the tree of the parent commit
+    const { data: parentCommit } = await client.git.getCommit({
+      owner,
+      repo,
+      commit_sha: parentSha,
+    });
+
+    // Create blobs for each file
+    const treeItems: Array<{
+      path: string;
+      mode: "100644" | "100755" | "040000" | "160000" | "120000";
+      type: "blob" | "tree" | "commit";
+      sha?: string;
+    }> = [];
+
+    for (const file of params.files) {
+      if (file.operation === "delete") {
+        // For deletions, we simply don't include the file in the new tree
+        continue;
+      }
+
+      const { data: blob } = await client.git.createBlob({
+        owner,
+        repo,
+        content: file.content,
+        encoding: file.encoding ?? "utf-8",
       });
 
-      return {
-        sha: commit.sha,
-        message: commit.message,
-        author: {
-          name: commit.author?.name ?? "Unknown",
-          email: commit.author?.email ?? "",
-          date: commit.author?.date ?? new Date().toISOString(),
-        },
-        committer: {
-          name: commit.committer?.name ?? "Unknown",
-          email: commit.committer?.email ?? "",
-          date: commit.committer?.date ?? new Date().toISOString(),
-        },
-        timestamp: commit.author?.date ?? new Date().toISOString(),
-        htmlUrl: commit.html_url,
-        parents: commit.parents.map((p) => p.sha),
-      };
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
+      treeItems.push({
+        path: file.path,
+        mode: "100644",
+        type: "blob",
+        sha: blob.sha,
+      });
     }
+
+    // Create a new tree
+    const { data: newTree } = await client.git.createTree({
+      owner,
+      repo,
+      base_tree: parentCommit.tree.sha,
+      tree: treeItems,
+    });
+
+    // Create the commit
+    const { data: commit } = await client.git.createCommit({
+      owner,
+      repo,
+      message: params.message,
+      tree: newTree.sha,
+      parents: [parentSha],
+      author: params.authorName
+        ? {
+            name: params.authorName,
+            email: params.authorEmail ?? `${params.authorName}@users.noreply.github.com`,
+          }
+        : undefined,
+    });
+
+    // Update the branch reference
+    await client.git.updateRef({
+      owner,
+      repo,
+      ref: `heads/${params.branch}`,
+      sha: commit.sha,
+    });
+
+    return {
+      sha: commit.sha,
+      message: commit.message,
+      author: {
+        name: commit.author?.name ?? "Unknown",
+        email: commit.author?.email ?? "",
+        date: commit.author?.date ?? new Date().toISOString(),
+      },
+      committer: {
+        name: commit.committer?.name ?? "Unknown",
+        email: commit.committer?.email ?? "",
+        date: commit.committer?.date ?? new Date().toISOString(),
+      },
+      timestamp: commit.author?.date ?? new Date().toISOString(),
+      htmlUrl: commit.html_url,
+      parents: commit.parents.map((p) => p.sha),
+    };
   }
 
   /**
@@ -893,42 +767,38 @@ export class GitHubService extends Service {
       path?: string;
       perPage?: number;
       page?: number;
-    },
+    }
   ): Promise<GitHubCommit[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
-    const branch = params.branch ?? this.config?.branch ?? "main";
+    const branch = params.branch ?? this._config?.branch ?? "main";
 
-    try {
-      const { data } = await client.repos.listCommits({
-        owner,
-        repo,
-        sha: branch,
-        path: params.path,
-        per_page: params.perPage ?? 30,
-        page: params.page ?? 1,
-      });
+    const { data } = await client.repos.listCommits({
+      owner,
+      repo,
+      sha: branch,
+      path: params.path,
+      per_page: params.perPage ?? 30,
+      page: params.page ?? 1,
+    });
 
-      return data.map((c) => ({
-        sha: c.sha,
-        message: c.commit.message,
-        author: {
-          name: c.commit.author?.name ?? "Unknown",
-          email: c.commit.author?.email ?? "",
-          date: c.commit.author?.date ?? "",
-        },
-        committer: {
-          name: c.commit.committer?.name ?? "Unknown",
-          email: c.commit.committer?.email ?? "",
-          date: c.commit.committer?.date ?? "",
-        },
-        timestamp: c.commit.author?.date ?? "",
-        htmlUrl: c.html_url,
-        parents: c.parents.map((p) => p.sha),
-      }));
-    } catch (error) {
-      throw mapOctokitError(error, owner, repo);
-    }
+    return data.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message,
+      author: {
+        name: c.commit.author?.name ?? "Unknown",
+        email: c.commit.author?.email ?? "",
+        date: c.commit.author?.date ?? "",
+      },
+      committer: {
+        name: c.commit.committer?.name ?? "Unknown",
+        email: c.commit.committer?.email ?? "",
+        date: c.commit.committer?.date ?? "",
+      },
+      timestamp: c.commit.author?.date ?? "",
+      htmlUrl: c.html_url,
+      parents: c.parents.map((p) => p.sha),
+    }));
   }
 
   // ===========================================================================
@@ -941,12 +811,8 @@ export class GitHubService extends Service {
   async getAuthenticatedUser(): Promise<GitHubUser> {
     const client = this.getClient();
 
-    try {
-      const { data } = await client.users.getAuthenticated();
-      return this.mapUser(data);
-    } catch (error) {
-      throw mapOctokitError(error, "", "");
-    }
+    const { data } = await client.users.getAuthenticated();
+    return this.mapUser(data);
   }
 
   /**
@@ -955,12 +821,8 @@ export class GitHubService extends Service {
   async getUser(username: string): Promise<GitHubUser> {
     const client = this.getClient();
 
-    try {
-      const { data } = await client.users.getByUsername({ username });
-      return this.mapUser(data);
-    } catch (error) {
-      throw mapOctokitError(error, "", "");
-    }
+    const { data } = await client.users.getByUsername({ username });
+    return this.mapUser(data);
   }
 
   // ===========================================================================
@@ -970,13 +832,16 @@ export class GitHubService extends Service {
   /**
    * Resolve repository reference with defaults.
    */
-  private resolveRepoRef(params: Partial<RepositoryRef>): { owner: string; repo: string } {
-    const owner = params.owner ?? this.config?.owner;
-    const repo = params.repo ?? this.config?.repo;
+  private resolveRepoRef(params: Partial<RepositoryRef>): {
+    owner: string;
+    repo: string;
+  } {
+    const owner = params.owner ?? this._config?.owner;
+    const repo = params.repo ?? this._config?.repo;
 
     if (!owner || !repo) {
       throw new Error(
-        "Repository owner and name are required. Configure defaults or provide them explicitly.",
+        "Repository owner and name are required. Configure defaults or provide them explicitly."
       );
     }
 
@@ -1055,9 +920,21 @@ export class GitHubService extends Service {
   }
 
   // biome-ignore lint/suspicious/noExplicitAny: Octokit returns complex types
-  private mapLabel(data: any): { id: number; name: string; color: string; description: string | null; default: boolean } {
+  private mapLabel(data: any): {
+    id: number;
+    name: string;
+    color: string;
+    description: string | null;
+    default: boolean;
+  } {
     if (typeof data === "string") {
-      return { id: 0, name: data, color: "", description: null, default: false };
+      return {
+        id: 0,
+        name: data,
+        color: "",
+        description: null,
+        default: false,
+      };
     }
     return {
       id: data.id,
@@ -1124,9 +1001,7 @@ export class GitHubService extends Service {
           : null,
       },
       assignees: (data.assignees ?? []).map((a: unknown) => this.mapUser(a)),
-      requestedReviewers: (data.requested_reviewers ?? []).map((r: unknown) =>
-        this.mapUser(r),
-      ),
+      requestedReviewers: (data.requested_reviewers ?? []).map((r: unknown) => this.mapUser(r)),
       labels: (data.labels ?? []).map((l: unknown) => this.mapLabel(l)),
       milestone: data.milestone ? this.mapMilestone(data.milestone) : null,
       createdAt: data.created_at,
@@ -1166,5 +1041,3 @@ export class GitHubService extends Service {
     };
   }
 }
-
-

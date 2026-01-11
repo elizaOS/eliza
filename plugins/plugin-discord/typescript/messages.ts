@@ -4,8 +4,10 @@ import {
   createUniqueUuid,
   EventType,
   type HandlerCallback,
+  type IAgentRuntime,
   type Media,
   type Memory,
+  type Service,
   ServiceType,
   stringToUuid,
 } from "@elizaos/core";
@@ -53,12 +55,8 @@ export class MessageManager {
   constructor(discordService: IDiscordService, runtime: ICompatRuntime) {
     // Guard against null client - fail fast with a clear error
     if (!discordService.client) {
-      const errorMsg =
-        "Discord client not initialized - cannot create MessageManager";
-      runtime.logger.error(
-        { src: "plugin:discord", agentId: runtime.agentId },
-        errorMsg,
-      );
+      const errorMsg = "Discord client not initialized - cannot create MessageManager";
+      runtime.logger.error({ src: "plugin:discord", agentId: runtime.agentId }, errorMsg);
       throw new Error(errorMsg);
     }
 
@@ -104,11 +102,12 @@ export class MessageManager {
     }
 
     const isBotMentioned = !!(
-      (clientUser && clientUser.id) && (message.mentions.users && message.mentions.users.has(clientUser.id))
+      clientUser?.id &&
+      message.mentions.users &&
+      message.mentions.users.has(clientUser.id)
     );
     const isReplyToBot =
-      !!(message.reference && message.reference.messageId) &&
-      (message.mentions.repliedUser && message.mentions.repliedUser.id) === (clientUser && clientUser.id);
+      !!message.reference?.messageId && message.mentions.repliedUser?.id === clientUser?.id;
     const isInThread = message.channel.isThread();
     const isDM = message.channel.type === DiscordChannelType.DM;
 
@@ -122,7 +121,7 @@ export class MessageManager {
             agentId: this.runtime.agentId,
             channelId: message.channel.id,
           },
-          "Strict mode: ignoring message (no mention or reply)",
+          "Strict mode: ignoring message (no mention or reply)"
         );
         return;
       }
@@ -133,7 +132,7 @@ export class MessageManager {
           agentId: this.runtime.agentId,
           channelId: message.channel.id,
         },
-        "Strict mode: processing message",
+        "Strict mode: processing message"
       );
     }
 
@@ -161,7 +160,7 @@ export class MessageManager {
             agentId: this.runtime.agentId,
             channelId: message.channel.id,
           },
-          "Null channel type",
+          "Null channel type"
         );
       }
       messageServerId = guild.id;
@@ -178,12 +177,10 @@ export class MessageManager {
       source: "discord",
       channelId: message.channel.id,
       // Convert Discord snowflake to UUID (see service.ts header for why stringToUuid not asUUID)
-      messageServerId: messageServerId
-        ? stringToUuid(messageServerId)
-        : undefined,
+      messageServerId: messageServerId ? stringToUuid(messageServerId) : undefined,
       type,
       worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
-      worldName: (message.guild && message.guild.name),
+      worldName: message.guild?.name,
     });
     try {
       const canSendResult = canSendMessage(message.channel);
@@ -195,18 +192,17 @@ export class MessageManager {
             channelId: message.channel.id,
             reason: canSendResult.reason,
           },
-          "Cannot send message to channel",
+          "Cannot send message to channel"
         );
       }
 
-      const { processedContent, attachments } =
-        await this.processMessage(message);
+      const { processedContent, attachments } = await this.processMessage(message);
 
       // Note: Audio attachments are already processed in processMessage via
       // attachmentManager.processAttachments(message.attachments), so no need
       // to process them again here.
 
-      if (!processedContent && !(attachments && attachments.length)) {
+      if (!processedContent && !attachments?.length) {
         // Only process messages that are not empty
         return;
       }
@@ -221,39 +217,36 @@ export class MessageManager {
       };
 
       // Use the service's buildMemoryFromMessage method with pre-processed content
-      const newMessage = await this.discordService.buildMemoryFromMessage(
-        message,
-        {
-          processedContent,
-          processedAttachments: attachments,
-          extraContent: {
-            mentionContext: {
-              isMention: isBotMentioned,
-              isReply: isReplyToBot,
-              isThread: isInThread,
-              mentionType: isBotMentioned
-                ? "platform_mention"
-                : isReplyToBot
-                  ? "reply"
-                  : isInThread
-                    ? "thread"
-                    : "none",
-            },
-          },
-          extraMetadata: {
-            // Reply attribution for cross-agent filtering
-            // WHY: When user replies to another bot's message, we need to know
-            // so other agents can ignore it (only the replied-to agent should respond)
-            replyToAuthor: message.mentions.repliedUser
-              ? {
-                  id: message.mentions.repliedUser.id,
-                  username: message.mentions.repliedUser.username,
-                  isBot: message.mentions.repliedUser.bot,
-                }
-              : undefined,
+      const newMessage = await this.discordService.buildMemoryFromMessage(message, {
+        processedContent,
+        processedAttachments: attachments,
+        extraContent: {
+          mentionContext: {
+            isMention: isBotMentioned,
+            isReply: isReplyToBot,
+            isThread: isInThread,
+            mentionType: isBotMentioned
+              ? "platform_mention"
+              : isReplyToBot
+                ? "reply"
+                : isInThread
+                  ? "thread"
+                  : "none",
           },
         },
-      );
+        extraMetadata: {
+          // Reply attribution for cross-agent filtering
+          // WHY: When user replies to another bot's message, we need to know
+          // so other agents can ignore it (only the replied-to agent should respond)
+          replyToAuthor: message.mentions.repliedUser
+            ? {
+                id: message.mentions.repliedUser.id,
+                username: message.mentions.repliedUser.username,
+                isBot: message.mentions.repliedUser.bot,
+              }
+            : undefined,
+        },
+      });
 
       if (!newMessage) {
         this.runtime.logger.warn(
@@ -262,7 +255,7 @@ export class MessageManager {
             agentId: this.runtime.agentId,
             messageId: message.id,
           },
-          "Failed to build memory from message",
+          "Failed to build memory from message"
         );
         return;
       }
@@ -297,7 +290,7 @@ export class MessageManager {
                     agentId: this.runtime.agentId,
                     error: err instanceof Error ? err.message : String(err),
                   },
-                  "Error sending typing indicator",
+                  "Error sending typing indicator"
                 );
               }
             };
@@ -317,7 +310,7 @@ export class MessageManager {
             content.inReplyTo = createUniqueUuid(this.runtime, message.id);
           }
 
-          let messages: any[] = [];
+          let messages: DiscordMessage[] = [];
           if (content && content.channelType === "DM") {
             const u = await this.client.users.fetch(message.author.id);
             if (!u) {
@@ -327,7 +320,7 @@ export class MessageManager {
                   agentId: this.runtime.agentId,
                   entityId: message.author.id,
                 },
-                "User not found for DM",
+                "User not found for DM"
               );
               return [];
             }
@@ -338,9 +331,7 @@ export class MessageManager {
               for (const media of content.attachments) {
                 if (media.url) {
                   const fileName = getAttachmentFileName(media);
-                  files.push(
-                    new AttachmentBuilder(media.url, { name: fileName }),
-                  );
+                  files.push(new AttachmentBuilder(media.url, { name: fileName }));
                 }
               }
             }
@@ -350,7 +341,7 @@ export class MessageManager {
             if (!hasText && files.length === 0) {
               this.runtime.logger.warn(
                 { src: "plugin:discord", agentId: this.runtime.agentId },
-                "Skipping DM response: no text or attachments",
+                "Skipping DM response: no text or attachments"
               );
               return [];
             }
@@ -367,20 +358,25 @@ export class MessageManager {
               for (const media of content.attachments) {
                 if (media.url) {
                   const fileName = getAttachmentFileName(media);
-                  files.push(
-                    new AttachmentBuilder(media.url, { name: fileName }),
-                  );
+                  files.push(new AttachmentBuilder(media.url, { name: fileName }));
                 }
               }
             }
             // Pass runtime to enable smart (LLM-assisted) splitting for complex content
+            if (!message.id) {
+              this.runtime.logger.warn(
+                { src: "plugin:discord", agentId: this.runtime.agentId },
+                "Cannot send message: message.id is missing"
+              );
+              return [];
+            }
             messages = await sendMessageInChunks(
               channel,
               content.text ?? "",
-              message.id!,
+              message.id,
               files,
               undefined,
-              this.runtime,
+              this.runtime
             );
           }
 
@@ -388,7 +384,7 @@ export class MessageManager {
           for (const m of messages) {
             const actions = content.actions;
             // Only attach files to the memory for the message that actually carries them
-            const hasAttachments = (m.attachments && m.attachments.size) > 0;
+            const hasAttachments = m.attachments?.size > 0;
 
             const memory: Memory = {
               id: createUniqueUuid(this.runtime, m.id),
@@ -403,9 +399,7 @@ export class MessageManager {
                 channelType: type,
                 // Only include attachments for the message chunk that actually has them
                 attachments:
-                  hasAttachments && content.attachments
-                    ? content.attachments
-                    : undefined,
+                  hasAttachments && content.attachments ? content.attachments : undefined,
               },
               roomId,
               createdAt: m.createdTimestamp,
@@ -431,7 +425,7 @@ export class MessageManager {
               agentId: this.runtime.agentId,
               error: error instanceof Error ? error.message : String(error),
             },
-            "Error handling message callback",
+            "Error handling message callback"
           );
           // Clear typing indicator on error
           if (typingData.interval && !typingData.cleared) {
@@ -450,7 +444,7 @@ export class MessageManager {
       if (unifiedAPI) {
         this.runtime.logger.debug(
           { src: "plugin:discord", agentId: this.runtime.agentId },
-          "Using unified messaging API",
+          "Using unified messaging API"
         );
         await unifiedAPI.sendMessage(this.runtime.agentId, newMessage, {
           onResponse: callback,
@@ -459,14 +453,14 @@ export class MessageManager {
         // Newer core with messageService
         this.runtime.logger.debug(
           { src: "plugin:discord", agentId: this.runtime.agentId },
-          "Using messageService API",
+          "Using messageService API"
         );
         await messageService.handleMessage(this.runtime, newMessage, callback);
       } else {
         // Older core - use event-based message handling (backwards compatible)
         this.runtime.logger.debug(
           { src: "plugin:discord", agentId: this.runtime.agentId },
-          "Using event-based message handling",
+          "Using event-based message handling"
         );
         await this.runtime.emitEvent([EventType.MESSAGE_RECEIVED], {
           runtime: this.runtime,
@@ -483,7 +477,7 @@ export class MessageManager {
           typingData.cleared = true;
           this.runtime.logger.warn(
             { src: "plugin:discord", agentId: this.runtime.agentId },
-            "Typing indicator failsafe timeout triggered",
+            "Typing indicator failsafe timeout triggered"
           );
         }
       }, 30000);
@@ -494,7 +488,7 @@ export class MessageManager {
           agentId: this.runtime.agentId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Error handling message",
+        "Error handling message"
       );
     }
   }
@@ -507,12 +501,12 @@ export class MessageManager {
    * @returns {Promise<{ processedContent: string; attachments: Media[] }>} Processed content and media attachments
    */
   async processMessage(
-    message: DiscordMessage,
+    message: DiscordMessage
   ): Promise<{ processedContent: string; attachments: Media[] }> {
     let processedContent = message.content;
     let attachments: Media[] = [];
 
-    if (message.embeds && message.embeds.length) {
+    if (message.embeds?.length) {
       for (const i in message.embeds) {
         const embed = message.embeds[i];
         // type: rich
@@ -522,7 +516,7 @@ export class MessageManager {
       }
     }
     if (message.reference) {
-      let messageId;
+      let messageId: string | undefined;
       if (message.reference.messageId) {
         messageId = createUniqueUuid(this.runtime, message.reference.messageId);
       } else {
@@ -541,10 +535,7 @@ export class MessageManager {
         })`;
         // in our channel
         if (message.reference.channelId !== message.channel.id) {
-          const roomId = createUniqueUuid(
-            this.runtime,
-            message.reference.channelId,
-          );
+          const roomId = createUniqueUuid(this.runtime, message.reference.channelId);
           processedContent += ` in channel ${roomId}`;
         }
         // in our guild
@@ -560,26 +551,23 @@ export class MessageManager {
     }
 
     const mentionRegex = /<@!?(\d+)>/g;
-    processedContent = processedContent.replace(
-      mentionRegex,
-      (match, entityId) => {
-        const user = message.mentions.users.get(entityId);
-        if (user) {
-          return `${user.username} (@${entityId})`;
-        }
-        return match;
-      },
-    );
+    processedContent = processedContent.replace(mentionRegex, (match, entityId) => {
+      const user = message.mentions.users.get(entityId);
+      if (user) {
+        return `${user.username} (@${entityId})`;
+      }
+      return match;
+    });
 
     const codeBlockRegex = /```([\s\S]*?)```/g;
-    let match;
-    while ((match = codeBlockRegex.exec(processedContent))) {
+    let match: RegExpExecArray | null = codeBlockRegex.exec(processedContent);
+    while (match !== null) {
       const codeBlock = match[1];
+      match = codeBlockRegex.exec(processedContent);
       const lines = codeBlock.split("\n");
       const title = lines[0];
       const description = lines.slice(0, 3).join("\n");
-      const attachmentId =
-        `code-${Date.now()}-${Math.floor(Math.random() * 1000)}`.slice(-5);
+      const attachmentId = `code-${Date.now()}-${Math.floor(Math.random() * 1000)}`.slice(-5);
       attachments.push({
         id: attachmentId,
         url: "",
@@ -588,16 +576,11 @@ export class MessageManager {
         description,
         text: codeBlock,
       });
-      processedContent = processedContent.replace(
-        match[0],
-        `Code Block (${attachmentId})`,
-      );
+      processedContent = processedContent.replace(match[0], `Code Block (${attachmentId})`);
     }
 
     if (message.attachments.size > 0) {
-      attachments = await this.attachmentManager.processAttachments(
-        message.attachments,
-      );
+      attachments = await this.attachmentManager.processAttachments(message.attachments);
     }
 
     // Extract and clean URLs from the message content
@@ -605,8 +588,20 @@ export class MessageManager {
 
     for (const url of urls) {
       // Use string literal type for getService, assume methods exist at runtime
-      const videoService = this.runtime.getService(ServiceType.VIDEO) as any; // Cast to any
-      if (videoService && videoService.isVideoUrl(url)) {
+      const videoService = this.runtime.getService(ServiceType.VIDEO) as
+        | ({
+            isVideoUrl?: (url: string) => boolean;
+            processVideo?: (
+              url: string,
+              runtime: IAgentRuntime
+            ) => Promise<{
+              title: string;
+              description: string;
+              text: string;
+            }>;
+          } & Service)
+        | null;
+      if (videoService?.isVideoUrl(url)) {
         try {
           const videoInfo = await videoService.processVideo(url, this.runtime);
 
@@ -620,31 +615,33 @@ export class MessageManager {
           });
         } catch (error) {
           // Handle video processing errors gracefully - the URL is still preserved in the message
-          const errorMsg =
-            error instanceof Error ? error.message : String(error);
-          this.runtime.logger.warn(
-            `Failed to process video ${url}: ${errorMsg}`,
-          );
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          this.runtime.logger.warn(`Failed to process video ${url}: ${errorMsg}`);
         }
       } else {
         // Use string literal type for getService, assume methods exist at runtime
-        const browserService = this.runtime.getService(
-          ServiceType.BROWSER,
-        ) as any; // Cast to any
+        const browserService = this.runtime.getService(ServiceType.BROWSER) as
+          | ({
+              getPageContent?: (
+                url: string,
+                runtime: IAgentRuntime
+              ) => Promise<{ title?: string; description?: string }>;
+            } & Service)
+          | null;
         if (!browserService) {
           this.runtime.logger.warn(
             { src: "plugin:discord", agentId: this.runtime.agentId },
-            "Browser service not found",
+            "Browser service not found"
           );
           continue;
         }
 
         try {
-          this.runtime.logger.debug(
-            `Fetching page content for cleaned URL: "${url}"`,
+          this.runtime.logger.debug(`Fetching page content for cleaned URL: "${url}"`);
+          const { title, description: summary } = await browserService.getPageContent(
+            url,
+            this.runtime
           );
-          const { title, description: summary } =
-            await browserService.getPageContent(url, this.runtime);
 
           attachments.push({
             id: `webpage-${Date.now()}`,
@@ -657,8 +654,7 @@ export class MessageManager {
         } catch (error) {
           // Silently handle browser errors (certificate issues, timeouts, dead sites, etc.)
           // The URL is still preserved in the message content, just without scraped metadata
-          const errorMsg =
-            error instanceof Error ? error.message : String(error);
+          const errorMsg = error instanceof Error ? error.message : String(error);
           const errorString = String(error);
 
           // Check for common expected failures that don't need logging
@@ -673,9 +669,7 @@ export class MessageManager {
             errorString.includes("ERR_HTTP_RESPONSE_CODE_FAILURE");
 
           if (!isExpectedFailure) {
-            this.runtime.logger.warn(
-              `Failed to fetch page content for ${url}: ${errorMsg}`,
-            );
+            this.runtime.logger.warn(`Failed to fetch page content for ${url}: ${errorMsg}`);
           }
           // Expected failures are silently handled - no logging needed
         }
@@ -708,9 +702,6 @@ export class MessageManager {
 
     const data = await response.json();
     const discriminator = data.discriminator;
-    return (
-      (data as { username: string }).username +
-      (discriminator ? `#${discriminator}` : "")
-    );
+    return (data as { username: string }).username + (discriminator ? `#${discriminator}` : "");
   }
 }

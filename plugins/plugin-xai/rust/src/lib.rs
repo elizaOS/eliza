@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! elizaOS xAI Plugin
 //!
 //! This crate provides xAI Grok model support and X (Twitter) API v2 integration

@@ -14,7 +14,7 @@ import { RustPluginTestSuite } from "./__tests__/e2e/rust-plugin.e2e";
 
 /**
  * Rust Plugin Starter - TypeScript Wrapper
- * 
+ *
  * This TypeScript wrapper loads the Rust plugin compiled to WASM via wasm-bindgen
  * and exposes it as an elizaOS plugin.
  */
@@ -23,7 +23,11 @@ import { RustPluginTestSuite } from "./__tests__/e2e/rust-plugin.e2e";
 interface WasmBindgenModule {
   get_manifest(): string;
   init(config_json: string): void;
-  validate_action(name: string, memory_json: string, state_json: string): boolean;
+  validate_action(
+    name: string,
+    memory_json: string,
+    state_json: string,
+  ): boolean;
   invoke_action(
     name: string,
     memory_json: string,
@@ -31,8 +35,16 @@ interface WasmBindgenModule {
     options_json: string,
   ): string;
   get_provider(name: string, memory_json: string, state_json: string): string;
-  validate_evaluator(name: string, memory_json: string, state_json: string): boolean;
-  invoke_evaluator(name: string, memory_json: string, state_json: string): string;
+  validate_evaluator(
+    name: string,
+    memory_json: string,
+    state_json: string,
+  ): boolean;
+  invoke_evaluator(
+    name: string,
+    memory_json: string,
+    state_json: string,
+  ): string;
 }
 
 let wasmModule: WasmBindgenModule | null = null;
@@ -47,48 +59,47 @@ let pluginManifest: {
 
 export const rustPluginStarter: Plugin = {
   name: "rust-plugin-starter",
-  description: "A starter template for Rust plugins with cross-language support",
+  description:
+    "A starter template for Rust plugins with cross-language support",
   config: {},
-  
+
   async init(config: Record<string, string>) {
-    try {
-      // Load the wasm-bindgen generated module
-      // The JS file should be built and available at dist/elizaos_plugin_starter.js
-      // Use absolute path resolution
-      const wasmModulePath = new URL("../dist/elizaos_plugin_starter.js", import.meta.url).href;
-      
-      logger.info("Loading Rust WASM plugin from:", wasmModulePath);
-      
-      // Dynamic import of the wasm-bindgen generated module
-      const wasmBindgenModule = await import(wasmModulePath);
-      
-      // Initialize the WASM module (wasm-bindgen does this automatically, but we may need to call init)
-      wasmModule = wasmBindgenModule as unknown as WasmBindgenModule;
-      
-      // Get the manifest
-      const manifestJson = wasmModule.get_manifest();
-      pluginManifest = JSON.parse(manifestJson);
-      
-      // Initialize the Rust plugin with config
-      wasmModule.init(JSON.stringify(config));
-      
-      logger.info("Rust WASM plugin loaded successfully");
-    } catch (error) {
-      logger.error({ error }, "Failed to load Rust WASM plugin");
-      throw error;
-    }
+    // Load the wasm-bindgen generated module
+    // The JS file should be built and available at dist/elizaos_plugin_starter.js
+    // Use absolute path resolution
+    const wasmModulePath = new URL(
+      "../dist/elizaos_plugin_starter.js",
+      import.meta.url,
+    ).href;
+
+    logger.info("Loading Rust WASM plugin from:", wasmModulePath);
+
+    // Dynamic import of the wasm-bindgen generated module
+    const wasmBindgenModule = await import(wasmModulePath);
+
+    // Initialize the WASM module (wasm-bindgen does this automatically, but we may need to call init)
+    wasmModule = wasmBindgenModule as unknown as WasmBindgenModule;
+
+    // Get the manifest
+    const manifestJson = wasmModule.get_manifest();
+    pluginManifest = JSON.parse(manifestJson);
+
+    // Initialize the Rust plugin with config
+    wasmModule.init(JSON.stringify(config));
+
+    logger.info("Rust WASM plugin loaded successfully");
   },
-  
+
   get actions(): Action[] {
     if (!wasmModule || !pluginManifest) {
       return [];
     }
-    
+
     return (pluginManifest.actions ?? []).map((actionDef) => ({
       name: actionDef.name,
       description: actionDef.description,
       similes: actionDef.similes,
-      
+
       validate: async (
         _runtime: IAgentRuntime,
         message: Memory,
@@ -101,7 +112,7 @@ export const rustPluginStarter: Plugin = {
           JSON.stringify(state ?? null),
         );
       },
-      
+
       handler: async (
         _runtime: IAgentRuntime,
         message: Memory,
@@ -115,16 +126,16 @@ export const rustPluginStarter: Plugin = {
             error: new Error("WASM module not initialized"),
           };
         }
-        
+
         const resultJson = wasmModule.invoke_action(
           actionDef.name,
           JSON.stringify(message),
           JSON.stringify(state ?? null),
           JSON.stringify(options ?? {}),
         );
-        
+
         const result = JSON.parse(resultJson);
-        
+
         // Call callback if provided
         if (callback && result.success && result.text) {
           await callback({
@@ -133,7 +144,7 @@ export const rustPluginStarter: Plugin = {
             source: message.content.source,
           });
         }
-        
+
         return {
           success: result.success,
           text: result.text,
@@ -142,20 +153,20 @@ export const rustPluginStarter: Plugin = {
           values: result.values,
         };
       },
-      
+
       examples: [],
     }));
   },
-  
+
   get providers(): Provider[] {
     if (!wasmModule || !pluginManifest) {
       return [];
     }
-    
+
     return (pluginManifest.providers ?? []).map((providerDef) => ({
       name: providerDef.name,
       description: providerDef.description,
-      
+
       get: async (
         _runtime: IAgentRuntime,
         message: Memory,
@@ -164,13 +175,13 @@ export const rustPluginStarter: Plugin = {
         if (!wasmModule) {
           return { text: undefined, values: undefined, data: undefined };
         }
-        
+
         const resultJson = wasmModule.get_provider(
           providerDef.name,
           JSON.stringify(message),
           JSON.stringify(state),
         );
-        
+
         const result = JSON.parse(resultJson);
         return {
           text: result.text,
@@ -180,33 +191,32 @@ export const rustPluginStarter: Plugin = {
       },
     }));
   },
-  
+
   get evaluators() {
     return [];
   },
-  
+
   get routes() {
     return [];
   },
-  
+
   get services() {
     return [];
   },
-  
+
   get events() {
     return {};
   },
-  
+
   get models() {
     return {};
   },
-  
+
   get dependencies() {
     return [];
   },
-  
+
   tests: [RustPluginTestSuite],
 };
 
 export default rustPluginStarter;
-

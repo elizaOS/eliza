@@ -2,8 +2,8 @@
  * Unit tests for Vercel AI Gateway plugin.
  */
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { gatewayPlugin } from "../index";
 
 // Mock runtime
@@ -32,7 +32,7 @@ describe("gatewayPlugin", () => {
   it("should have model handlers registered", () => {
     expect(gatewayPlugin.models).toBeDefined();
     const models = gatewayPlugin.models;
-    
+
     // Check that handlers are registered
     expect(models?.TEXT_SMALL).toBeDefined();
     expect(models?.TEXT_LARGE).toBeDefined();
@@ -54,9 +54,7 @@ describe("gatewayPlugin", () => {
       AI_GATEWAY_API_KEY: "test-key",
     });
 
-    await expect(
-      gatewayPlugin.init?.({}, mockRuntime)
-    ).resolves.not.toThrow();
+    await expect(gatewayPlugin.init?.({}, mockRuntime)).resolves.not.toThrow();
   });
 });
 
@@ -78,8 +76,9 @@ describe("configuration utilities", () => {
   });
 
   it("should use default values when not configured", async () => {
-    const { getBaseUrl, getSmallModel, getLargeModel, getEmbeddingModel } =
-      await import("../utils/config");
+    const { getBaseUrl, getSmallModel, getLargeModel, getEmbeddingModel } = await import(
+      "../utils/config"
+    );
 
     const runtime = createMockRuntime({});
 
@@ -101,5 +100,3 @@ describe("configuration utilities", () => {
     expect(getLargeModel(runtime)).toBe("custom-large");
   });
 });
-
-

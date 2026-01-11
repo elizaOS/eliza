@@ -1,12 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
 /**
@@ -22,10 +15,8 @@ export const cacheTable = pgTable(
       .notNull()
       .references(() => agentTable.id, { onDelete: "cascade" }),
     value: jsonb("value").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
-  (table) => [primaryKey({ columns: [table.key, table.agentId] })],
+  (table) => [primaryKey({ columns: [table.key, table.agentId] })]
 );

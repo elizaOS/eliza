@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -11,7 +11,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
-import { embeddingTable } from "./embedding";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
 
@@ -75,7 +74,7 @@ export const memoryTable = pgTable(
     index("idx_memories_document_id").on(sql`((metadata->>'documentId'))`),
     index("idx_fragments_order").on(
       sql`((metadata->>'documentId'))`,
-      sql`((metadata->>'position'))`,
+      sql`((metadata->>'position'))`
     ),
     check(
       "fragment_metadata_check",
@@ -86,7 +85,7 @@ export const memoryTable = pgTable(
                     metadata ? 'position'
                 ELSE true
             END
-        `,
+        `
     ),
     check(
       "document_metadata_check",
@@ -96,11 +95,9 @@ export const memoryTable = pgTable(
                     metadata ? 'timestamp'
                 ELSE true
             END
-        `,
+        `
     ),
-  ],
+  ]
 );
 
-export const memoryRelations = relations(memoryTable, ({ one }) => ({
-  embedding: one(embeddingTable),
-}));
+// Relations are defined in embedding.ts to avoid circular dependency

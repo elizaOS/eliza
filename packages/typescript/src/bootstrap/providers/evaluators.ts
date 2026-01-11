@@ -57,12 +57,10 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
                 const placeholder = `{{name${index + 1}}}`;
                 messageString = messageString.replaceAll(placeholder, name);
               });
-              const actionOrActions = message.content.action || (message.content.actions && message.content.actions.join(", "));
+              const actionOrActions =
+                message.content.action || message.content.actions?.join(", ");
               return (
-                messageString +
-                (actionOrActions
-                  ? ` (${actionOrActions})`
-                  : "")
+                messageString + (actionOrActions ? ` (${actionOrActions})` : "")
               );
             })
             .join("\n");

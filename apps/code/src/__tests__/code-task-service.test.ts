@@ -1,5 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ChannelType, stringToUuid, type IAgentRuntime, type Room, type Task, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Room,
+  stringToUuid,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
 
@@ -57,7 +64,8 @@ function createMockRuntime(): IAgentRuntime {
       if (!task) return;
 
       if (typeof updates.name === "string") task.name = updates.name;
-      if (typeof updates.description === "string") task.description = updates.description;
+      if (typeof updates.description === "string")
+        task.description = updates.description;
       if (Array.isArray(updates.tags)) task.tags = updates.tags;
       if (updates.roomId) task.roomId = updates.roomId;
       if (updates.worldId) task.worldId = updates.worldId;
@@ -85,7 +93,10 @@ describe("CodeTaskService", () => {
 
   describe("createCodeTask", () => {
     it("should create a task with metadata", async () => {
-      const task = await service.createCodeTask("Test Task", "A test task description");
+      const task = await service.createCodeTask(
+        "Test Task",
+        "A test task description",
+      );
 
       expect(task.name).toBe("Test Task");
       expect(task.description).toBe("A test task description");
@@ -104,7 +115,11 @@ describe("CodeTaskService", () => {
       const roomId = stringToUuid("test-room");
       const expectedWorldId = stringToUuid("test-world");
 
-      const task = await service.createCodeTask("Room Task", "Description", roomId);
+      const task = await service.createCodeTask(
+        "Room Task",
+        "Description",
+        roomId,
+      );
 
       expect(task.roomId).toBe(roomId);
       expect(task.worldId).toBe(expectedWorldId);
@@ -146,7 +161,10 @@ describe("CodeTaskService", () => {
 
   describe("searchTasks", () => {
     beforeEach(async () => {
-      await service.createCodeTask("Authentication API", "User login and logout");
+      await service.createCodeTask(
+        "Authentication API",
+        "User login and logout",
+      );
       await service.createCodeTask("File Upload", "Handle file uploads");
       await service.createCodeTask("Auth Middleware", "Request authentication");
     });
@@ -192,7 +210,10 @@ describe("CodeTaskService", () => {
     });
 
     it("should set completedAt when cancelled", async () => {
-      const task = await service.createCodeTask("Cancelled Task", "Description");
+      const task = await service.createCodeTask(
+        "Cancelled Task",
+        "Description",
+      );
       await service.updateTaskStatus(task.id ?? "", "cancelled");
 
       const updated = await service.getTask(task.id ?? "");
@@ -243,7 +264,7 @@ describe("CodeTaskService", () => {
 
   describe("setCurrentTask", () => {
     it("should update current task id", async () => {
-      const task1 = await service.createCodeTask("Task 1", "Description");
+      await service.createCodeTask("Task 1", "Description");
       const task2 = await service.createCodeTask("Task 2", "Description");
 
       service.setCurrentTask(task2.id ?? null);
@@ -279,7 +300,10 @@ describe("CodeTaskService", () => {
 
   describe("setUserStatus", () => {
     it("should update userStatus", async () => {
-      const task = await service.createCodeTask("User Status Task", "Description");
+      const task = await service.createCodeTask(
+        "User Status Task",
+        "Description",
+      );
       await service.setUserStatus(task.id ?? "", "done");
 
       const updated = await service.getTask(task.id ?? "");
@@ -300,7 +324,10 @@ describe("CodeTaskService", () => {
 
   describe("getTaskContext", () => {
     it("should return context string", async () => {
-      const task = await service.createCodeTask("Context Task", "A task for testing context");
+      const task = await service.createCodeTask(
+        "Context Task",
+        "A task for testing context",
+      );
       await service.appendOutput(task.id ?? "", "Some output");
 
       const context = await service.getTaskContext();
@@ -328,4 +355,3 @@ describe("CodeTaskService", () => {
     });
   });
 });
-

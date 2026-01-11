@@ -5,7 +5,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { CodeTaskService } from "../services/code-task.js";
+import type { CodeTaskService } from "../services/code-task.js";
 
 /**
  * Task Context Provider
@@ -16,13 +16,14 @@ import { CodeTaskService } from "../services/code-task.js";
  */
 export const taskContextProvider: Provider = {
   name: "TASK_CONTEXT",
-  description: "Provides context about the current active task and recent task activity",
+  description:
+    "Provides context about the current active task and recent task activity",
   dynamic: true,
 
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<ProviderResult> => {
     const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
 
@@ -39,11 +40,21 @@ export const taskContextProvider: Provider = {
       const currentTask = await service.getCurrentTask();
       const allTasks = await service.getRecentTasks(10);
 
-      const running = allTasks.filter((t) => t.metadata.status === "running").length;
-      const completed = allTasks.filter((t) => t.metadata.status === "completed").length;
-      const failed = allTasks.filter((t) => t.metadata.status === "failed").length;
-      const cancelled = allTasks.filter((t) => t.metadata.status === "cancelled").length;
-      const pending = allTasks.filter((t) => t.metadata.status === "pending").length;
+      const running = allTasks.filter(
+        (t) => t.metadata.status === "running",
+      ).length;
+      const completed = allTasks.filter(
+        (t) => t.metadata.status === "completed",
+      ).length;
+      const failed = allTasks.filter(
+        (t) => t.metadata.status === "failed",
+      ).length;
+      const cancelled = allTasks.filter(
+        (t) => t.metadata.status === "cancelled",
+      ).length;
+      const pending = allTasks.filter(
+        (t) => t.metadata.status === "pending",
+      ).length;
 
       return {
         text: contextText,

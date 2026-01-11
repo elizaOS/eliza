@@ -43,6 +43,8 @@ class CapSolverService:
                     )
 
                 task_id = data.get("taskId")
+                if not isinstance(task_id, str):
+                    raise RuntimeError(f"Invalid task ID from CapSolver: {task_id}")
                 logger.info(f"CapSolver task created: {task_id}")
                 return task_id
 
@@ -72,7 +74,8 @@ class CapSolverService:
 
                     if data.get("status") == "ready":
                         logger.info("CapSolver task completed successfully")
-                        return data.get("solution", {})
+                        solution = data.get("solution", {})
+                        return dict(solution) if isinstance(solution, dict) else {}
 
                     await asyncio.sleep(self.polling_interval)
                     attempts += 1
@@ -112,7 +115,8 @@ class CapSolverService:
         task_id = await self.create_task(task)
         solution = await self.get_task_result(task_id)
 
-        return solution.get("token", "")
+        token = solution.get("token", "")
+        return str(token) if token else ""
 
     async def solve_recaptcha_v2(
         self,
@@ -141,7 +145,8 @@ class CapSolverService:
         task_id = await self.create_task(task)
         solution = await self.get_task_result(task_id)
 
-        return solution.get("gRecaptchaResponse", "")
+        response = solution.get("gRecaptchaResponse", "")
+        return str(response) if response else ""
 
     async def solve_recaptcha_v3(
         self,
@@ -172,7 +177,8 @@ class CapSolverService:
         task_id = await self.create_task(task)
         solution = await self.get_task_result(task_id)
 
-        return solution.get("gRecaptchaResponse", "")
+        response = solution.get("gRecaptchaResponse", "")
+        return str(response) if response else ""
 
     async def solve_hcaptcha(
         self,
@@ -199,7 +205,8 @@ class CapSolverService:
         task_id = await self.create_task(task)
         solution = await self.get_task_result(task_id)
 
-        return solution.get("token", "")
+        token = solution.get("token", "")
+        return str(token) if token else ""
 
 
 async def detect_captcha_type(page: Any) -> tuple[CaptchaType, str | None]:
@@ -227,13 +234,10 @@ async def detect_captcha_type(page: Any) -> tuple[CaptchaType, str | None]:
             )
 
         # Check for hCaptcha
-        hcaptcha = await page.query_selector(
-            "[data-sitekey].h-captcha, [data-hcaptcha-sitekey]"
-        )
+        hcaptcha = await page.query_selector("[data-sitekey].h-captcha, [data-hcaptcha-sitekey]")
         if hcaptcha:
-            site_key = (
-                await hcaptcha.get_attribute("data-sitekey")
-                or await hcaptcha.get_attribute("data-hcaptcha-sitekey")
+            site_key = await hcaptcha.get_attribute("data-sitekey") or await hcaptcha.get_attribute(
+                "data-hcaptcha-sitekey"
             )
             return CaptchaType.HCAPTCHA, site_key
 
@@ -282,5 +286,3 @@ async def inject_captcha_solution(
             }""",
             solution,
         )
-
-

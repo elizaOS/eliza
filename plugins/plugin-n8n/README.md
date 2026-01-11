@@ -25,7 +25,7 @@ The N8n plugin enables AI agents to autonomously create, build, test, and deploy
 npm install @elizaos/plugin-n8n
 # or
 pnpm add @elizaos/plugin-n8n
-# or  
+# or
 bun add @elizaos/plugin-n8n
 ```
 
@@ -46,18 +46,18 @@ elizaos-plugin-n8n = "1.0"
 
 Set the following environment variables:
 
-| Variable | Required | Description | Default |
-|----------|----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | ✅ | Anthropic API key | - |
-| `PLUGIN_DATA_DIR` | ❌ | Plugin workspace directory | `./data` |
-| `CLAUDE_MODEL` | ❌ | Claude model to use | `claude-3-opus-20240229` |
+| Variable            | Required | Description                | Default                  |
+| ------------------- | -------- | -------------------------- | ------------------------ |
+| `ANTHROPIC_API_KEY` | ✅       | Anthropic API key          | -                        |
+| `PLUGIN_DATA_DIR`   | ❌       | Plugin workspace directory | `./data`                 |
+| `CLAUDE_MODEL`      | ❌       | Claude model to use        | `claude-3-opus-20240229` |
 
 ## 🚀 Quick Start
 
 ### TypeScript
 
 ```typescript
-import { n8nPlugin } from '@elizaos/plugin-n8n';
+import { n8nPlugin } from "@elizaos/plugin-n8n";
 
 // Register with your agent
 const agent = new Agent({
@@ -77,14 +77,14 @@ from elizaos_plugin_n8n import N8nConfig, PluginCreationClient, PluginSpecificat
 
 async def main():
     config = N8nConfig.from_env()
-    
+
     async with PluginCreationClient(config) as client:
         spec = PluginSpecification(
             name="@elizaos/plugin-weather",
             description="Weather information plugin",
             actions=[{"name": "getWeather", "description": "Get weather"}],
         )
-        
+
         job_id = await client.create_plugin(spec)
         print(f"Job started: {job_id}")
 
@@ -100,15 +100,15 @@ use elizaos_plugin_n8n::{N8nConfig, PluginCreationClient, PluginSpecification};
 async fn main() -> anyhow::Result<()> {
     let config = N8nConfig::from_env()?;
     let client = PluginCreationClient::new(config)?;
-    
+
     let spec = PluginSpecification::builder()
         .name("@elizaos/plugin-weather")
         .description("Weather information plugin")
         .build()?;
-    
+
     let job_id = client.create_plugin(spec, None).await?;
     println!("Job started: {}", job_id);
-    
+
     Ok(())
 }
 ```
@@ -135,21 +135,21 @@ Use 'check plugin status' to monitor progress.
 
 ## 🛠️ Actions
 
-| Action | Description |
-|--------|-------------|
-| `createPlugin` | Create plugin from JSON specification |
-| `createPluginFromDescription` | Create plugin from natural language |
-| `checkPluginCreationStatus` | Check job progress |
-| `cancelPluginCreation` | Cancel active job |
+| Action                        | Description                           |
+| ----------------------------- | ------------------------------------- |
+| `createPlugin`                | Create plugin from JSON specification |
+| `createPluginFromDescription` | Create plugin from natural language   |
+| `checkPluginCreationStatus`   | Check job progress                    |
+| `cancelPluginCreation`        | Cancel active job                     |
 
 ## 📊 Providers
 
-| Provider | Description |
-|----------|-------------|
-| `plugin_creation_status` | Active job status |
-| `plugin_creation_capabilities` | Available features |
-| `plugin_registry` | Created plugins list |
-| `plugin_exists_check` | Check if plugin exists |
+| Provider                       | Description            |
+| ------------------------------ | ---------------------- |
+| `plugin_creation_status`       | Active job status      |
+| `plugin_creation_capabilities` | Available features     |
+| `plugin_registry`              | Created plugins list   |
+| `plugin_exists_check`          | Check if plugin exists |
 
 ## 🏗️ Architecture
 

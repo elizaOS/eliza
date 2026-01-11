@@ -1,19 +1,25 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
-  type Memory,
-  type State,
-  ModelType,
   logger,
+  type Memory,
+  ModelType,
+  type State,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { CODE_GENERATION_SYSTEM_PROMPT, createFileContextBlock } from "../../lib/prompts.js";
+import {
+  createFileNotFoundError,
+  formatErrorForDisplay,
+} from "../../lib/errors.js";
+import {
+  CODE_GENERATION_SYSTEM_PROMPT,
+  createFileContextBlock,
+} from "../../lib/prompts.js";
 import { getCwd } from "../providers/cwd.js";
-import { createFileNotFoundError, formatErrorForDisplay } from "../../lib/errors.js";
 
 function extractFilePath(text: string): string {
   const patterns = [
@@ -63,9 +69,14 @@ BEHAVIOR:
 REQUIRES: A valid file path to the code that should be tested.
 OUTPUT: Generated test code (displayed, not automatically saved to file).`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
-    return text.includes("test") || text.includes("spec") || text.includes("unit");
+    return (
+      text.includes("test") || text.includes("spec") || text.includes("unit")
+    );
   },
 
   handler: async (
@@ -73,7 +84,7 @@ OUTPUT: Generated test code (displayed, not automatically saved to file).`,
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const text = message.content.text ?? "";
     const filePath = extractFilePath(text);
@@ -102,10 +113,15 @@ OUTPUT: Generated test code (displayed, not automatically saved to file).`,
       const tests =
         typeof result === "string"
           ? result.trim()
-          : (result as { text?: string })?.text?.trim() ?? "Could not generate tests.";
+          : ((result as { text?: string })?.text?.trim() ??
+            "Could not generate tests.");
 
       await callback?.({ text: tests });
-      return { success: true, text: tests, data: { filepath: filePath, framework } };
+      return {
+        success: true,
+        text: tests,
+        data: { filepath: filePath, framework },
+      };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
       if (error.code === "ENOENT") {
@@ -122,8 +138,14 @@ OUTPUT: Generated test code (displayed, not automatically saved to file).`,
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "generate tests for src/utils.ts" } },
-      { name: "{{agent}}", content: { text: "Generating tests...", actions: ["TEST"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "generate tests for src/utils.ts" },
+      },
+      {
+        name: "{{agent}}",
+        content: { text: "Generating tests...", actions: ["TEST"] },
+      },
     ],
   ],
 };

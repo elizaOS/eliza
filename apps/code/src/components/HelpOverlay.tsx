@@ -1,4 +1,3 @@
-import React from "react";
 import { Box, Text } from "ink";
 
 interface HelpOverlayProps {
@@ -8,7 +7,13 @@ interface HelpOverlayProps {
 
 export function HelpOverlay({ width, height }: HelpOverlayProps) {
   return (
-    <Box flexDirection="column" width={width} height={height} paddingX={1} paddingY={1}>
+    <Box
+      flexDirection="column"
+      width={width}
+      height={height}
+      paddingX={1}
+      paddingY={1}
+    >
       <Box
         flexDirection="column"
         borderStyle="round"
@@ -64,10 +69,12 @@ export function HelpOverlay({ width, height }: HelpOverlayProps) {
             ↑↓ select | Enter switch | d done/open | f finished | e edit mode
           </Text>
           <Text dimColor wrap="truncate">
-            Edit mode: r rename | p pause/resume | c cancel | x delete (y/n confirm)
+            Edit mode: r rename | p pause/resume | c cancel | x delete (y/n
+            confirm)
           </Text>
           <Text dimColor wrap="truncate">
-            /task pane show|hide|auto|toggle (aliases: /tasks show|hide|auto|toggle)
+            /task pane show|hide|auto|toggle (aliases: /tasks
+            show|hide|auto|toggle)
           </Text>
         </Box>
 
@@ -92,5 +99,3 @@ export function HelpOverlay({ width, height }: HelpOverlayProps) {
     </Box>
   );
 }
-
-

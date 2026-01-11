@@ -169,9 +169,7 @@ export class RateLimitedError extends GitHubError {
   public readonly resetAt: Date;
 
   constructor(retryAfterMs: number, remaining: number, resetAt: Date) {
-    super(
-      `Rate limited by GitHub API, retry after ${Math.ceil(retryAfterMs / 1000)}s`,
-    );
+    super(`Rate limited by GitHub API, retry after ${Math.ceil(retryAfterMs / 1000)}s`);
     this.name = "RateLimitedError";
     this._retryAfterMs = retryAfterMs;
     this.remaining = remaining;
@@ -195,9 +193,7 @@ export class SecondaryRateLimitError extends GitHubError {
   private readonly _retryAfterMs: number;
 
   constructor(retryAfterMs: number) {
-    super(
-      `Secondary rate limit hit, retry after ${Math.ceil(retryAfterMs / 1000)}s`,
-    );
+    super(`Secondary rate limit hit, retry after ${Math.ceil(retryAfterMs / 1000)}s`);
     this.name = "SecondaryRateLimitError";
     this._retryAfterMs = retryAfterMs;
     Object.setPrototypeOf(this, SecondaryRateLimitError.prototype);
@@ -288,7 +284,7 @@ export class GitHubApiError extends GitHubError {
     status: number,
     message: string,
     code: string | null = null,
-    documentationUrl: string | null = null,
+    documentationUrl: string | null = null
   ) {
     super(`GitHub API error (${status}): ${message}`);
     this.name = "GitHubApiError";
@@ -351,18 +347,9 @@ export class WebhookVerificationError extends GitHubError {
 /**
  * Map Octokit error to typed error
  */
-export function mapOctokitError(
-  error: unknown,
-  owner: string,
-  repo: string,
-): GitHubError {
+export function mapOctokitError(error: unknown, owner: string, repo: string): GitHubError {
   // Handle Octokit RequestError
-  if (
-    error &&
-    typeof error === "object" &&
-    "status" in error &&
-    typeof error.status === "number"
-  ) {
+  if (error && typeof error === "object" && "status" in error && typeof error.status === "number") {
     const err = error as {
       status: number;
       message?: string;
@@ -436,7 +423,7 @@ export function mapOctokitError(
           const firstError = errors[0];
           return new ValidationError(
             firstError?.field ?? "unknown",
-            firstError?.message ?? message,
+            firstError?.message ?? message
           );
         }
         return new ValidationError("unknown", message);
@@ -444,9 +431,7 @@ export function mapOctokitError(
 
       case 429: {
         const retryAfter = err.response?.headers?.["retry-after"];
-        return new SecondaryRateLimitError(
-          retryAfter ? Number(retryAfter) * 1000 : 60000,
-        );
+        return new SecondaryRateLimitError(retryAfter ? Number(retryAfter) * 1000 : 60000);
       }
 
       default:
@@ -472,5 +457,3 @@ export function mapOctokitError(
 
   return new GitHubError(String(error));
 }
-
-

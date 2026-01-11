@@ -2,17 +2,17 @@
  * Unit tests for the N8n Plugin.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cancelPluginCreationAction,
+  checkPluginCreationStatusAction,
+  createPluginAction,
+} from "../../actions/plugin-creation-actions";
 import { n8nPlugin } from "../../index";
 import {
-  createPluginAction,
-  checkPluginCreationStatusAction,
-  cancelPluginCreationAction,
-} from "../../actions/plugin-creation-actions";
-import {
-  pluginCreationStatusProvider,
   pluginCreationCapabilitiesProvider,
+  pluginCreationStatusProvider,
 } from "../../providers/plugin-creation-providers";
 
 const createMockRuntime = (): IAgentRuntime => {
@@ -62,12 +62,12 @@ describe("n8nPlugin", () => {
 });
 
 describe("createPluginAction", () => {
-  let mockRuntime: IAgentRuntime;
-  let mockState: State;
+  let _mockRuntime: IAgentRuntime;
+  let _mockState: State;
 
   beforeEach(() => {
-    mockRuntime = createMockRuntime();
-    mockState = { values: {}, data: {}, text: "" };
+    _mockRuntime = createMockRuntime();
+    _mockState = { values: {}, data: {}, text: "" };
     vi.clearAllMocks();
   });
 
@@ -88,26 +88,24 @@ describe("createPluginAction", () => {
 });
 
 describe("checkPluginCreationStatusAction", () => {
-  let mockRuntime: IAgentRuntime;
+  let _mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
-    mockRuntime = createMockRuntime();
+    _mockRuntime = createMockRuntime();
     vi.clearAllMocks();
   });
 
   it("should be properly defined", () => {
     expect(checkPluginCreationStatusAction).toBeDefined();
-    expect(checkPluginCreationStatusAction.name).toBe(
-      "checkPluginCreationStatus"
-    );
+    expect(checkPluginCreationStatusAction.name).toBe("checkPluginCreationStatus");
   });
 });
 
 describe("cancelPluginCreationAction", () => {
-  let mockRuntime: IAgentRuntime;
+  let _mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
-    mockRuntime = createMockRuntime();
+    _mockRuntime = createMockRuntime();
     vi.clearAllMocks();
   });
 
@@ -134,11 +132,7 @@ describe("pluginCreationStatusProvider", () => {
 
   it("should return service not available when no service", async () => {
     const message = createMockMemory("test");
-    const result = await pluginCreationStatusProvider.get(
-      mockRuntime,
-      message,
-      mockState
-    );
+    const result = await pluginCreationStatusProvider.get(mockRuntime, message, mockState);
     expect(result.text).toContain("not available");
   });
 });
@@ -155,20 +149,12 @@ describe("pluginCreationCapabilitiesProvider", () => {
 
   it("should be properly defined", () => {
     expect(pluginCreationCapabilitiesProvider).toBeDefined();
-    expect(pluginCreationCapabilitiesProvider.name).toBe(
-      "plugin_creation_capabilities"
-    );
+    expect(pluginCreationCapabilitiesProvider.name).toBe("plugin_creation_capabilities");
   });
 
   it("should return service not available when no service", async () => {
     const message = createMockMemory("test");
-    const result = await pluginCreationCapabilitiesProvider.get(
-      mockRuntime,
-      message,
-      mockState
-    );
+    const result = await pluginCreationCapabilitiesProvider.get(mockRuntime, message, mockState);
     expect(result.text).toContain("not available");
   });
 });
-
-

@@ -3,7 +3,7 @@
  */
 
 import pc from "picocolors";
-import { loadManifest, getExamplesByLanguage } from "../manifest.js";
+import { getExamplesByLanguage, loadManifest } from "../manifest.js";
 import type { InfoOptions } from "../types.js";
 
 // Language display names
@@ -68,7 +68,9 @@ export function info(options: InfoOptions): void {
 
   if (options.language) {
     console.log(
-      pc.bold(`Examples for ${LANGUAGE_NAMES[options.language] || options.language}:`)
+      pc.bold(
+        `Examples for ${LANGUAGE_NAMES[options.language] || options.language}:`,
+      ),
     );
   } else {
     console.log(pc.bold("Available Examples:"));
@@ -91,4 +93,3 @@ export function info(options: InfoOptions): void {
   console.log(pc.dim("Run 'elizaos create' to create a new project."));
   console.log();
 }
-

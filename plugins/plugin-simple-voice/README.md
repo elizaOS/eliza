@@ -18,12 +18,12 @@ SAM was a speech synthesizer from the 1980s known for its distinctive robotic vo
 
 ## Voice Parameters
 
-| Parameter | Range   | Default | Description        |
-|-----------|---------|---------|-------------------|
-| Speed     | 20-200  | 72      | Speaking rate     |
-| Pitch     | 0-255   | 64      | Voice pitch       |
-| Throat    | 0-255   | 128     | Throat resonance  |
-| Mouth     | 0-255   | 128     | Mouth articulation|
+| Parameter | Range  | Default | Description        |
+| --------- | ------ | ------- | ------------------ |
+| Speed     | 20-200 | 72      | Speaking rate      |
+| Pitch     | 0-255  | 64      | Voice pitch        |
+| Throat    | 0-255  | 128     | Throat resonance   |
+| Mouth     | 0-255  | 128     | Mouth articulation |
 
 ## Trigger Phrases
 
@@ -39,14 +39,19 @@ The SAY_ALOUD action responds to:
 ### TypeScript
 
 ```typescript
-import { simpleVoicePlugin, SamTTSService } from '@elizaos/plugin-simple-voice';
+import { simpleVoicePlugin, SamTTSService } from "@elizaos/plugin-simple-voice";
 
 // As plugin
 const runtime = new AgentRuntime({ plugins: [simpleVoicePlugin] });
 
 // Direct usage
 const service = new SamTTSService(runtime);
-const audio = service.generateAudio('Hello world', { speed: 72, pitch: 64, throat: 128, mouth: 128 });
+const audio = service.generateAudio("Hello world", {
+  speed: 72,
+  pitch: 64,
+  throat: 128,
+  mouth: 128,
+});
 const wav = service.createWAVBuffer(audio);
 ```
 

@@ -23,8 +23,8 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
-  ChannelType,
   bootstrapPlugin,
+  ChannelType,
   type Character,
   createMessageMemory,
   stringToUuid,
@@ -384,7 +384,7 @@ class AdventureGame {
   private handleTake(itemName: string): string {
     const room = this.getCurrentRoom();
     const itemIndex = room.items.findIndex((i) =>
-      i.name.toLowerCase().includes(itemName.toLowerCase())
+      i.name.toLowerCase().includes(itemName.toLowerCase()),
     );
 
     if (itemIndex >= 0) {
@@ -446,7 +446,7 @@ class AdventureGame {
 
   private handleUse(itemName: string): string {
     const itemIndex = this.state.inventory.findIndex((i) =>
-      i.name.toLowerCase().includes(itemName.toLowerCase())
+      i.name.toLowerCase().includes(itemName.toLowerCase()),
     );
 
     if (itemIndex < 0) {
@@ -456,14 +456,15 @@ class AdventureGame {
     const item = this.state.inventory[itemIndex];
 
     switch (item.id) {
-      case "potion":
+      case "potion": {
         const healAmount = Math.min(
           50,
-          this.state.maxHealth - this.state.health
+          this.state.maxHealth - this.state.health,
         );
         this.state.health += healAmount;
         this.state.inventory.splice(itemIndex, 1);
         return `You drink the health potion and restore ${healAmount} health! Health: ${this.state.health}/${this.state.maxHealth}`;
+      }
 
       case "torch":
         return "The torch illuminates your surroundings. You can see more clearly now.";
@@ -490,7 +491,10 @@ class AdventureGame {
     const exits = Object.keys(room.exits);
     description += `\n\n🚪 Exits: ${exits.join(", ")}`;
 
-    if (room.id === "chamber" && !this.state.inventory.some((i) => i.id === "key")) {
+    if (
+      room.id === "chamber" &&
+      !this.state.inventory.some((i) => i.id === "key")
+    ) {
       description += "\n(The door to the north is locked)";
     }
 
@@ -529,7 +533,7 @@ interface GameSession {
   roomId: UUID;
   agentId: UUID;
   worldId: UUID;
-  gameMasterId: UUID;  // The "dungeon master" sending game state messages
+  gameMasterId: UUID; // The "dungeon master" sending game state messages
 }
 
 class Configuration {
@@ -572,55 +576,50 @@ class AdventureAgent {
   static async initialize(): Promise<GameSession> {
     const task = clack.spinner();
 
-    try {
-      task.start("Initializing adventure...");
+    task.start("Initializing adventure...");
 
-      const config = Configuration.load();
-      const character = AdventureAgent.createCharacter();
-      const agentId = stringToUuid(character.name);
+    const config = Configuration.load();
+    const character = AdventureAgent.createCharacter();
+    const agentId = stringToUuid(character.name);
 
-      task.message("Creating AI adventurer...");
-      // The sqlPlugin will handle database setup and migrations automatically
-      // actionPlanning: false ensures only one action is executed per turn,
-      // which is critical for game scenarios where state changes after each action
-      const runtime = new AgentRuntime({
-        character,
-        plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
-        settings: {
-          OPENAI_API_KEY: config.openaiApiKey,
-          POSTGRES_URL: config.postgresUrl || undefined,
-          PGLITE_DATA_DIR: config.pgliteDataDir,
-        },
-        actionPlanning: false, // Single action per turn for game state consistency
-      });
+    task.message("Creating AI adventurer...");
+    // The sqlPlugin will handle database setup and migrations automatically
+    // actionPlanning: false ensures only one action is executed per turn,
+    // which is critical for game scenarios where state changes after each action
+    const runtime = new AgentRuntime({
+      character,
+      plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+      settings: {
+        OPENAI_API_KEY: config.openaiApiKey,
+        POSTGRES_URL: config.postgresUrl || undefined,
+        PGLITE_DATA_DIR: config.pgliteDataDir,
+      },
+      actionPlanning: false, // Single action per turn for game state consistency
+    });
 
-      await runtime.initialize();
+    await runtime.initialize();
 
-      const game = new AdventureGame();
-      const roomId = stringToUuid("adventure-game-room");
-      const worldId = stringToUuid("adventure-game-world");
-      const gameMasterId = stringToUuid("dungeon-master");
+    const game = new AdventureGame();
+    const roomId = stringToUuid("adventure-game-room");
+    const worldId = stringToUuid("adventure-game-world");
+    const gameMasterId = stringToUuid("dungeon-master");
 
-      // Set up proper connection for message handling pipeline
-      task.message("Setting up game room...");
-      await runtime.ensureConnection({
-        entityId: gameMasterId,
-        roomId,
-        worldId,
-        userName: "Dungeon Master",
-        source: "adventure-game",
-        channelId: "adventure-room",
-        serverId: "game-server",
-        type: ChannelType.DM,
-      } as Parameters<typeof runtime.ensureConnection>[0]);
+    // Set up proper connection for message handling pipeline
+    task.message("Setting up game room...");
+    await runtime.ensureConnection({
+      entityId: gameMasterId,
+      roomId,
+      worldId,
+      userName: "Dungeon Master",
+      source: "adventure-game",
+      channelId: "adventure-room",
+      serverId: "game-server",
+      type: ChannelType.DM,
+    } as Parameters<typeof runtime.ensureConnection>[0]);
 
-      task.stop("✅ Adventure ready!");
+    task.stop("✅ Adventure ready!");
 
-      return { runtime, game, roomId, agentId, worldId, gameMasterId };
-    } catch (error) {
-      task.stop(`❌ Initialization failed: ${error}`);
-      throw error;
-    }
+    return { runtime, game, roomId, agentId, worldId, gameMasterId };
   }
 
   static async decideAction(session: GameSession): Promise<string> {
@@ -687,7 +686,7 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
             chosenAction = content.text.trim();
           }
           return [];
-        }
+        },
       );
 
       // If the agent responded, extract the action from the response
@@ -698,7 +697,7 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
 
     // Validate the action is in available actions (case-insensitive match)
     const matchedAction = actions.find(
-      (a) => a.toLowerCase() === chosenAction.toLowerCase()
+      (a) => a.toLowerCase() === chosenAction.toLowerCase(),
     );
 
     if (matchedAction) {
@@ -709,7 +708,7 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
     const partialMatch = actions.find(
       (a) =>
         a.toLowerCase().includes(chosenAction.toLowerCase()) ||
-        chosenAction.toLowerCase().includes(a.toLowerCase())
+        chosenAction.toLowerCase().includes(a.toLowerCase()),
     );
 
     if (partialMatch) {
@@ -723,9 +722,12 @@ Respond with ONLY the exact action text you want to take (e.g., "go north" or "a
   /**
    * Save a game result message so the agent can see the outcome
    */
-  static async saveGameResult(session: GameSession, result: string): Promise<void> {
+  static async saveGameResult(
+    session: GameSession,
+    result: string,
+  ): Promise<void> {
     const { runtime, roomId, gameMasterId } = session;
-    
+
     const resultMessage = createMessageMemory({
       id: uuidv4() as UUID,
       entityId: gameMasterId,
@@ -835,7 +837,7 @@ async function runAdventureGame(): Promise<void> {
   GameDisplay.showGameOver(
     finalState.victory,
     finalState.score,
-    finalState.turnsPlayed
+    finalState.turnsPlayed,
   );
 
   await session.runtime.stop();
@@ -854,7 +856,7 @@ async function runInteractiveMode(): Promise<void> {
 
   console.log("\n📜 INTERACTIVE MODE: Guide Eliza through the dungeon!\n");
   console.log(
-    "You can type actions yourself, or type 'ai' to let Eliza decide.\n"
+    "You can type actions yourself, or type 'ai' to let Eliza decide.\n",
   );
   const initialDescription = game.describeRoom();
   console.log(initialDescription);
@@ -897,7 +899,7 @@ async function runInteractiveMode(): Promise<void> {
     GameDisplay.showGameOver(
       finalState.victory,
       finalState.score,
-      finalState.turnsPlayed
+      finalState.turnsPlayed,
     );
   }
 
@@ -944,4 +946,3 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
-

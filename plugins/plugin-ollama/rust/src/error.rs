@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Ollama client.
 //!
 //! All errors are strongly typed and provide useful context.
@@ -92,5 +93,10 @@ impl OllamaError {
         }
     }
 }
+
+
+
+
+
 
 

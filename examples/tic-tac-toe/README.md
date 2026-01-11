@@ -1,6 +1,6 @@
 # Tic-Tac-Toe Demo - No LLM, Pure Minimax
 
-A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LLM**. 
+A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LLM**.
 
 ## Key Features
 
@@ -55,7 +55,7 @@ bun run examples/tic-tac-toe/typescript/game.ts
 ## Performance
 
 Since there's no LLM latency, the AI responds instantly:
+
 - ~100 games per second on typical hardware
 - Zero API calls
 - Zero cost
-

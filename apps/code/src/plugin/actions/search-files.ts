@@ -1,15 +1,15 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
 import { getCwd } from "../providers/cwd.js";
 
 interface SearchMatch {
@@ -18,7 +18,10 @@ interface SearchMatch {
   content: string;
 }
 
-function extractSearchParams(text: string): { pattern: string; directory: string } {
+function extractSearchParams(text: string): {
+  pattern: string;
+  directory: string;
+} {
   let pattern = "";
   let directory = ".";
 
@@ -36,7 +39,10 @@ function extractSearchParams(text: string): { pattern: string; directory: string
   }
 
   const dirMatch = text.match(/(?:in|within|under)\s+["']?([^\s"']+)["']?/i);
-  if (dirMatch?.[1] && !["the", "all", "files"].includes(dirMatch[1].toLowerCase())) {
+  if (
+    dirMatch?.[1] &&
+    !["the", "all", "files"].includes(dirMatch[1].toLowerCase())
+  ) {
     directory = dirMatch[1];
   }
 
@@ -47,7 +53,7 @@ async function searchInDirectory(
   dir: string,
   pattern: string,
   matches: SearchMatch[],
-  maxMatches = 50
+  maxMatches = 50,
 ): Promise<void> {
   if (matches.length >= maxMatches) return;
 
@@ -57,7 +63,12 @@ async function searchInDirectory(
     for (const entry of entries) {
       if (matches.length >= maxMatches) break;
       if (entry.name.startsWith(".")) continue;
-      if (["node_modules", "dist", "build", ".git", "coverage"].includes(entry.name)) continue;
+      if (
+        ["node_modules", "dist", "build", ".git", "coverage"].includes(
+          entry.name,
+        )
+      )
+        continue;
 
       const fullPath = path.join(dir, entry.name);
 
@@ -66,13 +77,35 @@ async function searchInDirectory(
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
         const textExtensions = [
-          ".ts", ".tsx", ".js", ".jsx", ".json", ".md", ".txt",
-          ".html", ".css", ".scss", ".yaml", ".yml", ".toml",
-          ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h",
-          ".sh", ".bash", ".zsh", ".env",
+          ".ts",
+          ".tsx",
+          ".js",
+          ".jsx",
+          ".json",
+          ".md",
+          ".txt",
+          ".html",
+          ".css",
+          ".scss",
+          ".yaml",
+          ".yml",
+          ".toml",
+          ".py",
+          ".rb",
+          ".go",
+          ".rs",
+          ".java",
+          ".c",
+          ".cpp",
+          ".h",
+          ".sh",
+          ".bash",
+          ".zsh",
+          ".env",
         ];
 
-        if (!textExtensions.includes(ext) && !entry.name.includes(".")) continue;
+        if (!textExtensions.includes(ext) && !entry.name.includes("."))
+          continue;
 
         try {
           const content = await fs.readFile(fullPath, "utf-8");
@@ -129,7 +162,10 @@ SUPPORTED PATTERNS:
 
 OUTPUT: Grouped results showing file path, line numbers, and matching content.`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     return (
       text.includes("search") ||
@@ -145,9 +181,11 @@ OUTPUT: Grouped results showing file path, line numbers, and matching content.`,
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const { pattern, directory } = extractSearchParams(message.content.text ?? "");
+    const { pattern, directory } = extractSearchParams(
+      message.content.text ?? "",
+    );
 
     if (!pattern) {
       const msg = "Please specify what to search for.";
@@ -199,7 +237,10 @@ OUTPUT: Grouped results showing file path, line numbers, and matching content.`,
   examples: [
     [
       { name: "{{user1}}", content: { text: "search for 'TODO' in src" } },
-      { name: "{{agent}}", content: { text: "Searching...", actions: ["SEARCH_FILES"] } },
+      {
+        name: "{{agent}}",
+        content: { text: "Searching...", actions: ["SEARCH_FILES"] },
+      },
     ],
   ],
 };

@@ -13,8 +13,6 @@ use uuid::Uuid;
 
 /// Browser automation service
 pub struct BrowserService {
-    #[allow(dead_code)]
-    config: BrowserConfig,
     sessions: Arc<RwLock<HashMap<String, BrowserSession>>>,
     current_session_id: Arc<RwLock<Option<String>>>,
     client: Arc<BrowserWebSocketClient>,
@@ -25,7 +23,6 @@ impl BrowserService {
     pub fn new(config: BrowserConfig) -> Self {
         let server_url = format!("ws://localhost:{}", config.server_port);
         Self {
-            config,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             current_session_id: Arc::new(RwLock::new(None)),
             client: Arc::new(BrowserWebSocketClient::new(&server_url)),

@@ -3,8 +3,8 @@ import type {
   Action,
   ActionExample,
   ActionParameter,
-  ActionParameters,
   ActionParameterSchema,
+  ActionParameters,
   ActionParameterValue,
 } from "./types";
 
@@ -161,9 +161,10 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
     .map((param) => {
       const requiredStr = param.required ? " (required)" : " (optional)";
       const typeStr = formatParameterType(param.schema);
-      const defaultStr = param.schema.default !== undefined
-        ? ` [default: ${JSON.stringify(param.schema.default)}]`
-        : "";
+      const defaultStr =
+        param.schema.default !== undefined
+          ? ` [default: ${JSON.stringify(param.schema.default)}]`
+          : "";
       const enumStr = param.schema.enum
         ? ` [values: ${param.schema.enum.join(", ")}]`
         : "";
@@ -189,7 +190,9 @@ function formatParameterType(schema: ActionParameterSchema): string {
     case "boolean":
       return "boolean";
     case "array":
-      return schema.items ? `array of ${formatParameterType(schema.items)}` : "array";
+      return schema.items
+        ? `array of ${formatParameterType(schema.items)}`
+        : "array";
     case "object":
       return "object";
     default:
@@ -237,7 +240,9 @@ export function parseActionParams(
  * @param xml - The XML content to parse
  * @returns Array of key-value pairs
  */
-function extractXmlChildren(xml: string): Array<{ key: string; value: string }> {
+function extractXmlChildren(
+  xml: string,
+): Array<{ key: string; value: string }> {
   const pairs: Array<{ key: string; value: string }> = [];
   const length = xml.length;
   let i = 0;
@@ -366,12 +371,16 @@ export function validateActionParams(
   }
 
   for (const paramDef of action.parameters) {
-    const extractedValue = extractedParams ? extractedParams[paramDef.name] : undefined;
+    const extractedValue = extractedParams
+      ? extractedParams[paramDef.name]
+      : undefined;
 
     if (extractedValue === undefined || extractedValue === null) {
       // Parameter not provided
       if (paramDef.required) {
-        errors.push(`Required parameter '${paramDef.name}' was not provided for action ${action.name}`);
+        errors.push(
+          `Required parameter '${paramDef.name}' was not provided for action ${action.name}`,
+        );
       } else if (paramDef.schema.default !== undefined) {
         // Apply default value
         params[paramDef.name] = paramDef.schema.default;

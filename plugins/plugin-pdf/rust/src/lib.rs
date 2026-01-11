@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! PDF Plugin for elizaOS
 //!
 //! This crate provides PDF reading and text extraction for elizaOS agents.

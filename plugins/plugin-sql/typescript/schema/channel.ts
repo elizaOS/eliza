@@ -14,10 +14,6 @@ export const channelTable = pgTable("channels", {
   topic: text("topic"),
   metadata: jsonb("metadata"),
   // Note: server_id is added dynamically by RLS setup, not defined in schema
-  createdAt: timestamp("created_at", { mode: "date" })
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
-  updatedAt: timestamp("updated_at", { mode: "date" })
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

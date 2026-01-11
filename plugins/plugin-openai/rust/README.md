@@ -101,5 +101,3 @@ match client.generate_text(&params).await {
 ## License
 
 MIT
-
-

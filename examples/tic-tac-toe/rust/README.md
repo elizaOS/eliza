@@ -5,6 +5,7 @@ A tic-tac-toe game demonstrating perfect play using minimax algorithm without an
 ## Status
 
 Coming soon! The Rust implementation will mirror the TypeScript version with:
+
 - No character (anonymous agent)
 - Custom model handlers for TEXT_LARGE/TEXT_SMALL
 - Minimax algorithm for perfect play
@@ -40,5 +41,6 @@ let runtime = AgentRuntime::new(RuntimeOptions {
     ..Default::default()
 }).await?;
 ```
+
 
 

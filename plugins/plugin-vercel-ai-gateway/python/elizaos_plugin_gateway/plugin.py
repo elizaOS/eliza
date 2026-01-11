@@ -7,7 +7,8 @@ Provides a high-level interface to Vercel AI Gateway APIs.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from elizaos_plugin_gateway.client import GatewayClient
 from elizaos_plugin_gateway.config import GatewayConfig
@@ -24,8 +25,8 @@ from elizaos_plugin_gateway.types import (
 )
 
 if TYPE_CHECKING:
-    from elizaos.types.runtime import IAgentRuntime
     from elizaos import Plugin
+    from elizaos.types.runtime import IAgentRuntime
 
 
 class GatewayPlugin:
@@ -84,7 +85,7 @@ class GatewayPlugin:
         """Close the plugin and release resources."""
         await self._client.close()
 
-    async def __aenter__(self) -> "GatewayPlugin":
+    async def __aenter__(self) -> GatewayPlugin:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -282,9 +283,7 @@ class GatewayPlugin:
         Returns:
             Generated object as a dictionary.
         """
-        return await self._client.generate_object(
-            prompt, model=model, temperature=temperature
-        )
+        return await self._client.generate_object(prompt, model=model, temperature=temperature)
 
 
 # Convenience function to create plugin
@@ -310,7 +309,7 @@ def create_plugin(
 # ============================================================================
 
 
-def create_gateway_elizaos_plugin() -> "Plugin":
+def create_gateway_elizaos_plugin() -> Plugin:
     """
     Create an elizaOS-compatible plugin for Vercel AI Gateway.
 
@@ -327,7 +326,6 @@ def create_gateway_elizaos_plugin() -> "Plugin":
 
     from elizaos import Plugin
     from elizaos.types.model import ModelType
-    from elizaos.types.runtime import IAgentRuntime
 
     # Client instance (created lazily on first use)
     _client: GatewayPlugin | None = None
@@ -339,17 +337,13 @@ def create_gateway_elizaos_plugin() -> "Plugin":
                 api_key=os.environ.get("AI_GATEWAY_API_KEY")
                 or os.environ.get("AIGATEWAY_API_KEY")
                 or os.environ.get("VERCEL_OIDC_TOKEN"),
-                base_url=os.environ.get(
-                    "AI_GATEWAY_BASE_URL", "https://ai-gateway.vercel.sh/v1"
-                ),
+                base_url=os.environ.get("AI_GATEWAY_BASE_URL", "https://ai-gateway.vercel.sh/v1"),
                 small_model=os.environ.get("AI_GATEWAY_SMALL_MODEL", "gpt-5-mini"),
                 large_model=os.environ.get("AI_GATEWAY_LARGE_MODEL", "gpt-5"),
             )
         return _client
 
-    async def text_large_handler(
-        runtime: IAgentRuntime, params: dict[str, Any]
-    ) -> str:
+    async def text_large_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
         return await client.generate_text_large(
             params.get("prompt", ""),
@@ -357,9 +351,7 @@ def create_gateway_elizaos_plugin() -> "Plugin":
             max_tokens=params.get("maxTokens"),
         )
 
-    async def text_small_handler(
-        runtime: IAgentRuntime, params: dict[str, Any]
-    ) -> str:
+    async def text_small_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> str:
         client = _get_client()
         return await client.generate_text_small(
             params.get("prompt", ""),
@@ -367,9 +359,7 @@ def create_gateway_elizaos_plugin() -> "Plugin":
             max_tokens=params.get("maxTokens"),
         )
 
-    async def embedding_handler(
-        runtime: IAgentRuntime, params: dict[str, Any]
-    ) -> list[float]:
+    async def embedding_handler(runtime: IAgentRuntime, params: dict[str, Any]) -> list[float]:
         client = _get_client()
         return await client.create_embedding(params.get("text", ""))
 
@@ -385,14 +375,17 @@ def create_gateway_elizaos_plugin() -> "Plugin":
 
 
 # Lazy plugin singleton
-_gateway_plugin_instance: "Plugin | None" = None
+_gateway_plugin_instance: Plugin | None = None
 
 
-def get_gateway_plugin() -> "Plugin":
+def get_gateway_plugin() -> Plugin:
     """Get the singleton elizaOS Gateway plugin instance."""
     global _gateway_plugin_instance
     if _gateway_plugin_instance is None:
         _gateway_plugin_instance = create_gateway_elizaos_plugin()
     return _gateway_plugin_instance
+
+
+
 
 

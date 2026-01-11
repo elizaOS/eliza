@@ -8,12 +8,12 @@ from dataclasses import dataclass
 
 from elizaos_plugin_bluesky.errors import ConfigError
 from elizaos_plugin_bluesky.types import (
-    BLUESKY_SERVICE_URL,
-    BLUESKY_POLL_INTERVAL,
-    BLUESKY_POST_INTERVAL_MIN,
-    BLUESKY_POST_INTERVAL_MAX,
     BLUESKY_ACTION_INTERVAL,
     BLUESKY_MAX_ACTIONS,
+    BLUESKY_POLL_INTERVAL,
+    BLUESKY_POST_INTERVAL_MAX,
+    BLUESKY_POST_INTERVAL_MIN,
+    BLUESKY_SERVICE_URL,
 )
 
 AT_PROTOCOL_HANDLE_REGEX = re.compile(
@@ -46,7 +46,7 @@ class BlueSkyConfig:
             raise ConfigError("Password cannot be empty", "password")
 
     @classmethod
-    def from_env(cls) -> "BlueSkyConfig":
+    def from_env(cls) -> BlueSkyConfig:
         handle = os.environ.get("BLUESKY_HANDLE", "")
         if not handle:
             raise ConfigError("BLUESKY_HANDLE not set", "handle")

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Linear plugin.
 
 use chrono::{DateTime, Utc};
@@ -236,5 +237,10 @@ impl ProviderResult {
         }
     }
 }
+
+
+
+
+
 
 

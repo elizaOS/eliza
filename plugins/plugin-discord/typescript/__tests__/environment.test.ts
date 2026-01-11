@@ -8,10 +8,10 @@ const mockRuntime = {
     DISCORD_API_TOKEN: "mocked-discord-token",
   },
   getEnv: function (key: string) {
-    return (this as { env: Record<string, any> }).env[key] || null;
+    return (this as { env: Record<string, string> }).env[key] || null;
   },
   getSetting: function (key: string) {
-    return (this as { env: Record<string, any> }).env[key] || null;
+    return (this as { env: Record<string, string> }).env[key] || null;
   },
 } as unknown as IAgentRuntime;
 
@@ -31,7 +31,7 @@ describe("Discord Environment Configuration", () => {
     } as IAgentRuntime;
 
     await expect(validateDiscordConfig(invalidRuntime)).rejects.toThrowError(
-      "Discord configuration validation failed:\nDISCORD_API_TOKEN: Invalid input: expected string, received null",
+      "Discord configuration validation failed:\nDISCORD_API_TOKEN: Invalid input: expected string, received null"
     );
   });
 
@@ -43,10 +43,10 @@ describe("Discord Environment Configuration", () => {
         CHANNEL_IDS: "123, 456,789",
       },
       getEnv: function (key: string) {
-        return (this as { env: Record<string, any> }).env[key] || null;
+        return (this as { env: Record<string, string> }).env[key] || null;
       },
       getSetting: function (key: string) {
-        return (this as { env: Record<string, any> }).env[key] || null;
+        return (this as { env: Record<string, string> }).env[key] || null;
       },
     } as unknown as IAgentRuntime;
 

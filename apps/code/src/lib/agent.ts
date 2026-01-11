@@ -9,8 +9,8 @@ import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { elizaCodePlugin } from "../plugin/index.js";
-import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 import { resolveModelProvider } from "./model-provider.js";
+import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
 
 /**
  * Eliza Code Character Configuration
@@ -25,7 +25,7 @@ const elizaCodeCharacter: Character = {
 You have access to actions for file I/O, searching, running commands, git, and background tasks.
 Use tools proactively: search/read before editing, and verify changes (tests/build) when appropriate.
 The current working directory is provided dynamically.`,
-  
+
   topics: [
     "coding",
     "programming",
@@ -44,7 +44,7 @@ The current working directory is provided dynamically.`,
     "Rust",
     "Go",
   ],
-  
+
   style: {
     all: [
       "Be thorough but concise",
@@ -69,7 +69,7 @@ The current working directory is provided dynamically.`,
       },
       {
         name: "Eliza Code",
-        content: { 
+        content: {
           text: "I'll read the package.json file for you.",
           actions: ["READ_FILE"],
         },
@@ -82,7 +82,7 @@ The current working directory is provided dynamically.`,
       },
       {
         name: "Eliza Code",
-        content: { 
+        content: {
           text: "I'll perform a security-focused code review of the auth module.",
           actions: ["REVIEW"],
         },
@@ -95,7 +95,7 @@ The current working directory is provided dynamically.`,
       },
       {
         name: "Eliza Code",
-        content: { 
+        content: {
           text: "I'll explain the code in detail.",
           actions: ["EXPLAIN"],
         },
@@ -108,7 +108,7 @@ The current working directory is provided dynamically.`,
       },
       {
         name: "Eliza Code",
-        content: { 
+        content: {
           text: "I'll generate a quicksort implementation with documentation.",
           actions: ["GENERATE"],
         },
@@ -121,7 +121,7 @@ The current working directory is provided dynamically.`,
       },
       {
         name: "Eliza Code",
-        content: { 
+        content: {
           text: "I can't help with destructive commands like that.",
         },
       },
@@ -133,7 +133,7 @@ The current working directory is provided dynamically.`,
       },
       {
         name: "Eliza Code",
-        content: { 
+        content: {
           text: "I'll create a task to implement the REST API. This will run in the background while we chat.",
           actions: ["CREATE_TASK"],
         },
@@ -148,7 +148,9 @@ The current working directory is provided dynamically.`,
 export async function initializeAgent(): Promise<AgentRuntime> {
   const provider = resolveModelProvider(process.env);
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is required (ELIZA_CODE_PROVIDER=anthropic).");
+    throw new Error(
+      "ANTHROPIC_API_KEY is required (ELIZA_CODE_PROVIDER=anthropic).",
+    );
   }
   if (provider === "openai" && !process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
@@ -158,7 +160,9 @@ export async function initializeAgent(): Promise<AgentRuntime> {
   // version than this monorepo. At runtime it's compatible, but the types don't
   // line up across the two packages. We keep the cast narrow and local.
   const providerPlugin: Plugin =
-    provider === "anthropic" ? (anthropicPlugin as Plugin) : (openaiPlugin as Plugin);
+    provider === "anthropic"
+      ? (anthropicPlugin as Plugin)
+      : (openaiPlugin as Plugin);
 
   const plugins: Plugin[] = [
     sqlPlugin,

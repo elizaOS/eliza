@@ -9,11 +9,11 @@ async def handle_text_embedding(
     text: str,
 ) -> list[float]:
     """Handle TEXT_EMBEDDING model for a single text.
-    
+
     Args:
         config: ElizaOS Cloud configuration.
         text: Text to embed.
-        
+
     Returns:
         Embedding vector as list of floats.
     """
@@ -31,17 +31,17 @@ async def handle_batch_text_embedding(
     texts: list[str],
 ) -> list[list[float]]:
     """Handle batch TEXT_EMBEDDING for multiple texts.
-    
+
     Args:
         config: ElizaOS Cloud configuration.
         texts: List of texts to embed.
-        
+
     Returns:
         List of embedding vectors.
     """
     if not texts:
         return []
-    
+
     async with ElizaCloudClient(config) as client:
         params = TextEmbeddingParams(texts=texts)
         result = await client.generate_embedding(params)
@@ -49,5 +49,8 @@ async def handle_batch_text_embedding(
         if isinstance(result[0], list):
             return result  # type: ignore[return-value]
         return [result]  # type: ignore[list-item]
+
+
+
 
 

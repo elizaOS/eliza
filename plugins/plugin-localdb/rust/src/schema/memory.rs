@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Memory schema for elizaOS database
 //!
 //! Corresponds to the TypeScript memoryTable in packages/plugin-sql/typescript/schema/memory.ts

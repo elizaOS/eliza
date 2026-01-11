@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FileTokenStore, RuntimeCacheTokenStore } from "../auth-providers/token-store";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FileTokenStore, RuntimeCacheTokenStore } from "../auth-providers/token-store";
 
 describe("token-store", () => {
   describe("FileTokenStore", () => {
@@ -40,14 +41,17 @@ describe("token-store", () => {
   });
 
   describe("RuntimeCacheTokenStore", () => {
-    let runtime: any;
+    let runtime: Partial<IAgentRuntime> & {
+      getCache: (key: string) => Promise<unknown>;
+      setCache: (key: string, value: unknown) => Promise<void>;
+    };
 
     beforeEach(() => {
-      const cache = new Map<string, any>();
+      const cache = new Map<string, unknown>();
       runtime = {
-        agentId: "agent-123",
+        agentId: "agent-123" as UUID,
         getCache: vi.fn(async (k: string) => cache.get(k)),
-        setCache: vi.fn(async (k: string, v: any) => {
+        setCache: vi.fn(async (k: string, v: unknown) => {
           cache.set(k, v);
         }),
       };
@@ -83,4 +87,3 @@ describe("token-store", () => {
     });
   });
 });
-

@@ -4,7 +4,8 @@ Retry utility with exponential backoff.
 
 import asyncio
 import logging
-from typing import Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 from elizaos_browser.types import RetryConfig
 
@@ -80,5 +81,6 @@ async def retry_with_backoff(
 async def sleep(seconds: float) -> None:
     """Sleep for specified seconds."""
     await asyncio.sleep(seconds)
+
 
 

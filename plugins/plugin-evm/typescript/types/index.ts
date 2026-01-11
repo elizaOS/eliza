@@ -5,9 +5,9 @@
  * All types are designed for fail-fast validation - no defensive programming.
  */
 
-import { z } from "zod";
 import type { Route, Token } from "@lifi/types";
 import type {
+  Account,
   Address,
   Chain,
   Hash,
@@ -16,9 +16,9 @@ import type {
   Log,
   PublicClient,
   WalletClient,
-  Account,
 } from "viem";
 import * as viemChains from "viem/chains";
+import { z } from "zod";
 
 // =============================================================================
 // Chain Types
@@ -28,9 +28,7 @@ import * as viemChains from "viem/chains";
  * All supported chain names derived from viem's chain exports.
  * This is the authoritative list of chains this plugin can interact with.
  */
-const SUPPORTED_CHAIN_NAMES = Object.keys(viemChains) as ReadonlyArray<
-  keyof typeof viemChains
->;
+const SUPPORTED_CHAIN_NAMES = Object.keys(viemChains) as ReadonlyArray<keyof typeof viemChains>;
 
 /**
  * Type representing any supported chain name
@@ -101,15 +99,13 @@ export const PrivateKeySchema = z
 /**
  * Zod schema for token amounts (must be positive decimal string)
  */
-export const AmountSchema = z
-  .string()
-  .refine(
-    (val) => {
-      const num = parseFloat(val);
-      return !isNaN(num) && num > 0;
-    },
-    { message: "Amount must be a positive number" }
-  );
+export const AmountSchema = z.string().refine(
+  (val) => {
+    const num = parseFloat(val);
+    return !Number.isNaN(num) && num > 0;
+  },
+  { message: "Amount must be a positive number" }
+);
 
 /**
  * Zod schema for optional amounts (can be undefined, but if provided must be valid)
@@ -121,7 +117,7 @@ export const OptionalAmountSchema = z
     (val) => {
       if (val === undefined) return true;
       const num = parseFloat(val);
-      return !isNaN(num) && num > 0;
+      return !Number.isNaN(num) && num > 0;
     },
     { message: "If provided, amount must be a positive number" }
   );
@@ -606,10 +602,7 @@ export class EVMError extends Error {
  * Assert that a value is defined (not null or undefined)
  * @throws Error if value is null or undefined
  */
-export function assertDefined<T>(
-  value: T | null | undefined,
-  message: string
-): asserts value is T {
+export function assertDefined<T>(value: T | null | undefined, message: string): asserts value is T {
   if (value === null || value === undefined) {
     throw new EVMError(EVMErrorCode.INVALID_PARAMS, message);
   }
@@ -621,13 +614,27 @@ export function assertDefined<T>(
 export function assertChainConfigured(
   chains: Record<string, Chain>,
   chainName: string
-): asserts chains is Record<string, Chain> & { [K in typeof chainName]: Chain } {
+): asserts chains is Record<string, Chain> & {
+  [K in typeof chainName]: Chain;
+} {
   if (!(chainName in chains)) {
     throw new EVMError(
       EVMErrorCode.CHAIN_NOT_CONFIGURED,
       `Chain "${chainName}" is not configured. Available chains: ${Object.keys(chains).join(", ")}`
     );
   }
+}
+
+/**
+ * Format Zod error for display
+ */
+function formatZodError(error: z.ZodError<unknown>): string {
+  // Cast to access the issues array which exists on ZodError but TypeScript doesn't recognize
+  const errorObj = error as unknown as { issues?: Array<{ message?: string }> };
+  if (Array.isArray(errorObj.issues) && errorObj.issues.length > 0) {
+    return errorObj.issues[0]?.message ?? "Validation failed";
+  }
+  return "Validation failed";
 }
 
 /**
@@ -638,7 +645,7 @@ export function validateAddress(address: string): Address {
   if (!result.success) {
     throw new EVMError(
       EVMErrorCode.INVALID_PARAMS,
-      `Invalid address: ${address}. ${result.error.errors[0]?.message ?? "Validation failed"}`
+      `Invalid address: ${address}. ${formatZodError(result.error)}`
     );
   }
   return result.data;
@@ -652,7 +659,7 @@ export function validateHash(hash: string): Hash {
   if (!result.success) {
     throw new EVMError(
       EVMErrorCode.INVALID_PARAMS,
-      `Invalid transaction hash: ${hash}. ${result.error.errors[0]?.message ?? "Validation failed"}`
+      `Invalid transaction hash: ${hash}. ${formatZodError(result.error)}`
     );
   }
   return result.data;

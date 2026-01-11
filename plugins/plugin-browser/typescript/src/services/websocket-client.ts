@@ -2,16 +2,16 @@
  * WebSocket client for communication with browser server
  */
 
-import { logger } from '@elizaos/core';
-import type { WebSocketMessage, WebSocketResponse, NavigationResult } from '../types.js';
+import { logger } from "@elizaos/core";
+import type { NavigationResult, WebSocketMessage, WebSocketResponse } from "../types.js";
 
 // Dynamic import for WebSocket
-let WebSocket: typeof import('ws').default;
-if (typeof window !== 'undefined' && typeof window.WebSocket !== 'undefined') {
-  WebSocket = window.WebSocket as unknown as typeof import('ws').default;
+let WebSocket: typeof import("ws").default;
+if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
+  WebSocket = window.WebSocket as unknown as typeof import("ws").default;
 } else {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  WebSocket = require('ws');
+  WebSocket = require("ws");
 }
 
 type MessageHandler = (response: WebSocketResponse) => void;
@@ -37,14 +37,14 @@ export class BrowserWebSocketClient {
       try {
         this.ws = new WebSocket(this.serverUrl) as InstanceType<typeof WebSocket>;
 
-        this.ws.on('open', () => {
+        this.ws.on("open", () => {
           this.connected = true;
           this.reconnectAttempts = 0;
           logger.info(`[Browser] Connected to server at ${this.serverUrl}`);
           resolve();
         });
 
-        this.ws.on('message', (data: Buffer | string) => {
+        this.ws.on("message", (data: Buffer | string) => {
           try {
             const message = JSON.parse(data.toString()) as WebSocketResponse;
 
@@ -54,7 +54,7 @@ export class BrowserWebSocketClient {
               handler?.(message);
             }
 
-            if (message.type === 'connected') {
+            if (message.type === "connected") {
               logger.info(`[Browser] Server connected: ${JSON.stringify(message)}`);
             }
           } catch (error) {
@@ -63,16 +63,16 @@ export class BrowserWebSocketClient {
           }
         });
 
-        this.ws.on('error', (error: Error) => {
+        this.ws.on("error", (error: Error) => {
           logger.error(`[Browser] WebSocket error: ${error.message}`);
           if (!this.connected) {
             reject(error);
           }
         });
 
-        this.ws.on('close', () => {
+        this.ws.on("close", () => {
           this.connected = false;
-          logger.info('[Browser] Disconnected from server');
+          logger.info("[Browser] Disconnected from server");
 
           if (this.ws && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.attemptReconnect();
@@ -107,7 +107,7 @@ export class BrowserWebSocketClient {
    */
   async sendMessage(type: string, data: Record<string, unknown>): Promise<WebSocketResponse> {
     if (!this.ws || !this.connected) {
-      throw new Error('Not connected to browser server');
+      throw new Error("Not connected to browser server");
     }
 
     const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -125,8 +125,8 @@ export class BrowserWebSocketClient {
 
       this.messageHandlers.set(requestId, (response) => {
         clearTimeout(timeout);
-        if (response.type === 'error') {
-          reject(new Error(response.error ?? 'Unknown error'));
+        if (response.type === "error") {
+          reject(new Error(response.error ?? "Unknown error"));
         } else {
           resolve(response);
         }
@@ -147,7 +147,7 @@ export class BrowserWebSocketClient {
       this.ws = null;
     }
     this.connected = false;
-    logger.info('[Browser] Client disconnected');
+    logger.info("[Browser] Client disconnected");
   }
 
   /**
@@ -160,7 +160,7 @@ export class BrowserWebSocketClient {
   // Convenience methods for specific actions
 
   async navigate(sessionId: string, url: string): Promise<NavigationResult> {
-    const response = await this.sendMessage('navigate', {
+    const response = await this.sendMessage("navigate", {
       sessionId,
       data: { url },
     });
@@ -168,91 +168,93 @@ export class BrowserWebSocketClient {
     return {
       success: Boolean(data?.success),
       url: String(data?.url ?? url),
-      title: String(data?.title ?? ''),
+      title: String(data?.title ?? ""),
     };
   }
 
-  async getState(sessionId: string): Promise<{ url: string; title: string; sessionId: string; createdAt: Date }> {
-    const response = await this.sendMessage('getState', { sessionId });
+  async getState(
+    sessionId: string
+  ): Promise<{ url: string; title: string; sessionId: string; createdAt: Date }> {
+    const response = await this.sendMessage("getState", { sessionId });
     const data = response.data as Record<string, unknown> | undefined;
     return {
-      url: String(data?.url ?? ''),
-      title: String(data?.title ?? ''),
+      url: String(data?.url ?? ""),
+      title: String(data?.title ?? ""),
       sessionId,
       createdAt: new Date(),
     };
   }
 
   async goBack(sessionId: string): Promise<NavigationResult> {
-    const response = await this.sendMessage('goBack', { sessionId });
+    const response = await this.sendMessage("goBack", { sessionId });
     const data = response.data as Record<string, unknown> | undefined;
     return {
       success: Boolean(data?.success ?? true),
-      url: String(data?.url ?? ''),
-      title: String(data?.title ?? ''),
+      url: String(data?.url ?? ""),
+      title: String(data?.title ?? ""),
     };
   }
 
   async goForward(sessionId: string): Promise<NavigationResult> {
-    const response = await this.sendMessage('goForward', { sessionId });
+    const response = await this.sendMessage("goForward", { sessionId });
     const data = response.data as Record<string, unknown> | undefined;
     return {
       success: Boolean(data?.success ?? true),
-      url: String(data?.url ?? ''),
-      title: String(data?.title ?? ''),
+      url: String(data?.url ?? ""),
+      title: String(data?.title ?? ""),
     };
   }
 
   async refresh(sessionId: string): Promise<NavigationResult> {
-    const response = await this.sendMessage('refresh', { sessionId });
+    const response = await this.sendMessage("refresh", { sessionId });
     const data = response.data as Record<string, unknown> | undefined;
     return {
       success: Boolean(data?.success ?? true),
-      url: String(data?.url ?? ''),
-      title: String(data?.title ?? ''),
+      url: String(data?.url ?? ""),
+      title: String(data?.title ?? ""),
     };
   }
 
   async click(sessionId: string, description: string): Promise<WebSocketResponse> {
-    return await this.sendMessage('click', {
+    return await this.sendMessage("click", {
       sessionId,
       data: { description },
     });
   }
 
   async type(sessionId: string, text: string, field: string): Promise<WebSocketResponse> {
-    return await this.sendMessage('type', {
+    return await this.sendMessage("type", {
       sessionId,
       data: { text, field },
     });
   }
 
   async select(sessionId: string, option: string, dropdown: string): Promise<WebSocketResponse> {
-    return await this.sendMessage('select', {
+    return await this.sendMessage("select", {
       sessionId,
       data: { option, dropdown },
     });
   }
 
   async extract(sessionId: string, instruction: string): Promise<WebSocketResponse> {
-    return await this.sendMessage('extract', {
+    return await this.sendMessage("extract", {
       sessionId,
       data: { instruction },
     });
   }
 
   async screenshot(sessionId: string): Promise<WebSocketResponse> {
-    return await this.sendMessage('screenshot', { sessionId });
+    return await this.sendMessage("screenshot", { sessionId });
   }
 
   async solveCaptcha(sessionId: string): Promise<WebSocketResponse> {
-    return await this.sendMessage('solveCaptcha', { sessionId });
+    return await this.sendMessage("solveCaptcha", { sessionId });
   }
 
   async health(): Promise<boolean> {
     try {
-      const response = await this.sendMessage('health', {});
-      return response.type === 'health' && (response.data as { status: string })?.status === 'ok';
+      const response = await this.sendMessage("health", {});
+      return response.type === "health" && (response.data as { status: string })?.status === "ok";
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`[Browser] Health check failed: ${errorMessage}`);
@@ -260,4 +262,3 @@ export class BrowserWebSocketClient {
     }
   }
 }
-

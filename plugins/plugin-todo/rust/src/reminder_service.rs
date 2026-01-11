@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Reminder service for todo notifications.
 
 use crate::cache_manager::CacheManager;
@@ -11,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 /// Main todo reminder service that handles all reminder functionality.
@@ -256,5 +257,10 @@ pub async fn create_reminder_service(config: TodoConfig) -> ReminderService {
     service.start().await;
     service
 }
+
+
+
+
+
 
 

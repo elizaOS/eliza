@@ -17,7 +17,7 @@ import { ServiceType } from "../types";
 export const channelStateProvider: Provider = {
   name: "channelState",
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const room = (state.data && state.data.room) ?? (await runtime.getRoom(message.roomId));
+    const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
       throw new Error("No room found");
     }
@@ -31,8 +31,8 @@ export const channelStateProvider: Provider = {
       };
     }
 
-    const agentName = (state && state.agentName) || "The agent";
-    const senderName = (state && state.senderName) || "someone";
+    const agentName = state?.agentName || "The agent";
+    const senderName = state?.senderName || "someone";
 
     let responseText = "";
     let channelType = "";
@@ -52,7 +52,7 @@ export const channelStateProvider: Provider = {
             agentId: runtime.agentId,
             roomId: room.id,
           },
-          "No channel ID found",
+          "No channel ID found"
         );
         return {
           data: {
@@ -66,9 +66,7 @@ export const channelStateProvider: Provider = {
         };
       }
 
-      const discordService = runtime.getService(
-        ServiceType.DISCORD,
-      ) as DiscordService;
+      const discordService = runtime.getService(ServiceType.DISCORD) as DiscordService;
       if (!discordService) {
         runtime.logger.warn(
           {
@@ -76,7 +74,7 @@ export const channelStateProvider: Provider = {
             agentId: runtime.agentId,
             channelId,
           },
-          "No discord client found",
+          "No discord client found"
         );
         return {
           data: {
@@ -94,7 +92,7 @@ export const channelStateProvider: Provider = {
 
       // Look up guild via channel instead of serverId (which is now a UUID)
       // Try cache first, then fetch if not cached (handles cold start / partial cache scenarios)
-      let channel = (discordService.client && discordService.client.channels.cache.get(channelId)) as
+      let channel = discordService.client?.channels.cache.get(channelId) as
         | GuildChannel
         | undefined;
       if (!channel && discordService.client) {
@@ -108,16 +106,13 @@ export const channelStateProvider: Provider = {
               src: "plugin:discord:provider:channelState",
               agentId: runtime.agentId,
               channelId,
-              error:
-                fetchError instanceof Error
-                  ? fetchError.message
-                  : String(fetchError),
+              error: fetchError instanceof Error ? fetchError.message : String(fetchError),
             },
-            "Failed to fetch channel",
+            "Failed to fetch channel"
           );
         }
       }
-      const guild = channel && channel.guild;
+      const guild = channel?.guild;
       if (!guild) {
         runtime.logger.warn(
           {
@@ -125,7 +120,7 @@ export const channelStateProvider: Provider = {
             agentId: runtime.agentId,
             channelId,
           },
-          "Guild not found for channel (not in cache and fetch failed)",
+          "Guild not found for channel (not in cache and fetch failed)"
         );
         return {
           data: {
@@ -142,7 +137,7 @@ export const channelStateProvider: Provider = {
       }
       serverName = guild.name;
 
-      responseText = `${agentName} is currently having a conversation in the channel \`#${(channel && channel.name) || channelId}\` in the server \`${serverName}\``;
+      responseText = `${agentName} is currently having a conversation in the channel \`#${channel?.name || channelId}\` in the server \`${serverName}\``;
       responseText += `\n${agentName} is in a room with other users and should be self-conscious and only participate when directly addressed or when the conversation is relevant to them.`;
     }
 

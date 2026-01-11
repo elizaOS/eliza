@@ -1,25 +1,24 @@
 import {
   ChannelType,
-  type Content,
-  type IAgentRuntime,
-  type Memory,
-  type UUID,
   createUniqueUuid,
+  type IAgentRuntime,
   logger,
+  type Memory,
   ModelType,
   parseBooleanFromText,
+  type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
-import type { MediaData } from "./types";
-import { sendTweet } from "./utils";
-import { getSetting } from "./utils/settings";
 import { getRandomInterval } from "./environment";
+import type { MediaData, TweetResponse } from "./types";
+import { sendTweet } from "./utils";
 import {
   addToRecentTweets,
-  isDuplicateTweet,
+  createMemorySafe,
   ensureTwitterContext,
-  createMemorySafe
+  isDuplicateTweet,
 } from "./utils/memory";
+import { getSetting } from "./utils/settings";
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
@@ -28,7 +27,7 @@ export class TwitterPostClient {
   runtime: IAgentRuntime;
   twitterUsername: string;
   private isDryRun: boolean;
-  private state: any;
+  private state: Record<string, unknown>;
   private isRunning: boolean = false;
   private isPosting: boolean = false; // Add lock to prevent concurrent posting
 
@@ -36,30 +35,45 @@ export class TwitterPostClient {
    * Creates an instance of TwitterPostClient.
    * @param {ClientBase} client - The client instance.
    * @param {IAgentRuntime} runtime - The runtime instance.
-   * @param {any} state - The state object containing configuration settings
+   * @param {Record<string, unknown>} state - The state object containing configuration settings
    */
-  constructor(client: ClientBase, runtime: IAgentRuntime, state: any) {
+  constructor(client: ClientBase, runtime: IAgentRuntime, state: Record<string, unknown>) {
     this.client = client;
     this.state = state;
     this.runtime = runtime;
     const dryRunSetting =
-      this.state?.TWITTER_DRY_RUN ??
-      getSetting(this.runtime, "TWITTER_DRY_RUN")
-    this.isDryRun = parseBooleanFromText(dryRunSetting)
+      typeof this.state?.TWITTER_DRY_RUN === "string" ||
+      typeof this.state?.TWITTER_DRY_RUN === "boolean" ||
+      this.state?.TWITTER_DRY_RUN === true ||
+      this.state?.TWITTER_DRY_RUN === false
+        ? this.state.TWITTER_DRY_RUN
+        : getSetting(this.runtime, "TWITTER_DRY_RUN");
+    this.isDryRun = parseBooleanFromText(dryRunSetting);
+
+    // Get Twitter username from settings
+    const usernameSetting =
+      getSetting(this.runtime, "TWITTER_USERNAME") || this.state?.TWITTER_USERNAME;
+    this.twitterUsername = typeof usernameSetting === "string" ? usernameSetting : "";
 
     // Log configuration on initialization
     logger.log("Twitter Post Client Configuration:");
     logger.log(`- Dry Run Mode: ${this.isDryRun ? "Enabled" : "Disabled"}`);
 
     const postIntervalMin = parseInt(
-      this.state?.TWITTER_POST_INTERVAL_MIN ||
+      (typeof this.state?.TWITTER_POST_INTERVAL_MIN === "string"
+        ? this.state.TWITTER_POST_INTERVAL_MIN
+        : null) ||
         (getSetting(this.runtime, "TWITTER_POST_INTERVAL_MIN") as string) ||
         "90",
+      10
     );
     const postIntervalMax = parseInt(
-      this.state?.TWITTER_POST_INTERVAL_MAX ||
+      (typeof this.state?.TWITTER_POST_INTERVAL_MAX === "string"
+        ? this.state.TWITTER_POST_INTERVAL_MAX
+        : null) ||
         (getSetting(this.runtime, "TWITTER_POST_INTERVAL_MAX") as string) ||
         "150",
+      10
     );
     logger.log(`- Post Interval: ${postIntervalMin}-${postIntervalMax} minutes (randomized)`);
   }
@@ -93,7 +107,7 @@ export class TwitterPostClient {
       }
 
       // Get random post interval in minutes
-      const postIntervalMinutes = getRandomInterval(this.runtime, 'post');
+      const postIntervalMinutes = getRandomInterval(this.runtime, "post");
 
       // Convert to milliseconds
       const interval = postIntervalMinutes * 60 * 1000;
@@ -114,13 +128,13 @@ export class TwitterPostClient {
 
     // Check if we should generate a tweet immediately
     const postImmediately =
-      this.state?.TWITTER_POST_IMMEDIATELY ??
-      getSetting(this.runtime, "TWITTER_POST_IMMEDIATELY") as string
+      typeof this.state?.TWITTER_POST_IMMEDIATELY === "string" ||
+      typeof this.state?.TWITTER_POST_IMMEDIATELY === "boolean"
+        ? this.state.TWITTER_POST_IMMEDIATELY
+        : (getSetting(this.runtime, "TWITTER_POST_IMMEDIATELY") as string);
 
     if (parseBooleanFromText(postImmediately)) {
-      logger.info(
-        "TWITTER_POST_IMMEDIATELY is true, generating initial tweet now",
-      );
+      logger.info("TWITTER_POST_IMMEDIATELY is true, generating initial tweet now");
       // Try multiple times in case profile isn't ready
       let retries = 0;
       while (retries < 5) {
@@ -162,30 +176,30 @@ export class TwitterPostClient {
         return false;
       }
 
-      logger.info(
-        `Generating tweet for user: ${this.client.profile?.username} (${userId})`,
-      );
+      logger.info(`Generating tweet for user: ${this.client.profile?.username} (${userId})`);
 
       // Create standardized world and room IDs
-      const worldId = createUniqueUuid(this.runtime, userId) as UUID;
+      const _worldId = createUniqueUuid(this.runtime, userId) as UUID;
       const roomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
 
       // Generate tweet content using the runtime's model
-      const state = await this.runtime.composeState({
-        agentId: this.runtime.agentId,
-        entityId: this.runtime.agentId,
-        roomId,
-        content: { text: "", type: "post" },
-        createdAt: Date.now(),
-      } as Memory).catch((error) => {
-        logger.warn("Error composing state, using minimal state:", error);
-        // Return minimal state if composition fails
-        return {
+      const state = await this.runtime
+        .composeState({
           agentId: this.runtime.agentId,
-          recentMemories: [],
-          values: {}
-        };
-      });
+          entityId: this.runtime.agentId,
+          roomId,
+          content: { text: "", type: "post" },
+          createdAt: Date.now(),
+        } as Memory)
+        .catch((error) => {
+          logger.warn("Error composing state, using minimal state:", error);
+          // Return minimal state if composition fails
+          return {
+            agentId: this.runtime.agentId,
+            recentMemories: [],
+            values: {},
+          };
+        });
 
       // Create a prompt for tweet generation
       const tweetPrompt = `You are ${this.runtime.character.name}.
@@ -193,12 +207,22 @@ ${this.runtime.character.bio}
 
 CRITICAL: Generate a tweet that sounds like YOU, not a generic motivational poster or LinkedIn influencer.
 
-${this.runtime.character.messageExamples && this.runtime.character.messageExamples.length > 0 ? `
+${
+  this.runtime.character.messageExamples && this.runtime.character.messageExamples.length > 0
+    ? `
 Example tweets that capture your voice:
-${this.runtime.character.messageExamples.map((example: any) =>
-  Array.isArray(example) ? example[1]?.content?.text || '' : example
-).filter(Boolean).slice(0, 5).join('\n')}
-` : ''}
+${this.runtime.character.messageExamples
+  .map((example: unknown) =>
+    Array.isArray(example)
+      ? (example[1] as { content?: { text?: string } })?.content?.text || ""
+      : String(example)
+  )
+  .filter(Boolean)
+  .slice(0, 5)
+  .join("\n")}
+`
+    : ""
+}
 
 Style guidelines:
 - Be authentic, opinionated, and specific - no generic platitudes
@@ -212,31 +236,35 @@ Style guidelines:
 
 Your interests: ${this.runtime.character.topics?.join(", ") || "technology, crypto, AI"}
 
-${this.runtime.character.style ? `Your style: ${
-  typeof this.runtime.character.style === 'object'
-    ? this.runtime.character.style.all?.join(', ') || JSON.stringify(this.runtime.character.style)
-    : this.runtime.character.style
-}` : ''}
+${
+  this.runtime.character.style
+    ? `Your style: ${
+        typeof this.runtime.character.style === "object"
+          ? this.runtime.character.style.all?.join(", ") ||
+            JSON.stringify(this.runtime.character.style)
+          : this.runtime.character.style
+      }`
+    : ""
+}
 
 Recent context:
 ${
-  state.recentMemories
-    ?.slice(0, 3)
-    .map((m: Memory) => m.content.text)
-    .join("\n") || "No recent context"
+  Array.isArray(state.recentMemories) && state.recentMemories.length > 0
+    ? state.recentMemories
+        .slice(0, 3)
+        .map((m: Memory) => m.content?.text || "")
+        .join("\n") || "No recent context"
+    : "No recent context"
 }
 
 Generate a single tweet that sounds like YOU would actually write it:`;
 
       // Use the runtime's model to generate tweet content
-      const generatedContent = await this.runtime.useModel(
-        ModelType.TEXT_SMALL,
-        {
-          prompt: tweetPrompt,
-          temperature: 0.9, // Increased for more creativity
-          maxTokens: 100,
-        },
-      );
+      const generatedContent = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: tweetPrompt,
+        temperature: 0.9, // Increased for more creativity
+        maxTokens: 100,
+      });
 
       const tweetText = generatedContent.trim();
 
@@ -263,7 +291,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
             break;
           }
         }
-        const finalTweet = truncated.trim() || tweetText.substring(0, 277) + "...";
+        const finalTweet = truncated.trim() || `${tweetText.substring(0, 277)}...`;
         logger.info(`Truncated tweet: ${finalTweet}`);
 
         // Post the truncated tweet
@@ -279,7 +307,7 @@ Generate a single tweet that sounds like YOU would actually write it:`;
           return false;
         }
 
-        const tweetId = (result as any).id;
+        const tweetId = result.id ?? result.data?.id ?? result.data?.data?.id;
         logger.info(`Tweet posted successfully! ID: ${tweetId}`);
 
         // Don't save to memory if room creation might fail
@@ -303,10 +331,10 @@ Generate a single tweet that sounds like YOU would actually write it:`;
         return false;
       }
 
-      const tweetId = (result as any).id;
+      const tweetId = result.id ?? result.data?.id ?? result.data?.data?.id;
       logger.info(`Tweet posted successfully! ID: ${tweetId}`);
 
-      if (result) {
+      if (result && tweetId) {
         const postedTweetId = createUniqueUuid(this.runtime, tweetId);
 
         try {
@@ -339,14 +367,23 @@ Generate a single tweet that sounds like YOU would actually write it:`;
           await createMemorySafe(this.runtime, postedMemory, "messages");
           logger.info("Tweet posted and saved to memory successfully");
         } catch (error) {
-          logger.error("Failed to save tweet memory:", error);
+          logger.error(
+            "Failed to save tweet memory:",
+            error instanceof Error ? error.message : String(error)
+          );
           // Don't fail the tweet posting if memory creation fails
         }
 
         return true;
+      } else {
+        logger.warn("Tweet generation returned no result");
+        return false;
       }
     } catch (error) {
-      logger.error("Error generating tweet:", error);
+      logger.error(
+        "Error generating tweet:",
+        error instanceof Error ? error.message : String(error)
+      );
       return false;
     } finally {
       this.isPosting = false;
@@ -361,49 +398,38 @@ Generate a single tweet that sounds like YOU would actually write it:`;
    */
   private async postToTwitter(
     text: string,
-    mediaData: MediaData[] = [],
-  ): Promise<any> {
-    try {
-      // Check if this tweet is a duplicate of recent tweets
-      const username = this.client.profile?.username;
-      if (!username) {
-        logger.error("No profile username available");
-        return null;
-      }
-
-      // Check for duplicates in recent tweets
-      const isDuplicate = await isDuplicateTweet(this.runtime, username, text);
-      if (isDuplicate) {
-        logger.warn("Tweet is a duplicate of a recent post. Skipping to avoid duplicate.");
-        return null;
-      }
-
-      // Handle media uploads if needed
-      const mediaIds: string[] = [];
-
-      if (mediaData && mediaData.length > 0) {
-        for (const media of mediaData) {
-          try {
-            // TODO: Media upload will need to be updated to use the new API
-            // For now, just log a warning that media upload is not supported
-            logger.warn(
-              "Media upload not currently supported with the modern Twitter API",
-            );
-          } catch (error) {
-            logger.error("Error uploading media:", error);
-          }
-        }
-      }
-
-      const result = await sendTweet(this.client, text, mediaData);
-
-      // Add to recent tweets cache to prevent future duplicates
-      await addToRecentTweets(this.runtime, username, text);
-
-      return result;
-    } catch (error) {
-      logger.error("Error posting to Twitter:", error);
-      throw error;
+    mediaData: MediaData[] = []
+  ): Promise<TweetResponse | null> {
+    // Check if this tweet is a duplicate of recent tweets
+    const username = this.client.profile?.username;
+    if (!username) {
+      logger.error("No profile username available");
+      return null;
     }
+
+    // Check for duplicates in recent tweets
+    const isDuplicate = await isDuplicateTweet(this.runtime, username, text);
+    if (isDuplicate) {
+      logger.warn("Tweet is a duplicate of a recent post. Skipping to avoid duplicate.");
+      return null;
+    }
+
+    // Handle media uploads if needed
+    const _mediaIds: string[] = [];
+
+    if (mediaData && mediaData.length > 0) {
+      for (const _media of mediaData) {
+        // TODO: Media upload will need to be updated to use the new API
+        // For now, just log a warning that media upload is not supported
+        logger.warn("Media upload not currently supported with the modern Twitter API");
+      }
+    }
+
+    const result = await sendTweet(this.client, text, mediaData);
+
+    // Add to recent tweets cache to prevent future duplicates
+    await addToRecentTweets(this.runtime, username, text);
+
+    return result;
   }
 }

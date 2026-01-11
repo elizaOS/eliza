@@ -1,8 +1,19 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { ChannelType, stringToUuid, type IAgentRuntime, type Room, type Task, type UUID } from "@elizaos/core";
-import { CodeTaskService } from "../plugin/services/code-task.js";
-import type { CodeTask, CodeTaskMetadata, TaskPaneVisibility } from "../types.js";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Room,
+  stringToUuid,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { handleTaskSlashCommand } from "../lib/task-slash-command.js";
+import { CodeTaskService } from "../plugin/services/code-task.js";
+import type {
+  CodeTask,
+  CodeTaskMetadata,
+  TaskPaneVisibility,
+} from "../types.js";
 
 function createMockRuntimeWithService(): {
   runtime: IAgentRuntime;
@@ -67,7 +78,8 @@ function createMockRuntimeWithService(): {
       if (!task) return;
 
       if (typeof updates.name === "string") task.name = updates.name;
-      if (typeof updates.description === "string") task.description = updates.description;
+      if (typeof updates.description === "string")
+        task.description = updates.description;
       if (Array.isArray(updates.tags)) task.tags = updates.tags;
       if (updates.roomId) task.roomId = updates.roomId;
       if (updates.worldId) task.worldId = updates.worldId;
@@ -141,7 +153,9 @@ describe("TUI /task slash commands", () => {
       showTaskPane: true,
     });
     expect(ok).toBe(true);
-    expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe("paused");
+    expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe(
+      "paused",
+    );
     expect(messages.join("\n")).toContain("Task paused");
   });
 
@@ -162,7 +176,9 @@ describe("TUI /task slash commands", () => {
       showTaskPane: true,
     });
     expect(ok).toBe(true);
-    expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe("running");
+    expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe(
+      "running",
+    );
     expect(started).toContain(task.id ?? "");
   });
 
@@ -186,6 +202,3 @@ describe("TUI /task slash commands", () => {
     expect(messages.join("\n")).toContain("Restarting:");
   });
 });
-
-
-

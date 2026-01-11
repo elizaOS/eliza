@@ -5,8 +5,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import type { FarcasterConfig, NeynarWebhookData } from "../types";
+import { castUuid, neynarCastToCast } from "../utils";
 import type { IInteractionProcessor } from "./InteractionProcessor";
-import { neynarCastToCast, castUuid } from "../utils";
 
 interface FarcasterInteractionSourceParams {
   client: FarcasterClient;
@@ -64,7 +64,9 @@ export class FarcasterPollingSource extends FarcasterInteractionSource {
         await this.pollForInteractions();
 
         const delay = this.config.FARCASTER_POLL_INTERVAL * 1000;
-        await new Promise((resolve) => (this.timeout = setTimeout(resolve, delay)));
+        await new Promise((resolve) => {
+          this.timeout = setTimeout(resolve, delay);
+        });
       } catch (error) {
         this.runtime.logger.error({ error }, "[Farcaster] Error in polling:");
       }
@@ -81,7 +83,10 @@ export class FarcasterPollingSource extends FarcasterInteractionSource {
     for (const cast of mentions) {
       try {
         const mention = neynarCastToCast(cast);
-        const memoryId = castUuid({ agentId: this.runtime.agentId, hash: mention.hash });
+        const memoryId = castUuid({
+          agentId: this.runtime.agentId,
+          hash: mention.hash,
+        });
 
         if (await this.runtime.getMemoryById(memoryId)) {
           continue;
@@ -148,10 +153,7 @@ export function createFarcasterInteractionSource(
   switch (mode) {
     case "webhook":
       return new FarcasterWebhookSource(params);
-    case "polling":
     default:
       return new FarcasterPollingSource(params);
   }
 }
-
-

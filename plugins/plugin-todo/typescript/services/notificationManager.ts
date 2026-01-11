@@ -1,11 +1,11 @@
 import {
-  logger,
-  type UUID,
-  EventType,
-  type MessagePayload,
   createMessageMemory,
+  EventType,
   type IAgentRuntime,
-} from '@elizaos/core';
+  logger,
+  type MessagePayload,
+  type UUID,
+} from "@elizaos/core";
 
 export interface NotificationPreferences {
   enabled: boolean;
@@ -25,8 +25,8 @@ export interface NotificationPreferences {
 export interface NotificationData {
   title: string;
   body: string;
-  type: 'overdue' | 'upcoming' | 'daily' | 'system';
-  priority?: 'low' | 'medium' | 'high';
+  type: "overdue" | "upcoming" | "daily" | "system";
+  priority?: "low" | "medium" | "high";
   taskId?: UUID;
   roomId?: UUID;
   actions?: Array<{
@@ -58,7 +58,7 @@ export class NotificationManager {
     // Load user preferences from storage
     await this.loadUserPreferences();
 
-    logger.info('NotificationManager initialized');
+    logger.info("NotificationManager initialized");
   }
 
   /**
@@ -86,8 +86,6 @@ export class NotificationManager {
           await this.sendNotification(notification);
         }
       }
-    } catch (error) {
-      logger.error('Error processing notification queue:', error);
     } finally {
       this.isProcessing = false;
     }
@@ -99,7 +97,7 @@ export class NotificationManager {
   public async queueNotification(notification: NotificationData) {
     // Check if we're in quiet hours
     if (this.isInQuietHours(notification.roomId)) {
-      logger.debug('Notification queued for after quiet hours:', notification.title);
+      logger.debug("Notification queued for after quiet hours:", notification.title);
       return;
     }
 
@@ -120,12 +118,18 @@ export class NotificationManager {
       }
 
       // Log notification for audit
-      logger.info({
-        type: notification.type,
-        priority: notification.priority,
-      }, `Notification sent: ${notification.title}`);
+      logger.info(
+        {
+          type: notification.type,
+          priority: notification.priority,
+        },
+        `Notification sent: ${notification.title}`
+      );
     } catch (error) {
-      logger.error('Error sending notification:', error);
+      logger.error(
+        "Error sending notification:",
+        error instanceof Error ? error.message : String(error)
+      );
     }
   }
 
@@ -141,7 +145,7 @@ export class NotificationManager {
       roomId: notification.roomId,
       content: {
         text: `🔔 ${notification.title}\n\n${notification.body}`,
-        source: 'NOTIFICATION_MANAGER',
+        source: "NOTIFICATION_MANAGER",
         metadata: {
           notificationType: notification.type,
           priority: notification.priority,
@@ -154,7 +158,7 @@ export class NotificationManager {
     const payload: MessagePayload = {
       runtime: this.runtime,
       message,
-      source: 'NOTIFICATION_MANAGER',
+      source: "NOTIFICATION_MANAGER",
     };
 
     await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, payload);
@@ -169,11 +173,14 @@ export class NotificationManager {
     // 2. Create and show the notification
     // 3. Handle click events on the notification
 
-    logger.debug({
-      title: notification.title,
-      body: notification.body,
-      type: notification.type,
-    }, 'Browser notification would be sent');
+    logger.debug(
+      {
+        title: notification.title,
+        body: notification.body,
+        type: notification.type,
+      },
+      "Browser notification would be sent"
+    );
   }
 
   /**
@@ -187,13 +194,13 @@ export class NotificationManager {
 
     // Check if this type of reminder is enabled
     switch (notification.type) {
-      case 'overdue':
+      case "overdue":
         return prefs.reminderTypes.overdue;
-      case 'upcoming':
+      case "upcoming":
         return prefs.reminderTypes.upcoming;
-      case 'daily':
+      case "daily":
         return prefs.reminderTypes.daily;
-      case 'system':
+      case "system":
         return true;
       default:
         return false;
@@ -268,7 +275,7 @@ export class NotificationManager {
    */
   private async loadUserPreferences(): Promise<void> {
     // In a real implementation, this would load from database
-    logger.debug('Loading notification preferences...');
+    logger.debug("Loading notification preferences...");
   }
 
   /**
@@ -276,7 +283,7 @@ export class NotificationManager {
    */
   private async saveUserPreferences(): Promise<void> {
     // In a real implementation, this would save to database
-    logger.debug('Saving notification preferences...');
+    logger.debug("Saving notification preferences...");
   }
 
   /**
@@ -291,6 +298,6 @@ export class NotificationManager {
     // Process any remaining notifications
     await this.processNotificationQueue();
 
-    logger.info('NotificationManager stopped');
+    logger.info("NotificationManager stopped");
   }
 }

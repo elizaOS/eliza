@@ -151,4 +151,3 @@ reflection_evaluator = Evaluator(
     handler=evaluate_reflection,
     examples=[],  # Examples can be added later
 )
-

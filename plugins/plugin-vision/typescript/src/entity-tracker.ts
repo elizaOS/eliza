@@ -1,5 +1,5 @@
-import { logger, type IAgentRuntime, type UUID } from '@elizaos/core';
-import type { TrackedEntity, WorldState, DetectedObject, PersonInfo, BoundingBox } from './types';
+import { type IAgentRuntime, logger, type UUID } from "@elizaos/core";
+import type { BoundingBox, DetectedObject, PersonInfo, TrackedEntity, WorldState } from "./types";
 
 export class EntityTracker {
   private worldState: WorldState;
@@ -36,7 +36,7 @@ export class EntityTracker {
 
     // Process detected objects
     for (const obj of detectedObjects) {
-      if (obj.type !== 'person' && obj.type !== 'person-candidate') {
+      if (obj.type !== "person" && obj.type !== "person-candidate") {
         const entity = await this.trackObject(obj, currentTime);
         frameEntities.push(entity);
         seenEntityIds.add(entity.id);
@@ -60,7 +60,7 @@ export class EntityTracker {
     timestamp: number
   ): Promise<TrackedEntity> {
     // Try to match with existing entities
-    const matchedEntity = this.findMatchingEntity(person.boundingBox, 'person', faceProfileId);
+    const matchedEntity = this.findMatchingEntity(person.boundingBox, "person", faceProfileId);
 
     if (matchedEntity) {
       // Update existing entity
@@ -88,7 +88,7 @@ export class EntityTracker {
       const entityId = `person-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
       const newEntity: TrackedEntity = {
         id: entityId,
-        entityType: 'person',
+        entityType: "person",
         firstSeen: timestamp,
         lastSeen: timestamp,
         lastPosition: person.boundingBox,
@@ -114,7 +114,7 @@ export class EntityTracker {
 
   private async trackObject(obj: DetectedObject, timestamp: number): Promise<TrackedEntity> {
     // Try to match with existing entities
-    const matchedEntity = this.findMatchingEntity(obj.boundingBox, 'object');
+    const matchedEntity = this.findMatchingEntity(obj.boundingBox, "object");
 
     if (matchedEntity) {
       // Update existing entity
@@ -137,7 +137,7 @@ export class EntityTracker {
       const entityId = `object-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
       const newEntity: TrackedEntity = {
         id: entityId,
-        entityType: 'object',
+        entityType: "object",
         firstSeen: timestamp,
         lastSeen: timestamp,
         lastPosition: obj.boundingBox,
@@ -163,7 +163,7 @@ export class EntityTracker {
 
   private findMatchingEntity(
     boundingBox: BoundingBox,
-    entityType: 'person' | 'object',
+    entityType: "person" | "object",
     faceProfileId?: string
   ): TrackedEntity | null {
     const currentTime = Date.now();
@@ -182,7 +182,7 @@ export class EntityTracker {
       }
 
       // If we have face ID, prioritize face matching for people
-      if (entityType === 'person' && faceProfileId && entity.attributes.faceId) {
+      if (entityType === "person" && faceProfileId && entity.attributes.faceId) {
         if (entity.attributes.faceId === faceProfileId) {
           return entity; // Direct face match
         }
@@ -210,7 +210,7 @@ export class EntityTracker {
       y: box2.y + box2.height / 2,
     };
 
-    return Math.sqrt(Math.pow(center1.x - center2.x, 2) + Math.pow(center1.y - center2.y, 2));
+    return Math.sqrt((center1.x - center2.x) ** 2 + (center1.y - center2.y) ** 2);
   }
 
   private updateWorldState(seenEntityIds: Set<string>, timestamp: number): void {
@@ -279,7 +279,7 @@ export class EntityTracker {
         // }
       }
     } catch (error) {
-      logger.error('[EntityTracker] Failed to sync with runtime:', error);
+      logger.error("[EntityTracker] Failed to sync with runtime:", error);
     }
   }
 
@@ -331,8 +331,8 @@ export class EntityTracker {
       totalEntities: entities.length,
       activeEntities: this.worldState.activeEntities.length,
       recentlyLeft: this.worldState.recentlyLeft.length,
-      people: entities.filter((e) => e.entityType === 'person').length,
-      objects: entities.filter((e) => e.entityType === 'object').length,
+      people: entities.filter((e) => e.entityType === "person").length,
+      objects: entities.filter((e) => e.entityType === "object").length,
     };
   }
 }

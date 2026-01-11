@@ -87,8 +87,8 @@ impl EphemeralHNSW {
 
     fn get_random_level(&self) -> usize {
         let mut rng = rand::thread_rng();
-        let mut level = 0;
-        while rng.gen::<f32>() < (-level as f32 * self.config.ml).exp() && level < 16 {
+        let mut level = 0usize;
+        while rng.gen::<f32>() < (-(level as f32) * self.config.ml).exp() && level < 16 {
             level += 1;
         }
         level
@@ -272,9 +272,27 @@ impl IVectorStorage for EphemeralHNSW {
                     neighbor_set.insert(id.to_string());
 
                     if neighbor_set.len() > m {
-                        let to_keep =
-                            self.select_best_neighbors(&nodes, &neighbor_node.vector, neighbor_set, m);
-                        *neighbor_set = to_keep.into_iter().map(|(id, _)| id).collect();
+                        // Clone what we need to avoid borrow issues
+                        let neighbor_vector = neighbor_node.vector.clone();
+                        let neighbor_ids = neighbor_set.clone();
+                        
+                        // Calculate best neighbors
+                        let mut neighbors_with_dist: Vec<_> = neighbor_ids
+                            .iter()
+                            .filter_map(|nid| {
+                                nodes.get(nid)
+                                    .map(|n| (nid.clone(), cosine_distance(&neighbor_vector, &n.vector)))
+                            })
+                            .collect();
+                        neighbors_with_dist.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                        neighbors_with_dist.truncate(m);
+                        
+                        // Get the neighbor_set again after our calculations
+                        if let Some(neighbor_node) = nodes.get_mut(neighbor_id) {
+                            if let Some(ns) = neighbor_node.neighbors.get_mut(&l) {
+                                *ns = neighbors_with_dist.into_iter().map(|(id, _)| id).collect();
+                            }
+                        }
                     }
                 }
             }

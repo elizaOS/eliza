@@ -1,24 +1,43 @@
-import { afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi } from "vitest";
 import {
   type IAgentRuntime,
   logger,
   type Service,
   ServiceType,
 } from "@elizaos/core";
-import { bootstrapPlugin } from "../index";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskService } from "../../services/task";
+import { bootstrapPlugin } from "../index";
 import { type MockRuntime, setupActionTest } from "./test-utils";
 
 // Define service interface for plugin services
 interface PluginService extends Service {
   type: string;
   name: string;
-  init: (runtime: IAgentRuntime) => Promise<any>;
+  init: (runtime: IAgentRuntime) => Promise<unknown>;
+}
+
+// Test interface for accessing private properties and methods of TaskService
+interface TestableTaskService extends TaskService {
+  runtime: IAgentRuntime;
+  checkTasks(): Promise<void>;
+  executeTask(task: {
+    id: string;
+    name: string;
+    description: string;
+    status: string;
+    createdAt: string;
+    updatedAt?: string;
+    scheduledFor?: string;
+    tags: string[];
+    metadata?: Record<string, unknown>;
+  }): Promise<void>;
+}
+
+// Type guard for service class constructors with static properties
+interface ServiceClassConstructor {
+  new (runtime?: IAgentRuntime): Service;
+  serviceType: string;
+  start(runtime: IAgentRuntime): Promise<Service>;
 }
 
 // Helper to access plugin services with proper typing
@@ -37,7 +56,7 @@ describe("TaskService", () => {
     updatedAt?: string;
     scheduledFor?: string;
     tags: string[];
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }>;
 
   beforeEach(() => {
@@ -111,7 +130,9 @@ describe("TaskService", () => {
     const service = await startPromise;
     expect(service).toBeDefined();
     expect(service).toBeInstanceOf(TaskService);
-    expect((service as any).runtime).toBe(mockRuntime);
+    expect((service as unknown as TestableTaskService).runtime).toBe(
+      mockRuntime,
+    );
 
     // Verify that the start method registered the service
     // expect(mockRuntime.registerEvent).toHaveBeenCalledWith('TASK_UPDATED', expect.any(Function)); // This event is not registered by start
@@ -119,7 +140,9 @@ describe("TaskService", () => {
 
   it("should retrieve pending tasks correctly", async () => {
     // Expose the private method for testing
-    const checkTasksMethod = (taskService as any).checkTasks.bind(taskService);
+    const checkTasksMethod = (
+      taskService as unknown as TestableTaskService
+    ).checkTasks.bind(taskService);
 
     // Call the method
     await checkTasksMethod();
@@ -146,14 +169,15 @@ describe("TaskService", () => {
     mockRuntime.getTasks = vi.fn().mockResolvedValue([pastTask]);
 
     // Expose and call the private methods for testing
-    const executeTaskMethod = (taskService as any).executeTask.bind(
-      taskService,
-    );
+    const executeTaskMethod = (
+      taskService as unknown as TestableTaskService
+    ).executeTask.bind(taskService);
 
     // Mock getTaskWorker for 'Past scheduled task'
     const mockWorkerExecute = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getTaskWorker = vi.fn().mockImplementation(
-      (taskName: string) => {
+    mockRuntime.getTaskWorker = vi
+      .fn()
+      .mockImplementation((taskName: string) => {
         if (taskName === "Past scheduled task") {
           return {
             name: taskName,
@@ -162,8 +186,7 @@ describe("TaskService", () => {
           };
         }
         return undefined;
-      },
-    ) as any;
+      });
 
     // Call the method to check tasks
     // This will internally call executeTask if conditions are met, but we test executeTask directly for more control
@@ -211,11 +234,12 @@ describe("TaskService", () => {
     // mockRuntime.useModel = vi.fn().mockRejectedValue(new Error('Task processing error'));
 
     // Mock getTaskWorker for 'Error task' to throw an error
-    const mockErrorExecute = vi.fn().mockRejectedValue(
-      new Error("Worker execution error"),
-    );
-    mockRuntime.getTaskWorker = vi.fn().mockImplementation(
-      (taskName: string) => {
+    const mockErrorExecute = vi
+      .fn()
+      .mockRejectedValue(new Error("Worker execution error"));
+    mockRuntime.getTaskWorker = vi
+      .fn()
+      .mockImplementation((taskName: string) => {
         if (taskName === "Error task") {
           return {
             name: taskName,
@@ -224,19 +248,17 @@ describe("TaskService", () => {
           };
         }
         return undefined;
-      },
-    ) as any;
+      });
 
     // Spy on runtime logger instead of global logger
-    const loggerErrorSpy = vi.spyOn(
-      mockRuntime.logger,
-      "error",
-    ).mockImplementation(() => {});
+    const loggerErrorSpy = vi
+      .spyOn(mockRuntime.logger, "error")
+      .mockImplementation(() => {});
 
     // Expose the private method for testing
-    const executeTaskMethod = (taskService as any).executeTask.bind(
-      taskService,
-    );
+    const executeTaskMethod = (
+      taskService as unknown as TestableTaskService
+    ).executeTask.bind(taskService);
 
     // Call the method to process the task
     await executeTaskMethod(testTask);
@@ -308,7 +330,8 @@ describe("Service Registry", () => {
 
       if (typeof serviceDefinitionOrClass === "function") {
         // It's a class constructor (e.g., TaskService class)
-        const serviceClass = serviceDefinitionOrClass as any; // Cast to access static props
+        const serviceClass =
+          serviceDefinitionOrClass as ServiceClassConstructor;
         expect(serviceClass).toHaveProperty("serviceType");
         expect(typeof serviceClass.serviceType).toBe("string");
         expect(serviceClass).toHaveProperty("name"); // e.g., TaskService.name (class name)
@@ -332,7 +355,7 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const fileServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (s as any).serviceType === "file";
+        return (s as ServiceClassConstructor).serviceType === "file";
       }
       return (s as PluginService).type === "file";
     });
@@ -340,7 +363,7 @@ describe("Service Registry", () => {
     if (fileServiceDefinition) {
       const serviceInstance =
         typeof fileServiceDefinition === "function"
-          ? await (fileServiceDefinition as any).start(
+          ? await (fileServiceDefinition as ServiceClassConstructor).start(
               mockRuntime as IAgentRuntime,
             ) // This might still throw if start itself fails
           : await (fileServiceDefinition as PluginService).init(
@@ -363,7 +386,7 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const pdfServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (s as any).serviceType === ServiceType.PDF;
+        return (s as ServiceClassConstructor).serviceType === ServiceType.PDF;
       }
       return (s as PluginService).type === ServiceType.PDF;
     });
@@ -371,7 +394,7 @@ describe("Service Registry", () => {
     if (pdfServiceDefinition) {
       const serviceInstance =
         typeof pdfServiceDefinition === "function"
-          ? await (pdfServiceDefinition as any).start(
+          ? await (pdfServiceDefinition as ServiceClassConstructor).start(
               mockRuntime as IAgentRuntime,
             )
           : await (pdfServiceDefinition as PluginService).init(
@@ -388,7 +411,7 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const imageServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (s as any).serviceType === "image";
+        return (s as ServiceClassConstructor).serviceType === "image";
       } // Assuming 'image' is the type
       return (s as PluginService).type === "image";
     });
@@ -396,7 +419,7 @@ describe("Service Registry", () => {
     if (imageServiceDefinition) {
       const serviceInstance =
         typeof imageServiceDefinition === "function"
-          ? await (imageServiceDefinition as any).start(
+          ? await (imageServiceDefinition as ServiceClassConstructor).start(
               mockRuntime as IAgentRuntime,
             )
           : await (imageServiceDefinition as PluginService).init(
@@ -413,7 +436,9 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const browserServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (s as any).serviceType === ServiceType.BROWSER;
+        return (
+          (s as ServiceClassConstructor).serviceType === ServiceType.BROWSER
+        );
       }
       return (s as PluginService).type === ServiceType.BROWSER;
     });
@@ -421,7 +446,7 @@ describe("Service Registry", () => {
     if (browserServiceDefinition) {
       const serviceInstance =
         typeof browserServiceDefinition === "function"
-          ? await (browserServiceDefinition as any).start(
+          ? await (browserServiceDefinition as ServiceClassConstructor).start(
               mockRuntime as IAgentRuntime,
             )
           : await (browserServiceDefinition as PluginService).init(
@@ -438,7 +463,7 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const fileServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (s as any).serviceType === "file";
+        return (s as ServiceClassConstructor).serviceType === "file";
       }
       return (s as PluginService).type === "file";
     });
@@ -452,7 +477,7 @@ describe("Service Registry", () => {
       // Should not throw but return a basic implementation
       const serviceInstance =
         typeof fileServiceDefinition === "function"
-          ? await (fileServiceDefinition as any).start(
+          ? await (fileServiceDefinition as ServiceClassConstructor).start(
               mockRuntime as IAgentRuntime,
             ) // This might still throw if start itself fails
           : await (fileServiceDefinition as PluginService).init(

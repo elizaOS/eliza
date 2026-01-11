@@ -1,7 +1,6 @@
 """Type definitions for Solana plugin operations."""
 
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -31,9 +30,7 @@ class PortfolioItem(BaseModel):
     ui_amount: str = Field(alias="uiAmount", description="UI-friendly amount")
     price_usd: str = Field(alias="priceUsd", description="Price in USD")
     value_usd: str = Field(alias="valueUsd", description="Value in USD")
-    value_sol: Optional[str] = Field(
-        default=None, alias="valueSol", description="Value in SOL"
-    )
+    value_sol: str | None = Field(default=None, alias="valueSol", description="Value in SOL")
 
     model_config = {"populate_by_name": True}
 
@@ -42,12 +39,10 @@ class WalletPortfolio(BaseModel):
     """Complete wallet portfolio."""
 
     total_usd: str = Field(alias="totalUsd", description="Total value in USD")
-    total_sol: Optional[str] = Field(
-        default=None, alias="totalSol", description="Total value in SOL"
-    )
+    total_sol: str | None = Field(default=None, alias="totalSol", description="Total value in SOL")
     items: list[PortfolioItem] = Field(description="List of token holdings")
-    prices: Optional[Prices] = Field(default=None, description="Market prices")
-    last_updated: Optional[int] = Field(
+    prices: Prices | None = Field(default=None, description="Market prices")
+    last_updated: int | None = Field(
         default=None, alias="lastUpdated", description="Last update timestamp in ms"
     )
 
@@ -71,19 +66,17 @@ class TransferParams(BaseModel):
 
     recipient: str = Field(description="Recipient address")
     amount: Decimal = Field(gt=0, description="Amount to transfer")
-    mint: Optional[str] = Field(
-        default=None, description="Token mint address (None for SOL)"
-    )
+    mint: str | None = Field(default=None, description="Token mint address (None for SOL)")
 
 
 class TransferResult(BaseModel):
     """Result of a transfer operation."""
 
     success: bool = Field(description="Whether the transfer was successful")
-    signature: Optional[str] = Field(default=None, description="Transaction signature")
+    signature: str | None = Field(default=None, description="Transaction signature")
     amount: str = Field(description="Amount transferred")
     recipient: str = Field(description="Recipient address")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
+    error: str | None = Field(default=None, description="Error message if failed")
 
 
 class SwapQuoteParams(BaseModel):
@@ -139,9 +132,7 @@ class SwapQuote(BaseModel):
     )
     swap_mode: str = Field(alias="swapMode", description="Swap mode (ExactIn or ExactOut)")
     slippage_bps: int = Field(alias="slippageBps", description="Slippage in basis points")
-    price_impact_pct: str = Field(
-        alias="priceImpactPct", description="Price impact percentage"
-    )
+    price_impact_pct: str = Field(alias="priceImpactPct", description="Price impact percentage")
     route_plan: list[RoutePlanStep] = Field(alias="routePlan", description="Route plan")
 
     model_config = {"populate_by_name": True}
@@ -151,14 +142,10 @@ class SwapResult(BaseModel):
     """Result of a swap execution."""
 
     success: bool = Field(description="Whether the swap was successful")
-    signature: Optional[str] = Field(default=None, description="Transaction signature")
-    in_amount: Optional[str] = Field(
-        default=None, alias="inAmount", description="Input amount"
-    )
-    out_amount: Optional[str] = Field(
-        default=None, alias="outAmount", description="Output amount"
-    )
-    error: Optional[str] = Field(default=None, description="Error message if failed")
+    signature: str | None = Field(default=None, description="Transaction signature")
+    in_amount: str | None = Field(default=None, alias="inAmount", description="Input amount")
+    out_amount: str | None = Field(default=None, alias="outAmount", description="Output amount")
+    error: str | None = Field(default=None, description="Error message if failed")
 
     model_config = {"populate_by_name": True}
 
@@ -185,9 +172,7 @@ class BirdeyePriceData(BaseModel):
     """Birdeye price data."""
 
     value: float = Field(description="Token price in USD")
-    update_unix_time: int = Field(
-        alias="updateUnixTime", description="Update timestamp"
-    )
+    update_unix_time: int = Field(alias="updateUnixTime", description="Update timestamp")
 
     model_config = {"populate_by_name": True}
 
@@ -197,5 +182,3 @@ class BirdeyePriceResponse(BaseModel):
 
     success: bool = Field(description="Whether the request was successful")
     data: BirdeyePriceData = Field(description="Price data")
-
-

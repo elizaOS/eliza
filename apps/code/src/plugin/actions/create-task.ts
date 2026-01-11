@@ -4,13 +4,13 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,
   type UUID,
-  logger,
 } from "@elizaos/core";
-import { CodeTaskService } from "../services/code-task.js";
+import type { CodeTaskService } from "../services/code-task.js";
 
 interface TaskRequest {
   name: string;
@@ -28,26 +28,26 @@ function stripTaskContext(text: string): string {
   // Find the LAST occurrence of [User Message] marker
   const marker = "[User Message]";
   const lastIndex = text.lastIndexOf(marker);
-  
+
   if (lastIndex !== -1) {
     const afterMarker = text.substring(lastIndex + marker.length).trim();
     if (afterMarker.length > 0) {
       return afterMarker;
     }
   }
-  
+
   // Also try case-insensitive search
   const lowerText = text.toLowerCase();
   const lowerMarker = marker.toLowerCase();
   const lastIndexLower = lowerText.lastIndexOf(lowerMarker);
-  
+
   if (lastIndexLower !== -1) {
     const afterMarker = text.substring(lastIndexLower + marker.length).trim();
     if (afterMarker.length > 0) {
       return afterMarker;
     }
   }
-  
+
   // Fallback: if [Task Context] is at the start, try to find content after double newline
   if (text.startsWith("[Task Context]")) {
     const doubleNewline = text.indexOf("\n\n");
@@ -58,7 +58,7 @@ function stripTaskContext(text: string): string {
       }
     }
   }
-  
+
   return text;
 }
 
@@ -68,20 +68,20 @@ function stripTaskContext(text: string): string {
 function parseTaskRequest(rawText: string): TaskRequest {
   // Strip task context prefix if present
   const text = stripTaskContext(rawText);
-  
+
   let name = "";
   let description = "";
   const steps: string[] = [];
 
   // Try explicit task name patterns
   const explicitPatterns = [
-    /(?:create|start|new)\s+(?:a\s+)?task\s*[:\-]?\s*["']?([^"'\n]+)["']?/i,
-    /(?:task|job)\s*[:\-]?\s*["']?([^"'\n]+)["']?/i,
+    /(?:create|start|new)\s+(?:a\s+)?task\s*[:-]?\s*["']?([^"'\n]+)["']?/i,
+    /(?:task|job)\s*[:-]?\s*["']?([^"'\n]+)["']?/i,
   ];
 
   for (const pattern of explicitPatterns) {
     const match = text.match(pattern);
-    if (match && match[1]) {
+    if (match?.[1]) {
       name = match[1].trim().substring(0, 100);
       break;
     }
@@ -96,7 +96,7 @@ function parseTaskRequest(rawText: string): TaskRequest {
 
     for (const pattern of implicitPatterns) {
       const match = text.match(pattern);
-      if (match && match[1]) {
+      if (match?.[1]) {
         let extracted = match[1].trim();
         extracted = extracted.charAt(0).toUpperCase() + extracted.slice(1);
         name = extracted.substring(0, 100);
@@ -110,26 +110,29 @@ function parseTaskRequest(rawText: string): TaskRequest {
     const words = text.split(/\s+/).slice(0, 5).join(" ");
     name = words.substring(0, 50) || "New Task";
   }
-  
+
   // Validate the extracted name - reject clearly invalid names
   // that might come from malformed context parsing
   const invalidPatterns = [
-    /^Context\]?$/i,           // "Context]" from task context
-    /^s:$/i,                   // "s:" from malformed parsing
-    /^Task:?$/i,               // Just "Task" or "Task:"
-    /^\*+$/,                   // Just asterisks
-    /^\[.*\]$/,                // Just bracketed text
-    /^#+ /,                    // Markdown headers
+    /^Context\]?$/i, // "Context]" from task context
+    /^s:$/i, // "s:" from malformed parsing
+    /^Task:?$/i, // Just "Task" or "Task:"
+    /^\*+$/, // Just asterisks
+    /^\[.*\]$/, // Just bracketed text
+    /^#+ /, // Markdown headers
   ];
-  
-  if (invalidPatterns.some(p => p.test(name.trim())) || name.trim().length < 3) {
+
+  if (
+    invalidPatterns.some((p) => p.test(name.trim())) ||
+    name.trim().length < 3
+  ) {
     // Try to extract a better name from the full text
     const cleanWords = text
-      .replace(/\[.*?\]/g, "")      // Remove bracketed content
-      .replace(/#+\s*/g, "")        // Remove markdown headers
-      .replace(/\*+/g, "")          // Remove asterisks
+      .replace(/\[.*?\]/g, "") // Remove bracketed content
+      .replace(/#+\s*/g, "") // Remove markdown headers
+      .replace(/\*+/g, "") // Remove asterisks
       .split(/\s+/)
-      .filter(w => w.length > 2)
+      .filter((w) => w.length > 2)
       .slice(0, 6)
       .join(" ");
     name = cleanWords.substring(0, 60) || "New Task";
@@ -137,18 +140,20 @@ function parseTaskRequest(rawText: string): TaskRequest {
 
   // Extract description
   const descMatch = text.match(/(?:description|details?|about)[:\s]+(.+)/i);
-  description = (descMatch && descMatch[1] && descMatch[1].trim()) ?? text.substring(0, 500);
+  description = descMatch?.[1]?.trim() ?? text.substring(0, 500);
 
   // Extract steps
-  const stepsMatch = text.match(/(?:steps?|plan)[:\s]+([\s\S]+?)(?:$|description)/i);
-  if (stepsMatch && stepsMatch[1]) {
+  const stepsMatch = text.match(
+    /(?:steps?|plan)[:\s]+([\s\S]+?)(?:$|description)/i,
+  );
+  if (stepsMatch?.[1]) {
     const stepLines = stepsMatch[1].split(/\n|(?:\d+\.)/);
     for (const line of stepLines) {
       const cleaned = line.replace(/^[-*•]\s*/, "").trim();
       if (cleaned.length === 0) continue;
       // Guard against accidentally capturing structured headers as steps.
-      if (/^(description|details?)\s*[:\-]/i.test(cleaned)) continue;
-      if (/^(create|start|new)\s+(?:a\s+)?task\s*[:\-]/i.test(cleaned)) continue;
+      if (/^(description|details?)\s*[:-]/i.test(cleaned)) continue;
+      if (/^(create|start|new)\s+(?:a\s+)?task\s*[:-]/i.test(cleaned)) continue;
       steps.push(cleaned);
     }
   }
@@ -177,74 +182,71 @@ function parseTaskRequest(rawText: string): TaskRequest {
  */
 async function getConversationContext(
   runtime: IAgentRuntime,
-  message: Memory
+  message: Memory,
 ): Promise<string> {
   // Max characters for conversation context (fits within 120k token context)
   const MAX_CONTEXT_CHARS = 120000;
-  
-  try {
-    const getMemories = (runtime as { getMemories?: IAgentRuntime["getMemories"] }).getMemories;
-    if (typeof getMemories !== "function") {
-      return "";
-    }
 
-    // Get recent messages from the same room (fetch enough to fill context)
-    const recentMessages = await getMemories({
-      roomId: message.roomId,
-      tableName: "messages",
-      count: 100, // Fetch last 100 messages to have plenty of context
-    });
-
-    if (recentMessages.length === 0) {
-      return "";
-    }
-
-    // Sort by creation time (oldest first)
-    const sorted = recentMessages.sort((a, b) => {
-      const timeA = a.createdAt ?? 0;
-      const timeB = b.createdAt ?? 0;
-      return timeA - timeB;
-    });
-
-    // Format all messages
-    const formattedMessages = sorted.map((msg) => {
-      const role = msg.entityId === runtime.agentId ? "Assistant" : "User";
-      const text = stripTaskContext(msg.content.text ?? "");
-      return { role, text, formatted: `${role}: ${text}` };
-    });
-
-    // Build context, keeping most recent messages and trimming older ones if needed
-    // Start from the end (most recent) and work backwards
-    const includedMessages: string[] = [];
-    let totalChars = 0;
-    
-    // Always include the most recent messages first (they're most relevant)
-    for (let i = formattedMessages.length - 1; i >= 0; i--) {
-      const msg = formattedMessages[i];
-      const msgLength = msg.formatted.length + 2; // +2 for \n\n separator
-      
-      if (totalChars + msgLength <= MAX_CONTEXT_CHARS) {
-        includedMessages.unshift(msg.formatted);
-        totalChars += msgLength;
-      } else {
-        // If we can't fit this message, try to include a truncated summary
-        // of earlier conversation
-        if (i > 0) {
-          const earlierCount = i + 1;
-          const summary = `[... ${earlierCount} earlier messages omitted for brevity ...]`;
-          if (totalChars + summary.length + 2 <= MAX_CONTEXT_CHARS) {
-            includedMessages.unshift(summary);
-          }
-        }
-        break;
-      }
-    }
-
-    return includedMessages.join("\n\n");
-  } catch (err) {
-    logger.warn(`Failed to get conversation context: ${err}`);
+  const getMemories = (
+    runtime as { getMemories?: IAgentRuntime["getMemories"] }
+  ).getMemories;
+  if (typeof getMemories !== "function") {
     return "";
   }
+
+  // Get recent messages from the same room (fetch enough to fill context)
+  const recentMessages = await getMemories({
+    roomId: message.roomId,
+    tableName: "messages",
+    count: 100, // Fetch last 100 messages to have plenty of context
+  });
+
+  if (recentMessages.length === 0) {
+    return "";
+  }
+
+  // Sort by creation time (oldest first)
+  const sorted = recentMessages.sort((a, b) => {
+    const timeA = a.createdAt ?? 0;
+    const timeB = b.createdAt ?? 0;
+    return timeA - timeB;
+  });
+
+  // Format all messages
+  const formattedMessages = sorted.map((msg) => {
+    const role = msg.entityId === runtime.agentId ? "Assistant" : "User";
+    const text = stripTaskContext(msg.content.text ?? "");
+    return { role, text, formatted: `${role}: ${text}` };
+  });
+
+  // Build context, keeping most recent messages and trimming older ones if needed
+  // Start from the end (most recent) and work backwards
+  const includedMessages: string[] = [];
+  let totalChars = 0;
+
+  // Always include the most recent messages first (they're most relevant)
+  for (let i = formattedMessages.length - 1; i >= 0; i--) {
+    const msg = formattedMessages[i];
+    const msgLength = msg.formatted.length + 2; // +2 for \n\n separator
+
+    if (totalChars + msgLength <= MAX_CONTEXT_CHARS) {
+      includedMessages.unshift(msg.formatted);
+      totalChars += msgLength;
+    } else {
+      // If we can't fit this message, try to include a truncated summary
+      // of earlier conversation
+      if (i > 0) {
+        const earlierCount = i + 1;
+        const summary = `[... ${earlierCount} earlier messages omitted for brevity ...]`;
+        if (totalChars + summary.length + 2 <= MAX_CONTEXT_CHARS) {
+          includedMessages.unshift(summary);
+        }
+      }
+      break;
+    }
+  }
+
+  return includedMessages.join("\n\n");
 }
 
 /**
@@ -253,7 +255,7 @@ async function getConversationContext(
 async function generateTaskFromConversation(
   runtime: IAgentRuntime,
   conversationContext: string,
-  currentMessage: string
+  currentMessage: string,
 ): Promise<TaskRequest> {
   const prompt = `You are analyzing a conversation to create a development task.
 
@@ -289,31 +291,35 @@ IMPORTANT:
     });
 
     const text = typeof result === "string" ? result : String(result);
-    
+
     // Try to parse JSON from the response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as { 
-        name?: string; 
-        description?: string; 
-        steps?: string[] 
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        name?: string;
+        description?: string;
+        steps?: string[];
       };
       return {
         name: (parsed.name ?? "New Task").substring(0, 100),
-        description: parsed.description ?? conversationContext.substring(0, 500),
+        description:
+          parsed.description ?? conversationContext.substring(0, 500),
         steps: Array.isArray(parsed.steps) ? parsed.steps : [],
       };
     }
-  } catch (err) {
-    logger.warn(`Failed to generate task from conversation: ${err}`);
+  } catch {
+    // Fallback to simple parsing if LLM fails
+    const context = conversationContext.trim();
+    const current = stripTaskContext(currentMessage).trim();
+    const merged = !context
+      ? current
+      : !current
+        ? context
+        : context.includes(current)
+          ? context
+          : `${context}\n\n${current}`;
+    return parseTaskRequest(merged);
   }
-
-  // Fallback to simple parsing if LLM fails
-  const context = conversationContext.trim();
-  const current = stripTaskContext(currentMessage).trim();
-  const merged =
-    !context ? current : !current ? context : context.includes(current) ? context : `${context}\n\n${current}`;
-  return parseTaskRequest(merged);
 }
 
 export const createTaskAction: Action = {
@@ -345,8 +351,11 @@ INPUTS:
 - Description (from user message or conversation context)
 - Optional: Explicit steps if user provides them`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const text = (message.content.text && message.content.text.toLowerCase()) ?? "";
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const text = message.content.text?.toLowerCase() ?? "";
 
     const isExplicitTaskRequest = text.includes("task");
     const hasBuildIntent =
@@ -363,7 +372,9 @@ INPUTS:
 
     // Avoid spawning tasks for tiny “generate a function/class” requests unless explicitly asked.
     const looksLikeSmallSnippet =
-      /\b(function|class|interface|type|snippet|quicksort|algorithm)\b/i.test(text);
+      /\b(function|class|interface|type|snippet|quicksort|algorithm)\b/i.test(
+        text,
+      );
     if (looksLikeSmallSnippet && !isExplicitTaskRequest) return false;
 
     return true;
@@ -374,7 +385,7 @@ INPUTS:
     message: Memory,
     _state: State | undefined,
     _options: HandlerOptions | undefined,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
     if (!service) {
@@ -388,11 +399,11 @@ INPUTS:
     const parsed = parseTaskRequest(rawText);
 
     const hasStructuredFields =
-      /(?:^|\n)\s*(?:create\s+(?:a\s+)?task|start\s+(?:a\s+)?task|new\s+task|task)\s*[:\-]/i.test(
-        stripped
+      /(?:^|\n)\s*(?:create\s+(?:a\s+)?task|start\s+(?:a\s+)?task|new\s+task|task)\s*[:-]/i.test(
+        stripped,
       ) ||
-      /(?:^|\n)\s*(?:description|details?)\s*[:\-]/i.test(stripped) ||
-      /(?:^|\n)\s*(?:steps?|plan)\s*[:\-]/i.test(stripped) ||
+      /(?:^|\n)\s*(?:description|details?)\s*[:-]/i.test(stripped) ||
+      /(?:^|\n)\s*(?:steps?|plan)\s*[:-]/i.test(stripped) ||
       parsed.steps.length > 0;
 
     const { name, description, steps } = hasStructuredFields
@@ -400,7 +411,7 @@ INPUTS:
       : await generateTaskFromConversation(
           runtime,
           await getConversationContext(runtime, message),
-          rawText
+          rawText,
         );
 
     try {
@@ -435,10 +446,13 @@ INPUTS:
 
       // Allow disabling background execution (useful for unit tests and environments
       // where model/tool execution is not desired).
-      const disableExecution = process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION === "1";
+      const disableExecution =
+        process.env.ELIZA_CODE_DISABLE_TASK_EXECUTION === "1";
       if (disableExecution) {
         const descPreview =
-          description.length > 200 ? `${description.substring(0, 200)}…` : description;
+          description.length > 200
+            ? `${description.substring(0, 200)}…`
+            : description;
         const lines: string[] = [];
         lines.push(`Created task: ${task.name}`);
         lines.push(`Description: ${descPreview}`);
@@ -454,12 +468,19 @@ INPUTS:
         return {
           success: true,
           text: disabledResult,
-          data: { taskId: stableTaskId, name: task.name, steps: finalSteps.length, executionDisabled: true },
+          data: {
+            taskId: stableTaskId,
+            name: task.name,
+            steps: finalSteps.length,
+            executionDisabled: true,
+          },
         };
       }
 
       const descPreview =
-        description.length > 200 ? `${description.substring(0, 200)}…` : description;
+        description.length > 200
+          ? `${description.substring(0, 200)}…`
+          : description;
       const lines: string[] = [];
       lines.push(`Created task: ${task.name}`);
       lines.push(`Description: ${descPreview}`);
@@ -475,13 +496,19 @@ INPUTS:
 
       // Start execution in background
       service.startTaskExecution(taskId).catch((err) => {
-        logger.error(`Task execution failed: ${err instanceof Error ? err.message : String(err)}`);
+        logger.error(
+          `Task execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       });
 
       return {
         success: true,
         text: result,
-        data: { taskId: task.id ?? taskId, name: task.name, steps: finalSteps.length },
+        data: {
+          taskId: task.id ?? taskId,
+          name: task.name,
+          steps: finalSteps.length,
+        },
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
@@ -529,7 +556,7 @@ function parseNumberedSteps(text: string): string[] {
 
   const steps: string[] = [];
   for (const line of lines) {
-    const m = line.match(/^\s*(?:\d+[\).\]]|[-*])\s+(.+)\s*$/);
+    const m = line.match(/^\s*(?:\d+[).\]]|[-*])\s+(.+)\s*$/);
     if (m?.[1]) {
       const step = m[1].trim();
       if (step.length > 0) steps.push(step);
@@ -543,7 +570,12 @@ function parseNumberedSteps(text: string): string[] {
 
 async function generatePlanSteps(
   runtime: IAgentRuntime,
-  input: { taskName: string; description: string; cwd: string; userRequest: string }
+  input: {
+    taskName: string;
+    description: string;
+    cwd: string;
+    userRequest: string;
+  },
 ): Promise<string[]> {
   const prompt = [
     "You are an expert software engineer. Create a concrete, step-by-step implementation plan.",

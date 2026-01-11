@@ -90,7 +90,9 @@ class GroqClient:
             stop=params.stop if params.stop else None,
         )
 
-        data = await self._request("POST", "/chat/completions", json=request.model_dump(exclude_none=True))
+        data = await self._request(
+            "POST", "/chat/completions", json=request.model_dump(exclude_none=True)
+        )
         response = ChatCompletionResponse.model_validate(data)
 
         if not response.choices:

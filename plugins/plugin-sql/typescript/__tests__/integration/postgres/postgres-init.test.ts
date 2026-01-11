@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { plugin } from "../../../index";
 
 describe("PostgreSQL Initialization Tests", () => {
@@ -26,7 +26,11 @@ describe("PostgreSQL Initialization Tests", () => {
         warn: vi.fn(() => {}),
         error: vi.fn(() => {}),
       },
-    } as any;
+    } as Partial<IAgentRuntime> & {
+      getSetting: ReturnType<typeof vi.fn>;
+      registerDatabaseAdapter: ReturnType<typeof vi.fn>;
+      databaseAdapter?: unknown;
+    };
   });
 
   afterEach(() => {
@@ -36,7 +40,7 @@ describe("PostgreSQL Initialization Tests", () => {
 
   it("should initialize with PostgreSQL when POSTGRES_URL is provided", async () => {
     const postgresUrl = "postgresql://test:test@localhost:5432/testdb";
-    (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+    vi.mocked(mockRuntime.getSetting).mockImplementation((key: string) => {
       if (key === "POSTGRES_URL") return postgresUrl;
       return undefined;
     });
@@ -44,15 +48,16 @@ describe("PostgreSQL Initialization Tests", () => {
     await plugin.init?.({}, mockRuntime);
 
     expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
-    const adapter = (mockRuntime.registerDatabaseAdapter as any).mock
-      .calls[0][0];
+    const adapter = vi.mocked(mockRuntime.registerDatabaseAdapter).mock.calls[0][0];
     expect(adapter).toBeDefined();
     expect(adapter.constructor.name).toBe("PgDatabaseAdapter");
   });
 
   it("should skip initialization if database adapter already exists", async () => {
     // Simulate existing adapter
-    (mockRuntime as any).databaseAdapter = { test: true };
+    (mockRuntime as Partial<IAgentRuntime> & { databaseAdapter?: unknown }).databaseAdapter = {
+      test: true,
+    };
 
     await plugin.init?.({}, mockRuntime);
 
@@ -62,7 +67,7 @@ describe("PostgreSQL Initialization Tests", () => {
   it("should use PGLITE_DATA_DIR when provided", async () => {
     // Use a proper temporary directory that actually exists
     const pglitePath = join(tmpdir(), `eliza-test-pglite-${Date.now()}`);
-    (mockRuntime.getSetting as any).mockImplementation((key: string) => {
+    vi.mocked(mockRuntime.getSetting).mockImplementation((key: string) => {
       if (key === "PGLITE_DATA_DIR") return pglitePath;
       return undefined;
     });
@@ -70,32 +75,29 @@ describe("PostgreSQL Initialization Tests", () => {
     await plugin.init?.({}, mockRuntime);
 
     expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
-    const adapter = (mockRuntime.registerDatabaseAdapter as any).mock
-      .calls[0][0];
+    const adapter = vi.mocked(mockRuntime.registerDatabaseAdapter).mock.calls[0][0];
     expect(adapter).toBeDefined();
     expect(adapter.constructor.name).toBe("PgliteDatabaseAdapter");
   });
 
   it("should use default path when PGLITE_DATA_DIR is not provided", async () => {
-    (mockRuntime.getSetting as any).mockReturnValue(undefined);
+    (mockRuntime.getSetting as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
 
     await plugin.init?.({}, mockRuntime);
 
     expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
-    const adapter = (mockRuntime.registerDatabaseAdapter as any).mock
-      .calls[0][0];
+    const adapter = vi.mocked(mockRuntime.registerDatabaseAdapter).mock.calls[0][0];
     expect(adapter).toBeDefined();
     expect(adapter.constructor.name).toBe("PgliteDatabaseAdapter");
   });
 
   it("should use default path when no configuration is provided", async () => {
-    (mockRuntime.getSetting as any).mockReturnValue(undefined);
+    (mockRuntime.getSetting as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
 
     await plugin.init?.({}, mockRuntime);
 
     expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
-    const adapter = (mockRuntime.registerDatabaseAdapter as any).mock
-      .calls[0][0];
+    const adapter = vi.mocked(mockRuntime.registerDatabaseAdapter).mock.calls[0][0];
     expect(adapter).toBeDefined();
     expect(adapter.constructor.name).toBe("PgliteDatabaseAdapter");
   });
@@ -109,7 +111,7 @@ describe("PostgreSQL Initialization Tests", () => {
       configurable: true,
     });
 
-    (mockRuntime.getSetting as any).mockReturnValue(undefined);
+    (mockRuntime.getSetting as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
 
     await plugin.init?.({}, mockRuntime);
 

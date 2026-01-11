@@ -1,11 +1,12 @@
 /**
  * Test that the .eliza directory is automatically created when using PGLite with a file path
  */
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
+
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { stringToUuid } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDatabaseAdapter } from "../../index";
 
 /**
@@ -39,9 +40,7 @@ const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
  * Type-safe access to global singleton storage
  */
 function getGlobalSingletons(): GlobalSingletons | undefined {
-  return (globalThis as Record<symbol, GlobalSingletons | undefined>)[
-    GLOBAL_SINGLETONS
-  ];
+  return (globalThis as Record<symbol, GlobalSingletons | undefined>)[GLOBAL_SINGLETONS];
 }
 
 /**
@@ -52,11 +51,11 @@ function getGlobalSingletons(): GlobalSingletons | undefined {
 async function cleanupGlobalSingletons() {
   const singletons = getGlobalSingletons();
 
-  if (singletons && singletons.pgLiteClientManager) {
+  if (singletons?.pgLiteClientManager) {
     try {
       // Get the actual PGlite client and close it properly
-      const client = singletons.pgLiteClientManager.getConnection && singletons.pgLiteClientManager.getConnection();
-      if (client && client.close) {
+      const client = singletons.pgLiteClientManager.getConnection?.();
+      if (client?.close) {
         await client.close();
       }
     } catch {
@@ -65,7 +64,7 @@ async function cleanupGlobalSingletons() {
     delete singletons.pgLiteClientManager;
   }
 
-  if (singletons && singletons.postgresConnectionManager) {
+  if (singletons?.postgresConnectionManager) {
     try {
       if (singletons.postgresConnectionManager.close) {
         await singletons.postgresConnectionManager.close();
@@ -142,10 +141,7 @@ describe("Directory Creation", () => {
     const agentId = stringToUuid("test-agent");
 
     // This should not try to create a directory
-    const adapter = createDatabaseAdapter(
-      { dataDir: "idb://test-db" },
-      agentId,
-    );
+    const adapter = createDatabaseAdapter({ dataDir: "idb://test-db" }, agentId);
 
     // No directory should be created
     expect(existsSync("idb://test-db")).toBe(false);
@@ -165,7 +161,7 @@ describe("Directory Creation", () => {
         dataDir,
         postgresUrl: "postgresql://user:pass@localhost:5432/testdb",
       },
-      agentId,
+      agentId
     );
 
     // Directory should NOT be created when using PostgreSQL

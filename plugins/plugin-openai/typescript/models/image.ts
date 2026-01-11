@@ -4,11 +4,7 @@
  * Provides image generation and description functionality.
  */
 
-import type {
-  IAgentRuntime,
-  ImageDescriptionParams,
-  ImageGenerationParams,
-} from "@elizaos/core";
+import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import type {
   ImageDescriptionResult,
@@ -134,7 +130,7 @@ export async function handleImageGeneration(
  */
 function parseTitleFromResponse(content: string): string {
   const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
-  return (titleMatch && titleMatch[1] && titleMatch[1].trim()) ?? "Image Analysis";
+  return titleMatch?.[1]?.trim() ?? "Image Analysis";
 }
 
 /**
@@ -217,7 +213,7 @@ export async function handleImageDescription(
     emitModelUsageEvent(
       runtime,
       ModelType.IMAGE_DESCRIPTION,
-      typeof params === "string" ? params : params.prompt ?? "",
+      typeof params === "string" ? params : (params.prompt ?? ""),
       {
         promptTokens: data.usage.prompt_tokens,
         completionTokens: data.usage.completion_tokens,
@@ -227,8 +223,8 @@ export async function handleImageDescription(
   }
 
   // Extract content from response
-  const firstChoice = data.choices && data.choices[0];
-  const content = firstChoice && firstChoice.message && firstChoice.message.content;
+  const firstChoice = data.choices?.[0];
+  const content = firstChoice?.message?.content;
 
   if (!content) {
     throw new Error("OpenAI API returned empty image description");

@@ -12,6 +12,7 @@ from typing import Any
 
 class CaptchaType(str, Enum):
     """Supported CAPTCHA types."""
+
     TURNSTILE = "turnstile"
     RECAPTCHA_V2 = "recaptcha-v2"
     RECAPTCHA_V3 = "recaptcha-v3"
@@ -21,6 +22,7 @@ class CaptchaType(str, Enum):
 
 class ErrorCode(str, Enum):
     """Browser error codes."""
+
     SERVICE_NOT_AVAILABLE = "SERVICE_NOT_AVAILABLE"
     SESSION_ERROR = "SESSION_ERROR"
     NAVIGATION_ERROR = "NAVIGATION_ERROR"
@@ -34,6 +36,7 @@ class ErrorCode(str, Enum):
 @dataclass
 class BrowserSession:
     """Browser session information."""
+
     id: str
     created_at: datetime = field(default_factory=datetime.now)
     url: str | None = None
@@ -43,6 +46,7 @@ class BrowserSession:
 @dataclass
 class NavigationResult:
     """Result of a navigation operation."""
+
     success: bool
     url: str
     title: str
@@ -52,6 +56,7 @@ class NavigationResult:
 @dataclass
 class ActionResult:
     """Result of a browser action."""
+
     success: bool
     data: dict[str, Any] | None = None
     error: str | None = None
@@ -60,6 +65,7 @@ class ActionResult:
 @dataclass
 class ExtractResult:
     """Result of data extraction."""
+
     success: bool
     found: bool
     data: str | None = None
@@ -69,6 +75,7 @@ class ExtractResult:
 @dataclass
 class ScreenshotResult:
     """Result of screenshot capture."""
+
     success: bool
     data: str | None = None  # Base64 encoded
     mime_type: str = "image/png"
@@ -80,6 +87,7 @@ class ScreenshotResult:
 @dataclass
 class CaptchaResult:
     """Result of CAPTCHA detection/solving."""
+
     detected: bool
     type: CaptchaType = CaptchaType.NONE
     site_key: str | None = None
@@ -91,6 +99,7 @@ class CaptchaResult:
 @dataclass
 class SecurityConfig:
     """Security configuration for URL validation."""
+
     allowed_domains: list[str] = field(default_factory=list)
     blocked_domains: list[str] = field(default_factory=lambda: ["malware.com", "phishing.com"])
     max_url_length: int = 2048
@@ -101,6 +110,7 @@ class SecurityConfig:
 @dataclass
 class RetryConfig:
     """Retry configuration with exponential backoff."""
+
     max_attempts: int = 3
     initial_delay_ms: int = 1000
     max_delay_ms: int = 5000
@@ -110,6 +120,7 @@ class RetryConfig:
 @dataclass
 class BrowserConfig:
     """Browser service configuration."""
+
     headless: bool = True
     browserbase_api_key: str | None = None
     browserbase_project_id: str | None = None
@@ -124,6 +135,7 @@ class BrowserConfig:
 @dataclass
 class WebSocketMessage:
     """WebSocket message format."""
+
     type: str
     request_id: str
     session_id: str | None = None
@@ -133,6 +145,7 @@ class WebSocketMessage:
 @dataclass
 class WebSocketResponse:
     """WebSocket response format."""
+
     type: str
     request_id: str
     success: bool
@@ -143,6 +156,7 @@ class WebSocketResponse:
 @dataclass
 class RateLimitEntry:
     """Rate limit tracking entry."""
+
     count: int
     reset_time: float
 
@@ -150,10 +164,10 @@ class RateLimitEntry:
 @dataclass
 class RateLimitConfig:
     """Rate limiting configuration."""
+
     max_actions_per_minute: int = 60
     max_sessions_per_hour: int = 10
 
 
 # Browser service type constant (matches core's ServiceType.BROWSER)
 BROWSER_SERVICE_TYPE = "browser"
-

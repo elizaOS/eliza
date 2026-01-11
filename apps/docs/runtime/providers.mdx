@@ -14,7 +14,9 @@ Your agent needs to understand the world around it. Without context, it's flying
 Providers are the **senses** of your agent. They gather data from memory, services, and external sources, then feed it into the LLM prompt.
 
 <Tip>
-**Think of providers as context injectors.** Each provider contributes a piece of the puzzle - conversation history, user facts, available actions - assembled into the prompt at runtime.
+  **Think of providers as context injectors.** Each provider contributes a piece
+  of the puzzle - conversation history, user facts, available actions -
+  assembled into the prompt at runtime.
 </Tip>
 
 ## Provider Interface
@@ -27,21 +29,21 @@ Providers supply contextual information that forms the agent's understanding of 
 interface Provider {
   name: string;
   description: string;
-  dynamic?: boolean;    // Only executed when explicitly requested
-  private?: boolean;    // Internal-only, not included in default state
-  position?: number;    // Execution order (lower runs first)
-  
+  dynamic?: boolean; // Only executed when explicitly requested
+  private?: boolean; // Internal-only, not included in default state
+  position?: number; // Execution order (lower runs first)
+
   get: (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State
+    state?: State,
   ) => Promise<ProviderResult>;
 }
 
 interface ProviderResult {
-  values: Record<string, any>;  // Key-value pairs for templates
-  data: Record<string, any>;    // Structured data
-  text: string;                 // Textual context
+  values: Record<string, any>; // Key-value pairs for templates
+  data: Record<string, any>; // Structured data
+  text: string; // Textual context
 }
 ```
 
@@ -219,10 +221,10 @@ async composeState(
 const state = await runtime.composeState(message);
 
 // Include specific dynamic providers
-const state = await runtime.composeState(message, ['FACTS', 'ENTITIES']);
+const state = await runtime.composeState(message, ["FACTS", "ENTITIES"]);
 
 // Only specific providers
-const state = await runtime.composeState(message, ['CHARACTER'], true);
+const state = await runtime.composeState(message, ["CHARACTER"], true);
 
 // Force fresh data (skip cache)
 const state = await runtime.composeState(message, null, false, true);
@@ -240,12 +242,12 @@ Providers are registered during plugin initialization:
 
 ```typescript
 const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   providers: [customProvider],
-  
+
   init: async (config, runtime) => {
     // Providers auto-registered
-  }
+  },
 };
 ```
 
@@ -273,28 +275,28 @@ const lateProvider: Provider = {
 
 ```typescript
 const customDataProvider: Provider = {
-  name: 'CUSTOM_DATA',
-  description: 'Custom data from external source',
+  name: "CUSTOM_DATA",
+  description: "Custom data from external source",
   dynamic: true,
   position: 150,
-  
+
   get: async (runtime, message, state) => {
     try {
       // Fetch data from service or database
-      const customData = await runtime.getService('customService')?.getData();
-      
+      const customData = await runtime.getService("customService")?.getData();
+
       if (!customData) {
-        return { values: {}, data: {}, text: '' };
+        return { values: {}, data: {}, text: "" };
       }
-      
+
       return {
         values: { customData: customData.summary },
         data: { customData },
         text: `Custom data: ${customData.summary}`,
       };
     } catch (error) {
-      runtime.logger.error('Error in custom provider:', error);
-      return { values: {}, data: {}, text: '' };
+      runtime.logger.error("Error in custom provider:", error);
+      return { values: {}, data: {}, text: "" };
     }
   },
 };
@@ -314,26 +316,26 @@ Providers can access data from previously executed providers through the state p
 
 ```typescript
 const dependentProvider: Provider = {
-  name: 'DEPENDENT',
+  name: "DEPENDENT",
   position: 200, // Runs after other providers
-  
+
   get: async (runtime, message, state) => {
     // Access data from earlier providers
     const characterData = state?.data?.providers?.CHARACTER?.data;
-    
+
     if (!characterData) {
-      return { values: {}, data: {}, text: '' };
+      return { values: {}, data: {}, text: "" };
     }
-    
+
     // Process based on character data
     const processed = processCharacterData(characterData);
-    
+
     return {
       values: { processed: processed.summary },
       data: { processed },
-      text: `Processed: ${processed.summary}`
+      text: `Processed: ${processed.summary}`,
     };
-  }
+  },
 };
 ```
 
@@ -386,12 +388,12 @@ flowchart TD
     Execute --> Aggregate[Aggregate Results]
     Aggregate --> Cache[Store in Cache]
     Cache --> Return
-    
+
     classDef process fill:#2196f3,color:#fff
     classDef decision fill:#ff9800,color:#fff
     classDef execution fill:#4caf50,color:#fff
     classDef result fill:#9c27b0,color:#fff
-    
+
     class Start,Select,Sort process
     class Check decision
     class Execute,Aggregate execution
@@ -406,9 +408,7 @@ Providers run concurrently for optimal performance:
 
 ```typescript
 const results = await Promise.all(
-  providers.map(provider => 
-    provider.get(runtime, message, partialState)
-  )
+  providers.map((provider) => provider.get(runtime, message, partialState)),
 );
 ```
 
@@ -418,24 +418,24 @@ Implement timeouts to prevent slow providers from blocking:
 
 ```typescript
 const timeoutProvider: Provider = {
-  name: 'TIMEOUT_SAFE',
+  name: "TIMEOUT_SAFE",
   get: async (runtime, message) => {
     const fetchData = async () => {
       // Potentially slow operation
       const data = await externalAPI.fetch();
       return formatProviderResult(data);
     };
-    
+
     return Promise.race([
       fetchData(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout')), 5000)
-      )
-    ]).catch(error => {
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 5000),
+      ),
+    ]).catch((error) => {
       runtime.logger.warn(`Provider timeout: ${error.message}`);
-      return { values: {}, data: {}, text: '' };
+      return { values: {}, data: {}, text: "" };
     });
-  }
+  },
 };
 ```
 
@@ -449,16 +449,16 @@ Avoid providers that depend on each other circularly:
 // BAD: Circular dependency
 const providerA: Provider = {
   get: async (runtime, message) => {
-    const state = await runtime.composeState(message, ['B']);
+    const state = await runtime.composeState(message, ["B"]);
     // Uses B's data
-  }
+  },
 };
 
 const providerB: Provider = {
   get: async (runtime, message) => {
-    const state = await runtime.composeState(message, ['A']);
+    const state = await runtime.composeState(message, ["A"]);
     // Uses A's data - CIRCULAR!
-  }
+  },
 };
 
 // GOOD: Use position and state parameter
@@ -466,8 +466,8 @@ const providerA: Provider = {
   position: 100,
   get: async (runtime, message) => {
     // Generate data independently
-    return { data: { aData: 'value' } };
-  }
+    return { data: { aData: "value" } };
+  },
 };
 
 const providerB: Provider = {
@@ -476,7 +476,7 @@ const providerB: Provider = {
     // Access A's data from state
     const aData = state?.data?.providers?.A?.data;
     return { data: { bData: processData(aData) } };
-  }
+  },
 };
 ```
 
@@ -487,12 +487,12 @@ Prevent memory leaks with proper cache management:
 ```typescript
 class BoundedCache extends Map {
   private maxSize: number;
-  
+
   constructor(maxSize: number = 1000) {
     super();
     this.maxSize = maxSize;
   }
-  
+
   set(key: string, value: any) {
     if (this.size >= this.maxSize) {
       const firstKey = this.keys().next().value;
@@ -507,10 +507,14 @@ class BoundedCache extends Map {
 
 ```typescript
 // Debug helper to trace provider execution
-async function debugComposeState(runtime: IAgentRuntime, message: Memory, includeList?: string[]) {
-  console.log('=== State Composition Debug ===');
-  console.log('Message ID:', message.id);
-  console.log('Include List:', includeList || 'default');
+async function debugComposeState(
+  runtime: IAgentRuntime,
+  message: Memory,
+  includeList?: string[],
+) {
+  console.log("=== State Composition Debug ===");
+  console.log("Message ID:", message.id);
+  console.log("Include List:", includeList || "default");
 
   // Monkey patch provider execution
   const originalProviders = runtime.providers;
@@ -524,7 +528,10 @@ async function debugComposeState(runtime: IAgentRuntime, message: Memory, includ
         const result = await provider.get(...args);
         const duration = Date.now() - start;
         console.log(`[${provider.name}] Completed in ${duration}ms`);
-        console.log(`[${provider.name}] Data size:`, JSON.stringify(result).length);
+        console.log(
+          `[${provider.name}] Data size:`,
+          JSON.stringify(result).length,
+        );
         return result;
       } catch (error) {
         console.error(`[${provider.name}] Error:`, error);
@@ -538,10 +545,13 @@ async function debugComposeState(runtime: IAgentRuntime, message: Memory, includ
   // Restore original providers
   runtime.providers = originalProviders;
 
-  console.log('=== Final State Summary ===');
-  console.log('Total providers run:', Object.keys(state.data.providers || {}).length);
-  console.log('State text length:', state.text.length);
-  console.log('===============================');
+  console.log("=== Final State Summary ===");
+  console.log(
+    "Total providers run:",
+    Object.keys(state.data.providers || {}).length,
+  );
+  console.log("State text length:", state.text.length);
+  console.log("===============================");
 
   return state;
 }
@@ -553,15 +563,15 @@ async function debugComposeState(runtime: IAgentRuntime, message: Memory, includ
   <Card title="Models" icon="robot" href="/runtime/models">
     Learn how models use provider context
   </Card>
-  
-  <Card title="Services" icon="server" href="/runtime/services">
-    Build services that use providers
-  </Card>
-  
-  <Card title="Messaging" icon="message" href="/runtime/messaging">
-    Real-time provider updates
-  </Card>
-  
+
+<Card title="Services" icon="server" href="/runtime/services">
+  Build services that use providers
+</Card>
+
+<Card title="Messaging" icon="message" href="/runtime/messaging">
+  Real-time provider updates
+</Card>
+
   <Card title="Sessions API" icon="comments" href="/runtime/sessions-api">
     See providers in conversational context
   </Card>

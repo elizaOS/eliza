@@ -117,5 +117,3 @@ def get_filename_for_data(data: bytes, base_name: str = "audio") -> str:
     mime_type = detect_audio_mime_type(data)
     extension = get_extension_for_mime_type(mime_type)
     return f"{base_name}.{extension}"
-
-

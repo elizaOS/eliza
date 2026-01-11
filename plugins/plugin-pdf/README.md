@@ -30,15 +30,15 @@ To use this plugin, add its name to the `plugins` array within your character co
 
 ```typescript
 const character: Partial<Character> = {
-  name: 'MyAgent',
+  name: "MyAgent",
   plugins: [
     // ... other plugins
-    '@elizaos/plugin-pdf',
+    "@elizaos/plugin-pdf",
     // ... other plugins
   ],
   settings: {
     // ... character specific settings
-  }
+  },
 };
 
 // The Eliza OS runtime will automatically make the PdfService available
@@ -65,8 +65,8 @@ The `PdfService` is responsible for parsing PDF files and extracting their text 
 **Example of using the service:**
 
 ```typescript
-import * as fs from 'node:fs/promises';
-import { ServiceType, type IPdfService } from '@elizaos/core'; // Assuming ServiceType and IPdfService are available
+import * as fs from "node:fs/promises";
+import { ServiceType, type IPdfService } from "@elizaos/core"; // Assuming ServiceType and IPdfService are available
 
 async function extractTextFromPdf(runtime: IAgentRuntime, filePath: string) {
   try {
@@ -74,7 +74,7 @@ async function extractTextFromPdf(runtime: IAgentRuntime, filePath: string) {
     const pdfService = runtime.getService<IPdfService>(ServiceType.PDF);
 
     if (!pdfService) {
-      console.error('PdfService not found. Ensure the plugin is registered.');
+      console.error("PdfService not found. Ensure the plugin is registered.");
       return;
     }
 
@@ -83,10 +83,10 @@ async function extractTextFromPdf(runtime: IAgentRuntime, filePath: string) {
 
     // Convert the PDF buffer to text
     const textContent = await pdfService.convertPdfToText(pdfBuffer);
-    console.log('Extracted Text:', textContent);
+    console.log("Extracted Text:", textContent);
     return textContent;
   } catch (error) {
-    console.error('Error extracting text from PDF:', error);
+    console.error("Error extracting text from PDF:", error);
   }
 }
 

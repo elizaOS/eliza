@@ -21,60 +21,46 @@ export const capabilitiesProvider: Provider = {
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<ProviderResult> => {
-    try {
-      // Get all registered services
-      const services = runtime.getAllServices();
+    // Get all registered services
+    const services = runtime.getAllServices();
 
-      if (!services || services.size === 0) {
-        return {
-          text: "No services are currently registered.",
-        };
-      }
-
-      // Extract capability descriptions from all services
-      const capabilities: string[] = [];
-
-      for (const [serviceType, serviceArray] of services) {
-        // Handle the fact that services are stored as arrays
-        if (serviceArray && serviceArray.length > 0) {
-          // Use the first service in the array for the capability description
-          const service = serviceArray[0];
-          if (service.capabilityDescription) {
-            capabilities.push(
-              `${serviceType} - ${service.capabilityDescription.replace("{{agentName}}", runtime.character.name)}`,
-            );
-          }
-        }
-      }
-
-      if (capabilities.length === 0) {
-        return {
-          text: "No capability descriptions found in the registered services.",
-        };
-      }
-
-      // Format the capabilities into a readable list
-      const formattedCapabilities = capabilities.join("\n");
-
+    if (!services || services.size === 0) {
       return {
-        data: {
-          capabilities,
-        },
-        text: `# ${runtime.character.name}'s Capabilities\n\n${formattedCapabilities}`,
-      };
-    } catch (error) {
-      runtime.logger.error(
-        {
-          src: "plugin:bootstrap:provider:capabilities",
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error in capabilities provider",
-      );
-      return {
-        text: "Error retrieving capabilities from services.",
+        text: "No services are currently registered.",
       };
     }
+
+    // Extract capability descriptions from all services
+    const capabilities: string[] = [];
+
+    for (const [serviceType, serviceArray] of services) {
+      // Handle the fact that services are stored as arrays
+      if (serviceArray && serviceArray.length > 0) {
+        // Use the first service in the array for the capability description
+        const service = serviceArray[0];
+        if (service.capabilityDescription) {
+          capabilities.push(
+            `${serviceType} - ${service.capabilityDescription.replace("{{agentName}}", runtime.character.name)}`,
+          );
+        }
+      }
+    }
+
+    if (capabilities.length === 0) {
+      return {
+        text: "No capability descriptions found in the registered services.",
+      };
+    }
+
+    // Format the capabilities into a readable list
+    const formattedCapabilities = capabilities.join("\n");
+
+    return {
+      data: {
+        capabilities,
+      },
+      text: `# ${runtime.character.name}'s Capabilities\n\n${formattedCapabilities}`,
+    };
   },
 };
 

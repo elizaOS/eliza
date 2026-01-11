@@ -2,25 +2,21 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeOpenAI } from "./init";
 import {
-  handleTextSmall,
-  handleTextLarge,
-  handleObjectSmall,
-  handleObjectLarge,
-  handleTextEmbedding,
-  handleImageGeneration,
-  handleImageDescription,
-  handleTranscription,
-  handleTextToSpeech,
-  handleTokenizerEncode,
-  handleTokenizerDecode,
   fetchTextToSpeech,
+  handleImageDescription,
+  handleImageGeneration,
+  handleObjectLarge,
+  handleObjectSmall,
+  handleTextEmbedding,
+  handleTextLarge,
+  handleTextSmall,
 } from "./models";
 import { getApiKey, getBaseURL } from "./utils/config";
 
 // Re-export types for convenience
 export type {
-  OpenAITranscriptionParams,
   OpenAITextToSpeechParams,
+  OpenAITranscriptionParams,
 } from "./types";
 
 /**
@@ -59,14 +55,22 @@ export const elizaOSCloudPlugin: Plugin = {
     ELIZAOS_CLOUD_LARGE_MODEL: process.env.ELIZAOS_CLOUD_LARGE_MODEL ?? null,
     SMALL_MODEL: process.env.SMALL_MODEL ?? null,
     LARGE_MODEL: process.env.LARGE_MODEL ?? null,
-    ELIZAOS_CLOUD_EMBEDDING_MODEL: process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
-    ELIZAOS_CLOUD_EMBEDDING_API_KEY: process.env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
-    ELIZAOS_CLOUD_EMBEDDING_URL: process.env.ELIZAOS_CLOUD_EMBEDDING_URL ?? null,
-    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: process.env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? null,
-    ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL: process.env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL ?? null,
-    ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS: process.env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
-    ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY: process.env.ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY ?? null,
-    ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL: process.env.ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL ?? null,
+    ELIZAOS_CLOUD_EMBEDDING_MODEL:
+      process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
+    ELIZAOS_CLOUD_EMBEDDING_API_KEY:
+      process.env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
+    ELIZAOS_CLOUD_EMBEDDING_URL:
+      process.env.ELIZAOS_CLOUD_EMBEDDING_URL ?? null,
+    ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
+      process.env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? null,
+    ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL:
+      process.env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL ?? null,
+    ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS:
+      process.env.ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS ?? null,
+    ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY:
+      process.env.ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY ?? null,
+    ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL:
+      process.env.ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL ?? null,
   },
   async init(config, runtime) {
     initializeOpenAI(config, runtime);
@@ -252,7 +256,10 @@ export const elizaOSCloudPlugin: Plugin = {
             const prompt = "Hello tokenizer encode!";
             const tokens = await runtime.useModel(
               ModelType.TEXT_TOKENIZER_ENCODE,
-              { prompt, modelType: ModelType.TEXT_SMALL },
+              {
+                prompt,
+                modelType: ModelType.TEXT_SMALL,
+              },
             );
             if (!Array.isArray(tokens) || tokens.length === 0) {
               throw new Error(
@@ -268,11 +275,17 @@ export const elizaOSCloudPlugin: Plugin = {
             const prompt = "Hello tokenizer decode!";
             const tokens = await runtime.useModel(
               ModelType.TEXT_TOKENIZER_ENCODE,
-              { prompt, modelType: ModelType.TEXT_SMALL },
+              {
+                prompt,
+                modelType: ModelType.TEXT_SMALL,
+              },
             );
             const decodedText = await runtime.useModel(
               ModelType.TEXT_TOKENIZER_DECODE,
-              { tokens, modelType: ModelType.TEXT_SMALL },
+              {
+                tokens,
+                modelType: ModelType.TEXT_SMALL,
+              },
             );
             if (decodedText !== prompt) {
               throw new Error(

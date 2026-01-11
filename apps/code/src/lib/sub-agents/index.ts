@@ -1,4 +1,7 @@
 // Sub-agent types and implementations
+
+export { createElizaSubAgent, ElizaSubAgent } from "./eliza-sub-agent.js";
+export { createTools, parseToolCalls, type ToolCall } from "./tools.js";
 export type {
   SubAgent,
   SubAgentContext,
@@ -6,8 +9,3 @@ export type {
   ToolParameter,
   ToolResult,
 } from "./types.js";
-
-export { ElizaSubAgent, createElizaSubAgent } from "./eliza-sub-agent.js";
-export { createTools, parseToolCalls, type ToolCall } from "./tools.js";
-
-

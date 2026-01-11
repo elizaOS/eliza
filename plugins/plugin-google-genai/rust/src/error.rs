@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Google GenAI client.
 //!
 //! All errors are strongly typed with no generic error handling.
@@ -213,5 +214,10 @@ impl From<serde_json::Error> for GoogleGenAIError {
         }
     }
 }
+
+
+
+
+
 
 

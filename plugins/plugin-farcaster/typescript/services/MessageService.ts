@@ -2,11 +2,11 @@
  * Message service for Farcaster operations.
  */
 
-import { type UUID, createUniqueUuid } from "@elizaos/core";
+import { createUniqueUuid, type UUID } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
-import { getFarcasterFid } from "../utils/config";
+import { type Cast, FARCASTER_SOURCE, FarcasterEventTypes, FarcasterMessageType } from "../types";
 import { castUuid, neynarCastToCast } from "../utils";
-import { FARCASTER_SOURCE, FarcasterMessageType, FarcasterEventTypes, type Cast } from "../types";
+import { getFarcasterFid } from "../utils/config";
 
 interface Message {
   id: string;
@@ -45,7 +45,15 @@ interface IMessageService {
 export class FarcasterMessageService implements IMessageService {
   constructor(
     private client: FarcasterClient,
-    private runtime: { getSetting: (key: string) => unknown; logger: { error: (obj: unknown, msg?: string) => void; warn: (msg: string) => void; debug: (msg: string) => void }; emitEvent: (event: string, payload: unknown) => Promise<void> }
+    private runtime: {
+      getSetting: (key: string) => unknown;
+      logger: {
+        error: (obj: unknown, msg?: string) => void;
+        warn: (msg: string) => void;
+        debug: (msg: string) => void;
+      };
+      emitEvent: (event: string, payload: unknown) => Promise<void>;
+    }
   ) {}
 
   private castToMessage(
@@ -56,15 +64,16 @@ export class FarcasterMessageService implements IMessageService {
     return {
       id: castUuid({ hash: cast.hash, agentId }),
       agentId,
-      roomId: createUniqueUuid(this.runtime as Parameters<typeof createUniqueUuid>[0], cast.threadId || cast.hash),
+      roomId: createUniqueUuid(
+        this.runtime as Parameters<typeof createUniqueUuid>[0],
+        cast.threadId || cast.hash
+      ),
       userId: cast.profile.fid.toString(),
       username: cast.profile.username,
       text: cast.text,
       type: cast.inReplyTo ? FarcasterMessageType.REPLY : FarcasterMessageType.CAST,
       timestamp: cast.timestamp.getTime(),
-      inReplyTo: cast.inReplyTo
-        ? castUuid({ hash: cast.inReplyTo.hash, agentId })
-        : undefined,
+      inReplyTo: cast.inReplyTo ? castUuid({ hash: cast.inReplyTo.hash, agentId }) : undefined,
       metadata: {
         source: FARCASTER_SOURCE,
         castHash: cast.hash,
@@ -110,7 +119,7 @@ export class FarcasterMessageService implements IMessageService {
     try {
       const { text, type, roomId, replyToId, agentId } = options;
 
-      let inReplyTo: { hash: string; fid: number } | undefined = undefined;
+      let inReplyTo: { hash: string; fid: number } | undefined;
       if (replyToId && type === FarcasterMessageType.REPLY) {
         const parentHash = (options.metadata?.parentHash as string) || replyToId;
         const fid = getFarcasterFid(this.runtime as Parameters<typeof getFarcasterFid>[0]);
@@ -152,9 +161,7 @@ export class FarcasterMessageService implements IMessageService {
   }
 
   async deleteMessage(_messageId: string, _agentId: UUID): Promise<void> {
-    this.runtime.logger.warn(
-      "[Farcaster] Cast deletion is not supported by the Farcaster API"
-    );
+    this.runtime.logger.warn("[Farcaster] Cast deletion is not supported by the Farcaster API");
   }
 
   async getMessage(messageId: string, agentId: UUID): Promise<Message | null> {
@@ -197,10 +204,6 @@ export class FarcasterMessageService implements IMessageService {
   }
 
   async markAsRead(_messageIds: string[], _agentId: UUID): Promise<void> {
-    this.runtime.logger.debug(
-      "[Farcaster] Mark as read is not applicable for Farcaster casts"
-    );
+    this.runtime.logger.debug("[Farcaster] Mark as read is not applicable for Farcaster casts");
   }
 }
-
-

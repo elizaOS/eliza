@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { Character } from "../types/agent";
-import { ChannelType } from "../types/environment";
-import { ContentType } from "../types/primitives";
+import { ChannelType, ContentType } from "../types/primitives";
 
 // UUID validation schema
 export const uuidSchema = z
@@ -262,8 +261,12 @@ export function validateCharacter(data: unknown): CharacterValidationResult {
     };
   }
 
-  const zodError = result.error as { issues?: Array<{ message: string }>; toString: () => string };
-  const errorMessage = zodError.issues?.[0]?.message || zodError.toString() || "Validation failed";
+  const zodError = result.error as {
+    issues?: Array<{ message: string }>;
+    toString: () => string;
+  };
+  const errorMessage =
+    zodError.issues?.[0]?.message || zodError.toString() || "Validation failed";
   return {
     success: false,
     error: {

@@ -49,6 +49,7 @@ export AWS_REGION="us-east-1"  # or your preferred region
 Before deploying, test locally to verify everything works. Each language has a self-contained test that loads the `.env` file from the project root automatically:
 
 #### TypeScript
+
 ```bash
 cd examples/aws/typescript
 bun run test:full                # Run automated tests with elizaOS runtime
@@ -56,6 +57,7 @@ bun run start                    # Start local HTTP server on port 3000
 ```
 
 #### Python
+
 ```bash
 cd examples/aws/python
 pip install -e ../../../packages/python -e ../../../plugins/plugin-openai/python
@@ -63,12 +65,14 @@ python3 handler.py               # Runs automated tests with elizaOS runtime
 ```
 
 #### Rust
+
 ```bash
 cd examples/aws/rust
 cargo run --bin test_local       # Run automated tests with elizaOS runtime
 ```
 
 #### Test the Local Server (TypeScript)
+
 ```bash
 # In another terminal, test the API
 curl -X POST http://localhost:3000/chat \
@@ -210,15 +214,15 @@ See `terraform/` directory for Terraform configuration.
 
 ### Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | - | Your OpenAI API key |
-| `OPENAI_SMALL_MODEL` | No | `gpt-5-mini` | Small model to use |
-| `OPENAI_LARGE_MODEL` | No | `gpt-5` | Large model to use |
-| `CHARACTER_NAME` | No | `Eliza` | Agent's name |
-| `CHARACTER_BIO` | No | `A helpful AI assistant.` | Agent's bio |
-| `CHARACTER_SYSTEM` | No | (default) | System prompt |
-| `LOG_LEVEL` | No | `INFO` | Logging level |
+| Variable             | Required | Default                   | Description         |
+| -------------------- | -------- | ------------------------- | ------------------- |
+| `OPENAI_API_KEY`     | Yes      | -                         | Your OpenAI API key |
+| `OPENAI_SMALL_MODEL` | No       | `gpt-5-mini`              | Small model to use  |
+| `OPENAI_LARGE_MODEL` | No       | `gpt-5`                   | Large model to use  |
+| `CHARACTER_NAME`     | No       | `Eliza`                   | Agent's name        |
+| `CHARACTER_BIO`      | No       | `A helpful AI assistant.` | Agent's bio         |
+| `CHARACTER_SYSTEM`   | No       | (default)                 | System prompt       |
+| `LOG_LEVEL`          | No       | `INFO`                    | Logging level       |
 
 ### Character Customization
 
@@ -239,6 +243,7 @@ const character: Character = {
 Lambda cold starts can take 2-5 seconds due to runtime initialization. To minimize:
 
 1. **Provisioned Concurrency**: Keep instances warm
+
    ```yaml
    ProvisionedConcurrencyConfig:
      ProvisionedConcurrentExecutions: 1
@@ -252,11 +257,11 @@ Lambda cold starts can take 2-5 seconds due to runtime initialization. To minimi
 
 Recommended memory settings:
 
-| Runtime | Memory | Timeout |
-|---------|--------|---------|
-| TypeScript | 512 MB | 30s |
-| Python | 512 MB | 30s |
-| Rust | 256 MB | 30s |
+| Runtime    | Memory | Timeout |
+| ---------- | ------ | ------- |
+| TypeScript | 512 MB | 30s     |
+| Python     | 512 MB | 30s     |
+| Rust       | 256 MB | 30s     |
 
 ## Monitoring
 
@@ -271,6 +276,7 @@ sam logs -n ElizaWorkerFunction --stack-name eliza-worker --tail
 ### CloudWatch Metrics
 
 Key metrics to monitor:
+
 - Invocations
 - Duration
 - Errors
@@ -280,10 +286,12 @@ Key metrics to monitor:
 ## Cost Estimation
 
 AWS Lambda pricing (as of 2025):
+
 - **Requests**: $0.20 per 1M requests
 - **Duration**: $0.0000166667 per GB-second
 
 Example (512 MB, 2s avg duration, 10K requests/month):
+
 - Requests: $0.002
 - Duration: 10,000 × 2s × 0.5GB × $0.0000166667 = $0.17
 - **Total: ~$0.20/month**
@@ -310,7 +318,7 @@ cargo lambda build --release
 Increase timeout in `template.yaml`:
 
 ```yaml
-Timeout: 60  # seconds
+Timeout: 60 # seconds
 ```
 
 ### API Key Not Found

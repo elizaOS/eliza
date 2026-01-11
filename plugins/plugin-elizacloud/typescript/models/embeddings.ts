@@ -1,9 +1,9 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 import {
-  getSetting,
-  getEmbeddingBaseURL,
   getAuthHeader,
+  getEmbeddingBaseURL,
+  getSetting,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -23,13 +23,27 @@ function extractRateLimitInfo(response: Response): {
   retryAfter?: number;
 } {
   return {
-    remainingRequests: parseInt(response.headers.get("x-ratelimit-remaining-requests") || "", 10) || undefined,
-    remainingTokens: parseInt(response.headers.get("x-ratelimit-remaining-tokens") || "", 10) || undefined,
-    limitRequests: parseInt(response.headers.get("x-ratelimit-limit-requests") || "", 10) || undefined,
-    limitTokens: parseInt(response.headers.get("x-ratelimit-limit-tokens") || "", 10) || undefined,
-    resetRequests: response.headers.get("x-ratelimit-reset-requests") || undefined,
+    remainingRequests:
+      parseInt(
+        response.headers.get("x-ratelimit-remaining-requests") || "",
+        10,
+      ) || undefined,
+    remainingTokens:
+      parseInt(
+        response.headers.get("x-ratelimit-remaining-tokens") || "",
+        10,
+      ) || undefined,
+    limitRequests:
+      parseInt(response.headers.get("x-ratelimit-limit-requests") || "", 10) ||
+      undefined,
+    limitTokens:
+      parseInt(response.headers.get("x-ratelimit-limit-tokens") || "", 10) ||
+      undefined,
+    resetRequests:
+      response.headers.get("x-ratelimit-reset-requests") || undefined,
     resetTokens: response.headers.get("x-ratelimit-reset-tokens") || undefined,
-    retryAfter: parseInt(response.headers.get("retry-after") || "", 10) || undefined,
+    retryAfter:
+      parseInt(response.headers.get("retry-after") || "", 10) || undefined,
   };
 }
 
@@ -67,11 +81,11 @@ function createErrorVector(dimension: number, marker: number): number[] {
 
 /**
  * TEXT_EMBEDDING model handler (registered with ElizaOS runtime)
- * 
+ *
  * Supports both single text and batch mode at runtime:
  * - Single: { text: "..." } or "string" → returns number[]
  * - Batch: { texts: ["...", "..."] } → returns number[][] (cast to any at runtime)
- * 
+ *
  * The return type is number[] for TypeScript compatibility with ElizaOS core,
  * but batch mode returns number[][] at runtime.
  */
@@ -88,11 +102,20 @@ export async function handleTextEmbedding(
 
   // Check for batch mode: { texts: string[] }
   // This works at runtime even though TypeScript doesn't know about it
-  const anyParams = params as any;
-  if (typeof anyParams === "object" && "texts" in anyParams && Array.isArray(anyParams.texts)) {
-    logger.debug(`[Embeddings] Batch mode: ${anyParams.texts.length} texts`);
+  if (
+    typeof params === "object" &&
+    params !== null &&
+    "texts" in params &&
+    Array.isArray((params as { texts: string[] }).texts)
+  ) {
+    const batchParams = params as { texts: string[] };
+    logger.debug(`[Embeddings] Batch mode: ${batchParams.texts.length} texts`);
     // Return batch result - caller expects number[][] at runtime
-    return await handleBatchTextEmbedding(runtime, anyParams.texts) as any;
+    // Batch mode returns number[][] but signature is number[]
+    return (await handleBatchTextEmbedding(
+      runtime,
+      batchParams.texts,
+    )) as unknown as number[];
   }
 
   // Single text mode
@@ -130,7 +153,7 @@ export interface BatchEmbeddingResult {
  * BATCH TEXT_EMBEDDING handler - sends multiple texts in ONE API request
  * This is MUCH more efficient for processing large documents
  * OpenAI supports up to 2048 texts per request
- * 
+ *
  * @param runtime - Agent runtime
  * @param texts - Array of texts to embed (max 100 per batch for safety)
  * @returns Array of embeddings in same order as input texts
@@ -139,7 +162,8 @@ export async function handleBatchTextEmbedding(
   runtime: IAgentRuntime,
   texts: string[],
 ): Promise<number[][]> {
-  const { embeddingModelName, embeddingDimension } = getEmbeddingConfig(runtime);
+  const { embeddingModelName, embeddingDimension } =
+    getEmbeddingConfig(runtime);
   const embeddingBaseURL = getEmbeddingBaseURL(runtime);
 
   if (!texts || texts.length === 0) {
@@ -167,13 +191,17 @@ export async function handleBatchTextEmbedding(
   }
 
   // Process in batches of MAX_BATCH_SIZE
-  for (let batchStart = 0; batchStart < validTexts.length; batchStart += MAX_BATCH_SIZE) {
+  for (
+    let batchStart = 0;
+    batchStart < validTexts.length;
+    batchStart += MAX_BATCH_SIZE
+  ) {
     const batchEnd = Math.min(batchStart + MAX_BATCH_SIZE, validTexts.length);
     const batch = validTexts.slice(batchStart, batchEnd);
-    const batchTexts = batch.map(b => b.text);
+    const batchTexts = batch.map((b) => b.text);
 
     logger.info(
-      `[BatchEmbeddings] Processing batch ${Math.floor(batchStart / MAX_BATCH_SIZE) + 1}/${Math.ceil(validTexts.length / MAX_BATCH_SIZE)}: ${batch.length} texts`
+      `[BatchEmbeddings] Processing batch ${Math.floor(batchStart / MAX_BATCH_SIZE) + 1}/${Math.ceil(validTexts.length / MAX_BATCH_SIZE)}: ${batch.length} texts`,
     );
 
     try {
@@ -192,17 +220,22 @@ export async function handleBatchTextEmbedding(
       const rateLimitInfo = extractRateLimitInfo(response);
 
       // Log rate limit status
-      if (rateLimitInfo.remainingRequests !== undefined && rateLimitInfo.remainingRequests < 50) {
+      if (
+        rateLimitInfo.remainingRequests !== undefined &&
+        rateLimitInfo.remainingRequests < 50
+      ) {
         logger.warn(
-          `[BatchEmbeddings] Rate limit: ${rateLimitInfo.remainingRequests}/${rateLimitInfo.limitRequests} requests remaining`
+          `[BatchEmbeddings] Rate limit: ${rateLimitInfo.remainingRequests}/${rateLimitInfo.limitRequests} requests remaining`,
         );
       }
 
       // Handle rate limit (429)
       if (response.status === 429) {
         const retryAfter = rateLimitInfo.retryAfter || 30;
-        logger.warn(`[BatchEmbeddings] Rate limited, waiting ${retryAfter}s...`);
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        logger.warn(
+          `[BatchEmbeddings] Rate limited, waiting ${retryAfter}s...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
 
         // Retry this batch
         const retryResponse = await fetch(`${embeddingBaseURL}/embeddings`, {
@@ -218,15 +251,20 @@ export async function handleBatchTextEmbedding(
         });
 
         if (!retryResponse.ok) {
-          logger.error(`[BatchEmbeddings] Retry failed: ${retryResponse.status}`);
+          logger.error(
+            `[BatchEmbeddings] Retry failed: ${retryResponse.status}`,
+          );
           // Fill batch with error vectors
           for (const item of batch) {
-            results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
+            results[item.originalIndex] = createErrorVector(
+              embeddingDimension,
+              0.4,
+            );
           }
           continue;
         }
 
-        const retryData = await retryResponse.json() as {
+        const retryData = (await retryResponse.json()) as {
           data: Array<{ embedding: number[]; index: number }>;
         };
 
@@ -235,20 +273,27 @@ export async function handleBatchTextEmbedding(
             const originalIndex = batch[item.index].originalIndex;
             results[originalIndex] = item.embedding;
           }
-          logger.info(`[BatchEmbeddings] Retry successful for ${batch.length} embeddings`);
+          logger.info(
+            `[BatchEmbeddings] Retry successful for ${batch.length} embeddings`,
+          );
         }
         continue;
       }
 
       if (!response.ok) {
-        logger.error(`[BatchEmbeddings] API error: ${response.status} - ${response.statusText}`);
+        logger.error(
+          `[BatchEmbeddings] API error: ${response.status} - ${response.statusText}`,
+        );
         for (const item of batch) {
-          results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
+          results[item.originalIndex] = createErrorVector(
+            embeddingDimension,
+            0.4,
+          );
         }
         continue;
       }
 
-      const data = await response.json() as {
+      const data = (await response.json()) as {
         data: Array<{ embedding: number[]; index: number }>;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
@@ -256,7 +301,10 @@ export async function handleBatchTextEmbedding(
       if (!data?.data || !Array.isArray(data.data)) {
         logger.error("[BatchEmbeddings] API returned invalid structure");
         for (const item of batch) {
-          results[item.originalIndex] = createErrorVector(embeddingDimension, 0.5);
+          results[item.originalIndex] = createErrorVector(
+            embeddingDimension,
+            0.5,
+          );
         }
         continue;
       }
@@ -273,22 +321,28 @@ export async function handleBatchTextEmbedding(
           outputTokens: 0,
           totalTokens: data.usage.total_tokens,
         };
-        emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, `batch:${batch.length}`, usage);
+        emitModelUsageEvent(
+          runtime,
+          ModelType.TEXT_EMBEDDING,
+          `batch:${batch.length}`,
+          usage,
+        );
       }
 
       logger.debug(
-        `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d), remaining: ${rateLimitInfo.remainingRequests ?? 'unknown'}`
+        `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d), remaining: ${rateLimitInfo.remainingRequests ?? "unknown"}`,
       );
-
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`[BatchEmbeddings] Error: ${message}`);
       for (const item of batch) {
-        results[item.originalIndex] = createErrorVector(embeddingDimension, 0.6);
+        results[item.originalIndex] = createErrorVector(
+          embeddingDimension,
+          0.6,
+        );
       }
     }
   }
 
   return results;
 }
-

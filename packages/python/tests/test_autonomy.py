@@ -441,4 +441,3 @@ class TestAutonomyIntegration:
         assert send_to_admin_action is not None
         assert admin_chat_provider is not None
         assert autonomy_status_provider is not None
-

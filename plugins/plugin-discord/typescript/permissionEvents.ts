@@ -1,11 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  AuditLogEvent,
-  Guild,
-  GuildMember,
-  PermissionOverwrites,
-  Role,
-} from "discord.js";
+import type { AuditLogEvent, Guild, GuildMember, PermissionOverwrites, Role } from "discord.js";
 import type { AuditInfo, PermissionDiff, PermissionState } from "./types";
 
 /**
@@ -42,7 +36,7 @@ export function isElevatedRole(role: Role): boolean {
  */
 export function hasElevatedPermissions(permissions: string[]): boolean {
   return permissions.some((p) =>
-    ELEVATED_PERMISSIONS.includes(p as (typeof ELEVATED_PERMISSIONS)[number]),
+    ELEVATED_PERMISSIONS.includes(p as (typeof ELEVATED_PERMISSIONS)[number])
   );
 }
 
@@ -55,7 +49,7 @@ export async function fetchAuditEntry(
   guild: Guild,
   actionType: AuditLogEvent,
   targetId: string,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<AuditInfo | null> {
   try {
     const logs = await guild.fetchAuditLogs({ type: actionType, limit: 5 });
@@ -65,8 +59,8 @@ export async function fetchAuditEntry(
       // Match by target and ensure entry is recent (within 10 seconds)
       if (entry.targetId === targetId && now - entry.createdTimestamp < 10000) {
         return {
-          executorId: (entry.executor && entry.executor.id) ?? "unknown",
-          executorTag: (entry.executor && entry.executor.tag) ?? "Unknown",
+          executorId: entry.executor?.id ?? "unknown",
+          executorTag: entry.executor?.tag ?? "Unknown",
           reason: entry.reason,
         };
       }
@@ -81,11 +75,7 @@ export async function fetchAuditEntry(
 /**
  * Get the permission state from allow/deny arrays
  */
-function getState(
-  perm: string,
-  allow: string[],
-  deny: string[],
-): PermissionState {
+function getState(perm: string, allow: string[], deny: string[]): PermissionState {
   if (allow.includes(perm)) {
     return "ALLOW";
   }
@@ -100,10 +90,7 @@ function getState(
  * For CREATE: from NEUTRAL to the actual state (ALLOW/DENY)
  * For DELETE: from the actual state (ALLOW/DENY) to NEUTRAL
  */
-function overwriteToChanges(
-  ow: PermissionOverwrites,
-  isDelete: boolean = false,
-): PermissionDiff[] {
+function overwriteToChanges(ow: PermissionOverwrites, isDelete: boolean = false): PermissionDiff[] {
   const changes: PermissionDiff[] = [];
   for (const p of ow.allow.toArray()) {
     changes.push({
@@ -128,7 +115,7 @@ function overwriteToChanges(
  */
 export function diffOverwrites(
   oldOw: PermissionOverwrites | undefined | null,
-  newOw: PermissionOverwrites | undefined | null,
+  newOw: PermissionOverwrites | undefined | null
 ): { changes: PermissionDiff[]; action: "CREATE" | "UPDATE" | "DELETE" } {
   // Both null - no change
   if (!oldOw && !newOw) {
@@ -147,10 +134,10 @@ export function diffOverwrites(
 
   // Updated overwrite - compare old and new
   const changes: PermissionDiff[] = [];
-  const oldAllow = (oldOw && oldOw.allow.toArray());
-  const oldDeny = (oldOw && oldOw.deny.toArray());
-  const newAllow = (newOw && newOw.allow.toArray());
-  const newDeny = (newOw && newOw.deny.toArray());
+  const oldAllow = oldOw?.allow.toArray();
+  const oldDeny = oldOw?.deny.toArray();
+  const newAllow = newOw?.allow.toArray();
+  const newDeny = newOw?.deny.toArray();
 
   // Get all permissions that exist in either old or new
   const allPerms = new Set([...oldAllow, ...oldDeny, ...newAllow, ...newDeny]);
@@ -169,10 +156,7 @@ export function diffOverwrites(
 /**
  * Diff two role permission sets and return what changed.
  */
-export function diffRolePermissions(
-  oldRole: Role,
-  newRole: Role,
-): PermissionDiff[] {
+export function diffRolePermissions(oldRole: Role, newRole: Role): PermissionDiff[] {
   const oldPerms = oldRole.permissions.toArray();
   const newPerms = newRole.permissions.toArray();
   const changes: PermissionDiff[] = [];
@@ -199,7 +183,7 @@ export function diffRolePermissions(
  */
 export function diffMemberRoles(
   oldMember: GuildMember,
-  newMember: GuildMember,
+  newMember: GuildMember
 ): { added: Role[]; removed: Role[] } {
   const oldRoles = oldMember.roles.cache;
   const newRoles = newMember.roles.cache;

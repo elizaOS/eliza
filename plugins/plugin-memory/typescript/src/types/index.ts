@@ -4,7 +4,7 @@
  * Categories of long-term memory based on cognitive science
  */
 
-import type { UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
 
 /**
  * Categories of long-term memory based on cognitive science
@@ -15,9 +15,9 @@ import type { UUID } from '@elizaos/core';
  * - PROCEDURAL: Skills and how-to knowledge (how to do things)
  */
 export enum LongTermMemoryCategory {
-  EPISODIC = 'episodic', // Specific events, experiences, and interactions
-  SEMANTIC = 'semantic', // General facts, concepts, and knowledge
-  PROCEDURAL = 'procedural', // Skills, workflows, and how-to knowledge
+  EPISODIC = "episodic", // Specific events, experiences, and interactions
+  SEMANTIC = "semantic", // General facts, concepts, and knowledge
+  PROCEDURAL = "procedural", // Skills, workflows, and how-to knowledge
 }
 
 /**
@@ -104,6 +104,4 @@ export interface SummaryResult {
 /**
  * Service type name for registration
  */
-export type MemoryServiceTypeName = 'memory';
-
-
+export type MemoryServiceTypeName = "memory";

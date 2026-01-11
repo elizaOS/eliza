@@ -297,53 +297,39 @@ export const generatePluginIndex = (
   pluginName: string,
   specification: PluginSpecification
 ): string => {
-  const cleanPluginName = pluginName
-    .replace(/^@[^/]+\//, "")
-    .replace(/[-_]/g, "");
-  const pluginClassName =
-    cleanPluginName.charAt(0).toUpperCase() + cleanPluginName.slice(1) + "Plugin";
+  const cleanPluginName = pluginName.replace(/^@[^/]+\//, "").replace(/[-_]/g, "");
+  const pluginClassName = `${cleanPluginName.charAt(0).toUpperCase()}${cleanPluginName.slice(1)}Plugin`;
 
   const imports: string[] = [];
   const exports: string[] = [];
 
   if (specification.actions?.length) {
     specification.actions.forEach((action) => {
-      const camelCaseName =
-        action.name.charAt(0).toLowerCase() + action.name.slice(1);
-      imports.push(
-        `import { ${camelCaseName}Action } from './actions/${action.name}';`
-      );
+      const camelCaseName = action.name.charAt(0).toLowerCase() + action.name.slice(1);
+      imports.push(`import { ${camelCaseName}Action } from './actions/${action.name}';`);
       exports.push(`${camelCaseName}Action`);
     });
   }
 
   if (specification.providers?.length) {
     specification.providers.forEach((provider) => {
-      const camelCaseName =
-        provider.name.charAt(0).toLowerCase() + provider.name.slice(1);
-      imports.push(
-        `import { ${camelCaseName}Provider } from './providers/${provider.name}';`
-      );
+      const camelCaseName = provider.name.charAt(0).toLowerCase() + provider.name.slice(1);
+      imports.push(`import { ${camelCaseName}Provider } from './providers/${provider.name}';`);
       exports.push(`${camelCaseName}Provider`);
     });
   }
 
   if (specification.services?.length) {
     specification.services.forEach((service) => {
-      imports.push(
-        `import { ${service.name} } from './services/${service.name}';`
-      );
+      imports.push(`import { ${service.name} } from './services/${service.name}';`);
       exports.push(`${service.name}`);
     });
   }
 
   if (specification.evaluators?.length) {
     specification.evaluators.forEach((evaluator) => {
-      const camelCaseName =
-        evaluator.name.charAt(0).toLowerCase() + evaluator.name.slice(1);
-      imports.push(
-        `import { ${camelCaseName}Evaluator } from './evaluators/${evaluator.name}';`
-      );
+      const camelCaseName = evaluator.name.charAt(0).toLowerCase() + evaluator.name.slice(1);
+      imports.push(`import { ${camelCaseName}Evaluator } from './evaluators/${evaluator.name}';`);
       exports.push(`${camelCaseName}Evaluator`);
     });
   }
@@ -399,12 +385,8 @@ export default ${pluginClassName};
 /**
  * Generate test code.
  */
-export const generateTestCode = (
-  componentName: string,
-  componentType: string
-): string => {
-  const camelCaseName =
-    componentName.charAt(0).toLowerCase() + componentName.slice(1);
+export const generateTestCode = (componentName: string, componentType: string): string => {
+  const camelCaseName = componentName.charAt(0).toLowerCase() + componentName.slice(1);
   const typeLower = componentType.toLowerCase();
 
   return `import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -521,5 +503,3 @@ export const serviceTemplate = generateServiceCode;
 export const evaluatorTemplate = generateEvaluatorCode;
 export const pluginIndexTemplate = generatePluginIndex;
 export const testTemplate = generateTestCode;
-
-

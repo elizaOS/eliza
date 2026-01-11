@@ -2,16 +2,16 @@
  * Key Derivation Provider for Phala TEE.
  */
 
-import { type Provider, type IAgentRuntime, type Memory, logger } from "@elizaos/core";
-import { TappdClient, type DeriveKeyResponse } from "@phala/dstack-sdk";
-import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
-import { keccak256 } from "viem";
-import { Keypair } from "@solana/web3.js";
 import crypto from "node:crypto";
+import { type IAgentRuntime, logger, type Memory, type Provider } from "@elizaos/core";
+import { type DeriveKeyResponse, TappdClient } from "@phala/dstack-sdk";
+import { Keypair } from "@solana/web3.js";
+import { keccak256 } from "viem";
+import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import type {
-  RemoteAttestationQuote,
   DeriveKeyAttestationData,
   DeriveKeyResult,
+  RemoteAttestationQuote,
   TeeProviderResult,
 } from "../types";
 import { getTeeEndpoint } from "../utils";
@@ -165,7 +165,10 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     path: string,
     subject: string,
     agentId: string
-  ): Promise<{ keypair: PrivateKeyAccount; attestation: RemoteAttestationQuote }> {
+  ): Promise<{
+    keypair: PrivateKeyAccount;
+    attestation: RemoteAttestationQuote;
+  }> {
     if (!path || !subject) {
       throw new Error("Path and subject are required for key derivation");
     }
@@ -203,17 +206,18 @@ export const phalaDeriveKeyProvider: Provider = {
   name: "phala-derive-key",
 
   get: async (runtime: IAgentRuntime, _message?: Memory): Promise<TeeProviderResult> => {
-    const teeMode = runtime.getSetting("TEE_MODE");
-    if (!teeMode) {
+    const teeModeRaw = runtime.getSetting("TEE_MODE");
+    if (!teeModeRaw) {
       return {
         data: null,
         values: {},
         text: "TEE_MODE is not configured",
       };
     }
+    const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : String(teeModeRaw);
 
-    const secretSalt = runtime.getSetting("WALLET_SECRET_SALT");
-    if (!secretSalt) {
+    const secretSaltRaw = runtime.getSetting("WALLET_SECRET_SALT");
+    if (!secretSaltRaw) {
       logger.error("WALLET_SECRET_SALT is not configured");
       return {
         data: null,
@@ -221,6 +225,7 @@ export const phalaDeriveKeyProvider: Provider = {
         text: "WALLET_SECRET_SALT is not configured in settings",
       };
     }
+    const secretSalt = typeof secretSaltRaw === "string" ? secretSaltRaw : String(secretSaltRaw);
 
     const provider = new PhalaDeriveKeyProvider(teeMode);
     const agentId = runtime.agentId;
@@ -257,5 +262,3 @@ export const phalaDeriveKeyProvider: Provider = {
     }
   },
 };
-
-

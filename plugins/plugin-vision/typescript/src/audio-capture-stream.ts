@@ -1,6 +1,6 @@
-import { logger, ModelType, type IAgentRuntime } from '@elizaos/core';
-import { spawn, ChildProcess } from 'child_process';
-import { EventEmitter } from 'events';
+import { type ChildProcess, spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 
 export interface StreamingAudioConfig {
   enabled: boolean;
@@ -29,7 +29,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
   private lastSpeechTime = 0;
   private silenceTimer: NodeJS.Timeout | null = null;
   private transcriptionInProgress = false;
-  private currentTranscription = '';
+  private currentTranscription = "";
   private responseTimer: NodeJS.Timeout | null = null;
 
   constructor(runtime: IAgentRuntime, config: StreamingAudioConfig) {
@@ -48,19 +48,19 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
   async initialize(): Promise<void> {
     if (!this.config.enabled) {
-      logger.info('[StreamingAudio] Audio capture disabled');
+      logger.info("[StreamingAudio] Audio capture disabled");
       return;
     }
 
     try {
-      logger.info('[StreamingAudio] Initializing streaming audio capture...');
+      logger.info("[StreamingAudio] Initializing streaming audio capture...");
 
       // Start continuous audio capture
       await this.startContinuousCapture();
 
-      logger.info('[StreamingAudio] Streaming audio capture initialized');
+      logger.info("[StreamingAudio] Streaming audio capture initialized");
     } catch (error) {
-      logger.error('[StreamingAudio] Failed to initialize:', error);
+      logger.error("[StreamingAudio] Failed to initialize:", error);
       throw error;
     }
   }
@@ -70,56 +70,56 @@ export class StreamingAudioCaptureService extends EventEmitter {
     let command: string;
     let args: string[];
 
-    if (platform === 'darwin') {
+    if (platform === "darwin") {
       // macOS: Use sox for continuous capture
-      command = 'sox';
+      command = "sox";
       args = [
-        '-d', // default input device
-        '-r',
-        this.config.sampleRate!.toString(),
-        '-c',
-        this.config.channels!.toString(),
-        '-b',
-        '16',
-        '-e',
-        'signed',
-        '-t',
-        'raw',
-        '-', // output to stdout
+        "-d", // default input device
+        "-r",
+        this.config.sampleRate?.toString(),
+        "-c",
+        this.config.channels?.toString(),
+        "-b",
+        "16",
+        "-e",
+        "signed",
+        "-t",
+        "raw",
+        "-", // output to stdout
       ];
-    } else if (platform === 'linux') {
+    } else if (platform === "linux") {
       // Linux: Use arecord
-      command = 'arecord';
+      command = "arecord";
       args = [
-        '-D',
-        this.config.device || 'default',
-        '-f',
-        'S16_LE',
-        '-r',
-        this.config.sampleRate!.toString(),
-        '-c',
-        this.config.channels!.toString(),
-        '-t',
-        'raw',
-        '-', // output to stdout
+        "-D",
+        this.config.device || "default",
+        "-f",
+        "S16_LE",
+        "-r",
+        this.config.sampleRate?.toString(),
+        "-c",
+        this.config.channels?.toString(),
+        "-t",
+        "raw",
+        "-", // output to stdout
       ];
-    } else if (platform === 'win32') {
+    } else if (platform === "win32") {
       // Windows: Use ffmpeg
-      command = 'ffmpeg';
+      command = "ffmpeg";
       args = [
-        '-f',
-        'dshow',
-        '-i',
-        `audio="${this.config.device || 'Microphone'}"`,
-        '-acodec',
-        'pcm_s16le',
-        '-ar',
-        this.config.sampleRate!.toString(),
-        '-ac',
-        this.config.channels!.toString(),
-        '-f',
-        's16le',
-        'pipe:1', // output to stdout
+        "-f",
+        "dshow",
+        "-i",
+        `audio="${this.config.device || "Microphone"}"`,
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        this.config.sampleRate?.toString(),
+        "-ac",
+        this.config.channels?.toString(),
+        "-f",
+        "s16le",
+        "pipe:1", // output to stdout
       ];
     } else {
       throw new Error(`Unsupported platform: ${platform}`);
@@ -129,21 +129,24 @@ export class StreamingAudioCaptureService extends EventEmitter {
     this.isCapturing = true;
 
     // Handle audio data stream
-    this.captureProcess.stdout?.on('data', (chunk: Buffer) => {
+    this.captureProcess.stdout?.on("data", (chunk: Buffer) => {
       this.processAudioChunk(chunk);
     });
 
-    this.captureProcess.stderr?.on('data', (data) => {
-      logger.debug('[StreamingAudio] Capture stderr:', data.toString());
+    this.captureProcess.stderr?.on("data", (data) => {
+      logger.debug("[StreamingAudio] Capture stderr:", data.toString());
     });
 
-    this.captureProcess.on('error', (error) => {
-      logger.error('[StreamingAudio] Capture process error:', error);
+    this.captureProcess.on("error", (error) => {
+      logger.error(
+        "[StreamingAudio] Capture process error:",
+        error instanceof Error ? error.message : String(error)
+      );
       this.isCapturing = false;
     });
 
-    this.captureProcess.on('exit', (code) => {
-      logger.info('[StreamingAudio] Capture process exited with code:', code);
+    this.captureProcess.on("exit", (code) => {
+      logger.info("[StreamingAudio] Capture process exited with code:", String(code ?? 0));
       this.isCapturing = false;
     });
   }
@@ -157,19 +160,19 @@ export class StreamingAudioCaptureService extends EventEmitter {
     const audioChunk: AudioChunk = { data: chunk, timestamp, energy };
 
     // Voice Activity Detection
-    if (energy > this.config.vadThreshold!) {
+    if (energy > (this.config.vadThreshold ?? 0.01)) {
       if (!this.isSpeaking) {
         // Speech started
         this.isSpeaking = true;
         this.lastSpeechTime = timestamp;
-        logger.debug('[StreamingAudio] Speech detected, starting recording');
-        this.emit('speechStart');
+        logger.debug("[StreamingAudio] Speech detected, starting recording");
+        this.emit("speechStart");
 
         // Clear any pending response
         if (this.responseTimer) {
           clearTimeout(this.responseTimer);
           this.responseTimer = null;
-          logger.debug('[StreamingAudio] Cancelled pending response due to new speech');
+          logger.debug("[StreamingAudio] Cancelled pending response due to new speech");
         }
       }
 
@@ -194,7 +197,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
       if (!this.silenceTimer) {
         this.silenceTimer = setTimeout(() => {
           this.endSpeech();
-        }, this.config.silenceTimeout!);
+        }, this.config.silenceTimeout ?? 1500);
       }
     }
 
@@ -223,7 +226,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
     }
 
     this.transcriptionInProgress = true;
-    logger.debug('[StreamingAudio] Starting streaming transcription');
+    logger.debug("[StreamingAudio] Starting streaming transcription");
 
     try {
       // Get audio data from buffer
@@ -237,13 +240,13 @@ export class StreamingAudioCaptureService extends EventEmitter {
       // Use streaming transcription if available, otherwise batch
       const result = await this.transcribeAudio(audioData);
 
-      if (result && result.trim()) {
+      if (result?.trim()) {
         this.currentTranscription = result;
         logger.info(`[StreamingAudio] Partial transcription: "${result}"`);
-        this.emit('transcription', { text: result, isFinal: false });
+        this.emit("transcription", { text: result, isFinal: false });
       }
     } catch (error) {
-      logger.error('[StreamingAudio] Transcription error:', error);
+      logger.error("[StreamingAudio] Transcription error:", error);
     }
 
     this.transcriptionInProgress = false;
@@ -261,8 +264,8 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
     this.isSpeaking = false;
     this.silenceTimer = null;
-    logger.debug('[StreamingAudio] Speech ended');
-    this.emit('speechEnd');
+    logger.debug("[StreamingAudio] Speech ended");
+    this.emit("speechEnd");
 
     // Get final transcription
     this.processFinalTranscription();
@@ -279,22 +282,22 @@ export class StreamingAudioCaptureService extends EventEmitter {
       // Get final transcription
       const finalText = await this.transcribeAudio(audioData);
 
-      if (finalText && finalText.trim()) {
+      if (finalText?.trim()) {
         this.currentTranscription = finalText;
         logger.info(`[StreamingAudio] Final transcription: "${finalText}"`);
-        this.emit('transcription', { text: finalText, isFinal: true });
+        this.emit("transcription", { text: finalText, isFinal: true });
 
         // Set timer for response generation
         this.responseTimer = setTimeout(() => {
           this.generateResponse(finalText);
-        }, this.config.responseDelay!);
+        }, this.config.responseDelay ?? 3000);
       }
     } catch (error) {
-      logger.error('[StreamingAudio] Final transcription error:', error);
+      logger.error("[StreamingAudio] Final transcription error:", error);
     } finally {
       // Clear audio buffer
       this.audioBuffer = [];
-      this.currentTranscription = '';
+      this.currentTranscription = "";
     }
   }
 
@@ -326,23 +329,19 @@ export class StreamingAudioCaptureService extends EventEmitter {
       const wavBuffer = this.rawToWav(audioData);
 
       // Use runtime transcription model
-      const result = await this.runtime.useModel(ModelType.TRANSCRIPTION, {
-        audio: wavBuffer,
-        language: 'en',
-        stream: true, // Request streaming if supported
-      });
+      const result = await this.runtime.useModel(ModelType.TRANSCRIPTION, wavBuffer);
 
       return result as string;
     } catch (error) {
-      logger.error('[StreamingAudio] Transcription failed:', error);
+      logger.error("[StreamingAudio] Transcription failed:", error);
       return null;
     }
   }
 
   private rawToWav(rawData: Buffer): Buffer {
     // Create WAV header
-    const sampleRate = this.config.sampleRate!;
-    const channels = this.config.channels!;
+    const sampleRate = this.config.sampleRate ?? 16000;
+    const channels = this.config.channels ?? 1;
     const bitsPerSample = 16;
     const byteRate = sampleRate * channels * (bitsPerSample / 8);
     const blockAlign = channels * (bitsPerSample / 8);
@@ -352,12 +351,12 @@ export class StreamingAudioCaptureService extends EventEmitter {
     const header = Buffer.alloc(44);
 
     // RIFF chunk
-    header.write('RIFF', 0);
+    header.write("RIFF", 0);
     header.writeUInt32LE(fileSize, 4);
-    header.write('WAVE', 8);
+    header.write("WAVE", 8);
 
     // fmt chunk
-    header.write('fmt ', 12);
+    header.write("fmt ", 12);
     header.writeUInt32LE(16, 16); // fmt chunk size
     header.writeUInt16LE(1, 20); // PCM format
     header.writeUInt16LE(channels, 22);
@@ -367,7 +366,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
     header.writeUInt16LE(bitsPerSample, 34);
 
     // data chunk
-    header.write('data', 36);
+    header.write("data", 36);
     header.writeUInt32LE(dataSize, 40);
 
     return Buffer.concat([header, rawData]);
@@ -381,9 +380,9 @@ export class StreamingAudioCaptureService extends EventEmitter {
       await this.createAudioMemory(transcription);
 
       // Emit event for response generation
-      this.emit('utteranceComplete', transcription);
+      this.emit("utteranceComplete", transcription);
     } catch (error) {
-      logger.error('[StreamingAudio] Response generation error:', error);
+      logger.error("[StreamingAudio] Response generation error:", error);
     }
   }
 
@@ -392,8 +391,8 @@ export class StreamingAudioCaptureService extends EventEmitter {
       const _memory = {
         content: {
           text: `[Audio] ${transcription}`,
-          type: 'audio_transcription',
-          source: 'microphone_streaming',
+          type: "audio_transcription",
+          source: "microphone_streaming",
           timestamp: Date.now(),
         },
         metadata: {
@@ -402,14 +401,14 @@ export class StreamingAudioCaptureService extends EventEmitter {
         },
       };
 
-      logger.info('[StreamingAudio] Audio transcription stored in context');
+      logger.info("[StreamingAudio] Audio transcription stored in context");
     } catch (error) {
-      logger.error('[StreamingAudio] Failed to create audio memory:', error);
+      logger.error("[StreamingAudio] Failed to create audio memory:", error);
     }
   }
 
   async stop(): Promise<void> {
-    logger.info('[StreamingAudio] Stopping audio capture...');
+    logger.info("[StreamingAudio] Stopping audio capture...");
 
     if (this.captureProcess) {
       this.captureProcess.kill();
@@ -430,7 +429,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
     this.isSpeaking = false;
     this.audioBuffer = [];
 
-    logger.info('[StreamingAudio] Audio capture stopped');
+    logger.info("[StreamingAudio] Audio capture stopped");
   }
 
   isActive(): boolean {

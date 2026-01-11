@@ -7,7 +7,7 @@ Classic ELIZA pattern matching plugin for elizaOS. Provides a testable chat resp
 This plugin implements Joseph Weizenbaum's original 1966 ELIZA pattern matching algorithm as an elizaOS model provider. It's useful for:
 
 - **Testing**: Validate agent workflows without API costs
-- **Development**: Rapid iteration without LLM latency  
+- **Development**: Rapid iteration without LLM latency
 - **Education**: Understand how pattern matching chatbots work
 - **Offline use**: No internet connection required
 
@@ -97,10 +97,10 @@ Output: "Did you think I would forget your birthday?"
 
 ## Model Types Supported
 
-| Model Type | Description |
-|------------|-------------|
+| Model Type   | Description                 |
+| ------------ | --------------------------- |
 | `TEXT_LARGE` | Full ELIZA pattern matching |
-| `TEXT_SMALL` | Same as TEXT_LARGE |
+| `TEXT_SMALL` | Same as TEXT_LARGE          |
 
 ## Configuration
 
@@ -112,7 +112,7 @@ No configuration required. The plugin works out of the box.
 # TypeScript
 bun test:ts
 
-# Python  
+# Python
 pytest
 
 # Rust
@@ -122,8 +122,6 @@ cargo test
 ## License
 
 MIT
-
-
 
 
 

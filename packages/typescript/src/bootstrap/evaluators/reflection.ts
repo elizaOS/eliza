@@ -1,7 +1,7 @@
 import {
+  type ActionResult,
   asUUID,
   composePrompt,
-  type ActionResult,
   type Entity,
   type Evaluator,
   getEntityDetails,
@@ -12,9 +12,9 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { reflectionEvaluatorTemplate } from "../../prompts";
 import { v4 } from "uuid";
 import { z } from "zod";
+import { reflectionEvaluatorTemplate } from "../../prompts";
 
 /** Shape of a single fact in the XML response */
 interface FactXml {
@@ -132,7 +132,11 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 
   throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
-async function handler(runtime: IAgentRuntime, message: Memory, state?: State): Promise<ActionResult | undefined> {
+async function handler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+): Promise<ActionResult | undefined> {
   const { agentId, roomId } = message;
 
   if (!agentId || !roomId) {
@@ -175,191 +179,179 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State): 
   });
 
   // Use the model without schema validation
-  try {
-    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
+  const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+  });
 
-    if (!response) {
-      runtime.logger.warn(
-        {
-          src: "plugin:bootstrap:evaluator:reflection",
-          agentId: runtime.agentId,
-        },
-        "Getting reflection failed - empty response",
-      );
-      return undefined;
-    }
-
-    // Parse XML response
-    const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
-
-    if (!reflection) {
-      runtime.logger.warn(
-        {
-          src: "plugin:bootstrap:evaluator:reflection",
-          agentId: runtime.agentId,
-        },
-        "Getting reflection failed - failed to parse XML",
-      );
-      return undefined;
-    }
-
-    // Perform basic structure validation
-    if (!reflection.facts) {
-      runtime.logger.warn(
-        {
-          src: "plugin:bootstrap:evaluator:reflection",
-          agentId: runtime.agentId,
-        },
-        "Getting reflection failed - invalid facts structure",
-      );
-      return undefined;
-    }
-
-    if (!reflection.relationships) {
-      runtime.logger.warn(
-        {
-          src: "plugin:bootstrap:evaluator:reflection",
-          agentId: runtime.agentId,
-        },
-        "Getting reflection failed - invalid relationships structure",
-      );
-      return undefined;
-    }
-
-    // Handle facts - parseKeyValueXml returns nested structures differently
-    // Facts might be a single object or an array depending on the count
-    let factsArray: FactXml[] = [];
-    if (reflection.facts.fact) {
-      // Normalize to array
-      factsArray = Array.isArray(reflection.facts.fact)
-        ? reflection.facts.fact
-        : [reflection.facts.fact];
-    }
-
-    // Store new facts - filter for valid new facts with claim text
-    const newFacts = factsArray.filter(
-      (fact): fact is FactXml & { claim: string } =>
-        fact != null &&
-        fact.already_known === "false" &&
-        fact.in_bio === "false" &&
-        typeof fact.claim === "string" &&
-        fact.claim.trim() !== "",
-    );
-
-    await Promise.all(
-      newFacts.map(async (fact) => {
-        const factMemory = {
-          id: asUUID(v4()),
-          entityId: agentId,
-          agentId,
-          content: { text: fact.claim },
-          roomId,
-          createdAt: Date.now(),
-        };
-        // Create memory first and capture the returned ID
-        const createdMemoryId = await runtime.createMemory(
-          factMemory,
-          "facts",
-          true,
-        );
-        // Update the memory object with the actual ID from the database
-        const createdMemory = { ...factMemory, id: createdMemoryId };
-        // Queue embedding generation asynchronously for the memory with correct ID
-        await runtime.queueEmbeddingGeneration(createdMemory, "low");
-        return createdMemory;
-      }),
-    );
-
-    // Handle relationships - similar structure normalization
-    let relationshipsArray: RelationshipXml[] = [];
-    if (reflection.relationships.relationship) {
-      relationshipsArray = Array.isArray(reflection.relationships.relationship)
-        ? reflection.relationships.relationship
-        : [reflection.relationships.relationship];
-    }
-
-    // Update or create relationships
-    for (const relationship of relationshipsArray) {
-      if (!relationship.sourceEntityId || !relationship.targetEntityId) {
-        console.warn(
-          "Skipping relationship with missing entity IDs:",
-          relationship,
-        );
-        continue;
-      }
-
-      let sourceId: UUID;
-      let targetId: UUID;
-
-      try {
-        sourceId = resolveEntity(relationship.sourceEntityId, entities);
-        targetId = resolveEntity(relationship.targetEntityId, entities);
-      } catch (error) {
-        console.warn("Failed to resolve relationship entities:", error);
-        console.warn("relationship:\n", relationship);
-        continue; // Skip this relationship if we can't resolve the IDs
-      }
-
-      const existingRelationship = existingRelationships.find((r) => {
-        return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
-      });
-
-      // Parse tags from comma-separated string
-      const tags = relationship.tags
-        ? relationship.tags
-            .split(",")
-            .map((tag: string) => tag.trim())
-            .filter(Boolean)
-        : [];
-
-      if (existingRelationship) {
-        const updatedMetadata = {
-          ...existingRelationship.metadata,
-          interactions:
-            ((existingRelationship.metadata?.interactions as
-              | number
-              | undefined) || 0) + 1,
-        };
-
-        const updatedTags = Array.from(
-          new Set([...(existingRelationship.tags || []), ...tags]),
-        );
-
-        await runtime.updateRelationship({
-          ...existingRelationship,
-          tags: updatedTags,
-          metadata: updatedMetadata,
-        });
-      } else {
-        await runtime.createRelationship({
-          sourceEntityId: sourceId,
-          targetEntityId: targetId,
-          tags,
-          metadata: {
-            interactions: 1,
-            ...(relationship.metadata || {}),
-          },
-        });
-      }
-    }
-
-    await runtime.setCache<string>(
-      `${message.roomId}-reflection-last-processed`,
-      message?.id || "",
-    );
-  } catch (error) {
-    runtime.logger.error(
+  if (!response) {
+    runtime.logger.warn(
       {
         src: "plugin:bootstrap:evaluator:reflection",
         agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
       },
-      "Error in reflection handler",
+      "Getting reflection failed - empty response",
     );
-    return;
+    return undefined;
   }
+
+  // Parse XML response
+  const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
+
+  if (!reflection) {
+    runtime.logger.warn(
+      {
+        src: "plugin:bootstrap:evaluator:reflection",
+        agentId: runtime.agentId,
+      },
+      "Getting reflection failed - failed to parse XML",
+    );
+    return undefined;
+  }
+
+  // Perform basic structure validation
+  if (!reflection.facts) {
+    runtime.logger.warn(
+      {
+        src: "plugin:bootstrap:evaluator:reflection",
+        agentId: runtime.agentId,
+      },
+      "Getting reflection failed - invalid facts structure",
+    );
+    return undefined;
+  }
+
+  if (!reflection.relationships) {
+    runtime.logger.warn(
+      {
+        src: "plugin:bootstrap:evaluator:reflection",
+        agentId: runtime.agentId,
+      },
+      "Getting reflection failed - invalid relationships structure",
+    );
+    return undefined;
+  }
+
+  // Handle facts - parseKeyValueXml returns nested structures differently
+  // Facts might be a single object or an array depending on the count
+  let factsArray: FactXml[] = [];
+  if (reflection.facts.fact) {
+    // Normalize to array
+    factsArray = Array.isArray(reflection.facts.fact)
+      ? reflection.facts.fact
+      : [reflection.facts.fact];
+  }
+
+  // Store new facts - filter for valid new facts with claim text
+  const newFacts = factsArray.filter(
+    (fact): fact is FactXml & { claim: string } =>
+      fact != null &&
+      fact.already_known === "false" &&
+      fact.in_bio === "false" &&
+      typeof fact.claim === "string" &&
+      fact.claim.trim() !== "",
+  );
+
+  await Promise.all(
+    newFacts.map(async (fact) => {
+      const factMemory = {
+        id: asUUID(v4()),
+        entityId: agentId,
+        agentId,
+        content: { text: fact.claim },
+        roomId,
+        createdAt: Date.now(),
+      };
+      // Create memory first and capture the returned ID
+      const createdMemoryId = await runtime.createMemory(
+        factMemory,
+        "facts",
+        true,
+      );
+      // Update the memory object with the actual ID from the database
+      const createdMemory = { ...factMemory, id: createdMemoryId };
+      // Queue embedding generation asynchronously for the memory with correct ID
+      await runtime.queueEmbeddingGeneration(createdMemory, "low");
+      return createdMemory;
+    }),
+  );
+
+  // Handle relationships - similar structure normalization
+  let relationshipsArray: RelationshipXml[] = [];
+  if (reflection.relationships.relationship) {
+    relationshipsArray = Array.isArray(reflection.relationships.relationship)
+      ? reflection.relationships.relationship
+      : [reflection.relationships.relationship];
+  }
+
+  // Update or create relationships
+  for (const relationship of relationshipsArray) {
+    if (!relationship.sourceEntityId || !relationship.targetEntityId) {
+      console.warn(
+        "Skipping relationship with missing entity IDs:",
+        relationship,
+      );
+      continue;
+    }
+
+    let sourceId: UUID;
+    let targetId: UUID;
+
+    try {
+      sourceId = resolveEntity(relationship.sourceEntityId, entities);
+      targetId = resolveEntity(relationship.targetEntityId, entities);
+    } catch (error) {
+      console.warn("Failed to resolve relationship entities:", error);
+      console.warn("relationship:\n", relationship);
+      continue; // Skip this relationship if we can't resolve the IDs
+    }
+
+    const existingRelationship = existingRelationships.find((r) => {
+      return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
+    });
+
+    // Parse tags from comma-separated string
+    const tags = relationship.tags
+      ? relationship.tags
+          .split(",")
+          .map((tag: string) => tag.trim())
+          .filter(Boolean)
+      : [];
+
+    if (existingRelationship) {
+      const updatedMetadata = {
+        ...existingRelationship.metadata,
+        interactions:
+          ((existingRelationship.metadata?.interactions as
+            | number
+            | undefined) || 0) + 1,
+      };
+
+      const updatedTags = Array.from(
+        new Set([...(existingRelationship.tags || []), ...tags]),
+      );
+
+      await runtime.updateRelationship({
+        ...existingRelationship,
+        tags: updatedTags,
+        metadata: updatedMetadata,
+      });
+    } else {
+      await runtime.createRelationship({
+        sourceEntityId: sourceId,
+        targetEntityId: targetId,
+        tags,
+        metadata: {
+          interactions: 1,
+          ...(relationship.metadata || {}),
+        },
+      });
+    }
+  }
+
+  await runtime.setCache<string>(
+    `${message.roomId}-reflection-last-processed`,
+    message?.id || "",
+  );
 }
 
 export const reflectionEvaluator: Evaluator = {

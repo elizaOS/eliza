@@ -1,7 +1,7 @@
-import { z } from 'zod';
-import { SessionManager } from './session-manager.js';
-import { Logger } from './logger.js';
-import { detectCaptchaType, injectCaptchaSolution } from './captcha-handler.js';
+import { z } from "zod";
+import { detectCaptchaType } from "./captcha-handler.js";
+import type { Logger } from "./logger.js";
+import type { SessionManager } from "./session-manager.js";
 
 export interface Message {
   type: string;
@@ -21,7 +21,7 @@ export interface Response {
 export class MessageHandler {
   constructor(
     private sessionManager: SessionManager,
-    private logger: Logger
+    private logger: Logger,
   ) {}
 
   async handleMessage(message: Message, clientId: string): Promise<Response> {
@@ -29,51 +29,69 @@ export class MessageHandler {
 
     try {
       switch (type) {
-        case 'health':
+        case "health":
           return this.handleHealth(requestId);
 
-        case 'createSession':
+        case "createSession":
           return await this.handleCreateSession(requestId, clientId);
 
-        case 'destroySession':
+        case "destroySession":
           return await this.handleDestroySession(requestId, sessionId!);
 
-        case 'navigate':
+        case "navigate":
           return await this.handleNavigate(requestId, sessionId!, data.url);
 
-        case 'goBack':
+        case "goBack":
           return await this.handleGoBack(requestId, sessionId!);
 
-        case 'goForward':
+        case "goForward":
           return await this.handleGoForward(requestId, sessionId!);
 
-        case 'refresh':
+        case "refresh":
           return await this.handleRefresh(requestId, sessionId!);
 
-        case 'click':
-          return await this.handleClick(requestId, sessionId!, data.description);
+        case "click":
+          return await this.handleClick(
+            requestId,
+            sessionId!,
+            data.description,
+          );
 
-        case 'type':
-          return await this.handleType(requestId, sessionId!, data.text, data.field);
+        case "type":
+          return await this.handleType(
+            requestId,
+            sessionId!,
+            data.text,
+            data.field,
+          );
 
-        case 'select':
-          return await this.handleSelect(requestId, sessionId!, data.option, data.dropdown);
+        case "select":
+          return await this.handleSelect(
+            requestId,
+            sessionId!,
+            data.option,
+            data.dropdown,
+          );
 
-        case 'extract':
-          return await this.handleExtract(requestId, sessionId!, data.instruction);
+        case "extract":
+          return await this.handleExtract(
+            requestId,
+            sessionId!,
+            data.instruction,
+          );
 
-        case 'screenshot':
+        case "screenshot":
           return await this.handleScreenshot(requestId, sessionId!);
 
-        case 'getState':
+        case "getState":
           return await this.handleGetState(requestId, sessionId!);
 
-        case 'solveCaptcha':
+        case "solveCaptcha":
           return await this.handleSolveCaptcha(requestId, sessionId!);
 
         default:
           return {
-            type: 'error',
+            type: "error",
             requestId,
             success: false,
             error: `Unknown message type: ${type}`,
@@ -82,20 +100,26 @@ export class MessageHandler {
     } catch (error) {
       this.logger.error(`Error handling ${type}:`, error);
       return {
-        type: 'error',
+        type: "error",
         requestId,
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
 
-  private async handleCreateSession(requestId: string, clientId: string): Promise<Response> {
+  private async handleCreateSession(
+    requestId: string,
+    clientId: string,
+  ): Promise<Response> {
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    const session = await this.sessionManager.createSession(sessionId, clientId);
+    const session = await this.sessionManager.createSession(
+      sessionId,
+      clientId,
+    );
 
     return {
-      type: 'sessionCreated',
+      type: "sessionCreated",
       requestId,
       success: true,
       data: {
@@ -105,11 +129,14 @@ export class MessageHandler {
     };
   }
 
-  private async handleDestroySession(requestId: string, sessionId: string): Promise<Response> {
+  private async handleDestroySession(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     await this.sessionManager.destroySession(sessionId);
 
     return {
-      type: 'sessionDestroyed',
+      type: "sessionDestroyed",
       requestId,
       success: true,
     };
@@ -118,7 +145,7 @@ export class MessageHandler {
   private async handleNavigate(
     requestId: string,
     sessionId: string,
-    url: string
+    url: string,
   ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
@@ -126,13 +153,13 @@ export class MessageHandler {
     }
 
     await session.stagehand.page.goto(url);
-    await session.stagehand.page.waitForLoadState('domcontentloaded');
+    await session.stagehand.page.waitForLoadState("domcontentloaded");
 
     const title = await session.stagehand.page.title();
     const currentUrl = session.stagehand.page.url();
 
     return {
-      type: 'navigated',
+      type: "navigated",
       requestId,
       success: true,
       data: {
@@ -142,60 +169,69 @@ export class MessageHandler {
     };
   }
 
-  private async handleGoBack(requestId: string, sessionId: string): Promise<Response> {
+  private async handleGoBack(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       return this.sessionNotFoundResponse(requestId);
     }
 
     await session.stagehand.page.goBack();
-    await session.stagehand.page.waitForLoadState('domcontentloaded');
+    await session.stagehand.page.waitForLoadState("domcontentloaded");
 
     const title = await session.stagehand.page.title();
     const url = session.stagehand.page.url();
 
     return {
-      type: 'wentBack',
+      type: "wentBack",
       requestId,
       success: true,
       data: { url, title },
     };
   }
 
-  private async handleGoForward(requestId: string, sessionId: string): Promise<Response> {
+  private async handleGoForward(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       return this.sessionNotFoundResponse(requestId);
     }
 
     await session.stagehand.page.goForward();
-    await session.stagehand.page.waitForLoadState('domcontentloaded');
+    await session.stagehand.page.waitForLoadState("domcontentloaded");
 
     const title = await session.stagehand.page.title();
     const url = session.stagehand.page.url();
 
     return {
-      type: 'wentForward',
+      type: "wentForward",
       requestId,
       success: true,
       data: { url, title },
     };
   }
 
-  private async handleRefresh(requestId: string, sessionId: string): Promise<Response> {
+  private async handleRefresh(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       return this.sessionNotFoundResponse(requestId);
     }
 
     await session.stagehand.page.reload();
-    await session.stagehand.page.waitForLoadState('domcontentloaded');
+    await session.stagehand.page.waitForLoadState("domcontentloaded");
 
     const title = await session.stagehand.page.title();
     const url = session.stagehand.page.url();
 
     return {
-      type: 'refreshed',
+      type: "refreshed",
       requestId,
       success: true,
       data: { url, title },
@@ -205,7 +241,7 @@ export class MessageHandler {
   private async handleClick(
     requestId: string,
     sessionId: string,
-    description: string
+    description: string,
   ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
@@ -217,7 +253,7 @@ export class MessageHandler {
     });
 
     return {
-      type: 'clicked',
+      type: "clicked",
       requestId,
       success: true,
       data: { description },
@@ -228,7 +264,7 @@ export class MessageHandler {
     requestId: string,
     sessionId: string,
     text: string,
-    field: string
+    field: string,
   ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
@@ -240,7 +276,7 @@ export class MessageHandler {
     });
 
     return {
-      type: 'typed',
+      type: "typed",
       requestId,
       success: true,
       data: { text, field },
@@ -251,7 +287,7 @@ export class MessageHandler {
     requestId: string,
     sessionId: string,
     option: string,
-    dropdown: string
+    dropdown: string,
   ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
@@ -263,7 +299,7 @@ export class MessageHandler {
     });
 
     return {
-      type: 'selected',
+      type: "selected",
       requestId,
       success: true,
       data: { option, dropdown },
@@ -273,7 +309,7 @@ export class MessageHandler {
   private async handleExtract(
     requestId: string,
     sessionId: string,
-    instruction: string
+    instruction: string,
   ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
@@ -283,48 +319,54 @@ export class MessageHandler {
     const extractedData = await session.stagehand.extract({
       instruction,
       schema: z.object({
-        data: z.string().describe('The extracted data'),
-        found: z.boolean().describe('Whether the requested data was found'),
-      }) as any,
+        data: z.string().describe("The extracted data"),
+        found: z.boolean().describe("Whether the requested data was found"),
+      }),
     });
 
     return {
-      type: 'extracted',
+      type: "extracted",
       requestId,
       success: true,
       data: extractedData,
     };
   }
 
-  private async handleScreenshot(requestId: string, sessionId: string): Promise<Response> {
+  private async handleScreenshot(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       return this.sessionNotFoundResponse(requestId);
     }
 
     const screenshot = await session.stagehand.page.screenshot({
-      type: 'png',
+      type: "png",
       fullPage: true,
     });
 
-    const base64Screenshot = screenshot.toString('base64');
+    const base64Screenshot = screenshot.toString("base64");
     const url = session.stagehand.page.url();
     const title = await session.stagehand.page.title();
 
     return {
-      type: 'screenshot',
+      type: "screenshot",
       requestId,
       success: true,
       data: {
         screenshot: base64Screenshot,
-        mimeType: 'image/png',
+        mimeType: "image/png",
         url,
         title,
       },
     };
   }
 
-  private async handleGetState(requestId: string, sessionId: string): Promise<Response> {
+  private async handleGetState(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       return this.sessionNotFoundResponse(requestId);
@@ -334,7 +376,7 @@ export class MessageHandler {
     const title = await session.stagehand.page.title();
 
     return {
-      type: 'state',
+      type: "state",
       requestId,
       success: true,
       data: {
@@ -346,7 +388,10 @@ export class MessageHandler {
     };
   }
 
-  private async handleSolveCaptcha(requestId: string, sessionId: string): Promise<Response> {
+  private async handleSolveCaptcha(
+    requestId: string,
+    sessionId: string,
+  ): Promise<Response> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       return this.sessionNotFoundResponse(requestId);
@@ -357,7 +402,7 @@ export class MessageHandler {
     const captchaInfo = await detectCaptchaType(session.stagehand.page);
 
     return {
-      type: 'captchaSolved',
+      type: "captchaSolved",
       requestId,
       success: captchaInfo.type !== null,
       data: {
@@ -370,21 +415,21 @@ export class MessageHandler {
 
   private sessionNotFoundResponse(requestId: string): Response {
     return {
-      type: 'error',
+      type: "error",
       requestId,
       success: false,
-      error: 'Session not found',
+      error: "Session not found",
     };
   }
 
   private handleHealth(requestId: string): Response {
     return {
-      type: 'health',
+      type: "health",
       requestId,
       success: true,
       data: {
-        status: 'ok',
-        message: 'Stagehand server is running',
+        status: "ok",
+        message: "Stagehand server is running",
       },
     };
   }

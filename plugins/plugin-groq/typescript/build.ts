@@ -63,7 +63,9 @@ async function runBuild(): Promise<boolean> {
 
   // Generate TypeScript declarations using tsc
   console.log("Generating TypeScript declarations...");
-  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json`.quiet().nothrow();
+  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json`
+    .quiet()
+    .nothrow();
 
   if (tscResult.exitCode !== 0) {
     console.warn("Warning: TypeScript declaration generation had issues:");
@@ -94,4 +96,3 @@ runBuild()
     console.error("Build script error:", error);
     process.exit(1);
   });
-

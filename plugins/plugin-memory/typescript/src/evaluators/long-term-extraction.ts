@@ -1,14 +1,14 @@
 import {
-  type IAgentRuntime,
-  type Memory,
-  type Evaluator,
-  logger,
-  ModelType,
   composePromptFromState,
-} from '@elizaos/core';
-import { MemoryService } from '../services/memory-service';
-import { LongTermMemoryCategory, type MemoryExtraction } from '../types';
-import { longTermExtractionTemplate } from '../generated/prompts/typescript/prompts.js';
+  type Evaluator,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+} from "@elizaos/core";
+import { longTermExtractionTemplate } from "../generated/prompts/typescript/prompts.js";
+import type { MemoryService } from "../services/memory-service";
+import { LongTermMemoryCategory, type MemoryExtraction } from "../types";
 
 /**
  * Template for extracting long-term memories using cognitive science memory types
@@ -36,7 +36,7 @@ function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
       continue;
     }
 
-    if (content && !isNaN(confidence)) {
+    if (content && !Number.isNaN(confidence)) {
       extractions.push({ category, content, confidence });
     }
   }
@@ -48,9 +48,9 @@ function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
  * Long-term Memory Extraction Evaluator
  */
 export const longTermExtractionEvaluator: Evaluator = {
-  name: 'LONG_TERM_MEMORY_EXTRACTION',
-  description: 'Extracts long-term facts about users from conversations',
-  similes: ['MEMORY_EXTRACTION', 'FACT_LEARNING', 'USER_PROFILING'],
+  name: "LONG_TERM_MEMORY_EXTRACTION",
+  description: "Extracts long-term facts about users from conversations",
+  similes: ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
   alwaysRun: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -62,30 +62,26 @@ export const longTermExtractionEvaluator: Evaluator = {
       return false;
     }
 
-    const memoryService = runtime.getService('memory') as MemoryService | null;
+    const memoryService = runtime.getService("memory") as MemoryService | null;
     if (!memoryService) {
       return false;
     }
 
     const config = memoryService.getConfig();
     if (!config.longTermExtractionEnabled) {
-      logger.debug('Long-term memory extraction is disabled');
+      logger.debug("Long-term memory extraction is disabled");
       return false;
     }
 
-    const currentMessageCount = await runtime.countMemories(message.roomId, false, 'messages');
+    const currentMessageCount = await runtime.countMemories(message.roomId, false, "messages");
 
-    return memoryService.shouldRunExtraction(
-      message.entityId,
-      message.roomId,
-      currentMessageCount
-    );
+    return memoryService.shouldRunExtraction(message.entityId, message.roomId, currentMessageCount);
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory) => {
-    const memoryService = runtime.getService('memory') as MemoryService;
+    const memoryService = runtime.getService("memory") as MemoryService;
     if (!memoryService) {
-      logger.error('MemoryService not found');
+      logger.error("MemoryService not found");
       return undefined;
     }
 
@@ -96,7 +92,7 @@ export const longTermExtractionEvaluator: Evaluator = {
       logger.info(`Extracting long-term memories for entity ${entityId}`);
 
       const recentMessages = await runtime.getMemories({
-        tableName: 'messages',
+        tableName: "messages",
         roomId,
         count: 20,
         unique: false,
@@ -105,18 +101,18 @@ export const longTermExtractionEvaluator: Evaluator = {
       const formattedMessages = recentMessages
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
         .map((msg) => {
-          const sender = msg.entityId === runtime.agentId ? runtime.character.name : 'User';
-          return `${sender}: ${msg.content.text || '[non-text message]'}`;
+          const sender = msg.entityId === runtime.agentId ? runtime.character.name : "User";
+          return `${sender}: ${msg.content.text || "[non-text message]"}`;
         })
-        .join('\n');
+        .join("\n");
 
       const existingMemories = await memoryService.getLongTermMemories(entityId, undefined, 30);
       const formattedExisting =
         existingMemories.length > 0
           ? existingMemories
               .map((m) => `[${m.category}] ${m.content} (confidence: ${m.confidence})`)
-              .join('\n')
-          : 'None yet';
+              .join("\n")
+          : "None yet";
 
       const state = await runtime.composeState(message);
       const prompt = composePromptFromState({
@@ -142,7 +138,7 @@ export const longTermExtractionEvaluator: Evaluator = {
             category: extraction.category,
             content: extraction.content,
             confidence: extraction.confidence,
-            source: 'conversation',
+            source: "conversation",
             metadata: {
               roomId,
               extractedAt: new Date().toISOString(),
@@ -159,17 +155,16 @@ export const longTermExtractionEvaluator: Evaluator = {
         }
       }
 
-      const currentMessageCount = await runtime.countMemories(roomId, false, 'messages');
+      const currentMessageCount = await runtime.countMemories(roomId, false, "messages");
       await memoryService.setLastExtractionCheckpoint(entityId, roomId, currentMessageCount);
       logger.debug(
         `Updated extraction checkpoint to ${currentMessageCount} for entity ${entityId}`
       );
     } catch (error) {
-      logger.error({ error }, 'Error during long-term memory extraction:');
+      logger.error({ error }, "Error during long-term memory extraction:");
     }
     return undefined;
   },
 
   examples: [],
 };
-

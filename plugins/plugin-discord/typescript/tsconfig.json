@@ -23,5 +23,12 @@
     "types": ["node", "bun-types"]
   },
   "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts", "./generated/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "build.ts",
+    "./generated/**"
+  ]
 }

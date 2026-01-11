@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the OpenRouter client.
 //!
 //! All errors are strongly typed and provide useful context.
@@ -89,5 +90,10 @@ impl OpenRouterError {
         }
     }
 }
+
+
+
+
+
 
 

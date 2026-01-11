@@ -4,11 +4,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  hexToUint8Array,
-  uint8ArrayToHex,
   calculateSHA256,
-  sha256Bytes,
   getTeeEndpoint,
+  hexToUint8Array,
+  sha256Bytes,
+  uint8ArrayToHex,
 } from "../utils";
 
 describe("hexToUint8Array", () => {
@@ -107,5 +107,3 @@ describe("getTeeEndpoint", () => {
     expect(() => getTeeEndpoint("INVALID")).toThrow("Invalid TEE_MODE");
   });
 });
-
-

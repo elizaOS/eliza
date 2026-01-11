@@ -2,11 +2,16 @@
  * Cast manager for autonomous posting.
  */
 
-import { createUniqueUuid, EventType, type IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid, type EventPayload, EventType, type IAgentRuntime } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
-import { standardCastHandlerCallback } from "../utils/callbacks";
-import { FARCASTER_SOURCE, FarcasterEventTypes, type FarcasterConfig, type LastCast } from "../types";
+import {
+  FARCASTER_SOURCE,
+  type FarcasterConfig,
+  FarcasterEventTypes,
+  type LastCast,
+} from "../types";
 import { lastCastCacheKey } from "../utils";
+import { standardCastHandlerCallback } from "../utils/callbacks";
 
 interface FarcasterCastParams {
   client: FarcasterClient;
@@ -50,8 +55,7 @@ export class FarcasterCastManager {
   private calculateDelay(): { delay: number; randomMinutes: number } {
     const minMinutes = this.config.CAST_INTERVAL_MIN;
     const maxMinutes = this.config.CAST_INTERVAL_MAX;
-    const randomMinutes =
-      Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
+    const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
     const delay = randomMinutes * 60 * 1000;
     return { delay, randomMinutes };
   }
@@ -72,7 +76,10 @@ export class FarcasterCastManager {
         }
 
         this.runtime.logger.log(`Next cast scheduled in ${randomMinutes} minutes`);
-        await new Promise((resolve) => (this.timeout = setTimeout(resolve, delay)));
+        await new Promise((resolve) => {
+          const timeoutId = setTimeout(resolve, delay);
+          this.timeout = timeoutId;
+        });
       } catch (error) {
         this.runtime.logger.error(
           { agentId: this.runtime.agentId, error },
@@ -102,17 +109,27 @@ export class FarcasterCastManager {
         },
       });
 
-      this.runtime.emitEvent([EventType.POST_GENERATED, FarcasterEventTypes.CAST_GENERATED] as any, {
+      // Emit POST_GENERATED event with InvokePayload
+      await this.runtime.emitEvent(EventType.POST_GENERATED, {
         runtime: this.runtime,
         callback,
         worldId,
         userId: this.runtime.agentId,
         roomId,
         source: FARCASTER_SOURCE,
-      } as any);
+      });
+
+      // Emit Farcaster-specific CAST_GENERATED event using string overload
+      // Cast to EventPayload-compatible type for custom events
+      await this.runtime.emitEvent(
+        FarcasterEventTypes.CAST_GENERATED as string,
+        {
+          runtime: this.runtime,
+          source: FARCASTER_SOURCE,
+        } as EventPayload
+      );
     } catch (error) {
       this.runtime.logger.error({ error }, "[Farcaster] Error generating new cast");
     }
   }
 }
-

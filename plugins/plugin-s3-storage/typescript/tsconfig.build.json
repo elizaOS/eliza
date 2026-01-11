@@ -21,7 +21,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["../node_modules/@elizaos/core"],
+      "@elizaos/core": ["../../../packages/typescript/dist"],
       "@aws-sdk/*": ["../node_modules/@aws-sdk/*"]
     }
   },

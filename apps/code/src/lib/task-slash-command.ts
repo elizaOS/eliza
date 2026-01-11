@@ -13,7 +13,7 @@ export interface TaskSlashCommandDeps {
 
 export async function handleTaskSlashCommand(
   args: string,
-  deps: TaskSlashCommandDeps
+  deps: TaskSlashCommandDeps,
 ): Promise<boolean> {
   const {
     service,
@@ -44,7 +44,7 @@ export async function handleTaskSlashCommand(
 
 Aliases:
 /tasks (list)
-/tasks show|hide|auto|toggle`
+/tasks show|hide|auto|toggle`,
     );
     return true;
   }
@@ -91,7 +91,11 @@ Aliases:
       }
       const matches = await service.searchTasks(subArg);
       if (matches.length === 0) {
-        addMessage(currentRoomId, "system", `No task found matching: "${subArg}"`);
+        addMessage(
+          currentRoomId,
+          "system",
+          `No task found matching: "${subArg}"`,
+        );
         return true;
       }
       const task = matches[0];
@@ -100,7 +104,7 @@ Aliases:
       addMessage(
         currentRoomId,
         "system",
-        `Switched to: ${task.name} (${task.metadata?.status}, ${task.metadata?.progress}%)`
+        `Switched to: ${task.name} (${task.metadata?.status}, ${task.metadata?.progress}%)`,
       );
       return true;
     }
@@ -112,7 +116,11 @@ Aliases:
       }
       const current = await service.getCurrentTask();
       if (!current) {
-        addMessage(currentRoomId, "system", "No task selected. Use /task switch <name>");
+        addMessage(
+          currentRoomId,
+          "system",
+          "No task selected. Use /task switch <name>",
+        );
         return true;
       }
       const m = current.metadata;
@@ -143,7 +151,9 @@ Aliases:
         addMessage(currentRoomId, "system", "Task service not available");
         return true;
       }
-      const taskId = subArg ? (await service.searchTasks(subArg))[0]?.id : service.getCurrentTaskId();
+      const taskId = subArg
+        ? (await service.searchTasks(subArg))[0]?.id
+        : service.getCurrentTaskId();
       if (!taskId) {
         addMessage(currentRoomId, "system", "No task to pause");
         return true;
@@ -158,7 +168,9 @@ Aliases:
         addMessage(currentRoomId, "system", "Task service not available");
         return true;
       }
-      const taskId = subArg ? (await service.searchTasks(subArg))[0]?.id : service.getCurrentTaskId();
+      const taskId = subArg
+        ? (await service.searchTasks(subArg))[0]?.id
+        : service.getCurrentTaskId();
       if (!taskId) {
         addMessage(currentRoomId, "system", "No task to resume");
         return true;
@@ -175,7 +187,9 @@ Aliases:
         addMessage(currentRoomId, "system", "Task service not available");
         return true;
       }
-      const taskId = subArg ? (await service.searchTasks(subArg))[0]?.id : service.getCurrentTaskId();
+      const taskId = subArg
+        ? (await service.searchTasks(subArg))[0]?.id
+        : service.getCurrentTaskId();
       if (!taskId) {
         addMessage(currentRoomId, "system", "No task to restart");
         return true;
@@ -183,7 +197,11 @@ Aliases:
       // Ensure the runner is active (idempotent if already running in this process).
       service.startTaskExecution(taskId).catch(() => {});
       const task = await service.getTask(taskId);
-      addMessage(currentRoomId, "system", `Restarting: ${task?.name ?? taskId}`);
+      addMessage(
+        currentRoomId,
+        "system",
+        `Restarting: ${task?.name ?? taskId}`,
+      );
       return true;
     }
 
@@ -230,14 +248,20 @@ Aliases:
         addMessage(currentRoomId, "system", "Task service not available");
         return true;
       }
-      const taskId = subArg ? (await service.searchTasks(subArg))[0]?.id : service.getCurrentTaskId();
+      const taskId = subArg
+        ? (await service.searchTasks(subArg))[0]?.id
+        : service.getCurrentTaskId();
       if (!taskId) {
         addMessage(currentRoomId, "system", "No task to mark done");
         return true;
       }
       await service.setUserStatus(taskId, "done");
       const task = await service.getTask(taskId);
-      addMessage(currentRoomId, "system", `Marked done: ${task?.name ?? taskId}`);
+      addMessage(
+        currentRoomId,
+        "system",
+        `Marked done: ${task?.name ?? taskId}`,
+      );
       return true;
     }
 
@@ -246,7 +270,9 @@ Aliases:
         addMessage(currentRoomId, "system", "Task service not available");
         return true;
       }
-      const taskId = subArg ? (await service.searchTasks(subArg))[0]?.id : service.getCurrentTaskId();
+      const taskId = subArg
+        ? (await service.searchTasks(subArg))[0]?.id
+        : service.getCurrentTaskId();
       if (!taskId) {
         addMessage(currentRoomId, "system", "No task to re-open");
         return true;
@@ -260,7 +286,11 @@ Aliases:
     case "pane": {
       const mode = subArg.trim().toLowerCase();
       if (!mode) {
-        addMessage(currentRoomId, "system", "Usage: /task pane show|hide|auto|toggle");
+        addMessage(
+          currentRoomId,
+          "system",
+          "Usage: /task pane show|hide|auto|toggle",
+        );
         return true;
       }
 
@@ -292,16 +322,17 @@ Aliases:
       addMessage(
         currentRoomId,
         "system",
-        `Unknown: /task pane ${subArg}. Try: /task pane show|hide|auto|toggle`
+        `Unknown: /task pane ${subArg}. Try: /task pane show|hide|auto|toggle`,
       );
       return true;
     }
 
     default:
-      addMessage(currentRoomId, "system", `Unknown task command: ${subCmd}. Try /task for help.`);
+      addMessage(
+        currentRoomId,
+        "system",
+        `Unknown task command: ${subCmd}. Try /task for help.`,
+      );
       return true;
   }
 }
-
-
-

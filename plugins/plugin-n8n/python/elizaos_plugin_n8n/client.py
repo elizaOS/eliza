@@ -14,7 +14,6 @@ import subprocess
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import anthropic
 
@@ -22,7 +21,6 @@ from elizaos_plugin_n8n.config import N8nConfig
 from elizaos_plugin_n8n.errors import (
     InvalidPluginNameError,
     MaxConcurrentJobsError,
-    N8nError,
     PluginExistsError,
     RateLimitError,
 )
@@ -74,7 +72,7 @@ class PluginCreationClient:
         """Close the client and clean up resources."""
         await self._anthropic.close()
 
-    async def __aenter__(self) -> "PluginCreationClient":
+    async def __aenter__(self) -> PluginCreationClient:
         """Context manager entry."""
         return self
 
@@ -401,9 +399,7 @@ class PluginCreationClient:
             messages=[{"role": "user", "content": prompt}],
         )
 
-        response_text = "".join(
-            block.text for block in message.content if hasattr(block, "text")
-        )
+        response_text = "".join(block.text for block in message.content if hasattr(block, "text"))
 
         await self._write_generated_code(job, response_text)
 
@@ -600,7 +596,7 @@ Respond with JSON:
 
             output = stdout.decode() + stderr.decode()
             return (process.returncode == 0, output)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return (False, "Command timed out")
         except Exception as e:
             return (False, str(e))
@@ -628,10 +624,12 @@ Respond with JSON:
             if path.is_file() and path.suffix in (".ts", ".js", ".json"):
                 if "node_modules" not in path.parts and "dist" not in path.parts:
                     relative_path = path.relative_to(dir_path)
-                    files.append({
-                        "path": str(relative_path),
-                        "content": path.read_text(),
-                    })
+                    files.append(
+                        {
+                            "path": str(relative_path),
+                            "content": path.read_text(),
+                        }
+                    )
 
         return files
 
@@ -666,5 +664,8 @@ Respond with JSON:
         self._last_job_creation = now
         self._job_creation_count += 1
         return True
+
+
+
 
 

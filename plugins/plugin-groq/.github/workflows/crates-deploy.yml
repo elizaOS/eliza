@@ -5,7 +5,7 @@ on:
     branches:
       - 1.x
     paths:
-      - 'rust/**'
+      - "rust/**"
   workflow_dispatch:
 
 jobs:
@@ -122,5 +122,6 @@ jobs:
           cargo publish --token ${{ secrets.CRATES_TOKEN }}
         env:
           CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+
 
 

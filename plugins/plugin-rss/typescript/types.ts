@@ -79,7 +79,7 @@ export interface FeedItemMetadata {
  * Feed Subscription Metadata stored in memory
  */
 export interface FeedSubscriptionMetadata {
-  type: 'custom';
+  type: "custom";
   subscribedAt: number;
   lastChecked: number;
   lastItemCount: number;
@@ -95,8 +95,7 @@ export interface RssPluginConfig {
   /** Set to "true" to disable subscription management actions */
   RSS_DISABLE_ACTIONS?: string;
   /** Output format: 'csv' (compact) or 'markdown' (readable) */
-  RSS_FEED_FORMAT?: 'csv' | 'markdown';
+  RSS_FEED_FORMAT?: "csv" | "markdown";
   /** Check interval in minutes */
   RSS_CHECK_INTERVAL_MINUTES?: number;
 }
-

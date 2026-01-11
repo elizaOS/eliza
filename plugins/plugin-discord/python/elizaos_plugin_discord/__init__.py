@@ -6,23 +6,23 @@ Discord integration for elizaOS agents.
 
 from elizaos_plugin_discord.config import DiscordConfig
 from elizaos_plugin_discord.error import (
-    DiscordError,
     ClientNotInitializedError,
     ConfigError,
+    DiscordError,
     InvalidSnowflakeError,
     MissingSettingError,
     ValidationError,
 )
+from elizaos_plugin_discord.service import DiscordService
 from elizaos_plugin_discord.types import (
-    Snowflake,
+    DiscordChannelType,
     DiscordEventType,
     DiscordMessagePayload,
     DiscordReactionPayload,
-    DiscordVoiceStatePayload,
-    DiscordChannelType,
     DiscordSettings,
+    DiscordVoiceStatePayload,
+    Snowflake,
 )
-from elizaos_plugin_discord.service import DiscordService
 
 __all__ = [
     # Config

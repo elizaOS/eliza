@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.asyncio
-async def test_generate_text_small(client: "GoogleGenAIClient") -> None:
+async def test_generate_text_small(client: GoogleGenAIClient) -> None:
     """Test text generation with the small model."""
     params = TextGenerationParams(
         prompt="What is 2+2? Answer with just the number.",
@@ -34,7 +34,7 @@ async def test_generate_text_small(client: "GoogleGenAIClient") -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_text_large(client: "GoogleGenAIClient") -> None:
+async def test_generate_text_large(client: GoogleGenAIClient) -> None:
     """Test text generation with the large model."""
     response = await client.generate_text_large("Say hello in French.")
 
@@ -43,7 +43,7 @@ async def test_generate_text_large(client: "GoogleGenAIClient") -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_embedding(client: "GoogleGenAIClient") -> None:
+async def test_generate_embedding(client: GoogleGenAIClient) -> None:
     """Test embedding generation."""
     params = EmbeddingParams(text="Hello, world!")
     response = await client.generate_embedding(params)
@@ -54,7 +54,7 @@ async def test_generate_embedding(client: "GoogleGenAIClient") -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_object_small(client: "GoogleGenAIClient") -> None:
+async def test_generate_object_small(client: GoogleGenAIClient) -> None:
     """Test JSON object generation with the small model."""
     params = ObjectGenerationParams(
         prompt="Create a JSON object with a 'greeting' field that says 'hello'.",
@@ -67,7 +67,7 @@ async def test_generate_object_small(client: "GoogleGenAIClient") -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_object_with_schema(client: "GoogleGenAIClient") -> None:
+async def test_generate_object_with_schema(client: GoogleGenAIClient) -> None:
     """Test JSON object generation with a schema."""
     params = ObjectGenerationParams(
         prompt="Generate a person profile.",
@@ -85,5 +85,8 @@ async def test_generate_object_with_schema(client: "GoogleGenAIClient") -> None:
     assert response.object
     assert "name" in response.object
     assert "age" in response.object
+
+
+
 
 

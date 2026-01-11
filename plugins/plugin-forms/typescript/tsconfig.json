@@ -2,8 +2,7 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../dist",
-    "rootDir": ".",
-    "baseUrl": ".",
+    "baseUrl": "../../..",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -14,10 +13,9 @@
     "module": "ESNext",
     "target": "ESNext",
     "lib": ["ESNext"],
-    "types": ["bun-types", "node"]
+    "types": ["bun-types", "node"],
+    "paths": {}
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__"]
 }
-
-

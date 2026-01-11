@@ -219,7 +219,7 @@ export class PythonPluginBridge extends EventEmitter {
       });
 
       const json = `${JSON.stringify(requestWithId)}\n`;
-      if (this.process && this.process.stdin) {
+      if (this.process?.stdin) {
         this.process.stdin.write(json);
       }
     });
@@ -372,8 +372,12 @@ function createPluginFromBridge(
         });
         return {
           text: response.result.text,
-          values: response.result.values as Record<string, ProviderValue> | undefined,
-          data: response.result.data as Record<string, ProviderValue> | undefined,
+          values: response.result.values as
+            | Record<string, ProviderValue>
+            | undefined,
+          data: response.result.data as
+            | Record<string, ProviderValue>
+            | undefined,
         };
       },
     }),
@@ -424,8 +428,12 @@ function createPluginFromBridge(
           error: response.result.error
             ? new Error(response.result.error)
             : undefined,
-          data: response.result.data as Record<string, ProviderValue> | undefined,
-          values: response.result.values as Record<string, ProviderValue> | undefined,
+          data: response.result.data as
+            | Record<string, ProviderValue>
+            | undefined,
+          values: response.result.values as
+            | Record<string, ProviderValue>
+            | undefined,
         };
       },
     }),
@@ -465,7 +473,7 @@ export async function stopPythonPlugin(plugin: Plugin): Promise<void> {
   const extended = plugin as Plugin & {
     _bridge?: { current: PythonPluginBridge };
   };
-  if (extended._bridge && extended._bridge.current) {
+  if (extended._bridge?.current) {
     await extended._bridge.current.stop();
   }
 }

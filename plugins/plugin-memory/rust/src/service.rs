@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Memory Service - Manages short-term and long-term memory.
 
 use async_trait::async_trait;
@@ -543,5 +544,10 @@ impl MemoryService {
         Ok(sections.join("\n\n"))
     }
 }
+
+
+
+
+
 
 

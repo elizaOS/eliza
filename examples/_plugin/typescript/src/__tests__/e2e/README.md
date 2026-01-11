@@ -37,10 +37,10 @@ E2E tests are integrated directly into your plugin without the need for an inter
 
 ```typescript
 // src/plugin.ts
-import { StarterPluginTestSuite } from './__tests__/e2e/plugin-starter.e2e';
+import { StarterPluginTestSuite } from "./__tests__/e2e/plugin-starter.e2e";
 
 export const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   // ... other properties
   tests: [StarterPluginTestSuite], // Direct import!
 };

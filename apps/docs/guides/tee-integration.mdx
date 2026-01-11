@@ -1,6 +1,6 @@
 ---
-title: 'TEE Integration'
-description: 'Hardware-level security for agents that handle sensitive data'
+title: "TEE Integration"
+description: "Hardware-level security for agents that handle sensitive data"
 ---
 
 ## Why TEE?
@@ -10,7 +10,8 @@ Your agent handles API keys, user data, maybe crypto wallets. How do users know 
 **TEE (Trusted Execution Environment)** provides cryptographic proof that your code runs exactly as published - no modifications, no backdoors. Users can verify your agent's integrity before trusting it.
 
 <Tip>
-**TEE is optional.** Most agents don't need it. Use TEE when you need to prove trustworthiness to users who can't just take your word for it.
+  **TEE is optional.** Most agents don't need it. Use TEE when you need to prove
+  trustworthiness to users who can't just take your word for it.
 </Tip>
 
 ## What TEE Gives You
@@ -25,10 +26,10 @@ TEE integration allows your ElizaOS agents to run in secure enclaves with:
 
 ```typescript
 enum TEEMode {
-  OFF = 'OFF',           // TEE disabled
-  LOCAL = 'LOCAL',       // Local development with simulator
-  DOCKER = 'DOCKER',     // Docker development with simulator
-  PRODUCTION = 'PRODUCTION' // Production with real TEE hardware
+  OFF = "OFF", // TEE disabled
+  LOCAL = "LOCAL", // Local development with simulator
+  DOCKER = "DOCKER", // Docker development with simulator
+  PRODUCTION = "PRODUCTION", // Production with real TEE hardware
 }
 ```
 
@@ -59,27 +60,27 @@ elizaos start
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `TEE_MODE` | `OFF`, `LOCAL`, `DOCKER`, or `PRODUCTION` | Yes |
-| `TEE_VENDOR` | TEE provider (`phala`) | Yes |
-| `WALLET_SECRET_SALT` | Secret for key derivation (8-128 chars) | Yes |
+| Variable             | Description                               | Required |
+| -------------------- | ----------------------------------------- | -------- |
+| `TEE_MODE`           | `OFF`, `LOCAL`, `DOCKER`, or `PRODUCTION` | Yes      |
+| `TEE_VENDOR`         | TEE provider (`phala`)                    | Yes      |
+| `WALLET_SECRET_SALT` | Secret for key derivation (8-128 chars)   | Yes      |
 
 ### Character Configuration
 
 ```typescript
 export const character: Character = {
-  name: 'SecureAgent',
+  name: "SecureAgent",
   plugins: [
-    '@elizaos/plugin-tee',  // Add TEE plugin
+    "@elizaos/plugin-tee", // Add TEE plugin
   ],
   settings: {
     secrets: {
-      TEE_MODE: 'PRODUCTION',
-      TEE_VENDOR: 'phala',
+      TEE_MODE: "PRODUCTION",
+      TEE_VENDOR: "phala",
       WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
-    }
-  }
+    },
+  },
 };
 ```
 
@@ -91,12 +92,12 @@ Represents an agent registered in the TEE:
 
 ```typescript
 interface TeeAgent {
-  id: string;              // Registration record ID
-  agentId: string;         // Core agent identifier
-  agentName: string;       // Human-readable name
-  createdAt: number;       // Registration timestamp
-  publicKey: string;       // TEE instance public key
-  attestation: string;     // Attestation document
+  id: string; // Registration record ID
+  agentId: string; // Core agent identifier
+  agentName: string; // Human-readable name
+  createdAt: number; // Registration timestamp
+  publicKey: string; // TEE instance public key
+  attestation: string; // Attestation document
 }
 ```
 
@@ -104,8 +105,8 @@ interface TeeAgent {
 
 ```typescript
 interface RemoteAttestationQuote {
-  quote: string;           // Base64-encoded attestation quote
-  timestamp: number;       // Quote generation time
+  quote: string; // Base64-encoded attestation quote
+  timestamp: number; // Quote generation time
 }
 
 interface RemoteAttestationMessage {
@@ -159,6 +160,7 @@ GET /api/tee/status
 ```
 
 Response:
+
 ```json
 {
   "status": "active",
@@ -174,6 +176,7 @@ GET /api/tee/agents
 ```
 
 Response:
+
 ```json
 {
   "agents": [
@@ -200,6 +203,7 @@ const deriveEd25519Keypair = (deriveKeyResponse: DeriveKeyResponse): Keypair
 ```
 
 Keys derived in TEE:
+
 - Cannot be extracted from the enclave
 - Are tied to the specific enclave instance
 - Can be verified through attestation
@@ -207,9 +211,9 @@ Keys derived in TEE:
 ## Security Considerations
 
 <Warning>
-- **Secret salt**: Use a strong, unique salt for each deployment
-- **Attestation verification**: Always verify attestation quotes in production
-- **Key rotation**: Plan for key rotation when updating enclave code
+  - **Secret salt**: Use a strong, unique salt for each deployment -
+  **Attestation verification**: Always verify attestation quotes in production -
+  **Key rotation**: Plan for key rotation when updating enclave code
 </Warning>
 
 ### Best Practices
@@ -231,7 +235,11 @@ Keys derived in TEE:
   <Card title="Services" icon="server" href="/runtime/services">
     Background services and integrations
   </Card>
-  <Card title="Phala Documentation" icon="book" href="https://docs.phala.network/">
+  <Card
+    title="Phala Documentation"
+    icon="book"
+    href="https://docs.phala.network/"
+  >
     Official Phala Cloud docs
   </Card>
 </CardGroup>

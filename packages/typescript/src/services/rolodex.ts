@@ -1,11 +1,11 @@
 import {
-  logger,
-  Service,
-  stringToUuid,
   type Entity,
   type IAgentRuntime,
+  logger,
   type Metadata,
   type Relationship,
+  Service,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 
@@ -136,8 +136,6 @@ export class RolodexService extends Service {
   capabilityDescription =
     "Comprehensive contact and relationship management service";
 
-  private initialized: boolean = false;
-
   // In-memory caches for performance
   private contactInfoCache: Map<UUID, ContactInfo> = new Map();
   private analyticsCache: Map<string, RelationshipAnalytics> = new Map();
@@ -159,7 +157,7 @@ export class RolodexService extends Service {
     // Load existing contact info from components
     await this.loadContactInfoFromComponents();
 
-    this.initialized = true;
+    // Service initialized
     logger.info("[RolodexService] Initialized successfully");
   }
 
@@ -168,7 +166,7 @@ export class RolodexService extends Service {
     this.contactInfoCache.clear();
     this.analyticsCache.clear();
     this.categoriesCache = [];
-    this.initialized = false;
+    // Service stopped
     logger.info("[RolodexService] Stopped successfully");
   }
 
@@ -179,42 +177,36 @@ export class RolodexService extends Service {
   }
 
   private async loadContactInfoFromComponents(): Promise<void> {
-    try {
-      // Get all rooms for the agent to find entities
-      const rooms = await this.runtime.getRooms(
-        stringToUuid("world-" + this.runtime.agentId),
-      );
-      const entityIds = new Set<UUID>();
+    // Get all rooms for the agent to find entities
+    const rooms = await this.runtime.getRooms(
+      stringToUuid(`world-${this.runtime.agentId}`),
+    );
+    const entityIds = new Set<UUID>();
 
-      // Collect unique entity IDs from all rooms
-      for (const room of rooms) {
-        const entities = await this.runtime.getEntitiesForRoom(room.id, true);
-        entities.forEach((entity) => entityIds.add(entity.id as UUID));
+    // Collect unique entity IDs from all rooms
+    for (const room of rooms) {
+      const entities = await this.runtime.getEntitiesForRoom(room.id, true);
+      for (const entity of entities) {
+        entityIds.add(entity.id as UUID);
       }
-
-      // Load contact info from components for each entity
-      for (const entityId of entityIds) {
-        const components = await this.runtime.getComponents(entityId);
-        const contactComponent = components.find(
-          (c) =>
-            c.type === "contact_info" && c.agentId === this.runtime.agentId,
-        );
-
-        if (contactComponent) {
-          const contactInfo = contactComponent.data as unknown as ContactInfo;
-          this.contactInfoCache.set(entityId, contactInfo);
-        }
-      }
-
-      logger.info(
-        `[RolodexService] Loaded ${this.contactInfoCache.size} contacts from components`,
-      );
-    } catch (error) {
-      logger.error(
-        "[RolodexService] Error loading contact info:",
-        error instanceof Error ? error.message : String(error),
-      );
     }
+
+    // Load contact info from components for each entity
+    for (const entityId of entityIds) {
+      const components = await this.runtime.getComponents(entityId);
+      const contactComponent = components.find(
+        (c) => c.type === "contact_info" && c.agentId === this.runtime.agentId,
+      );
+
+      if (contactComponent) {
+        const contactInfo = contactComponent.data as unknown as ContactInfo;
+        this.contactInfoCache.set(entityId, contactInfo);
+      }
+    }
+
+    logger.info(
+      `[RolodexService] Loaded ${this.contactInfoCache.size} contacts from components`,
+    );
   }
 
   // Contact Management Methods
@@ -240,8 +232,8 @@ export class RolodexService extends Service {
       type: "contact_info",
       agentId: this.runtime.agentId,
       entityId,
-      roomId: stringToUuid("rolodex-" + this.runtime.agentId),
-      worldId: stringToUuid("rolodex-world-" + this.runtime.agentId),
+      roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
+      worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
       sourceEntityId: this.runtime.agentId,
       data: contactInfo as unknown as Metadata,
       createdAt: Date.now(),
@@ -252,7 +244,14 @@ export class RolodexService extends Service {
     // Emit entity lifecycle event
     const entity = await this.runtime.getEntityById(entityId);
     if (entity) {
-      await (this.runtime as { emitEvent: (event: string, payload: Record<string, unknown>) => Promise<void> }).emitEvent(EntityLifecycleEvent.UPDATED, {
+      await (
+        this.runtime as {
+          emitEvent: (
+            event: string,
+            payload: Record<string, unknown>,
+          ) => Promise<void>;
+        }
+      ).emitEvent(EntityLifecycleEvent.UPDATED, {
         entityId: entity.id,
         source: "rolodex",
       });
@@ -363,13 +362,16 @@ export class RolodexService extends Service {
       if (criteria.categories && criteria.categories.length > 0) {
         matches =
           matches &&
-          criteria.categories.some((cat) => contactInfo.categories.includes(cat));
+          criteria.categories.some((cat) =>
+            contactInfo.categories.includes(cat),
+          );
       }
 
       // Check tags
       if (criteria.tags && criteria.tags.length > 0) {
         matches =
-          matches && criteria.tags.some((tag) => contactInfo.tags.includes(tag));
+          matches &&
+          criteria.tags.some((tag) => contactInfo.tags.includes(tag));
       }
 
       // Check privacy level
@@ -385,18 +387,21 @@ export class RolodexService extends Service {
     // If searchTerm is provided, further filter by entity names
     if (criteria.searchTerm) {
       const filteredResults: ContactInfo[] = [];
-      for (const contact of results) {
-        const entity = await this.runtime.getEntityById(contact.entityId);
-        if (
-          entity &&
-          entity.names.some((name) =>
-            name.toLowerCase().includes(criteria.searchTerm!.toLowerCase()),
-          )
-        ) {
-          filteredResults.push(contact);
+      if (criteria.searchTerm) {
+        const searchTermLower = criteria.searchTerm.toLowerCase();
+        for (const contact of results) {
+          const entity = await this.runtime.getEntityById(contact.entityId);
+          if (
+            entity?.names.some((name) =>
+              name.toLowerCase().includes(searchTermLower),
+            )
+          ) {
+            filteredResults.push(contact);
+          }
         }
+        return filteredResults;
       }
-      return filteredResults;
+      return results;
     }
 
     return results;
@@ -485,12 +490,14 @@ export class RolodexService extends Service {
 
     // Extract topics (simplified - could use NLP)
     const topicsSet = new Set<string>();
-    interactions.forEach((msg) => {
+    for (const msg of interactions) {
       const text = msg.content.text || "";
       // Simple keyword extraction - could be enhanced with NLP
       const keywords = text.match(/\b[A-Z][a-z]+\b/g) || [];
-      keywords.forEach((k) => topicsSet.add(k));
-    });
+      for (const k of keywords) {
+        topicsSet.add(k);
+      }
+    }
 
     // Calculate relationship strength
     const strength = calculateRelationshipStrength({
@@ -675,4 +682,3 @@ export class RolodexService extends Service {
     }
   }
 }
-

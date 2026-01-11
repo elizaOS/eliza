@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Path and command validation utilities for the shell plugin.
 
 use regex::Regex;
@@ -258,5 +259,10 @@ mod tests {
         assert!(is_forbidden_command("Shutdown", &forbidden));
     }
 }
+
+
+
+
+
 
 

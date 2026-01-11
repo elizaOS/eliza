@@ -59,6 +59,10 @@ export enum DiscordEventTypes {
   MEMBER_ROLES_CHANGED = "DISCORD_MEMBER_ROLES_CHANGED",
   ROLE_CREATED = "DISCORD_ROLE_CREATED",
   ROLE_DELETED = "DISCORD_ROLE_DELETED",
+
+  // Channel filter events
+  LISTEN_CHANNEL_MESSAGE = "DISCORD_LISTEN_CHANNEL_MESSAGE",
+  NOT_IN_CHANNELS_MESSAGE = "DISCORD_NOT_IN_CHANNELS_MESSAGE",
 }
 
 /**
@@ -131,6 +135,26 @@ export interface DiscordVoiceStateChangedPayload {
   voiceState: VoiceState;
 }
 
+/**
+ * Payload for listen channel message events
+ */
+export interface DiscordListenChannelPayload {
+  /** Runtime instance */
+  runtime: IAgentRuntime;
+  /** The message that was received */
+  message: Memory;
+}
+
+/**
+ * Payload for not-in-channels message events
+ */
+export interface DiscordNotInChannelsPayload {
+  /** Runtime instance */
+  runtime: IAgentRuntime;
+  /** The message that was received */
+  message: Message;
+}
+
 // ============================================================================
 // Permission Audit Types
 // ============================================================================
@@ -165,27 +189,10 @@ export interface AuditInfo {
 }
 
 /**
- * Minimal runtime interface for permission payloads.
- * Using a minimal interface avoids version mismatches across packages.
- */
-export interface PermissionPayloadRuntime {
-  getService(name: string): unknown;
-  getSetting(key: string): unknown;
-  logger: {
-    debug(msg: string): void;
-    info(msg: string): void;
-    warn(msg: string): void;
-    error(msg: string): void;
-  };
-}
-
-/**
  * Payload for DISCORD_CHANNEL_PERMISSIONS_CHANGED event
  * Emitted when channel permission overwrites are created, updated, or deleted
  */
-export interface ChannelPermissionsChangedPayload {
-  /** Runtime instance */
-  runtime: PermissionPayloadRuntime;
+export interface ChannelPermissionsChangedPayload extends EventPayload {
   /** Guild information */
   guild: { id: string; name: string };
   /** Channel where permissions changed */
@@ -204,9 +211,7 @@ export interface ChannelPermissionsChangedPayload {
  * Payload for DISCORD_ROLE_PERMISSIONS_CHANGED event
  * Emitted when a role's permissions are modified
  */
-export interface RolePermissionsChangedPayload {
-  /** Runtime instance */
-  runtime: PermissionPayloadRuntime;
+export interface RolePermissionsChangedPayload extends EventPayload {
   /** Guild information */
   guild: { id: string; name: string };
   /** Role that was modified */
@@ -221,9 +226,7 @@ export interface RolePermissionsChangedPayload {
  * Payload for DISCORD_MEMBER_ROLES_CHANGED event
  * Emitted when roles are added or removed from a member
  */
-export interface MemberRolesChangedPayload {
-  /** Runtime instance */
-  runtime: PermissionPayloadRuntime;
+export interface MemberRolesChangedPayload extends EventPayload {
   /** Guild information */
   guild: { id: string; name: string };
   /** Member whose roles changed */
@@ -239,9 +242,7 @@ export interface MemberRolesChangedPayload {
 /**
  * Payload for DISCORD_ROLE_CREATED and DISCORD_ROLE_DELETED events
  */
-export interface RoleLifecyclePayload {
-  /** Runtime instance */
-  runtime: PermissionPayloadRuntime;
+export interface RoleLifecyclePayload extends EventPayload {
   /** Guild information */
   guild: { id: string; name: string };
   /** Role that was created or deleted */
@@ -442,10 +443,7 @@ export interface DiscordSlashCommand {
    *   return true;
    * }
    */
-  validator?: (
-    interaction: Interaction,
-    runtime: IAgentRuntime,
-  ) => Promise<boolean>;
+  validator?: (interaction: Interaction, runtime: IAgentRuntime) => Promise<boolean>;
 }
 
 /**
@@ -487,6 +485,8 @@ export interface DiscordEventPayloadMap {
   [DiscordEventTypes.MEMBER_ROLES_CHANGED]: MemberRolesChangedPayload;
   [DiscordEventTypes.ROLE_CREATED]: RoleLifecyclePayload;
   [DiscordEventTypes.ROLE_DELETED]: RoleLifecyclePayload;
+  [DiscordEventTypes.LISTEN_CHANNEL_MESSAGE]: DiscordListenChannelPayload;
+  [DiscordEventTypes.NOT_IN_CHANNELS_MESSAGE]: DiscordNotInChannelsPayload;
 }
 
 /**
@@ -533,7 +533,7 @@ export interface IDiscordService {
   getChannelType: (channel: Channel) => Promise<ChannelType>;
   buildMemoryFromMessage: (
     message: Message,
-    options?: BuildMemoryFromMessageOptions,
+    options?: BuildMemoryFromMessageOptions
   ) => Promise<Memory | null>;
 }
 
@@ -598,7 +598,7 @@ export interface ChannelSpiderState {
  */
 export type BatchHandler = (
   batch: Memory[],
-  stats: { page: number; totalFetched: number; totalStored: number },
+  stats: { page: number; totalFetched: number; totalStored: number }
 ) => Promise<boolean | undefined> | boolean | undefined;
 
 /**
@@ -691,7 +691,7 @@ export interface DiscordMessageSendOptions {
 export class DiscordPluginError extends Error {
   constructor(
     message: string,
-    public readonly code: string,
+    public readonly code: string
   ) {
     super(message);
     this.name = "DiscordPluginError";
@@ -734,7 +734,7 @@ export class DiscordConfigurationError extends DiscordPluginError {
 export class DiscordApiError extends DiscordPluginError {
   constructor(
     message: string,
-    public readonly apiErrorCode?: number,
+    public readonly apiErrorCode?: number
   ) {
     super(message, "API_ERROR");
     this.name = "DiscordApiError";
@@ -748,7 +748,9 @@ export class DiscordApiError extends DiscordPluginError {
 /**
  * Validated Discord snowflake ID (string that matches Discord ID format)
  */
-export type DiscordSnowflake = string & { readonly __brand: "DiscordSnowflake" };
+export type DiscordSnowflake = string & {
+  readonly __brand: "DiscordSnowflake";
+};
 
 /**
  * Validates and returns a Discord snowflake ID
@@ -756,10 +758,7 @@ export type DiscordSnowflake = string & { readonly __brand: "DiscordSnowflake" }
  */
 export function validateSnowflake(id: string): DiscordSnowflake {
   if (!/^\d{17,19}$/.test(id)) {
-    throw new DiscordPluginError(
-      `Invalid Discord snowflake ID: ${id}`,
-      "INVALID_SNOWFLAKE",
-    );
+    throw new DiscordPluginError(`Invalid Discord snowflake ID: ${id}`, "INVALID_SNOWFLAKE");
   }
   return id as DiscordSnowflake;
 }

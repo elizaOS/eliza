@@ -11,9 +11,9 @@
  *   cd packages/rust && wasm-pack build --target nodejs --features wasm --no-default-features
  */
 
-import * as readline from "readline";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as readline from "node:readline";
 
 // ============================================================================
 // WASM MODULE TYPES
@@ -28,7 +28,10 @@ interface WasmModule {
   WasmState: { new (): { toJson(): string } };
   WasmRoom: WasmTypeWrapper;
   WasmEntity: WasmTypeWrapper;
-  WasmUUID: { new (): { toString(): string }; fromString(s: string): { toString(): string } };
+  WasmUUID: {
+    new (): { toString(): string };
+    fromString(s: string): { toString(): string };
+  };
 
   stringToUuid(input: string): string;
   generateUUID(): string;
@@ -57,7 +60,10 @@ interface WasmMemoryInstance {
 
 interface WasmAgentRuntime {
   initialize(): void;
-  registerModelHandler(modelType: string, handler: (params: string) => Promise<string>): void;
+  registerModelHandler(
+    modelType: string,
+    handler: (params: string) => Promise<string>,
+  ): void;
   handleMessage(messageJson: string): Promise<string>;
   stop(): void;
   free(): void;
@@ -89,7 +95,7 @@ async function loadWasmModule(): Promise<WasmModule> {
 
   throw new Error(
     "WASM module not found. Build it first:\n" +
-      "  cd packages/rust && wasm-pack build --target nodejs --features wasm --no-default-features"
+      "  cd packages/rust && wasm-pack build --target nodejs --features wasm --no-default-features",
   );
 }
 
@@ -108,7 +114,11 @@ function runTest(name: string, fn: () => void): TestResult {
     fn();
     return { name, passed: true };
   } catch (e) {
-    return { name, passed: false, error: e instanceof Error ? e.message : String(e) };
+    return {
+      name,
+      passed: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 
@@ -122,20 +132,38 @@ function testWasmBindings(wasm: WasmModule): TestResult[] {
       const uuid1 = wasm.stringToUuid("test-input");
       const uuid2 = wasm.stringToUuid("test-input");
       assert(uuid1 === uuid2, "stringToUuid not deterministic");
-      assert(uuid1 !== wasm.stringToUuid("different"), "Different inputs produced same UUID");
+      assert(
+        uuid1 !== wasm.stringToUuid("different"),
+        "Different inputs produced same UUID",
+      );
       assert(wasm.validateUUID(uuid1), "Valid UUID failed validation");
-      assert(!wasm.validateUUID("not-a-uuid"), "Invalid UUID passed validation");
+      assert(
+        !wasm.validateUUID("not-a-uuid"),
+        "Invalid UUID passed validation",
+      );
     }),
 
     runTest("WasmUUID class", () => {
       const uuid = new wasm.WasmUUID();
       assert(wasm.validateUUID(uuid.toString()), "Generated UUID is invalid");
-      assert(wasm.WasmUUID.fromString(uuid.toString()).toString() === uuid.toString(), "Round-trip failed");
+      assert(
+        wasm.WasmUUID.fromString(uuid.toString()).toString() ===
+          uuid.toString(),
+        "Round-trip failed",
+      );
     }),
 
     runTest("WasmCharacter", () => {
-      const json = JSON.stringify({ name: "TestAgent", bio: "Test", system: "Test", topics: [] });
-      assert(wasm.WasmCharacter.fromJson(json).name === "TestAgent", "Name mismatch");
+      const json = JSON.stringify({
+        name: "TestAgent",
+        bio: "Test",
+        system: "Test",
+        topics: [],
+      });
+      assert(
+        wasm.WasmCharacter.fromJson(json).name === "TestAgent",
+        "Name mismatch",
+      );
       assert(wasm.testCharacterRoundTrip(json), "Round-trip failed");
     }),
 
@@ -155,34 +183,78 @@ function testWasmBindings(wasm: WasmModule): TestResult[] {
 
     runTest("WasmAgent", () => {
       const now = Date.now();
-      const json = JSON.stringify({ name: "TestAgent", bio: "Test", createdAt: now, updatedAt: now });
-      assert(wasm.WasmAgent.fromJson(json).name === "TestAgent", "Name mismatch");
+      const json = JSON.stringify({
+        name: "TestAgent",
+        bio: "Test",
+        createdAt: now,
+        updatedAt: now,
+      });
+      assert(
+        wasm.WasmAgent.fromJson(json).name === "TestAgent",
+        "Name mismatch",
+      );
       assert(wasm.testAgentRoundTrip(json), "Round-trip failed");
     }),
 
     runTest("WasmPlugin", () => {
-      const json = JSON.stringify({ name: "test-plugin", description: "Test", version: "1.0.0" });
-      assert(wasm.WasmPlugin.fromJson(json).name === "test-plugin", "Name mismatch");
+      const json = JSON.stringify({
+        name: "test-plugin",
+        description: "Test",
+        version: "1.0.0",
+      });
+      assert(
+        wasm.WasmPlugin.fromJson(json).name === "test-plugin",
+        "Name mismatch",
+      );
     }),
 
     runTest("WasmState", () => {
       const state = new wasm.WasmState();
-      assert(typeof JSON.parse(state.toJson()) === "object", "Invalid state JSON");
+      assert(
+        typeof JSON.parse(state.toJson()) === "object",
+        "Invalid state JSON",
+      );
     }),
 
     runTest("WasmRoom", () => {
-      const json = JSON.stringify({ id: wasm.generateUUID(), name: "Test", source: "test", type: "GROUP" });
-      assert(wasm.validateUUID(wasm.WasmRoom.fromJson(json).id), "Invalid room ID");
+      const json = JSON.stringify({
+        id: wasm.generateUUID(),
+        name: "Test",
+        source: "test",
+        type: "GROUP",
+      });
+      assert(
+        wasm.validateUUID(wasm.WasmRoom.fromJson(json).id),
+        "Invalid room ID",
+      );
     }),
 
     runTest("WasmEntity", () => {
-      const json = JSON.stringify({ id: wasm.generateUUID(), names: ["Test"], metadata: {}, agentId: wasm.generateUUID() });
-      assert(wasm.validateUUID(wasm.WasmEntity.fromJson(json).id), "Invalid entity ID");
+      const json = JSON.stringify({
+        id: wasm.generateUUID(),
+        names: ["Test"],
+        metadata: {},
+        agentId: wasm.generateUUID(),
+      });
+      assert(
+        wasm.validateUUID(wasm.WasmEntity.fromJson(json).id),
+        "Invalid entity ID",
+      );
     }),
 
     runTest("Parse functions", () => {
-      assert(wasm.parseCharacter(JSON.stringify({ name: "Test", bio: "test" })).name === "Test", "Name mismatch");
-      const mem = wasm.parseMemory(JSON.stringify({ entityId: wasm.generateUUID(), roomId: wasm.generateUUID(), content: { text: "test" } }));
+      assert(
+        wasm.parseCharacter(JSON.stringify({ name: "Test", bio: "test" }))
+          .name === "Test",
+        "Name mismatch",
+      );
+      const mem = wasm.parseMemory(
+        JSON.stringify({
+          entityId: wasm.generateUUID(),
+          roomId: wasm.generateUUID(),
+          content: { text: "test" },
+        }),
+      );
       assert(!!mem.entityId, "Missing entityId");
     }),
   ];
@@ -192,22 +264,33 @@ function testWasmBindings(wasm: WasmModule): TestResult[] {
 // OPENAI MODEL HANDLER
 // ============================================================================
 
-function createModelHandler(apiKey: string, model: string) {
+function _createModelHandler(apiKey: string, model: string) {
   return async (paramsJson: string): Promise<string> => {
-    const params: { prompt: string; system?: string; temperature?: number } = JSON.parse(paramsJson);
+    const params: { prompt: string; system?: string; temperature?: number } =
+      JSON.parse(paramsJson);
 
     const messages: Array<{ role: string; content: string }> = [];
-    if (params.system) messages.push({ role: "system", content: params.system });
+    if (params.system)
+      messages.push({ role: "system", content: params.system });
     messages.push({ role: "user", content: params.prompt });
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, temperature: params.temperature ?? 0.7 }),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: params.temperature ?? 0.7,
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} - ${await response.text()}`);
+      throw new Error(
+        `OpenAI API error: ${response.status} - ${await response.text()}`,
+      );
     }
 
     const data = await response.json();
@@ -230,7 +313,9 @@ async function main() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     console.error("\n❌ OPENAI_API_KEY environment variable is required");
-    console.error("   Usage: OPENAI_API_KEY=your_key bun run examples/rust-wasm/chat.ts\n");
+    console.error(
+      "   Usage: OPENAI_API_KEY=your_key bun run examples/rust-wasm/chat.ts\n",
+    );
     process.exit(1);
   }
 
@@ -247,12 +332,16 @@ async function main() {
   let allPassed = true;
   for (const result of testResults) {
     const status = result.passed ? "✅" : "❌";
-    console.log(`   ${status} ${result.name}${result.error ? `: ${result.error}` : ""}`);
+    console.log(
+      `   ${status} ${result.name}${result.error ? `: ${result.error}` : ""}`,
+    );
     if (!result.passed) allPassed = false;
   }
 
   if (!allPassed) {
-    console.error("\n❌ Some WASM binding tests failed. Please check the Rust code.\n");
+    console.error(
+      "\n❌ Some WASM binding tests failed. Please check the Rust code.\n",
+    );
     process.exit(1);
   }
 
@@ -309,7 +398,10 @@ You are running inside a Rust WebAssembly runtime, demonstrating cross-language 
   // Register model handlers (bridging to TypeScript/OpenAI)
   console.log("\n📡 Registering TypeScript plugin model handlers...\n");
 
-  runtime.registerModelHandler("TEXT_LARGE", createOpenAIModelHandler(apiKey, "gpt-5"));
+  runtime.registerModelHandler(
+    "TEXT_LARGE",
+    createOpenAIModelHandler(apiKey, "gpt-5"),
+  );
   console.log("   ✅ TEXT_LARGE → gpt-5");
 
   runtime.registerModelHandler("TEXT_SMALL", createSmallModelHandler(apiKey));
@@ -366,48 +458,44 @@ You are running inside a Rust WebAssembly runtime, demonstrating cross-language 
         return;
       }
 
-      try {
-        // Create message with WASM-generated UUID
-        const messageId = wasm.generateUUID();
-        const message = {
-          id: messageId,
-          entityId: userId,
-          roomId: roomId,
-          content: { text },
-          createdAt: Date.now(),
-        };
+      // Create message with WASM-generated UUID
+      const messageId = wasm.generateUUID();
+      const message = {
+        id: messageId,
+        entityId: userId,
+        roomId: roomId,
+        content: { text },
+        createdAt: Date.now(),
+      };
 
-        // Validate message through WASM
-        const wasmMem = wasm.WasmMemory.fromJson(JSON.stringify(message));
-        if (wasmMem.entityId !== userId) {
-          console.warn("⚠️ Message validation warning: entityId mismatch");
-        }
-
-        // Handle message through Rust runtime
-        process.stdout.write(`${runtime.characterName}: `);
-        const responseJson = await runtime.handleMessage(JSON.stringify(message));
-        const response: MessageResponse = JSON.parse(responseJson);
-
-        if (response.didRespond && response.responseContent?.text) {
-          console.log(response.responseContent.text);
-
-          // Validate response memory through WASM
-          if (response.responseMessages.length > 0) {
-            const respMem = response.responseMessages[0];
-            const wasmRespMem = wasm.WasmMemory.fromJson(JSON.stringify(respMem));
-            // Silently validate - just ensure no errors
-            const respId = wasmRespMem.id;
-            if (respId && !wasm.validateUUID(respId)) {
-              console.warn("⚠️ Response memory has invalid ID");
-            }
-          }
-        } else {
-          console.log("[No response]");
-        }
-        console.log();
-      } catch (error) {
-        console.error(`\nError: ${error instanceof Error ? error.message : error}\n`);
+      // Validate message through WASM
+      const wasmMem = wasm.WasmMemory.fromJson(JSON.stringify(message));
+      if (wasmMem.entityId !== userId) {
+        console.warn("⚠️ Message validation warning: entityId mismatch");
       }
+
+      // Handle message through Rust runtime
+      process.stdout.write(`${runtime.characterName}: `);
+      const responseJson = await runtime.handleMessage(JSON.stringify(message));
+      const response: MessageResponse = JSON.parse(responseJson);
+
+      if (response.didRespond && response.responseContent?.text) {
+        console.log(response.responseContent.text);
+
+        // Validate response memory through WASM
+        if (response.responseMessages.length > 0) {
+          const respMem = response.responseMessages[0];
+          const wasmRespMem = wasm.WasmMemory.fromJson(JSON.stringify(respMem));
+          // Silently validate - just ensure no errors
+          const respId = wasmRespMem.id;
+          if (respId && !wasm.validateUUID(respId)) {
+            console.warn("⚠️ Response memory has invalid ID");
+          }
+        }
+      } else {
+        console.log("[No response]");
+      }
+      console.log();
 
       prompt();
     });

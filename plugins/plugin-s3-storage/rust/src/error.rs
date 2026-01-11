@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for S3 Storage Plugin
 
 use thiserror::Error;
@@ -39,5 +40,10 @@ pub enum S3StorageError {
 
 /// Result type alias for S3 storage operations.
 pub type Result<T> = std::result::Result<T, S3StorageError>;
+
+
+
+
+
 
 

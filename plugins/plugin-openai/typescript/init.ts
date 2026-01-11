@@ -76,12 +76,8 @@ async function validateOpenAIConfiguration(runtime: IAgentRuntime): Promise<void
       );
       return;
     }
-    
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn(
-      `[OpenAI] API validation error: ${message}. ` +
-        "OpenAI functionality may be limited."
-    );
+    logger.warn(`[OpenAI] API validation error: ${message}. OpenAI functionality may be limited.`);
   }
 }

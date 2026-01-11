@@ -1,6 +1,6 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import type { Entity, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../test-helpers";
 
 describe("Entity Array Serialization Fix Tests", () => {
@@ -59,11 +59,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       expect(retrieved).not.toBeNull();
       if (!retrieved || !retrieved[0]) throw new Error("Entity should exist");
       expect(Array.isArray(retrieved[0].names)).toBe(true);
-      expect(retrieved[0].names).toEqual([
-        "user-primary",
-        "user-alias1",
-        "user-alias2",
-      ]);
+      expect(retrieved[0].names).toEqual(["user-primary", "user-alias1", "user-alias2"]);
     });
 
     it("should handle entity with empty names array", async () => {
@@ -139,11 +135,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       expect(retrieved).not.toBeNull();
       if (!retrieved || !retrieved[0]) throw new Error("Entity should exist");
       expect(Array.isArray(retrieved[0].names)).toBe(true);
-      expect(retrieved[0].names).toEqual([
-        "original-name",
-        "new-name",
-        "another-name",
-      ]);
+      expect(retrieved[0].names).toEqual(["original-name", "new-name", "another-name"]);
     });
 
     it("should handle Set-like names in update by converting to array", async () => {
@@ -216,12 +208,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: [
-          "user@test.com",
-          "user-with-dash",
-          "user_with_underscore",
-          "user{with}braces",
-        ],
+        names: ["user@test.com", "user-with-dash", "user_with_underscore", "user{with}braces"],
         metadata: {},
       };
 
@@ -256,12 +243,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       expect(retrieved).not.toBeNull();
       if (!retrieved || !retrieved[0]) throw new Error("Entity should exist");
       expect(Array.isArray(retrieved[0].names)).toBe(true);
-      expect(retrieved[0].names).toEqual([
-        "用户名",
-        "ユーザー",
-        "пользователь",
-        "👤user",
-      ]);
+      expect(retrieved[0].names).toEqual(["用户名", "ユーザー", "пользователь", "👤user"]);
     });
   });
 });

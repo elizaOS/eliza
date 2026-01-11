@@ -7,9 +7,9 @@
  * - Player event handling
  */
 
-import { Service, type UUID, type IAgentRuntime } from "@elizaos/core";
-import { ROBLOX_SERVICE_NAME, type RobloxConfig } from "../types";
+import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { RobloxClient } from "../client/RobloxClient";
+import { ROBLOX_SERVICE_NAME, type RobloxConfig } from "../types";
 import { hasRobloxEnabled, validateRobloxConfig } from "../utils/config";
 
 /**
@@ -154,8 +154,7 @@ export class RobloxService extends Service {
   static serviceType = ROBLOX_SERVICE_NAME;
 
   readonly description = "Roblox integration service for game communication";
-  readonly capabilityDescription =
-    "The agent can communicate with Roblox games and players";
+  readonly capabilityDescription = "The agent can communicate with Roblox games and players";
 
   private static getInstance(): RobloxService {
     if (!RobloxService.instance) {
@@ -173,10 +172,7 @@ export class RobloxService extends Service {
     let manager = service.managers.get(runtime.agentId);
 
     if (manager) {
-      runtime.logger.warn(
-        { agentId: runtime.agentId },
-        "Roblox service already started"
-      );
+      runtime.logger.warn({ agentId: runtime.agentId }, "Roblox service already started");
       return service;
     }
 
@@ -208,15 +204,9 @@ export class RobloxService extends Service {
     if (manager) {
       await manager.stop();
       service.managers.delete(runtime.agentId);
-      runtime.logger.info(
-        { agentId: runtime.agentId },
-        "Roblox service stopped"
-      );
+      runtime.logger.info({ agentId: runtime.agentId }, "Roblox service stopped");
     } else {
-      runtime.logger.debug(
-        { agentId: runtime.agentId },
-        "Roblox service not running"
-      );
+      runtime.logger.debug({ agentId: runtime.agentId }, "Roblox service not running");
     }
   }
 
@@ -227,10 +217,7 @@ export class RobloxService extends Service {
       try {
         await RobloxService.stop(manager.runtime);
       } catch (error) {
-        manager.runtime.logger.error(
-          { agentId, error },
-          "Error stopping Roblox service"
-        );
+        manager.runtime.logger.error({ agentId, error }, "Error stopping Roblox service");
       }
     }
   }
@@ -252,11 +239,7 @@ export class RobloxService extends Service {
   /**
    * Send a message to a game
    */
-  async sendMessage(
-    agentId: UUID,
-    content: string,
-    targetPlayerIds?: number[]
-  ): Promise<void> {
+  async sendMessage(agentId: UUID, content: string, targetPlayerIds?: number[]): Promise<void> {
     const manager = this.managers.get(agentId);
     if (!manager) {
       throw new Error(`No Roblox manager found for agent ${agentId}`);
@@ -324,5 +307,3 @@ export class RobloxService extends Service {
     return new Map(this.managers);
   }
 }
-
-

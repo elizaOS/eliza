@@ -6,13 +6,9 @@ Provides the main GitHubService for interacting with the GitHub API.
 
 import base64
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from github import Auth, Github, GithubException
-from github.Branch import Branch
-from github.Commit import Commit
-from github.ContentFile import ContentFile
 from github.Issue import Issue
 from github.IssueComment import IssueComment
 from github.PullRequest import PullRequest
@@ -58,13 +54,12 @@ from elizaos_plugin_github.types import (
     IssueStateReason,
     ListIssuesParams,
     ListPullRequestsParams,
-    MergePullRequestParams,
     MergeableState,
+    MergePullRequestParams,
     PullRequestState,
     RepositoryRef,
     ReviewState,
     UpdateIssueParams,
-    UpdatePullRequestParams,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +81,7 @@ class GitHubService:
             config: GitHub configuration.
         """
         self._config = config
-        self._client: Optional[Github] = None
+        self._client: Github | None = None
 
     @property
     def config(self) -> GitHubConfig:
@@ -119,7 +114,7 @@ class GitHubService:
             user = self._client.get_user()
             logger.info(f"GitHub service started - authenticated as {user.login}")
         except GithubException as e:
-            raise self._map_exception(e, "", "")
+            raise self._map_exception(e, "", "") from e
 
     async def stop(self) -> None:
         """Stop the GitHub service."""
@@ -142,7 +137,7 @@ class GitHubService:
             repo = client.get_repo(f"{owner}/{repo_name}")
             return self._map_repository(repo)
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # Issue Operations
@@ -164,11 +159,9 @@ class GitHubService:
             )
             return self._map_issue(issue)
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
-    async def get_issue(
-        self, owner: str, repo: str, issue_number: int
-    ) -> GitHubIssue:
+    async def get_issue(self, owner: str, repo: str, issue_number: int) -> GitHubIssue:
         """Get an issue by number."""
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(owner, repo)
@@ -180,8 +173,8 @@ class GitHubService:
         except GithubException as e:
             exc = self._map_exception(e, owner, repo_name)
             if isinstance(exc, RepositoryNotFoundError):
-                raise IssueNotFoundError(issue_number, owner, repo_name)
-            raise exc
+                raise IssueNotFoundError(issue_number, owner, repo_name) from e
+            raise exc from e
 
     async def update_issue(self, params: UpdateIssueParams) -> GitHubIssue:
         """Update an issue."""
@@ -209,7 +202,7 @@ class GitHubService:
             issue.edit(**kwargs)
             return self._map_issue(issue)
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     async def list_issues(self, params: ListIssuesParams) -> list[GitHubIssue]:
         """List issues."""
@@ -241,15 +234,13 @@ class GitHubService:
 
             return result
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # Pull Request Operations
     # ===========================================================================
 
-    async def create_pull_request(
-        self, params: CreatePullRequestParams
-    ) -> GitHubPullRequest:
+    async def create_pull_request(self, params: CreatePullRequestParams) -> GitHubPullRequest:
         """Create a pull request."""
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(params.owner, params.repo)
@@ -266,11 +257,9 @@ class GitHubService:
             )
             return self._map_pull_request(pr)
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
-    async def get_pull_request(
-        self, owner: str, repo: str, pull_number: int
-    ) -> GitHubPullRequest:
+    async def get_pull_request(self, owner: str, repo: str, pull_number: int) -> GitHubPullRequest:
         """Get a pull request by number."""
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(owner, repo)
@@ -282,12 +271,10 @@ class GitHubService:
         except GithubException as e:
             exc = self._map_exception(e, owner, repo_name)
             if isinstance(exc, RepositoryNotFoundError):
-                raise PullRequestNotFoundError(pull_number, owner, repo_name)
-            raise exc
+                raise PullRequestNotFoundError(pull_number, owner, repo_name) from e
+            raise exc from e
 
-    async def list_pull_requests(
-        self, params: ListPullRequestsParams
-    ) -> list[GitHubPullRequest]:
+    async def list_pull_requests(self, params: ListPullRequestsParams) -> list[GitHubPullRequest]:
         """List pull requests."""
         client = self._get_client()
         owner, repo_name = self._resolve_repo_ref(params.owner, params.repo)
@@ -315,11 +302,9 @@ class GitHubService:
 
             return result
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
-    async def merge_pull_request(
-        self, params: MergePullRequestParams
-    ) -> tuple[str, bool, str]:
+    async def merge_pull_request(self, params: MergePullRequestParams) -> tuple[str, bool, str]:
         """
         Merge a pull request.
 
@@ -344,8 +329,8 @@ class GitHubService:
         except GithubException as e:
             exc = self._map_exception(e, owner, repo_name)
             if isinstance(exc, GitHubApiError) and exc.status == 405:
-                raise MergeConflictError(params.pull_number, owner, repo_name)
-            raise exc
+                raise MergeConflictError(params.pull_number, owner, repo_name) from e
+            raise exc from e
 
     # ===========================================================================
     # Review Operations
@@ -377,7 +362,7 @@ class GitHubService:
 
             return self._map_review(review)
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # Comment Operations
@@ -394,7 +379,7 @@ class GitHubService:
             comment = issue.create_comment(params.body)
             return self._map_comment(comment)
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # Branch Operations
@@ -427,8 +412,8 @@ class GitHubService:
         except GithubException as e:
             exc = self._map_exception(e, owner, repo_name)
             if "already exists" in str(e):
-                raise BranchExistsError(params.branch_name, owner, repo_name)
-            raise exc
+                raise BranchExistsError(params.branch_name, owner, repo_name) from e
+            raise exc from e
 
     async def delete_branch(self, owner: str, repo: str, branch_name: str) -> None:
         """Delete a branch."""
@@ -442,8 +427,8 @@ class GitHubService:
         except GithubException as e:
             exc = self._map_exception(e, owner, repo_name)
             if isinstance(exc, RepositoryNotFoundError):
-                raise BranchNotFoundError(branch_name, owner, repo_name)
-            raise exc
+                raise BranchNotFoundError(branch_name, owner, repo_name) from e
+            raise exc from e
 
     async def list_branches(
         self, owner: str, repo: str, per_page: int = 30, page: int = 1
@@ -475,14 +460,14 @@ class GitHubService:
 
             return result
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # File Operations
     # ===========================================================================
 
     async def get_file(
-        self, owner: str, repo: str, path: str, branch: Optional[str] = None
+        self, owner: str, repo: str, path: str, branch: str | None = None
     ) -> GitHubFileContent:
         """Get file content."""
         client = self._get_client()
@@ -513,11 +498,11 @@ class GitHubService:
         except GithubException as e:
             exc = self._map_exception(e, owner, repo_name)
             if isinstance(exc, RepositoryNotFoundError):
-                raise FileNotFoundError(path, owner, repo_name)
-            raise exc
+                raise FileNotFoundError(path, owner, repo_name) from e
+            raise exc from e
 
     async def list_directory(
-        self, owner: str, repo: str, path: str, branch: Optional[str] = None
+        self, owner: str, repo: str, path: str, branch: str | None = None
     ) -> list[GitHubDirectoryEntry]:
         """List directory contents."""
         client = self._get_client()
@@ -543,7 +528,7 @@ class GitHubService:
                 for c in contents
             ]
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # Commit Operations
@@ -607,19 +592,19 @@ class GitHubService:
                 author=GitHubCommitAuthor(
                     name=author_name,
                     email=author_email,
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                 ),
                 committer=GitHubCommitAuthor(
                     name=author_name,
                     email=author_email,
-                    date=datetime.now(timezone.utc).isoformat(),
+                    date=datetime.now(UTC).isoformat(),
                 ),
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 html_url=commit.html_url,
                 parents=[parent_sha],
             )
         except GithubException as e:
-            raise self._map_exception(e, owner, repo_name)
+            raise self._map_exception(e, owner, repo_name) from e
 
     # ===========================================================================
     # User Operations
@@ -635,15 +620,11 @@ class GitHubService:
     # Helper Methods
     # ===========================================================================
 
-    def _resolve_repo_ref(
-        self, owner: Optional[str], repo: Optional[str]
-    ) -> tuple[str, str]:
+    def _resolve_repo_ref(self, owner: str | None, repo: str | None) -> tuple[str, str]:
         """Resolve repository reference with defaults."""
         return self._config.get_repository_ref(owner, repo)
 
-    def _map_exception(
-        self, e: GithubException, owner: str, repo: str
-    ) -> Exception:
+    def _map_exception(self, e: GithubException, owner: str, repo: str) -> Exception:
         """Map GitHub exception to typed error."""
         status = e.status
 
@@ -656,8 +637,8 @@ class GitHubService:
             if rate_limit == "0":
                 reset = e.headers.get("X-RateLimit-Reset")
                 if reset:
-                    reset_time = datetime.fromtimestamp(int(reset), tz=timezone.utc)
-                    retry_after = int((reset_time - datetime.now(timezone.utc)).total_seconds() * 1000)
+                    reset_time = datetime.fromtimestamp(int(reset), tz=UTC)
+                    retry_after = int((reset_time - datetime.now(UTC)).total_seconds() * 1000)
                     return RateLimitedError(max(retry_after, 0), 0, reset_time)
             return PermissionDeniedError(str(e.data))
 
@@ -725,13 +706,13 @@ class GitHubService:
             assignees=[self._map_user_from_named_user(a) for a in issue.assignees],
             labels=[
                 GitHubLabel(
-                    id=l.id,
-                    name=l.name,
-                    color=l.color,
-                    description=l.description,
-                    default=l.default,
+                    id=label.id,
+                    name=label.name,
+                    color=label.color,
+                    description=label.description,
+                    default=label.default,
                 )
-                for l in issue.labels
+                for label in issue.labels
             ],
             milestone=(
                 GitHubMilestone(
@@ -743,9 +724,7 @@ class GitHubService:
                     created_at=issue.milestone.created_at.isoformat(),
                     updated_at=issue.milestone.updated_at.isoformat(),
                     closed_at=(
-                        issue.milestone.closed_at.isoformat()
-                        if issue.milestone.closed_at
-                        else None
+                        issue.milestone.closed_at.isoformat() if issue.milestone.closed_at else None
                     ),
                     open_issues=issue.milestone.open_issues,
                     closed_issues=issue.milestone.closed_issues,
@@ -771,31 +750,37 @@ class GitHubService:
             draft=pr.draft,
             merged=pr.merged,
             mergeable=pr.mergeable,
-            mergeable_state=MergeableState(pr.mergeable_state) if pr.mergeable_state else MergeableState.UNKNOWN,
+            mergeable_state=MergeableState(pr.mergeable_state)
+            if pr.mergeable_state
+            else MergeableState.UNKNOWN,
             user=self._map_user_from_named_user(pr.user),
             head=GitHubBranchRef(
                 ref=pr.head.ref,
                 label=pr.head.label,
                 sha=pr.head.sha,
-                repo=RepositoryRef(owner=pr.head.repo.owner.login, repo=pr.head.repo.name) if pr.head.repo else None,
+                repo=RepositoryRef(owner=pr.head.repo.owner.login, repo=pr.head.repo.name)
+                if pr.head.repo
+                else None,
             ),
             base=GitHubBranchRef(
                 ref=pr.base.ref,
                 label=pr.base.label,
                 sha=pr.base.sha,
-                repo=RepositoryRef(owner=pr.base.repo.owner.login, repo=pr.base.repo.name) if pr.base.repo else None,
+                repo=RepositoryRef(owner=pr.base.repo.owner.login, repo=pr.base.repo.name)
+                if pr.base.repo
+                else None,
             ),
             assignees=[self._map_user_from_named_user(a) for a in pr.assignees],
             requested_reviewers=[self._map_user_from_named_user(r) for r in pr.requested_reviewers],
             labels=[
                 GitHubLabel(
-                    id=l.id,
-                    name=l.name,
-                    color=l.color,
-                    description=l.description,
-                    default=l.default,
+                    id=label.id,
+                    name=label.name,
+                    color=label.color,
+                    description=label.description,
+                    default=label.default,
                 )
-                for l in pr.labels
+                for label in pr.labels
             ],
             milestone=None,  # Would need full mapping
             created_at=pr.created_at.isoformat(),
@@ -831,5 +816,3 @@ class GitHubService:
             updated_at=comment.updated_at.isoformat(),
             html_url=comment.html_url,
         )
-
-

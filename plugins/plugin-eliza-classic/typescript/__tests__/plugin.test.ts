@@ -2,12 +2,8 @@
  * Tests for ELIZA Classic Plugin
  */
 
-import {  describe, test, expect, beforeEach  } from "vitest";
-import {
-  generateElizaResponse,
-  getElizaGreeting,
-  reflect,
-} from "../models/text";
+import { describe, expect, test } from "vitest";
+import { generateElizaResponse, getElizaGreeting, reflect } from "../models/text";
 
 describe("ELIZA Classic Plugin", () => {
   describe("reflect()", () => {
@@ -79,4 +75,3 @@ describe("ELIZA Classic Plugin", () => {
     });
   });
 });
-

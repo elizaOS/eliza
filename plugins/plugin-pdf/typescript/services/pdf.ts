@@ -4,23 +4,20 @@
  * Provides PDF reading and text extraction functionality.
  */
 
-import {
-  type IAgentRuntime,
-  Service,
-  type ServiceTypeName,
-  ServiceType,
-  logger,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger, Service, ServiceType } from "@elizaos/core";
 import pkg from "pdfjs-dist";
+
 const { getDocument } = pkg;
+
 import type { TextItem, TextMarkedContent } from "pdfjs-dist/types/src/display/api";
 
 import type {
   PdfConversionResult,
-  PdfExtractionOptions,
-  PdfPageInfo,
   PdfDocumentInfo,
+  PdfExtractionOptions,
   PdfMetadata,
+  PdfPageInfo,
 } from "../types";
 
 /**
@@ -36,13 +33,8 @@ function isTextItem(item: TextItem | TextMarkedContent): item is TextItem {
  * Provides PDF reading and text extraction capabilities.
  */
 export class PdfService extends Service {
-  static serviceType: ServiceTypeName = ServiceType.PDF;
+  static serviceType = ServiceType.PDF;
   capabilityDescription = "The agent is able to convert PDF files to text";
-
-  constructor(runtime: IAgentRuntime) {
-    super();
-    this.runtime = runtime;
-  }
 
   /**
    * Initialize the PDF service.
@@ -157,7 +149,7 @@ export class PdfService extends Service {
     // Get metadata
     const metadataResult = await pdf.getMetadata();
     const info = metadataResult.info as Record<string, string | Date | undefined>;
-    
+
     const metadata: PdfMetadata = {
       title: info.Title as string | undefined,
       author: info.Author as string | undefined,
@@ -242,5 +234,3 @@ export class PdfService extends Service {
 }
 
 export default PdfService;
-
-

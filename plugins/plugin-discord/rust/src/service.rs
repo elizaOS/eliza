@@ -28,18 +28,10 @@ pub const MAX_MESSAGE_LENGTH: usize = 2000;
 pub type EventCallback = Box<dyn Fn(DiscordEventType, serde_json::Value) + Send + Sync>;
 
 /// Discord service state
+#[derive(Default)]
 struct ServiceState {
     is_running: bool,
     event_callback: Option<EventCallback>,
-}
-
-impl Default for ServiceState {
-    fn default() -> Self {
-        Self {
-            is_running: false,
-            event_callback: None,
-        }
-    }
 }
 
 /// Discord event handler for Serenity

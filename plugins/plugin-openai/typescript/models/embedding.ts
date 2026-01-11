@@ -57,9 +57,7 @@ function extractText(params: TextEmbeddingParams | string | null): string | null
     return params.text;
   }
 
-  throw new Error(
-    "Invalid embedding params: expected string, { text: string }, or null"
-  );
+  throw new Error("Invalid embedding params: expected string, { text: string }, or null");
 }
 
 // ============================================================================
@@ -123,7 +121,7 @@ export async function handleTextEmbedding(
   const data = (await response.json()) as OpenAIEmbeddingResponse;
 
   // Validate response structure
-  const firstResult = data && data.data && data.data[0];
+  const firstResult = data?.data?.[0];
   if (!firstResult || !firstResult.embedding) {
     throw new Error("OpenAI API returned invalid embedding response structure");
   }

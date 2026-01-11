@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration for the N8n Plugin.
 
 use std::path::PathBuf;
@@ -23,6 +24,7 @@ pub struct N8nConfig {
     /// Rate limit per hour.
     pub rate_limit_per_hour: u32,
 }
+
 
 impl Default for N8nConfig {
     fn default() -> Self {
@@ -155,5 +157,7 @@ mod tests {
         assert_eq!(config.get_plugins_dir(), PathBuf::from("/data/plugins"));
     }
 }
+
+
 
 

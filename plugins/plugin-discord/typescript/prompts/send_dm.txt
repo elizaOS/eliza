@@ -1,0 +1,24 @@
+# Messages we are searching for DM information
+{{recentMessages}}
+
+# Instructions: {{senderName}} is requesting to send a direct message to a specific Discord user. Your goal is to determine:
+1. The recipient they want to message (could be a username, user ID, or mentioned user)
+2. The message content they want to send
+
+Extract the recipient identifier and the message content from their request.
+- If they mention a user like @username or <@userid>, extract that
+- If they provide a username or display name, extract that
+- If they provide a user ID (long number), extract that
+- Extract the complete message they want to send
+
+Your response must be formatted as a JSON block with this structure:
+```json
+{
+  "recipientIdentifier": "<username|user-id|@mention>",
+  "messageContent": "<the message to send>"
+}
+```
+
+
+
+

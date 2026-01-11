@@ -14,27 +14,20 @@ import {
 } from "@elizaos/core";
 import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
-import { type SupportedChain, EVMError, EVMErrorCode } from "../types";
-import { initWalletProvider } from "./wallet";
 import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js";
+import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
+import { initWalletProvider } from "./wallet";
 
 /**
  * Token balance provider
  */
 export const tokenBalanceProvider: Provider = {
   name: "TOKEN_BALANCE",
-  description:
-    "Token balance for ERC20 tokens when onchain actions are requested",
+  description: "Token balance for ERC20 tokens when onchain actions are requested",
   dynamic: true,
 
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory
-  ): Promise<ProviderResult> => {
-    const prompt = tokenBalanceTemplate.replace(
-      "{{userMessage}}",
-      message.content.text ?? ""
-    );
+  get: async (runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> => {
+    const prompt = tokenBalanceTemplate.replace("{{userMessage}}", message.content.text ?? "");
 
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
@@ -54,10 +47,7 @@ export const tokenBalanceProvider: Provider = {
 
     // Validate chain is configured
     if (!walletProvider.chains[chain]) {
-      throw new EVMError(
-        EVMErrorCode.CHAIN_NOT_CONFIGURED,
-        `Chain ${chain} is not configured`
-      );
+      throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, `Chain ${chain} is not configured`);
     }
 
     const chainConfig = walletProvider.getChainConfigs(chain as SupportedChain);
@@ -67,19 +57,15 @@ export const tokenBalanceProvider: Provider = {
     const tokenData = await getToken(chainConfig.id, token);
 
     // Get balance
-    const publicClient = walletProvider.getPublicClient(
-      chain as SupportedChain
-    );
-    const balanceAbi = parseAbi([
-      "function balanceOf(address) view returns (uint256)",
-    ]);
+    const publicClient = walletProvider.getPublicClient(chain as SupportedChain);
+    const balanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-    const balance = await publicClient.readContract({
+    const balance = (await publicClient.readContract({
       address: tokenData.address as Address,
       abi: balanceAbi,
       functionName: "balanceOf",
       args: [address],
-    });
+    } as unknown as Parameters<typeof publicClient.readContract>[0])) as bigint;
 
     const formattedBalance = formatUnits(balance, tokenData.decimals);
     const hasBalance = parseFloat(formattedBalance) > 0;

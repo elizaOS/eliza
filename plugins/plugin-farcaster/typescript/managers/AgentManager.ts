@@ -22,7 +22,9 @@ export class FarcasterAgentManager {
     this.runtime = runtime;
     const signerUuid = config.FARCASTER_SIGNER_UUID;
 
-    const neynarConfig = new Configuration({ apiKey: config.FARCASTER_NEYNAR_API_KEY });
+    const neynarConfig = new Configuration({
+      apiKey: config.FARCASTER_NEYNAR_API_KEY,
+    });
     const neynar = new NeynarAPIClient(neynarConfig);
     const client = new FarcasterClient({ neynar, signerUuid });
 
@@ -30,7 +32,11 @@ export class FarcasterAgentManager {
 
     runtime.logger.success("Farcaster Neynar client initialized.");
 
-    this.interactions = new FarcasterInteractionManager({ client, runtime, config });
+    this.interactions = new FarcasterInteractionManager({
+      client,
+      runtime,
+      config,
+    });
     this.casts = new FarcasterCastManager({ client, runtime, config });
   }
 
@@ -42,5 +48,3 @@ export class FarcasterAgentManager {
     await Promise.all([this.casts.stop(), this.interactions.stop()]);
   }
 }
-
-

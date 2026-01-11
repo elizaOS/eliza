@@ -1,7 +1,12 @@
+#![allow(missing_docs)]
 //! Groq API client.
 
 use crate::error::{GroqError, GroqErrorCode};
-use crate::types::*;
+use crate::types::{
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, GenerateObjectParams,
+    GenerateTextParams, GroqConfig, MessageRole, ModelInfo, ModelsResponse,
+    TextToSpeechParams, TranscriptionParams, TranscriptionResponse,
+};
 use crate::DEFAULT_BASE_URL;
 use reqwest::{header, Client, multipart};
 use tracing::{debug, warn};
@@ -85,11 +90,11 @@ impl GroqClient {
     async fn generate_text(&self, model: &str, params: GenerateTextParams) -> Result<String, GroqError> {
         debug!("Generating text with model: {}", model);
 
-        let mut messages = Vec::new();
-        if let Some(system) = &params.system {
+        let mut messages: Vec<ChatMessage> = Vec::new();
+        if let Some(ref system_str) = params.system {
             messages.push(ChatMessage {
                 role: MessageRole::System,
-                content: system.clone(),
+                content: system_str.clone(),
             });
         }
         messages.push(ChatMessage {

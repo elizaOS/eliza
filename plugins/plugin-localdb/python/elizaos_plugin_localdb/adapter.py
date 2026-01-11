@@ -61,6 +61,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
                 index = self._vector_index.serialize()
                 # Run async in sync context
                 import asyncio
+
                 loop = asyncio.get_event_loop()
                 loop.create_task(
                     self._storage.save_raw("vectors/hnsw_index.json", json.dumps(index))
@@ -68,6 +69,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
 
         def load_cb() -> Optional[Dict[str, Any]]:
             import asyncio
+
             try:
                 loop = asyncio.get_event_loop()
                 data = loop.run_until_complete(
@@ -121,9 +123,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         existing = await self.get_agent(agent_id)
         if not existing:
             return False
-        await self._storage.set(
-            COLLECTIONS["AGENTS"], agent_id, {**existing, **agent}
-        )
+        await self._storage.set(COLLECTIONS["AGENTS"], agent_id, {**existing, **agent})
         return True
 
     async def delete_agent(self, agent_id: str) -> bool:
@@ -200,7 +200,10 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
                 c.get("entityId") == entity_id
                 and c.get("type") == component_type
                 and (world_id is None or c.get("worldId") == world_id)
-                and (source_entity_id is None or c.get("sourceEntityId") == source_entity_id)
+                and (
+                    source_entity_id is None
+                    or c.get("sourceEntityId") == source_entity_id
+                )
             ),
         )
         return components[0] if components else None
@@ -217,7 +220,10 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
             lambda c: (
                 c.get("entityId") == entity_id
                 and (world_id is None or c.get("worldId") == world_id)
-                and (source_entity_id is None or c.get("sourceEntityId") == source_entity_id)
+                and (
+                    source_entity_id is None
+                    or c.get("sourceEntityId") == source_entity_id
+                )
             ),
         )
 
@@ -243,6 +249,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
 
     async def get_memories(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get memories matching criteria."""
+
         def predicate(m: Dict[str, Any]) -> bool:
             if params.get("entityId") and m.get("entityId") != params["entityId"]:
                 return False
@@ -271,7 +278,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         # Apply offset and count
         offset = params.get("offset", 0)
         count = params.get("count")
-        
+
         if offset:
             memories = memories[offset:]
         if count:
@@ -341,6 +348,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
 
     async def get_logs(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get logs based on parameters."""
+
         def predicate(log: Dict[str, Any]) -> bool:
             if params.get("entityId") and log.get("entityId") != params["entityId"]:
                 return False
@@ -524,7 +532,9 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
     async def create_world(self, world: Dict[str, Any]) -> str:
         """Create a new world."""
         world_id = world.get("id") or str(uuid.uuid4())
-        await self._storage.set(COLLECTIONS["WORLDS"], world_id, {**world, "id": world_id})
+        await self._storage.set(
+            COLLECTIONS["WORLDS"], world_id, {**world, "id": world_id}
+        )
         return world_id
 
     async def get_world(self, world_id: str) -> Optional[Dict[str, Any]]:
@@ -563,7 +573,9 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         ids = []
         for room in rooms:
             room_id = room.get("id") or str(uuid.uuid4())
-            await self._storage.set(COLLECTIONS["ROOMS"], room_id, {**room, "id": room_id})
+            await self._storage.set(
+                COLLECTIONS["ROOMS"], room_id, {**room, "id": room_id}
+            )
             ids.append(room_id)
         return ids
 
@@ -632,9 +644,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
 
         return True
 
-    async def get_participants_for_entity(
-        self, entity_id: str
-    ) -> List[Dict[str, Any]]:
+    async def get_participants_for_entity(self, entity_id: str) -> List[Dict[str, Any]]:
         """Get all participants for an entity."""
         return await self._storage.get_where(
             COLLECTIONS["PARTICIPANTS"], lambda p: p.get("entityId") == entity_id
@@ -655,9 +665,7 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
         )
         return len(participants) > 0
 
-    async def add_participants_room(
-        self, entity_ids: List[str], room_id: str
-    ) -> bool:
+    async def add_participants_room(self, entity_ids: List[str], room_id: str) -> bool:
         """Add participants to a room."""
         for entity_id in entity_ids:
             exists = await self.is_room_participant(room_id, entity_id)
@@ -751,10 +759,12 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
 
     async def update_relationship(self, relationship: Dict[str, Any]) -> None:
         """Update an existing relationship."""
-        existing = await self.get_relationship({
-            "sourceEntityId": relationship.get("sourceEntityId"),
-            "targetEntityId": relationship.get("targetEntityId"),
-        })
+        existing = await self.get_relationship(
+            {
+                "sourceEntityId": relationship.get("sourceEntityId"),
+                "targetEntityId": relationship.get("targetEntityId"),
+            }
+        )
         if not existing or not existing.get("id"):
             return
 
@@ -841,4 +851,3 @@ class LocalDatabaseAdapter(IDatabaseAdapter):
     async def delete_task(self, task_id: str) -> None:
         """Delete a task."""
         await self._storage.delete(COLLECTIONS["TASKS"], task_id)
-

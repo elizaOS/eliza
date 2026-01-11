@@ -20,9 +20,7 @@ export const relationshipTable = pgTable(
   "relationships",
   {
     id: uuid("id").notNull().primaryKey().default(sql`gen_random_uuid()`),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
     sourceEntityId: uuid("source_entity_id")
       .notNull()
       .references(() => entityTable.id, { onDelete: "cascade" }),
@@ -36,15 +34,8 @@ export const relationshipTable = pgTable(
     metadata: jsonb("metadata"),
   },
   (table) => [
-    index("idx_relationships_users").on(
-      table.sourceEntityId,
-      table.targetEntityId,
-    ),
-    unique("unique_relationship").on(
-      table.sourceEntityId,
-      table.targetEntityId,
-      table.agentId,
-    ),
+    index("idx_relationships_users").on(table.sourceEntityId, table.targetEntityId),
+    unique("unique_relationship").on(table.sourceEntityId, table.targetEntityId, table.agentId),
     foreignKey({
       name: "fk_user_a",
       columns: [table.sourceEntityId],
@@ -55,5 +46,5 @@ export const relationshipTable = pgTable(
       columns: [table.targetEntityId],
       foreignColumns: [entityTable.id],
     }).onDelete("cascade"),
-  ],
+  ]
 );

@@ -21,13 +21,12 @@ export class BrokerAuthProvider implements TwitterAuthProvider {
     const url = getSetting(this.runtime, "TWITTER_BROKER_URL");
     if (!url) {
       throw new Error(
-        "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL (broker not implemented yet).",
+        "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL (broker not implemented yet)."
       );
     }
     throw new Error(
       `Twitter broker auth is not implemented yet. Configured TWITTER_BROKER_URL=${url}. ` +
-        "TODO: implement broker contract to fetch short-lived access tokens.",
+        "TODO: implement broker contract to fetch short-lived access tokens."
     );
   }
 }
-

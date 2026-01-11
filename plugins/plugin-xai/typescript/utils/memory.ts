@@ -1,10 +1,10 @@
 import {
-  type IAgentRuntime,
-  type UUID,
-  type Memory,
   ChannelType,
   createUniqueUuid,
+  type IAgentRuntime,
   logger,
+  type Memory,
+  type UUID,
 } from "@elizaos/core";
 import type { Tweet as ClientTweet } from "../client";
 
@@ -34,14 +34,9 @@ export interface TwitterContextResult {
  */
 export async function ensureTwitterContext(
   runtime: IAgentRuntime,
-  options: TwitterContextOptions,
+  options: TwitterContextOptions
 ): Promise<TwitterContextResult> {
-  const {
-    userId,
-    username,
-    name = username,
-    conversationId = userId,
-  } = options;
+  const { userId, username, name = username, conversationId = userId } = options;
 
   const worldId = createUniqueUuid(runtime, userId);
   const roomId = createUniqueUuid(runtime, conversationId);
@@ -90,9 +85,10 @@ export async function ensureTwitterContext(
       roomId,
       entityId,
     };
-  } catch (error) {
-    logger.error("Failed to ensure Twitter context:", error);
-    throw new Error(`Failed to create Twitter context for user ${username}: ${error.message}`);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error("Failed to ensure Twitter context:", err.message);
+    throw new Error(`Failed to create Twitter context for user ${username}: ${err.message}`);
   }
 }
 
@@ -103,49 +99,53 @@ export async function createMemorySafe(
   runtime: IAgentRuntime,
   memory: Memory,
   tableName: string = "messages",
-  maxRetries: number = 3,
+  maxRetries: number = 3
 ): Promise<void> {
   let lastError: Error | null = null;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       await runtime.createMemory(memory, tableName);
       return; // Success
-    } catch (error) {
+    } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      logger.warn(`Failed to create memory (attempt ${attempt + 1}/${maxRetries}):`, error);
-      
+      logger.warn(
+        `Failed to create memory (attempt ${attempt + 1}/${maxRetries}):`,
+        lastError.message
+      );
+
       // Don't retry on certain errors
-      if (error.message?.includes("duplicate") || error.message?.includes("constraint")) {
+      if (lastError.message?.includes("duplicate") || lastError.message?.includes("constraint")) {
         logger.debug("Memory already exists, skipping");
         return;
       }
-      
+
       // Wait before retry with exponential backoff
       if (attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        await new Promise((resolve) => setTimeout(resolve, 2 ** attempt * 1000));
       }
     }
   }
-  
+
   // All retries failed
-  logger.error({ error: lastError?.message }, `Failed to create memory after ${maxRetries} attempts`);
+  logger.error(
+    { error: lastError?.message },
+    `Failed to create memory after ${maxRetries} attempts`
+  );
   throw lastError;
 }
 
 /**
  * Checks if a tweet has already been processed
  */
-export async function isTweetProcessed(
-  runtime: IAgentRuntime,
-  tweetId: string,
-): Promise<boolean> {
+export async function isTweetProcessed(runtime: IAgentRuntime, tweetId: string): Promise<boolean> {
   try {
     const memoryId = createUniqueUuid(runtime, tweetId);
     const memory = await runtime.getMemoryById(memoryId);
     return !!memory;
-  } catch (error) {
-    logger.debug(`Error checking if tweet ${tweetId} is processed:`, error);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.debug(`Error checking if tweet ${tweetId} is processed:`, err.message);
     return false;
   }
 }
@@ -156,20 +156,21 @@ export async function isTweetProcessed(
 export async function getRecentTweets(
   runtime: IAgentRuntime,
   username: string,
-  count: number = 10,
+  _count: number = 10
 ): Promise<string[]> {
   try {
     const cacheKey = `twitter/${username}/recentTweets`;
     const cached = await runtime.getCache<string[]>(cacheKey);
-    
+
     if (cached && Array.isArray(cached)) {
       return cached;
     }
-    
+
     // If no cache, return empty array
     return [];
-  } catch (error) {
-    logger.debug("Error getting recent tweets from cache:", error);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.debug("Error getting recent tweets from cache:", err.message);
     return [];
   }
 }
@@ -181,21 +182,22 @@ export async function addToRecentTweets(
   runtime: IAgentRuntime,
   username: string,
   tweetText: string,
-  maxRecent: number = 10,
+  maxRecent: number = 10
 ): Promise<void> {
   try {
     const cacheKey = `twitter/${username}/recentTweets`;
     const recent = await getRecentTweets(runtime, username, maxRecent);
-    
+
     // Add new tweet to the beginning
     recent.unshift(tweetText);
-    
+
     // Keep only the most recent tweets
     const trimmed = recent.slice(0, maxRecent);
-    
+
     await runtime.setCache(cacheKey, trimmed);
-  } catch (error) {
-    logger.debug("Error updating recent tweets cache:", error);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.debug("Error updating recent tweets cache:", err.message);
   }
 }
 
@@ -206,35 +208,36 @@ export async function isDuplicateTweet(
   runtime: IAgentRuntime,
   username: string,
   tweetText: string,
-  similarityThreshold: number = 0.9,
+  _similarityThreshold: number = 0.9
 ): Promise<boolean> {
   try {
     const recentTweets = await getRecentTweets(runtime, username);
-    
+
     // Exact match check
     if (recentTweets.includes(tweetText)) {
       return true;
     }
-    
+
     // Similarity check (simple for now, could use embeddings later)
     const normalizedNew = tweetText.toLowerCase().trim();
     for (const recent of recentTweets) {
       const normalizedRecent = recent.toLowerCase().trim();
-      
+
       // Check if tweets are very similar (e.g., only differ by punctuation)
       if (normalizedNew === normalizedRecent) {
         return true;
       }
-      
+
       // Check if one is a substring of the other (common with truncation)
       if (normalizedNew.includes(normalizedRecent) || normalizedRecent.includes(normalizedNew)) {
         return true;
       }
     }
-    
+
     return false;
-  } catch (error) {
-    logger.debug("Error checking for duplicate tweets:", error);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.debug("Error checking for duplicate tweets:", err.message);
     return false;
   }
-} 
+}

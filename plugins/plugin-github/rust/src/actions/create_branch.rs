@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Create Branch Action
 
 use async_trait::async_trait;
@@ -77,5 +78,10 @@ impl GitHubAction for CreateBranchAction {
         ))
     }
 }
+
+
+
+
+
 
 

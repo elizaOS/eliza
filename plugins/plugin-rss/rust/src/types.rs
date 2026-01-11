@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! RSS Plugin Type Definitions
 //!
 //! Types for RSS/Atom feed parsing and subscription management.
@@ -200,6 +201,7 @@ pub struct FeedSubscriptionMetadata {
     pub last_item_count: usize,
 }
 
+
 impl Default for FeedSubscriptionMetadata {
     fn default() -> Self {
         Self {
@@ -245,6 +247,7 @@ pub struct RssConfig {
     pub user_agent: String,
 }
 
+
 impl Default for RssConfig {
     fn default() -> Self {
         Self {
@@ -288,5 +291,7 @@ impl RssConfig {
         self
     }
 }
+
+
 
 

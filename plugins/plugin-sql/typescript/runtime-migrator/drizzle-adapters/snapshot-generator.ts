@@ -1,12 +1,24 @@
 import { is, SQL } from "drizzle-orm";
+import { getTableConfig, type PgColumn, PgDialect, PgTable } from "drizzle-orm/pg-core";
 import { extendedHash } from "../crypto-utils";
-import {
-  getTableConfig,
-  type PgColumn,
-  PgDialect,
-  PgTable,
-} from "drizzle-orm/pg-core";
-import type { SchemaSnapshot } from "../types";
+import type {
+  IndexColumn,
+  SchemaCheckConstraint,
+  SchemaColumn,
+  SchemaEnum,
+  SchemaForeignKey,
+  SchemaIndex,
+  SchemaPrimaryKey,
+  SchemaSnapshot,
+  SchemaTable,
+  SchemaUniqueConstraint,
+} from "../types";
+
+// Drizzle schema type - an object mapping table names to PgTable instances
+type DrizzleSchema = Record<string, unknown>;
+
+// Array element type for building SQL arrays
+type ArrayElement = number | bigint | boolean | string | Date | object | ArrayElement[];
 
 /**
  * Utility functions from Drizzle's code
@@ -19,7 +31,7 @@ function isPgArrayType(sqlType: string): boolean {
   return sqlType.match(/.*\[\d*\].*|.*\[\].*/g) !== null;
 }
 
-function buildArrayString(array: any[], sqlType: string): string {
+function buildArrayString(array: ArrayElement[], sqlType: string): string {
   sqlType = sqlType.split("[")[0];
   const values = array
     .map((value) => {
@@ -48,7 +60,7 @@ function buildArrayString(array: any[], sqlType: string): string {
   return `{${values}}`;
 }
 
-const sqlToStr = (sql: SQL, casing: any) => {
+const sqlToStr = (sql: SQL, casing: string | undefined) => {
   return sql.toQuery({
     escapeName: () => {
       throw new Error("we don't support params for `sql` default values");
@@ -59,19 +71,19 @@ const sqlToStr = (sql: SQL, casing: any) => {
     escapeString: () => {
       throw new Error("we don't support params for `sql` default values");
     },
-    casing,
-  }).sql;
+    casing: casing ? (casing as unknown as Record<string, string>) : undefined,
+  } as unknown as Parameters<SQL["toQuery"]>[0]).sql;
 };
 
 /**
  * Extract Drizzle tables from a schema object
  */
-function extractTablesFromSchema(schema: any): PgTable[] {
+function extractTablesFromSchema(schema: DrizzleSchema): PgTable[] {
   const tables: PgTable[] = [];
 
   // Iterate through all exports in the schema
   const exports = Object.values(schema);
-  exports.forEach((t: any) => {
+  exports.forEach((t: unknown) => {
     // Check if it's a PgTable using Drizzle's is() function
     if (is(t, PgTable)) {
       tables.push(t);
@@ -85,11 +97,11 @@ function extractTablesFromSchema(schema: any): PgTable[] {
  * Generate a snapshot from a Drizzle schema
  * This is a port of Drizzle's pgSerializer.generatePgSnapshot
  */
-export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
+export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSnapshot> {
   const dialect = new PgDialect({ casing: undefined });
-  const tables: any = {};
-  const schemas: any = {};
-  const enums: any = {};
+  const tables: Record<string, SchemaTable> = {};
+  const schemas: Record<string, string> = {};
+  const enums: Record<string, SchemaEnum> = {};
 
   // Extract tables from schema
   const pgTables = extractTablesFromSchema(schema);
@@ -108,12 +120,29 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       checks,
     } = config;
 
-    const columnsObject: any = {};
-    const indexesObject: any = {};
-    const foreignKeysObject: any = {};
-    const primaryKeysObject: any = {};
-    const uniqueConstraintObject: any = {};
-    const checksObject: any = {};
+    const columnsObject: Record<string, SchemaColumn> = {};
+    const indexesObject: Record<string, SchemaIndex> = {};
+    const foreignKeysObject: Record<string, SchemaForeignKey> = {};
+    const primaryKeysObject: Record<string, SchemaPrimaryKey> = {};
+    const uniqueConstraintObject: Record<string, SchemaUniqueConstraint> = {};
+    const checksObject: Record<string, SchemaCheckConstraint> = {};
+
+    // Drizzle column config interface
+    interface ColumnConfig {
+      uniqueName?: string;
+      uniqueType?: string;
+    }
+
+    // Extended PgColumn with config
+    interface PgColumnWithConfig {
+      name: string;
+      notNull: boolean;
+      primary: boolean;
+      getSQLType: () => string;
+      default?: unknown;
+      isUnique?: boolean;
+      config?: ColumnConfig;
+    }
 
     // Process columns - EXACT copy of Drizzle's logic
     columns.forEach((column: PgColumn) => {
@@ -123,7 +152,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       const sqlType = column.getSQLType();
       const sqlTypeLowered = sqlType.toLowerCase();
 
-      const columnToSet: any = {
+      const columnToSet: SchemaColumn = {
         name,
         type: sqlType,
         primaryKey,
@@ -148,15 +177,12 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
               } else {
                 columnToSet.default = `'${column.default.toISOString()}'`;
               }
-            } else if (
-              isPgArrayType(sqlTypeLowered) &&
-              Array.isArray(column.default)
-            ) {
-              columnToSet.default = `'${buildArrayString(column.default, sqlTypeLowered)}'`;
+            } else if (isPgArrayType(sqlTypeLowered) && Array.isArray(column.default)) {
+              columnToSet.default = `'${buildArrayString(column.default as ArrayElement[], sqlTypeLowered)}'`;
             } else {
               // Should do for all types
               // columnToSet.default = `'${column.default}'::${sqlTypeLowered}`;
-              columnToSet.default = column.default;
+              columnToSet.default = column.default as string | number | boolean;
             }
           }
         }
@@ -165,22 +191,28 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       // Handle column-level unique constraints
       // IMPORTANT: Check isUnique, not just uniqueName presence!
       // Drizzle sets uniqueName for all columns but only unique ones should have constraints
-      const columnConfig = (column as any).config;
-      if ((column as any).isUnique && columnConfig && columnConfig.uniqueName) {
+      const columnWithConfig = column as unknown as PgColumnWithConfig;
+      const columnConfig = columnWithConfig.config;
+      if (columnWithConfig.isUnique && columnConfig && columnConfig.uniqueName) {
         uniqueConstraintObject[columnConfig.uniqueName] = {
           name: columnConfig.uniqueName,
           columns: [name],
-          nullsNotDistinct:
-            columnConfig.uniqueType === "not distinct",
+          nullsNotDistinct: columnConfig.uniqueType === "not distinct",
         };
       }
 
       columnsObject[name] = columnToSet;
     });
 
+    // Drizzle primary key interface
+    interface DrizzlePrimaryKey {
+      columns: Array<{ name: string }>;
+      getName: () => string;
+    }
+
     // Process primary keys
-    primaryKeys.forEach((pk: any) => {
-      const columnNames = pk.columns.map((c: any) => c.name);
+    primaryKeys.forEach((pk: DrizzlePrimaryKey) => {
+      const columnNames = pk.columns.map((c) => c.name);
       const name = pk.getName();
 
       primaryKeysObject[name] = {
@@ -189,9 +221,16 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       };
     });
 
+    // Drizzle unique constraint interface
+    interface DrizzleUniqueConstraint {
+      columns: Array<{ name: string }>;
+      name?: string;
+      nullsNotDistinct?: boolean;
+    }
+
     // Process unique constraints
-    uniqueConstraints && uniqueConstraints.forEach((unq: any) => {
-      const columnNames = unq.columns.map((c: any) => c.name);
+    uniqueConstraints?.forEach((unq: DrizzleUniqueConstraint) => {
+      const columnNames = unq.columns.map((c) => c.name);
       const name = unq.name || `${tableName}_${columnNames.join("_")}_unique`;
 
       uniqueConstraintObject[name] = {
@@ -201,15 +240,28 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       };
     });
 
+    // Drizzle foreign key interfaces
+    interface DrizzleForeignKeyReference {
+      columns: Array<{ name: string }>;
+      foreignColumns: Array<{ name: string }>;
+      foreignTable: PgTable;
+    }
+
+    interface DrizzleForeignKey {
+      reference: () => DrizzleForeignKeyReference;
+      getName: () => string;
+      onDelete?: string;
+      onUpdate?: string;
+    }
+
     // Process foreign keys - includes both explicit foreignKeys and inline references
     // Drizzle's getTableConfig automatically collects inline .references() into foreignKeys
-    foreignKeys.forEach((fk: any) => {
+    foreignKeys.forEach((fk: DrizzleForeignKey) => {
       const reference = fk.reference();
-      const columnsFrom = reference.columns.map((it: any) => it.name);
-      const columnsTo = reference.foreignColumns.map((it: any) => it.name);
+      const columnsFrom = reference.columns.map((it) => it.name);
+      const columnsTo = reference.foreignColumns.map((it) => it.name);
       const tableTo = getTableConfig(reference.foreignTable).name;
-      const schemaTo =
-        getTableConfig(reference.foreignTable).schema || "public";
+      const schemaTo = getTableConfig(reference.foreignTable).schema || "public";
 
       const name = fk.getName();
 
@@ -226,23 +278,43 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       };
     });
 
+    // Drizzle index interfaces
+    interface DrizzleIndexConfig {
+      order?: string;
+      nulls?: string;
+    }
+
+    interface DrizzleIndexColumn {
+      name: string;
+      indexConfig?: DrizzleIndexConfig;
+    }
+
+    interface DrizzleIndex {
+      config: {
+        columns: Array<DrizzleIndexColumn | SQL>;
+        name?: string;
+        unique?: boolean;
+        method?: string;
+      };
+    }
+
     // Process indexes
-    indexes.forEach((idx: any) => {
-      const columns = idx.config.columns;
-      const indexColumns = columns.map((col: any) => {
+    (indexes as unknown as DrizzleIndex[]).forEach((idx: DrizzleIndex) => {
+      const indexCols = idx.config.columns;
+      const indexColumns: IndexColumn[] = indexCols.map((col) => {
         if (is(col, SQL)) {
           return {
             expression: dialect.sqlToQuery(col).sql,
             isExpression: true,
           };
         } else {
-          const indexCol: any = {
+          const indexCol: IndexColumn = {
             expression: col.name,
             isExpression: false,
             asc: col.indexConfig && col.indexConfig.order === "asc",
           };
           // Only add nulls if explicitly specified in the config
-          if (col.indexConfig && col.indexConfig.nulls) {
+          if (col.indexConfig?.nulls) {
             indexCol.nulls = col.indexConfig.nulls;
           }
           return indexCol;
@@ -250,8 +322,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       });
 
       const name =
-        idx.config.name ||
-        `${tableName}_${indexColumns.map((c: any) => c.expression).join("_")}_index`;
+        idx.config.name || `${tableName}_${indexColumns.map((c) => c.expression).join("_")}_index`;
 
       indexesObject[name] = {
         name,
@@ -261,9 +332,15 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       };
     });
 
+    // Drizzle check constraint interface
+    interface DrizzleCheck {
+      name: string;
+      value: SQL;
+    }
+
     // Process check constraints
     if (checks) {
-      checks.forEach((check: any) => {
+      checks.forEach((check: DrizzleCheck) => {
         const checkName = check.name;
         checksObject[checkName] = {
           name: checkName,
@@ -339,7 +416,7 @@ export function createEmptySnapshot(): SchemaSnapshot {
  */
 export function hasChanges(
   previousSnapshot: SchemaSnapshot | null,
-  currentSnapshot: SchemaSnapshot,
+  currentSnapshot: SchemaSnapshot
 ): boolean {
   // If no previous snapshot, there are definitely changes
   if (!previousSnapshot) {

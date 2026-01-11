@@ -1,6 +1,6 @@
 import { TwitterApi } from "twitter-api-v2";
-import { Profile } from "./profile";
 import type { TwitterAuthProvider, TwitterOAuth1Provider } from "./auth-providers/types";
+import type { Profile } from "./profile";
 
 /**
  * Twitter API v2 authentication using developer credentials
@@ -16,13 +16,13 @@ export class TwitterAuth {
   constructor(private readonly provider: TwitterAuthProvider) {
     // Backward-compatible behavior: legacy OAuth1 provider is considered authenticated immediately,
     // matching previous eager client initialization semantics.
-    if (typeof (provider as any).getOAuth1Credentials === "function") {
+    if ("getOAuth1Credentials" in provider && typeof provider.getOAuth1Credentials === "function") {
       this.authenticated = true;
     }
   }
 
   private isOAuth1Provider(p: TwitterAuthProvider): p is TwitterOAuth1Provider {
-    return typeof (p as any).getOAuth1Credentials === "function";
+    return "getOAuth1Credentials" in p && typeof p.getOAuth1Credentials === "function";
   }
 
   private async ensureClientInitialized(): Promise<void> {

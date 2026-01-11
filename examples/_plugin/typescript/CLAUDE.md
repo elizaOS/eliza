@@ -22,7 +22,7 @@ elizaOS plugins follow a **component-based architecture** with four main types:
 
 ```typescript
 export class ExampleService extends Service {
-  static serviceType = 'example';
+  static serviceType = "example";
   private apiClient: ExternalAPI;
 
   constructor() {
@@ -54,25 +54,31 @@ export class ExampleService extends Service {
 **Purpose:** Handle user commands and generate responses
 
 ```typescript
-import { Action, ActionResult } from '@elizaos/core';
+import { Action, ActionResult } from "@elizaos/core";
 
 export const exampleAction: Action = {
-  name: 'EXAMPLE_ACTION',
-  description: 'Processes user requests for example functionality',
+  name: "EXAMPLE_ACTION",
+  description: "Processes user requests for example functionality",
 
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text.toLowerCase();
-    return text.includes('example') || text.includes('demo');
+    return text.includes("example") || text.includes("demo");
   },
 
-  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
+  handler: async (
+    runtime,
+    message,
+    state,
+    options,
+    callback,
+  ): Promise<ActionResult> => {
     try {
-      const service = runtime.getService<ExampleService>('example');
+      const service = runtime.getService<ExampleService>("example");
       const result = await service.processData(message.content);
 
       await callback({
         text: `Here's your result: ${result}`,
-        action: 'EXAMPLE_ACTION',
+        action: "EXAMPLE_ACTION",
       });
 
       return {
@@ -83,23 +89,24 @@ export const exampleAction: Action = {
           processedAt: Date.now(),
         },
         data: {
-          actionName: 'EXAMPLE_ACTION',
+          actionName: "EXAMPLE_ACTION",
           result,
         },
       };
     } catch (error) {
       await callback({
-        text: 'I encountered an error processing your request.',
+        text: "I encountered an error processing your request.",
         error: true,
       });
 
       return {
         success: false,
-        text: 'Failed to process request',
+        text: "Failed to process request",
         error: error instanceof Error ? error : new Error(String(error)),
         data: {
-          actionName: 'EXAMPLE_ACTION',
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          actionName: "EXAMPLE_ACTION",
+          errorMessage:
+            error instanceof Error ? error.message : "Unknown error",
         },
       };
     }
@@ -128,11 +135,11 @@ export const exampleAction: Action = {
 ```typescript
 export const exampleProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory) => {
-    const service = runtime.getService<ExampleService>('example');
+    const service = runtime.getService<ExampleService>("example");
     const status = await service.getStatus();
 
     return `Current system status: ${status.state}
-Available features: ${status.features.join(', ')}
+Available features: ${status.features.join(", ")}
 Last updated: ${status.timestamp}`;
   },
 };
@@ -151,7 +158,7 @@ Last updated: ${status.timestamp}`;
 
 ```typescript
 export const exampleEvaluator: Evaluator = {
-  name: 'EXAMPLE_EVALUATOR',
+  name: "EXAMPLE_EVALUATOR",
 
   evaluate: async (runtime: IAgentRuntime, message: Memory, state?: any) => {
     // Analyze the interaction outcome
@@ -160,8 +167,8 @@ export const exampleEvaluator: Evaluator = {
     if (success) {
       // Store successful patterns
       await runtime.addMemory({
-        content: { text: 'Successful example interaction pattern' },
-        type: 'learning',
+        content: { text: "Successful example interaction pattern" },
+        type: "learning",
       });
     }
 
@@ -196,15 +203,15 @@ src/
 
 ```typescript
 // src/index.ts
-import { Plugin } from '@elizaos/core';
-import { ExampleService } from './services';
-import { exampleAction } from './actions';
-import { exampleProvider } from './providers';
-import { exampleEvaluator } from './evaluators';
+import { Plugin } from "@elizaos/core";
+import { ExampleService } from "./services";
+import { exampleAction } from "./actions";
+import { exampleProvider } from "./providers";
+import { exampleEvaluator } from "./evaluators";
 
 export const plugin: Plugin = {
-  name: 'example-plugin',
-  description: 'Demonstrates elizaOS plugin patterns',
+  name: "example-plugin",
+  description: "Demonstrates elizaOS plugin patterns",
 
   // Core components
   services: [ExampleService],
@@ -218,8 +225,8 @@ export const plugin: Plugin = {
 export default plugin;
 
 // Re-export components for external use
-export { ExampleService } from './services';
-export * from './types';
+export { ExampleService } from "./services";
+export * from "./types";
 ```
 
 ## 🚀 Development Workflow
@@ -259,13 +266,13 @@ This automatically:
 
 ```typescript
 // tests/actions.test.ts
-import { describe, it, expect } from 'bun:test';
-import { exampleAction } from '../src/actions';
+import { describe, it, expect } from "bun:test";
+import { exampleAction } from "../src/actions";
 
-describe('ExampleAction', () => {
-  it('validates trigger words correctly', async () => {
+describe("ExampleAction", () => {
+  it("validates trigger words correctly", async () => {
     const mockMessage = {
-      content: { text: 'show me an example' },
+      content: { text: "show me an example" },
     };
 
     const isValid = await exampleAction.validate(mockRuntime, mockMessage);
@@ -299,27 +306,33 @@ describe('ExampleAction', () => {
 
 ```typescript
 export const robustAction: Action = {
-  name: 'ROBUST_ACTION',
-  description: 'Demonstrates robust error handling',
+  name: "ROBUST_ACTION",
+  description: "Demonstrates robust error handling",
 
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     // Validate user input before processing
     const text = message.content.text.toLowerCase();
-    return text.includes('process') || text.includes('execute');
+    return text.includes("process") || text.includes("execute");
   },
 
-  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
+  handler: async (
+    runtime,
+    message,
+    state,
+    options,
+    callback,
+  ): Promise<ActionResult> => {
     try {
-      const service = runtime.getService<YourService>('yourService');
+      const service = runtime.getService<YourService>("yourService");
       if (!service) {
-        throw new Error('Service not available');
+        throw new Error("Service not available");
       }
 
       const result = await service.performOperation();
 
       await callback({
         text: `Operation completed: ${result}`,
-        action: 'ROBUST_ACTION',
+        action: "ROBUST_ACTION",
       });
 
       return {
@@ -330,12 +343,14 @@ export const robustAction: Action = {
           processedAt: Date.now(),
         },
         data: {
-          actionName: 'ROBUST_ACTION',
+          actionName: "ROBUST_ACTION",
           result,
         },
       };
     } catch (error) {
-      console.error(`Action failed: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(
+        `Action failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
 
       await callback({
         text: "I'm sorry, I couldn't complete that request. Please try again.",
@@ -344,10 +359,10 @@ export const robustAction: Action = {
 
       return {
         success: false,
-        text: 'Failed to complete operation',
+        text: "Failed to complete operation",
         error: error instanceof Error ? error : new Error(String(error)),
         data: {
-          actionName: 'ROBUST_ACTION',
+          actionName: "ROBUST_ACTION",
           errorMessage: error instanceof Error ? error.message : String(error),
         },
       };
@@ -373,16 +388,16 @@ export class RobustService extends Service {
       await this.client.authenticate();
       this.isInitialized = true;
 
-      console.log('Service initialized successfully');
+      console.log("Service initialized successfully");
     } catch (error) {
-      console.error('Service initialization failed:', error);
+      console.error("Service initialization failed:", error);
       throw error;
     }
   }
 
   private ensureInitialized(): void {
     if (!this.isInitialized) {
-      throw new Error('Service not initialized');
+      throw new Error("Service not initialized");
     }
   }
 

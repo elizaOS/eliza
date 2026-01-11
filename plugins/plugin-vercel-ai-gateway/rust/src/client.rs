@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Vercel AI Gateway API Client
 //!
 //! Async HTTP client for Vercel AI Gateway API interactions using reqwest.
@@ -164,7 +165,7 @@ impl GatewayClient {
         if let Some(system) = &params.system {
             messages.push(ChatMessage {
                 role: "system".to_string(),
-                content: Some(system.clone()),
+                content: Some(system.to_string()),
             });
         }
         messages.push(ChatMessage {

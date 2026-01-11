@@ -1,4 +1,4 @@
-declare module 'whisper-node' {
+declare module "whisper-node" {
   interface WhisperOptions {
     language?: string;
     gen_file_txt?: boolean;

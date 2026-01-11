@@ -6,11 +6,11 @@ A multi-language Todo task management plugin for elizaOS, providing comprehensiv
 
 This plugin is implemented in three languages for maximum flexibility:
 
-| Language | Package | Registry |
-|----------|---------|----------|
-| TypeScript | `@elizaos/plugin-todo` | npm |
-| Rust | `elizaos-plugin-todo` | crates.io |
-| Python | `elizaos-plugin-todo` | PyPI |
+| Language   | Package                | Registry  |
+| ---------- | ---------------------- | --------- |
+| TypeScript | `@elizaos/plugin-todo` | npm       |
+| Rust       | `elizaos-plugin-todo`  | crates.io |
+| Python     | `elizaos-plugin-todo`  | PyPI      |
 
 All implementations share the same API design, behavior, and feature set.
 
@@ -78,7 +78,7 @@ from elizaos_plugin_todo import TodoClient, TodoConfig, TaskType, Priority
 
 async def main():
     config = TodoConfig.from_env()
-    
+
     async with TodoClient(config) as client:
         todo = await client.create_todo(
             name="Finish report",
@@ -121,16 +121,16 @@ pip install elizaos-plugin-todo
 
 All implementations use the same environment variables:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | No | - | Database connection string |
-| `TODO_ENABLE_REMINDERS` | No | `true` | Enable reminder notifications |
-| `TODO_REMINDER_INTERVAL_MS` | No | `30000` | Reminder check interval (ms) |
-| `TODO_MIN_REMINDER_INTERVAL_MS` | No | `1800000` | Min interval between reminders |
-| `TODO_QUIET_HOURS_START` | No | `22` | Quiet hours start (hour 0-23) |
-| `TODO_QUIET_HOURS_END` | No | `8` | Quiet hours end (hour 0-23) |
-| `TODO_CACHE_MAX_SIZE` | No | `1000` | Maximum cache entries |
-| `TODO_ENABLE_ROLODEX` | No | `true` | Enable rolodex integration |
+| Variable                        | Required | Default   | Description                    |
+| ------------------------------- | -------- | --------- | ------------------------------ |
+| `DATABASE_URL`                  | No       | -         | Database connection string     |
+| `TODO_ENABLE_REMINDERS`         | No       | `true`    | Enable reminder notifications  |
+| `TODO_REMINDER_INTERVAL_MS`     | No       | `30000`   | Reminder check interval (ms)   |
+| `TODO_MIN_REMINDER_INTERVAL_MS` | No       | `1800000` | Min interval between reminders |
+| `TODO_QUIET_HOURS_START`        | No       | `22`      | Quiet hours start (hour 0-23)  |
+| `TODO_QUIET_HOURS_END`          | No       | `8`       | Quiet hours end (hour 0-23)    |
+| `TODO_CACHE_MAX_SIZE`           | No       | `1000`    | Maximum cache entries          |
+| `TODO_ENABLE_ROLODEX`           | No       | `true`    | Enable rolodex integration     |
 
 ## Task Types
 
@@ -175,44 +175,44 @@ await client.create_todo({
 
 ### Actions (TypeScript/elizaOS)
 
-| Action | Description |
-|--------|-------------|
-| `CREATE_TODO` | Create a new task from natural language |
-| `COMPLETE_TODO` | Mark a task as completed |
-| `UPDATE_TODO` | Modify an existing task |
-| `CANCEL_TODO` | Delete a task |
-| `CONFIRM_TODO` | Confirm pending task creation |
+| Action          | Description                             |
+| --------------- | --------------------------------------- |
+| `CREATE_TODO`   | Create a new task from natural language |
+| `COMPLETE_TODO` | Mark a task as completed                |
+| `UPDATE_TODO`   | Modify an existing task                 |
+| `CANCEL_TODO`   | Delete a task                           |
+| `CONFIRM_TODO`  | Confirm pending task creation           |
 
 ### Client Methods
 
-| Method | Description |
-|--------|-------------|
-| `create_todo(params)` | Create a new todo |
-| `get_todo(id)` | Get a todo by ID |
-| `get_todos(filters)` | Get todos with optional filters |
-| `complete_todo(id)` | Mark a todo as completed |
-| `uncomplete_todo(id)` | Mark a todo as not completed |
-| `update_todo(id, updates)` | Update a todo |
-| `delete_todo(id)` | Delete a todo |
-| `get_overdue_todos(filters)` | Get overdue tasks |
-| `reset_daily_todos(filters)` | Reset daily tasks for new day |
-| `add_tags(id, tags)` | Add tags to a todo |
-| `remove_tags(id, tags)` | Remove tags from a todo |
+| Method                       | Description                     |
+| ---------------------------- | ------------------------------- |
+| `create_todo(params)`        | Create a new todo               |
+| `get_todo(id)`               | Get a todo by ID                |
+| `get_todos(filters)`         | Get todos with optional filters |
+| `complete_todo(id)`          | Mark a todo as completed        |
+| `uncomplete_todo(id)`        | Mark a todo as not completed    |
+| `update_todo(id, updates)`   | Update a todo                   |
+| `delete_todo(id)`            | Delete a todo                   |
+| `get_overdue_todos(filters)` | Get overdue tasks               |
+| `reset_daily_todos(filters)` | Reset daily tasks for new day   |
+| `add_tags(id, tags)`         | Add tags to a todo              |
+| `remove_tags(id, tags)`      | Remove tags from a todo         |
 
 ### Types
 
 ```typescript
 // Task Types
-type TaskType = 'daily' | 'one-off' | 'aspirational';
+type TaskType = "daily" | "one-off" | "aspirational";
 
 // Priority Levels
-type Priority = 1 | 2 | 3 | 4;  // 1 = Critical, 4 = Low
+type Priority = 1 | 2 | 3 | 4; // 1 = Critical, 4 = Low
 
 // Recurring Patterns
-type RecurringPattern = 'daily' | 'weekly' | 'monthly';
+type RecurringPattern = "daily" | "weekly" | "monthly";
 
 // Notification Types
-type NotificationType = 'overdue' | 'upcoming' | 'daily' | 'system';
+type NotificationType = "overdue" | "upcoming" | "daily" | "system";
 ```
 
 ## Project Structure
@@ -300,6 +300,7 @@ cd python && ruff check . && ruff format .
 ### TodoReminderService
 
 Handles automatic reminder notifications:
+
 - Checks for overdue tasks
 - Sends upcoming task reminders
 - Daily task reminders at configured times
@@ -308,6 +309,7 @@ Handles automatic reminder notifications:
 ### NotificationManager
 
 Manages notification delivery:
+
 - In-app notifications
 - Browser notifications (when enabled)
 - Quiet hours respect
@@ -316,6 +318,7 @@ Manages notification delivery:
 ### CacheManager
 
 High-performance caching:
+
 - LRU eviction
 - TTL support
 - Pattern-based operations
@@ -329,32 +332,34 @@ When `@elizaos/plugin-rolodex` is available, reminders are sent across all conne
 
 ```typescript
 // Reminder automatically sent to Discord, Telegram, etc.
-const reminderService = runtime.getService('TODO_REMINDER');
+const reminderService = runtime.getService("TODO_REMINDER");
 await reminderService.checkTasksForReminders();
 ```
 
 ### Database
 
 Requires `@elizaos/plugin-sql` for persistent storage. Schema includes:
+
 - `todos` table for task data
 - `todo_tags` table for tag associations
 
 ## Error Handling
 
 All implementations follow a **fail-fast** philosophy:
+
 - Input validation with clear error messages
 - No silent failures
 - Descriptive error types
 
 ### Error Types
 
-| Error | Description |
-|-------|-------------|
-| `ValidationError` | Invalid input parameters |
-| `NotFoundError` | Todo not found |
-| `DatabaseError` | Database operation failed |
-| `ConfigError` | Invalid configuration |
-| `ReminderError` | Reminder operation failed |
+| Error               | Description                  |
+| ------------------- | ---------------------------- |
+| `ValidationError`   | Invalid input parameters     |
+| `NotFoundError`     | Todo not found               |
+| `DatabaseError`     | Database operation failed    |
+| `ConfigError`       | Invalid configuration        |
+| `ReminderError`     | Reminder operation failed    |
 | `NotificationError` | Notification delivery failed |
 
 ## License

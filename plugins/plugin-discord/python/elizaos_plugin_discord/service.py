@@ -4,13 +4,11 @@ Discord service implementation.
 Provides the main DiscordService for connecting to Discord and handling events.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Callable, Awaitable, Optional
+from collections.abc import Awaitable, Callable
 
 import discord
-from discord import Intents, Message, Member, VoiceState, RawReactionActionEvent
+from discord import Intents, Member, Message, RawReactionActionEvent, VoiceState
 
 from elizaos_plugin_discord.config import DiscordConfig
 from elizaos_plugin_discord.error import (
@@ -62,7 +60,7 @@ class DiscordService:
             config: Discord configuration.
         """
         self._config = config
-        self._client: Optional[discord.Client] = None
+        self._client: discord.Client | None = None
         self._is_running = False
         self._event_callbacks: list[EventCallback] = []
         self._message_callbacks: list[MessageCallback] = []
@@ -439,7 +437,7 @@ class DiscordService:
         # Split message if too long
         parts = split_message(content)
 
-        last_message: Optional[discord.Message] = None
+        last_message: discord.Message | None = None
         for part in parts:
             last_message = await channel.send(part)
 
@@ -479,7 +477,7 @@ class DiscordService:
         # Split message if too long
         parts = split_message(content)
 
-        last_message: Optional[discord.Message] = None
+        last_message: discord.Message | None = None
         for part in parts:
             last_message = await user.send(part)
 
@@ -527,7 +525,7 @@ class DiscordService:
         # Split message if too long
         parts = split_message(content)
 
-        last_message: Optional[discord.Message] = None
+        last_message: discord.Message | None = None
         for i, part in enumerate(parts):
             if i == 0:
                 last_message = await message.reply(part)

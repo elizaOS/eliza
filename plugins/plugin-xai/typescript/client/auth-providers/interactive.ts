@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
+import * as readline from "node:readline";
 import { URL } from "node:url";
 import { logger } from "@elizaos/core";
-import * as readline from "node:readline";
 
 export interface OAuthCallbackResult {
   code: string;
@@ -16,7 +16,7 @@ export async function promptForRedirectedUrl(promptText: string): Promise<string
   if (!canPrompt()) {
     throw new Error(
       "Twitter OAuth requires interactive setup, but stdin is not a TTY. " +
-        "Re-run with an interactive terminal or use a runtime with persistent settings storage.",
+        "Re-run with an interactive terminal or use a runtime with persistent settings storage."
     );
   }
 
@@ -25,8 +25,7 @@ export async function promptForRedirectedUrl(promptText: string): Promise<string
     output: process.stdout,
   });
 
-  const question = (q: string) =>
-    new Promise<string>((resolve) => rl.question(q, resolve));
+  const question = (q: string) => new Promise<string>((resolve) => rl.question(q, resolve));
 
   try {
     const answer = await question(promptText);
@@ -39,12 +38,12 @@ export async function promptForRedirectedUrl(promptText: string): Promise<string
 export async function waitForLoopbackCallback(
   redirectUri: string,
   expectedState: string,
-  timeoutMs = 5 * 60 * 1000,
+  timeoutMs = 5 * 60 * 1000
 ): Promise<OAuthCallbackResult> {
   const url = new URL(redirectUri);
   if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
     throw new Error(
-      `Redirect URI must be loopback (127.0.0.1/localhost) to use local callback server; got ${url.hostname}`,
+      `Redirect URI must be loopback (127.0.0.1/localhost) to use local callback server; got ${url.hostname}`
     );
   }
 
@@ -116,16 +115,16 @@ export async function waitForLoopbackCallback(
     }, timeoutMs);
 
     server.on("close", () => clearTimeout(timer));
-    server.once("error", (err: any) => {
+    server.once("error", (err: unknown) => {
       // EADDRINUSE / EACCES / etc. should fail fast instead of hanging until timeout.
-      const code = err?.code ? ` (${err.code})` : "";
-      finish(new Error(`OAuth callback server error${code}: ${err?.message ?? String(err)}`));
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code ? ` (${errorObj.code})` : "";
+      finish(new Error(`OAuth callback server error${code}: ${errorObj?.message ?? String(err)}`));
     });
     server.listen(port, url.hostname, () => {
       logger.info(
-        `Twitter OAuth callback server listening on http://${url.hostname}:${port}${path}`,
+        `Twitter OAuth callback server listening on http://${url.hostname}:${port}${path}`
       );
     });
   });
 }
-

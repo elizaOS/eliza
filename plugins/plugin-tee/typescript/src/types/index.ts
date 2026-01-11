@@ -151,9 +151,7 @@ export function parseTeeMode(mode: string): TeeMode {
     case "PRODUCTION":
       return TeeMode.PRODUCTION;
     default:
-      throw new Error(
-        `Invalid TEE_MODE: ${mode}. Must be one of: LOCAL, DOCKER, PRODUCTION`
-      );
+      throw new Error(`Invalid TEE_MODE: ${mode}. Must be one of: LOCAL, DOCKER, PRODUCTION`);
   }
 }
 
@@ -168,5 +166,3 @@ export function parseTeeVendor(vendor: string): TeeVendor {
       throw new Error(`Invalid TEE_VENDOR: ${vendor}. Must be one of: phala`);
   }
 }
-
-

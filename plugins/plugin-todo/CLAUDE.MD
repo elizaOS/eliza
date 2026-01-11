@@ -36,8 +36,8 @@ Source Tree:
 
 ```mdc
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
 Never ask the user to run a command. Always run the command yourself.
@@ -53,7 +53,7 @@ If you think you're finished, you probably aren't. Review and make sure all test
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-types-reference.mdc`:
 
-```mdc
+````mdc
 ---
 description:
 globs:
@@ -92,7 +92,7 @@ interface Character {
     post?: string[];
   };
 }
-```
+````
 
 ### Agent
 
@@ -107,8 +107,8 @@ interface Agent extends Character {
 }
 
 enum AgentStatus {
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
+  ACTIVE = "active",
+  INACTIVE = "inactive",
 }
 ```
 
@@ -146,7 +146,11 @@ interface Provider {
   dynamic?: boolean; // Only used when requested
   position?: number; // Execution order
   private?: boolean; // Must be explicitly included
-  get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<ProviderResult>;
+  get: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+  ) => Promise<ProviderResult>;
 }
 
 interface ProviderResult {
@@ -241,9 +245,9 @@ type World = {
 };
 
 enum Role {
-  OWNER = 'OWNER',
-  ADMIN = 'ADMIN',
-  NONE = 'NONE',
+  OWNER = "OWNER",
+  ADMIN = "ADMIN",
+  NONE = "NONE",
 }
 ```
 
@@ -265,16 +269,16 @@ type Room = {
 };
 
 enum ChannelType {
-  SELF = 'SELF',
-  DM = 'DM',
-  GROUP = 'GROUP',
-  VOICE_DM = 'VOICE_DM',
-  VOICE_GROUP = 'VOICE_GROUP',
-  FEED = 'FEED',
-  THREAD = 'THREAD',
-  WORLD = 'WORLD',
-  FORUM = 'FORUM',
-  API = 'API', // @deprecated
+  SELF = "SELF",
+  DM = "DM",
+  GROUP = "GROUP",
+  VOICE_DM = "VOICE_DM",
+  VOICE_GROUP = "VOICE_GROUP",
+  FEED = "FEED",
+  THREAD = "THREAD",
+  WORLD = "WORLD",
+  FORUM = "FORUM",
+  API = "API", // @deprecated
 }
 ```
 
@@ -344,14 +348,14 @@ interface Content {
 
 ```typescript
 enum MemoryType {
-  DOCUMENT = 'document',
-  FRAGMENT = 'fragment',
-  MESSAGE = 'message',
-  DESCRIPTION = 'description',
-  CUSTOM = 'custom',
+  DOCUMENT = "document",
+  FRAGMENT = "fragment",
+  MESSAGE = "message",
+  DESCRIPTION = "description",
+  CUSTOM = "custom",
 }
 
-type MemoryScope = 'shared' | 'private' | 'room';
+type MemoryScope = "shared" | "private" | "room";
 
 interface BaseMetadata {
   type: MemoryTypeAlias;
@@ -446,22 +450,22 @@ Available model categories.
 
 ```typescript
 const ModelType = {
-  TEXT_SMALL: 'TEXT_SMALL',
-  TEXT_LARGE: 'TEXT_LARGE',
-  TEXT_EMBEDDING: 'TEXT_EMBEDDING',
-  TEXT_TOKENIZER_ENCODE: 'TEXT_TOKENIZER_ENCODE',
-  TEXT_TOKENIZER_DECODE: 'TEXT_TOKENIZER_DECODE',
-  TEXT_REASONING_SMALL: 'REASONING_SMALL',
-  TEXT_REASONING_LARGE: 'REASONING_LARGE',
-  TEXT_COMPLETION: 'TEXT_COMPLETION',
-  IMAGE: 'IMAGE',
-  IMAGE_DESCRIPTION: 'IMAGE_DESCRIPTION',
-  TRANSCRIPTION: 'TRANSCRIPTION',
-  TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
-  AUDIO: 'AUDIO',
-  VIDEO: 'VIDEO',
-  OBJECT_SMALL: 'OBJECT_SMALL',
-  OBJECT_LARGE: 'OBJECT_LARGE',
+  TEXT_SMALL: "TEXT_SMALL",
+  TEXT_LARGE: "TEXT_LARGE",
+  TEXT_EMBEDDING: "TEXT_EMBEDDING",
+  TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
+  TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
+  TEXT_REASONING_SMALL: "REASONING_SMALL",
+  TEXT_REASONING_LARGE: "REASONING_LARGE",
+  TEXT_COMPLETION: "TEXT_COMPLETION",
+  IMAGE: "IMAGE",
+  IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
+  TRANSCRIPTION: "TRANSCRIPTION",
+  TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+  AUDIO: "AUDIO",
+  VIDEO: "VIDEO",
+  OBJECT_SMALL: "OBJECT_SMALL",
+  OBJECT_LARGE: "OBJECT_LARGE",
 } as const;
 ```
 
@@ -474,23 +478,23 @@ Standard event types across platforms.
 ```typescript
 enum EventType {
   // World events
-  WORLD_JOINED = 'WORLD_JOINED',
-  WORLD_CONNECTED = 'WORLD_CONNECTED',
-  WORLD_LEFT = 'WORLD_LEFT',
+  WORLD_JOINED = "WORLD_JOINED",
+  WORLD_CONNECTED = "WORLD_CONNECTED",
+  WORLD_LEFT = "WORLD_LEFT",
 
   // Entity events
-  ENTITY_JOINED = 'ENTITY_JOINED',
-  ENTITY_LEFT = 'ENTITY_LEFT',
-  ENTITY_UPDATED = 'ENTITY_UPDATED',
+  ENTITY_JOINED = "ENTITY_JOINED",
+  ENTITY_LEFT = "ENTITY_LEFT",
+  ENTITY_UPDATED = "ENTITY_UPDATED",
 
   // Room events
-  ROOM_JOINED = 'ROOM_JOINED',
-  ROOM_LEFT = 'ROOM_LEFT',
+  ROOM_JOINED = "ROOM_JOINED",
+  ROOM_LEFT = "ROOM_LEFT",
 
   // Message events
-  MESSAGE_RECEIVED = 'MESSAGE_RECEIVED',
-  MESSAGE_SENT = 'MESSAGE_SENT',
-  MESSAGE_DELETED = 'MESSAGE_DELETED',
+  MESSAGE_RECEIVED = "MESSAGE_RECEIVED",
+  MESSAGE_SENT = "MESSAGE_SENT",
+  MESSAGE_DELETED = "MESSAGE_DELETED",
 
   // Other events...
 }
@@ -506,7 +510,10 @@ Extension interface for agent functionality.
 interface Plugin {
   name: string;
   description: string;
-  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+  init?: (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
   config?: { [key: string]: any };
   services?: (typeof Service)[];
   componentTypes?: {
@@ -557,24 +564,24 @@ interface IAgentRuntime extends IDatabaseAdapter {
     message: Memory,
     includeList?: string[],
     onlyInclude?: boolean,
-    skipCache?: boolean
+    skipCache?: boolean,
   ): Promise<State>;
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any
+    params: Omit<ModelParamsMap[T], "runtime"> | any,
   ): Promise<R>;
   processActions(
     message: Memory,
     responses: Memory[],
     state?: State,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void>;
   evaluate(
     message: Memory,
     state?: State,
     didRespond?: boolean,
     callback?: HandlerCallback,
-    responses?: Memory[]
+    responses?: Memory[],
   ): Promise<Evaluator[] | null>;
 
   // Task methods
@@ -598,7 +605,7 @@ type Handler = (
   state?: State,
   options?: { [key: string]: unknown },
   callback?: HandlerCallback,
-  responses?: Memory[]
+  responses?: Memory[],
 ) => Promise<ActionResult | void | boolean | null>;
 ```
 
@@ -615,7 +622,11 @@ type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
 Validation function type.
 
 ```typescript
-type Validator = (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
+type Validator = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+) => Promise<boolean>;
 ```
 
 ## Primitive Types
@@ -664,20 +675,20 @@ Available service categories.
 
 ```typescript
 const ServiceType = {
-  UNKNOWN: 'UNKNOWN',
-  TRANSCRIPTION: 'transcription',
-  VIDEO: 'video',
-  BROWSER: 'browser',
-  PDF: 'pdf',
-  REMOTE_FILES: 'aws_s3',
-  WEB_SEARCH: 'web_search',
-  EMAIL: 'email',
-  TEE: 'tee',
-  TASK: 'task',
-  WALLET: 'wallet',
-  LP_POOL: 'lp_pool',
-  TOKEN_DATA: 'token_data',
-  TUNNEL: 'tunnel',
+  UNKNOWN: "UNKNOWN",
+  TRANSCRIPTION: "transcription",
+  VIDEO: "video",
+  BROWSER: "browser",
+  PDF: "pdf",
+  REMOTE_FILES: "aws_s3",
+  WEB_SEARCH: "web_search",
+  EMAIL: "email",
+  TEE: "tee",
+  TASK: "task",
+  WALLET: "wallet",
+  LP_POOL: "lp_pool",
+  TOKEN_DATA: "token_data",
+  TUNNEL: "tunnel",
 } as const;
 ```
 
@@ -691,7 +702,7 @@ const ServiceType = {
 6. **Generics**: Use generics for reusable patterns
 7. **Type Guards**: Create type guards for runtime checks
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-worlds.mdc`:
 
@@ -730,15 +741,15 @@ interface World {
     [key: string]: unknown; // Additional metadata
   };
 }
-```
+````
 
 ### Role System
 
 ```typescript
 enum Role {
-  OWNER = 'OWNER', // Full control, can assign any roles
-  ADMIN = 'ADMIN', // Administrative capabilities
-  NONE = 'NONE', // Standard participant
+  OWNER = "OWNER", // Full control, can assign any roles
+  ADMIN = "ADMIN", // Administrative capabilities
+  NONE = "NONE", // Standard participant
 }
 ```
 
@@ -749,9 +760,9 @@ enum Role {
 ```typescript
 // Basic world creation
 const worldId = await runtime.createWorld({
-  name: 'My Project Space',
+  name: "My Project Space",
   agentId: runtime.agentId,
-  serverId: 'external-server-id',
+  serverId: "external-server-id",
   metadata: {
     ownership: {
       ownerId: ownerEntityId,
@@ -762,7 +773,7 @@ const worldId = await runtime.createWorld({
 // Ensure world exists (create if not)
 await runtime.ensureWorldExists({
   id: worldId,
-  name: 'My Project Space',
+  name: "My Project Space",
   agentId: runtime.agentId,
   serverId: serverId,
 });
@@ -780,10 +791,10 @@ const allWorlds = await runtime.getAllWorlds();
 // Update world properties
 await runtime.updateWorld({
   id: worldId,
-  name: 'Updated Name',
+  name: "Updated Name",
   metadata: {
     ...world.metadata,
-    customProperty: 'value',
+    customProperty: "value",
   },
 });
 ```
@@ -800,14 +811,14 @@ world.metadata.roles[entityId] = Role.ADMIN;
 await runtime.updateWorld(world);
 
 // Check permissions
-import { canModifyRole } from '@elizaos/core';
+import { canModifyRole } from "@elizaos/core";
 
 if (canModifyRole(userRole, targetRole, newRole)) {
   // Allow role change
 }
 
 // Find worlds where user is owner
-import { findWorldForOwner } from '@elizaos/core';
+import { findWorldForOwner } from "@elizaos/core";
 const userWorld = await findWorldForOwner(runtime, entityId);
 ```
 
@@ -816,16 +827,16 @@ const userWorld = await findWorldForOwner(runtime, entityId);
 Worlds support configurable settings:
 
 ```typescript
-import { getWorldSettings, updateWorldSettings } from '@elizaos/core';
+import { getWorldSettings, updateWorldSettings } from "@elizaos/core";
 
 // Get settings
 const settings = await getWorldSettings(runtime, serverId);
 
 // Update settings
 settings.MY_SETTING = {
-  name: 'My Setting',
-  description: 'User-facing description',
-  value: 'setting-value',
+  name: "My Setting",
+  description: "User-facing description",
+  value: "setting-value",
   required: false,
 };
 
@@ -853,14 +864,14 @@ const room = {
 ```typescript
 // World-related events
 enum EventType {
-  WORLD_JOINED = 'WORLD_JOINED',
-  WORLD_CONNECTED = 'WORLD_CONNECTED',
-  WORLD_LEFT = 'WORLD_LEFT',
+  WORLD_JOINED = "WORLD_JOINED",
+  WORLD_CONNECTED = "WORLD_CONNECTED",
+  WORLD_LEFT = "WORLD_LEFT",
 }
 
 // Handle world events in plugin
 const plugin: Plugin = {
-  name: 'world-handler',
+  name: "world-handler",
   events: {
     [EventType.WORLD_JOINED]: [
       async (payload: WorldPayload) => {
@@ -886,7 +897,7 @@ const world = {
   name: discord.guild.name,
   serverId: discord.guild.id,
   metadata: {
-    platform: 'discord',
+    platform: "discord",
     memberCount: discord.guild.memberCount,
   },
 };
@@ -930,7 +941,7 @@ const dmWorld = {
 - **Private Spaces**: DM conversations with personal settings
 - **Collaborative Tools**: Project spaces with role-based access
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-actions.mdc`:
 
@@ -965,7 +976,7 @@ interface Action {
   };
   estimateCost?: (params: any) => number; // Optional cost estimation
 }
-```
+````
 
 ### Action Chaining
 
@@ -997,13 +1008,13 @@ interface ActionContext {
 
 ```typescript
 const customAction: Action = {
-  name: 'CUSTOM_ACTION',
-  similes: ['ALTERNATE_NAME'],
-  description: 'Action description',
+  name: "CUSTOM_ACTION",
+  similes: ["ALTERNATE_NAME"],
+  description: "Action description",
 
   validate: async (runtime, message, state) => {
     // Return true if action is valid for this message
-    return message.content.text?.includes('trigger');
+    return message.content.text?.includes("trigger");
   },
 
   handler: async (runtime, message, state, options, callback) => {
@@ -1014,31 +1025,31 @@ const customAction: Action = {
     const previousData = context?.previousResults?.[0]?.data;
 
     // Use working memory
-    context?.updateMemory?.('step', 1);
+    context?.updateMemory?.("step", 1);
 
     // Send response
     await callback({
-      text: 'Response text',
-      thought: 'Internal reasoning',
-      actions: ['CUSTOM_ACTION'],
+      text: "Response text",
+      thought: "Internal reasoning",
+      actions: ["CUSTOM_ACTION"],
     });
 
     // Return result for next action
     return {
-      values: { processedData: 'value' },
-      data: { internal: 'state' },
+      values: { processedData: "value" },
+      data: { internal: "state" },
     };
   },
 
   examples: [
     [
-      { name: '{{user}}', content: { text: 'trigger text' } },
+      { name: "{{user}}", content: { text: "trigger text" } },
       {
-        name: '{{agent}}',
+        name: "{{agent}}",
         content: {
-          text: 'Response',
-          thought: 'Reasoning',
-          actions: ['CUSTOM_ACTION'],
+          text: "Response",
+          thought: "Reasoning",
+          actions: ["CUSTOM_ACTION"],
         },
       },
     ],
@@ -1051,19 +1062,19 @@ const customAction: Action = {
 ```typescript
 // First action fetches data
 const fetchAction: Action = {
-  name: 'FETCH_DATA',
+  name: "FETCH_DATA",
   handler: async (runtime, message, state, options, callback) => {
     const data = await fetchExternalData();
     return {
       values: { fetchedData: data },
-      data: { source: 'api' },
+      data: { source: "api" },
     };
   },
 };
 
 // Second action processes data
 const processAction: Action = {
-  name: 'PROCESS_DATA',
+  name: "PROCESS_DATA",
   handler: async (runtime, message, state, options, callback) => {
     const context = options?.context as ActionContext;
     const data = context?.previousResults?.[0]?.values?.fetchedData;
@@ -1072,7 +1083,7 @@ const processAction: Action = {
 
     await callback({
       text: `Processed ${processed.length} items`,
-      thought: 'Data processing complete',
+      thought: "Data processing complete",
     });
 
     return { values: { processed } };
@@ -1115,14 +1126,14 @@ const processAction: Action = {
 - **PROCESS_DATA**: Data transformation
 - **MULTI_STEP**: Complex workflows
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-kiss.mdc`:
 
 ```mdc
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
 KEEP IT SIMPLE!
@@ -1136,11 +1147,11 @@ Don't create new files unless you need to. Revise existing files whenever possib
 IF you write docs, store them in the /docs folder
 
 If you save logs, store them in the /logs folder
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-e2e-testing.mdc`:
 
-```mdc
+````mdc
 ---
 title: ElizaOS End-to-End Runtime Testing Guide
 alwaysApply: true
@@ -1184,29 +1195,29 @@ export interface TestSuite {
   /** An array of TestCase objects */
   tests: TestCase[];
 }
-```
+````
 
 ## Test Structure
 
 ### 1. Test Suite Class Implementation
 
 ```typescript
-import { type TestSuite } from '@elizaos/core';
+import { type TestSuite } from "@elizaos/core";
 
 export class MyTestSuite implements TestSuite {
-  name = 'my-test-suite';
-  description = 'E2E tests for my feature';
+  name = "my-test-suite";
+  description = "E2E tests for my feature";
 
   tests = [
     {
-      name: 'Test case 1',
+      name: "Test case 1",
       fn: async (runtime: any) => {
         // Test implementation
         // Throw error on failure
       },
     },
     {
-      name: 'Test case 2',
+      name: "Test case 2",
       fn: async (runtime: any) => {
         // Another test
       },
@@ -1224,11 +1235,15 @@ For projects with multiple test files:
 
 ```typescript
 // src/__tests__/e2e/index.ts
-import projectTestSuite from './project';
-import featureTestSuite from './feature';
-import integrationTestSuite from './integration';
+import projectTestSuite from "./project";
+import featureTestSuite from "./feature";
+import integrationTestSuite from "./integration";
 
-export const testSuites = [projectTestSuite, featureTestSuite, integrationTestSuite];
+export const testSuites = [
+  projectTestSuite,
+  featureTestSuite,
+  integrationTestSuite,
+];
 
 export default testSuites;
 ```
@@ -1562,13 +1577,13 @@ npm run test:coverage
 Use console.log for test progress:
 
 ```typescript
-console.log('Starting my feature test...');
-console.log('✓ Step 1 completed');
-console.log('✓ Step 2 completed');
-console.log('✅ My feature test PASSED');
+console.log("Starting my feature test...");
+console.log("✓ Step 1 completed");
+console.log("✓ Step 2 completed");
+console.log("✅ My feature test PASSED");
 
 // On failure
-console.error('❌ My feature test FAILED:', error);
+console.error("❌ My feature test FAILED:", error);
 ```
 
 ## Best Practices
@@ -1612,7 +1627,7 @@ await new Promise((resolve) => setTimeout(resolve, 1000));
 ### Testing Multiple Interactions
 
 ```typescript
-for (const greeting of ['hello', 'hi', 'hey']) {
+for (const greeting of ["hello", "hi", "hey"]) {
   const roomId = `test-${Date.now()}-${Math.random()}`;
 
   await runtime.processMessage({
@@ -1641,7 +1656,7 @@ ElizaOS E2E tests provide a powerful way to verify agent behavior in a real runt
 
 Remember: **No mocks, real runtime, throw errors to fail.**
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-dev-workflow.mdc`:
 
@@ -1671,14 +1686,13 @@ graph TD
     I -->|No| J[Design New Implementation];
     J --> F;
     I -->|Yes| K[Complete];
-```
+````
 
 ## Step 1: Research Existing Codebase
 
 Before proposing any changes, thoroughly understand the current system.
 
 - **Codebase Analysis**:
-
   - Use `grep`, `codebase_search`, and file exploration to understand existing patterns
   - Map out all dependencies and related files
   - Identify existing services, actions, providers, and plugins
@@ -1698,14 +1712,12 @@ Create a comprehensive PRD that goes beyond basic requirements.
 ### PRD Components:
 
 - **Real-World Scenarios**:
-
   - Document ALL actual usage paths users will take
   - Include edge cases and error scenarios
   - Provide concrete examples with real data
   - Consider different user personas and their needs
 
 - **UX Review**:
-
   - How can we make the experience more automated?
   - How can we make it more agentic (self-directed)?
   - How can we make it more passive (requiring less user intervention)?
@@ -1713,7 +1725,6 @@ Create a comprehensive PRD that goes beyond basic requirements.
   - How can we exceed user expectations?
 
 - **Technical Requirements**:
-
   - Performance requirements
   - Security considerations
   - Scalability needs
@@ -1731,7 +1742,6 @@ Design multiple approaches and select the optimal solution.
 ### Implementation Planning Process:
 
 1. **Design 3+ Different Approaches**:
-
    - Document each approach comprehensively
    - List ALL files that will be:
      - Added (with complete file paths)
@@ -1740,7 +1750,6 @@ Design multiple approaches and select the optimal solution.
    - Detail what content changes in each file
 
 2. **Evaluate Each Approach**:
-
    - **Strengths**: What makes this approach good?
    - **Weaknesses**: What are the limitations?
    - **Risks**: What could go wrong?
@@ -1811,35 +1820,35 @@ Write complete, production-ready code with comprehensive testing.
 // ✅ DO: Write complete implementations
 export async function processTransaction(
   runtime: IAgentRuntime,
-  params: TransactionParams
+  params: TransactionParams,
 ): Promise<TransactionResult> {
   // Full validation logic
   if (!params.amount || params.amount <= 0) {
-    throw new Error('Invalid transaction amount');
+    throw new Error("Invalid transaction amount");
   }
 
   // Complete implementation with error handling
   try {
-    const service = runtime.getService('transaction-service');
+    const service = runtime.getService("transaction-service");
     const result = await service.process(params);
 
     // Full logging and monitoring
-    runtime.logger.info('Transaction processed', {
+    runtime.logger.info("Transaction processed", {
       transactionId: result.id,
       amount: params.amount,
     });
 
     return result;
   } catch (error) {
-    runtime.logger.error('Transaction failed', { error, params });
-    throw new TransactionError('Failed to process transaction', error);
+    runtime.logger.error("Transaction failed", { error, params });
+    throw new TransactionError("Failed to process transaction", error);
   }
 }
 
 // ❌ DON'T: Write stubs or incomplete code
 export async function processTransaction(params: any): Promise<any> {
   // TODO: Implement this
-  throw new Error('Not implemented');
+  throw new Error("Not implemented");
 }
 ```
 
@@ -1870,7 +1879,6 @@ Run comprehensive testing with real-world conditions.
    ```
 
 2. **Focus on Meaningful Tests**:
-
    - ✅ Test that services register correctly
    - ✅ Test that actions execute with real data
    - ✅ Test error handling and edge cases
@@ -1890,21 +1898,18 @@ Assume the implementation has issues and actively find them.
 ### Review Process:
 
 1. **Assume It's Wrong**:
-
    - What assumptions did we make that could be incorrect?
    - What edge cases did we miss?
    - What could break in production?
    - How could users misuse this feature?
 
 2. **Document All Issues**:
-
    - List every potential problem
    - Identify performance bottlenecks
    - Find security vulnerabilities
    - Note UX friction points
 
 3. **Create Improvement Plan**:
-
    - Prioritize issues by severity
    - Design solutions for each problem
    - Update implementation plan
@@ -1949,14 +1954,14 @@ After the critical review, loop through these steps until the code is production
 
 This workflow ensures that every contribution to ElizaOS is thoroughly researched, well-planned, properly implemented, and rigorously tested. By following these steps and maintaining high standards throughout, we create robust, user-friendly features that enhance the platform's capabilities while maintaining stability and performance.
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos_api_plugins_core.mdc`:
 
 ```mdc
 ---
 description: ElizaOS Core Plugin Architecture, how plugins are implemented
-globs: 
+globs:
 alwaysApply: false
 ---
 > You are an expert in the ElizaOS plugin architecture, focusing on core concepts, lifecycle, and best practices for creating robust and interoperable plugins.
@@ -1997,7 +2002,7 @@ graph TD
     end
 
     Q[External HTTP Request] --> N;
-```
+````
 
 ## The `Plugin` Interface: The Heart of a Plugin
 
@@ -2013,11 +2018,14 @@ export interface Plugin {
 
   // An initialization function called once when the plugin is registered.
   // Use this for setup, validation, and connecting to services.
-  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+  init?: (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
 
   // A list of other plugin *names* that must be loaded before this one.
   dependencies?: string[];
-  
+
   // A priority number for ordering. Higher numbers load first within the dependency graph.
   priority?: number;
 
@@ -2034,7 +2042,7 @@ export interface Plugin {
 
   // Evaluators run *after* an interaction to process the outcome (e.g., for memory or learning).
   evaluators?: Evaluator[];
-  
+
   // Model handlers provide implementations for different AI model types (e.g., text generation).
   models?: { [key: string]: (...args: any[]) => Promise<any> };
 
@@ -2048,12 +2056,12 @@ export interface Plugin {
 
   // Custom HTTP routes to expose a web API or UI from the agent server.
   routes?: Route[];
-  
+
   // A suite of E2E or unit tests, runnable via `elizaos test`.
   tests?: TestSuite[];
 
   // Default configuration values for the plugin.
-  config?: { [key:string]: any };
+  config?: { [key: string]: any };
 }
 ```
 
@@ -2062,7 +2070,7 @@ export interface Plugin {
 The `AgentRuntime` manages a sophisticated plugin lifecycle to ensure stability and correct ordering.
 
 1.  **Dependency Resolution**: When `runtime.initialize()` is called, it first looks at the `plugins` array in the agent's `Character` definition. It then recursively scans the `dependencies` array of each of these plugins, building a complete graph of all required plugins.
-2.  **Topological Sort**: The runtime performs a topological sort on the dependency graph. This creates a linear loading order where every plugin is guaranteed to be loaded *after* its dependencies have been loaded. `priority` is used as a secondary sorting factor.
+2.  **Topological Sort**: The runtime performs a topological sort on the dependency graph. This creates a linear loading order where every plugin is guaranteed to be loaded _after_ its dependencies have been loaded. `priority` is used as a secondary sorting factor.
 3.  **Registration**: The runtime iterates through the sorted list and calls `runtime.registerPlugin()` for each plugin.
 4.  **Initialization (`init`)**: The `init` function of the plugin is the first thing called within `registerPlugin`. This is the critical "setup" phase. It is the only place you can be certain that all dependency plugins (and their services) are available.
 5.  **Component Registration**: After `init` completes successfully, the runtime registers all other capabilities (`actions`, `providers`, etc.) from the plugin object, making them available to the rest of the system.
@@ -2074,7 +2082,9 @@ export class AgentRuntime implements IAgentRuntime {
   // ...
   async initialize(): Promise<void> {
     // 1. & 2. Resolve dependencies and get the final, sorted list of plugins to load
-    const pluginsToLoad = await this.resolvePluginDependencies(this.characterPlugins);
+    const pluginsToLoad = await this.resolvePluginDependencies(
+      this.characterPlugins,
+    );
 
     // 3. Iterate over the resolved list and register each plugin
     for (const plugin of pluginsToLoad) {
@@ -2090,12 +2100,12 @@ export class AgentRuntime implements IAgentRuntime {
     if (plugin.init) {
       await plugin.init(plugin.config || {}, this);
     }
-    
+
     // Then, register all other components
     if (plugin.services) {
-        for (const service of plugin.services) {
-            await this.registerService(service);
-        }
+      for (const service of plugin.services) {
+        await this.registerService(service);
+      }
     }
     if (plugin.actions) {
       for (const action of plugin.actions) {
@@ -2110,7 +2120,9 @@ export class AgentRuntime implements IAgentRuntime {
 ## Deep Dive: Plugin Components
 
 ### Services
+
 Services are singleton classes that manage long-running processes or state. They are the backbone for complex plugins.
+
 - **Definition**: A `Service` is a class with a static `start` method.
 - **Lifecycle**: `Service.start(runtime)` is called during plugin registration. The returned instance is stored in `runtime.services`.
 - **Access**: Other components access services via `runtime.getService<T>('service_name')`.
@@ -2119,7 +2131,7 @@ Services are singleton classes that manage long-running processes or state. They
 ```typescript
 // ✅ DO: Define a service for stateful logic.
 export class MyCacheService extends Service {
-  public static serviceType = 'my_cache'; // Unique identifier
+  public static serviceType = "my_cache"; // Unique identifier
   private cache = new Map<string, any>();
 
   // The start method is the factory for the service instance
@@ -2128,17 +2140,27 @@ export class MyCacheService extends Service {
     runtime.logger.info("MyCacheService started.");
     return instance;
   }
-  
-  public get(key: string) { return this.cache.get(key); }
-  public set(key: string, value: any) { this.cache.set(key, value); }
-  
-  async stop(): Promise<void> { this.cache.clear(); }
-  public get capabilityDescription(): string { return "An in-memory cache."; }
+
+  public get(key: string) {
+    return this.cache.get(key);
+  }
+  public set(key: string, value: any) {
+    this.cache.set(key, value);
+  }
+
+  async stop(): Promise<void> {
+    this.cache.clear();
+  }
+  public get capabilityDescription(): string {
+    return "An in-memory cache.";
+  }
 }
 ```
 
 ### Actions
-Actions define what an agent *can do*. They are the primary way to give an agent capabilities.
+
+Actions define what an agent _can do_. They are the primary way to give an agent capabilities.
+
 - **Definition**: An `Action` object contains a `name`, `description`, `validate` function, and `handler` function.
 - **Lifecycle**: After the LLM selects an action, its `handler` is executed.
 - **Use Case**: `send-email`, `transfer-funds`, `query-database`.
@@ -2146,12 +2168,12 @@ Actions define what an agent *can do*. They are the primary way to give an agent
 ```typescript
 // ✅ DO: Define a clear, purposeful action.
 export const sendTweetAction: Action = {
-  name: 'send-tweet',
-  description: 'Posts a tweet to the connected Twitter account.',
+  name: "send-tweet",
+  description: "Posts a tweet to the connected Twitter account.",
   // The handler function contains the core logic.
   async handler(runtime, message, state) {
-    const twitterService = runtime.getService<TwitterService>('twitter');
-    if (!twitterService) throw new Error('Twitter service not available.');
+    const twitterService = runtime.getService<TwitterService>("twitter");
+    if (!twitterService) throw new Error("Twitter service not available.");
 
     const textToTweet = message.content.text;
     const tweetId = await twitterService.postTweet(textToTweet);
@@ -2159,14 +2181,16 @@ export const sendTweetAction: Action = {
   },
   // The validate function determines if the action should be available to the LLM.
   async validate(runtime, message, state) {
-    const twitterService = runtime.getService('twitter');
+    const twitterService = runtime.getService("twitter");
     return !!twitterService; // Only available if the twitter service is running.
-  }
+  },
 };
 ```
 
 ### Providers
+
 Providers inject contextual information into the agent's "state" before the LLM makes a decision. They are the agent's senses.
+
 - **Definition**: A `Provider` object has a `name` and a `get` function.
 - **Lifecycle**: The `get` function of all registered (non-private) providers is called by `runtime.composeState()` before invoking the main LLM.
 - **Use Case**: `CURRENT_TIME`, `RECENT_MESSAGES`, `ACCOUNT_BALANCE`, `WORLD_STATE`.
@@ -2174,38 +2198,41 @@ Providers inject contextual information into the agent's "state" before the LLM 
 ```typescript
 // ✅ DO: Create providers for dynamic context.
 export const accountBalanceProvider: Provider = {
-  name: 'ACCOUNT_BALANCE',
+  name: "ACCOUNT_BALANCE",
   // The 'get' function returns text and structured data to be injected into the prompt.
   async get(runtime, message, state) {
-    const solanaService = runtime.getService<SolanaService>('solana');
-    if (!solanaService) return { text: '' };
+    const solanaService = runtime.getService<SolanaService>("solana");
+    if (!solanaService) return { text: "" };
 
     const balance = await solanaService.getBalance();
     const text = `The current wallet balance is ${balance} SOL.`;
 
     return {
       text: `[ACCOUNT BALANCE]\n${text}\n[/ACCOUNT BALANCE]`,
-      values: { // This data can be used by other components
+      values: {
+        // This data can be used by other components
         solBalance: balance,
-      }
+      },
     };
   },
 };
 ```
 
 ## Best Practices
+
 - **Explicit Dependencies**: Always declare `dependencies` to ensure correct load order. The runtime does not guarantee service availability otherwise.
 - **Fail Fast**: In your `init` function, check for required configuration (e.g., API keys via `runtime.getSetting()`) and throw an error if something critical is missing. This prevents the agent from running in a broken state.
 - **Scoped Logic**: Keep your plugin focused. A single plugin should manage one core piece of functionality (e.g., one API integration, one protocol).
 - **Use Services for State**: Avoid global variables. If you need to maintain state (like a connection object, cache, or user session), encapsulate it within a `Service`.
 
 ## References
+
 - [Core Types (`Plugin`, `Action`, `Provider` etc.)](mdc:packages/typescript/src/types.ts)
 - [Agent Runtime Implementation](mdc:packages/typescript/src/runtime.ts)
 - [Example: SQL Plugin](mdc:packages/plugin-sql/src/index.ts)
 - [Example: Bootstrap Plugin](mdc:packages/plugin-message-handling/src/index.ts)
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-rooms.mdc`:
 
@@ -2236,22 +2263,22 @@ interface Room {
   worldId?: UUID; // Parent world ID
   metadata?: Record<string, unknown>;
 }
-```
+````
 
 ### Channel Types
 
 ```typescript
 enum ChannelType {
-  SELF = 'SELF', // Messages to self
-  DM = 'DM', // Direct messages
-  GROUP = 'GROUP', // Group messages
-  VOICE_DM = 'VOICE_DM', // Voice direct messages
-  VOICE_GROUP = 'VOICE_GROUP', // Voice channels
-  FEED = 'FEED', // Social media feed
-  THREAD = 'THREAD', // Threaded conversation
-  WORLD = 'WORLD', // World channel
-  FORUM = 'FORUM', // Forum discussion
-  API = 'API', // Legacy - use DM or GROUP
+  SELF = "SELF", // Messages to self
+  DM = "DM", // Direct messages
+  GROUP = "GROUP", // Group messages
+  VOICE_DM = "VOICE_DM", // Voice direct messages
+  VOICE_GROUP = "VOICE_GROUP", // Voice channels
+  FEED = "FEED", // Social media feed
+  THREAD = "THREAD", // Threaded conversation
+  WORLD = "WORLD", // World channel
+  FORUM = "FORUM", // Forum discussion
+  API = "API", // Legacy - use DM or GROUP
 }
 ```
 
@@ -2262,22 +2289,22 @@ enum ChannelType {
 ```typescript
 // Create new room
 const roomId = await runtime.createRoom({
-  name: 'general-chat',
-  source: 'discord',
+  name: "general-chat",
+  source: "discord",
   type: ChannelType.GROUP,
-  channelId: 'external-channel-id',
-  serverId: 'external-server-id',
+  channelId: "external-channel-id",
+  serverId: "external-server-id",
   worldId: parentWorldId,
 });
 
 // Ensure room exists
 await runtime.ensureRoomExists({
   id: roomId,
-  name: 'general-chat',
-  source: 'discord',
+  name: "general-chat",
+  source: "discord",
   type: ChannelType.GROUP,
-  channelId: 'external-channel-id',
-  serverId: 'external-server-id',
+  channelId: "external-channel-id",
+  serverId: "external-server-id",
   worldId: parentWorldId,
 });
 ```
@@ -2294,10 +2321,10 @@ const worldRooms = await runtime.getRooms(worldId);
 // Update room properties
 await runtime.updateRoom({
   id: roomId,
-  name: 'renamed-channel',
+  name: "renamed-channel",
   metadata: {
     ...room.metadata,
-    customProperty: 'value',
+    customProperty: "value",
   },
 });
 
@@ -2329,13 +2356,13 @@ const entityRooms = await runtime.getRoomsForParticipant(entityId);
 
 ```typescript
 // Participant states
-type ParticipantState = 'FOLLOWED' | 'MUTED' | null;
+type ParticipantState = "FOLLOWED" | "MUTED" | null;
 
 // Get participant state
 const state = await runtime.getParticipantUserState(roomId, entityId);
 
 // Set participant state
-await runtime.setParticipantUserState(roomId, entityId, 'FOLLOWED');
+await runtime.setParticipantUserState(roomId, entityId, "FOLLOWED");
 ```
 
 | State      | Description                                         |
@@ -2356,14 +2383,14 @@ const messageId = await runtime.createMemory(
     agentId: runtime.agentId,
     roomId: roomId,
     content: {
-      text: 'Hello, world!',
-      source: 'discord',
+      text: "Hello, world!",
+      source: "discord",
     },
     metadata: {
-      type: 'message',
+      type: "message",
     },
   },
-  'messages'
+  "messages",
 );
 
 // Retrieve recent messages
@@ -2379,15 +2406,15 @@ const messages = await runtime.getMemories({
 ```typescript
 // Room-related events
 enum EventType {
-  ROOM_JOINED = 'ROOM_JOINED',
-  ROOM_LEFT = 'ROOM_LEFT',
-  MESSAGE_RECEIVED = 'MESSAGE_RECEIVED',
-  MESSAGE_SENT = 'MESSAGE_SENT',
+  ROOM_JOINED = "ROOM_JOINED",
+  ROOM_LEFT = "ROOM_LEFT",
+  MESSAGE_RECEIVED = "MESSAGE_RECEIVED",
+  MESSAGE_SENT = "MESSAGE_SENT",
 }
 
 // Handle room events
 const plugin: Plugin = {
-  name: 'room-handler',
+  name: "room-handler",
   events: {
     [EventType.ROOM_JOINED]: [
       async (payload) => {
@@ -2413,17 +2440,25 @@ Agents can follow rooms to actively participate:
 ```typescript
 // Follow room action
 const followRoomAction: Action = {
-  name: 'FOLLOW_ROOM',
+  name: "FOLLOW_ROOM",
   handler: async (runtime, message) => {
-    await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'FOLLOWED');
+    await runtime.setParticipantUserState(
+      message.roomId,
+      runtime.agentId,
+      "FOLLOWED",
+    );
   },
 };
 
 // Unfollow room action
 const unfollowRoomAction: Action = {
-  name: 'UNFOLLOW_ROOM',
+  name: "UNFOLLOW_ROOM",
   handler: async (runtime, message) => {
-    await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
+    await runtime.setParticipantUserState(
+      message.roomId,
+      runtime.agentId,
+      null,
+    );
   },
 };
 ```
@@ -2437,11 +2472,11 @@ Rooms map to external platform structures:
 await runtime.ensureConnection({
   entityId: userEntityId,
   roomId: roomId,
-  userName: 'username',
-  name: 'display-name',
-  source: 'discord',
-  channelId: 'external-channel-id',
-  serverId: 'external-server-id',
+  userName: "username",
+  name: "display-name",
+  source: "discord",
+  channelId: "external-channel-id",
+  serverId: "external-server-id",
   type: ChannelType.GROUP,
   worldId: parentWorldId,
 });
@@ -2464,8 +2499,8 @@ await runtime.ensureConnection({
 ```typescript
 const dmRoom = {
   id: createUniqueUuid(runtime, `${user1}-${user2}`),
-  name: 'Direct Message',
-  source: 'discord',
+  name: "Direct Message",
+  source: "discord",
   type: ChannelType.DM,
   worldId: userWorldId,
 };
@@ -2476,8 +2511,8 @@ const dmRoom = {
 ```typescript
 const voiceRoom = {
   id: createUniqueUuid(runtime, voiceChannelId),
-  name: 'Voice Chat',
-  source: 'discord',
+  name: "Voice Chat",
+  source: "discord",
   type: ChannelType.VOICE_GROUP,
   worldId: serverWorldId,
   metadata: {
@@ -2493,13 +2528,13 @@ const voiceRoom = {
 const feedRoom = {
   id: createUniqueUuid(runtime, `${userId}-feed`),
   name: `${userName}'s Feed`,
-  source: 'twitter',
+  source: "twitter",
   type: ChannelType.FEED,
   worldId: userWorldId,
 };
 ```
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-api-server.mdc`:
 
@@ -2526,7 +2561,7 @@ class AgentServer {
   socketIO: SocketIOServer; // Socket.IO server
   database: DatabaseAdapter; // Database connection
 }
-```
+````
 
 ### Initialization Flow
 
@@ -3010,12 +3045,12 @@ Body: { content: { [key: string]: string } }
 ### Connection
 
 ```javascript
-const socket = io('http://localhost:3000', {
-  transports: ['websocket'],
+const socket = io("http://localhost:3000", {
+  transports: ["websocket"],
 });
 
-socket.on('connection_established', (data) => {
-  console.log('Connected:', data.socketId);
+socket.on("connection_established", (data) => {
+  console.log("Connected:", data.socketId);
 });
 ```
 
@@ -3048,16 +3083,16 @@ socket.emit('2', {  // SEND_MESSAGE = 2
 
 ```javascript
 // Message broadcast
-socket.on('messageBroadcast', (data) => {
+socket.on("messageBroadcast", (data) => {
   // { senderId, senderName, text, channelId, serverId, createdAt, source, id }
 });
 
 // Channel events
-socket.on('channel_joined', (data) => {});
-socket.on('messageComplete', (data) => {});
-socket.on('messageDeleted', (data) => {});
-socket.on('channelCleared', (data) => {});
-socket.on('controlMessage', (data) => {
+socket.on("channel_joined", (data) => {});
+socket.on("messageComplete", (data) => {});
+socket.on("messageDeleted", (data) => {});
+socket.on("channelCleared", (data) => {});
+socket.on("controlMessage", (data) => {
   // { action: 'enable_input' | 'disable_input', channelId }
 });
 ```
@@ -3091,10 +3126,10 @@ Handles internal message distribution between agents:
 
 ```typescript
 // Listens for events
-internalMessageBus.on('new_message', handler);
-internalMessageBus.on('server_agent_update', handler);
-internalMessageBus.on('message_deleted', handler);
-internalMessageBus.on('channel_cleared', handler);
+internalMessageBus.on("new_message", handler);
+internalMessageBus.on("server_agent_update", handler);
+internalMessageBus.on("message_deleted", handler);
+internalMessageBus.on("channel_cleared", handler);
 ```
 
 ### File Upload Security
@@ -3143,12 +3178,12 @@ Plugins can register custom HTTP routes:
 ```typescript
 plugin.routes = [
   {
-    path: '/my-route',
-    type: 'GET',
+    path: "/my-route",
+    type: "GET",
     public: true,
-    name: 'My Panel',
+    name: "My Panel",
     handler: (req, res, runtime) => {
-      res.json({ data: 'response' });
+      res.json({ data: "response" });
     },
   },
 ];
@@ -3169,14 +3204,14 @@ Access via: `/api/my-route?agentId=UUID`
 9. **Monitor rate limits** to avoid blocking
 10. **Use authentication** in production environments
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos_cli_project.mdc`:
 
 ```mdc
 ---
 description: ElizaOS CLI Project and Project Loading
-globs: 
+globs:
 alwaysApply: false
 ---
 > You are an expert in the ElizaOS CLI, focusing on project management, configuration, and development workflows. You produce clear, comprehensive documentation and examples using the latest CLI features and best practices.
@@ -3193,7 +3228,7 @@ graph TD
     C --> F{Database?};
     F -->|PGLite| G[Setup PGLite in .elizadb];
     F -->|Postgres| H[Prompt for POSTGRES_URL];
-    
+
     C --> I{AI Model?};
     I -->|Local| J[Use Local AI];
     I -->|OpenAI| K[Prompt for OPENAI_API_KEY];
@@ -3209,7 +3244,7 @@ graph TD
         M --> N[Install Dependencies];
         N --> O[Build Project];
     end
-    
+
     D --> P[Copy plugin-starter template];
     P --> Q[Install Dependencies];
     Q --> R[Build Plugin];
@@ -3224,10 +3259,10 @@ graph TD
         E --> X[elizaos agent start --path <file>];
         X --> W;
     end
-    
+
     O --> S;
     R --> S;
-```
+````
 
 ## Project Structure
 
@@ -3275,6 +3310,7 @@ elizaos create .
 ```
 
 The interactive `create` command will guide you through:
+
 1.  **Choosing a type**: Project, Plugin, or Agent.
 2.  **Naming**: Providing a valid npm package name.
 3.  **Database Selection**: Choosing between PGLite (development) and PostgreSQL (production).
@@ -3342,9 +3378,9 @@ The project entry point is where you define your agents and associate them with 
 ```typescript
 // src/index.ts
 
-import { myAgentCharacter } from './agents/my-agent';
-import { myProjectPlugin } from './plugins/my-plugin';
-import { type Project } from '@elizaos/core';
+import { myAgentCharacter } from "./agents/my-agent";
+import { myProjectPlugin } from "./plugins/my-plugin";
+import { type Project } from "@elizaos/core";
 
 // ✅ DO: Define a project with one or more agents
 const project: Project = {
@@ -3353,8 +3389,8 @@ const project: Project = {
       character: myAgentCharacter,
       // List all plugins the agent should use
       plugins: [
-        '@elizaos/plugin-sql',
-        '@elizaos/plugin-openai',
+        "@elizaos/plugin-sql",
+        "@elizaos/plugin-openai",
         myProjectPlugin, // A local plugin
       ],
       // Optional init function for the agent
@@ -3400,12 +3436,14 @@ elizaos create my-ci-plugin --type plugin --yes
 ```
 
 This will create a project/plugin with default settings:
-*   **Database**: PGLite
-*   **AI Model**: Local AI
+
+- **Database**: PGLite
+- **AI Model**: Local AI
 
 Placeholders for API keys will be added to the `.env` file, which you can then populate using environment variables in your CI/CD system.
 
 ## References
+
 - [ElizaOS CLI Documentation](mdc:https:/eliza.how/docs/cli)
 - [Managing Agents](mdc:elizaos_v2_cli_agents.mdc)
 - [Project Configuration](mdc:elizaos_v2_cli_config.mdc)
@@ -3414,63 +3452,66 @@ Placeholders for API keys will be added to the `.env` file, which you can then p
         `Command must be run inside an ElizaOS project directory. ` +
         `Current directory: ${getDirectoryTypeDescription(directoryInfo)}`
       );
-    }
-    
-    // Normalize plugin name and resolve package
-    const normalizedName = normalizePluginNameForDisplay(pluginArg);
-    const packageName = await resolvePluginPackage(pluginArg, opts);
-    
-    console.log(`Installing plugin: ${normalizedName}`);
-    
-    // Install plugin with dependency resolution
-    await installPlugin(packageName, {
-      branch: opts.branch,
-      tag: opts.tag,
-      skipEnvPrompt: opts.noEnvPrompt,
-      cwd
-    });
-    
-    // Update project configuration
-    await updateProjectConfig(cwd, packageName);
-    
-    console.log(`✅ Plugin ${normalizedName} installed successfully`);
+
+  }
+
+  // Normalize plugin name and resolve package
+  const normalizedName = normalizePluginNameForDisplay(pluginArg);
+  const packageName = await resolvePluginPackage(pluginArg, opts);
+
+  console.log(`Installing plugin: ${normalizedName}`);
+
+  // Install plugin with dependency resolution
+  await installPlugin(packageName, {
+  branch: opts.branch,
+  tag: opts.tag,
+  skipEnvPrompt: opts.noEnvPrompt,
+  cwd
+  });
+
+  // Update project configuration
+  await updateProjectConfig(cwd, packageName);
+
+  console.log(`✅ Plugin ${normalizedName} installed successfully`);
   });
 
 // Plugin removal with cleanup
 plugins
-  .command('remove')
-  .alias('delete')
-  .description('Remove a plugin from the project')
-  .argument('<plugin>', 'Plugin name to remove')
-  .action(async (pluginArg: string) => {
-    const cwd = process.cwd();
-    const allDependencies = getDependenciesFromDirectory(cwd);
-    
+.command('remove')
+.alias('delete')
+.description('Remove a plugin from the project')
+.argument('<plugin>', 'Plugin name to remove')
+.action(async (pluginArg: string) => {
+const cwd = process.cwd();
+const allDependencies = getDependenciesFromDirectory(cwd);
+
     if (!allDependencies) {
       throw new ProjectValidationError('Could not read project dependencies');
     }
-    
+
     const packageName = findPluginPackageName(pluginArg, allDependencies);
-    
+
     if (!packageName) {
       throw new PluginNotFoundError(`Plugin "${pluginArg}" not found in dependencies`);
     }
-    
+
     // Remove plugin and clean up configuration
     await removePlugin(packageName, cwd);
     await cleanupPluginConfig(cwd, packageName);
-    
+
     console.log(`✅ Plugin ${pluginArg} removed successfully`);
-  });
+
+});
 
 // ❌ DON'T: Install plugins without validation or proper error handling
 plugins
-  .command('bad-add')
-  .action(async (plugin: string) => {
-    // No validation, no dependency resolution, no error handling
-    await execa('npm', ['install', plugin]);
-  });
-```
+.command('bad-add')
+.action(async (plugin: string) => {
+// No validation, no dependency resolution, no error handling
+await execa('npm', ['install', plugin]);
+});
+
+````
 
 ### Development Workflow Commands
 
@@ -3486,16 +3527,16 @@ export const dev = new Command()
   .action(async (opts) => {
     try {
       const projectConfig = await loadProjectConfiguration();
-      
+
       // Build project if requested
       if (opts.build) {
         console.log('Building project...');
         await buildProject();
       }
-      
+
       // Handle character file configuration
       const characterPaths = await resolveCharacterPaths(opts.character);
-      
+
       // Setup development environment
       const devConfig = {
         port: opts.port || projectConfig.defaultPort || 3000,
@@ -3504,19 +3545,19 @@ export const dev = new Command()
         watch: ['src/**/*.ts', 'characters/**/*.json'],
         env: 'development'
       };
-      
+
       // Start development server with hot reload
       await startDevelopmentServer(devConfig);
-      
+
       // Setup file watchers for auto-reload
       setupFileWatchers(devConfig.watch, () => {
         console.log('Changes detected, reloading...');
         restartServer();
       });
-      
+
       console.log(`🚀 Development server running on port ${devConfig.port}`);
       console.log(`📁 Characters: ${characterPaths.join(', ')}`);
-      
+
     } catch (error) {
       handleDevelopmentError(error);
     }
@@ -3531,18 +3572,18 @@ async function resolveCharacterPaths(characterInput?: string[]): Promise<string[
       'character.json',
       'src/character.json'
     ];
-    
+
     for (const defaultPath of defaultPaths) {
       if (await fs.access(defaultPath).then(() => true).catch(() => false)) {
         return [defaultPath];
       }
     }
-    
+
     throw new ConfigurationError('No character files found. Use --character to specify files.');
   }
-  
+
   const resolvedPaths: string[] = [];
-  
+
   for (const input of characterInput) {
     if (input.startsWith('http')) {
       // Remote character file
@@ -3550,7 +3591,7 @@ async function resolveCharacterPaths(characterInput?: string[]): Promise<string[
     } else {
       // Local file - add .json extension if missing
       const path = input.endsWith('.json') ? input : `${input}.json`;
-      
+
       if (await fs.access(path).then(() => true).catch(() => false)) {
         resolvedPaths.push(path);
       } else {
@@ -3558,7 +3599,7 @@ async function resolveCharacterPaths(characterInput?: string[]): Promise<string[
       }
     }
   }
-  
+
   return resolvedPaths;
 }
 
@@ -3572,17 +3613,17 @@ export const start = new Command()
     try {
       const projectConfig = await loadProjectConfiguration();
       const characterPaths = await resolveCharacterPaths(opts.character);
-      
+
       const prodConfig = {
         port: opts.port || process.env.PORT || projectConfig.defaultPort || 3000,
         characters: characterPaths,
         env: 'production',
         clustering: projectConfig.clustering || false
       };
-      
+
       console.log('🚀 Starting ElizaOS in production mode...');
       await startProductionServer(prodConfig);
-      
+
     } catch (error) {
       handleProductionError(error);
     }
@@ -3594,7 +3635,7 @@ export const badDev = new Command()
     // No configuration, no character handling, no error handling
     require('./src/index.js');
   });
-```
+````
 
 ## Error Handling and Validation
 
@@ -3603,9 +3644,12 @@ export const badDev = new Command()
 ```typescript
 // ✅ DO: Implement specific error types for different failure scenarios
 export class ProjectValidationError extends Error {
-  constructor(message: string, public context?: Record<string, any>) {
+  constructor(
+    message: string,
+    public context?: Record<string, any>,
+  ) {
     super(message);
-    this.name = 'ProjectValidationError';
+    this.name = "ProjectValidationError";
   }
 }
 
@@ -3613,31 +3657,40 @@ export class PluginInstallationError extends Error {
   constructor(
     message: string,
     public pluginName: string,
-    public cause?: Error
+    public cause?: Error,
   ) {
     super(message);
-    this.name = 'PluginInstallationError';
+    this.name = "PluginInstallationError";
   }
 }
 
 export class PluginNotFoundError extends Error {
-  constructor(message: string, public pluginName: string) {
+  constructor(
+    message: string,
+    public pluginName: string,
+  ) {
     super(message);
-    this.name = 'PluginNotFoundError';
+    this.name = "PluginNotFoundError";
   }
 }
 
 export class ConfigurationError extends Error {
-  constructor(message: string, public configType?: string) {
+  constructor(
+    message: string,
+    public configType?: string,
+  ) {
     super(message);
-    this.name = 'ConfigurationError';
+    this.name = "ConfigurationError";
   }
 }
 
 export class FileNotFoundError extends Error {
-  constructor(message: string, public filePath: string) {
+  constructor(
+    message: string,
+    public filePath: string,
+  ) {
     super(message);
-    this.name = 'FileNotFoundError';
+    this.name = "FileNotFoundError";
   }
 }
 
@@ -3646,13 +3699,13 @@ export function handleCreateError(error: unknown): never {
   if (error instanceof ProjectValidationError) {
     console.error(`❌ Project validation failed: ${error.message}`);
     if (error.context) {
-      console.error('Context:', error.context);
+      console.error("Context:", error.context);
     }
   } else if (error instanceof PluginInstallationError) {
     console.error(`❌ Plugin installation failed: ${error.message}`);
     console.error(`Plugin: ${error.pluginName}`);
     if (error.cause) {
-      console.error('Caused by:', error.cause.message);
+      console.error("Caused by:", error.cause.message);
     }
   } else if (error instanceof ConfigurationError) {
     console.error(`❌ Configuration error: ${error.message}`);
@@ -3660,9 +3713,11 @@ export function handleCreateError(error: unknown): never {
       console.error(`Configuration type: ${error.configType}`);
     }
   } else {
-    console.error(`❌ Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `❌ Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  
+
   process.exit(1);
 }
 ```
@@ -3674,30 +3729,32 @@ export function handleCreateError(error: unknown): never {
 export const validateProjectName = (name: string): boolean => {
   // Check for valid npm package name
   const npmPattern = /^[a-z0-9](mdc:[a-z0-9-]*[a-z0-9])?$/;
-  
+
   if (!npmPattern.test(name)) {
     throw new ProjectValidationError(
-      'Project name must be a valid npm package name (lowercase, no spaces, can contain hyphens)'
+      "Project name must be a valid npm package name (lowercase, no spaces, can contain hyphens)",
     );
   }
-  
+
   // Check for reserved names
-  const reservedNames = ['elizaos', 'eliza', 'node_modules', 'package'];
+  const reservedNames = ["elizaos", "eliza", "node_modules", "package"];
   if (reservedNames.includes(name.toLowerCase())) {
     throw new ProjectValidationError(`Project name "${name}" is reserved`);
   }
-  
+
   return true;
 };
 
 export const validatePluginName = (name: string): boolean => {
   // Normalize and validate plugin name
   const normalized = normalizePluginNameForDisplay(name);
-  
+
   if (normalized.length < 3) {
-    throw new ProjectValidationError('Plugin name must be at least 3 characters long');
+    throw new ProjectValidationError(
+      "Plugin name must be at least 3 characters long",
+    );
   }
-  
+
   return true;
 };
 
@@ -3707,43 +3764,44 @@ export interface DirectoryInfo {
   hasElizaConfig: boolean;
   isElizaProject: boolean;
   isPlugin: boolean;
-  projectType: 'eliza-project' | 'plugin' | 'other' | 'empty';
+  projectType: "eliza-project" | "plugin" | "other" | "empty";
 }
 
 export function detectDirectoryType(dir: string): DirectoryInfo {
-  const packageJsonPath = path.join(dir, 'package.json');
-  const elizaConfigPath = path.join(dir, 'elizaos.config.js');
-  
+  const packageJsonPath = path.join(dir, "package.json");
+  const elizaConfigPath = path.join(dir, "elizaos.config.js");
+
   const hasPackageJson = fs.existsSync(packageJsonPath);
   const hasElizaConfig = fs.existsSync(elizaConfigPath);
-  
+
   let isElizaProject = false;
   let isPlugin = false;
-  let projectType: DirectoryInfo['projectType'] = 'empty';
-  
+  let projectType: DirectoryInfo["projectType"] = "empty";
+
   if (hasPackageJson) {
     try {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      isElizaProject = !!packageJson.dependencies?.['@elizaos/core'];
-      isPlugin = packageJson.name?.startsWith('plugin-') || 
-                 packageJson.name?.includes('/plugin-');
-      
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+      isElizaProject = !!packageJson.dependencies?.["@elizaos/core"];
+      isPlugin =
+        packageJson.name?.startsWith("plugin-") ||
+        packageJson.name?.includes("/plugin-");
+
       if (isElizaProject) {
-        projectType = isPlugin ? 'plugin' : 'eliza-project';
+        projectType = isPlugin ? "plugin" : "eliza-project";
       } else {
-        projectType = 'other';
+        projectType = "other";
       }
     } catch {
-      projectType = 'other';
+      projectType = "other";
     }
   }
-  
+
   return {
     hasPackageJson,
     hasElizaConfig,
     isElizaProject,
     isPlugin,
-    projectType
+    projectType,
   };
 }
 
@@ -3761,30 +3819,30 @@ export const badValidation = (name: string): boolean => {
 // ✅ DO: Implement comprehensive plugin name normalization and resolution
 export const normalizePluginNameForDisplay = (pluginInput: string): string => {
   let baseName = pluginInput;
-  
+
   // Handle scoped formats like "@scope/plugin-name" or "scope/plugin-name"
-  if (pluginInput.includes('/')) {
-    const parts = pluginInput.split('/');
+  if (pluginInput.includes("/")) {
+    const parts = pluginInput.split("/");
     baseName = parts[parts.length - 1];
   }
   // Handle "@plugin-name" format
-  else if (pluginInput.startsWith('@')) {
+  else if (pluginInput.startsWith("@")) {
     baseName = pluginInput.substring(1);
   }
-  
+
   // Ensure it starts with 'plugin-' and remove duplicates
-  baseName = baseName.replace(/^plugin-/, '');
+  baseName = baseName.replace(/^plugin-/, "");
   return `plugin-${baseName}`;
 };
 
 export const findPluginPackageName = (
   pluginInput: string,
-  allDependencies: Record<string, string>
+  allDependencies: Record<string, string>,
 ): string | null => {
   const normalizedBase = pluginInput
-    .replace(/^@[^/]+\//, '') // Remove scope
-    .replace(/^plugin-/, ''); // Remove prefix
-  
+    .replace(/^@[^/]+\//, "") // Remove scope
+    .replace(/^plugin-/, ""); // Remove prefix
+
   // Potential package names to check in order of preference
   const possibleNames = [
     pluginInput, // Check raw input first
@@ -3792,53 +3850,52 @@ export const findPluginPackageName = (
     `@elizaos-plugins/plugin-${normalizedBase}`, // Alternative scope
     `plugin-${normalizedBase}`, // Unscoped
     `@elizaos/${normalizedBase}`, // Official without plugin prefix
-    `@elizaos-plugins/${normalizedBase}` // Alternative without prefix
+    `@elizaos-plugins/${normalizedBase}`, // Alternative without prefix
   ];
-  
+
   for (const name of possibleNames) {
     if (allDependencies[name]) {
       return name;
     }
   }
-  
+
   return null;
 };
 
 // Registry-based resolution with fallback
 export async function resolvePluginPackage(
-  pluginInput: string, 
-  opts: { branch?: string; tag?: string }
+  pluginInput: string,
+  opts: { branch?: string; tag?: string },
 ): Promise<string> {
   try {
     const registry = await fetchPluginRegistry();
-    
+
     if (registry?.registry[pluginInput]) {
       const pluginInfo = registry.registry[pluginInput];
-      
+
       // Use tag-specific version if available
       if (opts.tag && pluginInfo.npm?.tags?.[opts.tag]) {
         return `${pluginInput}@${pluginInfo.npm.tags[opts.tag]}`;
       }
-      
+
       // Use latest compatible version
       const latestVersion = pluginInfo.npm?.v1 || pluginInfo.npm?.v0;
       if (latestVersion) {
         return `${pluginInput}@${latestVersion}`;
       }
     }
-    
+
     // Fallback to normalized name
     return normalizePluginNameForDisplay(pluginInput);
-    
   } catch (error) {
-    console.warn('Could not fetch plugin registry, using normalized name');
+    console.warn("Could not fetch plugin registry, using normalized name");
     return normalizePluginNameForDisplay(pluginInput);
   }
 }
 
 // ❌ DON'T: Use simple string replacement without proper validation
 export const badNormalization = (name: string): string => {
-  return name.replace('plugin-', ''); // Loses important context
+  return name.replace("plugin-", ""); // Loses important context
 };
 ```
 
@@ -3854,46 +3911,47 @@ export async function installDependencies(
     skipOptional?: boolean;
     parallel?: boolean;
     timeout?: number;
-  }
+  },
 ): Promise<void> {
   const opts = {
     skipOptional: true,
     parallel: true,
     timeout: 300000, // 5 minutes
-    ...options
+    ...options,
   };
-  
-  console.log('📦 Installing dependencies...');
+
+  console.log("📦 Installing dependencies...");
   const startTime = Date.now();
-  
+
   try {
-    const installArgs = ['install'];
-    
+    const installArgs = ["install"];
+
     if (opts.skipOptional) {
-      installArgs.push('--no-optional');
+      installArgs.push("--no-optional");
     }
-    
+
     if (opts.parallel) {
-      installArgs.push('--parallel');
+      installArgs.push("--parallel");
     }
-    
+
     await runBunCommand(installArgs, targetDir, {
       timeout: opts.timeout,
-      stdio: 'inherit'
+      stdio: "inherit",
     });
-    
+
     const duration = Date.now() - startTime;
-    console.log(`✅ Dependencies installed in ${(duration / 1000).toFixed(1)}s`);
-    
+    console.log(
+      `✅ Dependencies installed in ${(duration / 1000).toFixed(1)}s`,
+    );
   } catch (error) {
     console.warn(
-      'Failed to install dependencies automatically. ' +
-      'Please run "bun install" manually in the project directory.'
+      "Failed to install dependencies automatically. " +
+        'Please run "bun install" manually in the project directory.',
     );
     throw new PluginInstallationError(
-      'Dependency installation failed',
-      'dependencies',
-      error instanceof Error ? error : new Error(String(error))
+      "Dependency installation failed",
+      "dependencies",
+      error instanceof Error ? error : new Error(String(error)),
     );
   }
 }
@@ -3905,28 +3963,27 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export async function fetchPluginRegistry(): Promise<any> {
   const now = Date.now();
-  
-  if (registryCache && (now - registryCacheTime) < CACHE_DURATION) {
+
+  if (registryCache && now - registryCacheTime < CACHE_DURATION) {
     return registryCache;
   }
-  
+
   try {
     const response = await fetch(PLUGIN_REGISTRY_URL, {
-      timeout: 10000 // 10 second timeout
+      timeout: 10000, // 10 second timeout
     });
-    
+
     if (!response.ok) {
       throw new Error(`Registry fetch failed: ${response.statusText}`);
     }
-    
+
     registryCache = await response.json();
     registryCacheTime = now;
-    
+
     return registryCache;
-    
   } catch (error) {
     if (registryCache) {
-      console.warn('Using cached registry due to fetch error');
+      console.warn("Using cached registry due to fetch error");
       return registryCache;
     }
     throw error;
@@ -3936,7 +3993,7 @@ export async function fetchPluginRegistry(): Promise<any> {
 // ❌ DON'T: Install dependencies without optimization or error handling
 export async function badInstallDependencies(dir: string): Promise<void> {
   // No error handling, no optimization, no feedback
-  await execa('npm', ['install'], { cwd: dir });
+  await execa("npm", ["install"], { cwd: dir });
 }
 ```
 
@@ -3946,16 +4003,14 @@ export async function badInstallDependencies(dir: string): Promise<void> {
 
 ```typescript
 // ❌ DON'T: Create commands without proper option validation or help
-const badCommand = new Command()
-  .name('bad')
-  .action(async (options) => {
-    // No validation, no error handling, no help
-    console.log('Doing something...');
-  });
+const badCommand = new Command().name("bad").action(async (options) => {
+  // No validation, no error handling, no help
+  console.log("Doing something...");
+});
 
 // ❌ DON'T: Mix command concerns or create overly complex commands
 const confusedCommand = new Command()
-  .name('confused')
+  .name("confused")
   .action(async (options) => {
     // Doing project creation, plugin management, AND deployment
     await createProject();
@@ -3965,16 +4020,19 @@ const confusedCommand = new Command()
 
 // ✅ DO: Create focused, well-documented commands with proper validation
 const goodCommand = new Command()
-  .name('create-project')
-  .description('Create a new ElizaOS project with specified configuration')
-  .argument('<name>', 'Project name (must be valid npm package name)')
-  .option('-d, --dir <directory>', 'Target directory for project creation', '.')
-  .option('-t, --template <template>', 'Project template to use', 'default')
-  .addHelpText('after', `
+  .name("create-project")
+  .description("Create a new ElizaOS project with specified configuration")
+  .argument("<name>", "Project name (must be valid npm package name)")
+  .option("-d, --dir <directory>", "Target directory for project creation", ".")
+  .option("-t, --template <template>", "Project template to use", "default")
+  .addHelpText(
+    "after",
+    `
 Examples:
   $ elizaos create-project my-agent
   $ elizaos create-project my-agent --dir ./projects --template advanced
-  `)
+  `,
+  )
   .action(async (name: string, options) => {
     try {
       validateProjectName(name);
@@ -3993,7 +4051,7 @@ async function badErrorHandling() {
   try {
     await riskyOperation();
   } catch (error) {
-    console.log('Something went wrong'); // No context
+    console.log("Something went wrong"); // No context
     return; // Silent failure
   }
 }
@@ -4001,7 +4059,7 @@ async function badErrorHandling() {
 // ❌ DON'T: Throw generic errors without context
 function badValidation(name: string) {
   if (!name) {
-    throw new Error('Invalid'); // No helpful information
+    throw new Error("Invalid"); // No helpful information
   }
 }
 
@@ -4011,15 +4069,19 @@ async function goodErrorHandling() {
     await riskyOperation();
   } catch (error) {
     if (error instanceof NetworkError) {
-      console.error('❌ Network error occurred. Please check your internet connection.');
-      console.error('💡 Try running "elizaos plugins update" to refresh the registry.');
+      console.error(
+        "❌ Network error occurred. Please check your internet connection.",
+      );
+      console.error(
+        '💡 Try running "elizaos plugins update" to refresh the registry.',
+      );
     } else if (error instanceof ValidationError) {
       console.error(`❌ Validation failed: ${error.message}`);
-      console.error('💡 Check the project name and try again.');
+      console.error("💡 Check the project name and try again.");
     } else {
-      console.error('❌ Unexpected error occurred');
+      console.error("❌ Unexpected error occurred");
       console.error(`Details: ${error.message}`);
-      console.error('💡 Please report this issue if it persists.');
+      console.error("💡 Please report this issue if it persists.");
     }
     process.exit(1);
   }
@@ -4029,43 +4091,49 @@ async function goodErrorHandling() {
 ## Best Practices Summary
 
 ### Command Design
+
 - Use focused, single-purpose commands
 - Provide comprehensive help and examples
 - Implement proper argument and option validation
 - Use aliases for commonly used commands
 
 ### Error Handling
+
 - Create specific error types for different scenarios
 - Provide contextual error messages with suggested solutions
 - Implement graceful fallbacks where possible
 - Log errors with appropriate detail levels
 
 ### Performance
+
 - Cache registry data to avoid repeated network calls
 - Use parallel processing for dependency installation
 - Implement timeouts for network operations
 - Provide progress feedback for long-running operations
 
 ### User Experience
+
 - Use interactive prompts for better developer experience
 - Provide sensible defaults for all options
 - Show clear success and progress messages
 - Include helpful examples in command descriptions
 
 ### Configuration Management
+
 - Support both interactive and non-interactive modes
 - Validate all configuration before processing
 - Use environment variables for sensitive data
 - Provide configuration templates and examples
 
 ## References
+
 - [ElizaOS CLI Source](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src)
 - [Commander.js Documentation](mdc:https:/github.com/tj/commander.js)
 - [Project Creation Patterns](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/create.ts)
 - [Plugin Management System](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/plugins.ts)
 - [Development Workflow Commands](mdc:Users/ilessio/dev-agents/PROJECTS/cursor_rules/eliza/packages/cli/src/commands/dev.ts)
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-entities.mdc`:
 
@@ -4092,7 +4160,7 @@ interface Entity {
   agentId: UUID; // Related agent ID
   components?: Component[]; // Modular data components
 }
-```
+````
 
 ### Component Structure
 
@@ -4118,12 +4186,12 @@ interface Component {
 ```typescript
 // Create new entity
 const entityId = await runtime.createEntity({
-  names: ['John Doe', 'JohnD'],
+  names: ["John Doe", "JohnD"],
   agentId: runtime.agentId,
   metadata: {
     discord: {
-      username: 'john_doe',
-      name: 'John Doe',
+      username: "john_doe",
+      name: "John Doe",
     },
   },
 });
@@ -4131,11 +4199,11 @@ const entityId = await runtime.createEntity({
 // Create with specific ID
 await runtime.createEntity({
   id: customUuid,
-  names: ['Agent Smith'],
+  names: ["Agent Smith"],
   agentId: runtime.agentId,
   metadata: {
-    type: 'ai_agent',
-    version: '1.0',
+    type: "ai_agent",
+    version: "1.0",
   },
 });
 ```
@@ -4158,10 +4226,10 @@ const entities = await runtime.getEntityByIds([id1, id2, id3]);
 ```typescript
 await runtime.updateEntity({
   id: entityId,
-  names: [...entity.names, 'Johnny'], // Add new alias
+  names: [...entity.names, "Johnny"], // Add new alias
   metadata: {
     ...entity.metadata,
-    customProperty: 'value',
+    customProperty: "value",
   },
 });
 ```
@@ -4181,11 +4249,11 @@ await runtime.createComponent({
   roomId: roomId,
   worldId: worldId,
   sourceEntityId: creatorEntityId,
-  type: 'profile',
+  type: "profile",
   data: {
-    bio: 'Software developer interested in AI',
-    location: 'San Francisco',
-    website: 'https://example.com',
+    bio: "Software developer interested in AI",
+    location: "San Francisco",
+    website: "https://example.com",
   },
 });
 
@@ -4197,11 +4265,11 @@ await runtime.createComponent({
   roomId: roomId,
   worldId: worldId,
   sourceEntityId: entityId,
-  type: 'settings',
+  type: "settings",
   data: {
     notifications: true,
-    theme: 'dark',
-    language: 'en',
+    theme: "dark",
+    language: "en",
   },
 });
 ```
@@ -4212,16 +4280,16 @@ await runtime.createComponent({
 // Get specific component type
 const profile = await runtime.getComponent(
   entityId,
-  'profile',
+  "profile",
   worldId, // optional filter
-  sourceEntityId // optional filter
+  sourceEntityId, // optional filter
 );
 
 // Get all components for entity
 const allComponents = await runtime.getComponents(
   entityId,
   worldId, // optional
-  sourceEntityId // optional
+  sourceEntityId, // optional
 );
 ```
 
@@ -4233,7 +4301,7 @@ await runtime.updateComponent({
   id: profileComponent.id,
   data: {
     ...profileComponent.data,
-    bio: 'Updated bio information',
+    bio: "Updated bio information",
   },
 });
 
@@ -4251,7 +4319,7 @@ Entities can have relationships with other entities:
 await runtime.createRelationship({
   sourceEntityId: entityId1,
   targetEntityId: entityId2,
-  tags: ['friend', 'collaborator'],
+  tags: ["friend", "collaborator"],
   metadata: {
     interactions: 5,
     lastInteraction: Date.now(),
@@ -4265,7 +4333,7 @@ await runtime.createRelationship({
 // Get relationships
 const relationships = await runtime.getRelationships({
   entityId: entityId1,
-  tags: ['friend'], // optional filter
+  tags: ["friend"], // optional filter
 });
 
 // Get specific relationship
@@ -4290,7 +4358,7 @@ await runtime.updateRelationship({
 Find entities by name or reference:
 
 ```typescript
-import { findEntityByName } from '@elizaos/core';
+import { findEntityByName } from "@elizaos/core";
 
 // Resolve entity from message context
 const entity = await findEntityByName(runtime, message, state);
@@ -4309,7 +4377,7 @@ Resolution considers:
 Format entity information:
 
 ```typescript
-import { getEntityDetails, formatEntities } from '@elizaos/core';
+import { getEntityDetails, formatEntities } from "@elizaos/core";
 
 // Get detailed entity information
 const entityDetails = await getEntityDetails({
@@ -4328,7 +4396,7 @@ const formatted = formatEntities({
 Create deterministic IDs for entity-agent pairs:
 
 ```typescript
-import { createUniqueUuid } from '@elizaos/core';
+import { createUniqueUuid } from "@elizaos/core";
 
 // Generate consistent ID
 const uniqueId = createUniqueUuid(runtime, baseUserId);
@@ -4360,9 +4428,9 @@ const agentEntity = {
   id: agentId,
   names: [agentName],
   metadata: {
-    type: 'agent',
-    capabilities: ['chat', 'voice'],
-    version: '1.0.0',
+    type: "agent",
+    capabilities: ["chat", "voice"],
+    version: "1.0.0",
   },
   agentId: agentId, // Self-reference
 };
@@ -4372,19 +4440,19 @@ const agentEntity = {
 
 ```typescript
 const multiPlatformEntity = {
-  names: ['JohnDoe', 'john_doe', 'JD'],
+  names: ["JohnDoe", "john_doe", "JD"],
   metadata: {
     discord: {
       id: discordId,
-      username: 'john_doe#1234',
+      username: "john_doe#1234",
     },
     twitter: {
       id: twitterId,
-      handle: '@johndoe',
+      handle: "@johndoe",
     },
     telegram: {
       id: telegramId,
-      username: 'john_doe_tg',
+      username: "john_doe_tg",
     },
   },
   agentId: runtime.agentId,
@@ -4409,14 +4477,14 @@ const multiPlatformEntity = {
 - **Extensibility**: Plugins can define custom component types
 - **Performance**: Load only needed components
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/vendor_models.mdc`:
 
 ```mdc
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
 Current anthropic models:
@@ -4427,7 +4495,7 @@ Current OpenAI models:
 'gpt-4o'
 'gpt-4o-mini'
 'o1-2024-12-17'
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-database.mdc`:
 
@@ -4447,25 +4515,27 @@ The ElizaOS database system provides persistent storage capabilities for agents 
 ### Architecture
 
 ```
+
 ┌─────────────────────────┐
-│     Agent Runtime       │
+│ Agent Runtime │
 └────────────┬────────────┘
-             │
+│
 ┌────────────▼────────────┐
-│   IDatabaseAdapter      │
+│ IDatabaseAdapter │
 └────────────┬────────────┘
-             │
+│
 ┌────────────▼────────────┐
-│   BaseDrizzleAdapter    │
+│ BaseDrizzleAdapter │
 └────────────┬────────────┘
-             │
-    ┌────────┴────────┐
-    ▼                 ▼
-┌──────────┐   ┌──────────┐
-│ PGLite   │   │PostgreSQL│
-│ Adapter  │   │ Adapter  │
-└──────────┘   └──────────┘
-```
+│
+┌────────┴────────┐
+▼ ▼
+┌──────────┐ ┌──────────┐
+│ PGLite │ │PostgreSQL│
+│ Adapter │ │ Adapter │
+└──────────┘ └──────────┘
+
+````
 
 ### Current Adapters
 
@@ -4494,13 +4564,13 @@ await adapter.createComponent(component);
 const component = await adapter.getComponent(entityId, type);
 await adapter.updateComponent(component);
 await adapter.deleteComponent(componentId);
-```
+````
 
 ### Memory Management
 
 ```typescript
 // Create memory
-const memoryId = await adapter.createMemory(memory, 'messages');
+const memoryId = await adapter.createMemory(memory, "messages");
 
 // Get memories
 const memories = await adapter.getMemories({
@@ -4519,7 +4589,7 @@ const relevant = await adapter.searchMemories({
 
 // Delete memories
 await adapter.deleteMemory(memoryId);
-await adapter.deleteAllMemories(roomId, 'messages');
+await adapter.deleteAllMemories(roomId, "messages");
 ```
 
 ### Room & Participant Management
@@ -4536,7 +4606,7 @@ await adapter.addParticipant(entityId, roomId);
 await adapter.removeParticipant(entityId, roomId);
 const participants = await adapter.getParticipantsForRoom(roomId);
 const state = await adapter.getParticipantUserState(roomId, entityId);
-await adapter.setParticipantUserState(roomId, entityId, 'FOLLOWED');
+await adapter.setParticipantUserState(roomId, entityId, "FOLLOWED");
 ```
 
 ### Relationships
@@ -4546,14 +4616,14 @@ await adapter.setParticipantUserState(roomId, entityId, 'FOLLOWED');
 await adapter.createRelationship({
   sourceEntityId,
   targetEntityId,
-  tags: ['friend', 'collaborator'],
+  tags: ["friend", "collaborator"],
   metadata: { trust: 0.8 },
 });
 
 // Get relationships
 const relationships = await adapter.getRelationships({
   entityId,
-  tags: ['friend'],
+  tags: ["friend"],
 });
 
 // Update relationship
@@ -4564,13 +4634,13 @@ await adapter.updateRelationship(relationship);
 
 ```typescript
 // Set cache
-await adapter.setCache('key', { data: 'value' });
+await adapter.setCache("key", { data: "value" });
 
 // Get cache
-const cached = await adapter.getCache<MyType>('key');
+const cached = await adapter.getCache<MyType>("key");
 
 // Delete cache
-await adapter.deleteCache('key');
+await adapter.deleteCache("key");
 ```
 
 ### World & Task Management
@@ -4607,7 +4677,7 @@ The SQL plugin handles adapter initialization:
 
 ```typescript
 // Plugin automatically selects adapter based on config
-const plugin = '@elizaos/plugin-sql';
+const plugin = "@elizaos/plugin-sql";
 
 // Will use PostgreSQL if POSTGRES_URL is set
 // Otherwise defaults to PGLite
@@ -4652,18 +4722,18 @@ Both adapters support semantic search:
 // Store with embedding
 await runtime.createMemory(
   {
-    content: { text: 'Important information' },
+    content: { text: "Important information" },
     embedding: await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-      text: 'Important information',
+      text: "Important information",
     }),
     roomId,
   },
-  'facts'
+  "facts",
 );
 
 // Search by similarity
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-  text: 'What did we discuss about databases?',
+  text: "What did we discuss about databases?",
 });
 
 const memories = await runtime.searchMemories({
@@ -4702,17 +4772,17 @@ await adapter.ensureEmbeddingDimension(1536); // OpenAI
 // Entity with components
 const entity = {
   id: entityId,
-  names: ['John Doe'],
-  metadata: { platform: 'discord' },
+  names: ["John Doe"],
+  metadata: { platform: "discord" },
 };
 
 // Add profile component
 const profile = {
   entityId,
-  type: 'profile',
+  type: "profile",
   data: {
-    bio: 'Developer',
-    location: 'SF',
+    bio: "Developer",
+    location: "SF",
   },
 };
 ```
@@ -4756,16 +4826,16 @@ class PostgresManager {
 await runtime.createMemory(
   {
     content: {
-      text: 'User prefers dark mode',
+      text: "User prefers dark mode",
       metadata: {
-        type: 'preference',
+        type: "preference",
         confidence: 0.9,
       },
     },
     entityId: userId,
     roomId,
   },
-  'facts'
+  "facts",
 );
 ```
 
@@ -4791,7 +4861,7 @@ Future releases will support:
 
 The adapter interface is designed for extensibility.
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-services.mdc`:
 
@@ -4823,7 +4893,7 @@ abstract class Service {
   abstract stop(): Promise<void>; // Cleanup method
   static async start(runtime: IAgentRuntime): Promise<Service>; // Factory method
 }
-```
+````
 
 ## Service Lifecycle
 
@@ -4839,10 +4909,10 @@ abstract class Service {
 
 ```typescript
 class DatabaseService extends Service {
-  static serviceName = 'database';
+  static serviceName = "database";
   static serviceType = ServiceType.DATA_STORAGE;
 
-  capabilityDescription = 'Provides database access';
+  capabilityDescription = "Provides database access";
   private connection: DatabaseConnection;
 
   constructor(runtime?: IAgentRuntime) {
@@ -4852,9 +4922,9 @@ class DatabaseService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<DatabaseService> {
     const service = new DatabaseService(runtime);
-    const config = runtime.getSetting('DATABASE_URL');
+    const config = runtime.getSetting("DATABASE_URL");
     service.connection = await createConnection(config);
-    runtime.logger.info('Database service initialized');
+    runtime.logger.info("Database service initialized");
     return service;
   }
 
@@ -4864,7 +4934,7 @@ class DatabaseService extends Service {
 
   async stop(): Promise<void> {
     await this.connection.close();
-    this.runtime.logger.info('Database service stopped');
+    this.runtime.logger.info("Database service stopped");
   }
 }
 ```
@@ -4873,10 +4943,10 @@ class DatabaseService extends Service {
 
 ```typescript
 class DiscordService extends Service {
-  static serviceName = 'discord';
+  static serviceName = "discord";
   static serviceType = ServiceType.MESSAGING;
 
-  capabilityDescription = 'Provides Discord integration';
+  capabilityDescription = "Provides Discord integration";
   private client: DiscordClient;
 
   constructor(runtime?: IAgentRuntime) {
@@ -4885,7 +4955,7 @@ class DiscordService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<DiscordService> {
     const service = new DiscordService(runtime);
-    const token = runtime.getSetting('DISCORD_TOKEN');
+    const token = runtime.getSetting("DISCORD_TOKEN");
 
     service.client = new DiscordClient();
     await service.client.login(token);
@@ -4895,7 +4965,7 @@ class DiscordService extends Service {
   }
 
   private setupEventHandlers(): void {
-    this.client.on('messageCreate', async (message) => {
+    this.client.on("messageCreate", async (message) => {
       // Convert to ElizaOS message format
       const memory = await this.convertMessage(message);
 
@@ -4923,15 +4993,15 @@ class DiscordService extends Service {
 
 ```typescript
 class SolanaService extends Service {
-  static serviceName = 'solana' as ServiceTypeName;
+  static serviceName = "solana" as ServiceTypeName;
   static serviceType = ServiceType.BLOCKCHAIN;
 
   private connection: Connection;
   private wallet: Wallet;
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
-    const rpcUrl = runtime.getSetting('SOLANA_RPC_URL');
-    const privateKey = runtime.getSetting('SOLANA_PRIVATE_KEY');
+    const rpcUrl = runtime.getSetting("SOLANA_RPC_URL");
+    const privateKey = runtime.getSetting("SOLANA_PRIVATE_KEY");
 
     this.connection = new Connection(rpcUrl);
     this.wallet = new Wallet(privateKey);
@@ -4943,10 +5013,14 @@ class SolanaService extends Service {
         fromPubkey: this.wallet.publicKey,
         toPubkey: new PublicKey(to),
         lamports: amount * LAMPORTS_PER_SOL,
-      })
+      }),
     );
 
-    const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.wallet]);
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      transaction,
+      [this.wallet],
+    );
 
     return signature;
   }
@@ -4975,14 +5049,14 @@ class SolanaService extends Service {
 
 ```typescript
 // Get specific service
-const discord = runtime.getService<DiscordService>('discord');
+const discord = runtime.getService<DiscordService>("discord");
 
 // Get all services of a type
 const messagingServices = runtime.getServicesByType(ServiceType.MESSAGING);
 
 // Check if service exists
-if (runtime.hasService('solana')) {
-  const solana = runtime.getService('solana');
+if (runtime.hasService("solana")) {
+  const solana = runtime.getService("solana");
 }
 ```
 
@@ -5001,12 +5075,12 @@ Actions commonly use services to perform operations:
 
 ```typescript
 const transferAction: Action = {
-  name: 'TRANSFER_SOL',
+  name: "TRANSFER_SOL",
 
   handler: async (runtime, message, state, options, callback) => {
-    const solanaService = runtime.getService<SolanaService>('solana');
+    const solanaService = runtime.getService<SolanaService>("solana");
     if (!solanaService) {
-      throw new Error('Solana service not available');
+      throw new Error("Solana service not available");
     }
 
     const { to, amount } = extractParams(message);
@@ -5014,7 +5088,7 @@ const transferAction: Action = {
 
     await callback({
       text: `Transferred ${amount} SOL. Signature: ${signature}`,
-      thought: 'Successfully completed SOL transfer',
+      thought: "Successfully completed SOL transfer",
     });
   },
 };
@@ -5026,19 +5100,19 @@ Services are registered via plugins:
 
 ```typescript
 const myPlugin: Plugin = {
-  name: 'my-plugin',
-  description: 'Plugin with custom service',
+  name: "my-plugin",
+  description: "Plugin with custom service",
   services: [DatabaseService, CacheService],
 
   init: async (runtime: IAgentRuntime) => {
     // Services automatically registered and started
-    const db = runtime.getService('database');
+    const db = runtime.getService("database");
     // Use service...
   },
 };
 ```
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-tasks.mdc`:
 
@@ -5076,7 +5150,7 @@ interface Task {
   worldId?: UUID; // Optional world association
   tags: string[]; // Categorization tags
 }
-```
+````
 
 ### Task Worker
 
@@ -5086,13 +5160,13 @@ interface TaskWorker {
   execute: (
     runtime: IAgentRuntime,
     options: { [key: string]: unknown },
-    task: Task
+    task: Task,
   ) => Promise<void>;
   validate?: (
     // Optional pre-execution validation
     runtime: IAgentRuntime,
     message: Memory,
-    state: State
+    state: State,
   ) => Promise<boolean>;
 }
 ```
@@ -5103,7 +5177,7 @@ Workers must be registered before creating tasks:
 
 ```typescript
 runtime.registerTaskWorker({
-  name: 'SEND_REMINDER',
+  name: "SEND_REMINDER",
 
   validate: async (runtime, message, state) => {
     // Optional validation logic
@@ -5123,7 +5197,7 @@ runtime.registerTaskWorker({
           text: `Reminder for <@${userId}>: ${reminder}`,
         },
       },
-      'messages'
+      "messages",
     );
 
     // Delete one-time task
@@ -5140,13 +5214,13 @@ Execute once when triggered:
 
 ```typescript
 await runtime.createTask({
-  name: 'SEND_REMINDER',
-  description: 'Send reminder message',
+  name: "SEND_REMINDER",
+  description: "Send reminder message",
   roomId: currentRoomId,
-  tags: ['reminder', 'one-time'],
+  tags: ["reminder", "one-time"],
   metadata: {
     userId: message.entityId,
-    reminder: 'Submit weekly report',
+    reminder: "Submit weekly report",
     scheduledFor: Date.now() + 86400000, // 24 hours
   },
 });
@@ -5158,11 +5232,11 @@ Repeat at regular intervals:
 
 ```typescript
 await runtime.createTask({
-  name: 'DAILY_REPORT',
-  description: 'Generate daily report',
+  name: "DAILY_REPORT",
+  description: "Generate daily report",
   roomId: announcementChannelId,
   worldId: serverWorldId,
-  tags: ['report', 'repeat', 'daily'],
+  tags: ["report", "repeat", "daily"],
   metadata: {
     updateInterval: 86400000, // 24 hours
     updatedAt: Date.now(),
@@ -5176,17 +5250,17 @@ Await user input with options:
 
 ```typescript
 await runtime.createTask({
-  name: 'CONFIRM_ACTION',
-  description: 'Confirm requested action',
+  name: "CONFIRM_ACTION",
+  description: "Confirm requested action",
   roomId: message.roomId,
-  tags: ['confirmation', 'AWAITING_CHOICE'],
+  tags: ["confirmation", "AWAITING_CHOICE"],
   metadata: {
     options: [
-      { name: 'confirm', description: 'Proceed with action' },
-      { name: 'cancel', description: 'Cancel action' },
+      { name: "confirm", description: "Proceed with action" },
+      { name: "cancel", description: "Cancel action" },
     ],
-    action: 'DELETE_FILES',
-    files: ['document1.txt', 'document2.txt'],
+    action: "DELETE_FILES",
+    files: ["document1.txt", "document2.txt"],
   },
 });
 ```
@@ -5197,21 +5271,21 @@ await runtime.createTask({
 // Get tasks by criteria
 const reminderTasks = await runtime.getTasks({
   roomId: currentRoomId,
-  tags: ['reminder'],
+  tags: ["reminder"],
 });
 
 // Get tasks by name
-const reportTasks = await runtime.getTasksByName('DAILY_REPORT');
+const reportTasks = await runtime.getTasksByName("DAILY_REPORT");
 
 // Get specific task
 const task = await runtime.getTask(taskId);
 
 // Update task
 await runtime.updateTask(taskId, {
-  description: 'Updated description',
+  description: "Updated description",
   metadata: {
     ...task.metadata,
-    priority: 'high',
+    priority: "high",
   },
 });
 
@@ -5229,7 +5303,7 @@ Implement logic to check and execute recurring tasks:
 async function processRecurringTasks() {
   const now = Date.now();
   const recurringTasks = await runtime.getTasks({
-    tags: ['repeat'],
+    tags: ["repeat"],
   });
 
   for (const task of recurringTasks) {
@@ -5266,7 +5340,7 @@ async function processRecurringTasks() {
 
 ```typescript
 runtime.registerTaskWorker({
-  name: 'FOLLOW_UP',
+  name: "FOLLOW_UP",
   execute: async (runtime, options, task) => {
     const { roomId } = task;
     const { userId, topic } = task.metadata;
@@ -5279,7 +5353,7 @@ runtime.registerTaskWorker({
           text: `Hi <@${userId}>, following up about ${topic}. Any updates?`,
         },
       },
-      'messages'
+      "messages",
     );
 
     await runtime.deleteTask(task.id);
@@ -5288,13 +5362,13 @@ runtime.registerTaskWorker({
 
 // Create follow-up for 2 days later
 await runtime.createTask({
-  name: 'FOLLOW_UP',
-  description: 'Follow up on project status',
+  name: "FOLLOW_UP",
+  description: "Follow up on project status",
   roomId: message.roomId,
-  tags: ['follow-up', 'one-time'],
+  tags: ["follow-up", "one-time"],
   metadata: {
     userId: message.entityId,
-    topic: 'the project timeline',
+    topic: "the project timeline",
     scheduledFor: Date.now() + 2 * 86400000,
   },
 });
@@ -5305,20 +5379,20 @@ await runtime.createTask({
 ```typescript
 // Step 1: Gather requirements
 runtime.registerTaskWorker({
-  name: 'GATHER_REQUIREMENTS',
+  name: "GATHER_REQUIREMENTS",
   execute: async (runtime, options, task) => {
     // Create next step task
     await runtime.createTask({
-      name: 'CONFIRM_REQUIREMENTS',
-      description: 'Confirm requirements',
+      name: "CONFIRM_REQUIREMENTS",
+      description: "Confirm requirements",
       roomId: task.roomId,
-      tags: ['workflow', 'AWAITING_CHOICE'],
+      tags: ["workflow", "AWAITING_CHOICE"],
       metadata: {
-        previousStep: 'GATHER_REQUIREMENTS',
+        previousStep: "GATHER_REQUIREMENTS",
         requirements: options.requirements,
         options: [
-          { name: 'confirm', description: 'Requirements correct' },
-          { name: 'revise', description: 'Need revision' },
+          { name: "confirm", description: "Requirements correct" },
+          { name: "revise", description: "Need revision" },
         ],
       },
     });
@@ -5329,29 +5403,29 @@ runtime.registerTaskWorker({
 
 // Step 2: Confirm requirements
 runtime.registerTaskWorker({
-  name: 'CONFIRM_REQUIREMENTS',
+  name: "CONFIRM_REQUIREMENTS",
   execute: async (runtime, options, task) => {
-    if (options.option === 'confirm') {
+    if (options.option === "confirm") {
       // Next step
       await runtime.createTask({
-        name: 'GENERATE_SOLUTION',
-        description: 'Generate solution',
+        name: "GENERATE_SOLUTION",
+        description: "Generate solution",
         roomId: task.roomId,
-        tags: ['workflow'],
+        tags: ["workflow"],
         metadata: {
-          previousStep: 'CONFIRM_REQUIREMENTS',
+          previousStep: "CONFIRM_REQUIREMENTS",
           requirements: task.metadata.requirements,
         },
       });
     } else {
       // Go back
       await runtime.createTask({
-        name: 'GATHER_REQUIREMENTS',
-        description: 'Revise requirements',
+        name: "GATHER_REQUIREMENTS",
+        description: "Revise requirements",
         roomId: task.roomId,
-        tags: ['workflow'],
+        tags: ["workflow"],
         metadata: {
-          previousStep: 'CONFIRM_REQUIREMENTS',
+          previousStep: "CONFIRM_REQUIREMENTS",
           previousRequirements: task.metadata.requirements,
         },
       });
@@ -5366,7 +5440,7 @@ runtime.registerTaskWorker({
 
 ```typescript
 runtime.registerTaskWorker({
-  name: 'GENERATE_WEEKLY_REPORT',
+  name: "GENERATE_WEEKLY_REPORT",
   execute: async (runtime, options, task) => {
     const { roomId } = task;
 
@@ -5382,7 +5456,7 @@ runtime.registerTaskWorker({
           text: `# Weekly Report\n\n${reportData}`,
         },
       },
-      'messages'
+      "messages",
     );
 
     // Task stays active for next week
@@ -5391,15 +5465,15 @@ runtime.registerTaskWorker({
 
 // Create weekly report task
 await runtime.createTask({
-  name: 'GENERATE_WEEKLY_REPORT',
-  description: 'Weekly activity report',
+  name: "GENERATE_WEEKLY_REPORT",
+  description: "Weekly activity report",
   roomId: reportChannelId,
   worldId: serverWorldId,
-  tags: ['report', 'repeat', 'weekly'],
+  tags: ["report", "repeat", "weekly"],
   metadata: {
     updateInterval: 7 * 86400000, // 7 days
     updatedAt: Date.now(),
-    format: 'markdown',
+    format: "markdown",
   },
 });
 ```
@@ -5423,9 +5497,9 @@ Tasks often use services for execution:
 
 ```typescript
 runtime.registerTaskWorker({
-  name: 'CHECK_BLOCKCHAIN',
+  name: "CHECK_BLOCKCHAIN",
   execute: async (runtime, options, task) => {
-    const solanaService = runtime.getService('solana');
+    const solanaService = runtime.getService("solana");
     if (!solanaService) return;
 
     const balance = await solanaService.getBalance();
@@ -5439,21 +5513,21 @@ runtime.registerTaskWorker({
             text: `⚠️ Low balance alert: ${balance} SOL`,
           },
         },
-        'messages'
+        "messages",
       );
     }
   },
 });
 ```
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-cypress-testing.mdc`:
 
 ```mdc
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: false
 ---
 # ElizaOS Cypress Frontend Testing
@@ -5483,21 +5557,23 @@ When detected, Cypress tests run after unit and E2E tests in the test pipeline.
 
 ### Plugin with Frontend UI
 
-```
+````
+
 packages/my-plugin/
 ├── src/
-│   ├── index.ts           # Plugin definition with routes
-│   └── frontend/          # Frontend code
-│       └── index.tsx      # UI components
+│ ├── index.ts # Plugin definition with routes
+│ └── frontend/ # Frontend code
+│ └── index.tsx # UI components
 ├── cypress/
-│   ├── e2e/              # E2E UI tests
-│   │   └── plugin-ui.cy.ts
-│   ├── support/          # Cypress configuration
-│   │   └── e2e.ts
-│   └── screenshots/      # Failure screenshots (auto-generated)
-├── cypress.config.ts     # Cypress configuration
-└── package.json         # Must include cypress as devDependency
-```
+│ ├── e2e/ # E2E UI tests
+│ │ └── plugin-ui.cy.ts
+│ ├── support/ # Cypress configuration
+│ │ └── e2e.ts
+│ └── screenshots/ # Failure screenshots (auto-generated)
+├── cypress.config.ts # Cypress configuration
+└── package.json # Must include cypress as devDependency
+
+````
 
 ## Cypress Configuration
 
@@ -5521,7 +5597,7 @@ export default defineConfig({
     responseTimeout: 10000,
   },
 });
-```
+````
 
 ## Writing Cypress Tests
 
@@ -5529,40 +5605,40 @@ export default defineConfig({
 
 ```typescript
 // cypress/e2e/plugin-ui.cy.ts
-describe('Plugin UI Tests', () => {
+describe("Plugin UI Tests", () => {
   // Agent ID is provided by the CLI via environment
-  const agentId = Cypress.env('AGENT_IDS')?.split(',')[0] || 'test-agent';
+  const agentId = Cypress.env("AGENT_IDS")?.split(",")[0] || "test-agent";
 
   beforeEach(() => {
     // Clear any previous state
     cy.clearAllSessionStorage();
   });
 
-  it('should load the plugin UI successfully', () => {
+  it("should load the plugin UI successfully", () => {
     // Visit plugin route with agent ID
     cy.visit(`/api/agents/${agentId}/plugins/my-plugin/display`);
 
     // Verify page loaded without errors
-    cy.get('body').should('exist');
-    cy.get('body').should('not.contain', '404');
-    cy.get('body').should('not.contain', 'Not Found');
+    cy.get("body").should("exist");
+    cy.get("body").should("not.contain", "404");
+    cy.get("body").should("not.contain", "Not Found");
 
     // Verify UI elements
-    cy.get('[data-testid="main-heading"]').should('be.visible');
-    cy.get('[data-testid="agent-info"]').should('contain', agentId);
+    cy.get('[data-testid="main-heading"]').should("be.visible");
+    cy.get('[data-testid="agent-info"]').should("contain", agentId);
   });
 
-  it('should interact with UI elements', () => {
+  it("should interact with UI elements", () => {
     cy.visit(`/api/agents/${agentId}/plugins/my-plugin/display`);
 
     // Test button clicks
     cy.get('[data-testid="action-button"]').click();
-    cy.get('[data-testid="result"]').should('be.visible');
+    cy.get('[data-testid="result"]').should("be.visible");
 
     // Test form submission
-    cy.get('input[name="query"]').type('test query');
-    cy.get('form').submit();
-    cy.get('[data-testid="results"]').should('contain', 'test query');
+    cy.get('input[name="query"]').type("test query");
+    cy.get("form").submit();
+    cy.get('[data-testid="results"]').should("contain", "test query");
   });
 });
 ```
@@ -5570,18 +5646,19 @@ describe('Plugin UI Tests', () => {
 ### Testing API Interactions
 
 ```typescript
-describe('Plugin API Tests', () => {
-  const agentId = Cypress.env('AGENT_IDS')?.split(',')[0] || 'test-agent';
+describe("Plugin API Tests", () => {
+  const agentId = Cypress.env("AGENT_IDS")?.split(",")[0] || "test-agent";
 
-  it('should call plugin API endpoints', () => {
-    cy.request('GET', `/api/agents/${agentId}/plugins/my-plugin/api/data`)
-      .then((response) => {
+  it("should call plugin API endpoints", () => {
+    cy.request("GET", `/api/agents/${agentId}/plugins/my-plugin/api/data`).then(
+      (response) => {
         expect(response.status).to.eq(200);
-        expect(response.body).to.have.property('data');
-      });
+        expect(response.body).to.have.property("data");
+      },
+    );
   });
 
-  it('should handle API errors gracefully', () => {
+  it("should handle API errors gracefully", () => {
     cy.request({
       url: `/api/agents/${agentId}/plugins/my-plugin/api/invalid`,
       failOnStatusCode: false,
@@ -5597,29 +5674,29 @@ describe('Plugin API Tests', () => {
 For plugins using React:
 
 ```typescript
-describe('React Component Tests', () => {
-  const agentId = Cypress.env('AGENT_IDS')?.split(',')[0];
+describe("React Component Tests", () => {
+  const agentId = Cypress.env("AGENT_IDS")?.split(",")[0];
 
-  it('should render React components correctly', () => {
+  it("should render React components correctly", () => {
     cy.visit(`/api/agents/${agentId}/plugins/my-plugin/app`);
 
     // Wait for React to render
-    cy.get('#root').should('exist');
+    cy.get("#root").should("exist");
 
     // Test React-specific behaviors
-    cy.get('[data-testid="counter"]').should('contain', '0');
+    cy.get('[data-testid="counter"]').should("contain", "0");
     cy.get('[data-testid="increment"]').click();
-    cy.get('[data-testid="counter"]').should('contain', '1');
+    cy.get('[data-testid="counter"]').should("contain", "1");
   });
 
-  it('should handle React hooks and state', () => {
+  it("should handle React hooks and state", () => {
     cy.visit(`/api/agents/${agentId}/plugins/my-plugin/app`);
 
     // Test async data loading
-    cy.intercept('GET', '**/api/data', { fixture: 'mockData.json' });
+    cy.intercept("GET", "**/api/data", { fixture: "mockData.json" });
     cy.get('[data-testid="load-data"]').click();
-    cy.get('[data-testid="loading"]').should('be.visible');
-    cy.get('[data-testid="data-list"]').should('have.length.greaterThan', 0);
+    cy.get('[data-testid="loading"]').should("be.visible");
+    cy.get('[data-testid="data-list"]').should("have.length.greaterThan", 0);
   });
 });
 ```
@@ -5630,33 +5707,33 @@ Your plugin must serve UI content via routes:
 
 ```typescript
 // src/index.ts
-import type { Plugin, Route } from '@elizaos/core';
+import type { Plugin, Route } from "@elizaos/core";
 
 const routes: Route[] = [
   {
-    type: 'GET',
-    path: '/display',
+    type: "GET",
+    path: "/display",
     handler: async (req, res, runtime) => {
       const html = generateHTML(runtime.agentId);
-      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.writeHead(200, { "Content-Type": "text/html" });
       res.end(html);
     },
-    name: 'Plugin UI',
+    name: "Plugin UI",
     public: true, // Makes it available as a tab
   },
   {
-    type: 'GET',
-    path: '/api/data',
+    type: "GET",
+    path: "/api/data",
     handler: async (req, res, runtime) => {
       const data = await fetchData();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
     },
   },
 ];
 
 export const MyPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   routes,
   // ... other plugin properties
 };
@@ -5724,12 +5801,12 @@ cy.get('[data-testid="submit-button"]').click();
 
 ```typescript
 // Wait for API calls
-cy.intercept('GET', '**/api/data').as('getData');
-cy.visit('/page');
-cy.wait('@getData');
+cy.intercept("GET", "**/api/data").as("getData");
+cy.visit("/page");
+cy.wait("@getData");
 
 // Wait for elements
-cy.get('[data-testid="result"]', { timeout: 10000 }).should('be.visible');
+cy.get('[data-testid="result"]', { timeout: 10000 }).should("be.visible");
 ```
 
 ### 3. Clean State Between Tests
@@ -5745,15 +5822,15 @@ beforeEach(() => {
 ### 4. Test Error States
 
 ```typescript
-it('should handle errors gracefully', () => {
+it("should handle errors gracefully", () => {
   // Simulate API error
-  cy.intercept('GET', '**/api/data', {
+  cy.intercept("GET", "**/api/data", {
     statusCode: 500,
-    body: { error: 'Server error' },
+    body: { error: "Server error" },
   });
 
-  cy.visit('/page');
-  cy.get('[data-testid="error-message"]').should('contain', 'Server error');
+  cy.visit("/page");
+  cy.get('[data-testid="error-message"]').should("contain", "Server error");
 });
 ```
 
@@ -5764,7 +5841,7 @@ it('should handle errors gracefully', () => {
 cy.wait(2000);
 
 // ✅ Good
-cy.get('[data-testid="loaded"]').should('be.visible');
+cy.get('[data-testid="loaded"]').should("be.visible");
 ```
 
 ## Common Issues
@@ -5775,7 +5852,7 @@ The CLI finds an available port automatically, but if you see port conflicts:
 
 ```typescript
 // The CLI sets CYPRESS_BASE_URL dynamically
-const baseUrl = Cypress.env('BASE_URL') || 'http://localhost:3000';
+const baseUrl = Cypress.env("BASE_URL") || "http://localhost:3000";
 ```
 
 ### Agent ID Not Available
@@ -5783,9 +5860,9 @@ const baseUrl = Cypress.env('BASE_URL') || 'http://localhost:3000';
 Always check for agent ID availability:
 
 ```typescript
-const agentId = Cypress.env('AGENT_IDS')?.split(',')[0];
+const agentId = Cypress.env("AGENT_IDS")?.split(",")[0];
 if (!agentId) {
-  throw new Error('No agent ID provided by test runner');
+  throw new Error("No agent ID provided by test runner");
 }
 ```
 
@@ -5813,23 +5890,27 @@ The `elizaos test` command is CI-friendly:
 ## Plugin Development Workflow
 
 1. **Create Plugin Structure**
+
    ```bash
    elizaos create plugin my-ui-plugin
    ```
 
 2. **Add Cypress**
+
    ```bash
    cd packages/my-ui-plugin
    bun add -D cypress
    ```
 
 3. **Create Cypress Config**
+
    ```bash
    touch cypress.config.ts
    mkdir -p cypress/e2e
    ```
 
 4. **Write Tests**
+
    ```bash
    touch cypress/e2e/ui.cy.ts
    ```
@@ -5873,14 +5954,14 @@ Cypress testing in ElizaOS provides automated frontend testing that integrates s
 
 Remember: **Cypress tests run automatically when you run `elizaos test` if Cypress is detected in your project.**
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos_cli_agents.mdc`:
 
 ```mdc
 ---
 description: ElizaOS CLI Agent APIs, Starting Agents, Setting up Characters
-globs: 
+globs:
 alwaysApply: false
 ---
 > You are an expert in the ElizaOS CLI, specializing in agent creation, management, and runtime operations. You provide clear, actionable guidance based on the latest best practices.
@@ -5901,7 +5982,7 @@ graph TD
         G --> I[AgentServer is Running];
         H --> I;
     end
-    
+
     subgraph "Live Management (via API)"
         I --> J[elizaos agent list];
         I --> K[elizaos agent get];
@@ -5915,10 +5996,10 @@ graph TD
         P[elizaos start --character my-agent.json] --> I;
         Q[elizaos agent start --path my-agent.json] --> I;
     end
-    
+
     B --> Q;
     D --> G;
-```
+````
 
 ## Agent Structure
 
@@ -5931,7 +6012,7 @@ export interface Character {
   name: string;
   description: string;
   // The initial prompt that defines the agent's personality and goals
-  systemPrompt: string; 
+  systemPrompt: string;
   // Examples of interactions to guide the agent's responses
   messageExamples: Array<Array<{ name: string; content: string }>>;
   // List of plugin packages the agent uses
@@ -5966,20 +6047,20 @@ When you create a project with `elizaos create --type project`, a template inclu
 ```typescript
 // my-project/src/agents/my-agent.ts
 
-import { type Character } from '@elizaos/core';
+import { type Character } from "@elizaos/core";
 
 // ✅ DO: Define the character as a const
 export const myAgentCharacter: Character = {
-  name: 'My Project Agent',
-  description: 'An agent defined within my project.',
-  systemPrompt: 'You are a helpful assistant integrated into a project.',
+  name: "My Project Agent",
+  description: "An agent defined within my project.",
+  systemPrompt: "You are a helpful assistant integrated into a project.",
   messageExamples: [
     [
-      { name: 'user', content: 'Hello' },
-      { name: 'My Project Agent', content: 'Hello! How can I help you today?' },
+      { name: "user", content: "Hello" },
+      { name: "My Project Agent", content: "Hello! How can I help you today?" },
     ],
   ],
-  plugins: ['@elizaos/plugin-sql'], // Plugins are added in the main project file
+  plugins: ["@elizaos/plugin-sql"], // Plugins are added in the main project file
 };
 ```
 
@@ -6081,12 +6162,12 @@ The `elizaos agent start` command demonstrates how to dynamically load agents. I
 ```typescript
 // Simplified example of how `agent start --path` works
 
-import fs from 'node:fs';
-import path from 'node:path';
+import fs from "node:fs";
+import path from "node:path";
 
 async function startAgentFromCli(filePath: string, apiUrl: string) {
   const fullPath = path.resolve(process.cwd(), filePath);
-  const fileContent = fs.readFileSync(fullPath, 'utf8');
+  const fileContent = fs.readFileSync(fullPath, "utf8");
   const characterJson = JSON.parse(fileContent);
 
   const payload = {
@@ -6094,13 +6175,13 @@ async function startAgentFromCli(filePath: string, apiUrl: string) {
   };
 
   const response = await fetch(`${apiUrl}/api/agents`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    throw new Error('Failed to start agent via API');
+    throw new Error("Failed to start agent via API");
   }
 
   const result = await response.json();
@@ -6115,13 +6196,16 @@ Many `agent` subcommands require an agent ID. The CLI includes a helper, `resolv
 ```typescript
 // `resolveAgentId` logic from packages/cli/src/commands/agent.ts
 
-async function resolveAgentId(idOrNameOrIndex: string, opts: any): Promise<string> {
+async function resolveAgentId(
+  idOrNameOrIndex: string,
+  opts: any,
+): Promise<string> {
   // 1. Fetch all agents from the server
   const agents = await getAgents(opts);
 
   // 2. Try to find by name (case-insensitive)
   const byName = agents.find(
-    (agent) => agent.name.toLowerCase() === idOrNameOrIndex.toLowerCase()
+    (agent) => agent.name.toLowerCase() === idOrNameOrIndex.toLowerCase(),
   );
   if (byName) return byName.id;
 
@@ -6138,19 +6222,20 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: any): Promise<strin
 ```
 
 ## References
+
 - [Project Management](mdc:elizaos_v2_cli_project.mdc)
 - [Plugin Integration](mdc:elizaos_v2_api_plugins_core.mdc)
 - [Core Types (`Character`)](mdc:packages/typescript/src/types.ts)
 - [Agent Command Source](mdc:packages/cli/src/commands/agent.ts)
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos_cli_config.mdc`:
 
 ```mdc
 ---
 description: ElizaOS CLI configuration and settings
-globs: 
+globs:
 alwaysApply: false
 ---
 > You are an expert in ElizaOS configuration, focusing on environment management, security, and best practices. You provide clear, actionable guidance for developers to configure their projects effectively.
@@ -6171,7 +6256,7 @@ graph TD
         G(1. Built-in Defaults) --> H(2. .env File);
         H --> I(3. CLI Flags);
     end
-    
+
     subgraph "File System & Path Resolution"
         J[UserEnvironment Utility] --> K{Find Project Root};
         K -->|Monorepo?| L[packages/typescript exists];
@@ -6179,7 +6264,7 @@ graph TD
         L & M --> N[Resolve .env Path];
         J --> O[Resolve .eliza/config.json Path];
     end
-    
+
     subgraph "Runtime Loading"
         D --> P(Load .env into process.env);
         P --> Q(Apply CLI Flags);
@@ -6187,28 +6272,29 @@ graph TD
     end
 
     B --> F;
-```
+````
 
 ## Configuration Files and Locations
 
 The `UserEnvironment` utility is the brain behind locating configuration files. It intelligently determines the project root, allowing for consistent behavior in both standalone projects and monorepos.
 
 1.  **Project `.env` file** (Primary Configuration):
-    *   **Location**: At the root of your project directory (e.g., `my-project/.env`). This is found by `UserEnvironment` by searching up from the current directory.
-    *   **Purpose**: This is the most important configuration file. It stores all secrets, API keys, and environment-specific settings (e.g., `POSTGRES_URL`, `OPENAI_API_KEY`).
-    *   **Management**: Use the `elizaos env` command for interactive management. For new projects, `elizaos create` will prompt you for initial values and generate this file.
-    *   **Security**: This file **must never be committed to version control**. Ensure `.env` is in your `.gitignore`.
+    - **Location**: At the root of your project directory (e.g., `my-project/.env`). This is found by `UserEnvironment` by searching up from the current directory.
+    - **Purpose**: This is the most important configuration file. It stores all secrets, API keys, and environment-specific settings (e.g., `POSTGRES_URL`, `OPENAI_API_KEY`).
+    - **Management**: Use the `elizaos env` command for interactive management. For new projects, `elizaos create` will prompt you for initial values and generate this file.
+    - **Security**: This file **must never be committed to version control**. Ensure `.env` is in your `.gitignore`.
 
 2.  **Global `config.json`**:
-    *   **Location**: Inside a global `.eliza` directory in your home directory (e.g., `~/.eliza/config.json`).
-    *   **Purpose**: Stores non-sensitive, global CLI state. Currently, it's used to track the `lastUpdated` timestamp. It is not intended for user configuration.
-    *   **Management**: This file is managed automatically by the CLI. You should not need to edit it manually.
+    - **Location**: Inside a global `.eliza` directory in your home directory (e.g., `~/.eliza/config.json`).
+    - **Purpose**: Stores non-sensitive, global CLI state. Currently, it's used to track the `lastUpdated` timestamp. It is not intended for user configuration.
+    - **Management**: This file is managed automatically by the CLI. You should not need to edit it manually.
 
 ## Environment Management (`elizaos env`)
 
 The `elizaos env` command suite is the dedicated tool for managing your local project's `.env` file safely and interactively.
 
 ### Listing Environment Variables (`list`)
+
 Get a clear, color-coded overview of your system information and the contents of your local `.env` file. Sensitive values like API keys are automatically masked for security.
 
 ```bash
@@ -6217,6 +6303,7 @@ elizaos env list
 ```
 
 ### Editing Environment Variables (`edit-local`)
+
 This command launches an interactive terminal UI to securely add, edit, or delete variables in your local `.env` file. It's the safest way to manage secrets.
 
 ```bash
@@ -6225,6 +6312,7 @@ elizaos env edit-local
 ```
 
 ### Resetting the Environment (`reset`)
+
 For a clean slate, the `reset` command can clear configurations and data. It interactively prompts you to select what to reset, including the `.env` file, the cache, and the local PGLite database.
 
 ```bash
@@ -6238,6 +6326,7 @@ elizaos env reset --yes
 ## Configuration in Practice
 
 ### Hierarchy and Precedence
+
 ElizaOS applies configuration in the following order (lower numbers are overridden by higher numbers):
 
 1.  **Built-in Defaults**: Default values hardcoded in the CLI (e.g., server port `3000`, default model names).
@@ -6245,6 +6334,7 @@ ElizaOS applies configuration in the following order (lower numbers are overridd
 3.  **Command-Line Flags**: Arguments passed directly to a command (e.g., `elizaos start --port 4000`) will always take the highest precedence, overriding all other sources.
 
 ### The `create` Workflow
+
 When you run `elizaos create`, the CLI uses the `env-prompt.ts` utility to guide you.
 
 ```typescript
@@ -6269,6 +6359,7 @@ export async function promptForEnvVars(pluginName: string): Promise<void> {
 ```
 
 ### The `start` Workflow
+
 The `elizaos start` command uses `UserEnvironment` to find the correct `.env` file and loads it using `dotenv`. This populates `process.env`, making the variables available to the entire runtime and all plugins.
 
 ```typescript
@@ -6290,18 +6381,20 @@ const apiKey = runtime.getSetting('OPENAI_API_KEY');
 ```
 
 ## Security Best Practices
--   **Secrets belong in `.env`**: Always use your project's local `.env` file for API keys, database URLs, and any other sensitive data.
--   **Never Hardcode Secrets**: Do not write secrets directly in your source code (`.ts` files). This is a major security risk.
--   **Git Ignore**: Your `.gitignore` file must include `.env` to prevent accidental commits of your secrets. The default project template handles this for you.
--   **CI/CD**: For automated environments, do not check in a `.env` file. Instead, use your CI/CD provider's secret management system to inject the required values as environment variables at build/runtime.
+
+- **Secrets belong in `.env`**: Always use your project's local `.env` file for API keys, database URLs, and any other sensitive data.
+- **Never Hardcode Secrets**: Do not write secrets directly in your source code (`.ts` files). This is a major security risk.
+- **Git Ignore**: Your `.gitignore` file must include `.env` to prevent accidental commits of your secrets. The default project template handles this for you.
+- **CI/CD**: For automated environments, do not check in a `.env` file. Instead, use your CI/CD provider's secret management system to inject the required values as environment variables at build/runtime.
 
 ## References
+
 - [UserEnvironment Utility](mdc:packages/cli/src/utils/user-environment.ts)
 - [Environment Prompting Logic](mdc:packages/cli/src/utils/env-prompt.ts)
 - [Env Command Source](mdc:packages/cli/src/commands/env.ts)
 - [Agent Management Rules](mdc:elizaos_v2_cli_agents.mdc)
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-unit-testing.mdc`:
 
@@ -6339,23 +6432,25 @@ ElizaOS unit tests focus on testing individual components in isolation:
 
 ### File Organization
 
-```
+````
+
 packages/my-plugin/
 ├── src/
-│   ├── __tests__/
-│   │   ├── actions/
-│   │   │   └── my-action.test.ts
-│   │   ├── providers/
-│   │   │   └── my-provider.test.ts
-│   │   ├── services/
-│   │   │   └── my-service.test.ts
-│   │   └── test-utils.ts         # Shared mock utilities
-│   ├── actions/
-│   │   └── my-action.ts
-│   ├── providers/
-│   │   └── my-provider.ts
-│   └── index.ts
-```
+│ ├── **tests**/
+│ │ ├── actions/
+│ │ │ └── my-action.test.ts
+│ │ ├── providers/
+│ │ │ └── my-provider.test.ts
+│ │ ├── services/
+│ │ │ └── my-service.test.ts
+│ │ └── test-utils.ts # Shared mock utilities
+│ ├── actions/
+│ │ └── my-action.ts
+│ ├── providers/
+│ │ └── my-provider.ts
+│ └── index.ts
+
+````
 
 ### Basic Test Template
 
@@ -6393,7 +6488,7 @@ describe('MyComponent', () => {
     await expect(myComponent.process(mockRuntime, input)).rejects.toThrow('Input cannot be empty');
   });
 });
-```
+````
 
 ## Creating Mock Runtime
 
@@ -6401,17 +6496,19 @@ The most critical part of unit testing is mocking the `IAgentRuntime`. Create a 
 
 ```typescript
 // src/__tests__/test-utils.ts
-import { vi } from 'vitest';
-import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+import { vi } from "vitest";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
-export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+export function createMockRuntime(
+  overrides: Partial<IAgentRuntime> = {},
+): IAgentRuntime {
   return {
     // Core properties
-    agentId: 'test-agent-id',
+    agentId: "test-agent-id",
     character: {
-      name: 'TestAgent',
-      bio: ['Test bio'],
-      system: 'Test system prompt',
+      name: "TestAgent",
+      bio: ["Test bio"],
+      system: "Test system prompt",
       messageExamples: [],
       postExamples: [],
       topics: [],
@@ -6424,8 +6521,8 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     // Settings
     getSetting: vi.fn((key: string) => {
       const settings: Record<string, string> = {
-        API_KEY: 'test-api-key',
-        SECRET_KEY: 'test-secret',
+        API_KEY: "test-api-key",
+        SECRET_KEY: "test-secret",
         ...overrides.settings,
       };
       return settings[key];
@@ -6434,10 +6531,10 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     // Services
     getService: vi.fn((name: string) => {
       const services: Record<string, any> = {
-        'test-service': {
+        "test-service": {
           start: vi.fn(),
           stop: vi.fn(),
-          doSomething: vi.fn().mockResolvedValue('service result'),
+          doSomething: vi.fn().mockResolvedValue("service result"),
         },
         ...overrides.services,
       };
@@ -6445,8 +6542,8 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     }),
 
     // Model/LLM
-    useModel: vi.fn().mockResolvedValue('mock model response'),
-    generateText: vi.fn().mockResolvedValue('generated text'),
+    useModel: vi.fn().mockResolvedValue("mock model response"),
+    generateText: vi.fn().mockResolvedValue("generated text"),
 
     // Memory operations
     messageManager: {
@@ -6462,7 +6559,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     composeState: vi.fn().mockResolvedValue({
       values: {},
       data: {},
-      text: '',
+      text: "",
     }),
     updateState: vi.fn().mockResolvedValue(true),
 
@@ -6500,13 +6597,13 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
 // Helper to create mock memory objects
 export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
   return {
-    id: 'test-memory-id',
-    entityId: 'test-entity-id',
-    roomId: 'test-room-id',
-    agentId: 'test-agent-id',
+    id: "test-memory-id",
+    entityId: "test-entity-id",
+    roomId: "test-room-id",
+    agentId: "test-agent-id",
     content: {
-      text: 'test message',
-      source: 'test',
+      text: "test message",
+      source: "test",
     },
     createdAt: Date.now(),
     ...overrides,
@@ -6518,7 +6615,7 @@ export function createMockState(overrides: Partial<State> = {}): State {
   return {
     values: {},
     data: {},
-    text: '',
+    text: "",
     ...overrides,
   } as State;
 }
@@ -6530,13 +6627,17 @@ export function createMockState(overrides: Partial<State> = {}): State {
 
 ```typescript
 // src/actions/__tests__/my-action.test.ts
-import { describe, it, expect, vi } from 'vitest';
-import { myAction } from '../my-action';
-import { createMockRuntime, createMockMemory, createMockState } from '../../__tests__/test-utils';
+import { describe, it, expect, vi } from "vitest";
+import { myAction } from "../my-action";
+import {
+  createMockRuntime,
+  createMockMemory,
+  createMockState,
+} from "../../__tests__/test-utils";
 
-describe('MyAction', () => {
-  describe('validate', () => {
-    it('should return true when all requirements are met', async () => {
+describe("MyAction", () => {
+  describe("validate", () => {
+    it("should return true when all requirements are met", async () => {
       const mockRuntime = createMockRuntime({
         getService: vi.fn().mockReturnValue({ isReady: true }),
       });
@@ -6547,7 +6648,7 @@ describe('MyAction', () => {
       expect(isValid).toBe(true);
     });
 
-    it('should return false when service is not available', async () => {
+    it("should return false when service is not available", async () => {
       const mockRuntime = createMockRuntime({
         getService: vi.fn().mockReturnValue(null),
       });
@@ -6559,39 +6660,45 @@ describe('MyAction', () => {
     });
   });
 
-  describe('handler', () => {
-    it('should process message and return response', async () => {
+  describe("handler", () => {
+    it("should process message and return response", async () => {
       const mockRuntime = createMockRuntime();
       const mockMessage = createMockMemory({
-        content: { text: 'do something', source: 'test' },
+        content: { text: "do something", source: "test" },
       });
       const mockState = createMockState();
       const mockCallback = vi.fn();
 
-      const result = await myAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+      const result = await myAction.handler(
+        mockRuntime,
+        mockMessage,
+        mockState,
+        {},
+        mockCallback,
+      );
 
       expect(result).toBeDefined();
-      expect(result.text).toContain('success');
+      expect(result.text).toContain("success");
       expect(mockCallback).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.any(String),
-          actions: expect.arrayContaining(['MY_ACTION']),
-        })
+          actions: expect.arrayContaining(["MY_ACTION"]),
+        }),
       );
     });
 
-    it('should handle errors gracefully', async () => {
+    it("should handle errors gracefully", async () => {
       const mockRuntime = createMockRuntime({
         getService: vi.fn().mockImplementation(() => {
-          throw new Error('Service error');
+          throw new Error("Service error");
         }),
       });
       const mockMessage = createMockMemory();
       const mockState = createMockState();
 
-      await expect(myAction.handler(mockRuntime, mockMessage, mockState)).rejects.toThrow(
-        'Service error'
-      );
+      await expect(
+        myAction.handler(mockRuntime, mockMessage, mockState),
+      ).rejects.toThrow("Service error");
     });
   });
 });
@@ -6601,14 +6708,18 @@ describe('MyAction', () => {
 
 ```typescript
 // src/providers/__tests__/my-provider.test.ts
-import { describe, it, expect, vi } from 'vitest';
-import { myProvider } from '../my-provider';
-import { createMockRuntime, createMockMemory, createMockState } from '../../__tests__/test-utils';
+import { describe, it, expect, vi } from "vitest";
+import { myProvider } from "../my-provider";
+import {
+  createMockRuntime,
+  createMockMemory,
+  createMockState,
+} from "../../__tests__/test-utils";
 
-describe('MyProvider', () => {
-  it('should provide context information', async () => {
+describe("MyProvider", () => {
+  it("should provide context information", async () => {
     const mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue('test-value'),
+      getSetting: vi.fn().mockReturnValue("test-value"),
     });
     const mockMessage = createMockMemory();
     const mockState = createMockState();
@@ -6616,11 +6727,11 @@ describe('MyProvider', () => {
     const result = await myProvider.get(mockRuntime, mockMessage, mockState);
 
     expect(result).toBeDefined();
-    expect(result.text).toContain('Provider context');
-    expect(result.values).toHaveProperty('setting', 'test-value');
+    expect(result.text).toContain("Provider context");
+    expect(result.values).toHaveProperty("setting", "test-value");
   });
 
-  it('should handle missing configuration', async () => {
+  it("should handle missing configuration", async () => {
     const mockRuntime = createMockRuntime({
       getSetting: vi.fn().mockReturnValue(null),
     });
@@ -6629,7 +6740,7 @@ describe('MyProvider', () => {
 
     const result = await myProvider.get(mockRuntime, mockMessage, mockState);
 
-    expect(result.text).toContain('not configured');
+    expect(result.text).toContain("not configured");
   });
 });
 ```
@@ -6638,11 +6749,11 @@ describe('MyProvider', () => {
 
 ```typescript
 // src/services/__tests__/my-service.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MyService } from '../my-service';
-import { createMockRuntime } from '../../__tests__/test-utils';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MyService } from "../my-service";
+import { createMockRuntime } from "../../__tests__/test-utils";
 
-describe('MyService', () => {
+describe("MyService", () => {
   let service: MyService;
   let mockRuntime: any;
 
@@ -6651,48 +6762,50 @@ describe('MyService', () => {
     service = new MyService(mockRuntime);
   });
 
-  describe('start', () => {
-    it('should initialize successfully', async () => {
+  describe("start", () => {
+    it("should initialize successfully", async () => {
       await service.start();
 
       expect(service.isReady()).toBe(true);
       expect(mockRuntime.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Service started')
+        expect.stringContaining("Service started"),
       );
     });
 
-    it('should handle initialization errors', async () => {
+    it("should handle initialization errors", async () => {
       mockRuntime.getSetting.mockReturnValue(null);
 
-      await expect(service.start()).rejects.toThrow('Missing configuration');
+      await expect(service.start()).rejects.toThrow("Missing configuration");
     });
   });
 
-  describe('operations', () => {
+  describe("operations", () => {
     beforeEach(async () => {
       await service.start();
     });
 
-    it('should perform operation successfully', async () => {
-      const result = await service.performOperation('test-input');
+    it("should perform operation successfully", async () => {
+      const result = await service.performOperation("test-input");
 
-      expect(result).toBe('expected-output');
+      expect(result).toBe("expected-output");
       expect(mockRuntime.logger.debug).toHaveBeenCalled();
     });
 
-    it('should validate input before processing', async () => {
-      await expect(service.performOperation('')).rejects.toThrow('Invalid input');
+    it("should validate input before processing", async () => {
+      await expect(service.performOperation("")).rejects.toThrow(
+        "Invalid input",
+      );
     });
   });
 
-  describe('stop', () => {
-    it('should clean up resources', async () => {
+  describe("stop", () => {
+    it("should clean up resources", async () => {
       await service.start();
       await service.stop();
 
       expect(service.isReady()).toBe(false);
       expect(mockRuntime.logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Service stopped')
+        expect.stringContaining("Service stopped"),
       );
     });
   });
@@ -6703,33 +6816,33 @@ describe('MyService', () => {
 
 ```typescript
 // src/utils/__tests__/helpers.test.ts
-import { describe, it, expect } from 'vitest';
-import { formatMessage, validateInput, parseResponse } from '../helpers';
+import { describe, it, expect } from "vitest";
+import { formatMessage, validateInput, parseResponse } from "../helpers";
 
-describe('Utility Functions', () => {
-  describe('formatMessage', () => {
-    it('should format message correctly', () => {
-      const input = { text: 'hello', user: 'test' };
+describe("Utility Functions", () => {
+  describe("formatMessage", () => {
+    it("should format message correctly", () => {
+      const input = { text: "hello", user: "test" };
       const result = formatMessage(input);
 
-      expect(result).toBe('[test]: hello');
+      expect(result).toBe("[test]: hello");
     });
 
-    it('should handle empty text', () => {
-      const input = { text: '', user: 'test' };
+    it("should handle empty text", () => {
+      const input = { text: "", user: "test" };
       const result = formatMessage(input);
 
-      expect(result).toBe('[test]: <empty message>');
+      expect(result).toBe("[test]: <empty message>");
     });
   });
 
-  describe('validateInput', () => {
-    it('should accept valid input', () => {
-      expect(validateInput('valid input')).toBe(true);
+  describe("validateInput", () => {
+    it("should accept valid input", () => {
+      expect(validateInput("valid input")).toBe(true);
     });
 
-    it('should reject invalid input', () => {
-      expect(validateInput('')).toBe(false);
+    it("should reject invalid input", () => {
+      expect(validateInput("")).toBe(false);
       expect(validateInput(null)).toBe(false);
       expect(validateInput(undefined)).toBe(false);
     });
@@ -6779,34 +6892,38 @@ Aim for >75% coverage on testable code:
 ```typescript
 // Mock a service that returns promises
 const mockService = {
-  fetchData: vi.fn().mockResolvedValue({ data: 'test' }),
+  fetchData: vi.fn().mockResolvedValue({ data: "test" }),
   saveData: vi.fn().mockResolvedValue(true),
   // Simulate errors
-  failingMethod: vi.fn().mockRejectedValue(new Error('API Error')),
+  failingMethod: vi.fn().mockRejectedValue(new Error("API Error")),
 };
 ```
 
 ### Testing Error Scenarios
 
 ```typescript
-it('should handle network errors', async () => {
+it("should handle network errors", async () => {
   const mockRuntime = createMockRuntime({
-    useModel: vi.fn().mockRejectedValue(new Error('Network error')),
+    useModel: vi.fn().mockRejectedValue(new Error("Network error")),
   });
 
-  await expect(myAction.handler(mockRuntime, message, state)).rejects.toThrow('Network error');
+  await expect(myAction.handler(mockRuntime, message, state)).rejects.toThrow(
+    "Network error",
+  );
 });
 ```
 
 ### Spying on Method Calls
 
 ```typescript
-it('should call logger with correct parameters', async () => {
+it("should call logger with correct parameters", async () => {
   const mockRuntime = createMockRuntime();
 
   await myComponent.process(mockRuntime, input);
 
-  expect(mockRuntime.logger.info).toHaveBeenCalledWith('Processing started', { input });
+  expect(mockRuntime.logger.info).toHaveBeenCalledWith("Processing started", {
+    input,
+  });
   expect(mockRuntime.logger.info).toHaveBeenCalledTimes(2);
 });
 ```
@@ -6815,8 +6932,8 @@ it('should call logger with correct parameters', async () => {
 
 ```typescript
 const testCases = [
-  { setting: 'MODE', value: 'production', expected: 'strict' },
-  { setting: 'MODE', value: 'development', expected: 'relaxed' },
+  { setting: "MODE", value: "production", expected: "strict" },
+  { setting: "MODE", value: "development", expected: "relaxed" },
 ];
 
 testCases.forEach(({ setting, value, expected }) => {
@@ -6837,20 +6954,20 @@ testCases.forEach(({ setting, value, expected }) => {
 
 ```typescript
 // Skip a test temporarily
-it.skip('should do something', async () => {
+it.skip("should do something", async () => {
   // Test implementation
 });
 
 // Run only this test
-it.only('should focus on this', async () => {
+it.only("should focus on this", async () => {
   // Test implementation
 });
 
 // Add console logs for debugging
-it('should debug something', async () => {
-  console.log('Input:', input);
+it("should debug something", async () => {
+  console.log("Input:", input);
   const result = await myComponent.process(input);
-  console.log('Result:', result);
+  console.log("Result:", result);
   expect(result).toBeDefined();
 });
 ```
@@ -6866,14 +6983,14 @@ Remember:
 - **Aim for >75% coverage** on testable code
 - **All tests must pass** before considering work complete
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-llm-providers.mdc`:
 
 ```mdc
 ---
 description: ElizaOS LLM Providers and AI Model Handling in the runtime
-globs: 
+globs:
 alwaysApply: false
 ---
 > You are an expert in ElizaOS, focusing on the integration of Large Language Models (LLMs) through the plugin architecture. You provide clear, practical guidance on creating model providers.
@@ -6895,31 +7012,36 @@ graph TD
         G[Plugin Init] --> H[runtime.registerModel(type, handler, provider, priority)];
         H --> I[Runtime adds handler to sorted list for 'type'];
     end
-```
+````
 
 ## Core Concepts
 
 ### `ModelType` Enum
+
 This enum in `@elizaos/core` defines the standard categories of models the runtime understands. Plugins should register handlers for one or more of these types.
 
 ```typescript
 // packages/typescript/src/types.ts (partial)
 export const ModelType = {
-  TEXT_SMALL: 'TEXT_SMALL',
-  TEXT_LARGE: 'TEXT_LARGE',
-  TEXT_EMBEDDING: 'TEXT_EMBEDDING',
-  TEXT_REASONING_LARGE: 'REASONING_LARGE',
+  TEXT_SMALL: "TEXT_SMALL",
+  TEXT_LARGE: "TEXT_LARGE",
+  TEXT_EMBEDDING: "TEXT_EMBEDDING",
+  TEXT_REASONING_LARGE: "REASONING_LARGE",
   // ... and others for images, audio, etc.
 } as const;
 ```
 
 ### `ModelHandler` Interface
+
 A `ModelHandler` is an object that packages the model-calling function with its metadata.
 
 ```typescript
 // packages/typescript/src/types.ts (partial)
 export interface ModelHandler {
-  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
+  handler: (
+    runtime: IAgentRuntime,
+    params: Record<string, unknown>,
+  ) => Promise<unknown>;
   provider: string; // The name of the plugin providing this handler
   priority?: number; // Higher number means higher priority
   registrationOrder?: number; // Internal tie-breaker
@@ -6927,30 +7049,32 @@ export interface ModelHandler {
 ```
 
 ### Registration and Selection
--   **`runtime.registerModel(type, handler, provider, priority)`**: A plugin calls this in its `init` function to make a model available.
--   **`runtime.getModel(type)`**: The runtime uses this internally to retrieve the highest-priority handler for a given `ModelType`. If multiple handlers have the same priority, the one registered first is chosen.
--   **`runtime.useModel(type, params)`**: This is the primary method agents and other components use to invoke a model. It automatically selects the best available handler and executes it.
+
+- **`runtime.registerModel(type, handler, provider, priority)`**: A plugin calls this in its `init` function to make a model available.
+- **`runtime.getModel(type)`**: The runtime uses this internally to retrieve the highest-priority handler for a given `ModelType`. If multiple handlers have the same priority, the one registered first is chosen.
+- **`runtime.useModel(type, params)`**: This is the primary method agents and other components use to invoke a model. It automatically selects the best available handler and executes it.
 
 ## Implementation Pattern
 
 Here is how you would create a plugin that provides an LLM for text generation.
 
 ### 1. Define the Model Handler
+
 Create a function that takes the runtime and parameters, calls the external LLM API, and returns the result in the expected format.
 
 ```typescript
 // my-llm-plugin/src/handler.ts
-import { type IAgentRuntime, type TextGenerationParams } from '@elizaos/core';
-import { callMyLlmApi } from './api'; // Your API client
+import { type IAgentRuntime, type TextGenerationParams } from "@elizaos/core";
+import { callMyLlmApi } from "./api"; // Your API client
 
 // ✅ DO: Implement the handler function matching the expected parameters
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: TextGenerationParams,
 ): Promise<string> {
-  const apiKey = runtime.getSetting('MY_LLM_API_KEY');
+  const apiKey = runtime.getSetting("MY_LLM_API_KEY");
   if (!apiKey) {
-    throw new Error('MY_LLM_API_KEY is not configured.');
+    throw new Error("MY_LLM_API_KEY is not configured.");
   }
 
   const { prompt, temperature, maxTokens } = params;
@@ -6969,17 +7093,18 @@ export async function handleTextLarge(
 ```
 
 ### 2. Create the Plugin
+
 In your plugin's main file, register the handler.
 
 ```typescript
 // my-llm-plugin/src/index.ts
-import { type Plugin, ModelType } from '@elizaos/core';
-import { handleTextLarge } from './handler';
+import { type Plugin, ModelType } from "@elizaos/core";
+import { handleTextLarge } from "./handler";
 
 export const myLlmProviderPlugin: Plugin = {
-  name: 'my-llm-provider',
-  description: 'Provides access to My Custom LLM.',
-  
+  name: "my-llm-provider",
+  description: "Provides access to My Custom LLM.",
+
   // ✅ DO: Register your model handlers in the `models` property
   models: {
     // The key must match a value from the ModelType enum
@@ -6991,23 +7116,26 @@ export const myLlmProviderPlugin: Plugin = {
 
   async init(config, runtime) {
     // You can perform validation here
-    const apiKey = runtime.getSetting('MY_LLM_API_KEY');
+    const apiKey = runtime.getSetting("MY_LLM_API_KEY");
     if (!apiKey) {
-      runtime.logger.warn(`${this.name} requires an API key. It may not function correctly.`);
+      runtime.logger.warn(
+        `${this.name} requires an API key. It may not function correctly.`,
+      );
     }
   },
 };
 ```
 
 ### 3. Usage in an Action or Provider
+
 Once the plugin is registered, any other component can use the model via `runtime.useModel`.
 
 ```typescript
 // another-plugin/src/actions.ts
-import { type Action, type IAgentRuntime, ModelType } from '@elizaos/core';
+import { type Action, type IAgentRuntime, ModelType } from "@elizaos/core";
 
 export const myAction: Action = {
-  name: 'ask-my-llm',
+  name: "ask-my-llm",
   // ...
   async handler(runtime: IAgentRuntime, message) {
     const question = message.content.text;
@@ -7018,7 +7146,7 @@ export const myAction: Action = {
       prompt: `The user asked: ${question}. Please provide a concise answer.`,
       temperature: 0.5,
     });
-    
+
     // ... do something with the response
     return { text: responseText };
   },
@@ -7029,29 +7157,33 @@ export const myAction: Action = {
 ## Best Practices
 
 ### Parameter and Result Typing
--   Use the generic parameter and result types from `@elizaos/core` (`ModelParamsMap`, `ModelResultMap`, `TextGenerationParams`, etc.) to ensure your handler is compatible with the runtime.
--   If your model returns extra metadata (like token usage), you can attach it to the response, but ensure the primary return value matches the `ModelResultMap` type for the given `ModelType`.
+
+- Use the generic parameter and result types from `@elizaos/core` (`ModelParamsMap`, `ModelResultMap`, `TextGenerationParams`, etc.) to ensure your handler is compatible with the runtime.
+- If your model returns extra metadata (like token usage), you can attach it to the response, but ensure the primary return value matches the `ModelResultMap` type for the given `ModelType`.
 
 ### Error Handling
--   Your handler function should perform robust error handling. If an API call fails, throw a descriptive error. The `useModel` call will propagate this error, allowing the caller to handle it.
--   Check for required API keys or configuration in your plugin's `init` function and log a warning if they are missing.
+
+- Your handler function should perform robust error handling. If an API call fails, throw a descriptive error. The `useModel` call will propagate this error, allowing the caller to handle it.
+- Check for required API keys or configuration in your plugin's `init` function and log a warning if they are missing.
 
 ### Priority
--   If you are creating a plugin that you intend to be the default for a certain `ModelType`, give it a `priority`. For example, `@elizaos/plugin-openai` might have a higher priority than a local model provider.
--   If no priority is set, it defaults to `0`. The registration order is used as a tie-breaker.
+
+- If you are creating a plugin that you intend to be the default for a certain `ModelType`, give it a `priority`. For example, `@elizaos/plugin-openai` might have a higher priority than a local model provider.
+- If no priority is set, it defaults to `0`. The registration order is used as a tie-breaker.
 
 ### Providing Multiple Models
+
 A single plugin can provide handlers for multiple `ModelType`s.
 
 ```typescript
 // my-full-llm-plugin/src/index.ts
-import { type Plugin, ModelType } from '@elizaos/core';
-import { handleTextLarge, handleEmbedding } from './handlers';
+import { type Plugin, ModelType } from "@elizaos/core";
+import { handleTextLarge, handleEmbedding } from "./handlers";
 
 export const myFullLlmPlugin: Plugin = {
-  name: 'my-full-llm-provider',
-  description: 'Provides text and embedding models.',
-  
+  name: "my-full-llm-provider",
+  description: "Provides text and embedding models.",
+
   models: {
     [ModelType.TEXT_LARGE]: handleTextLarge,
     [ModelType.TEXT_EMBEDDING]: handleEmbedding,
@@ -7060,11 +7192,12 @@ export const myFullLlmPlugin: Plugin = {
 ```
 
 ## References
+
 - [Core Types (`ModelType`, `ModelHandler`, `ModelParamsMap`)](mdc:packages/typescript/src/types.ts)
 - [Agent Runtime (`registerModel`, `useModel`)](mdc:packages/typescript/src/runtime.ts)
 - [Example: OpenAI Plugin](mdc:packages/plugin-openai/src/index.ts)
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-evaluators.mdc`:
 
@@ -7093,7 +7226,7 @@ interface Evaluator {
   validate: Validator; // Execution criteria
   alwaysRun?: boolean; // Run regardless of validation
 }
-```
+````
 
 ### Execution Flow
 
@@ -7111,7 +7244,7 @@ Extracts and stores factual information from conversations:
 
 ```typescript
 const factEvaluator: Evaluator = {
-  name: 'EXTRACT_FACTS',
+  name: "EXTRACT_FACTS",
 
   validate: async (runtime, message) => {
     // Run periodically, not every message
@@ -7126,7 +7259,8 @@ const factEvaluator: Evaluator = {
 
     // Filter and deduplicate
     const newFacts = facts.filter(
-      (fact) => !fact.already_known && fact.type === 'fact' && fact.claim?.trim()
+      (fact) =>
+        !fact.already_known && fact.type === "fact" && fact.claim?.trim(),
     );
 
     // Store as embeddings
@@ -7147,7 +7281,7 @@ Enables self-awareness and relationship tracking:
 
 ```typescript
 const reflectionEvaluator: Evaluator = {
-  name: 'REFLECT',
+  name: "REFLECT",
 
   handler: async (runtime, message, state) => {
     const reflection = await generateReflection(state);
@@ -7158,7 +7292,7 @@ const reflectionEvaluator: Evaluator = {
     // Store self-reflection
     if (thought) {
       await runtime.createMemory({
-        content: { text: thought, type: 'reflection' },
+        content: { text: thought, type: "reflection" },
         entityId: runtime.agentId,
         roomId: message.roomId,
       });
@@ -7215,12 +7349,12 @@ const reflectionEvaluator: Evaluator = {
 
 ```typescript
 const customEvaluator: Evaluator = {
-  name: 'CUSTOM_ANALYSIS',
-  description: 'Analyzes specific patterns',
+  name: "CUSTOM_ANALYSIS",
+  description: "Analyzes specific patterns",
 
   validate: async (runtime, message, state) => {
     // Check if evaluation needed
-    return message.content.text?.includes('analyze');
+    return message.content.text?.includes("analyze");
   },
 
   handler: async (runtime, message, state) => {
@@ -7242,12 +7376,12 @@ const customEvaluator: Evaluator = {
 
   examples: [
     {
-      prompt: 'Conversation with analysis request',
+      prompt: "Conversation with analysis request",
       messages: [
-        { name: 'User', content: { text: 'Can you analyze this data?' } },
-        { name: 'Agent', content: { text: "I'll analyze that for you." } },
+        { name: "User", content: { text: "Can you analyze this data?" } },
+        { name: "Agent", content: { text: "I'll analyze that for you." } },
       ],
-      outcome: 'Analysis stored in memory',
+      outcome: "Analysis stored in memory",
     },
   ],
 };
@@ -7293,7 +7427,7 @@ const customEvaluator: Evaluator = {
 
 ```typescript
 const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   evaluators: [factEvaluator, reflectionEvaluator, customEvaluator],
 
   init: async (runtime) => {
@@ -7302,7 +7436,7 @@ const myPlugin: Plugin = {
 };
 ```
 
-```
+````
 
 `/Users/shawwalters/eliza-upgrading/.cursor/rules/elizaos/elizaos-providers.mdc`:
 
@@ -7336,7 +7470,7 @@ interface ProviderResult {
   data?: { [key: string]: any }; // Stored in state.data.providers
   text?: string; // Injected into agent context
 }
-```
+````
 
 ## Provider Types
 
@@ -7367,14 +7501,14 @@ const state = await runtime.composeState(message);
 // Filtered: only specific providers
 const state = await runtime.composeState(
   message,
-  ['TIME', 'FACTS'] // Only these providers
+  ["TIME", "FACTS"], // Only these providers
 );
 
 // Include private/dynamic providers
 const state = await runtime.composeState(
   message,
   null,
-  ['WEATHER', 'PRIVATE_DATA'] // Include these extras
+  ["WEATHER", "PRIVATE_DATA"], // Include these extras
 );
 ```
 
@@ -7384,16 +7518,16 @@ const state = await runtime.composeState(
 
 ```typescript
 const timeProvider: Provider = {
-  name: 'TIME',
-  description: 'Provides current date and time',
+  name: "TIME",
+  description: "Provides current date and time",
   position: -10, // Run early
 
   get: async (runtime, message) => {
     const now = new Date();
-    const formatted = now.toLocaleString('en-US', {
-      timeZone: 'UTC',
-      dateStyle: 'full',
-      timeStyle: 'long',
+    const formatted = now.toLocaleString("en-US", {
+      timeZone: "UTC",
+      dateStyle: "full",
+      timeStyle: "long",
     });
 
     return {
@@ -7411,11 +7545,11 @@ const timeProvider: Provider = {
 
 ```typescript
 const weatherProvider: Provider = {
-  name: 'WEATHER',
+  name: "WEATHER",
   dynamic: true, // Only when requested
 
   get: async (runtime, message, state) => {
-    const location = state.values.location || 'San Francisco';
+    const location = state.values.location || "San Francisco";
     const weather = await fetchWeatherAPI(location);
 
     return {
@@ -7445,7 +7579,7 @@ Special provider for action chaining that exposes:
 
 ```typescript
 const actionStateProvider: Provider = {
-  name: 'ACTION_STATE',
+  name: "ACTION_STATE",
   position: -5, // High priority
 
   get: async (runtime, message, state) => {
@@ -7511,5 +7645,7 @@ const actionStateProvider: Provider = {
 ## Integration with Actions
 
 Providers run before action selection, providing context that helps the LLM choose appropriate actions. The ACTION_STATE provider specifically enables action chaining by exposing previous execution results.
+
+```
 
 ```

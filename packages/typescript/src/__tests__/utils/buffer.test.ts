@@ -1,6 +1,7 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   alloc,
+  toString as bufferToString,
   byteLength,
   concat,
   equals,
@@ -11,7 +12,6 @@ import {
   randomBytes,
   slice,
   toHex,
-  toString,
 } from "../../utils/buffer";
 
 describe("buffer utils", () => {
@@ -25,7 +25,7 @@ describe("buffer utils", () => {
   it("converts string utf8 <-> buffer", () => {
     const str = "Hello, 世界";
     const buf = fromString(str, "utf8");
-    const out = toString(buf, "utf8");
+    const out = bufferToString(buf, "utf8");
     expect(out).toBe(str);
   });
 
@@ -33,10 +33,10 @@ describe("buffer utils", () => {
     const str = "hello-base64";
     const b64 = "aGVsbG8tYmFzZTY0";
     const bufFromB64 = fromString(b64, "base64");
-    expect(toString(bufFromB64, "utf8")).toBe(str);
+    expect(bufferToString(bufFromB64, "utf8")).toBe(str);
 
     const bufFromStr = fromString(str, "utf8");
-    expect(toString(bufFromStr, "base64")).toBe(b64);
+    expect(bufferToString(bufFromStr, "base64")).toBe(b64);
   });
 
   it("creates from bytes and allocates", () => {

@@ -1,10 +1,4 @@
-import {
-  type Agent,
-  type Entity,
-  Role,
-  type UUID,
-  type World,
-} from "@elizaos/core";
+import { type Agent, type Entity, Role, type UUID, type World } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
 // Test IDs

@@ -2,13 +2,13 @@
  * Text generation model handlers for Ollama.
  */
 
-import type { GenerateTextParams, IAgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { generateText } from 'ai';
-import { createOllama } from 'ollama-ai-provider';
+import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { generateText } from "ai";
+import { createOllama } from "ollama-ai-provider";
 
-import { getBaseURL, getSmallModel, getLargeModel } from '../utils/config';
-import { ensureModelAvailable } from './availability';
+import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
+import { ensureModelAvailable } from "./availability";
 
 /**
  * Generate text using the specified Ollama model.
@@ -48,8 +48,8 @@ async function generateOllamaText(
     );
     return ollamaResponse;
   } catch (error: unknown) {
-    logger.error({ error }, 'Error in generateOllamaText');
-    return 'Error generating text. Please try again later.';
+    logger.error({ error }, "Error in generateOllamaText");
+    return "Error generating text. Please try again later.";
   }
 }
 
@@ -80,7 +80,7 @@ export async function handleTextSmall(
     const model = getSmallModel(runtime);
     logger.log(`[Ollama] Using TEXT_SMALL model: ${model}`);
     await ensureModelAvailable(model, baseURL, customFetch);
-    logger.log('generating text');
+    logger.log("generating text");
     logger.log(prompt);
 
     return await generateOllamaText(ollama, model, {
@@ -93,8 +93,8 @@ export async function handleTextSmall(
       stopSequences,
     });
   } catch (error) {
-    logger.error({ error }, 'Error in TEXT_SMALL model');
-    return 'Error generating text. Please try again later.';
+    logger.error({ error }, "Error in TEXT_SMALL model");
+    return "Error generating text. Please try again later.";
   }
 }
 
@@ -137,7 +137,7 @@ export async function handleTextLarge(
       stopSequences,
     });
   } catch (error) {
-    logger.error({ error }, 'Error in TEXT_LARGE model');
-    return 'Error generating text. Please try again later.';
+    logger.error({ error }, "Error in TEXT_LARGE model");
+    return "Error generating text. Please try again later.";
   }
 }

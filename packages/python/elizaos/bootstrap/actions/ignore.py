@@ -41,7 +41,9 @@ class IgnoreAction:
         "tell them. Only ignore if the user should be ignored."
     )
 
-    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
+    ) -> bool:
         """Always valid - agents can always choose to ignore."""
         return True
 

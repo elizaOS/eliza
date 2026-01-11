@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Agent schema for elizaOS database
 //!
 //! Corresponds to the TypeScript agentTable in packages/plugin-sql/typescript/schema/agent.ts

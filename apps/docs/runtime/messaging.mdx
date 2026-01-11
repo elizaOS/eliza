@@ -19,35 +19,35 @@ flowchart TD
         A[Extension Service Worker]
         B[Extension Socket.IO Client]
     end
-    
+
     subgraph "Eliza NextJS App"
         C[SocketIOManager]
         D[Socket.IO Client]
     end
-    
+
     subgraph "Eliza Server"
         E[Eliza Server<br/>localhost:3000]
         F[Socket.IO Server]
     end
-    
+
     %% Extension to Server flow
     A -->|"1. Send message"| B
     B -->|"2. emit('message')"| F
     F -->|"3. Process"| E
     E -->|"4. Response"| F
-    
+
     %% Server broadcasts to clients
     F -->|"5. emit('messageBroadcast')"| D
     F -.->|"5. emit('messageBroadcast')<br/>(Optional)"| B
-    
+
     %% Internal app flow
     D -->|"6. Receive broadcast"| C
     C -->|"7. Filter by channelId"| C
-    
+
     classDef extension fill:#2196f3,color:#fff
     classDef server fill:#4caf50,color:#fff
     classDef client fill:#9c27b0,color:#fff
-    
+
     class A,B extension
     class E,F server
     class C,D client
@@ -88,60 +88,63 @@ enum SOCKET_MESSAGE_TYPE {
 Here's a minimal Socket.IO client implementation:
 
 ```javascript
-const SOCKET_URL = 'http://localhost:3000';
+const SOCKET_URL = "http://localhost:3000";
 
 // 1. Connect to Socket.IO
 const socket = io(SOCKET_URL, {
-  'force new connection': true,
-  'reconnection': true,
-  'reconnectionDelay': 1000,
-  'reconnectionAttempts': 5,
-  'timeout': 20000,
-  'transports': ['polling', 'websocket']
+  "force new connection": true,
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionAttempts: 5,
+  timeout: 20000,
+  transports: ["polling", "websocket"],
 });
 
 // Your IDs (make sure these match exactly)
-const entityId = 'your-entity-id';
-const roomId = 'your-room-id'; // This should match the agent/channel ID
+const entityId = "your-entity-id";
+const roomId = "your-room-id"; // This should match the agent/channel ID
 
 // 2. CRITICAL: Join the room when connected
-socket.on('connect', function() {
-  console.log('[SUCCESS] Connected to Eliza, socket ID:', socket.id);
-  
+socket.on("connect", function () {
+  console.log("[SUCCESS] Connected to Eliza, socket ID:", socket.id);
+
   // JOIN THE ROOM - This is required to receive broadcasts!
-  socket.emit('message', {
+  socket.emit("message", {
     type: 1, // ROOM_JOINING
     payload: {
       roomId: roomId,
-      entityId: entityId
-    }
+      entityId: entityId,
+    },
   });
-  
-  console.log('[SENT] Room join request for room:', roomId);
+
+  console.log("[SENT] Room join request for room:", roomId);
 });
 
 // 3. LISTEN FOR THE CORRECT EVENT: "messageBroadcast" (not "message")
-socket.on('messageBroadcast', function(data) {
-  console.log('[RECEIVED] Broadcast:', data);
-  
+socket.on("messageBroadcast", function (data) {
+  console.log("[RECEIVED] Broadcast:", data);
+
   // Check if this message is for your room
   if (data.roomId === roomId || data.channelId === roomId) {
-    console.log('[SUCCESS] Message is for our room!');
-    console.log('Sender:', data.senderName);
-    console.log('Text:', data.text);
-    console.log('Full data:', JSON.stringify(data, null, 2));
+    console.log("[SUCCESS] Message is for our room!");
+    console.log("Sender:", data.senderName);
+    console.log("Text:", data.text);
+    console.log("Full data:", JSON.stringify(data, null, 2));
   } else {
-    console.log('[ERROR] Message is for different room:', data.roomId || data.channelId);
+    console.log(
+      "[ERROR] Message is for different room:",
+      data.roomId || data.channelId,
+    );
   }
 });
 
 // 4. Listen for other important events
-socket.on('messageComplete', function(data) {
-  console.log('[SUCCESS] Message processing complete:', data);
+socket.on("messageComplete", function (data) {
+  console.log("[SUCCESS] Message processing complete:", data);
 });
 
-socket.on('connection_established', function(data) {
-  console.log('[SUCCESS] Connection established:', data);
+socket.on("connection_established", function (data) {
+  console.log("[SUCCESS] Connection established:", data);
 });
 
 // 5. Send a message (make sure format is exact)
@@ -150,36 +153,36 @@ function sendMessageToEliza(text) {
     type: 2, // SEND_MESSAGE
     payload: {
       senderId: entityId,
-      senderName: 'Extension User',
+      senderName: "Extension User",
       message: text,
-      roomId: roomId,        // Include roomId
+      roomId: roomId, // Include roomId
       messageId: generateUUID(),
-      source: 'extension',
+      source: "extension",
       attachments: [],
-      metadata: {}
-    }
+      metadata: {},
+    },
   };
-  
-  console.log('[SENDING] Message:', messagePayload);
-  socket.emit('message', messagePayload);
+
+  console.log("[SENDING] Message:", messagePayload);
+  socket.emit("message", messagePayload);
 }
 
 // Helper function for UUID
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
 
 // Connection error handling
-socket.on('connect_error', function(error) {
-  console.error('[ERROR] Connection error:', error);
+socket.on("connect_error", function (error) {
+  console.error("[ERROR] Connection error:", error);
 });
 
-socket.on('disconnect', function(reason) {
-  console.log('[DISCONNECTED] Reason:', reason);
+socket.on("disconnect", function (reason) {
+  console.log("[DISCONNECTED] Reason:", reason);
 });
 ```
 
@@ -188,9 +191,9 @@ socket.on('disconnect', function(reason) {
 For newer Socket.IO versions, here's a cleaner implementation:
 
 ```javascript
-import { io } from 'socket.io-client';
+import { io } from "socket.io-client";
 
-const SOCKET_URL = 'http://localhost:3000';
+const SOCKET_URL = "http://localhost:3000";
 
 class ElizaSocketClient {
   constructor(entityId, roomId) {
@@ -201,18 +204,18 @@ class ElizaSocketClient {
 
   connect() {
     this.socket = io(SOCKET_URL, {
-      transports: ['polling', 'websocket'],
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });
 
-    this.socket.on('connect', () => {
-      console.log('Connected to Eliza');
+    this.socket.on("connect", () => {
+      console.log("Connected to Eliza");
       this.joinRoom();
     });
 
-    this.socket.on('messageBroadcast', (data) => {
+    this.socket.on("messageBroadcast", (data) => {
       if (data.roomId === this.roomId || data.channelId === this.roomId) {
         this.onMessageReceived(data);
       }
@@ -220,48 +223,49 @@ class ElizaSocketClient {
 
     // Debug: Log all events
     this.socket.onAny((eventName, ...args) => {
-      console.log('Event:', eventName, args);
+      console.log("Event:", eventName, args);
     });
   }
 
   joinRoom() {
-    this.socket.emit('message', {
+    this.socket.emit("message", {
       type: 1, // ROOM_JOINING
       payload: {
         roomId: this.roomId,
         entityId: this.entityId,
-      }
+      },
     });
   }
 
   sendMessage(text) {
-    this.socket.emit('message', {
+    this.socket.emit("message", {
       type: 2, // SEND_MESSAGE
       payload: {
         senderId: this.entityId,
-        senderName: 'Extension User',
+        senderName: "Extension User",
         message: text,
         roomId: this.roomId,
         messageId: this.generateUUID(),
-        source: 'extension',
+        source: "extension",
         attachments: [],
-        metadata: {}
-      }
+        metadata: {},
+      },
     });
   }
 
   onMessageReceived(data) {
-    console.log('Message received:', data);
+    console.log("Message received:", data);
     // Handle the message in your application
   }
 
   generateUUID() {
-    return crypto.randomUUID ? crypto.randomUUID() : 
-      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      });
+    return crypto.randomUUID
+      ? crypto.randomUUID()
+      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
   }
 
   disconnect() {
@@ -272,11 +276,11 @@ class ElizaSocketClient {
 }
 
 // Usage
-const client = new ElizaSocketClient('my-extension-id', 'agent-room-id');
+const client = new ElizaSocketClient("my-extension-id", "agent-room-id");
 client.connect();
 
 // Send a message
-client.sendMessage('Hello from extension!');
+client.sendMessage("Hello from extension!");
 ```
 
 ## Key Points to Check
@@ -285,22 +289,22 @@ client.sendMessage('Hello from extension!');
 
 ```javascript
 // [WRONG]
-socket.on('message', handler)
+socket.on("message", handler);
 
 // [CORRECT]
-socket.on('messageBroadcast', handler)
+socket.on("messageBroadcast", handler);
 ```
 
 ### 2. Room Joining Required
 
 ```javascript
 // You MUST join the room before receiving broadcasts
-socket.emit('message', {
+socket.emit("message", {
   type: 1, // ROOM_JOINING
   payload: {
     roomId: roomId,
-    entityId: entityId
-  }
+    entityId: entityId,
+  },
 });
 ```
 
@@ -338,13 +342,13 @@ socket.emit('message', {
 ```javascript
 // For newer Socket.IO versions
 socket.onAny((eventName, ...args) => {
-  console.log('Event received:', eventName, args);
+  console.log("Event received:", eventName, args);
 });
 
 // For older versions
 const onevent = socket.onevent;
-socket.onevent = function(packet) {
-  console.log('Event:', packet.data);
+socket.onevent = function (packet) {
+  console.log("Event:", packet.data);
   onevent.call(socket, packet);
 };
 ```
@@ -371,7 +375,7 @@ If WebSocket fails, force polling:
 
 ```javascript
 const socket = io(SOCKET_URL, {
-  transports: ['polling'] // Avoid WebSocket issues
+  transports: ["polling"], // Avoid WebSocket issues
 });
 ```
 
@@ -437,11 +441,11 @@ Your extension can send messages to Eliza (server receives them), but doesn't re
 
 ```javascript
 // Track user presence
-socket.on('userJoined', (data) => {
+socket.on("userJoined", (data) => {
   console.log(`User ${data.userId} joined room ${data.roomId}`);
 });
 
-socket.on('userLeft', (data) => {
+socket.on("userLeft", (data) => {
   console.log(`User ${data.userId} left room ${data.roomId}`);
 });
 ```
@@ -450,16 +454,18 @@ socket.on('userLeft', (data) => {
 
 ```javascript
 // Send typing indicator
-socket.emit('typing', {
+socket.emit("typing", {
   roomId: roomId,
   userId: userId,
-  isTyping: true
+  isTyping: true,
 });
 
 // Listen for typing indicators
-socket.on('userTyping', (data) => {
+socket.on("userTyping", (data) => {
   if (data.roomId === roomId) {
-    console.log(`${data.userId} is ${data.isTyping ? 'typing' : 'stopped typing'}`);
+    console.log(
+      `${data.userId} is ${data.isTyping ? "typing" : "stopped typing"}`,
+    );
   }
 });
 ```
@@ -468,8 +474,8 @@ socket.on('userTyping', (data) => {
 
 ```javascript
 // Send message with acknowledgment
-socket.emit('message', messagePayload, (ack) => {
-  console.log('Message acknowledged:', ack);
+socket.emit("message", messagePayload, (ack) => {
+  console.log("Message acknowledged:", ack);
 });
 ```
 
@@ -479,71 +485,71 @@ The Socket.IO server handles message routing and broadcasting:
 
 ```typescript
 class SocketIOService extends Service {
-  static serviceType = 'socketio' as const;
-  capabilityDescription = 'Real-time messaging via Socket.IO';
-  
+  static serviceType = "socketio" as const;
+  capabilityDescription = "Real-time messaging via Socket.IO";
+
   private io: Server;
-  
+
   async start(runtime: IAgentRuntime) {
     this.io = new Server(server, {
       cors: {
-        origin: '*',
-        methods: ['GET', 'POST']
-      }
+        origin: "*",
+        methods: ["GET", "POST"],
+      },
     });
-    
-    this.io.on('connection', (socket) => {
-      console.log('Client connected:', socket.id);
-      
-      socket.on('message', async (data) => {
+
+    this.io.on("connection", (socket) => {
+      console.log("Client connected:", socket.id);
+
+      socket.on("message", async (data) => {
         if (data.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
           await this.handleRoomJoin(socket, data.payload);
         } else if (data.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
           await this.handleMessage(socket, data.payload);
         }
       });
-      
-      socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+
+      socket.on("disconnect", () => {
+        console.log("Client disconnected:", socket.id);
       });
     });
   }
-  
+
   private async handleRoomJoin(socket: Socket, payload: any) {
     const { roomId, entityId } = payload;
-    
+
     // Join the room
     socket.join(roomId);
-    
+
     // Notify others in room
-    socket.to(roomId).emit('userJoined', {
+    socket.to(roomId).emit("userJoined", {
       userId: entityId,
-      roomId: roomId
+      roomId: roomId,
     });
-    
+
     console.log(`User ${entityId} joined room ${roomId}`);
   }
-  
+
   private async handleMessage(socket: Socket, payload: any) {
     const { roomId, message, senderId } = payload;
-    
+
     // Process message through runtime
     const response = await this.runtime.processMessage({
       content: message,
       roomId: roomId,
-      userId: senderId
+      userId: senderId,
     });
-    
+
     // Broadcast to all in room
-    this.io.to(roomId).emit('messageBroadcast', {
+    this.io.to(roomId).emit("messageBroadcast", {
       roomId: roomId,
       channelId: roomId, // For backward compatibility
       senderName: response.agentName,
       text: response.text,
-      metadata: response.metadata
+      metadata: response.metadata,
     });
   }
-  
+
   async stop() {
     this.io.close();
   }
@@ -552,8 +558,14 @@ class SocketIOService extends Service {
 
 ## Reference Implementation
 
-<Card title="Eliza NextJS Starter" icon="github" href="https://github.com/elizaOS/eliza-nextjs-starter">
-  A complete working example demonstrating Socket.IO integration with Eliza, including real-time messaging, agent participation management, and comprehensive error handling.
+<Card
+  title="Eliza NextJS Starter"
+  icon="github"
+  href="https://github.com/elizaOS/eliza-nextjs-starter"
+>
+  A complete working example demonstrating Socket.IO integration with Eliza,
+  including real-time messaging, agent participation management, and
+  comprehensive error handling.
 </Card>
 
 ## REST API Response Modes
@@ -562,11 +574,11 @@ When sending messages via REST endpoints (e.g., `POST /api/messaging/channels/{c
 
 ### Available Modes
 
-| Mode | Behavior | Use Case |
-|------|----------|----------|
-| `websocket` | Returns immediately, response via WebSocket | Real-time chat UIs (default) |
-| `stream` | Server-Sent Events with progressive chunks | Typing effect, progress feedback |
-| `sync` | Waits for complete response | Scripts, testing, simple integrations |
+| Mode        | Behavior                                    | Use Case                              |
+| ----------- | ------------------------------------------- | ------------------------------------- |
+| `websocket` | Returns immediately, response via WebSocket | Real-time chat UIs (default)          |
+| `stream`    | Server-Sent Events with progressive chunks  | Typing effect, progress feedback      |
+| `sync`      | Waits for complete response                 | Scripts, testing, simple integrations |
 
 ### WebSocket Mode (Default)
 
@@ -579,6 +591,7 @@ curl -X POST /api/messaging/channels/{channelId}/messages \
 ```
 
 Response:
+
 ```json
 {
   "success": true,
@@ -600,6 +613,7 @@ curl -X POST /api/messaging/channels/{channelId}/messages \
 ```
 
 SSE Events:
+
 ```
 event: user_message
 data: {"id": "...", "text": "Hello"}
@@ -615,11 +629,12 @@ data: {"text": "Hi there!", "actions": []}
 ```
 
 JavaScript client:
+
 ```javascript
-const response = await fetch('/api/messaging/channels/{channelId}/messages', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ text: 'Hello', entityId: '...', mode: 'stream' })
+const response = await fetch("/api/messaging/channels/{channelId}/messages", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ text: "Hello", entityId: "...", mode: "stream" }),
 });
 
 const reader = response.body.getReader();
@@ -631,11 +646,11 @@ while (true) {
 
   const chunk = decoder.decode(value);
   // Parse SSE format: "event: xxx\ndata: {...}\n\n"
-  const lines = chunk.split('\n');
+  const lines = chunk.split("\n");
   for (const line of lines) {
-    if (line.startsWith('data: ')) {
+    if (line.startsWith("data: ")) {
       const data = JSON.parse(line.slice(6));
-      console.log('Chunk:', data);
+      console.log("Chunk:", data);
     }
   }
 }
@@ -652,6 +667,7 @@ curl -X POST /api/messaging/channels/{channelId}/messages \
 ```
 
 Response:
+
 ```json
 {
   "success": true,
@@ -668,7 +684,7 @@ Response:
 For plugin developers, ElizaOS provides stream extractors to control what content is streamed from LLM responses.
 
 ```typescript
-import { IStreamExtractor } from '@elizaos/core';
+import { IStreamExtractor } from "@elizaos/core";
 
 interface IStreamExtractor {
   /** Whether extraction is complete */
@@ -684,12 +700,12 @@ interface IStreamExtractor {
 
 Available extractors:
 
-| Extractor | Purpose |
-|-----------|---------|
-| `PassthroughExtractor` | Streams all content as-is |
-| `XmlTagExtractor` | Extracts content from specific XML tags |
-| `ResponseStreamExtractor` | Default - action-aware XML extraction |
-| `ActionStreamFilter` | Auto-detects content type (JSON/XML/text) |
+| Extractor                 | Purpose                                   |
+| ------------------------- | ----------------------------------------- |
+| `PassthroughExtractor`    | Streams all content as-is                 |
+| `XmlTagExtractor`         | Extracts content from specific XML tags   |
+| `ResponseStreamExtractor` | Default - action-aware XML extraction     |
+| `ActionStreamFilter`      | Auto-detects content type (JSON/XML/text) |
 
 ## See Also
 
@@ -698,13 +714,13 @@ Available extractors:
     Build persistent conversations on messaging
   </Card>
 
-  <Card title="Services" icon="server" href="/runtime/services">
-    Create messaging service integrations
-  </Card>
+<Card title="Services" icon="server" href="/runtime/services">
+  Create messaging service integrations
+</Card>
 
-  <Card title="Events" icon="bolt" href="/runtime/events">
-    Handle real-time messaging events
-  </Card>
+<Card title="Events" icon="bolt" href="/runtime/events">
+  Handle real-time messaging events
+</Card>
 
   <Card title="Providers" icon="database" href="/runtime/providers">
     Supply message context to providers

@@ -2,9 +2,9 @@
  * Manifest loading and management
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExamplesManifest } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,17 +36,19 @@ export function loadManifest(): ExamplesManifest {
   }
 
   throw new Error(
-    "Could not find examples-manifest.json. Please run 'bun run build' first."
+    "Could not find examples-manifest.json. Please run 'bun run build' first.",
   );
 }
 
 /**
  * Get examples filtered by language
  */
-export function getExamplesByLanguage(language: string): ExamplesManifest["examples"] {
+export function getExamplesByLanguage(
+  language: string,
+): ExamplesManifest["examples"] {
   const manifest = loadManifest();
   return manifest.examples.filter((example) =>
-    example.languages.some((lang) => lang.language === language)
+    example.languages.some((lang) => lang.language === language),
   );
 }
 
@@ -61,8 +63,9 @@ export function getAvailableLanguages(): string[] {
 /**
  * Get example by name
  */
-export function getExampleByName(name: string): ExamplesManifest["examples"][0] | undefined {
+export function getExampleByName(
+  name: string,
+): ExamplesManifest["examples"][0] | undefined {
   const manifest = loadManifest();
   return manifest.examples.find((e) => e.name === name);
 }
-

@@ -1,6 +1,6 @@
 /**
  * Error Handling System - Claude Code Style
- * 
+ *
  * Comprehensive error handling with categories, severity levels,
  * and resolution suggestions.
  */
@@ -29,7 +29,7 @@ export enum ErrorLevel {
   /** Error level */
   ERROR = 7,
   /** Fatal level */
-  FATAL = 8
+  FATAL = 8,
 }
 
 // ============================================================================
@@ -90,7 +90,7 @@ export enum ErrorCategory {
   /** Parse errors */
   PARSE = 25,
   /** Git errors */
-  GIT = 26
+  GIT = 26,
 }
 
 // ============================================================================
@@ -137,8 +137,8 @@ export class ElizaCodeError extends Error {
 
   constructor(message: string, options: ElizaCodeErrorOptions = {}) {
     super(message);
-    
-    this.name = 'ElizaCodeError';
+
+    this.name = "ElizaCodeError";
     this.cause = options.cause;
     this.category = options.category ?? ErrorCategory.UNKNOWN;
     this.level = options.level ?? ErrorLevel.ERROR;
@@ -146,7 +146,7 @@ export class ElizaCodeError extends Error {
     this.details = options.details ?? {};
     this.code = options.code;
     this.timestamp = new Date();
-    
+
     // Capture stack trace
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, ElizaCodeError);
@@ -158,17 +158,17 @@ export class ElizaCodeError extends Error {
    */
   getFormattedMessage(): string {
     let message = `[${ErrorCategory[this.category]}] ${this.message}`;
-    
+
     if (this.resolution) {
-      const resolutions = Array.isArray(this.resolution) 
-        ? this.resolution 
+      const resolutions = Array.isArray(this.resolution)
+        ? this.resolution
         : [this.resolution];
-      message += '\n\nSuggested resolution(s):';
+      message += "\n\nSuggested resolution(s):";
       resolutions.forEach((r, i) => {
         message += `\n  ${i + 1}. ${r}`;
       });
     }
-    
+
     return message;
   }
 
@@ -185,7 +185,7 @@ export class ElizaCodeError extends Error {
       details: this.details,
       code: this.code,
       timestamp: this.timestamp.toISOString(),
-      stack: this.stack ?? null
+      stack: this.stack ?? null,
     };
   }
 }
@@ -199,12 +199,12 @@ export class ElizaCodeError extends Error {
  */
 export function createFileError(
   message: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(message, {
     category: ErrorCategory.FILE_SYSTEM,
     level: ErrorLevel.ERROR,
-    ...options
+    ...options,
   });
 }
 
@@ -213,18 +213,18 @@ export function createFileError(
  */
 export function createFileNotFoundError(
   filePath: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(`File not found: ${filePath}`, {
     category: ErrorCategory.FILE_NOT_FOUND,
     level: ErrorLevel.ERROR,
     resolution: [
       `Check if the file path is correct: ${filePath}`,
-      'Use LIST_FILES to explore the directory structure',
-      'The file may have been moved or deleted'
+      "Use LIST_FILES to explore the directory structure",
+      "The file may have been moved or deleted",
     ],
     details: { filePath },
-    ...options
+    ...options,
   });
 }
 
@@ -233,19 +233,19 @@ export function createFileNotFoundError(
  */
 export function createFileAccessError(
   filePath: string,
-  operation: 'read' | 'write',
-  options: Partial<ElizaCodeErrorOptions> = {}
+  operation: "read" | "write",
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(`Permission denied ${operation}ing: ${filePath}`, {
     category: ErrorCategory.FILE_ACCESS,
     level: ErrorLevel.ERROR,
     resolution: [
       `Check file permissions for: ${filePath}`,
-      'You may need elevated permissions to access this file',
-      'Verify the file is not locked by another process'
+      "You may need elevated permissions to access this file",
+      "Verify the file is not locked by another process",
     ],
     details: { filePath, operation },
-    ...options
+    ...options,
   });
 }
 
@@ -256,18 +256,18 @@ export function createCommandError(
   command: string,
   exitCode: number | string | undefined,
   stderr: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(`Command failed: ${command}`, {
     category: ErrorCategory.COMMAND_EXECUTION,
     level: ErrorLevel.ERROR,
     resolution: [
-      'Check the command syntax and arguments',
-      'Verify required dependencies are installed',
-      'Check the stderr output for more details'
+      "Check the command syntax and arguments",
+      "Verify required dependencies are installed",
+      "Check the stderr output for more details",
     ],
     details: { command, exitCode, stderr },
-    ...options
+    ...options,
   });
 }
 
@@ -276,17 +276,17 @@ export function createCommandError(
  */
 export function createAIServiceError(
   message: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(message, {
     category: ErrorCategory.AI_SERVICE,
     level: ErrorLevel.ERROR,
     resolution: [
-      'Check your API key is valid',
-      'Verify network connectivity',
-      'The AI service may be temporarily unavailable'
+      "Check your API key is valid",
+      "Verify network connectivity",
+      "The AI service may be temporarily unavailable",
     ],
-    ...options
+    ...options,
   });
 }
 
@@ -294,17 +294,17 @@ export function createAIServiceError(
  * Create a rate limit error
  */
 export function createRateLimitError(
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
-  return new ElizaCodeError('Rate limit exceeded', {
+  return new ElizaCodeError("Rate limit exceeded", {
     category: ErrorCategory.RATE_LIMIT,
     level: ErrorLevel.WARNING,
     resolution: [
-      'Wait a moment before making more requests',
-      'Consider reducing request frequency',
-      'Check your API quota'
+      "Wait a moment before making more requests",
+      "Consider reducing request frequency",
+      "Check your API quota",
     ],
-    ...options
+    ...options,
   });
 }
 
@@ -314,19 +314,22 @@ export function createRateLimitError(
 export function createTimeoutError(
   operation: string,
   timeoutMs: number,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
-  return new ElizaCodeError(`Operation timed out after ${timeoutMs}ms: ${operation}`, {
-    category: ErrorCategory.TIMEOUT,
-    level: ErrorLevel.ERROR,
-    resolution: [
-      'The operation took too long to complete',
-      'Try breaking the operation into smaller steps',
-      'Check for infinite loops or blocking operations'
-    ],
-    details: { operation, timeoutMs },
-    ...options
-  });
+  return new ElizaCodeError(
+    `Operation timed out after ${timeoutMs}ms: ${operation}`,
+    {
+      category: ErrorCategory.TIMEOUT,
+      level: ErrorLevel.ERROR,
+      resolution: [
+        "The operation took too long to complete",
+        "Try breaking the operation into smaller steps",
+        "Check for infinite loops or blocking operations",
+      ],
+      details: { operation, timeoutMs },
+      ...options,
+    },
+  );
 }
 
 /**
@@ -334,12 +337,12 @@ export function createTimeoutError(
  */
 export function createValidationError(
   message: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(message, {
     category: ErrorCategory.VALIDATION,
     level: ErrorLevel.WARNING,
-    ...options
+    ...options,
   });
 }
 
@@ -349,18 +352,18 @@ export function createValidationError(
 export function createTaskError(
   taskId: string,
   message: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(message, {
     category: ErrorCategory.TASK_EXECUTION,
     level: ErrorLevel.ERROR,
     resolution: [
-      'Check the task output for more details',
-      'Try breaking the task into smaller steps',
-      'Verify all required files exist'
+      "Check the task output for more details",
+      "Try breaking the task into smaller steps",
+      "Verify all required files exist",
     ],
     details: { taskId },
-    ...options
+    ...options,
   });
 }
 
@@ -370,18 +373,18 @@ export function createTaskError(
 export function createGitError(
   operation: string,
   stderr: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   return new ElizaCodeError(`Git ${operation} failed`, {
     category: ErrorCategory.GIT,
     level: ErrorLevel.ERROR,
     resolution: [
-      'Check that you are in a git repository',
-      'Verify git is installed and in PATH',
-      'Check the stderr output for more details'
+      "Check that you are in a git repository",
+      "Verify git is installed and in PATH",
+      "Check the stderr output for more details",
     ],
     details: { operation, stderr },
-    ...options
+    ...options,
   });
 }
 
@@ -414,8 +417,8 @@ const DEFAULT_RETRY_OPTIONS: RetryOptions = {
     ErrorCategory.TIMEOUT,
     ErrorCategory.RATE_LIMIT,
     ErrorCategory.AI_SERVICE,
-    ErrorCategory.CONNECTION
-  ]
+    ErrorCategory.CONNECTION,
+  ],
 };
 
 /**
@@ -423,57 +426,58 @@ const DEFAULT_RETRY_OPTIONS: RetryOptions = {
  */
 export function withRetry<T>(
   fn: () => Promise<T>,
-  options: Partial<RetryOptions> = {}
+  options: Partial<RetryOptions> = {},
 ): Promise<T> {
   const opts: RetryOptions = { ...DEFAULT_RETRY_OPTIONS, ...options };
-  
-  return new Promise(async (resolve, reject) => {
+
+  return (async () => {
     let lastError: ElizaCodeError | Error | undefined;
-    
+
     for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
       try {
         const result = await fn();
-        resolve(result);
-        return;
+        return result;
       } catch (error) {
         if (error instanceof ElizaCodeError) {
           lastError = error;
         } else if (error instanceof Error) {
           lastError = new ElizaCodeError(error.message, { cause: error });
         } else {
-          lastError = new ElizaCodeError(String(error), { cause: String(error) });
+          lastError = new ElizaCodeError(String(error), {
+            cause: String(error),
+          });
         }
-        
+
         // Check if we should retry
-        const shouldRetry = 
+        const shouldRetry =
           attempt < opts.maxRetries &&
           (lastError instanceof ElizaCodeError
             ? opts.retryableCategories.includes(lastError.category)
             : true);
-        
+
         if (!shouldRetry) {
           break;
         }
-        
+
         // Calculate delay with exponential backoff
         const delay = opts.backoff
-          ? Math.min(opts.initialDelayMs * Math.pow(2, attempt), opts.maxDelayMs)
+          ? Math.min(opts.initialDelayMs * 2 ** attempt, opts.maxDelayMs)
           : opts.initialDelayMs;
-        
+
         // Add jitter (±10%)
         const jitter = delay * 0.1 * (Math.random() * 2 - 1);
         const finalDelay = Math.round(delay + jitter);
-        
+
         if (opts.onRetry) {
           opts.onRetry(attempt + 1, lastError as ElizaCodeError);
         }
-        
-        await new Promise(r => setTimeout(r, finalDelay));
+
+        await new Promise((r) => setTimeout(r, finalDelay));
       }
     }
-    
-    reject(lastError);
-  });
+
+    throw lastError || new ElizaCodeError("Retry failed");
+  })();
 }
 
 // ============================================================================
@@ -483,22 +487,26 @@ export function withRetry<T>(
 /**
  * Format an error for display to the user
  */
-export function formatErrorForDisplay(error: Error | ElizaCodeError | JsonValue | undefined): string {
+export function formatErrorForDisplay(
+  error: Error | ElizaCodeError | JsonValue | undefined,
+): string {
   if (error instanceof ElizaCodeError) {
     return error.getFormattedMessage();
   }
-  
+
   if (error instanceof Error) {
     return error.message;
   }
-  
+
   return String(error);
 }
 
 /**
  * Extract error details from various error types
  */
-export function extractErrorDetails(error: Error | ElizaCodeError | JsonValue | undefined): {
+export function extractErrorDetails(
+  error: Error | ElizaCodeError | JsonValue | undefined,
+): {
   message: string;
   category: ErrorCategory;
   code?: string;
@@ -507,45 +515,57 @@ export function extractErrorDetails(error: Error | ElizaCodeError | JsonValue | 
     return {
       message: error.message,
       category: error.category,
-      code: error.code
+      code: error.code,
     };
   }
-  
+
   if (error instanceof Error) {
     const nodeError = error as NodeJS.ErrnoException;
-    
+
     // Map common Node.js error codes to categories
     const category = (() => {
       switch (nodeError.code) {
-        case 'ENOENT': return ErrorCategory.FILE_NOT_FOUND;
-        case 'EACCES': return ErrorCategory.FILE_ACCESS;
-        case 'EPERM': return ErrorCategory.FILE_ACCESS;
-        case 'ENOTDIR': return ErrorCategory.FILE_SYSTEM;
-        case 'EISDIR': return ErrorCategory.FILE_SYSTEM;
-        case 'ECONNREFUSED': return ErrorCategory.CONNECTION;
-        case 'ETIMEDOUT': return ErrorCategory.TIMEOUT;
-        case 'ENOTFOUND': return ErrorCategory.NETWORK;
-        default: return ErrorCategory.UNKNOWN;
+        case "ENOENT":
+          return ErrorCategory.FILE_NOT_FOUND;
+        case "EACCES":
+          return ErrorCategory.FILE_ACCESS;
+        case "EPERM":
+          return ErrorCategory.FILE_ACCESS;
+        case "ENOTDIR":
+          return ErrorCategory.FILE_SYSTEM;
+        case "EISDIR":
+          return ErrorCategory.FILE_SYSTEM;
+        case "ECONNREFUSED":
+          return ErrorCategory.CONNECTION;
+        case "ETIMEDOUT":
+          return ErrorCategory.TIMEOUT;
+        case "ENOTFOUND":
+          return ErrorCategory.NETWORK;
+        default:
+          return ErrorCategory.UNKNOWN;
       }
     })();
-    
+
     return {
       message: error.message,
       category,
-      code: nodeError.code
+      code: nodeError.code,
     };
   }
-  
+
   return {
     message: String(error),
-    category: ErrorCategory.UNKNOWN
+    category: ErrorCategory.UNKNOWN,
   };
 }
 
 /**
  * Check if an error is of a specific category
  */
-export function isErrorCategory(error: Error | ElizaCodeError | JsonValue | undefined, category: ErrorCategory): boolean {
+export function isErrorCategory(
+  error: Error | ElizaCodeError | JsonValue | undefined,
+  category: ErrorCategory,
+): boolean {
   if (error instanceof ElizaCodeError) {
     return error.category === category;
   }
@@ -558,14 +578,14 @@ export function isErrorCategory(error: Error | ElizaCodeError | JsonValue | unde
 export function wrapError(
   error: Error | ElizaCodeError | JsonValue | undefined,
   message: string,
-  options: Partial<ElizaCodeErrorOptions> = {}
+  options: Partial<ElizaCodeErrorOptions> = {},
 ): ElizaCodeError {
   const details = extractErrorDetails(error);
-  
+
   return new ElizaCodeError(`${message}: ${details.message}`, {
     cause: error,
     category: options.category ?? details.category,
     code: options.code ?? details.code,
-    ...options
+    ...options,
   });
 }

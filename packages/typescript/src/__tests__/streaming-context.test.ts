@@ -1,4 +1,4 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getStreamingContext,
   getStreamingContextManager,
@@ -42,8 +42,8 @@ describe("Streaming Context", () => {
       });
 
       expect(capturedContext).toBeDefined();
-      expect(capturedContext && capturedContext.messageId).toBe("test-message-id");
-      expect(capturedContext && capturedContext.onStreamChunk).toBe(context.onStreamChunk);
+      expect(capturedContext?.messageId).toBe("test-message-id");
+      expect(capturedContext?.onStreamChunk).toBe(context.onStreamChunk);
     });
 
     it("should return undefined outside of context", () => {
@@ -84,7 +84,7 @@ describe("Streaming Context", () => {
 
       const result = await runWithStreamingContext(context, async () => {
         const ctx = getStreamingContext();
-        if (ctx && ctx.onStreamChunk) {
+        if (ctx?.onStreamChunk) {
           await ctx.onStreamChunk("chunk1");
           await ctx.onStreamChunk("chunk2");
         }
@@ -114,18 +114,18 @@ describe("Streaming Context", () => {
         runWithStreamingContext(context1, async () => {
           await new Promise((r) => setTimeout(r, 10));
           const ctx = getStreamingContext();
-          if (ctx && ctx.onStreamChunk) {
+          if (ctx?.onStreamChunk) {
             await ctx.onStreamChunk("from-context-1");
           }
-          return ctx && ctx.messageId;
+          return ctx?.messageId;
         }),
         runWithStreamingContext(context2, async () => {
           await new Promise((r) => setTimeout(r, 5));
           const ctx = getStreamingContext();
-          if (ctx && ctx.onStreamChunk) {
+          if (ctx?.onStreamChunk) {
             await ctx.onStreamChunk("from-context-2");
           }
-          return ctx && ctx.messageId;
+          return ctx?.messageId;
         }),
       ]);
 
@@ -152,16 +152,16 @@ describe("Streaming Context", () => {
 
       runWithStreamingContext(outerContext, () => {
         const outerCtx = getStreamingContext();
-        expect(outerCtx && outerCtx.messageId).toBe("outer");
+        expect(outerCtx?.messageId).toBe("outer");
 
         runWithStreamingContext(innerContext, () => {
           const innerCtx = getStreamingContext();
-          expect(innerCtx && innerCtx.messageId).toBe("inner");
+          expect(innerCtx?.messageId).toBe("inner");
         });
 
         // Back to outer context
         const outerCtxAgain = getStreamingContext();
-        expect(outerCtxAgain && outerCtxAgain.messageId).toBe("outer");
+        expect(outerCtxAgain?.messageId).toBe("outer");
       });
     });
   });

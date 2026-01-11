@@ -1,0 +1,37 @@
+# Task: Extract Goal Selection Information
+
+## User Message
+{{text}}
+
+## Available Goals
+{{availableGoals}}
+
+## Instructions
+Parse the user's message to identify which goal they want to update or modify.
+Match against the list of available goals by name or description.
+If multiple goals have similar names, choose the closest match.
+
+Return an XML object with:
+<response>
+  <goalId>ID of the goal being updated, or 'null' if not found</goalId>
+  <goalName>Name of the goal being updated, or 'null' if not found</goalName>
+  <isFound>'true' or 'false' indicating if a matching goal was found</isFound>
+</response>
+
+## Example Output Format
+<response>
+  <goalId>123e4567-e89b-12d3-a456-426614174000</goalId>
+  <goalName>Learn French fluently</goalName>
+  <isFound>true</isFound>
+</response>
+
+If no matching goal was found:
+<response>
+  <goalId>null</goalId>
+  <goalName>null</goalName>
+  <isFound>false</isFound>
+</response>
+
+
+
+

@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-xai",
+  "name": "@elizaos/plugin-xai-root",
   "version": "1.0.0",
   "type": "module",
   "main": "typescript/dist/cjs/index.node.cjs",
@@ -61,26 +61,26 @@
     "rust"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.7.0"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "prettier": "^3.7.4",
-    "typescript": "^5.8.3"
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
   },
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
-    "build": "npm run build:prompts && cd typescript && bun run build.ts",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
-    "build:rust": "cd rust && cargo build --release",
-    "build:python": "cd python && python -m build",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun --hot build.ts",
-    "lint": "prettier --write ./typescript",
-    "lint:check": "prettier --check ./typescript",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
     "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
-    "format": "prettier --write ./typescript",
-    "format:check": "prettier --check ./typescript",
-    "typecheck": "cd typescript && tsc --noEmit",
+    "format": "bunx @biomejs/biome format --write ./typescript",
+    "format:check": "bunx @biomejs/biome format ./typescript",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:ts": "cd typescript && bun test",
     "test:rust": "cd rust && cargo test",

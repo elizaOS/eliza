@@ -33,7 +33,7 @@ async function build(): Promise<void> {
   const totalStart = Date.now();
 
   // Load package.json and auto-generate externals from dependencies
-  const pkg = await Bun.file("../package.json").json();
+  const pkg = await Bun.file("./package.json").json();
   const externalDeps = [
     ...Object.keys(pkg.dependencies ?? {}),
     ...Object.keys(pkg.peerDependencies ?? {}),
@@ -60,21 +60,15 @@ async function build(): Promise<void> {
     console.error("ESM build errors:", esmResult.logs);
     throw new Error("ESM build failed");
   }
-  console.log(
-    `✅ ESM build complete in ${((Date.now() - esmStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ ESM build complete in ${((Date.now() - esmStart) / 1000).toFixed(2)}s`);
 
   // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   await $`tsc --project tsconfig.build.json`;
-  console.log(
-    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
 
-  console.log(
-    `🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
 }
 
 // Run typecheck first, then build
@@ -84,5 +78,3 @@ build().catch((err) => {
   console.error("Build failed:", err);
   process.exit(1);
 });
-
-

@@ -5,7 +5,6 @@ Provides strongly-typed errors that fail fast with clear messages.
 No defensive programming or error swallowing.
 """
 
-from typing import Optional
 
 
 class DiscordError(Exception):
@@ -19,7 +18,7 @@ class DiscordError(Exception):
         """Check if this error is retryable."""
         return False
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         """Get retry delay in milliseconds if applicable."""
         return None
 
@@ -127,7 +126,7 @@ class RateLimitedError(DiscordError):
     def is_retryable(self) -> bool:
         return True
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         return self._retry_after_ms
 
 
@@ -141,7 +140,7 @@ class TimeoutError(DiscordError):
     def is_retryable(self) -> bool:
         return True
 
-    def retry_after_ms(self) -> Optional[int]:
+    def retry_after_ms(self) -> int | None:
         return self._timeout_ms // 2
 
 

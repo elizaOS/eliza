@@ -3,53 +3,53 @@ ElizaOS Vision Plugin
 Provides visual perception through camera integration and scene analysis
 """
 
-from .types import (
-    VisionMode,
-    BoundingBox,
-    Point2D,
-    CameraInfo,
-    VisionFrame,
-    DetectedObject,
-    Keypoint,
-    PersonInfo,
-    SceneDescription,
-    ScreenTile,
-    OCRResult,
-    OCRBlock,
-    ScreenCapture,
-    EnhancedSceneDescription,
-    TrackedEntity,
-    EntityAppearance,
-    EntityAttributes,
-    WorldState,
-    VisionConfig,
+from .actions import (
+    capture_image_action,
+    describe_scene_action,
+    identify_person_action,
+    kill_autonomous_action,
+    name_entity_action,
+    set_vision_mode_action,
+    track_entity_action,
 )
 from .config import ConfigurationManager, default_vision_config
+from .entity_tracker import EntityTracker
 from .errors import (
-    VisionError,
+    APIError,
     CameraError,
-    ScreenCaptureError,
+    CircuitBreaker,
+    ConfigurationError,
+    ErrorRecoveryManager,
     ModelInitializationError,
     ProcessingError,
-    ConfigurationError,
-    APIError,
-    ErrorRecoveryManager,
-    CircuitBreaker,
+    ScreenCaptureError,
+    VisionError,
     VisionErrorHandler,
 )
-from .entity_tracker import EntityTracker
-from .screen_capture import ScreenCaptureService
 from .ocr import OCRService
-from .service import VisionService
 from .provider import VisionProvider
-from .actions import (
-    describe_scene_action,
-    capture_image_action,
-    set_vision_mode_action,
-    name_entity_action,
-    identify_person_action,
-    track_entity_action,
-    kill_autonomous_action,
+from .screen_capture import ScreenCaptureService
+from .service import VisionService
+from .types import (
+    BoundingBox,
+    CameraInfo,
+    DetectedObject,
+    EnhancedSceneDescription,
+    EntityAppearance,
+    EntityAttributes,
+    Keypoint,
+    OCRBlock,
+    OCRResult,
+    PersonInfo,
+    Point2D,
+    SceneDescription,
+    ScreenCapture,
+    ScreenTile,
+    TrackedEntity,
+    VisionConfig,
+    VisionFrame,
+    VisionMode,
+    WorldState,
 )
 
 __version__ = "1.3.0"
@@ -125,4 +125,3 @@ def create_plugin():
             kill_autonomous_action,
         ],
     }
-

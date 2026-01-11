@@ -17,7 +17,7 @@ class ContentBlock(BaseModel):
     type: str
 
     @classmethod
-    def create_text(cls, content: str) -> "TextContentBlock":
+    def create_text(cls, content: str) -> TextContentBlock:
         """Create a text content block."""
         return TextContentBlock(type="text", text_content=content)
 
@@ -50,15 +50,15 @@ class TextGenerationParams(BaseModel):
     top_p: float | None = Field(default=0.95)
     stop_sequences: list[str] | None = None
 
-    def with_system(self, system: str) -> "TextGenerationParams":
+    def with_system(self, system: str) -> TextGenerationParams:
         """Set the system prompt."""
         return self.model_copy(update={"system": system})
 
-    def with_max_tokens(self, max_tokens: int) -> "TextGenerationParams":
+    def with_max_tokens(self, max_tokens: int) -> TextGenerationParams:
         """Set max tokens."""
         return self.model_copy(update={"max_tokens": max_tokens})
 
-    def with_temperature(self, temperature: float) -> "TextGenerationParams":
+    def with_temperature(self, temperature: float) -> TextGenerationParams:
         """Set temperature."""
         return self.model_copy(update={"temperature": temperature})
 
@@ -107,15 +107,15 @@ class ObjectGenerationParams(BaseModel):
     temperature: float | None = Field(default=0.1)
     max_tokens: int | None = None
 
-    def with_system(self, system: str) -> "ObjectGenerationParams":
+    def with_system(self, system: str) -> ObjectGenerationParams:
         """Set the system prompt."""
         return self.model_copy(update={"system": system})
 
-    def with_schema(self, json_schema: dict[str, Any]) -> "ObjectGenerationParams":
+    def with_schema(self, json_schema: dict[str, Any]) -> ObjectGenerationParams:
         """Set a JSON schema."""
         return self.model_copy(update={"json_schema": json_schema})
 
-    def with_temperature(self, temperature: float) -> "ObjectGenerationParams":
+    def with_temperature(self, temperature: float) -> ObjectGenerationParams:
         """Set temperature."""
         return self.model_copy(update={"temperature": temperature})
 
@@ -198,4 +198,3 @@ class ErrorResponse(BaseModel):
     """Error response from the Google GenAI API."""
 
     error: ErrorDetail
-

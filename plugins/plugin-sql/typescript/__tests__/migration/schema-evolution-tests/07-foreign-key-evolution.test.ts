@@ -1,6 +1,6 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
 import { foreignKey, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
@@ -19,7 +19,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
 
   beforeEach(async () => {
     const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
-      "schema_evolution_foreign_key_evolution_test",
+      "schema_evolution_foreign_key_evolution_test"
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
@@ -104,10 +104,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     };
 
     console.log("\n🔍 Checking foreign key addition...");
-    const check = await migrator.checkMigration(
-      "@elizaos/fk-test-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/fk-test-v1", schemaV2);
 
     if (check) {
       console.log("  ⚠️ Foreign key analysis:");
@@ -135,7 +132,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     const orphaned = await db.execute(
       sql`SELECT m.* FROM memories m 
           LEFT JOIN agents a ON m.agent_id = a.id 
-          WHERE m.agent_id IS NOT NULL AND a.id IS NULL`,
+          WHERE m.agent_id IS NOT NULL AND a.id IS NULL`
     );
     console.log(`  Found ${orphaned.rows.length} orphaned memories`);
 
@@ -143,7 +140,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     await db.execute(
       sql`DELETE FROM memories 
           WHERE agent_id NOT IN (SELECT id FROM agents) 
-          AND agent_id IS NOT NULL`,
+          AND agent_id IS NOT NULL`
     );
     console.log("  ✅ Deleted orphaned records");
 
@@ -157,7 +154,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     try {
       await db.execute(
         sql`INSERT INTO memories (agent_id, content) 
-            VALUES ('999e8400-e29b-41d4-a716-446655440999', 'Should fail')`,
+            VALUES ('999e8400-e29b-41d4-a716-446655440999', 'Should fail')`
       );
     } catch (error) {
       insertError = error as Error;
@@ -213,7 +210,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("\n🔍 Testing current CASCADE behavior...");
     await db.execute(sql`DELETE FROM parents WHERE id = ${parent1Id}`);
     const remainingChildren = await db.execute(
-      sql`SELECT COUNT(*) as count FROM children WHERE parent_id = ${parent1Id}`,
+      sql`SELECT COUNT(*) as count FROM children WHERE parent_id = ${parent1Id}`
     );
     expect(Number((remainingChildren.rows[0] as CountRow).count)).toBe(0);
     console.log("  ✅ CASCADE delete removed children as expected");
@@ -245,10 +242,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     };
 
     console.log("\n📦 Changing CASCADE behavior to SET NULL...");
-    const check = await migrator.checkMigration(
-      "@elizaos/cascade-test-v1",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/cascade-test-v1", schemaV2);
 
     if (check) {
       console.log("  ℹ️ Cascade behavior change detected");
@@ -263,14 +257,10 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     // Test new SET NULL behavior
     console.log("\n🔍 Testing new SET NULL behavior...");
     await db.execute(sql`DELETE FROM parents WHERE id = ${parent2Id}`);
-    const orphanedChildren = await db.execute(
-      sql`SELECT * FROM children WHERE parent_id IS NULL`,
-    );
+    const orphanedChildren = await db.execute(sql`SELECT * FROM children WHERE parent_id IS NULL`);
     expect(orphanedChildren.rows.length).toBe(1); // Child 2-1 should have NULL parent_id
     console.log("  ✅ SET NULL behavior working (children not deleted)");
-    console.log(
-      `     Orphaned child: ${(orphanedChildren.rows[0] as ChildRow).name}`,
-    );
+    console.log(`     Orphaned child: ${(orphanedChildren.rows[0] as ChildRow).name}`);
   });
 
   it("should handle complex foreign key scenarios with composite keys", async () => {
@@ -316,15 +306,9 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     const roomId = "440e8400-e29b-41d4-a716-446655440001";
 
     await db.insert(worldTableV1).values({ id: worldId, name: "World 1" });
-    await db
-      .insert(agentTableV1)
-      .values({ id: agentId, worldId, name: "Agent 1" });
-    await db
-      .insert(roomTableV1)
-      .values({ id: roomId, worldId, agentId, name: "Room 1" });
-    await db
-      .insert(memoryTableV1)
-      .values({ roomId, agentId, content: "Memory 1" });
+    await db.insert(agentTableV1).values({ id: agentId, worldId, name: "Agent 1" });
+    await db.insert(roomTableV1).values({ id: roomId, worldId, agentId, name: "Room 1" });
+    await db.insert(memoryTableV1).values({ roomId, agentId, content: "Memory 1" });
 
     console.log("  ✅ Created interconnected data");
 
@@ -346,7 +330,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
       (table) => [
         // Add unique constraint needed for composite FK from rooms table
         unique().on(table.worldId, table.id),
-      ],
+      ]
     );
 
     const roomTableV2 = pgTable(
@@ -368,7 +352,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
           columns: [table.worldId, table.agentId],
           foreignColumns: [agentTableV2.worldId, agentTableV2.id],
         }),
-      ],
+      ]
     );
 
     const memoryTableV2 = pgTable("memories", {
@@ -411,9 +395,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     expect(Number(result.rooms)).toBe(0);
     expect(Number(result.memories)).toBe(0);
 
-    console.log(
-      "  ✅ CASCADE delete propagated correctly through all relationships",
-    );
+    console.log("  ✅ CASCADE delete propagated correctly through all relationships");
   });
 
   it("should handle foreign keys with manager references", async () => {
@@ -489,7 +471,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     try {
       await db.execute(
         sql`INSERT INTO departments (name, manager_id) 
-            VALUES ('Invalid Dept', '999e8400-e29b-41d4-a716-446655440999')`,
+            VALUES ('Invalid Dept', '999e8400-e29b-41d4-a716-446655440999')`
       );
     } catch (error) {
       insertError = error as Error;
@@ -501,7 +483,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     // Delete employee who is a manager
     await db.execute(sql`DELETE FROM employees WHERE id = ${emp1Id}`);
     const deptAfter = await db.execute(
-      sql`SELECT manager_id FROM departments WHERE id = ${dept1Id}`,
+      sql`SELECT manager_id FROM departments WHERE id = ${dept1Id}`
     );
     expect((deptAfter.rows[0] as DepartmentRow).manager_id).toBeNull();
     console.log("  ✅ Manager deletion sets department.manager_id to NULL");

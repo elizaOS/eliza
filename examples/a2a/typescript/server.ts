@@ -5,19 +5,23 @@
  * Uses real elizaOS runtime with OpenAI and SQL plugins.
  */
 
-import express, { Request, Response, NextFunction } from "express";
-import { v4 as uuidv4 } from "uuid";
 import {
   AgentRuntime,
+  bootstrapPlugin,
   ChannelType,
+  type Character,
   createMessageMemory,
   stringToUuid,
-  bootstrapPlugin,
-  type Character,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
+import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
 // Configuration
@@ -28,7 +32,8 @@ const PORT = Number(process.env.PORT ?? 3000);
 const CHARACTER: Character = {
   name: "Eliza",
   bio: "A helpful AI assistant powered by elizaOS, available via A2A protocol.",
-  system: "You are a helpful, friendly AI assistant participating in agent-to-agent communication. Be concise, informative, and cooperative.",
+  system:
+    "You are a helpful, friendly AI assistant participating in agent-to-agent communication. Be concise, informative, and cooperative.",
 };
 
 // ============================================================================
@@ -70,7 +75,7 @@ function getOrCreateSession(sessionId: string): { roomId: UUID; userId: UUID } {
 async function handleChat(
   message: string,
   sessionId: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ): Promise<string> {
   const rt = await initializeRuntime();
   const { roomId, userId } = getOrCreateSession(sessionId);
@@ -88,7 +93,9 @@ async function handleChat(
   } as Parameters<typeof rt.ensureConnection>[0]);
 
   // Create message memory with optional metadata
-  const content: { text: string; metadata?: Record<string, unknown> } = { text: message };
+  const content: { text: string; metadata?: Record<string, unknown> } = {
+    text: message,
+  };
   if (metadata) {
     content.metadata = metadata;
   }
@@ -111,7 +118,7 @@ async function handleChat(
         response += responseContent.text;
       }
       return [];
-    }
+    },
   );
 
   return response || "No response generated.";
@@ -128,7 +135,10 @@ app.use(express.json());
 app.use((_req: Request, res: Response, next: NextFunction) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id, X-Session-Id");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, X-Agent-Id, X-Session-Id",
+  );
   if (_req.method === "OPTIONS") {
     res.sendStatus(200);
     return;
@@ -189,16 +199,20 @@ interface ChatRequestBody {
 /**
  * POST /chat - Chat with the agent
  */
-app.post("/chat", async (req: Request<object, object, ChatRequestBody>, res: Response) => {
-  try {
+app.post(
+  "/chat",
+  async (req: Request<object, object, ChatRequestBody>, res: Response) => {
     const { message, sessionId: clientSessionId, context } = req.body;
 
     if (!message || typeof message !== "string") {
-      res.status(400).json({ error: "Message is required and must be a string" });
+      res
+        .status(400)
+        .json({ error: "Message is required and must be a string" });
       return;
     }
 
-    const sessionId = clientSessionId ?? req.headers["x-session-id"] as string ?? uuidv4();
+    const sessionId =
+      clientSessionId ?? (req.headers["x-session-id"] as string) ?? uuidv4();
     const agentId = req.headers["x-agent-id"] as string;
 
     // Include caller agent ID in metadata if provided
@@ -216,23 +230,21 @@ app.post("/chat", async (req: Request<object, object, ChatRequestBody>, res: Res
       sessionId,
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error("Chat error:", error);
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Internal server error",
-    });
-  }
-});
+  },
+);
 
 /**
  * POST /chat/stream - Stream response from the agent (SSE)
  */
-app.post("/chat/stream", async (req: Request<object, object, ChatRequestBody>, res: Response) => {
-  try {
+app.post(
+  "/chat/stream",
+  async (req: Request<object, object, ChatRequestBody>, res: Response) => {
     const { message, sessionId: clientSessionId, context } = req.body;
 
     if (!message || typeof message !== "string") {
-      res.status(400).json({ error: "Message is required and must be a string" });
+      res
+        .status(400)
+        .json({ error: "Message is required and must be a string" });
       return;
     }
 
@@ -271,20 +283,18 @@ app.post("/chat/stream", async (req: Request<object, object, ChatRequestBody>, r
       messageMemory,
       async (responseContent) => {
         if (responseContent?.text) {
-          res.write(`data: ${JSON.stringify({ text: responseContent.text })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ text: responseContent.text })}\n\n`,
+          );
         }
         return [];
-      }
+      },
     );
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
-  } catch (error) {
-    console.error("Stream error:", error);
-    res.write(`data: ${JSON.stringify({ error: error instanceof Error ? error.message : "Error" })}\n\n`);
-    res.end();
-  }
-});
+  },
+);
 
 // ============================================================================
 // Server Startup
@@ -312,4 +322,3 @@ process.on("SIGINT", async () => {
   server.close();
   process.exit(0);
 });
-

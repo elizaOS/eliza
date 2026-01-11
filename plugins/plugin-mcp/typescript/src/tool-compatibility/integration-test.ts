@@ -13,11 +13,26 @@ import { createMcpToolCompatibility, detectModelProvider } from "./index";
 // Mock runtime objects to test different scenarios
 // These are minimal mocks for testing purposes only
 const mockRuntimes = {
-  openai: { modelProvider: "openai", model: "gpt-4" } as unknown as IAgentRuntime,
-  openaiReasoning: { modelProvider: "openai", model: "o3-mini" } as unknown as IAgentRuntime,
-  anthropic: { modelProvider: "anthropic", model: "claude-3" } as unknown as IAgentRuntime,
-  google: { modelProvider: "google", model: "gemini-pro" } as unknown as IAgentRuntime,
-  unknown: { modelProvider: "unknown", model: "custom-model" } as unknown as IAgentRuntime,
+  openai: {
+    modelProvider: "openai",
+    model: "gpt-4",
+  } as unknown as IAgentRuntime,
+  openaiReasoning: {
+    modelProvider: "openai",
+    model: "o3-mini",
+  } as unknown as IAgentRuntime,
+  anthropic: {
+    modelProvider: "anthropic",
+    model: "claude-3",
+  } as unknown as IAgentRuntime,
+  google: {
+    modelProvider: "google",
+    model: "gemini-pro",
+  } as unknown as IAgentRuntime,
+  unknown: {
+    modelProvider: "unknown",
+    model: "custom-model",
+  } as unknown as IAgentRuntime,
 };
 
 // Test schema that has problematic constraints
@@ -95,8 +110,10 @@ async function testIntegration() {
                 if (removedProps.length > 0) {
                   console.log(`   • ${prop}: Removed ${removedProps.join(", ")}`);
                 }
-                const origDescription = "description" in origProp ? origProp.description : undefined;
-                const transDescription = "description" in transProp ? transProp.description : undefined;
+                const origDescription =
+                  "description" in origProp ? origProp.description : undefined;
+                const transDescription =
+                  "description" in transProp ? transProp.description : undefined;
                 if (transDescription && !origDescription) {
                   console.log(`   • ${prop}: Added constraint description`);
                 }

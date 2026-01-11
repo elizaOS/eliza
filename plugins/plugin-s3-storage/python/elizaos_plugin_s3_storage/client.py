@@ -57,7 +57,7 @@ class S3StorageClient:
         self._client: S3Client | None = None
         self._loop = asyncio.get_event_loop()
 
-    def _get_client(self) -> "S3Client":
+    def _get_client(self) -> S3Client:
         """Get or create the S3 client."""
         if self._client is None:
             boto_config = Config(
@@ -87,7 +87,7 @@ class S3StorageClient:
             self._client.close()
             self._client = None
 
-    async def __aenter__(self) -> "S3StorageClient":
+    async def __aenter__(self) -> S3StorageClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -399,5 +399,8 @@ def create_client_from_env() -> S3StorageClient:
     )
 
     return S3StorageClient(config)
+
+
+
 
 

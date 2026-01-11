@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Embedding schema for elizaOS database
 //!
 //! Corresponds to the TypeScript embeddingTable in packages/plugin-sql/typescript/schema/embedding.ts

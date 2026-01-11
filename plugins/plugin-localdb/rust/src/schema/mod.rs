@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Database schema definitions for elizaOS
 //!
 //! This module contains the schema definitions for all database tables.

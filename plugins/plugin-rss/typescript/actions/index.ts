@@ -1,6 +1,4 @@
-export { getFeedAction } from './getFeed';
-export { subscribeFeedAction } from './subscribeFeed';
-export { unsubscribeFeedAction } from './unsubscribeFeed';
-export { listFeedsAction } from './listFeeds';
-
-
+export { getFeedAction } from "./getFeed";
+export { listFeedsAction } from "./listFeeds";
+export { subscribeFeedAction } from "./subscribeFeed";
+export { unsubscribeFeedAction } from "./unsubscribeFeed";

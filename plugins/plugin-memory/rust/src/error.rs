@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Memory Plugin.
 
 use thiserror::Error;
@@ -40,5 +41,10 @@ pub enum MemoryError {
     #[error("{0}")]
     General(String),
 }
+
+
+
+
+
 
 

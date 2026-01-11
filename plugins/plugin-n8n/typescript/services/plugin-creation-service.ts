@@ -5,24 +5,24 @@
  * building, testing, and validation.
  */
 
+import { type ChildProcess, exec, execSync, spawn } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
 import Anthropic from "@anthropic-ai/sdk";
-import { IAgentRuntime, logger, Service } from "@elizaos/core";
-import { exec, spawn, execSync, type ChildProcess } from "child_process";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import fs from "fs-extra";
-import path from "path";
-import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
 import type {
   ClaudeModel,
-  PluginSpecification,
-  PluginCreationJob,
-  JobError,
-  TestResults,
   CreatePluginOptions,
+  JobError,
+  PluginCreationJob,
+  PluginSpecification,
+  TestResults,
 } from "../types";
 import { ClaudeModel as ClaudeModelConst } from "../types";
 
-const execAsync = promisify(exec);
+const _execAsync = promisify(exec);
 
 /**
  * Service type identifier.
@@ -45,10 +45,6 @@ export class PluginCreationService extends Service {
   public readonly capabilityDescription: string =
     "Plugin creation service with AI-powered code generation";
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   async stop(): Promise<void> {
     for (const job of this.jobs.values()) {
       if (job.status === "running" || job.status === "pending") {
@@ -68,15 +64,12 @@ export class PluginCreationService extends Service {
   async initialize(runtime: IAgentRuntime): Promise<void> {
     this.runtime = runtime;
     const apiKey = runtime.getSetting("ANTHROPIC_API_KEY");
-    if (apiKey) {
+    if (apiKey && typeof apiKey === "string") {
       this.anthropic = new Anthropic({ apiKey });
     }
 
     const modelSetting = runtime.getSetting("CLAUDE_MODEL");
-    if (
-      modelSetting &&
-      Object.values(ClaudeModelConst).includes(modelSetting as ClaudeModel)
-    ) {
+    if (modelSetting && Object.values(ClaudeModelConst).includes(modelSetting as ClaudeModel)) {
       this.selectedModel = modelSetting as ClaudeModel;
     }
   }
@@ -112,9 +105,7 @@ export class PluginCreationService extends Service {
     options?: CreatePluginOptions
   ): Promise<string> {
     if (this.createdPlugins.has(specification.name)) {
-      throw new Error(
-        `Plugin ${specification.name} has already been created in this session`
-      );
+      throw new Error(`Plugin ${specification.name} has already been created in this session`);
     }
 
     if (!this.isValidPluginName(specification.name)) {
@@ -122,9 +113,7 @@ export class PluginCreationService extends Service {
     }
 
     if (!this.checkRateLimit()) {
-      throw new Error(
-        "Rate limit exceeded. Please wait before creating another plugin."
-      );
+      throw new Error("Rate limit exceeded. Please wait before creating another plugin.");
     }
 
     if (this.jobs.size >= 10) {
@@ -140,12 +129,7 @@ export class PluginCreationService extends Service {
     const model = options?.model ?? this.selectedModel;
     const jobId = uuidv4();
     const sanitizedName = this.sanitizePluginName(specification.name);
-    const outputPath = path.join(
-      this.getDataDir(),
-      "plugins",
-      jobId,
-      sanitizedName
-    );
+    const outputPath = path.join(this.getDataDir(), "plugins", jobId, sanitizedName);
 
     const resolvedPath = path.resolve(outputPath);
     const dataDir = path.resolve(this.getDataDir());
@@ -175,10 +159,7 @@ export class PluginCreationService extends Service {
     setTimeout(
       () => {
         const jobStatus = this.jobs.get(jobId);
-        if (
-          jobStatus &&
-          (jobStatus.status === "pending" || jobStatus.status === "running")
-        ) {
+        if (jobStatus && (jobStatus.status === "pending" || jobStatus.status === "running")) {
           jobStatus.status = "failed";
           jobStatus.error = "Job timed out after 30 minutes";
           jobStatus.completedAt = new Date();
@@ -255,7 +236,9 @@ export class PluginCreationService extends Service {
       }
     }
 
-    jobsToRemove.forEach((jobId) => this.jobs.delete(jobId));
+    for (const jobId of jobsToRemove) {
+      this.jobs.delete(jobId);
+    }
 
     if (jobsToRemove.length > 0) {
       logger.info(`Cleaned up ${jobsToRemove.length} old jobs`);
@@ -273,7 +256,7 @@ export class PluginCreationService extends Service {
   private getDataDir(): string {
     if (this.runtime && typeof this.runtime.getSetting === "function") {
       const dataDir = this.runtime.getSetting("PLUGIN_DATA_DIR");
-      if (dataDir) return dataDir;
+      if (dataDir && typeof dataDir === "string") return dataDir;
     }
     return path.join(process.cwd(), "data");
   }
@@ -446,9 +429,7 @@ export class PluginCreationService extends Service {
     }
   }
 
-  private async setupPluginWorkspaceFallback(
-    job: PluginCreationJob
-  ): Promise<void> {
+  private async setupPluginWorkspaceFallback(job: PluginCreationJob): Promise<void> {
     const packageJson = {
       name: job.specification.name,
       version: job.specification.version ?? "1.0.0",
@@ -518,18 +499,11 @@ export class PluginCreationService extends Service {
       },
       rules: {
         "@typescript-eslint/no-explicit-any": "warn",
-        "@typescript-eslint/no-unused-vars": [
-          "error",
-          { argsIgnorePattern: "^_" },
-        ],
+        "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       },
     };
 
-    await fs.writeJson(
-      path.join(job.outputPath, ".eslintrc.json"),
-      eslintConfig,
-      { spaces: 2 }
-    );
+    await fs.writeJson(path.join(job.outputPath, ".eslintrc.json"), eslintConfig, { spaces: 2 });
 
     const vitestConfig = `
 import { defineConfig } from 'vitest/config';
@@ -545,10 +519,7 @@ export default defineConfig({
 });
 `;
 
-    await fs.writeFile(
-      path.join(job.outputPath, "vitest.config.ts"),
-      vitestConfig.trim()
-    );
+    await fs.writeFile(path.join(job.outputPath, "vitest.config.ts"), vitestConfig.trim());
   }
 
   private async generatePluginCode(job: PluginCreationJob): Promise<void> {
@@ -557,9 +528,7 @@ export default defineConfig({
     }
 
     const isFirstIteration = job.currentIteration === 1;
-    const previousErrors = job.errors.filter(
-      (e) => e.iteration === job.currentIteration - 1
-    );
+    const previousErrors = job.errors.filter((e) => e.iteration === job.currentIteration - 1);
 
     let prompt: string;
 
@@ -639,10 +608,7 @@ Create a complete ElizaOS plugin implementation following these requirements:
 Provide the complete implementation with file paths clearly marked.`;
   }
 
-  private generateIterationPrompt(
-    job: PluginCreationJob,
-    errors: JobError[]
-  ): string {
+  private generateIterationPrompt(job: PluginCreationJob, errors: JobError[]): string {
     const errorSummary = errors
       .map(
         (e) => `
@@ -669,24 +635,19 @@ Please fix all the errors by:
 Provide the updated code with file paths clearly marked.`;
   }
 
-  private async writeGeneratedCode(
-    job: PluginCreationJob,
-    responseText: string
-  ): Promise<void> {
+  private async writeGeneratedCode(job: PluginCreationJob, responseText: string): Promise<void> {
     const fileRegex =
       /```(?:typescript|ts|javascript|js)?\s*\n(?:\/\/\s*)?(?:File:\s*)?(.+?)\n([\s\S]*?)```/g;
-    let match;
-
-    while ((match = fileRegex.exec(responseText)) !== null) {
+    let match: RegExpExecArray | null = fileRegex.exec(responseText);
+    while (match !== null) {
       const filePath = match[1].trim();
       const fileContent = match[2].trim();
 
-      const normalizedPath = filePath.startsWith("src/")
-        ? filePath
-        : `src/${filePath}`;
+      const normalizedPath = filePath.startsWith("src/") ? filePath : `src/${filePath}`;
       const fullPath = path.join(job.outputPath, normalizedPath);
 
       await fs.ensureDir(path.dirname(fullPath));
+      match = fileRegex.exec(responseText);
       await fs.writeFile(fullPath, fileContent);
     }
 
@@ -741,12 +702,7 @@ Provide the updated code with file paths clearly marked.`;
 
   private async testPlugin(job: PluginCreationJob): Promise<boolean> {
     try {
-      const { success, output } = await this.runCommand(
-        job,
-        "npm",
-        ["test"],
-        "Running tests"
-      );
+      const { success, output } = await this.runCommand(job, "npm", ["test"], "Running tests");
 
       const testResults = this.parseTestResults(output);
       job.testResults = testResults;
@@ -931,10 +887,7 @@ Respond with JSON:
         outputSize += data.length;
         if (outputSize < maxOutputSize) {
           output += data.toString();
-        } else if (
-          outputSize >= maxOutputSize &&
-          !output.includes("Output truncated")
-        ) {
+        } else if (outputSize >= maxOutputSize && !output.includes("Output truncated")) {
           output += "\n[Output truncated due to size limit]";
           this.logToJob(job.id, "Output truncated due to size limit");
         }
@@ -959,7 +912,7 @@ Respond with JSON:
           }
           resolve({
             success: false,
-            output: output + "\n[Process killed due to timeout]",
+            output: `${output}\n[Process killed due to timeout]`,
           });
         },
         5 * 60 * 1000
@@ -1016,12 +969,8 @@ Respond with JSON:
       await fs.remove(distPath);
     }
 
-    logger.info(
-      `Iteration ${job.currentIteration} summary for ${job.specification.name}:`
-    );
-    const iterationErrors = job.errors.filter(
-      (e) => e.iteration === job.currentIteration
-    );
+    logger.info(`Iteration ${job.currentIteration} summary for ${job.specification.name}:`);
+    const iterationErrors = job.errors.filter((e) => e.iteration === job.currentIteration);
     iterationErrors.forEach((e) => {
       logger.error(`  - ${e.phase}: ${e.error}`);
     });
@@ -1058,5 +1007,3 @@ Respond with JSON:
     return true;
   }
 }
-
-

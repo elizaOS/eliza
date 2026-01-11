@@ -1,12 +1,6 @@
+import type { Metadata } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import {
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
 /**
@@ -24,11 +18,11 @@ export const entityTable = pgTable(
       }),
     createdAt: timestamp("created_at").default(sql`now()`).notNull(),
     names: text("names").array().default(sql`'{}'::text[]`).notNull(),
-    metadata: jsonb("metadata").default(sql`'{}'::jsonb`).notNull(),
+    metadata: jsonb("metadata").$type<Metadata>().default(sql`'{}'::jsonb`).notNull(),
   },
   (table) => {
     return {
       idAgentIdUnique: unique("id_agent_id_unique").on(table.id, table.agentId),
     };
-  },
+  }
 );

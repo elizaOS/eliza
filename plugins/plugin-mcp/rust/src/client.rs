@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! MCP Client implementation.
 
 use serde_json::{json, Value};

@@ -7,11 +7,6 @@
  */
 
 export * from "./models";
-export * from "./types";
+export { generateElizaResponse, getElizaGreeting } from "./models/text";
 export { elizaClassicPlugin, elizaClassicPlugin as default } from "./plugin";
-export { getElizaGreeting, generateElizaResponse } from "./models/text";
-
-
-
-
-
+export * from "./types";

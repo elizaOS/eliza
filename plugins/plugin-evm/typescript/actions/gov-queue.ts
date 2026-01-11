@@ -1,24 +1,9 @@
-import type {
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
-import {
-  type Address,
-  encodeFunctionData,
-  type Hex,
-  keccak256,
-  stringToHex,
-} from "viem";
+import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { type Address, encodeFunctionData, type Hex, keccak256, stringToHex } from "viem";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import { WalletProvider } from "../providers/wallet";
 import { queueProposalTemplate } from "../templates";
-import type {
-  QueueProposalParams,
-  SupportedChain,
-  Transaction,
-} from "../types";
+import type { QueueProposalParams, SupportedChain, Transaction } from "../types";
 
 export { queueProposalTemplate };
 
@@ -70,8 +55,7 @@ export class QueueAction {
         logs: receipt.logs,
       };
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Vote failed: ${errorMessage}`);
     }
   }
@@ -85,8 +69,8 @@ export const queueAction = {
     _message: Memory,
     _state: State,
     options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ) => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     try {
       // Validate required fields
       if (
@@ -113,15 +97,27 @@ export const queueAction = {
       const privateKey = runtime.getSetting("EVM_PRIVATE_KEY") as `0x${string}`;
       const walletProvider = new WalletProvider(privateKey, runtime);
       const action = new QueueAction(walletProvider);
-      return await action.queue(queueParams);
+      const result = await action.queue(queueParams);
+      return {
+        success: true,
+        text: `Proposal queued successfully. Transaction hash: ${result.hash}`,
+        data: {
+          transactionHash: result.hash,
+          from: result.from,
+          to: result.to,
+          chain: queueParams.chain,
+        },
+      };
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Error in queue handler:", errorMessage);
       if (callback) {
         callback({ text: `Error: ${errorMessage}` });
       }
-      return false;
+      return {
+        success: false,
+        text: `Error: ${errorMessage}`,
+      };
     }
   },
   template: queueProposalTemplate,
@@ -132,7 +128,7 @@ export const queueAction = {
   examples: [
     [
       {
-        user: "user",
+        name: "user",
         content: {
           text: "Queue proposal 123 on the governor at 0x1234567890123456789012345678901234567890 on Ethereum",
           action: "QUEUE_PROPOSAL",

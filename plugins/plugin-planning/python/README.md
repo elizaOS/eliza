@@ -139,12 +139,12 @@ python -m elizaos_plugin_planning.benchmarks.cli --all --output ./my_results
 
 ## Configuration
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `max_steps` | 10 | Maximum steps in a plan |
-| `default_timeout_ms` | 60000 | Default execution timeout |
-| `execution_model` | sequential | Default execution model |
-| `enable_adaptation` | true | Enable plan adaptation |
+| Setting              | Default    | Description               |
+| -------------------- | ---------- | ------------------------- |
+| `max_steps`          | 10         | Maximum steps in a plan   |
+| `default_timeout_ms` | 60000      | Default execution timeout |
+| `execution_model`    | sequential | Default execution model   |
+| `enable_adaptation`  | true       | Enable plan adaptation    |
 
 ## Development
 
@@ -169,5 +169,6 @@ ruff check elizaos_plugin_planning/
 ## License
 
 MIT
+
 
 

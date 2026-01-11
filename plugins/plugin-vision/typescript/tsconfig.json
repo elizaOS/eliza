@@ -20,6 +20,6 @@
     "baseUrl": "./src",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__"]
+  "include": ["src/*.ts", "src/@types/**/*.ts", "src/workers/**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "src/tests"]
 }

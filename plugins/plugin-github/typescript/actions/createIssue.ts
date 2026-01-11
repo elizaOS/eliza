@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { createIssueSchema, type CreateIssueParams } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type CreateIssueParams, createIssueSchema } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -63,11 +64,7 @@ export const createIssueAction: Action = {
   description:
     "Creates a new issue in a GitHub repository. Use this to report bugs, request features, or track tasks.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if GitHub service is available
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
@@ -89,8 +86,8 @@ export const createIssueAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -100,7 +97,7 @@ export const createIssueAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
@@ -111,18 +108,21 @@ export const createIssueAction: Action = {
 
       // For now, use a simple extraction - in production, use LLM
       const params: CreateIssueParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        title: (state?.["title"] as string) ?? text.slice(0, 100),
-        body: (state?.["body"] as string) ?? text,
-        labels: (state?.["labels"] as string[]) ?? [],
-        assignees: (state?.["assignees"] as string[]) ?? [],
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        title: (state?.title as string) ?? text.slice(0, 100),
+        body: (state?.body as string) ?? text,
+        labels: (state?.labels as string[]) ?? [],
+        assignees: (state?.assignees as string[]) ?? [],
       };
 
       // Validate params
       const validation = createIssueSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid issue parameters: ${errors}`);
@@ -131,7 +131,7 @@ export const createIssueAction: Action = {
             text: `I couldn't create the issue due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       // Create the issue
@@ -145,10 +145,9 @@ export const createIssueAction: Action = {
         });
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to create issue: ${errorMessage}`);
 
       if (callback) {
@@ -157,7 +156,7 @@ export const createIssueAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -165,5 +164,3 @@ export const createIssueAction: Action = {
 };
 
 export default createIssueAction;
-
-

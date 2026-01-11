@@ -298,11 +298,6 @@ pub struct AgentRuntime {
     initialized: RwLock<bool>,
     /// Log level for this runtime
     log_level: LogLevel,
-    /// Capability options for bootstrap plugin
-    #[allow(dead_code)]
-    capability_disable_basic: bool,
-    #[allow(dead_code)]
-    capability_enable_extended: bool,
     /// Flag to track if the character was auto-generated (no character provided)
     is_anonymous_character: bool,
     /// Action planning option (None means check settings at runtime)
@@ -367,8 +362,6 @@ impl AgentRuntime {
             current_room_id: Mutex::new(None),
             initialized: RwLock::new(false),
             log_level,
-            capability_disable_basic: opts.disable_basic_capabilities,
-            capability_enable_extended: opts.enable_extended_capabilities,
             is_anonymous_character: is_anonymous,
             action_planning_option: opts.action_planning,
             llm_mode_option: opts.llm_mode,
@@ -1049,8 +1042,18 @@ mod tests {
         .await
         .unwrap();
 
-        let character = runtime.character.read().await.clone();
-        assert_eq!(character.name, "TestAgent");
+        #[cfg(feature = "native")]
+        {
+            let character_guard = runtime.character.read().await;
+            let character = character_guard.clone();
+            assert_eq!(character.name, "TestAgent");
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            let character_guard = runtime.character.read().unwrap();
+            let character = character_guard.clone();
+            assert_eq!(character.name, "TestAgent");
+        }
     }
 
     #[tokio::test]

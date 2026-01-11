@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Text embedding model handlers.
 
 use crate::error::Result;
@@ -45,5 +46,10 @@ pub async fn handle_batch_text_embedding(
     let params = TextEmbeddingParams::batch(texts);
     client.generate_embedding(params).await
 }
+
+
+
+
+
 
 

@@ -70,4 +70,3 @@ __all__ = [
     # Providers
     "MessageClassifierProvider",
 ]
-

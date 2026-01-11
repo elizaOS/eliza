@@ -1,18 +1,18 @@
 ---
-title: 'Browser Examples'
-description: 'Run elizaOS agents client-side with React, Next.js, and vanilla HTML'
+title: "Browser Examples"
+description: "Run elizaOS agents client-side with React, Next.js, and vanilla HTML"
 ---
 
 Run AI agents entirely in the browser. No server required for basic functionality. These examples use in-browser databases and pattern matching to work offline.
 
 ## Overview
 
-| Example | Framework | Directory | Features |
-|---------|-----------|-----------|----------|
-| HTML | Vanilla JS | `examples/html/` | Zero dependencies, CRT terminal UI |
-| React | React + Vite | `examples/react/` | Full React app with PGLite |
-| React WASM | React + Rust WASM | `examples/react-wasm/` | Rust core compiled to WASM |
-| Next.js | Next.js 14 | `examples/next/` | SSR + API routes |
+| Example    | Framework         | Directory              | Features                           |
+| ---------- | ----------------- | ---------------------- | ---------------------------------- |
+| HTML       | Vanilla JS        | `examples/html/`       | Zero dependencies, CRT terminal UI |
+| React      | React + Vite      | `examples/react/`      | Full React app with PGLite         |
+| React WASM | React + Rust WASM | `examples/react-wasm/` | Rust core compiled to WASM         |
+| Next.js    | Next.js 14        | `examples/next/`       | SSR + API routes                   |
 
 ---
 
@@ -43,8 +43,10 @@ cd packages/rust && ./build-wasm.sh && cd -
 cd examples/react-wasm
 bun install
 bun dev
+
 # Visit http://localhost:5173
-```
+
+````
   </Tab>
   <Tab title="Next.js">
 ```bash
@@ -52,7 +54,8 @@ cd examples/next
 bun install
 OPENAI_API_KEY="your-key" bun dev
 # Visit http://localhost:3000
-```
+````
+
   </Tab>
 </Tabs>
 
@@ -63,6 +66,7 @@ OPENAI_API_KEY="your-key" bun dev
 The simplest browser implementation. Pure HTML, CSS, and JavaScript with a beautiful retro CRT terminal interface.
 
 **Features:**
+
 - Zero build step required
 - Classic ELIZA pattern matching
 - localStorage persistence
@@ -72,64 +76,70 @@ The simplest browser implementation. Pure HTML, CSS, and JavaScript with a beaut
 ```html
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <title>ELIZA - elizaOS Browser Demo</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
-      "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js",
-      "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/dist/browser/index.browser.js"
-    }
-  }
-  </script>
-</head>
-<body>
-  <div id="chat"></div>
-  <input type="text" id="input" placeholder="Tell me what's troubling you..." />
+  <head>
+    <title>ELIZA - elizaOS Browser Demo</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
+          "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js",
+          "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/dist/browser/index.browser.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="chat"></div>
+    <input
+      type="text"
+      id="input"
+      placeholder="Tell me what's troubling you..."
+    />
 
-  <script type="module">
-    import { AgentRuntime, ModelType, stringToUuid } from "@elizaos/core";
-    import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
-    import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
+    <script type="module">
+      import { AgentRuntime, ModelType, stringToUuid } from "@elizaos/core";
+      import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+      import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
 
-    // Create runtime
-    const runtime = new AgentRuntime({
-      character: {
-        name: "Eliza",
-        bio: "A Rogerian psychotherapist simulation.",
-      },
-      plugins: [localdbPlugin, elizaClassicPlugin],
-    });
+      // Create runtime
+      const runtime = new AgentRuntime({
+        character: {
+          name: "Eliza",
+          bio: "A Rogerian psychotherapist simulation.",
+        },
+        plugins: [localdbPlugin, elizaClassicPlugin],
+      });
 
-    await runtime.initialize();
+      await runtime.initialize();
 
-    // Handle input
-    document.getElementById("input").addEventListener("keypress", async (e) => {
-      if (e.key === "Enter") {
-        const text = e.target.value.trim();
-        if (!text) return;
+      // Handle input
+      document
+        .getElementById("input")
+        .addEventListener("keypress", async (e) => {
+          if (e.key === "Enter") {
+            const text = e.target.value.trim();
+            if (!text) return;
 
-        // Display user message
-        appendMessage("You", text);
-        e.target.value = "";
+            // Display user message
+            appendMessage("You", text);
+            e.target.value = "";
 
-        // Get response
-        const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: text,
+            // Get response
+            const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+              prompt: text,
+            });
+
+            appendMessage("Eliza", String(response));
+          }
         });
 
-        appendMessage("Eliza", String(response));
+      function appendMessage(sender, text) {
+        const chat = document.getElementById("chat");
+        chat.innerHTML += `<div><strong>${sender}:</strong> ${text}</div>`;
+        chat.scrollTop = chat.scrollHeight;
       }
-    });
-
-    function appendMessage(sender, text) {
-      const chat = document.getElementById("chat");
-      chat.innerHTML += `<div><strong>${sender}:</strong> ${text}</div>`;
-      chat.scrollTop = chat.scrollHeight;
-    }
-  </script>
-</body>
+    </script>
+  </body>
 </html>
 ```
 
@@ -140,6 +150,7 @@ The simplest browser implementation. Pure HTML, CSS, and JavaScript with a beaut
 Full React application with PGLite for in-browser PostgreSQL-compatible storage.
 
 **Features:**
+
 - Full elizaOS AgentRuntime
 - PGLite database (IndexedDB backend)
 - Classic ELIZA plugin (no API keys)
@@ -245,6 +256,7 @@ export default function App() {
 Uses the Rust implementation compiled to WebAssembly for the best performance.
 
 **Features:**
+
 - Rust core running in the browser
 - ~30% faster than pure TypeScript
 - Same API as native Rust
@@ -263,10 +275,12 @@ export async function getRuntime(): Promise<WasmAgentRuntime> {
   await init();
 
   // Create runtime with character JSON
-  runtime = await new WasmAgentRuntime(JSON.stringify({
-    name: "Eliza",
-    bio: "A Rogerian psychotherapist simulation.",
-  }));
+  runtime = await new WasmAgentRuntime(
+    JSON.stringify({
+      name: "Eliza",
+      bio: "A Rogerian psychotherapist simulation.",
+    }),
+  );
 
   await runtime.initialize();
   return runtime;
@@ -280,6 +294,7 @@ export async function getRuntime(): Promise<WasmAgentRuntime> {
 Full-stack Next.js application with server-side rendering and API routes.
 
 **Features:**
+
 - SSR for fast initial load
 - API routes for server-side processing
 - OpenAI integration (requires API key)
@@ -328,7 +343,7 @@ export async function POST(request: Request) {
             controller.enqueue(encoder.encode(content.text));
           }
           return [];
-        }
+        },
       );
       controller.close();
     },
@@ -344,23 +359,23 @@ export async function POST(request: Request) {
 
 ## Browser Compatibility
 
-| Feature | Chrome | Firefox | Safari | Edge |
-|---------|--------|---------|--------|------|
-| ES Modules | ✅ | ✅ | ✅ | ✅ |
-| Import Maps | ✅ | ✅ | ✅ | ✅ |
-| WASM | ✅ | ✅ | ✅ | ✅ |
-| IndexedDB (PGLite) | ✅ | ✅ | ✅ | ✅ |
-| localStorage | ✅ | ✅ | ✅ | ✅ |
+| Feature            | Chrome | Firefox | Safari | Edge |
+| ------------------ | ------ | ------- | ------ | ---- |
+| ES Modules         | ✅     | ✅      | ✅     | ✅   |
+| Import Maps        | ✅     | ✅      | ✅     | ✅   |
+| WASM               | ✅     | ✅      | ✅     | ✅   |
+| IndexedDB (PGLite) | ✅     | ✅      | ✅     | ✅   |
+| localStorage       | ✅     | ✅      | ✅     | ✅   |
 
 ---
 
 ## Plugin Comparison
 
-| Plugin | Requires API | Offline | Response Time |
-|--------|--------------|---------|---------------|
-| `plugin-eliza-classic` | ❌ | ✅ | ~1ms |
-| `plugin-openai` | ✅ | ❌ | ~500-2000ms |
-| `plugin-anthropic` | ✅ | ❌ | ~500-2000ms |
+| Plugin                 | Requires API | Offline | Response Time |
+| ---------------------- | ------------ | ------- | ------------- |
+| `plugin-eliza-classic` | ❌           | ✅      | ~1ms          |
+| `plugin-openai`        | ✅           | ❌      | ~500-2000ms   |
+| `plugin-anthropic`     | ✅           | ❌      | ~500-2000ms   |
 
 ---
 
@@ -374,5 +389,6 @@ export async function POST(request: Request) {
     Build AI-powered games
   </Card>
 </CardGroup>
+
 
 

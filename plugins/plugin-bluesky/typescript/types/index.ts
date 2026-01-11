@@ -159,7 +159,12 @@ export interface BlueSkyMessage {
 export interface BlueSkyConversation {
   id: string;
   rev: string;
-  members: Array<{ did: string; handle?: string; displayName?: string; avatar?: string }>;
+  members: Array<{
+    did: string;
+    handle?: string;
+    displayName?: string;
+    avatar?: string;
+  }>;
   lastMessage?: BlueSkyMessage;
   unreadCount: number;
   muted: boolean;

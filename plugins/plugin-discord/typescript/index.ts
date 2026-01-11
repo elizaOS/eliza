@@ -24,8 +24,7 @@ import { DiscordTestSuite } from "./tests";
 
 const discordPlugin: Plugin = {
   name: "discord",
-  description:
-    "Discord service plugin for integration with Discord servers and channels",
+  description: "Discord service plugin for integration with Discord servers and channels",
   services: [DiscordService],
   actions: [
     chatWithAttachments,
@@ -50,24 +49,16 @@ const discordPlugin: Plugin = {
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Gather ALL Discord settings
     const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
-    const applicationId = runtime.getSetting(
-      "DISCORD_APPLICATION_ID",
-    ) as string;
-    const voiceChannelId = runtime.getSetting(
-      "DISCORD_VOICE_CHANNEL_ID",
-    ) as string;
+    const applicationId = runtime.getSetting("DISCORD_APPLICATION_ID") as string;
+    const voiceChannelId = runtime.getSetting("DISCORD_VOICE_CHANNEL_ID") as string;
     const channelIds = runtime.getSetting("CHANNEL_IDS") as string;
-    const listenChannelIds = runtime.getSetting(
-      "DISCORD_LISTEN_CHANNEL_IDS",
-    ) as string;
-    const ignoreBotMessages = runtime.getSetting(
-      "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
-    ) as string;
+    const listenChannelIds = runtime.getSetting("DISCORD_LISTEN_CHANNEL_IDS") as string;
+    const ignoreBotMessages = runtime.getSetting("DISCORD_SHOULD_IGNORE_BOT_MESSAGES") as string;
     const ignoreDirectMessages = runtime.getSetting(
-      "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
+      "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES"
     ) as string;
     const respondOnlyToMentions = runtime.getSetting(
-      "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
+      "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS"
     ) as string;
 
     // Print beautiful settings banner with ALL settings
@@ -123,10 +114,10 @@ const discordPlugin: Plugin = {
 
     if (!token || token.trim() === "") {
       logger.warn(
-        "Discord API Token not provided - Discord plugin is loaded but will not be functional",
+        "Discord API Token not provided - Discord plugin is loaded but will not be functional"
       );
       logger.warn(
-        "To enable Discord functionality, please provide DISCORD_API_TOKEN in your .eliza/.env file",
+        "To enable Discord functionality, please provide DISCORD_API_TOKEN in your .eliza/.env file"
       );
     }
   },
@@ -159,7 +150,6 @@ export type {
   ChannelPermissionsChangedPayload,
   MemberRolesChangedPayload,
   PermissionDiff,
-  PermissionPayloadRuntime,
   PermissionState,
   RoleLifecyclePayload,
   RolePermissionsChangedPayload,

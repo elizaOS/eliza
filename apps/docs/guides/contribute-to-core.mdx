@@ -1,10 +1,11 @@
 ---
-title: 'Contribute to Core'
-description: 'How to contribute to the elizaOS core project and plugin ecosystem'
+title: "Contribute to Core"
+description: "How to contribute to the elizaOS core project and plugin ecosystem"
 ---
 
 <Note>
-This guide covers contributing to the main elizaOS monorepo and the elizaOS plugin ecosystem.
+  This guide covers contributing to the main elizaOS monorepo and the elizaOS
+  plugin ecosystem.
 </Note>
 
 ## Understanding the Ecosystem
@@ -12,7 +13,9 @@ This guide covers contributing to the main elizaOS monorepo and the elizaOS plug
 elizaOS open source contribution happens across these main areas:
 
 ### Main Repository (Monorepo)
+
 **[github.com/elizaos/eliza](https://github.com/elizaos/eliza)** - The core monorepo containing:
+
 - `packages/typescript` - Runtime, types, interfaces, and bootstrap plugin
 - `packages/cli` - Command-line tools and elizaos CLI
 - `packages/server` - Agent server implementation
@@ -22,10 +25,12 @@ elizaOS open source contribution happens across these main areas:
 - Plugin templates (`packages/plugin-starter`, `packages/plugin-quick-starter`)
 - Config files, READMEs & more
 
-### Plugin Ecosystem  
+### Plugin Ecosystem
+
 **[github.com/elizaos-plugins](https://github.com/elizaos-plugins)** - Official plugins maintained by the elizaOS team:
+
 - `plugin-discord` - Discord integration
-- `plugin-twitter` - Twitter/X integration  
+- `plugin-twitter` - Twitter/X integration
 - `plugin-evm` - Ethereum and blockchain functionality
 - And many more frequently-used plugins
 
@@ -40,11 +45,13 @@ elizaOS open source contribution happens across these main areas:
 **[elizaos/eliza/issues](https://github.com/elizaos/eliza/issues)**
 
 Focus on labels like:
+
 - `good first issue` - Perfect for newcomers
-- `bug` - Something that needs fixing  
+- `bug` - Something that needs fixing
 
 <Note>
-The best way to start contributing is fixing reported bugs rather than writing new features.
+  The best way to start contributing is fixing reported bugs rather than writing
+  new features.
 </Note>
 
 ### elizaOS-Maintained Plugin Issues
@@ -52,6 +59,7 @@ The best way to start contributing is fixing reported bugs rather than writing n
 Find issues in elizaOS-maintained plugins (often more focused for first contributions):
 
 **Official elizaOS plugins:**
+
 - [plugin-twitter/issues](https://github.com/elizaos-plugins/plugin-twitter/issues)
 - [plugin-discord/issues](https://github.com/elizaos-plugins/plugin-discord/issues)
 - [plugin-evm/issues](https://github.com/elizaos-plugins/plugin-evm/issues)
@@ -69,7 +77,7 @@ Find issues in elizaOS-maintained plugins (often more focused for first contribu
 
 If you discover a bug without an existing issue:
 
-1. **Reproduce the bug** consistently & locally 
+1. **Reproduce the bug** consistently & locally
 2. **Check if it's already reported** by searching existing issues
 3. **Create a detailed issue** with:
    - Clear description of the problem
@@ -80,17 +88,21 @@ If you discover a bug without an existing issue:
 
 ```markdown Issue Template Example
 ## Bug Description
+
 The Discord plugin fails to connect when using voice channels
 
-## Steps to Reproduce  
+## Steps to Reproduce
+
 1. Configure agent with Discord and ElevenLabs plugins
 2. Invite agent to voice channel
 3. Agent connects but immediately disconnects
 
 ## Expected Behavior
+
 Agent should remain connected and respond with voice
 
 ## Environment
+
 - elizaOS version: 1.4.4
 - Node version: 23.3
 - OS: macOS 14.0
@@ -101,18 +113,21 @@ Agent should remain connected and respond with voice
 Beyond code contributions, you can help in these important areas:
 
 **Documentation contributions:**
+
 - Add tutorials to the tutorials section in [docs repository](https://github.com/elizaos/docs)
 - Update any outdated references, instructions, or broken links you find
 - Fix typos, improve clarity, or add missing examples
 
-**Community support:**  
+**Community support:**
+
 - **Answer questions** in [GitHub Discussions](https://github.com/orgs/elizaOS/discussions) Q&A section
 - **Help with troubleshooting** - Setup issues, configuration problems, etc.
 - **Share knowledge** in general discussions about elizaOS development
 - **Showcase projects** in show and tell or participate in feature discussions
 
 <Tip>
-Community contributions like answering questions and writing tutorials are often the most impactful ways to help other developers succeed with elizaOS.
+  Community contributions like answering questions and writing tutorials are
+  often the most impactful ways to help other developers succeed with elizaOS.
 </Tip>
 
 ---
@@ -130,16 +145,20 @@ elizaOS follows standard open source contribution practices for all repositories
 ### Make Your Changes Locally
 
 **Focus on these types of contributions:**
+
 - Fix existing functionality that isn't working
-- Improve error handling and edge cases  
+- Improve error handling and edge cases
 - Performance optimizations
 - Documentation corrections
 
 <Warning>
-Large refactors are unlikely to be accepted. Focus on incremental improvements and bug fixes first. Always discuss major architectural changes with core developers before starting work.
+  Large refactors are unlikely to be accepted. Focus on incremental improvements
+  and bug fixes first. Always discuss major architectural changes with core
+  developers before starting work.
 </Warning>
 
 **Implementation steps:**
+
 1. **Make your changes** to fix the bug or implement the improvement
 2. **Test your changes** thoroughly - run existing tests and add new ones if needed
 3. **Ensure code quality** - follow linting rules and TypeScript requirements
@@ -147,10 +166,12 @@ Large refactors are unlikely to be accepted. Focus on incremental improvements a
 ### Submit Your Pull Request
 
 **Target the correct branch:**
-- **Main repository (elizaos/eliza):** Target `develop` branch  
+
+- **Main repository (elizaos/eliza):** Target `develop` branch
 - **Plugin repositories:** Target `1.x` branch (or check the default branch)
 
 **Create a detailed pull request** with:
+
 - Clear description of what the PR does
 - Link to the related issue (`Fixes #123`)
 - List of specific changes made
@@ -166,13 +187,15 @@ Large refactors are unlikely to be accepted. Focus on incremental improvements a
 ### Code Quality Standards
 
 **What we look for:**
+
 - Bug fixes with clear reproduction steps
-- Performance improvements with benchmarks  
+- Performance improvements with benchmarks
 - Documentation improvements and corrections
 - Test coverage improvements
 - Security fixes
 
 **Technical requirements:**
+
 - **TypeScript**: All code must be properly typed
 - **Testing**: New features require tests, bug fixes should include regression tests
 - **Documentation**: Update relevant documentation for any user-facing changes
@@ -190,6 +213,7 @@ Connect with core developers and other contributors:
 **[Join elizaOS Discord](https://discord.gg/ai16z)**
 
 Key channels for contributors:
+
 - **💬 #coders** - Development discussions and questions
 - **💻 #tech-support** - Help others troubleshoot and get help yourself
 
@@ -202,7 +226,8 @@ For significant contributions:
 3. **Ask questions** - the community is helpful and welcoming
 
 <Tip>
-Core developers are active in Discord and can provide guidance on whether your planned contribution aligns with project goals.
+  Core developers are active in Discord and can provide guidance on whether your
+  planned contribution aligns with project goals.
 </Tip>
 
 ### Build Community Connections
@@ -217,7 +242,11 @@ Core developers are active in Discord and can provide guidance on whether your p
 ## See Also
 
 <CardGroup cols={2}>
-  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
     Build your own plugins to contribute to the ecosystem
   </Card>
   <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">

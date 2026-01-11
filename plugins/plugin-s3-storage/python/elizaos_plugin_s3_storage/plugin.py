@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from elizaos_plugin_s3_storage.client import S3StorageClient, create_client_from_env
+from elizaos_plugin_s3_storage.client import S3StorageClient
 from elizaos_plugin_s3_storage.types import (
     JsonUploadResult,
     S3StorageConfig,
@@ -53,9 +53,7 @@ class S3StoragePlugin:
         bkt = bucket or os.environ.get("AWS_S3_BUCKET")
 
         if not all([key, secret, reg, bkt]):
-            raise ValueError(
-                "AWS credentials must be provided or set in environment variables"
-            )
+            raise ValueError("AWS credentials must be provided or set in environment variables")
 
         self._config = S3StorageConfig(
             access_key_id=key,  # type: ignore[arg-type]
@@ -71,7 +69,7 @@ class S3StoragePlugin:
         """Close the plugin and release resources."""
         await self._client.close()
 
-    async def __aenter__(self) -> "S3StoragePlugin":
+    async def __aenter__(self) -> S3StoragePlugin:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -101,9 +99,7 @@ class S3StoragePlugin:
         Returns:
             UploadResult with success status and URL.
         """
-        return await self._client.upload_file(
-            file_path, sub_directory, use_signed_url, expires_in
-        )
+        return await self._client.upload_file(file_path, sub_directory, use_signed_url, expires_in)
 
     async def upload_bytes(
         self,
@@ -226,5 +222,8 @@ def get_s3_storage_plugin() -> S3StoragePlugin:
     if _s3_plugin_instance is None:
         _s3_plugin_instance = create_plugin()
     return _s3_plugin_instance
+
+
+
 
 

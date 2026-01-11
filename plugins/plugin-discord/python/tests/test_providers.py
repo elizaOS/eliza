@@ -7,8 +7,8 @@ from elizaos_plugin_discord.providers import (
     get_all_providers,
 )
 from elizaos_plugin_discord.providers.channel_state import ChannelStateProvider
-from elizaos_plugin_discord.providers.voice_state import VoiceStateProvider
 from elizaos_plugin_discord.providers.guild_info import GuildInfoProvider
+from elizaos_plugin_discord.providers.voice_state import VoiceStateProvider
 
 
 class TestChannelStateProvider:

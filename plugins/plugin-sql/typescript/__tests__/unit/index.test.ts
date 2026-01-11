@@ -1,15 +1,8 @@
-import { afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  type Mock,
-  mock,
-  vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime, IDatabaseAdapter, UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { createDatabaseAdapter, plugin } from "../../index";
 
 /**
@@ -56,7 +49,7 @@ interface MockRuntimeForTesting {
  * The mock is typed to satisfy IAgentRuntime for use with plugin.init.
  */
 function createMockRuntime(
-  overrides: Partial<MockRuntimeForTesting> = {},
+  overrides: Partial<MockRuntimeForTesting> = {}
 ): MockRuntimeForTesting & IAgentRuntime {
   const baseMock: MockRuntimeForTesting = {
     agentId: "00000000-0000-0000-0000-000000000000" as UUID,
@@ -91,11 +84,11 @@ async function cleanupGlobalSingletons() {
   const globalSymbols = globalThis as GlobalWithSingletons;
   const singletons = globalSymbols[GLOBAL_SINGLETONS];
 
-  if (singletons && singletons.pgLiteClientManager) {
+  if (singletons?.pgLiteClientManager) {
     try {
       // Get the actual PGlite client and close it properly
-      const client = singletons.pgLiteClientManager.getConnection && singletons.pgLiteClientManager.getConnection();
-      if (client && client.close) {
+      const client = singletons.pgLiteClientManager.getConnection?.();
+      if (client?.close) {
         await client.close();
       }
     } catch {
@@ -104,7 +97,7 @@ async function cleanupGlobalSingletons() {
     delete singletons.pgLiteClientManager;
   }
 
-  if (singletons && singletons.postgresConnectionManager) {
+  if (singletons?.postgresConnectionManager) {
     try {
       if (singletons.postgresConnectionManager.close) {
         await singletons.postgresConnectionManager.close();
@@ -153,7 +146,7 @@ describe("SQL Plugin", () => {
     it("should have correct plugin metadata", () => {
       expect(plugin.name).toBe("@elizaos/plugin-sql");
       expect(plugin.description).toBe(
-        "A plugin for SQL database access with dynamic schema migrations",
+        "A plugin for SQL database access with dynamic schema migrations"
       );
       expect(plugin.priority).toBe(0);
     });
@@ -300,13 +293,13 @@ describe("SQL Plugin", () => {
       // Create first adapter
       const adapter1 = createDatabaseAdapter(
         { postgresUrl: "postgresql://localhost:5432/test" },
-        agentId,
+        agentId
       );
 
       // Create second adapter with same config
       const adapter2 = createDatabaseAdapter(
         { postgresUrl: "postgresql://localhost:5432/test" },
-        agentId,
+        agentId
       );
 
       expect(adapter1).toBeDefined();

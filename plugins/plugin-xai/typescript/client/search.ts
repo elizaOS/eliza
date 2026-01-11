@@ -31,7 +31,7 @@ export async function* searchTweets(
   query: string,
   maxTweets: number,
   searchMode: SearchMode,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Tweet, void> {
   const client = await auth.getV2Client();
 
@@ -61,11 +61,7 @@ export async function* searchTweets(
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
-      expansions: [
-        "author_id",
-        "attachments.media_keys",
-        "referenced_tweets.id",
-      ],
+      expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
     });
 
     let count = 0;
@@ -76,17 +72,12 @@ export async function* searchTweets(
       const convertedTweet: Tweet = {
         id: tweet.id,
         text: tweet.text || "",
-        timestamp: tweet.created_at
-          ? new Date(tweet.created_at).getTime()
-          : Date.now(),
+        timestamp: tweet.created_at ? new Date(tweet.created_at).getTime() : Date.now(),
         timeParsed: tweet.created_at ? new Date(tweet.created_at) : new Date(),
         userId: tweet.author_id || "",
-        name:
-          searchIterator.includes?.users?.find((u) => u.id === tweet.author_id)
-            ?.name || "",
+        name: searchIterator.includes?.users?.find((u) => u.id === tweet.author_id)?.name || "",
         username:
-          searchIterator.includes?.users?.find((u) => u.id === tweet.author_id)
-            ?.username || "",
+          searchIterator.includes?.users?.find((u) => u.id === tweet.author_id)?.username || "",
         conversationId: tweet.id,
         hashtags: tweet.entities?.hashtags?.map((h) => h.tag) || [],
         mentions:
@@ -99,14 +90,9 @@ export async function* searchTweets(
         thread: [],
         urls: tweet.entities?.urls?.map((u) => u.expanded_url || u.url) || [],
         videos: [],
-        isRetweet:
-          tweet.referenced_tweets?.some((rt) => rt.type === "retweeted") ||
-          false,
-        isReply:
-          tweet.referenced_tweets?.some((rt) => rt.type === "replied_to") ||
-          false,
-        isQuoted:
-          tweet.referenced_tweets?.some((rt) => rt.type === "quoted") || false,
+        isRetweet: tweet.referenced_tweets?.some((rt) => rt.type === "retweeted") || false,
+        isReply: tweet.referenced_tweets?.some((rt) => rt.type === "replied_to") || false,
+        isQuoted: tweet.referenced_tweets?.some((rt) => rt.type === "quoted") || false,
         isPin: false,
         sensitiveContent: false,
         likes: tweet.public_metrics?.like_count || undefined,
@@ -139,7 +125,7 @@ export async function* searchTweets(
 export async function* searchProfiles(
   query: string,
   maxProfiles: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Profile, void> {
   const client = await auth.getV2Client();
   const userIds = new Set<string>();
@@ -214,7 +200,7 @@ export async function* searchProfiles(
 export async function* searchQuotedTweets(
   quotedTweetId: string,
   maxTweets: number,
-  auth: TwitterAuth,
+  auth: TwitterAuth
 ): AsyncGenerator<Tweet, void> {
   // Twitter API v2 doesn't have a direct endpoint for quote tweets
   // We need to search for tweets that reference this tweet
@@ -225,24 +211,20 @@ export async function* searchQuotedTweets(
 
 // Compatibility exports
 export const fetchSearchTweets = async (
-  query: string,
-  maxTweets: number,
-  searchMode: SearchMode,
-  auth: TwitterAuth,
-  cursor?: string,
+  _query: string,
+  _maxTweets: number,
+  _searchMode: SearchMode,
+  _auth: TwitterAuth,
+  _cursor?: string
 ) => {
-  throw new Error(
-    "fetchSearchTweets is deprecated. Use searchTweets generator instead.",
-  );
+  throw new Error("fetchSearchTweets is deprecated. Use searchTweets generator instead.");
 };
 
 export const fetchSearchProfiles = async (
-  query: string,
-  maxProfiles: number,
-  auth: TwitterAuth,
-  cursor?: string,
+  _query: string,
+  _maxProfiles: number,
+  _auth: TwitterAuth,
+  _cursor?: string
 ) => {
-  throw new Error(
-    "fetchSearchProfiles is deprecated. Use searchProfiles generator instead.",
-  );
+  throw new Error("fetchSearchProfiles is deprecated. Use searchProfiles generator instead.");
 };

@@ -1,8 +1,8 @@
-import * as faceapi from 'face-api.js';
-import { logger } from '@elizaos/core';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-import type { FaceProfile, FaceLibrary } from './types';
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { logger } from "@elizaos/core";
+import * as faceapi from "face-api.js";
+import type { FaceLibrary, FaceProfile } from "./types";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +12,7 @@ let Canvas: any, Image: any, ImageData: any;
 
 async function initializeCanvas() {
   try {
-    const canvas = await import('canvas');
+    const canvas = await import("canvas");
     Canvas = canvas.Canvas;
     Image = canvas.Image;
     ImageData = canvas.ImageData;
@@ -20,9 +20,9 @@ async function initializeCanvas() {
     // Polyfill for face-api.js
     faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
   } catch (error) {
-    logger.error('[FaceRecognition] Canvas module not available:', error);
+    logger.error("[FaceRecognition] Canvas module not available:", error);
     throw new Error(
-      'Canvas module is required for face recognition. Install with: npm install canvas'
+      "Canvas module is required for face recognition. Install with: npm install canvas"
     );
   }
 }
@@ -33,7 +33,7 @@ export class FaceRecognition {
     faces: new Map(),
     embeddings: new Map(),
   };
-  private modelPath = path.join(__dirname, '..', 'models', 'face-api');
+  private modelPath = path.join(__dirname, "..", "models", "face-api");
 
   // Thresholds
   private readonly FACE_MATCH_THRESHOLD = 0.6; // Euclidean distance threshold
@@ -45,7 +45,7 @@ export class FaceRecognition {
     }
 
     try {
-      logger.info('[FaceRecognition] Loading face detection models...');
+      logger.info("[FaceRecognition] Loading face detection models...");
 
       // Initialize canvas first
       await initializeCanvas();
@@ -58,11 +58,11 @@ export class FaceRecognition {
       await faceapi.nets.ageGenderNet.loadFromDisk(this.modelPath);
 
       this.initialized = true;
-      logger.info('[FaceRecognition] Models loaded successfully');
+      logger.info("[FaceRecognition] Models loaded successfully");
     } catch (error) {
-      logger.error('[FaceRecognition] Failed to load models:', error);
+      logger.error("[FaceRecognition] Failed to load models:", error);
       logger.info(
-        '[FaceRecognition] Download models from: https://github.com/justadudewhohacks/face-api.js-models'
+        "[FaceRecognition] Download models from: https://github.com/justadudewhohacks/face-api.js-models"
       );
       throw error;
     }
@@ -87,37 +87,33 @@ export class FaceRecognition {
 
     // Validate input parameters
     if (!imageData || imageData.length === 0 || width <= 0 || height <= 0) {
-      logger.warn('[FaceRecognition] Invalid input parameters:', {
-        dataLength: imageData?.length || 0,
-        width,
-        height,
-      });
+      logger.warn(
+        `[FaceRecognition] Invalid input parameters: dataLength=${imageData?.length || 0}, width=${width}, height=${height}`
+      );
       return [];
     }
 
     // Validate that the buffer size matches expected dimensions
     const expectedSize = width * height * 4; // RGBA
     if (imageData.length !== expectedSize) {
-      logger.warn('[FaceRecognition] Buffer size mismatch:', {
-        expected: expectedSize,
-        actual: imageData.length,
-        width,
-        height,
-      });
+      logger.warn(
+        `[FaceRecognition] Buffer size mismatch: expected=${expectedSize}, actual=${imageData.length}, width=${width}, height=${height}`
+      );
       return [];
     }
 
     try {
       // Create canvas from image data
       const canvas = new Canvas(width, height);
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       const imageDataObj = new ImageData(new Uint8ClampedArray(imageData), width, height);
       ctx.putImageData(imageDataObj, 0, 0);
 
       // Detect faces with full analysis
+      // face-api.js accepts HTMLCanvasElement or compatible canvas (node-canvas works)
       const detections = await faceapi
         .detectAllFaces(
-          canvas as any,
+          canvas as unknown as HTMLCanvasElement,
           new faceapi.SsdMobilenetv1Options({
             minConfidence: 0.5,
             maxResults: 10,
@@ -142,7 +138,7 @@ export class FaceRecognition {
         }
       );
     } catch (error) {
-      logger.error('[FaceRecognition] Face detection failed:', error);
+      logger.error("[FaceRecognition] Face detection failed:", error);
       return [];
     }
   }
@@ -177,12 +173,18 @@ export class FaceRecognition {
 
     if (match) {
       // Update existing profile
-      const profile = this.faceLibrary.faces.get(match.profileId)!;
+      const profile = this.faceLibrary.faces.get(match.profileId);
+      if (!profile) {
+        throw new Error(`Profile not found for matched profileId: ${match.profileId}`);
+      }
       profile.lastSeen = Date.now();
       profile.seenCount++;
 
       // Add new embedding for better recognition
-      const embeddings = this.faceLibrary.embeddings.get(match.profileId)!;
+      const embeddings = this.faceLibrary.embeddings.get(match.profileId);
+      if (!embeddings) {
+        throw new Error(`Embeddings not found for matched profileId: ${match.profileId}`);
+      }
       if (embeddings.length < 10) {
         // Keep up to 10 embeddings per person
         embeddings.push(Array.from(descriptor));
@@ -226,7 +228,7 @@ export class FaceRecognition {
     let sum = 0;
     const aArray = Array.from(a);
     for (let i = 0; i < aArray.length; i++) {
-      sum += Math.pow(aArray[i] - b[i], 2);
+      sum += (aArray[i] - b[i]) ** 2;
     }
     return Math.sqrt(sum);
   }
@@ -238,22 +240,22 @@ export class FaceRecognition {
       embeddings: Array.from(this.faceLibrary.embeddings.entries()),
     };
 
-    const fs = await import('fs/promises');
+    const fs = await import("node:fs/promises");
     await fs.writeFile(path, JSON.stringify(data, null, 2));
     logger.info(`[FaceRecognition] Face library saved to ${path}`);
   }
 
   async loadFaceLibrary(path: string): Promise<void> {
     try {
-      const fs = await import('fs/promises');
-      const data = JSON.parse(await fs.readFile(path, 'utf-8'));
+      const fs = await import("node:fs/promises");
+      const data = JSON.parse(await fs.readFile(path, "utf-8"));
 
       this.faceLibrary.faces = new Map(data.faces);
       this.faceLibrary.embeddings = new Map(data.embeddings);
 
       logger.info(`[FaceRecognition] Loaded ${this.faceLibrary.faces.size} face profiles`);
     } catch (error) {
-      logger.warn('[FaceRecognition] Could not load face library:', error);
+      logger.warn("[FaceRecognition] Could not load face library:", error);
     }
   }
 }

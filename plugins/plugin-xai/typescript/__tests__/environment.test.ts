@@ -1,11 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  validateTwitterConfig,
-  shouldTargetUser,
-  twitterEnvSchema,
-} from "../environment";
-import type { IAgentRuntime } from "@elizaos/core";
-import { z } from "zod";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { shouldTargetUser, twitterEnvSchema, validateTwitterConfig } from "../environment";
 
 describe("Environment Configuration", () => {
   let mockRuntime: IAgentRuntime;
@@ -14,8 +9,8 @@ describe("Environment Configuration", () => {
     mockRuntime = {
       getSetting: vi.fn(),
       character: {},
-      agentId: "agent-123" as any,
-    } as any;
+      agentId: "agent-123" as UUID,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     // Clear environment variables
     vi.stubEnv("TWITTER_API_KEY", "");
@@ -91,7 +86,7 @@ describe("Environment Configuration", () => {
       mockRuntime.getSetting = vi.fn(() => undefined);
 
       await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter env auth is selected",
+        "Twitter env auth is selected"
       );
     });
 
@@ -121,9 +116,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter OAuth is selected",
-      );
+      await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow("Twitter OAuth is selected");
     });
 
     it("should throw when broker mode is missing broker url", async () => {
@@ -135,7 +128,7 @@ describe("Environment Configuration", () => {
       });
 
       await expect(validateTwitterConfig(mockRuntime)).rejects.toThrow(
-        "Twitter broker auth is selected",
+        "Twitter broker auth is selected"
       );
     });
 
@@ -249,7 +242,7 @@ describe("Environment Configuration", () => {
       };
 
       await expect(
-        validateTwitterConfig(mockRuntime, invalidConfig as any),
+        validateTwitterConfig(mockRuntime, invalidConfig as Record<string, unknown>)
       ).rejects.toThrow();
     });
   });

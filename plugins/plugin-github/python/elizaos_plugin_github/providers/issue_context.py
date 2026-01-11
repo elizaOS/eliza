@@ -1,7 +1,7 @@
 """Issue Context Provider."""
 
 import re
-from typing import Optional, Protocol
+from typing import Protocol
 
 
 class ProviderContext(Protocol):
@@ -10,7 +10,7 @@ class ProviderContext(Protocol):
     message: dict[str, object]
 
 
-def extract_issue_number(text: str) -> Optional[int]:
+def extract_issue_number(text: str) -> int | None:
     """Extract issue number from text."""
     patterns = [
         r"#(\d+)",
@@ -47,7 +47,7 @@ class IssueContextProvider:
         self,
         context: ProviderContext,
         service: object,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get issue context."""
         from elizaos_plugin_github.service import GitHubService
 
@@ -71,17 +71,13 @@ class IssueContextProvider:
 
             # Try to fetch as issue first
             try:
-                issue = await service.get_issue(
-                    config.owner, config.repo, issue_number
-                )
+                issue = await service.get_issue(config.owner, config.repo, issue_number)
 
                 if issue.is_pull_request:
                     # It's a PR
-                    pr = await service.get_pull_request(
-                        config.owner, config.repo, issue_number
-                    )
+                    pr = await service.get_pull_request(config.owner, config.repo, issue_number)
 
-                    labels = ", ".join(l.name for l in pr.labels)
+                    labels = ", ".join(label.name for label in pr.labels)
                     assignees = ", ".join(a.login for a in pr.assignees)
                     reviewers = ", ".join(r.login for r in pr.requested_reviewers)
 
@@ -102,20 +98,22 @@ class IssueContextProvider:
                     if reviewers:
                         parts.append(f"**Reviewers Requested:** {reviewers}")
 
-                    parts.extend([
-                        "",
-                        f"**Changes:** +{pr.additions} / -{pr.deletions} ({pr.changed_files} files)",
-                        "",
-                        "### Description",
-                        pr.body or "_No description provided_",
-                        "",
-                        f"**URL:** {pr.html_url}",
-                    ])
+                    parts.extend(
+                        [
+                            "",
+                            f"**Changes:** +{pr.additions} / -{pr.deletions} ({pr.changed_files} files)",
+                            "",
+                            "### Description",
+                            pr.body or "_No description provided_",
+                            "",
+                            f"**URL:** {pr.html_url}",
+                        ]
+                    )
 
                     return "\n".join(parts)
 
                 # Regular issue
-                labels = ", ".join(l.name for l in issue.labels)
+                labels = ", ".join(label.name for label in issue.labels)
                 assignees = ", ".join(a.login for a in issue.assignees)
 
                 parts = [
@@ -135,13 +133,15 @@ class IssueContextProvider:
                 if issue.milestone:
                     parts.append(f"**Milestone:** {issue.milestone.title}")
 
-                parts.extend([
-                    "",
-                    "### Description",
-                    issue.body or "_No description provided_",
-                    "",
-                    f"**URL:** {issue.html_url}",
-                ])
+                parts.extend(
+                    [
+                        "",
+                        "### Description",
+                        issue.body or "_No description provided_",
+                        "",
+                        f"**URL:** {issue.html_url}",
+                    ]
+                )
 
                 return "\n".join(parts)
 
@@ -150,5 +150,3 @@ class IssueContextProvider:
 
         except Exception as e:
             return f"Unable to fetch issue context: {e}"
-
-

@@ -47,6 +47,7 @@ def _get_message_service_class() -> type:
     global _message_service_class
     if _message_service_class is None:
         from elizaos.services.message_service import DefaultMessageService
+
         _message_service_class = DefaultMessageService
     return _message_service_class
 
@@ -168,7 +169,9 @@ class AgentRuntime(IAgentRuntime):
         self._check_should_respond_option = check_should_respond
         # Generate deterministic agent ID from character name for cross-language compatibility.
         # Matches TypeScript behavior: character.id ?? opts.agentId ?? stringToUuid(character.name).
-        self._agent_id = agent_id or resolved_character.id or string_to_uuid(resolved_character.name)
+        self._agent_id = (
+            agent_id or resolved_character.id or string_to_uuid(resolved_character.name)
+        )
         self._character = resolved_character
         self._adapter = adapter
         self._conversation_length = conversation_length
@@ -288,6 +291,7 @@ class AgentRuntime(IAgentRuntime):
         has_bootstrap = any(p.name == "bootstrap" for p in self._initial_plugins)
         if not has_bootstrap:
             from elizaos.bootstrap import bootstrap_plugin
+
             # Insert bootstrap at the beginning
             self._initial_plugins.insert(0, bootstrap_plugin)
 
@@ -323,6 +327,7 @@ class AgentRuntime(IAgentRuntime):
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
+
                 config = CapabilityConfig(
                     disable_basic=disable_basic,
                     enable_extended=enable_extended,
@@ -372,7 +377,9 @@ class AgentRuntime(IAgentRuntime):
         return service_type in self._services and len(self._services[service_type]) > 0
 
     # Settings
-    def set_setting(self, key: str, value: str | bool | int | float | None, secret: bool = False) -> None:
+    def set_setting(
+        self, key: str, value: str | bool | int | float | None, secret: bool = False
+    ) -> None:
         """
         Set a runtime setting.
 
@@ -596,11 +603,7 @@ class AgentRuntime(IAgentRuntime):
 
         if isinstance(params_raw, str):
             # Wrap if needed so ElementTree can parse
-            xml_text = (
-                params_raw
-                if "<params" in params_raw
-                else f"<params>{params_raw}</params>"
-            )
+            xml_text = params_raw if "<params" in params_raw else f"<params>{params_raw}</params>"
             try:
                 root = ET.fromstring(xml_text)
             except ET.ParseError:
@@ -703,17 +706,15 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"
                     )
                     continue
-                if (
-                    param_def.schema_def.minimum is not None
-                    and float(extracted_value) < float(param_def.schema_def.minimum)
+                if param_def.schema_def.minimum is not None and float(extracted_value) < float(
+                    param_def.schema_def.minimum
                 ):
                     errors.append(
                         f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema_def.minimum}"
                     )
                     continue
-                if (
-                    param_def.schema_def.maximum is not None
-                    and float(extracted_value) > float(param_def.schema_def.maximum)
+                if param_def.schema_def.maximum is not None and float(extracted_value) > float(
+                    param_def.schema_def.maximum
                 ):
                     errors.append(
                         f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema_def.maximum}"
@@ -809,10 +810,9 @@ class AgentRuntime(IAgentRuntime):
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
                     params_by_action = self._parse_action_params(params_raw)
-                    extracted = (
-                        params_by_action.get(response_action.upper())
-                        or params_by_action.get(action.name.upper())
-                    )
+                    extracted = params_by_action.get(
+                        response_action.upper()
+                    ) or params_by_action.get(action.name.upper())
                     valid, validated_params, errors = self._validate_action_params(
                         action, extracted
                     )

@@ -1,5 +1,5 @@
-import {  describe, expect, it  } from "vitest";
-import { parseJSON, validateJsonSchema, assertJsonObject } from "../../src/utils/json";
+import { describe, expect, it } from "vitest";
+import { assertJsonObject, parseJSON, validateJsonSchema } from "../../src/utils/json";
 
 describe("parseJSON", () => {
   it("should parse valid JSON", () => {
@@ -87,5 +87,3 @@ describe("assertJsonObject", () => {
     expect(() => assertJsonObject(true, "test context")).toThrow();
   });
 });
-
-

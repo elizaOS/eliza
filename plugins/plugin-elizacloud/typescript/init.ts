@@ -1,8 +1,8 @@
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   getApiKey,
-  getBaseURL,
   getAuthHeader,
+  getBaseURL,
   isBrowser,
 } from "./utils/config";
 
@@ -14,8 +14,7 @@ export function initializeOpenAI(
   runtime: IAgentRuntime,
 ): void {
   // Do check in the background
-  new Promise<void>(async (resolve) => {
-    resolve();
+  void (async () => {
     try {
       if (!getApiKey(runtime) && !isBrowser()) {
         logger.warn(
@@ -65,5 +64,5 @@ export function initializeOpenAI(
         "Get your API key from https://www.elizacloud.ai/dashboard/api-keys",
       );
     }
-  });
+  })();
 }

@@ -15,5 +15,3 @@ export interface IInteractionProcessor {
   ensureCastConnection(cast: Cast): Promise<Memory>;
   processWebhookData(webhookData: NeynarWebhookData): Promise<void>;
 }
-
-

@@ -55,14 +55,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Set the following environment variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | Your Google AI API key |
-| `GOOGLE_SMALL_MODEL` | No | Override small model (default: gemini-2.0-flash-001) |
-| `GOOGLE_LARGE_MODEL` | No | Override large model (default: gemini-2.5-pro-preview-03-25) |
-| `GOOGLE_EMBEDDING_MODEL` | No | Override embedding model (default: text-embedding-004) |
-| `GOOGLE_IMAGE_MODEL` | No | Override image model |
-| `GOOGLE_TIMEOUT_SECONDS` | No | Request timeout (default: 60) |
+| Variable                       | Required | Description                                                  |
+| ------------------------------ | -------- | ------------------------------------------------------------ |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes      | Your Google AI API key                                       |
+| `GOOGLE_SMALL_MODEL`           | No       | Override small model (default: gemini-2.0-flash-001)         |
+| `GOOGLE_LARGE_MODEL`           | No       | Override large model (default: gemini-2.5-pro-preview-03-25) |
+| `GOOGLE_EMBEDDING_MODEL`       | No       | Override embedding model (default: text-embedding-004)       |
+| `GOOGLE_IMAGE_MODEL`           | No       | Override image model                                         |
+| `GOOGLE_TIMEOUT_SECONDS`       | No       | Request timeout (default: 60)                                |
 
 ## Features
 
@@ -98,5 +98,6 @@ wasm-pack build --target nodejs --out-dir pkg/node
 ## License
 
 MIT
+
 
 

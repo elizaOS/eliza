@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration for the OpenRouter client.
 //!
 //! Configuration is loaded from environment variables or provided explicitly.
@@ -284,5 +285,10 @@ mod tests {
         );
     }
 }
+
+
+
+
+
 
 

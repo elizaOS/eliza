@@ -1,338 +1,211 @@
-// @ts-nocheck
 import {
   type Action,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
-} from '@elizaos/core';
-import WebSocket from 'ws'; // Import WebSocket from 'ws'
-import { callLLMWithTimeout } from '../utils/llmHelpers';
-import { setupWebsocketTemplate } from '../templates';
-import {
-  setActiveClobSocketClientReference,
-  getActiveWebSocketClient,
-} from './handleRealtimeUpdates'; // Adjusted for ws.WebSocket type
+} from "@elizaos/core";
+import { setupWebsocketTemplate } from "../templates";
+import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
-// Interface for WebSocket subscription message, based on socketExample.ts
-interface SubscriptionMessage {
-  auth?: { apiKey: string; secret: string; passphrase: string };
-  type: 'user' | 'market'; // Restrict to known types
-  markets?: string[];
-  assets_ids?: string[];
-  initial_dump?: boolean;
+interface LLMWebsocketSetupResult {
+  channels?: string[];
+  assetIds?: string[];
+  authenticated?: boolean;
+  error?: string;
 }
 
-interface SetupWebsocketParams {
-  markets?: string[]; // Condition IDs for market subscriptions
-  userId?: string; // User's wallet address for user-specific channels
-  error?: string; // From LLM
+interface WebsocketConfig {
+  url: string;
+  channels: string[];
+  assetIds: string[];
+  authenticated: boolean;
+  status: "disconnected" | "connecting" | "connected" | "error";
 }
 
+/**
+ * Setup WebSocket Action for Polymarket.
+ * Configures and initializes WebSocket connections for real-time data.
+ */
 export const setupWebsocketAction: Action = {
-  name: 'POLYMARKET_SETUP_WEBSOCKET',
-  similes: [
-    'CONNECT_POLYMARKET_WEBSOCKET',
-    'SUBSCRIBE_MARKET_UPDATES',
-    'LISTEN_TO_USER_TRADES',
-    'REALTIME_POLYMARKET_FEED',
-  ],
+  name: "POLYMARKET_SETUP_WEBSOCKET",
+  similes: ["CONNECT_WEBSOCKET", "INIT_WS", "START_STREAM", "ENABLE_REALTIME"].map(
+    (s) => `POLYMARKET_${s}`
+  ),
   description:
-    'Establishes a WebSocket connection to Polymarket using the ws library and subscribes to specified market and/or user channels for real-time updates.',
+    "Sets up and configures WebSocket connections for real-time Polymarket data streaming.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    logger.info(`[setupWebsocketAction] Validate called.`);
-    const clobWsUrl =
-      runtime.getSetting('CLOB_WS_URL') || 'wss://ws-subscriptions-clob.polymarket.com/ws'; // Note: /ws path segment might be added later
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    logger.info(`[setupWebsocketAction] Validate called for message: "${message.content?.text}"`);
+    const clobWsUrl = runtime.getSetting("CLOB_WS_URL");
+
     if (!clobWsUrl) {
-      logger.warn(
-        '[setupWebsocketAction] CLOB_WS_URL is required in settings for WebSocket connections.'
-      );
+      logger.warn("[setupWebsocketAction] CLOB_WS_URL is required for WebSocket connections.");
       return false;
     }
-    // Basic validation for private key / API creds will depend on params, checked in handler.
-    logger.info('[setupWebsocketAction] CLOB_WS_URL found. Further validation in handler.');
+    logger.info("[setupWebsocketAction] Validation passed");
     return true;
   },
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<Content> => {
-    logger.info('[setupWebsocketAction] Handler called - now using ws library.');
+    logger.info("[setupWebsocketAction] Handler called!");
 
-    // Clear any existing client from previous attempts / other types
-    const existingClient = getActiveWebSocketClient();
-    if (existingClient && typeof existingClient.terminate === 'function') {
-      logger.info(
-        '[setupWebsocketAction] Terminating existing WebSocket client before creating a new one.'
-      );
-      try {
-        existingClient.terminate();
-      } catch (e) {
-        logger.warn('[setupWebsocketAction] Error terminating existing client, proceeding.', e);
-      }
-    }
-    setActiveClobSocketClientReference(null);
-
-    let extractedMarkets: string[] | undefined;
-    let extractedUserId: string | undefined;
-
+    let llmResult: LLMWebsocketSetupResult = {};
     try {
-      logger.info('[setupWebsocketAction] Attempting LLM parameter extraction...');
-      const extractedParams = await callLLMWithTimeout<SetupWebsocketParams>(
+      const result = await callLLMWithTimeout<LLMWebsocketSetupResult>(
         runtime,
         state,
         setupWebsocketTemplate,
-        'setupWebsocketAction'
+        "setupWebsocketAction"
       );
-      logger.info(`[setupWebsocketAction] LLM raw parameters: ${JSON.stringify(extractedParams)}`);
-
-      if (
-        extractedParams.error &&
-        (!extractedParams.markets || extractedParams.markets.length === 0) &&
-        !extractedParams.userId
-      ) {
-        logger.warn(
-          `[setupWebsocketAction] LLM indicated an issue and did not find parameters: ${extractedParams.error}. Triggering regex fallback.`
-        );
-        throw new Error('LLM failed to find parameters, trying regex.');
+      if (result && !isLLMError(result)) {
+        llmResult = result;
       }
-      extractedMarkets = extractedParams.markets;
-      extractedUserId = extractedParams.userId;
-      if (extractedMarkets || extractedUserId) {
-        logger.info(
-          `[setupWebsocketAction] Parameters extracted by LLM: markets=${JSON.stringify(extractedMarkets)}, userId=${extractedUserId}`
-        );
-      } else {
-        logger.info(
-          '[setupWebsocketAction] LLM did not find any markets or userId, proceeding to regex fallback.'
-        );
-        throw new Error('LLM did not return markets or userId, trying regex.');
-      }
-    } catch (error: any) {
-      logger.warn(
-        `[setupWebsocketAction] LLM extraction failed or did not yield parameters (Error: ${error.message}). Attempting regex/manual extraction.`
-      );
-      const text = message.content?.text || '';
-      const marketRegex =
-        /market(?:s)?(?:\\s*[:\\-]?\\s*)((?:0x)?[0-9a-fA-F]{40,}|[a-zA-Z0-9_.-]+condition-[0-9]+)/gi;
-      const marketMatches = Array.from(text.matchAll(marketRegex));
-      if (marketMatches.length > 0) {
-        extractedMarkets = marketMatches.map((m) => m[1]);
-        logger.info(
-          `[setupWebsocketAction] Regex fallback extracted markets: ${JSON.stringify(extractedMarkets)}`
-        );
-      }
-      const userRegex = /user(?:Id)?(?:\\s*[:\\-]?\\s*)((?:0x)?[0-9a-fA-F]{40})/i;
-      const userMatch = text.match(userRegex);
-      if (userMatch && userMatch[1]) {
-        extractedUserId = userMatch[1];
-        logger.info(`[setupWebsocketAction] Regex fallback extracted userId: ${extractedUserId}`);
-      }
+      logger.info(`[setupWebsocketAction] LLM result: ${JSON.stringify(llmResult)}`);
+    } catch (error) {
+      logger.warn("[setupWebsocketAction] LLM extraction failed, using defaults", error);
     }
 
-    if ((!extractedMarkets || extractedMarkets.length === 0) && !extractedUserId) {
-      const errorMsg =
-        'Please specify at least one market (condition ID) or a userId for user-specific updates. Neither LLM nor regex could extract them.';
-      logger.warn(
-        `[setupWebsocketAction] Validation Failure: ${errorMsg} Input was: "${message.content?.text}"`
-      );
-      if (callback) await callback({ text: `❌ ${errorMsg}` });
-      throw new Error(errorMsg);
-    }
+    const channels = llmResult.channels || ["book", "price"];
+    const assetIds = llmResult.assetIds || [];
+    const authenticated = llmResult.authenticated || false;
 
-    // Determine subscription type and construct WebSocket URL
-    const baseWsUrl =
-      runtime.getSetting('CLOB_WS_URL') || 'wss://ws-subscriptions-clob.polymarket.com/ws'; // Ensure /ws is part of base or added
-    const subscriptionType: 'user' | 'market' = extractedUserId ? 'user' : 'market'; // Prefer user if userId is present
-    const wsUrl = `${baseWsUrl.endsWith('/ws') ? baseWsUrl : baseWsUrl + '/ws'}/${subscriptionType}`;
-    logger.info(`[setupWebsocketAction] Constructed WebSocket URL: ${wsUrl}`);
+    const clobWsUrl = runtime.getSetting("CLOB_WS_URL");
 
-    // Prepare subscription message payload
-    const subMsgPayload: SubscriptionMessage = {
-      type: subscriptionType,
-      initial_dump: true, // As per example
-    };
+    logger.info(
+      `[setupWebsocketAction] Setting up WebSocket with channels: ${channels.join(", ")}`
+    );
 
-    if (subscriptionType === 'user') {
-      if (!extractedUserId) {
-        // Should not happen due to prior checks, but as a safeguard
-        const errMsg = 'User ID is required for user channel subscription but was not found.';
-        logger.error(`[setupWebsocketAction] ${errMsg}`);
-        if (callback) await callback({ text: `❌ ${errMsg}` });
-        throw new Error(errMsg);
-      }
-      subMsgPayload.markets = extractedMarkets || []; // For user channel, 'markets' are condition_ids
-      // Authentication is required for user channel
-      const apiKey = runtime.getSetting('CLOB_API_KEY');
-      const apiSecret = runtime.getSetting('CLOB_API_SECRET') || runtime.getSetting('CLOB_SECRET');
-      const apiPassphrase =
-        runtime.getSetting('CLOB_API_PASSPHRASE') || runtime.getSetting('CLOB_PASS_PHRASE');
-      if (!apiKey || !apiSecret || !apiPassphrase) {
-        const errMsg =
-          'API Key, Secret, and Passphrase are required in settings for user channel WebSocket subscriptions.';
-        logger.error(`[setupWebsocketAction] Missing credentials for user subscription: ${errMsg}`);
-        if (callback) await callback({ text: `❌ ${errMsg}` });
-        throw new Error(errMsg);
-      }
-      subMsgPayload.auth = { apiKey, secret: apiSecret, passphrase: apiPassphrase };
-    } else {
-      // market subscription
-      if (!extractedMarkets || extractedMarkets.length === 0) {
-        const errMsg =
-          'At least one market (condition ID or asset ID) is required for market channel subscription.';
-        logger.error(`[setupWebsocketAction] ${errMsg}`);
-        if (callback) await callback({ text: `❌ ${errMsg}` });
-        throw new Error(errMsg);
-      }
-      // The example uses 'assets_ids' for market subscriptions with token IDs.
-      // We are getting 'condition_ids' from the user. This needs clarification from Polymarket docs
-      // if 'markets' (condition_ids) can be used directly or if they need to be converted/interpreted as asset_ids for 'market' type.
-      // For now, assuming 'markets' (condition_ids) are what's needed, as per 'user' channel example.
-      // If 'assets_ids' are strictly token_ids, this part might need adjustment or a new param in LLM extraction.
-      subMsgPayload.markets = extractedMarkets; // Using condition_ids here; documentation suggests 'assets_ids' with token_ids for market channel
-      logger.warn(
-        "[setupWebsocketAction] For 'market' channel, official docs suggest 'assets_ids' (token IDs). Currently using extracted 'markets' (condition IDs). This may need review."
-      );
-    }
+    try {
+      // Note: Actual WebSocket connection would be managed by a service.
+      // This action configures and provides status information.
 
-    return new Promise<Content>((resolvePromise, rejectPromise) => {
-      try {
-        logger.info(`[setupWebsocketAction] Creating new WebSocket connection to: ${wsUrl}`);
-        const wsClient = new WebSocket(wsUrl);
-        setActiveClobSocketClientReference(wsClient as any); // Store the ws.WebSocket instance
+      const config: WebsocketConfig = {
+        url: String(clobWsUrl || ""),
+        channels,
+        assetIds,
+        authenticated,
+        status: "disconnected", // Would be 'connected' if service is running
+      };
 
-        wsClient.on('open', () => {
-          logger.info(
-            '[setupWebsocketAction] WebSocket connection opened. Sending subscription message...'
-          );
-          const messageStr = JSON.stringify(subMsgPayload);
-          wsClient.send(messageStr, (err?: Error) => {
-            if (err) {
-              logger.error('[setupWebsocketAction] Error sending subscription message:', err);
-              setActiveClobSocketClientReference(null);
-              wsClient.terminate();
-              const errorContent: Content = {
-                text: `❌ WebSocket Error: Failed to send subscription - ${err.message}`,
-              };
-              if (callback) callback(errorContent);
-              rejectPromise(new Error(`Failed to send subscription: ${err.message}`));
-              return;
-            }
-            logger.info(`[setupWebsocketAction] Subscription message sent: ${messageStr}`);
-            let responseText = `🔌 WebSocket connection to ${subscriptionType.toUpperCase()} channel established and subscription sent.`;
-            if (subMsgPayload.markets && subMsgPayload.markets.length > 0)
-              responseText += ` Subscribed to markets/conditions: ${subMsgPayload.markets.join(', ')}.`;
-            if (subMsgPayload.assets_ids && subMsgPayload.assets_ids.length > 0)
-              responseText += ` Subscribed to assets: ${subMsgPayload.assets_ids.join(', ')}.`;
-            responseText +=
-              ' Waiting for real-time updates. Use POLYMARKET_HANDLE_REALTIME_UPDATES to process messages.';
+      let responseText = `🔌 **Polymarket WebSocket Configuration**\n\n`;
 
-            const responseContent: Content = {
-              text: responseText,
-              actions: ['POLYMARKET_HANDLE_REALTIME_UPDATES'],
-              data: {
-                status: 'subscribed',
-                subscription: subMsgPayload,
-                timestamp: new Date().toISOString(),
-              },
-            };
-            if (callback) callback(responseContent);
-            resolvePromise(responseContent);
-          });
-        });
+      responseText += `**Connection Settings:**\n`;
+      responseText += `• **URL**: ${config.url || "Not configured"}\n`;
+      responseText += `• **Status**: ${config.status === "connected" ? "🟢 Connected" : "⚪ Disconnected"}\n`;
+      responseText += `• **Authenticated**: ${authenticated ? "✅ Yes" : "❌ No"}\n\n`;
 
-        wsClient.on('error', (error: Error) => {
-          logger.error('[setupWebsocketAction] WebSocket connection error:', error);
-          setActiveClobSocketClientReference(null);
-          // wsClient.terminate(); // No need to terminate, 'close' will be called
-          const errorContent: Content = { text: `❌ WebSocket Error: ${error.message}` };
-          if (callback) callback(errorContent);
-          rejectPromise(error);
-        });
-
-        wsClient.on('close', (code: number, reason: Buffer) => {
-          logger.info(
-            `[setupWebsocketAction] WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}`
-          );
-          setActiveClobSocketClientReference(null);
-          // Only reject if it hasn't been resolved already (e.g. by 'open' and successful send)
-          // This might lead to double responses if an error occurs after successful connection
-          // Consider a flag to check if already resolved/rejected.
-          // For now, let's assume if it closes unexpectedly, it's an error state not yet handled.
-          // const closeError = new Error(`WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`);
-          // rejectPromise(closeError); // Avoid rejecting again if already resolved
-        });
-
-        // The 'message' handler should primarily live in handleRealtimeUpdatesAction
-        // But we can log a generic message here for successful setup
-        wsClient.once('message', (data: WebSocket.RawData) => {
-          logger.info(
-            '[setupWebsocketAction] Received first message (indicates successful subscription setup). Further messages handled by POLYMARKET_HANDLE_REALTIME_UPDATES.'
-          );
-          // Do not resolve/reject here as 'open' handles the primary success case.
-        });
-      } catch (error: any) {
-        logger.error(
-          '[setupWebsocketAction] Critical error during WebSocket setup (outside of event handlers):',
-          error
-        );
-        setActiveClobSocketClientReference(null);
-        const errorContent: Content = {
-          text: `❌ Critical WebSocket Setup Error: ${error.message}`,
+      responseText += `**Requested Channels:**\n`;
+      channels.forEach((channel: string) => {
+        const descriptions: Record<string, string> = {
+          book: "Order book updates",
+          price: "Price tick updates",
+          trade: "Trade execution updates",
+          ticker: "Market ticker updates",
+          user: "User order/fill updates (requires auth)",
         };
-        if (callback) callback(errorContent);
-        rejectPromise(error);
+        responseText += `• \`${channel}\`: ${descriptions[channel] || "Unknown channel"}\n`;
+      });
+
+      if (assetIds.length > 0) {
+        responseText += `\n**Assets to Subscribe:**\n`;
+        assetIds.forEach((assetId: string) => {
+          responseText += `• \`${assetId}\`\n`;
+        });
+      } else {
+        responseText += `\n**Assets**: None specified (specify asset IDs to subscribe)\n`;
       }
-    });
+
+      responseText += `\n**WebSocket Message Format:**\n`;
+      responseText += "```json\n";
+      responseText += JSON.stringify(
+        {
+          type: "subscribe",
+          channel: channels[0] || "book",
+          assets_ids: assetIds.length > 0 ? assetIds : ["<asset_id>"],
+        },
+        null,
+        2
+      );
+      responseText += "\n```\n";
+
+      if (authenticated) {
+        const hasCredentials =
+          runtime.getSetting("CLOB_API_KEY") &&
+          runtime.getSetting("CLOB_API_SECRET") &&
+          runtime.getSetting("CLOB_API_PASSPHRASE");
+
+        if (hasCredentials) {
+          responseText += `\n✅ *API credentials available for authenticated channels.*\n`;
+        } else {
+          responseText += `\n⚠️ *Authenticated channels requested but API credentials not fully configured.*\n`;
+        }
+      }
+
+      responseText += `\n💡 *To start the WebSocket connection, the PolymarketService must be initialized.*\n`;
+      responseText += `*Use the service's startWebSocket method with this configuration.*\n`;
+
+      const responseContent: Content = {
+        text: responseText,
+        actions: ["POLYMARKET_SETUP_WEBSOCKET"],
+        data: {
+          config,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      if (callback) await callback(responseContent);
+      return responseContent;
+    } catch (error) {
+      logger.error("[setupWebsocketAction] Error setting up WebSocket:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred.";
+      const errorContent: Content = {
+        text: `❌ **Error setting up WebSocket**: ${errorMessage}`,
+        actions: ["POLYMARKET_SETUP_WEBSOCKET"],
+        data: {
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        },
+      };
+      if (callback) await callback(errorContent);
+      throw error;
+    }
   },
 
   examples: [
     [
       {
-        name: '{{user1}}',
-        content: { text: 'Connect to Polymarket WebSocket and subscribe to market 0xMarket123.' },
+        name: "{{user1}}",
+        content: { text: "Setup WebSocket for Polymarket price updates." },
       },
       {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: 'Establishing WebSocket connection and subscribing to market 0xMarket123 via Polymarket...',
-          actions: ['POLYMARKET_SETUP_WEBSOCKET', 'POLYMARKET_HANDLE_REALTIME_UPDATES'],
+          text: "Configuring WebSocket connection for Polymarket price streaming...",
+          action: "POLYMARKET_SETUP_WEBSOCKET",
         },
       },
     ],
     [
       {
-        name: '{{user1}}',
+        name: "{{user1}}",
         content: {
-          text: 'Listen to my order updates on Polymarket via WebSocket.',
-          data: { userId: '0xUserAddress' },
-        },
-      }, // Assuming LLM extracts or user provides their address
-      {
-        name: '{{user2}}',
-        content: {
-          text: 'Connecting to WebSocket and subscribing to your user-specific order updates via Polymarket...',
-          actions: ['POLYMARKET_SETUP_WEBSOCKET', 'POLYMARKET_HANDLE_REALTIME_UPDATES'],
+          text: "Connect to Polymarket order book stream for token xyz123.",
         },
       },
-    ],
-    [
       {
-        name: '{{user1}}',
-        content: { text: 'Start a realtime feed for markets 0xMarket1, 0xMarket2.' },
-      },
-      {
-        name: '{{user2}}',
+        name: "{{user2}}",
         content: {
-          text: "I'll setup a realtime feed for those markets via Polymarket.",
-          actions: ['POLYMARKET_SETUP_WEBSOCKET', 'POLYMARKET_HANDLE_REALTIME_UPDATES'],
+          text: "Setting up WebSocket for order book updates on token xyz123...",
+          action: "POLYMARKET_SETUP_WEBSOCKET",
         },
       },
     ],

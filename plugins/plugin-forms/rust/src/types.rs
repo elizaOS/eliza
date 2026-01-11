@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the elizaOS Forms Plugin.
 
 use chrono::{DateTime, Utc};
@@ -22,6 +23,7 @@ pub enum FormFieldType {
     Datetime,
 }
 
+
 impl Default for FormFieldType {
     fn default() -> Self {
         Self::Text
@@ -36,6 +38,7 @@ pub enum FormStatus {
     Completed,
     Cancelled,
 }
+
 
 impl Default for FormStatus {
     fn default() -> Self {

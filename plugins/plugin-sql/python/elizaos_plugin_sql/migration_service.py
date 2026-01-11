@@ -129,9 +129,7 @@ class SnapshotTable(MigrationBase):
     snapshot = Column(JSON, nullable=False)
     created_at = Column(BigInteger, nullable=False)
 
-    __table_args__ = (
-        sa.UniqueConstraint("plugin_name", "idx", name="uq_snapshots_plugin_idx"),
-    )
+    __table_args__ = (sa.UniqueConstraint("plugin_name", "idx", name="uq_snapshots_plugin_idx"),)
 
 
 class MigrationService:
@@ -235,9 +233,7 @@ class MigrationService:
             )
             await session.commit()
 
-    async def save_snapshot(
-        self, plugin_name: str, idx: int, snapshot: dict[str, Any]
-    ) -> None:
+    async def save_snapshot(self, plugin_name: str, idx: int, snapshot: dict[str, Any]) -> None:
         """
         Save a schema snapshot.
 
@@ -374,9 +370,7 @@ class MigrationService:
 
         async with self.engine.begin() as conn:
             # Use quoted identifier for safety
-            await conn.execute(
-                text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
-            )
+            await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
 
     async def get_expected_schema_name(self, plugin_name: str) -> str:
         """
@@ -389,4 +383,3 @@ class MigrationService:
             Schema name for the plugin
         """
         return derive_schema_name(plugin_name)
-

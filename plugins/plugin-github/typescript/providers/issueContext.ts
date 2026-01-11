@@ -4,26 +4,22 @@
  * Provides context about a specific GitHub issue when relevant.
  */
 
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type State,
-  type Content,
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
 } from "@elizaos/core";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 
 /**
  * Extract issue number from text
  */
 function extractIssueNumber(text: string): number | null {
   // Match patterns like #123, issue #123, issue 123
-  const patterns = [
-    /#(\d+)/,
-    /issue\s*#?(\d+)/i,
-    /pr\s*#?(\d+)/i,
-    /pull\s*request\s*#?(\d+)/i,
-  ];
+  const patterns = [/#(\d+)/, /issue\s*#?(\d+)/i, /pr\s*#?(\d+)/i, /pull\s*request\s*#?(\d+)/i];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -46,29 +42,25 @@ export const issueContextProvider: Provider = {
   description:
     "Provides detailed context about a specific GitHub issue or pull request when referenced",
 
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<string | null> => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
-      return null;
+      return { text: null };
     }
 
     const text = (message.content as Content).text ?? "";
     const issueNumber = extractIssueNumber(text);
 
     if (!issueNumber) {
-      return null;
+      return { text: null };
     }
 
     try {
       const config = service.getConfig();
 
       if (!config.owner || !config.repo) {
-        return null;
+        return { text: null };
       }
 
       // Try to fetch as issue first
@@ -118,10 +110,10 @@ export const issueContextProvider: Provider = {
             "### Description",
             pr.body ?? "_No description provided_",
             "",
-            `**URL:** ${pr.htmlUrl}`,
+            `**URL:** ${pr.htmlUrl}`
           );
 
-          return parts.join("\n");
+          return { text: parts.join("\n") };
         }
 
         // It's a regular issue
@@ -153,21 +145,20 @@ export const issueContextProvider: Provider = {
           "### Description",
           issue.body ?? "_No description provided_",
           "",
-          `**URL:** ${issue.htmlUrl}`,
+          `**URL:** ${issue.htmlUrl}`
         );
 
-        return parts.join("\n");
+        return { text: parts.join("\n") };
       } catch {
-        return `Issue/PR #${issueNumber} not found in ${config.owner}/${config.repo}`;
+        return {
+          text: `Issue/PR #${issueNumber} not found in ${config.owner}/${config.repo}`,
+        };
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      return `Unable to fetch issue context: ${errorMessage}`;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return { text: `Unable to fetch issue context: ${errorMessage}` };
     }
   },
 };
 
 export default issueContextProvider;
-
-

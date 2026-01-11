@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Farcaster API client implementation.
 //!
 //! Handles communication with the Neynar API for Farcaster operations.
@@ -8,7 +9,6 @@ use crate::types::{Cast, CastEmbed, CastId, CastParent, CastStats, EmbedType, Fi
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -180,7 +180,7 @@ pub fn split_post_content(content: &str, max_length: usize) -> Vec<String> {
             current_cast = test_cast;
         } else {
             if !current_cast.is_empty() {
-                posts.push(current_cast);
+                posts.push(current_cast.clone());
             }
             if paragraph.len() <= max_length {
                 current_cast = paragraph.to_string();
@@ -437,13 +437,14 @@ impl FarcasterClient {
     /// Get a cast by hash.
     pub async fn get_cast(&self, cast_hash: &str) -> Result<Cast> {
         // Check cache
-        if let Ok(cache) = self.cast_cache.read() {
+        {
+            let cache = self.cast_cache.read().map_err(|_| FarcasterError::cast("Cache lock error"))?;
             if let Some(cast) = cache.get(cast_hash) {
                 return Ok(cast.clone());
             }
         }
 
-        let result = self
+        let result: Value = self
             .make_request(
                 reqwest::Method::GET,
                 "/farcaster/cast",
@@ -452,13 +453,14 @@ impl FarcasterClient {
             )
             .await?;
 
-        let cast = result
+        let cast: Cast = result
             .get("cast")
             .map(neynar_cast_to_cast)
             .ok_or_else(|| FarcasterError::cast("Cast not found"))?;
 
         // Update cache
         if let Ok(mut cache) = self.cast_cache.write() {
+            let cache: &mut HashMap<String, Cast> = &mut *cache;
             cache.insert(cast_hash.to_string(), cast.clone());
         }
 
@@ -496,13 +498,14 @@ impl FarcasterClient {
     /// Get a user's profile by FID.
     pub async fn get_profile(&self, fid: u64) -> Result<Profile> {
         // Check cache
-        if let Ok(cache) = self.profile_cache.read() {
+        {
+            let cache = self.profile_cache.read().map_err(|_| FarcasterError::profile("Cache lock error"))?;
             if let Some(profile) = cache.get(&fid) {
                 return Ok(profile.clone());
             }
         }
 
-        let result = self
+        let result: Value = self
             .make_request(
                 reqwest::Method::GET,
                 "/farcaster/user/bulk",
@@ -545,6 +548,7 @@ impl FarcasterClient {
 
         // Update cache
         if let Ok(mut cache) = self.profile_cache.write() {
+            let cache: &mut HashMap<u64, Profile> = &mut *cache;
             cache.insert(fid, profile.clone());
         }
 
@@ -571,9 +575,10 @@ impl FarcasterClient {
             .map(|arr| {
                 arr.iter()
                     .map(|c| {
-                        let cast = neynar_cast_to_cast(c);
+                        let cast: Cast = neynar_cast_to_cast(c);
                         // Update cache
                         if let Ok(mut cache) = self.cast_cache.write() {
+                            let cache: &mut HashMap<String, Cast> = &mut *cache;
                             cache.insert(cast.hash.clone(), cast.clone());
                         }
                         cast
@@ -594,9 +599,11 @@ impl FarcasterClient {
     /// Clear all caches.
     pub fn clear_cache(&self) {
         if let Ok(mut cache) = self.profile_cache.write() {
+            let cache: &mut HashMap<u64, Profile> = &mut *cache;
             cache.clear();
         }
         if let Ok(mut cache) = self.cast_cache.write() {
+            let cache: &mut HashMap<String, Cast> = &mut *cache;
             cache.clear();
         }
     }

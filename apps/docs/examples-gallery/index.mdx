@@ -1,6 +1,6 @@
 ---
-title: 'Examples Gallery'
-description: 'Browse all elizaOS examples by category, platform, and language'
+title: "Examples Gallery"
+description: "Browse all elizaOS examples by category, platform, and language"
 ---
 
 Explore our comprehensive collection of examples. Every example demonstrates real-world usage patterns and is available in multiple languages.
@@ -8,10 +8,18 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
 ## Browse by Category
 
 <CardGroup cols={2}>
-  <Card title="Chat Applications" icon="comments" href="/examples-gallery/chat-apps">
+  <Card
+    title="Chat Applications"
+    icon="comments"
+    href="/examples-gallery/chat-apps"
+  >
     Interactive CLI and web chat interfaces for conversational agents
   </Card>
-  <Card title="Web Applications" icon="browser" href="/examples-gallery/web-apps">
+  <Card
+    title="Web Applications"
+    icon="browser"
+    href="/examples-gallery/web-apps"
+  >
     React, Next.js, and vanilla HTML browser implementations
   </Card>
   <Card title="REST APIs" icon="server" href="/examples-gallery/rest-apis">
@@ -39,7 +47,11 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
   <Card title="Vercel" icon="triangle" href="/examples-gallery/vercel">
     Edge Functions, Serverless
   </Card>
-  <Card title="Cloudflare" icon="cloudflare" href="/examples-gallery/cloudflare">
+  <Card
+    title="Cloudflare"
+    icon="cloudflare"
+    href="/examples-gallery/cloudflare"
+  >
     Workers, Durable Objects
   </Card>
   <Card title="Supabase" icon="database" href="/examples-gallery/supabase">
@@ -51,14 +63,14 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
 
 ## Quick Stats
 
-| Category | TypeScript | Python | Rust | Total |
-|----------|:----------:|:------:|:----:|:-----:|
-| Chat | ✅ | ✅ | ✅ | 3 |
-| REST API | 3 | 2 | 3 | 8 |
-| Browser | 3 | — | 1 | 4 |
-| Serverless | 5 | 5 | 5 | 15 |
-| Game | ✅ | ✅ | ✅ | 3 |
-| **Total** | **14** | **10** | **12** | **33+** |
+| Category   | TypeScript | Python |  Rust  |  Total  |
+| ---------- | :--------: | :----: | :----: | :-----: |
+| Chat       |     ✅     |   ✅   |   ✅   |    3    |
+| REST API   |     3      |   2    |   3    |    8    |
+| Browser    |     3      |   —    |   1    |    4    |
+| Serverless |     5      |   5    |   5    |   15    |
+| Game       |     ✅     |   ✅   |   ✅   |    3    |
+| **Total**  |   **14**   | **10** | **12** | **33+** |
 
 ---
 
@@ -68,7 +80,8 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
 
 <CardGroup cols={2}>
   <Card title="CLI Chat" icon="terminal" href="/examples/chat">
-    The simplest way to understand elizaOS. Build an interactive chat agent in 50 lines of code.
+    The simplest way to understand elizaOS. Build an interactive chat agent in
+    50 lines of code.
   </Card>
   <Card title="HTML ELIZA" icon="code" href="/examples/browser#html-example">
     Zero-dependency browser demo with retro CRT terminal styling.
@@ -81,7 +94,11 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
   <Card title="AWS Lambda" icon="aws" href="/examples/serverless#aws-lambda">
     Scalable serverless deployment with SAM template.
   </Card>
-  <Card title="Next.js Full-Stack" icon="react" href="/examples/browser#nextjs-example">
+  <Card
+    title="Next.js Full-Stack"
+    icon="react"
+    href="/examples/browser#nextjs-example"
+  >
     Complete web application with SSR and API routes.
   </Card>
 </CardGroup>
@@ -89,7 +106,11 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
 ### Advanced
 
 <CardGroup cols={2}>
-  <Card title="Rust WASM" icon="gear" href="/examples/browser#react-wasm-example">
+  <Card
+    title="Rust WASM"
+    icon="gear"
+    href="/examples/browser#react-wasm-example"
+  >
     High-performance browser agents using Rust compiled to WebAssembly.
   </Card>
   <Card title="AI Adventure Game" icon="gamepad" href="/examples/game">
@@ -133,9 +154,11 @@ bun run examples/chat/typescript/chat.ts
 We welcome new examples! See our [contribution guide](/guides/contribute-to-core) for details.
 
 When adding examples:
+
 - Implement in all applicable languages
 - Include a README.md with setup instructions
 - Add tests where applicable
 - Follow existing directory structure
+
 
 

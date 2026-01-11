@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { createPullRequestSchema, type CreatePullRequestParams } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type CreatePullRequestParams, createPullRequestSchema } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -63,22 +64,14 @@ export const createPullRequestAction: Action = {
   description:
     "Creates a new pull request in a GitHub repository to merge changes from one branch to another.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
     }
 
     const text = (message.content as Content).text?.toLowerCase() ?? "";
-    return (
-      text.includes("pull request") ||
-      text.includes("pr") ||
-      text.includes("merge")
-    );
+    return text.includes("pull request") || text.includes("pr") || text.includes("merge");
   },
 
   handler: async (
@@ -86,8 +79,8 @@ export const createPullRequestAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -97,7 +90,7 @@ export const createPullRequestAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
@@ -105,18 +98,21 @@ export const createPullRequestAction: Action = {
       const text = content.text ?? "";
 
       const params: CreatePullRequestParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        title: (state?.["title"] as string) ?? text.slice(0, 100),
-        body: (state?.["body"] as string) ?? text,
-        head: (state?.["head"] as string) ?? "",
-        base: (state?.["base"] as string) ?? service.getConfig().branch ?? "main",
-        draft: (state?.["draft"] as boolean) ?? false,
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        title: (state?.title as string) ?? text.slice(0, 100),
+        body: (state?.body as string) ?? text,
+        head: (state?.head as string) ?? "",
+        base: (state?.base as string) ?? service.getConfig().branch ?? "main",
+        draft: (state?.draft as boolean) ?? false,
       };
 
       const validation = createPullRequestSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid pull request parameters: ${errors}`);
@@ -125,7 +121,7 @@ export const createPullRequestAction: Action = {
             text: `I couldn't create the pull request due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       const pr = await service.createPullRequest(params);
@@ -138,10 +134,9 @@ export const createPullRequestAction: Action = {
         });
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to create pull request: ${errorMessage}`);
 
       if (callback) {
@@ -150,7 +145,7 @@ export const createPullRequestAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -158,5 +153,3 @@ export const createPullRequestAction: Action = {
 };
 
 export default createPullRequestAction;
-
-

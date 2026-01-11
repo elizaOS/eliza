@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChannelType,
   type IAgentRuntime,
@@ -7,6 +6,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { attachmentsProvider } from "../providers/attachments";
 
 // Import providers from source modules
@@ -83,9 +83,9 @@ describe("Choice Provider", () => {
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.tasks).toHaveLength(2);
-    const resultDataTasks = resultData && resultData.tasks;
-    expect(resultDataTasks && resultDataTasks[0] && resultDataTasks[0].name).toBe("Approve Post");
+    expect(resultData?.tasks).toHaveLength(2);
+    const resultDataTasks = resultData?.tasks;
+    expect(resultDataTasks?.[0]?.name).toBe("Approve Post");
     expect(result.text).toContain("Pending Tasks");
     expect(result.text).toContain("1. **Approve Post**");
     expect(result.text).toContain("A blog post is awaiting approval.");
@@ -116,7 +116,7 @@ describe("Choice Provider", () => {
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.tasks).toHaveLength(0);
+    expect(resultData?.tasks).toHaveLength(0);
     expect(result.text).toContain("No pending choices for the moment.");
   });
 
@@ -141,14 +141,14 @@ describe("Choice Provider", () => {
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.tasks).toHaveLength(0); // Tasks without options are filtered out
+    expect(resultData?.tasks).toHaveLength(0); // Tasks without options are filtered out
     expect(result.text).toContain("No pending choices for the moment.");
   });
 
   it("should handle errors from getTasks gracefully", async () => {
-    mockRuntime.getTasks = vi.fn().mockRejectedValue(
-      new Error("Task service error"),
-    );
+    mockRuntime.getTasks = vi
+      .fn()
+      .mockRejectedValue(new Error("Task service error"));
 
     const result = await choiceProvider.get(
       mockRuntime as IAgentRuntime,
@@ -159,7 +159,7 @@ describe("Choice Provider", () => {
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.tasks).toHaveLength(0);
+    expect(resultData?.tasks).toHaveLength(0);
     expect(result.text).toContain(
       "There was an error retrieving pending tasks with options.",
     );
@@ -267,9 +267,9 @@ describe("Facts Provider", () => {
 
   it("should handle errors gracefully", async () => {
     // Mock error in getMemories (initial call)
-    mockRuntime.getMemories = vi.fn().mockRejectedValue(
-      new Error("Database error"),
-    );
+    mockRuntime.getMemories = vi
+      .fn()
+      .mockRejectedValue(new Error("Database error"));
 
     const result = await factsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -336,11 +336,11 @@ describe("Providers Provider", () => {
 
     // Check data format
     expect(result.data).toBeDefined();
-    const resultData = result && result.data;
-    expect(resultData && resultData.dynamicProviders).toHaveLength(2);
-    const resultDataDynamicProviders = resultData && resultData.dynamicProviders;
-    expect(resultDataDynamicProviders && resultDataDynamicProviders[0] && resultDataDynamicProviders[0].name).toBe("TEST_PROVIDER_1");
-    expect(resultDataDynamicProviders && resultDataDynamicProviders[1] && resultDataDynamicProviders[1].name).toBe("TEST_PROVIDER_2");
+    const resultData = result?.data;
+    expect(resultData?.dynamicProviders).toHaveLength(2);
+    const resultDataDynamicProviders = resultData?.dynamicProviders;
+    expect(resultDataDynamicProviders?.[0]?.name).toBe("TEST_PROVIDER_1");
+    expect(resultDataDynamicProviders?.[1]?.name).toBe("TEST_PROVIDER_2");
   });
 
   it("should handle empty provider list gracefully", async () => {
@@ -359,8 +359,8 @@ describe("Providers Provider", () => {
     );
     expect(result.data).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.dynamicProviders).toHaveLength(0);
-    expect(resultData && resultData.allProviders).toHaveLength(0);
+    expect(resultData?.dynamicProviders).toHaveLength(0);
+    expect(resultData?.allProviders).toHaveLength(0);
   });
 });
 
@@ -441,9 +441,9 @@ describe("Recent Messages Provider", () => {
 
   it("should handle errors gracefully", async () => {
     // Mock error in getMemories
-    mockRuntime.getMemories = vi.fn().mockRejectedValue(
-      new Error("Database error"),
-    );
+    mockRuntime.getMemories = vi
+      .fn()
+      .mockRejectedValue(new Error("Database error"));
 
     const result = await recentMessagesProvider.get(
       mockRuntime as IAgentRuntime,
@@ -542,7 +542,8 @@ describe("Role Provider", () => {
       },
     );
 
-    // Setup getEntityById vi.fn(mockRuntime.getEntityById as ReturnType<typeof mock>).mockImplementation(
+    // Setup getEntityById
+    (mockRuntime.getEntityById as ReturnType<typeof mock>).mockImplementation(
       async (id) => {
         if (id === ownerId) {
           return {
@@ -802,7 +803,7 @@ describe("Settings Provider", () => {
 
     // We can't force getWorldSettings to fail, but we can test with a mock runtime
     // that doesn't have proper world data
-    (mockRuntime.getWorld as any).mockResolvedValue(null);
+    mockRuntime.getWorld = vi.fn().mockResolvedValue(null);
 
     const result = await settingsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -877,10 +878,10 @@ describe("Attachments Provider", () => {
 
     expect(result).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.attachments).toHaveLength(0);
+    expect(resultData?.attachments).toHaveLength(0);
     expect(result.text).toBe("");
     const resultValues = result.values;
-    expect(resultValues && resultValues.attachments).toBe("");
+    expect(resultValues?.attachments).toBe("");
   });
 
   it("should return current message attachments", async () => {
@@ -918,10 +919,10 @@ describe("Attachments Provider", () => {
 
     expect(result).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.attachments).toHaveLength(2);
-    const resultDataAttachments = resultData && resultData.attachments;
-    expect(resultDataAttachments && resultDataAttachments[0] && resultDataAttachments[0].id).toBe("attach-1");
-    expect(resultDataAttachments && resultDataAttachments[1] && resultDataAttachments[1].id).toBe("attach-2");
+    expect(resultData?.attachments).toHaveLength(2);
+    const resultDataAttachments = resultData?.attachments;
+    expect(resultDataAttachments?.[0]?.id).toBe("attach-1");
+    expect(resultDataAttachments?.[1]?.id).toBe("attach-2");
     expect(result.text).toContain("# Attachments");
     expect(result.text).toContain("Test Image 1");
     expect(result.text).toContain("Test Document");
@@ -993,12 +994,12 @@ describe("Attachments Provider", () => {
 
     expect(result).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.attachments).toHaveLength(3);
-    const resultDataAttachments = resultData && resultData.attachments;
-    expect(resultDataAttachments && resultDataAttachments[0] && resultDataAttachments[0].id).toBe("current-attach");
+    expect(resultData?.attachments).toHaveLength(3);
+    const resultDataAttachments = resultData?.attachments;
+    expect(resultDataAttachments?.[0]?.id).toBe("current-attach");
     // Messages are reversed, so prev-attach-2 comes before prev-attach-1
-    expect(resultDataAttachments && resultDataAttachments[1] && resultDataAttachments[1].id).toBe("prev-attach-2");
-    expect(resultDataAttachments && resultDataAttachments[2] && resultDataAttachments[2].id).toBe("prev-attach-1");
+    expect(resultDataAttachments?.[1]?.id).toBe("prev-attach-2");
+    expect(resultDataAttachments?.[2]?.id).toBe("prev-attach-1");
     expect(result.text).toContain("Current Image");
     expect(result.text).toContain("Previous Image 1");
     expect(result.text).toContain("Previous Image 2");
@@ -1069,25 +1070,25 @@ describe("Attachments Provider", () => {
 
     expect(result).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.attachments).toHaveLength(3);
+    expect(resultData?.attachments).toHaveLength(3);
 
     // Check that old attachment has hidden text
-    const resultDataAttachments = resultData && resultData.attachments;
-    const oldAttachment = resultDataAttachments && resultDataAttachments.find(
+    const resultDataAttachments = resultData?.attachments;
+    const oldAttachment = resultDataAttachments?.find(
       (a) => a.id === "old-attach",
     );
-    expect(oldAttachment && oldAttachment.text).toBe("[Hidden]");
+    expect(oldAttachment?.text).toBe("[Hidden]");
 
     // Check that recent attachments have visible text
-    const recentAttachment = resultDataAttachments && resultDataAttachments.find(
+    const recentAttachment = resultDataAttachments?.find(
       (a) => a.id === "recent-attach",
     );
-    expect(recentAttachment && recentAttachment.text).toBe("This should be visible");
+    expect(recentAttachment?.text).toBe("This should be visible");
 
-    const currentAtt = resultDataAttachments && resultDataAttachments.find(
+    const currentAtt = resultDataAttachments?.find(
       (a) => a.id === "current-attach",
     );
-    expect(currentAtt && currentAtt.text).toBe("Current content");
+    expect(currentAtt?.text).toBe("Current content");
   });
 
   it("should not duplicate attachments with same ID", async () => {
@@ -1137,16 +1138,14 @@ describe("Attachments Provider", () => {
 
     expect(result).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.attachments).toHaveLength(1);
-    const resultDataAttachments = resultData && resultData.attachments;
-    expect(resultDataAttachments && resultDataAttachments[0] && resultDataAttachments[0].id).toBe("shared-attach");
+    expect(resultData?.attachments).toHaveLength(1);
+    const resultDataAttachments = resultData?.attachments;
+    expect(resultDataAttachments?.[0]?.id).toBe("shared-attach");
     // Should keep the current message's richer data
-    expect(resultDataAttachments && resultDataAttachments[0] && resultDataAttachments[0].text).toBe(
+    expect(resultDataAttachments?.[0]?.text).toBe(
       "Shared content with more details",
     );
-    expect(resultDataAttachments && resultDataAttachments[0] && resultDataAttachments[0].description).toBe(
-      "Shared attachment",
-    );
+    expect(resultDataAttachments?.[0]?.description).toBe("Shared attachment");
   });
 
   it("should format attachment data correctly", async () => {
@@ -1223,9 +1222,9 @@ describe("Attachments Provider", () => {
 
     expect(result).toBeDefined();
     const resultData = result.data;
-    expect(resultData && resultData.attachments).toHaveLength(1);
-    const resultDataAttachments = resultData && resultData.attachments;
-    expect(resultDataAttachments && resultDataAttachments[0] && resultDataAttachments[0].id).toBe("only-attach");
+    expect(resultData?.attachments).toHaveLength(1);
+    const resultDataAttachments = resultData?.attachments;
+    expect(resultDataAttachments?.[0]?.id).toBe("only-attach");
     expect(result.text).toContain("Only Attachment");
   });
 
@@ -1244,9 +1243,9 @@ describe("Attachments Provider", () => {
     };
 
     // Mock error in getMemories
-    mockRuntime.getMemories = vi.fn().mockRejectedValue(
-      new Error("Database error"),
-    );
+    mockRuntime.getMemories = vi
+      .fn()
+      .mockRejectedValue(new Error("Database error"));
 
     // The provider doesn't catch errors, so they propagate up
     expect(

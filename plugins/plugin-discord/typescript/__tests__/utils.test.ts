@@ -1,16 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import {
-  MAX_MESSAGE_LENGTH,
-  needsSmartSplit,
-  smartSplitMessage,
-  splitMessage,
-} from "../src/utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_MESSAGE_LENGTH, needsSmartSplit, smartSplitMessage, splitMessage } from "../src/utils";
+
+interface MockLogger {
+  debug: ReturnType<typeof vi.fn>;
+  info: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+}
 
 describe("Discord Utils - Smart Split Message", () => {
   let mockRuntime: IAgentRuntime;
-  let mockLogger: any;
+  let mockLogger: MockLogger;
 
   beforeEach(() => {
     mockLogger = {
@@ -23,7 +25,7 @@ describe("Discord Utils - Smart Split Message", () => {
     mockRuntime = {
       useModel: vi.fn(async () => ""),
       logger: mockLogger,
-    } as any;
+    } as unknown as IAgentRuntime;
   });
 
   describe("parseJSONArrayFromText (via smartSplitMessage)", () => {
@@ -39,7 +41,7 @@ describe("Discord Utils - Smart Split Message", () => {
       expect(result).toEqual(expectedChunks);
       expect(mockRuntime.useModel).toHaveBeenCalledWith(
         ModelType.TEXT_SMALL,
-        expect.objectContaining({ prompt: expect.any(String) }),
+        expect.objectContaining({ prompt: expect.any(String) })
       );
     });
 
@@ -81,9 +83,7 @@ describe("Discord Utils - Smart Split Message", () => {
       // Should fall back to simple split
       expect(result).not.toEqual(tooLongChunks);
       expect(result.length).toBeGreaterThan(0);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
     });
 
     it("should fallback to simple split when LLM returns invalid JSON", async () => {
@@ -96,9 +96,7 @@ describe("Discord Utils - Smart Split Message", () => {
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
       // Debug logging should have been called (either for smart split attempt or fallback)
       expect(mockLogger.debug).toHaveBeenCalled();
     });
@@ -113,9 +111,7 @@ describe("Discord Utils - Smart Split Message", () => {
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
     });
 
     it("should fallback to simple split when LLM returns empty array", async () => {
@@ -128,9 +124,7 @@ describe("Discord Utils - Smart Split Message", () => {
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
     });
 
     it("should fallback when array contains non-string values", async () => {
@@ -168,12 +162,8 @@ describe("Discord Utils - Smart Split Message", () => {
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("Smart split failed"),
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
+      expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining("Smart split failed"));
     });
   });
 
@@ -199,8 +189,7 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should return false for simple text", () => {
-      const content =
-        "This is a simple text. It has sentences. But no special formatting.";
+      const content = "This is a simple text. It has sentences. But no special formatting.";
       expect(needsSmartSplit(content)).toBe(false);
     });
   });
@@ -211,9 +200,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const result = splitMessage(longContent);
 
       expect(result.length).toBeGreaterThan(1);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
     });
 
     it("should return single chunk for short content", () => {
@@ -227,9 +214,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const content = "Line 1\n".repeat(100);
       const result = splitMessage(content);
 
-      expect(
-        result.every((chunk) => chunk.includes("\n") || chunk.length < 10),
-      ).toBe(true);
+      expect(result.every((chunk) => chunk.includes("\n") || chunk.length < 10)).toBe(true);
     });
   });
 
@@ -263,12 +248,8 @@ function test() {
       // Verify the result matches what the LLM returned and all chunks are valid
       expect(result).toEqual(expectedChunks);
       expect(result.length).toBeGreaterThan(0);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
-      expect(
-        result.every((chunk) => typeof chunk === "string" && chunk.length > 0),
-      ).toBe(true);
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
+      expect(result.every((chunk) => typeof chunk === "string" && chunk.length > 0)).toBe(true);
     });
 
     it("should handle markdown lists correctly", async () => {
@@ -279,18 +260,13 @@ function test() {
 3. Third item with lots of text to make it longer
 `.repeat(20);
 
-      const expectedChunks = [
-        listContent.slice(0, 1500),
-        listContent.slice(1500),
-      ];
+      const expectedChunks = [listContent.slice(0, 1500), listContent.slice(1500)];
       mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
 
       const result = await smartSplitMessage(mockRuntime, listContent);
 
       expect(result).toEqual(expectedChunks);
-      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(
-        true,
-      );
+      expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
     });
   });
 });

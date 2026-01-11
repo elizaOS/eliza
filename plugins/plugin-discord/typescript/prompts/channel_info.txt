@@ -1,0 +1,26 @@
+# Messages we are searching for channel information
+{{recentMessages}}
+
+# Instructions: {{senderName}} is requesting to read messages from a specific Discord channel. Your goal is to determine:
+1. The channel they want to read from (could be the current channel or a mentioned channel)
+2. How many messages they want to read (default to 10 if not specified)
+3. Whether they want a summary or just the messages
+4. If they're looking for messages from a specific person
+
+If they say "this channel" or "here", use the current channel.
+If they mention a specific channel name or ID, extract that.
+If they ask to "summarize" or mention what someone is "talking about", set summarize to true.
+
+Your response must be formatted as a JSON block with this structure:
+```json
+{
+  "channelIdentifier": "<current|channel-name|channel-id>",
+  "messageCount": <number between 1 and 50>,
+  "summarize": true/false,
+  "focusUser": "<username or null>"
+}
+```
+
+
+
+

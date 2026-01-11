@@ -4,10 +4,13 @@
     "outDir": "../dist/node",
     "declaration": true,
     "declarationDir": "../dist/node",
-    "declarationMap": true
+    "declarationMap": true,
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "__tests__", "../dist"]
 }
-
-

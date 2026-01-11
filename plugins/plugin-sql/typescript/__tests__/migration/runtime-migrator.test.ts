@@ -1,4 +1,4 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Helper types for database query result rows
 interface ExistsRow {
@@ -52,9 +52,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
   beforeAll(async () => {
     console.log("\n🚀 Starting Runtime Migrator Tests...\n");
 
-    const testSetup = await createIsolatedTestDatabaseForMigration(
-      "runtime_migrator_tests",
-    );
+    const testSetup = await createIsolatedTestDatabaseForMigration("runtime_migrator_tests");
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
@@ -108,7 +106,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT EXISTS (
           SELECT 1 FROM information_schema.schemata 
           WHERE schema_name = 'migrations'
-        ) as exists`,
+        ) as exists`
       );
 
       const schemaExists = (schemaResult.rows[0] as ExistsRow).exists;
@@ -129,20 +127,16 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
             SELECT 1 FROM pg_tables
             WHERE schemaname = 'migrations'
             AND tablename = ${tableName}
-          ) as exists`,
+          ) as exists`
         );
 
         const exists = (result.rows[0] as ExistsRow).exists;
         expect(exists).toBe(true);
 
         if (exists) {
-          testResults.passed.push(
-            `Migration table created: migrations.${tableName}`,
-          );
+          testResults.passed.push(`Migration table created: migrations.${tableName}`);
         } else {
-          testResults.failed.push(
-            `Migration table missing: migrations.${tableName}`,
-          );
+          testResults.failed.push(`Migration table missing: migrations.${tableName}`);
         }
       }
     });
@@ -157,7 +151,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const tablesResult = await db.execute(
         sql`SELECT tablename FROM pg_tables 
             WHERE schemaname = 'public' 
-            ORDER BY tablename`,
+            ORDER BY tablename`
       );
 
       const createdTables = tablesResult.rows.map((r: any) => r.tablename);
@@ -199,7 +193,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT * FROM migrations._migrations 
             WHERE plugin_name = 'plugin-sql'
             ORDER BY created_at DESC
-            LIMIT 1`,
+            LIMIT 1`
       );
 
       expect(result.rows.length).toBeGreaterThan(0);
@@ -207,7 +201,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       if (result.rows.length > 0) {
         const migration = result.rows[0] as MigrationRow;
         testResults.passed.push(
-          `Migration tracked: ${migration.plugin_name} - ${migration.hash.substring(0, 8)}...`,
+          `Migration tracked: ${migration.plugin_name} - ${migration.hash.substring(0, 8)}...`
         );
       } else {
         testResults.failed.push("Migration not tracked in _migrations table");
@@ -217,7 +211,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     it("should save journal entry", async () => {
       const result = await db.execute(
         sql`SELECT * FROM migrations._journal 
-            WHERE plugin_name = 'plugin-sql'`,
+            WHERE plugin_name = 'plugin-sql'`
       );
 
       expect(result.rows.length).toBe(1);
@@ -235,7 +229,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const result = await db.execute(
         sql`SELECT * FROM migrations._snapshots 
             WHERE plugin_name = 'plugin-sql'
-            ORDER BY idx DESC`,
+            ORDER BY idx DESC`
       );
 
       expect(result.rows.length).toBeGreaterThan(0);
@@ -268,7 +262,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
               FROM information_schema.columns 
               WHERE table_schema = 'public' 
               AND table_name = ${col.table}
-              AND column_name = ${col.column}`,
+              AND column_name = ${col.column}`
         );
 
         if (result.rows.length > 0) {
@@ -279,11 +273,11 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
           if (typeMatches) {
             testResults.passed.push(
-              `Column type correct: ${col.table}.${col.column} (${actualType})`,
+              `Column type correct: ${col.table}.${col.column} (${actualType})`
             );
           } else {
             testResults.failed.push(
-              `Column type wrong: ${col.table}.${col.column} - expected ${col.type}, got ${actualType}`,
+              `Column type wrong: ${col.table}.${col.column} - expected ${col.type}, got ${actualType}`
             );
           }
         } else {
@@ -297,7 +291,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT COUNT(*) as count
             FROM information_schema.table_constraints
             WHERE table_schema = 'public'
-            AND constraint_type = 'FOREIGN KEY'`,
+            AND constraint_type = 'FOREIGN KEY'`
       );
 
       const fkCount = parseInt(String((result.rows[0] as CountRow).count), 10);
@@ -315,7 +309,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT constraint_name, table_name
             FROM information_schema.table_constraints
             WHERE table_schema = 'public'
-            AND constraint_type = 'UNIQUE'`,
+            AND constraint_type = 'UNIQUE'`
       );
 
       const uniqueCount = result.rows.length;
@@ -326,8 +320,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
         // Check specific unique constraint on agents.name
         const hasAgentNameUnique = result.rows.some(
-          (r: any) =>
-            r.table_name === "agents" && r.constraint_name === "name_unique",
+          (r: any) => r.table_name === "agents" && r.constraint_name === "name_unique"
         );
 
         if (hasAgentNameUnique) {
@@ -350,7 +343,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const result = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM migrations._migrations
-            WHERE plugin_name = 'plugin-sql'`,
+            WHERE plugin_name = 'plugin-sql'`
       );
 
       const count = parseInt(String((result.rows[0] as CountRow).count), 10);
@@ -359,9 +352,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       if (count === 1) {
         testResults.passed.push("Idempotency: Migration not duplicated");
       } else {
-        testResults.failed.push(
-          `Idempotency: Found ${count} migrations instead of 1`,
-        );
+        testResults.failed.push(`Idempotency: Found ${count} migrations instead of 1`);
       }
     });
 
@@ -387,9 +378,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       expect(status.snapshots).toBeGreaterThan(0);
 
       if (status.snapshots > 0) {
-        testResults.passed.push(
-          "Schema evolution: Snapshots stored for comparison",
-        );
+        testResults.passed.push("Schema evolution: Snapshots stored for comparison");
       } else {
         testResults.failed.push("Schema evolution: No snapshots stored");
       }
@@ -398,7 +387,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     it("should track migration history properly", async () => {
       const journal = await db.execute(
         sql`SELECT entries FROM migrations._journal 
-            WHERE plugin_name = 'plugin-sql'`,
+            WHERE plugin_name = 'plugin-sql'`
       );
 
       if (journal.rows.length > 0) {
@@ -406,9 +395,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         expect(entries.length).toBeGreaterThan(0);
 
         if (entries.length > 0) {
-          testResults.passed.push(
-            `Migration history: ${entries.length} entries tracked`,
-          );
+          testResults.passed.push(`Migration history: ${entries.length} entries tracked`);
         } else {
           testResults.failed.push("Migration history: No entries in journal");
         }
@@ -424,7 +411,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const allIndexes = await db.execute(
         sql`SELECT schemaname, tablename, indexname
             FROM pg_indexes
-            WHERE schemaname = 'public'`,
+            WHERE schemaname = 'public'`
       );
       console.log("All indexes in public schema:", allIndexes.rows);
 
@@ -433,13 +420,10 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT COUNT(*) as count
             FROM pg_indexes
             WHERE schemaname = 'public'
-            AND indexname LIKE 'idx_%'`,
+            AND indexname LIKE 'idx_%'`
       );
 
-      const indexCount = parseInt(
-        String((result.rows[0] as CountRow).count),
-        10,
-      );
+      const indexCount = parseInt(String((result.rows[0] as CountRow).count), 10);
       console.log("Count of idx_ indexes:", indexCount);
 
       // Our schema does create indexes with idx_ prefix
@@ -460,13 +444,10 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT COUNT(*) as count
             FROM pg_constraint
             WHERE connamespace = 'public'::regnamespace
-            AND contype = 'c'`,
+            AND contype = 'c'`
       );
 
-      const checkCount = parseInt(
-        String((result.rows[0] as CountRow).count),
-        10,
-      );
+      const checkCount = parseInt(String((result.rows[0] as CountRow).count), 10);
 
       // Our schema does create check constraints (e.g., in memories table)
       if (checkCount > 0) {
@@ -484,9 +465,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     it("should use transactions for atomicity", async () => {
       // Transactions are built into our implementation
       // This test verifies the infrastructure is there
-      testResults.passed.push(
-        "Transactions: Built-in atomicity via Drizzle transactions",
-      );
+      testResults.passed.push("Transactions: Built-in atomicity via Drizzle transactions");
       expect(true).toBe(true);
     });
 
@@ -512,17 +491,14 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         sql`SELECT COUNT(*) as count
             FROM information_schema.tables
             WHERE table_schema = 'public'
-            AND table_name = 'invalidTable'`,
+            AND table_name = 'invalidTable'`
       );
 
-      const invalidTableExists =
-        parseInt(String((tablesResult.rows[0] as CountRow).count), 10) > 0;
+      const invalidTableExists = parseInt(String((tablesResult.rows[0] as CountRow).count), 10) > 0;
       expect(invalidTableExists).toBe(false);
 
       if (!invalidTableExists) {
-        testResults.passed.push(
-          "Error handling: Invalid schema does not create tables",
-        );
+        testResults.passed.push("Error handling: Invalid schema does not create tables");
       } else {
         testResults.failed.push("Error handling: Invalid table was created");
       }
@@ -539,19 +515,19 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
           user_id UUID NOT NULL,
           data JSONB,
           created_at TIMESTAMP DEFAULT NOW()
-        )`,
+        )`
       );
 
       // Create an index on the custom table
       await db.execute(
         sql`CREATE INDEX IF NOT EXISTS idx_custom_analytics_event_type
-            ON public.custom_analytics(event_type)`,
+            ON public.custom_analytics(event_type)`
       );
 
       // Insert some test data
       await db.execute(
         sql`INSERT INTO public.custom_analytics (event_type, user_id, data)
-            VALUES ('page_view', gen_random_uuid(), '{"page": "/home"}'::jsonb)`,
+            VALUES ('page_view', gen_random_uuid(), '{"page": "/home"}'::jsonb)`
       );
 
       // Now run migration again with plugin-sql schema
@@ -564,44 +540,37 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
           SELECT 1 FROM pg_tables
           WHERE schemaname = 'public'
           AND tablename = 'custom_analytics'
-        ) as exists`,
+        ) as exists`
       );
 
       const exists = (tableExists.rows[0] as ExistsRow).exists;
       expect(exists).toBe(true);
 
       if (exists) {
-        testResults.passed.push(
-          "Table filtering: custom_analytics table preserved",
-        );
+        testResults.passed.push("Table filtering: custom_analytics table preserved");
       } else {
-        testResults.failed.push(
-          "Table filtering: custom_analytics table was deleted!",
-        );
+        testResults.failed.push("Table filtering: custom_analytics table was deleted!");
       }
 
       // Verify the data is still there
       const dataResult = await db.execute(
-        sql`SELECT COUNT(*) as count FROM public.custom_analytics`,
+        sql`SELECT COUNT(*) as count FROM public.custom_analytics`
       );
 
-      const count = parseInt((dataResult.rows[0] as any).count, 10);
+      interface QueryRow {
+        count: string;
+      }
+      const count = parseInt((dataResult.rows[0] as QueryRow).count, 10);
       expect(count).toBeGreaterThan(0);
 
       if (count > 0) {
-        testResults.passed.push(
-          "Table filtering: custom_analytics data preserved",
-        );
+        testResults.passed.push("Table filtering: custom_analytics data preserved");
       } else {
-        testResults.failed.push(
-          "Table filtering: custom_analytics data was deleted!",
-        );
+        testResults.failed.push("Table filtering: custom_analytics data was deleted!");
       }
 
       // Clean up
-      await db.execute(
-        sql`DROP TABLE IF EXISTS public.custom_analytics CASCADE`,
-      );
+      await db.execute(sql`DROP TABLE IF EXISTS public.custom_analytics CASCADE`);
     });
 
     it("should not schedule DROP for tables from other plugins in public schema", async () => {
@@ -613,7 +582,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
           plugin_name TEXT NOT NULL DEFAULT 'other-plugin',
           data JSONB,
           created_at TIMESTAMP DEFAULT NOW()
-        )`,
+        )`
       );
 
       // Run migration
@@ -625,7 +594,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
           SELECT 1 FROM pg_tables
           WHERE schemaname = 'public'
           AND tablename = 'other_plugin_data'
-        ) as exists`,
+        ) as exists`
       );
 
       const exists = (tableExists.rows[0] as ExistsRow).exists;
@@ -639,7 +608,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
           WHERE table_schema = 'public'
           AND table_name = 'other_plugin_data'
           AND column_name = 'server_id'
-        ) as exists`,
+        ) as exists`
       );
 
       // Note: The column might be dropped by migrations.ts (which runs before RuntimeMigrator)
@@ -648,18 +617,16 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
       if (exists) {
         testResults.passed.push(
-          "Table filtering: other_plugin_data table preserved by RuntimeMigrator",
+          "Table filtering: other_plugin_data table preserved by RuntimeMigrator"
         );
       } else {
         testResults.failed.push(
-          "Table filtering: other_plugin_data table was deleted by RuntimeMigrator!",
+          "Table filtering: other_plugin_data table was deleted by RuntimeMigrator!"
         );
       }
 
       // Clean up
-      await db.execute(
-        sql`DROP TABLE IF EXISTS public.other_plugin_data CASCADE`,
-      );
+      await db.execute(sql`DROP TABLE IF EXISTS public.other_plugin_data CASCADE`);
     });
   });
 
@@ -674,7 +641,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const result = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM migrations._migrations
-            WHERE plugin_name = 'dry-run-test'`,
+            WHERE plugin_name = 'dry-run-test'`
       );
 
       const count = parseInt(String((result.rows[0] as CountRow).count), 10);

@@ -4,15 +4,15 @@
  * Handles communication with the Neynar API for Farcaster operations.
  */
 
-import { Content, elizaLogger } from "@elizaos/core";
-import { type NeynarAPIClient, isApiErrorResponse } from "@neynar/nodejs-sdk";
+import { type Content, elizaLogger } from "@elizaos/core";
+import { isApiErrorResponse, type NeynarAPIClient } from "@neynar/nodejs-sdk";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import { LRUCache } from "lru-cache";
 import {
-  DEFAULT_CAST_CACHE_SIZE,
-  DEFAULT_CAST_CACHE_TTL,
   type Cast,
   type CastId,
+  DEFAULT_CAST_CACHE_SIZE,
+  DEFAULT_CAST_CACHE_TTL,
   type FidRequest,
   type Profile,
 } from "../types";
@@ -206,5 +206,3 @@ export class FarcasterClient {
     castCache.clear();
   }
 }
-
-

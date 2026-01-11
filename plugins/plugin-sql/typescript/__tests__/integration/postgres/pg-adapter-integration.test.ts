@@ -1,8 +1,8 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../../migration-service";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import { PGliteClientManager } from "../../../pglite/manager";
@@ -87,12 +87,8 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         try {
           // Test transaction
           await db.transaction(async (tx) => {
-            await tx.execute(
-              sql`INSERT INTO pg_adapter_test (value) VALUES (100)`,
-            );
-            await tx.execute(
-              sql`INSERT INTO pg_adapter_test (value) VALUES (200)`,
-            );
+            await tx.execute(sql`INSERT INTO pg_adapter_test (value) VALUES (100)`);
+            await tx.execute(sql`INSERT INTO pg_adapter_test (value) VALUES (200)`);
           });
 
           const result = await db.execute(sql`
@@ -124,8 +120,8 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         const agent = await adapter.getAgent(testAgentId);
 
         expect(agent).toBeDefined();
-        expect(agent && agent.id).toBe(testAgentId);
-        expect(agent && agent.name).toBe("PG Direct Test Agent");
+        expect(agent?.id).toBe(testAgentId);
+        expect(agent?.name).toBe("PG Direct Test Agent");
       });
 
       it("should update agent settings", async () => {
@@ -139,7 +135,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         expect(updated).toBe(true);
 
         const agent = await adapter.getAgent(testAgentId);
-        expect(agent && agent.settings).toEqual({
+        expect(agent?.settings).toEqual({
           theme: "dark",
           language: "en",
         });
@@ -278,10 +274,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         // Create a temporary adapter
         const tempClient = new PGlite();
         const tempManager = new PGliteClientManager(tempClient);
-        const tempAdapter = new PgliteDatabaseAdapter(
-          uuidv4() as UUID,
-          tempManager,
-        );
+        const tempAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, tempManager);
         await tempAdapter.init();
 
         // Close it

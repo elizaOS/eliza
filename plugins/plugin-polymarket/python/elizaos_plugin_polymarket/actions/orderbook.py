@@ -4,13 +4,13 @@ Order book actions for Polymarket.
 
 from typing import Protocol
 
+from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_clob_client
 from elizaos_plugin_polymarket.types import (
-    OrderBook,
     BookEntry,
+    OrderBook,
     OrderSide,
 )
-from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 
 
 class RuntimeProtocol(Protocol):
@@ -48,14 +48,8 @@ async def get_order_book(
         client = get_clob_client(runtime)
         response = client.get_order_book(token_id)
 
-        bids = [
-            BookEntry(price=b["price"], size=b["size"])
-            for b in response.get("bids", [])
-        ]
-        asks = [
-            BookEntry(price=a["price"], size=a["size"])
-            for a in response.get("asks", [])
-        ]
+        bids = [BookEntry(price=b["price"], size=b["size"]) for b in response.get("bids", [])]
+        asks = [BookEntry(price=a["price"], size=a["size"]) for a in response.get("asks", [])]
 
         return OrderBook(
             market=response.get("market", ""),
@@ -232,5 +226,8 @@ async def get_spread(
             f"Failed to get spread: {e}",
             cause=e,
         ) from e
+
+
+
 
 

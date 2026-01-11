@@ -1,52 +1,46 @@
 import type { Plugin } from "@elizaos/core";
-
-// File operations
-import { readFileAction } from "./actions/read-file.js";
-import { writeFileAction } from "./actions/write-file.js";
-import { editFileAction } from "./actions/edit-file.js";
-import { listFilesAction } from "./actions/list-files.js";
-import { searchFilesAction } from "./actions/search-files.js";
-import { changeDirectoryAction } from "./actions/change-directory.js";
-
 // Code intelligence
 import { askAction } from "./actions/ask.js";
-import { explainAction } from "./actions/explain.js";
-import { reviewAction } from "./actions/review.js";
-import { refactorAction } from "./actions/refactor.js";
-import { fixAction } from "./actions/fix.js";
-import { generateAction } from "./actions/generate.js";
-import { testAction } from "./actions/test.js";
-import { planAction } from "./actions/plan.js";
-
-// Execution
-import { executeShellAction } from "./actions/execute-shell.js";
-import { gitAction } from "./actions/git.js";
-
+import { changeDirectoryAction } from "./actions/change-directory.js";
 // Task management
 import { createTaskAction } from "./actions/create-task.js";
+import { editFileAction } from "./actions/edit-file.js";
+// Execution
+import { executeShellAction } from "./actions/execute-shell.js";
+import { explainAction } from "./actions/explain.js";
+import { fixAction } from "./actions/fix.js";
+import { generateAction } from "./actions/generate.js";
+import { gitAction } from "./actions/git.js";
+import { listFilesAction } from "./actions/list-files.js";
+import { planAction } from "./actions/plan.js";
+// File operations
+import { readFileAction } from "./actions/read-file.js";
+import { refactorAction } from "./actions/refactor.js";
+import { reviewAction } from "./actions/review.js";
+import { searchFilesAction } from "./actions/search-files.js";
 import {
+  cancelTaskAction,
   listTasksAction,
-  switchTaskAction,
-  searchTasksAction,
   pauseTaskAction,
   resumeTaskAction,
-  cancelTaskAction,
+  searchTasksAction,
+  switchTaskAction,
 } from "./actions/task-management.js";
-
-// Services
-import { CodeTaskService } from "./services/code-task.js";
-
-// Providers
-import { taskContextProvider } from "./providers/task-context.js";
-import { cwdProvider } from "./providers/cwd.js";
-import { timeProvider } from "./providers/time.js";
-import { actionsProvider } from "./providers/actions.js";
+import { testAction } from "./actions/test.js";
+import { writeFileAction } from "./actions/write-file.js";
 import { actionStateProvider } from "./providers/actionState.js";
+import { actionsProvider } from "./providers/actions.js";
 import { attachmentsProvider } from "./providers/attachments.js";
 import { capabilitiesProvider } from "./providers/capabilities.js";
 import { characterProvider } from "./providers/character.js";
+import { cwdProvider } from "./providers/cwd.js";
 import { providersProvider } from "./providers/providers.js";
 import { recentMessagesProvider } from "./providers/recentMessages.js";
+// Providers
+import { taskContextProvider } from "./providers/task-context.js";
+import { timeProvider } from "./providers/time.js";
+// Services
+import { CodeTaskService } from "./services/code-task.js";
 
 /**
  * Eliza Code Plugin
@@ -60,7 +54,8 @@ import { recentMessagesProvider } from "./providers/recentMessages.js";
  */
 export const elizaCodePlugin: Plugin = {
   name: "eliza-code",
-  description: "Coding assistant with full filesystem, shell access, and task management",
+  description:
+    "Coding assistant with full filesystem, shell access, and task management",
 
   actions: [
     // File operations
@@ -128,11 +123,9 @@ export {
   generateAction,
   testAction,
   planAction,
-
   // Execution
   executeShellAction,
   gitAction,
-
   // Task management
   createTaskAction,
   listTasksAction,
@@ -141,7 +134,6 @@ export {
   pauseTaskAction,
   resumeTaskAction,
   cancelTaskAction,
-
   // Providers
   taskContextProvider,
   cwdProvider,
@@ -153,16 +145,15 @@ export {
   characterProvider,
   providersProvider,
   recentMessagesProvider,
-
   // Services
   CodeTaskService,
 };
 
-// CWD utilities
-export { getCwd, setCwd } from "./providers/cwd.js";
+export * from "../lib/errors.js";
 
 // Prompts and errors
 export * from "../lib/prompts.js";
-export * from "../lib/errors.js";
+// CWD utilities
+export { getCwd, setCwd } from "./providers/cwd.js";
 
 export default elizaCodePlugin;

@@ -1,0 +1,112 @@
+{
+  "name": "@elizaos/plugin-local-ai",
+  "version": "1.2.1",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-local-ai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo node_modules",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@huggingface/transformers": "^3.5.1",
+    "node-llama-cpp": "3.10.0",
+    "stream-browserify": "^3.0.0",
+    "undici": "^7.10.0",
+    "uuid": "^13.0.0",
+    "whisper-node": "^1.1.1",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MODELS_DIR": {
+        "type": "string",
+        "description": "Filesystem path to the directory where AI models are stored.",
+        "required": false,
+        "sensitive": false
+      },
+      "CACHE_DIR": {
+        "type": "string",
+        "description": "Filesystem path to the cache directory for model assets.",
+        "required": false,
+        "sensitive": false
+      },
+      "LOCAL_SMALL_MODEL": {
+        "type": "string",
+        "description": "Filename of the small local AI model.",
+        "required": false,
+        "default": "DeepHermes-3-Llama-3-3B-Preview-q4.gguf",
+        "sensitive": false
+      },
+      "LOCAL_LARGE_MODEL": {
+        "type": "string",
+        "description": "Filename of the large local AI model.",
+        "required": false,
+        "default": "DeepHermes-3-Llama-3-8B-q4.gguf",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Filename of the embedding model used for vector embeddings.",
+        "required": false,
+        "default": "bge-small-en-v1.5.Q4_K_M.gguf",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions the embedding model outputs.",
+        "required": false,
+        "default": 384,
+        "sensitive": false
+      },
+      "CUDA_VISIBLE_DEVICES": {
+        "type": "string",
+        "description": "Used to detect if CUDA-enabled GPUs are available.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

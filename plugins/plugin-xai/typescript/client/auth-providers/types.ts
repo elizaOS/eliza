@@ -36,6 +36,5 @@ export interface TwitterOAuth1Provider extends TwitterAuthProvider {
 
 export interface TwitterAuthProviderFactoryOptions {
   runtime: IAgentRuntime;
-  state?: any;
+  state?: Record<string, unknown>;
 }
-

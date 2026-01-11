@@ -7,7 +7,7 @@
 //! Run with: cargo test --test integration_tests -- --ignored
 
 use elizaos_plugin_evm::{
-    BridgeAction, BridgeParams, SwapAction, SwapParams, TransferAction, TransferParams,
+    BridgeParams, SwapAction, SwapParams, TransferAction, TransferParams,
     SupportedChain, WalletProvider, WalletProviderConfig,
 };
 use std::env;

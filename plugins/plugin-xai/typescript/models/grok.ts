@@ -6,10 +6,11 @@
  */
 
 import {
-  type IAgentRuntime,
   type GenerateTextParams,
-  type TextEmbeddingParams,
+  type IAgentRuntime,
   logger,
+  type TextEmbeddingParams,
+  type TextStreamResult,
 } from "@elizaos/core";
 
 // ============================================================================
@@ -34,16 +35,21 @@ interface GrokConfig {
 
 function getConfig(runtime: IAgentRuntime): GrokConfig {
   const apiKey = runtime.getSetting("XAI_API_KEY");
-  if (!apiKey) {
+  if (!apiKey || typeof apiKey !== "string") {
     throw new Error("XAI_API_KEY is required");
   }
 
+  const baseUrl = runtime.getSetting("XAI_BASE_URL");
+  const smallModel = runtime.getSetting("XAI_SMALL_MODEL");
+  const largeModel = runtime.getSetting("XAI_MODEL") || runtime.getSetting("XAI_LARGE_MODEL");
+  const embeddingModel = runtime.getSetting("XAI_EMBEDDING_MODEL");
+
   return {
     apiKey,
-    baseUrl: runtime.getSetting("XAI_BASE_URL") || XAI_API_BASE,
-    smallModel: runtime.getSetting("XAI_SMALL_MODEL") || DEFAULT_MODELS.small,
-    largeModel: runtime.getSetting("XAI_MODEL") || runtime.getSetting("XAI_LARGE_MODEL") || DEFAULT_MODELS.large,
-    embeddingModel: runtime.getSetting("XAI_EMBEDDING_MODEL") || DEFAULT_MODELS.embedding,
+    baseUrl: typeof baseUrl === "string" ? baseUrl : XAI_API_BASE,
+    smallModel: typeof smallModel === "string" ? smallModel : DEFAULT_MODELS.small,
+    largeModel: typeof largeModel === "string" ? largeModel : DEFAULT_MODELS.large,
+    embeddingModel: typeof embeddingModel === "string" ? embeddingModel : DEFAULT_MODELS.embedding,
   };
 }
 
@@ -97,13 +103,7 @@ interface EmbeddingResponse {
   };
 }
 
-export interface TextStreamResult {
-  text: string;
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-  };
-}
+// Use TextStreamResult from @elizaos/core instead of defining our own
 
 // ============================================================================
 // Text Generation
@@ -116,10 +116,8 @@ async function generateText(
 ): Promise<string | TextStreamResult> {
   const messages: ChatMessage[] = [];
 
-  if (params.system) {
-    messages.push({ role: "system", content: params.system });
-  }
-
+  // Note: GenerateTextParams doesn't have a system field
+  // If system prompts are needed, they should be included in the prompt itself
   messages.push({ role: "user", content: params.prompt });
 
   const body: Record<string, unknown> = {
@@ -210,10 +208,7 @@ async function generateText(
 // Embeddings
 // ============================================================================
 
-async function createEmbedding(
-  config: GrokConfig,
-  text: string
-): Promise<number[]> {
+async function createEmbedding(config: GrokConfig, text: string): Promise<number[]> {
   const response = await fetch(`${config.baseUrl}/embeddings`, {
     method: "POST",
     headers: getAuthHeader(config),
@@ -261,10 +256,13 @@ export async function handleTextLarge(
 
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string
+  params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
+  if (params === null) {
+    throw new Error("Null params provided for embedding");
+  }
   const config = getConfig(runtime);
-  const text = typeof params === "string" ? params : params.text;
+  const text = typeof params === "string" ? params : (params as TextEmbeddingParams).text;
   if (!text) {
     throw new Error("Empty text provided for embedding");
   }
@@ -277,7 +275,7 @@ export async function handleTextEmbedding(
  */
 export async function listModels(runtime: IAgentRuntime): Promise<unknown[]> {
   const config = getConfig(runtime);
-  
+
   const response = await fetch(`${config.baseUrl}/models`, {
     headers: getAuthHeader(config),
   });
@@ -287,7 +285,7 @@ export async function listModels(runtime: IAgentRuntime): Promise<unknown[]> {
     throw new Error(`Grok API error (${response.status}): ${error}`);
   }
 
-  const data = await response.json() as { data: unknown[] };
+  const data = (await response.json()) as { data: unknown[] };
   return data.data;
 }
 
@@ -297,4 +295,3 @@ export async function listModels(runtime: IAgentRuntime): Promise<unknown[]> {
 export function isGrokConfigured(runtime: IAgentRuntime): boolean {
   return !!runtime.getSetting("XAI_API_KEY");
 }
-

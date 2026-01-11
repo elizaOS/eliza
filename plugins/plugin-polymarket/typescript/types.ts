@@ -177,7 +177,7 @@ export interface OrderParams {
   /** Token ID to trade */
   tokenId: string;
   /** Order side */
-  side: 'BUY' | 'SELL';
+  side: "BUY" | "SELL";
   /** Price per share (0-1.0) */
   price: number;
   /** Order size */
@@ -199,7 +199,7 @@ export interface Trade {
   /** Token ID */
   asset_id: string;
   /** Trade side */
-  side: 'BUY' | 'SELL';
+  side: "BUY" | "SELL";
   /** Trade price */
   price: string;
   /** Trade size */
@@ -207,7 +207,7 @@ export interface Trade {
   /** Trade timestamp */
   timestamp: string;
   /** Trade status */
-  status: 'MATCHED' | 'MINED' | 'CONFIRMED' | 'RETRYING' | 'FAILED';
+  status: "MATCHED" | "MINED" | "CONFIRMED" | "RETRYING" | "FAILED";
 }
 
 /**
@@ -258,18 +258,18 @@ export interface ClobError {
  * Order side enumeration
  */
 export enum OrderSide {
-  BUY = 'BUY',
-  SELL = 'SELL',
+  BUY = "BUY",
+  SELL = "SELL",
 }
 
 /**
  * Order type enumeration
  */
 export enum OrderType {
-  GTC = 'GTC', // Good Till Cancelled
-  FOK = 'FOK', // Fill Or Kill
-  GTD = 'GTD', // Good Till Date
-  FAK = 'FAK', // Fill And Kill
+  GTC = "GTC", // Good Till Cancelled
+  FOK = "FOK", // Fill Or Kill
+  GTD = "GTD", // Good Till Date
+  FAK = "FAK", // Fill And Kill
 }
 
 /**
@@ -337,7 +337,7 @@ export interface OrderResponse {
   /** Order hash(es) if matched */
   orderHashes?: string[];
   /** Order status */
-  status?: 'matched' | 'delayed' | 'unmatched';
+  status?: "matched" | "delayed" | "unmatched";
 }
 
 /**
@@ -358,13 +358,13 @@ export interface MarketOrderRequest {
  * Represents the status of an order in the CLOB API.
  */
 export enum OrderStatus {
-  PENDING = 'PENDING',
-  OPEN = 'OPEN',
-  FILLED = 'FILLED',
-  PARTIALLY_FILLED = 'PARTIALLY_FILLED',
-  CANCELLED = 'CANCELLED',
-  EXPIRED = 'EXPIRED',
-  REJECTED = 'REJECTED',
+  PENDING = "PENDING",
+  OPEN = "OPEN",
+  FILLED = "FILLED",
+  PARTIALLY_FILLED = "PARTIALLY_FILLED",
+  CANCELLED = "CANCELLED",
+  EXPIRED = "EXPIRED",
+  REJECTED = "REJECTED",
 }
 
 /**
@@ -409,10 +409,10 @@ export type AreOrdersScoringResponse = Record<string, boolean>;
  * Parameters for the getOpenOrders ClobClient method.
  */
 export interface GetOpenOrdersParams {
-  market?: string;      // Market condition ID
-  assetId?: string;     // Asset ID (token ID)
-  address?: string;     // User address
-  nextCursor?: string;  // Pagination cursor
+  market?: string; // Market condition ID
+  assetId?: string; // Asset ID (token ID)
+  address?: string; // User address
+  nextCursor?: string; // Pagination cursor
 }
 
 /**
@@ -423,9 +423,9 @@ export interface OpenOrder {
   user_id: string;
   market_id: string; // This is the condition_id
   token_id: string;
-  side: OrderSide;   // Reuses existing OrderSide enum: 'BUY' | 'SELL'
-  type: string;      // e.g., "LIMIT"
-  status: string;    // e.g., "OPEN" - could create an enum if more statuses are known for open orders
+  side: OrderSide; // Reuses existing OrderSide enum: 'BUY' | 'SELL'
+  type: string; // e.g., "LIMIT"
+  status: string; // e.g., "OPEN" - could create an enum if more statuses are known for open orders
   price: string;
   size: string;
   filled_size: string;
@@ -443,7 +443,7 @@ export interface GetTradesParams {
   market_id?: string;
   token_id?: string;
   from_timestamp?: number; // Unix timestamp (seconds)
-  to_timestamp?: number;   // Unix timestamp (seconds)
+  to_timestamp?: number; // Unix timestamp (seconds)
   limit?: number;
   next_cursor?: string;
 }
@@ -481,8 +481,8 @@ export interface TradesResponse {
 export interface ApiKey {
   key_id: string;
   label: string;
-  type: 'read_only' | 'read_write';
-  status: 'active' | 'revoked';
+  type: "read_only" | "read_write";
+  status: "active" | "revoked";
   created_at: string; // ISO datetime string
   last_used_at: string | null; // ISO datetime string or null
   is_cert_whitelisted: boolean;
@@ -519,5 +519,5 @@ export interface PolymarketError extends Error {
  */
 export interface BookParams {
   token_id: string;
-  side?: 'buy' | 'sell';
+  side?: "buy" | "sell";
 }

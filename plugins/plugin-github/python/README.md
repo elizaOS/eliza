@@ -74,10 +74,12 @@ The plugin can be configured via environment variables:
 ## Features
 
 ### Repository Operations
+
 - Get repository information
 - List repositories
 
 ### Issue Operations
+
 - Create issues
 - Get issue details
 - Update issues
@@ -85,6 +87,7 @@ The plugin can be configured via environment variables:
 - Close/reopen issues
 
 ### Pull Request Operations
+
 - Create pull requests
 - Get PR details
 - Update pull requests
@@ -92,23 +95,28 @@ The plugin can be configured via environment variables:
 - Merge pull requests
 
 ### Review Operations
+
 - Create reviews (approve, request changes, comment)
 - List reviews
 
 ### Comment Operations
+
 - Create comments on issues/PRs
 - List comments
 
 ### Branch Operations
+
 - Create branches
 - Delete branches
 - List branches
 
 ### File Operations
+
 - Get file content
 - List directory contents
 
 ### Commit Operations
+
 - Create commits with file changes
 
 ## Development
@@ -131,5 +139,6 @@ ruff format .
 ## License
 
 MIT
+
 
 

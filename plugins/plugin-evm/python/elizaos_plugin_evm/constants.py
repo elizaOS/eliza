@@ -104,5 +104,3 @@ ERC20_ABI = [
         "type": "function",
     },
 ]
-
-

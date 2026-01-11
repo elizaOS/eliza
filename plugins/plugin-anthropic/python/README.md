@@ -30,7 +30,7 @@ async def main():
         # Simple prompt
         response = await client.generate_text_large("What is the meaning of life?")
         print(f"Response: {response.text}")
-        
+
         # With parameters
         params = (
             TextGenerationParams(prompt="Explain quantum computing")
@@ -57,7 +57,7 @@ async def main():
             "Create a JSON object with name, age, and email fields"
         )
         print(f"Generated: {response.object}")
-        
+
         # With parameters
         params = ObjectGenerationParams(
             prompt="Create a user profile with nested address",
@@ -73,24 +73,24 @@ asyncio.run(main())
 
 Environment variables:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key |
-| `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com` | API base URL |
-| `ANTHROPIC_SMALL_MODEL` | No | `claude-3-5-haiku-20241022` | Small model ID |
-| `ANTHROPIC_LARGE_MODEL` | No | `claude-sonnet-4-20250514` | Large model ID |
-| `ANTHROPIC_TIMEOUT_SECONDS` | No | `60` | Request timeout |
+| Variable                    | Required | Default                     | Description            |
+| --------------------------- | -------- | --------------------------- | ---------------------- |
+| `ANTHROPIC_API_KEY`         | Yes      | -                           | Your Anthropic API key |
+| `ANTHROPIC_BASE_URL`        | No       | `https://api.anthropic.com` | API base URL           |
+| `ANTHROPIC_SMALL_MODEL`     | No       | `claude-3-5-haiku-20241022` | Small model ID         |
+| `ANTHROPIC_LARGE_MODEL`     | No       | `claude-sonnet-4-20250514`  | Large model ID         |
+| `ANTHROPIC_TIMEOUT_SECONDS` | No       | `60`                        | Request timeout        |
 
 ## Models
 
 Available models:
 
-| Model | Size | Description |
-|-------|------|-------------|
-| `claude-3-5-haiku-20241022` | Small | Fast and efficient |
-| `claude-sonnet-4-20250514` | Large | Most capable |
+| Model                        | Size  | Description          |
+| ---------------------------- | ----- | -------------------- |
+| `claude-3-5-haiku-20241022`  | Small | Fast and efficient   |
+| `claude-sonnet-4-20250514`   | Large | Most capable         |
 | `claude-3-5-sonnet-20241022` | Large | Balanced performance |
-| `claude-3-opus-20240229` | Large | Previous flagship |
+| `claude-3-opus-20240229`     | Large | Previous flagship    |
 
 ## Testing
 
@@ -125,5 +125,3 @@ mypy elizaos_plugin_anthropic
 ## License
 
 MIT
-
-

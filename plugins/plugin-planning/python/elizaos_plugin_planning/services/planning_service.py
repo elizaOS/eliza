@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PlanState:
     """State of a plan during execution."""
+
     status: str = "pending"
     start_time: Optional[float] = None
     end_time: Optional[float] = None
@@ -32,6 +33,7 @@ class PlanState:
 @dataclass
 class PlanExecution:
     """Execution context for a plan."""
+
     state: PlanState
     working_memory: dict[str, Any]
     results: list[dict[str, Any]]
@@ -41,7 +43,7 @@ class PlanExecution:
 class PlanningService:
     """
     Production-Ready Planning Service Implementation.
-    
+
     Provides unified planning capabilities with full runtime integration.
     """
 
@@ -121,7 +123,8 @@ class PlanningService:
 
             plan = ActionPlan(
                 id=plan_id,
-                goal=(response_content or {}).get("text") or f"Execute actions: {', '.join(actions)}",
+                goal=(response_content or {}).get("text")
+                or f"Execute actions: {', '.join(actions)}",
                 steps=steps,
                 execution_model="sequential",
                 status="pending",
@@ -258,9 +261,7 @@ class PlanningService:
         finally:
             del self.plan_executions[plan.id]
 
-    async def validate_plan(
-        self, plan: ActionPlan
-    ) -> tuple[bool, Optional[list[str]]]:
+    async def validate_plan(self, plan: ActionPlan) -> tuple[bool, Optional[list[str]]]:
         """Validate a plan before execution."""
         issues: list[str] = []
 
@@ -309,9 +310,7 @@ class PlanningService:
         """Adapt a plan during execution based on results or errors."""
         logger.info(f"[PlanningService] Adapting plan {plan.id} at step {current_step_index}")
 
-        adaptation_prompt = self._build_adaptation_prompt(
-            plan, current_step_index, results, error
-        )
+        adaptation_prompt = self._build_adaptation_prompt(plan, current_step_index, results, error)
 
         if self.runtime:
             adaptation_response = await self.runtime.use_model(
@@ -348,6 +347,7 @@ class PlanningService:
         execution.abort_event.set()
         execution.state.status = "cancelled"
         import time
+
         execution.state.end_time = time.time()
 
         logger.info(f"[PlanningService] Plan {plan_id} cancelled")
@@ -381,7 +381,7 @@ class PlanningService:
 
         return f"""You are an expert AI planning system. Create a comprehensive action plan to achieve the following goal.
 
-GOAL: {context['goal']}
+GOAL: {context["goal"]}
 
 AVAILABLE ACTIONS: {available_actions}
 AVAILABLE PROVIDERS: {available_providers}
@@ -395,7 +395,7 @@ MAX STEPS: {max_steps}
 
 Create a detailed plan with the following structure:
 <plan>
-<goal>{context['goal']}</goal>
+<goal>{context["goal"]}</goal>
 <execution_model>{execution_model}</execution_model>
 <steps>
 <step>
@@ -416,9 +416,7 @@ Focus on:
 4. Providing realistic time estimates
 5. Including error handling considerations"""
 
-    def _parse_planning_response(
-        self, response: str, context: dict[str, Any]
-    ) -> ActionPlan:
+    def _parse_planning_response(self, response: str, context: dict[str, Any]) -> ActionPlan:
         """Parse the LLM planning response into an ActionPlan."""
         try:
             plan_id = uuid4()
@@ -482,7 +480,9 @@ Focus on:
                     if resolved_id:
                         resolved_deps.append(resolved_id)
                 step.dependencies = resolved_deps
-                delattr(step, "_dependency_strings") if hasattr(step, "_dependency_strings") else None
+                delattr(step, "_dependency_strings") if hasattr(
+                    step, "_dependency_strings"
+                ) else None
 
             if not steps:
                 logger.warning("XML parsing failed, creating fallback plan")
@@ -544,9 +544,7 @@ Focus on:
                 metadata={"tags": ["fallback"]},
             )
 
-    async def _enhance_plan(
-        self, plan: ActionPlan, context: dict[str, Any]
-    ) -> ActionPlan:
+    async def _enhance_plan(self, plan: ActionPlan, context: dict[str, Any]) -> ActionPlan:
         """Validate and enhance a parsed plan."""
         if self.runtime:
             for step in plan.steps:
@@ -599,10 +597,7 @@ Focus on:
         callback: Optional[Callable[[dict[str, Any]], Any]],
     ) -> None:
         """Execute plan steps in parallel."""
-        tasks = [
-            self._execute_step(step, message, execution, callback)
-            for step in plan.steps
-        ]
+        tasks = [self._execute_step(step, message, execution, callback) for step in plan.steps]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in results:
@@ -626,17 +621,13 @@ Focus on:
             ready_steps = [
                 step
                 for step in plan.steps
-                if step.id in pending
-                and all(dep_id in completed for dep_id in step.dependencies)
+                if step.id in pending and all(dep_id in completed for dep_id in step.dependencies)
             ]
 
             if not ready_steps:
                 raise ValueError("No steps ready to execute - possible circular dependency")
 
-            tasks = [
-                self._execute_step(step, message, execution, callback)
-                for step in ready_steps
-            ]
+            tasks = [self._execute_step(step, message, execution, callback) for step in ready_steps]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for step, result in zip(ready_steps, results):
@@ -689,9 +680,7 @@ Focus on:
                     callback,
                 )
 
-                action_result = (
-                    result if isinstance(result, dict) else {"text": str(result)}
-                )
+                action_result = result if isinstance(result, dict) else {"text": str(result)}
                 action_result["step_id"] = str(step.id)
                 action_result["action_name"] = step.action_name
                 action_result["executed_at"] = asyncio.get_event_loop().time()
@@ -703,7 +692,8 @@ Focus on:
                     raise e
 
                 backoff_ms = (step.retry_policy.backoff_ms if step.retry_policy else 1000) * (
-                    (step.retry_policy.backoff_multiplier if step.retry_policy else 2) ** (retries - 1)
+                    (step.retry_policy.backoff_multiplier if step.retry_policy else 2)
+                    ** (retries - 1)
                 )
                 await asyncio.sleep(backoff_ms / 1000)
 
@@ -751,7 +741,7 @@ Focus on:
 ORIGINAL PLAN: {json.dumps({"id": str(plan.id), "goal": plan.goal, "steps": [{"id": str(s.id), "action_name": s.action_name} for s in plan.steps]}, indent=2)}
 CURRENT STEP INDEX: {current_step_index}
 COMPLETED RESULTS: {json.dumps(results, indent=2)}
-{f'ERROR: {str(error)}' if error else ''}
+{f"ERROR: {str(error)}" if error else ""}
 
 Analyze the situation and provide an adapted plan that:
 1. Addresses the current issue
@@ -848,17 +838,20 @@ Return the adapted plan in the same XML format as the original planning response
     def _create_fallback_plan_response(self, context: dict[str, Any]) -> str:
         """Create a fallback plan response for testing."""
         return f"""<plan>
-<goal>{context['goal']}</goal>
+<goal>{context["goal"]}</goal>
 <execution_model>sequential</execution_model>
 <steps>
 <step>
 <id>step_1</id>
 <action>ANALYZE_INPUT</action>
-<parameters>{{"goal": "{context['goal']}"}}</parameters>
+<parameters>{{"goal": "{context["goal"]}"}}</parameters>
 <dependencies>[]</dependencies>
 </step>
 </steps>
 <estimated_duration>30000</estimated_duration>
 </plan>"""
+
+
+
 
 

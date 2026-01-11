@@ -1,6 +1,6 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import { ChannelType, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -54,7 +54,7 @@ describe("Messaging Integration Tests", () => {
           name: "message-channel",
           type: ChannelType.GROUP,
         },
-        [testAgentId],
+        [testAgentId]
       );
 
       const messageData = {
@@ -77,7 +77,7 @@ describe("Messaging Integration Tests", () => {
           name: "participant-channel",
           type: ChannelType.GROUP,
         },
-        [],
+        []
       );
       const entityId1 = uuidv4() as UUID;
       const entityId2 = uuidv4() as UUID;
@@ -96,15 +96,12 @@ describe("Messaging Integration Tests", () => {
           name: "check-participant-channel",
           type: ChannelType.GROUP,
         },
-        [],
+        []
       );
       const entityId = uuidv4() as UUID;
 
       // Initially not a participant
-      let isParticipant = await adapter.isChannelParticipant(
-        channel.id,
-        entityId,
-      );
+      let isParticipant = await adapter.isChannelParticipant(channel.id, entityId);
       expect(isParticipant).toBe(false);
 
       // Add as participant
@@ -118,7 +115,7 @@ describe("Messaging Integration Tests", () => {
       const nonExistentEntityId = uuidv4() as UUID;
       const isParticipant = await adapter.isChannelParticipant(
         nonExistentChannelId,
-        nonExistentEntityId,
+        nonExistentEntityId
       );
       expect(isParticipant).toBe(false);
     });

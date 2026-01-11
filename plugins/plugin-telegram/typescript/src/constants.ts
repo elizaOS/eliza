@@ -8,4 +8,4 @@ export const MESSAGE_CONSTANTS = {
   PARTIAL_INTEREST_DECAY: 3 * 60 * 1000, // 3 minutes
 } as const;
 
-export const TELEGRAM_SERVICE_NAME = 'telegram';
+export const TELEGRAM_SERVICE_NAME = "telegram";

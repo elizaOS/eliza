@@ -20,6 +20,18 @@
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["actions/**/*.ts", "client/**/*.ts", "managers/**/*.ts", "providers/**/*.ts", "routes/**/*.ts", "services/**/*.ts", "types/**/*.ts", "utils/**/*.ts", "index.ts", "index.node.ts", "index.browser.ts"],
+  "include": [
+    "actions/**/*.ts",
+    "client/**/*.ts",
+    "managers/**/*.ts",
+    "providers/**/*.ts",
+    "routes/**/*.ts",
+    "services/**/*.ts",
+    "types/**/*.ts",
+    "utils/**/*.ts",
+    "index.ts",
+    "index.node.ts",
+    "index.browser.ts"
+  ],
   "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "build.ts"]
 }

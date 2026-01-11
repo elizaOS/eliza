@@ -8,6 +8,7 @@ from typing import Literal, TypedDict
 
 class Priority(Enum):
     """Linear issue priority levels."""
+
     NONE = 0
     URGENT = 1
     HIGH = 2
@@ -21,6 +22,7 @@ ResourceType = Literal["issue", "project", "comment", "label", "user", "team"]
 @dataclass
 class LinearConfig:
     """Configuration for Linear API connection."""
+
     api_key: str
     workspace_id: str | None = None
     default_team_key: str | None = None
@@ -29,6 +31,7 @@ class LinearConfig:
 @dataclass
 class LinearActivityItem:
     """Represents a single activity log entry."""
+
     id: str
     timestamp: str
     action: str
@@ -42,6 +45,7 @@ class LinearActivityItem:
 @dataclass
 class LinearIssueInput:
     """Input for creating or updating an issue."""
+
     title: str
     team_id: str
     description: str | None = None
@@ -57,6 +61,7 @@ class LinearIssueInput:
 @dataclass
 class LinearCommentInput:
     """Input for creating a comment."""
+
     body: str
     issue_id: str
 
@@ -64,6 +69,7 @@ class LinearCommentInput:
 @dataclass
 class LinearSearchFilters:
     """Filters for searching issues."""
+
     state: list[str] | None = None
     assignee: list[str] | None = None
     label: list[str] | None = None
@@ -76,7 +82,7 @@ class LinearSearchFilters:
 
 class LinearAPIError(Exception):
     """Base exception for Linear API errors."""
-    
+
     def __init__(self, message: str, status: int | None = None, response: object = None) -> None:
         super().__init__(message)
         self.message = message
@@ -86,14 +92,14 @@ class LinearAPIError(Exception):
 
 class LinearAuthenticationError(LinearAPIError):
     """Exception for authentication failures."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message, status=401)
 
 
 class LinearRateLimitError(LinearAPIError):
     """Exception for rate limit errors."""
-    
+
     def __init__(self, message: str, reset_time: int) -> None:
         super().__init__(message, status=429)
         self.reset_time = reset_time
@@ -102,6 +108,7 @@ class LinearRateLimitError(LinearAPIError):
 # Response types for the Linear GraphQL API
 class TeamData(TypedDict):
     """Team data from Linear API."""
+
     id: str
     name: str
     key: str
@@ -110,6 +117,7 @@ class TeamData(TypedDict):
 
 class UserData(TypedDict):
     """User data from Linear API."""
+
     id: str
     name: str
     email: str
@@ -117,6 +125,7 @@ class UserData(TypedDict):
 
 class StateData(TypedDict):
     """Workflow state data from Linear API."""
+
     id: str
     name: str
     type: str
@@ -125,6 +134,7 @@ class StateData(TypedDict):
 
 class LabelData(TypedDict):
     """Label data from Linear API."""
+
     id: str
     name: str
     color: str
@@ -132,6 +142,7 @@ class LabelData(TypedDict):
 
 class IssueData(TypedDict):
     """Issue data from Linear API."""
+
     id: str
     identifier: str
     title: str
@@ -145,6 +156,7 @@ class IssueData(TypedDict):
 
 class ProjectData(TypedDict):
     """Project data from Linear API."""
+
     id: str
     name: str
     description: str | None
@@ -157,8 +169,12 @@ class ProjectData(TypedDict):
 
 class CommentData(TypedDict):
     """Comment data from Linear API."""
+
     id: str
     body: str
     createdAt: str
+
+
+
 
 

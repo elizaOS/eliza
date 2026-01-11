@@ -1,31 +1,28 @@
-import React from 'react';
-import type { UUID, Memory } from '@elizaos/core';
+import type { Memory, UUID } from "@elizaos/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   Book,
   File,
   FileText,
-  LoaderIcon,
-  Trash2,
-  Upload,
+  Info,
   List,
+  LoaderIcon,
   Network,
   Search,
-  Info,
-  ArrowLeft,
-} from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ExtendedMemoryMetadata } from '../../types';
+  Trash2,
+  Upload,
+} from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { ExtendedMemoryMetadata } from "../../types";
 
 type MemoryMetadata = ExtendedMemoryMetadata;
 
 // Use local UI components instead of importing from client
-import { Badge } from './badge';
-import { Button } from './button';
-import { Card } from './card';
-import { Input } from './input';
-import { MemoryGraph } from './memory-graph';
-import { MemoryGraphOptimized } from './memory-graph-optimized';
+import { Badge } from "./badge";
+import { Button } from "./button";
+import { Input } from "./input";
+import { MemoryGraphOptimized } from "./memory-graph-optimized";
 
 // Declare global window extension for TypeScript
 declare global {
@@ -39,7 +36,7 @@ declare global {
 
 // Local utility function instead of importing from client
 const cn = (...classes: (string | undefined | null | false)[]) => {
-  return classes.filter(Boolean).join(' ');
+  return classes.filter(Boolean).join(" ");
 };
 
 // Temporary toast implementation
@@ -53,7 +50,7 @@ const useToast = () => ({
     description: string;
     variant?: string;
   }) => {
-    console.log(`Toast: ${title} - ${description} (${variant || 'default'})`);
+    console.log(`Toast: ${title} - ${description} (${variant || "default"})`);
     // TODO: Implement proper toast functionality
   },
 });
@@ -90,7 +87,7 @@ const DialogContent = ({
 }: {
   className?: string;
   children: React.ReactNode;
-}) => <div className={cn('p-6 flex flex-col border-border', className)}>{children}</div>;
+}) => <div className={cn("p-6 flex flex-col border-border", className)}>{children}</div>;
 
 const DialogHeader = ({
   className,
@@ -98,7 +95,7 @@ const DialogHeader = ({
 }: {
   className?: string;
   children: React.ReactNode;
-}) => <div className={cn('mb-4', className)}>{children}</div>;
+}) => <div className={cn("mb-4", className)}>{children}</div>;
 
 const DialogTitle = ({
   className,
@@ -106,7 +103,7 @@ const DialogTitle = ({
 }: {
   className?: string;
   children: React.ReactNode;
-}) => <h2 className={cn('text-lg font-semibold', className)}>{children}</h2>;
+}) => <h2 className={cn("text-lg font-semibold", className)}>{children}</h2>;
 
 const DialogDescription = ({
   className,
@@ -114,7 +111,7 @@ const DialogDescription = ({
 }: {
   className?: string;
   children: React.ReactNode;
-}) => <p className={cn('text-sm text-muted-foreground', className)}>{children}</p>;
+}) => <p className={cn("text-sm text-muted-foreground", className)}>{children}</p>;
 
 const DialogFooter = ({
   className,
@@ -122,7 +119,7 @@ const DialogFooter = ({
 }: {
   className?: string;
   children: React.ReactNode;
-}) => <div className={cn('flex justify-end gap-2 mt-4', className)}>{children}</div>;
+}) => <div className={cn("flex justify-end gap-2 mt-4", className)}>{children}</div>;
 
 const ITEMS_PER_PAGE = 10;
 
@@ -135,118 +132,118 @@ interface UploadResultItem {
 // Helper function to get correct MIME type based on file extension
 const getCorrectMimeType = (file: File): string => {
   const filename = file.name.toLowerCase();
-  const ext = filename.split('.').pop() || '';
+  const ext = filename.split(".").pop() || "";
 
   // Map common text file extensions to text/plain
   const textExtensions = [
-    'ts',
-    'tsx',
-    'js',
-    'jsx',
-    'mjs',
-    'cjs',
-    'py',
-    'pyw',
-    'pyi',
-    'java',
-    'c',
-    'cpp',
-    'cc',
-    'cxx',
-    'h',
-    'hpp',
-    'cs',
-    'php',
-    'rb',
-    'go',
-    'rs',
-    'swift',
-    'kt',
-    'kts',
-    'scala',
-    'clj',
-    'cljs',
-    'ex',
-    'exs',
-    'r',
-    'R',
-    'm',
-    'mm',
-    'sh',
-    'bash',
-    'zsh',
-    'fish',
-    'ps1',
-    'bat',
-    'cmd',
-    'sql',
-    'lua',
-    'pl',
-    'pm',
-    'dart',
-    'hs',
-    'elm',
-    'ml',
-    'fs',
-    'fsx',
-    'vb',
-    'pas',
-    'd',
-    'nim',
-    'zig',
-    'jl',
-    'tcl',
-    'awk',
-    'sed',
-    'vue',
-    'svelte',
-    'astro',
-    'gitignore',
-    'dockerignore',
-    'editorconfig',
-    'env',
-    'cfg',
-    'conf',
-    'ini',
-    'log',
-    'txt',
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "py",
+    "pyw",
+    "pyi",
+    "java",
+    "c",
+    "cpp",
+    "cc",
+    "cxx",
+    "h",
+    "hpp",
+    "cs",
+    "php",
+    "rb",
+    "go",
+    "rs",
+    "swift",
+    "kt",
+    "kts",
+    "scala",
+    "clj",
+    "cljs",
+    "ex",
+    "exs",
+    "r",
+    "R",
+    "m",
+    "mm",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "ps1",
+    "bat",
+    "cmd",
+    "sql",
+    "lua",
+    "pl",
+    "pm",
+    "dart",
+    "hs",
+    "elm",
+    "ml",
+    "fs",
+    "fsx",
+    "vb",
+    "pas",
+    "d",
+    "nim",
+    "zig",
+    "jl",
+    "tcl",
+    "awk",
+    "sed",
+    "vue",
+    "svelte",
+    "astro",
+    "gitignore",
+    "dockerignore",
+    "editorconfig",
+    "env",
+    "cfg",
+    "conf",
+    "ini",
+    "log",
+    "txt",
   ];
 
-  const markdownExtensions = ['md', 'markdown'];
-  const jsonExtensions = ['json'];
-  const xmlExtensions = ['xml'];
-  const htmlExtensions = ['html', 'htm'];
-  const cssExtensions = ['css', 'scss', 'sass', 'less'];
-  const csvExtensions = ['csv', 'tsv'];
-  const yamlExtensions = ['yaml', 'yml'];
+  const markdownExtensions = ["md", "markdown"];
+  const jsonExtensions = ["json"];
+  const xmlExtensions = ["xml"];
+  const htmlExtensions = ["html", "htm"];
+  const cssExtensions = ["css", "scss", "sass", "less"];
+  const csvExtensions = ["csv", "tsv"];
+  const yamlExtensions = ["yaml", "yml"];
 
   // Check extensions and return appropriate MIME type
   if (textExtensions.includes(ext)) {
-    return 'text/plain';
+    return "text/plain";
   } else if (markdownExtensions.includes(ext)) {
-    return 'text/markdown';
+    return "text/markdown";
   } else if (jsonExtensions.includes(ext)) {
-    return 'application/json';
+    return "application/json";
   } else if (xmlExtensions.includes(ext)) {
-    return 'application/xml';
+    return "application/xml";
   } else if (htmlExtensions.includes(ext)) {
-    return 'text/html';
+    return "text/html";
   } else if (cssExtensions.includes(ext)) {
-    return 'text/css';
+    return "text/css";
   } else if (csvExtensions.includes(ext)) {
-    return 'text/csv';
+    return "text/csv";
   } else if (yamlExtensions.includes(ext)) {
-    return 'text/yaml';
-  } else if (ext === 'pdf') {
-    return 'application/pdf';
-  } else if (ext === 'doc') {
-    return 'application/msword';
-  } else if (ext === 'docx') {
-    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    return "text/yaml";
+  } else if (ext === "pdf") {
+    return "application/pdf";
+  } else if (ext === "doc") {
+    return "application/msword";
+  } else if (ext === "docx") {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }
 
   // Return the original MIME type if not recognized
-  return file.type || 'application/octet-stream';
+  return file.type || "application/octet-stream";
 };
 
 // Get the API base path from the injected configuration
@@ -255,19 +252,19 @@ const getApiBase = () => {
   if (window.ELIZA_CONFIG?.apiBase) {
     return window.ELIZA_CONFIG.apiBase;
   }
-  return '/api';
+  return "/api";
 };
 
 const apiClient = {
   getKnowledgeDocuments: async (
-    agentId: UUID,
+    _agentId: UUID,
     options?: { limit?: number; before?: number; includeEmbedding?: boolean }
   ) => {
     const params = new URLSearchParams();
     // Don't append agentId to params if it's already in the URL path
-    if (options?.limit) params.append('limit', options.limit.toString());
-    if (options?.before) params.append('before', options.before.toString());
-    if (options?.includeEmbedding) params.append('includeEmbedding', 'true');
+    if (options?.limit) params.append("limit", options.limit.toString());
+    if (options?.before) params.append("before", options.before.toString());
+    if (options?.includeEmbedding) params.append("includeEmbedding", "true");
 
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/documents?${params.toString()}`);
@@ -288,11 +285,11 @@ const apiClient = {
     }
   ) => {
     const params = new URLSearchParams();
-    params.append('agentId', agentId);
-    if (options?.limit) params.append('limit', options.limit.toString());
-    if (options?.before) params.append('before', options.before.toString());
-    if (options?.documentId) params.append('documentId', options.documentId);
-    if (options?.documentsOnly) params.append('documentsOnly', 'true');
+    params.append("agentId", agentId);
+    if (options?.limit) params.append("limit", options.limit.toString());
+    if (options?.before) params.append("before", options.before.toString());
+    if (options?.documentId) params.append("documentId", options.documentId);
+    if (options?.documentsOnly) params.append("documentsOnly", "true");
 
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/knowledges?${params.toString()}`);
@@ -305,11 +302,11 @@ const apiClient = {
 
   deleteKnowledgeDocument: async (agentId: UUID, knowledgeId: UUID) => {
     const params = new URLSearchParams();
-    params.append('agentId', agentId);
+    params.append("agentId", agentId);
 
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/documents/${knowledgeId}?${params.toString()}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
     if (!response.ok) {
       const errorText = await response.text();
@@ -326,13 +323,13 @@ const apiClient = {
       const correctedMimeType = getCorrectMimeType(file);
       const blob = new Blob([file], { type: correctedMimeType });
       // Append as a file with the original name
-      formData.append('files', blob, file.name);
+      formData.append("files", blob, file.name);
     }
-    formData.append('agentId', agentId);
+    formData.append("agentId", agentId);
 
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/documents`, {
-      method: 'POST',
+      method: "POST",
       body: formData,
     });
     if (!response.ok) {
@@ -349,10 +346,10 @@ const apiClient = {
     limit: number = 20
   ) => {
     const params = new URLSearchParams();
-    params.append('agentId', agentId);
-    params.append('q', query);
-    params.append('threshold', threshold.toString());
-    params.append('limit', limit.toString());
+    params.append("agentId", agentId);
+    params.append("q", query);
+    params.append("threshold", threshold.toString());
+    params.append("limit", limit.toString());
 
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/search?${params.toString()}`);
@@ -370,7 +367,7 @@ const useKnowledgeDocuments = (
   includeEmbedding: boolean = false
 ) => {
   return useQuery<Memory[], Error>({
-    queryKey: ['agents', agentId, 'knowledge', 'documents', { includeEmbedding }],
+    queryKey: ["agents", agentId, "knowledge", "documents", { includeEmbedding }],
     queryFn: async () => {
       const response = await apiClient.getKnowledgeDocuments(agentId, { includeEmbedding });
       return response.data.memories || [];
@@ -386,7 +383,7 @@ const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocu
     isLoading: documentsLoading,
     error: documentsError,
   } = useQuery<Memory[], Error>({
-    queryKey: ['agents', agentId, 'knowledge', 'documents-graph'],
+    queryKey: ["agents", agentId, "knowledge", "documents-graph"],
     queryFn: async () => {
       const response = await apiClient.getKnowledgeDocuments(agentId, {
         includeEmbedding: false,
@@ -402,7 +399,7 @@ const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocu
     isLoading: fragmentsLoading,
     error: fragmentsError,
   } = useQuery<Memory[], Error>({
-    queryKey: ['agents', agentId, 'knowledge', 'document-fragments', selectedDocumentId],
+    queryKey: ["agents", agentId, "knowledge", "document-fragments", selectedDocumentId],
     queryFn: async () => {
       if (!selectedDocumentId) return [];
 
@@ -425,9 +422,9 @@ const useKnowledgeChunks = (agentId: UUID, enabled: boolean = true, selectedDocu
     error,
     documents: selectedDocumentId ? documents : allMemories,
     fragments: selectedDocumentId
-      ? documentWithFragments.filter((m: Memory) => (m.metadata as any)?.type === 'fragment')
+      ? documentWithFragments.filter((m: Memory) => m.metadata?.type === "fragment")
       : [],
-    mode: selectedDocumentId ? 'document-fragments' : 'documents-only',
+    mode: selectedDocumentId ? "document-fragments" : "documents-only",
   };
 };
 
@@ -440,34 +437,60 @@ const useDeleteKnowledgeDocument = (agentId: UUID) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['agents', agentId, 'knowledge', 'documents'],
+        queryKey: ["agents", agentId, "knowledge", "documents"],
       });
     },
   });
 };
 
+// Type to represent content that can be viewed (either Memory or SearchResult)
+type ViewableContent =
+  | Memory
+  | {
+      id?: string;
+      content?: { text?: string };
+      similarity: number;
+      metadata?: {
+        position?: number;
+        documentTitle?: string;
+        documentFilename?: string;
+      };
+    };
+
 export function KnowledgeTab({ agentId }: { agentId: UUID }) {
-  const [viewingContent, setViewingContent] = useState<Memory | null>(null);
+  const [viewingContent, setViewingContent] = useState<ViewableContent | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const [pdfZoom, setPdfZoom] = useState(1.0);
   const [showUrlDialog, setShowUrlDialog] = useState(false);
-  const [urlInput, setUrlInput] = useState('');
+  const [urlInput, setUrlInput] = useState("");
   const [isUrlUploading, setIsUrlUploading] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [urls, setUrls] = useState<string[]>([]);
 
+  // Search result type
+  interface SearchResult {
+    id?: string;
+    content?: { text?: string };
+    similarity: number;
+    metadata?: {
+      position?: number;
+      documentTitle?: string;
+      documentFilename?: string;
+    };
+  }
+
   // Search-related states
   const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchThreshold, setSearchThreshold] = useState(0.5);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [filenameFilter, setFilenameFilter] = useState('');
+  const [filenameFilter, setFilenameFilter] = useState("");
   const [selectedDocumentForGraph, setSelectedDocumentForGraph] = useState<UUID | undefined>(
     undefined
   );
@@ -482,7 +505,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     data: documentsOnly = [],
     isLoading: documentsLoading,
     error: documentsError,
-  } = useKnowledgeDocuments(agentId, viewMode === 'list' && !showSearch, false);
+  } = useKnowledgeDocuments(agentId, viewMode === "list" && !showSearch, false);
 
   // Graph mode: use useKnowledgeChunks to get documents and fragments
   const {
@@ -491,28 +514,28 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     error: graphError,
     documents: graphDocuments = [],
     fragments: graphFragments = [],
-  } = useKnowledgeChunks(agentId, viewMode === 'graph' && !showSearch, selectedDocumentForGraph);
+  } = useKnowledgeChunks(agentId, viewMode === "graph" && !showSearch, selectedDocumentForGraph);
 
   // Use the appropriate data based on the mode
-  const isLoading = viewMode === 'list' ? documentsLoading : graphLoading;
-  const error = viewMode === 'list' ? documentsError : graphError;
-  const memories = viewMode === 'list' ? documentsOnly : graphMemories;
+  const isLoading = viewMode === "list" ? documentsLoading : graphLoading;
+  const error = viewMode === "list" ? documentsError : graphError;
+  const memories = viewMode === "list" ? documentsOnly : graphMemories;
 
   // Calculate counts for display
-  const documentCount = viewMode === 'list' ? documentsOnly.length : graphDocuments.length;
-  const fragmentCount = viewMode === 'graph' ? graphFragments.length : 0;
+  const documentCount = viewMode === "list" ? documentsOnly.length : graphDocuments.length;
+  const fragmentCount = viewMode === "graph" ? graphFragments.length : 0;
 
   const { mutate: deleteKnowledgeDoc } = useDeleteKnowledgeDocument(agentId);
 
   // Filter memories by filename in list view
   const filteredMemories = React.useMemo(() => {
-    if (viewMode !== 'list' || !filenameFilter.trim()) {
+    if (viewMode !== "list" || !filenameFilter.trim()) {
       return memories;
     }
 
     return memories.filter((memory) => {
       const metadata = (memory.metadata as MemoryMetadata) || {};
-      const filename = metadata.filename || metadata.originalFilename || metadata.path || '';
+      const filename = metadata.filename || metadata.originalFilename || metadata.path || "";
       return filename.toLowerCase().includes(filenameFilter.toLowerCase());
     });
   }, [memories, filenameFilter, viewMode]);
@@ -542,28 +565,28 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   // Reset visible items when filter changes
   useEffect(() => {
     setVisibleItems(ITEMS_PER_PAGE);
-  }, [filenameFilter]);
+  }, []);
 
   // Handle escape key to close document detail modal
   useEffect(() => {
     const handleEscapeKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && viewingContent) {
+      if (event.key === "Escape" && viewingContent) {
         setViewingContent(null);
         setPdfZoom(1.0); // Reset zoom when closing
       }
     };
 
     if (viewingContent) {
-      document.addEventListener('keydown', handleEscapeKey);
-      return () => document.removeEventListener('keydown', handleEscapeKey);
+      document.addEventListener("keydown", handleEscapeKey);
+      return () => document.removeEventListener("keydown", handleEscapeKey);
     }
   }, [viewingContent]);
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll);
-      return () => scrollContainer.removeEventListener('scroll', handleScroll);
+      scrollContainer.addEventListener("scroll", handleScroll);
+      return () => scrollContainer.removeEventListener("scroll", handleScroll);
     }
   }, [handleScroll]);
 
@@ -574,8 +597,8 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     if (selectedMemory && detailsPanelRef.current) {
       // Scroll the details panel into view smoothly
       detailsPanelRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest'
+        behavior: "smooth",
+        block: "nearest",
       });
     }
   }, [selectedMemory]);
@@ -606,18 +629,18 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   };
 
   const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
+    const ext = fileName.split(".").pop()?.toLowerCase();
     switch (ext) {
-      case 'md':
+      case "md":
         return <File className="h-5 w-5 text-blue-500" />;
-      case 'js':
-      case 'ts':
-      case 'jsx':
-      case 'tsx':
+      case "js":
+      case "ts":
+      case "jsx":
+      case "tsx":
         return <File className="h-5 w-5 text-yellow-500" />;
-      case 'json':
+      case "json":
         return <File className="h-5 w-5 text-green-500" />;
-      case 'pdf':
+      case "pdf":
         return <FileText className="h-5 w-5 text-red-500" />;
       default:
         return <FileText className="h-5 w-5 text-gray-500" />;
@@ -625,7 +648,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   };
 
   const handleDelete = (knowledgeId: string) => {
-    if (knowledgeId && window.confirm('Are you sure you want to delete this document?')) {
+    if (knowledgeId && window.confirm("Are you sure you want to delete this document?")) {
       deleteKnowledgeDoc({ knowledgeId: knowledgeId as UUID });
       setViewingContent(null);
     }
@@ -637,7 +660,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
   const handleUrlUploadClick = () => {
     setShowUrlDialog(true);
-    setUrlInput('');
+    setUrlInput("");
     setUrls([]);
     setUrlError(null);
   };
@@ -645,21 +668,21 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   const addUrlToList = () => {
     try {
       const url = new URL(urlInput);
-      if (!url.protocol.startsWith('http')) {
-        setUrlError('URL must start with http:// or https://');
+      if (!url.protocol.startsWith("http")) {
+        setUrlError("URL must start with http:// or https://");
         return;
       }
 
       if (urls.includes(urlInput)) {
-        setUrlError('This URL is already in the list');
+        setUrlError("This URL is already in the list");
         return;
       }
 
       setUrls([...urls, urlInput]);
-      setUrlInput('');
+      setUrlInput("");
       setUrlError(null);
-    } catch (e) {
-      setUrlError('Invalid URL');
+    } catch (_e) {
+      setUrlError("Invalid URL");
     }
   };
 
@@ -669,7 +692,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      setSearchError('Please enter a search query');
+      setSearchError("Please enter a search query");
       return;
     }
 
@@ -683,11 +706,12 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
       if (result.data.results.length === 0) {
         setSearchError(
-          'No results found. Try adjusting your search query or lowering the similarity threshold.'
+          "No results found. Try adjusting your search query or lowering the similarity threshold."
         );
       }
-    } catch (error: any) {
-      setSearchError(error.message || 'Failed to search knowledge');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to search knowledge";
+      setSearchError(errorMessage);
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -699,17 +723,17 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     if (urlInput.trim()) {
       try {
         const url = new URL(urlInput);
-        if (url.protocol.startsWith('http') && !urls.includes(urlInput)) {
+        if (url.protocol.startsWith("http") && !urls.includes(urlInput)) {
           setUrls([...urls, urlInput]);
         }
-      } catch (e) {
+      } catch (_e) {
         // If the input is not a valid URL, just ignore it
       }
     }
 
     // If no URLs to process, show error
     if (urls.length === 0) {
-      setUrlError('Please add at least one valid URL');
+      setUrlError("Please add at least one valid URL");
       return;
     }
 
@@ -719,9 +743,9 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
     try {
       const apiBase = getApiBase();
       const result = await fetch(`${apiBase}/documents`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ fileUrls: urls, agentId }),
       });
@@ -735,22 +759,24 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
       if (data.success) {
         toast({
-          title: 'URLs imported',
+          title: "URLs imported",
           description: `Successfully imported ${urls.length} document(s)`,
         });
         setShowUrlDialog(false);
         queryClient.invalidateQueries({
-          queryKey: ['agents', agentId, 'knowledge', 'documents'],
+          queryKey: ["agents", agentId, "knowledge", "documents"],
         });
       } else {
-        setUrlError(data.error?.message || 'Error importing documents from URLs');
+        setUrlError(data.error?.message || "Error importing documents from URLs");
       }
-    } catch (error: any) {
-      setUrlError(error.message || 'Error importing documents from URLs');
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Error importing documents from URLs";
+      setUrlError(errorMessage);
       toast({
-        title: 'Error',
-        description: 'Failed to import documents from URLs',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to import documents from URLs",
+        variant: "destructive",
       });
     } finally {
       setIsUrlUploading(false);
@@ -770,13 +796,13 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
         const correctedMimeType = getCorrectMimeType(file);
         const blob = new Blob([file], { type: correctedMimeType });
         // Append as a file with the original name
-        formData.append('files', blob, file.name);
+        formData.append("files", blob, file.name);
       }
-      formData.append('agentId', agentId);
+      formData.append("agentId", agentId);
 
       const apiBase = getApiBase();
       const response = await fetch(`${apiBase}/documents`, {
-        method: 'POST',
+        method: "POST",
         body: formData,
       });
 
@@ -791,39 +817,39 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
       if (
         Array.isArray(uploadOutcomes) &&
-        uploadOutcomes.every((r: UploadResultItem) => r.status === 'success')
+        uploadOutcomes.every((r: UploadResultItem) => r.status === "success")
       ) {
         toast({
-          title: 'Knowledge Uploaded',
+          title: "Knowledge Uploaded",
           description: `Successfully uploaded ${fileArray.length} file(s)`,
         });
         queryClient.invalidateQueries({
-          queryKey: ['agents', agentId, 'knowledge', 'documents'],
+          queryKey: ["agents", agentId, "knowledge", "documents"],
         });
       } else {
         const successfulUploads = uploadOutcomes.filter(
-          (r: UploadResultItem) => r.status === 'success'
+          (r: UploadResultItem) => r.status === "success"
         ).length;
         const failedUploads = fileArray.length - successfulUploads;
         toast({
-          title: failedUploads > 0 ? 'Upload Partially Failed' : 'Upload Issues',
+          title: failedUploads > 0 ? "Upload Partially Failed" : "Upload Issues",
           description: `Uploaded ${successfulUploads} file(s). ${failedUploads} file(s) failed. Check console for details.`,
-          variant: failedUploads > 0 ? 'destructive' : 'default',
+          variant: failedUploads > 0 ? "destructive" : "default",
         });
-        console.error('Upload results:', uploadOutcomes);
+        console.error("Upload results:", uploadOutcomes);
       }
-    } catch (uploadError: any) {
+    } catch (uploadError: unknown) {
       toast({
-        title: 'Upload Failed',
+        title: "Upload Failed",
         description:
-          uploadError instanceof Error ? uploadError.message : 'Failed to upload knowledge files',
-        variant: 'destructive',
+          uploadError instanceof Error ? uploadError.message : "Failed to upload knowledge files",
+        variant: "destructive",
       });
-      console.error('Upload error:', uploadError);
+      console.error("Upload error:", uploadError);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        fileInputRef.current.value = "";
       }
     }
   };
@@ -874,7 +900,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setViewMode('list')}
+            onClick={() => setViewMode("list")}
             className="flex-shrink-0"
             title="Switch to List view to see documents only"
           >
@@ -905,10 +931,10 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
           size="sm"
           onClick={() => {
             setShowSearch(false);
-            setSearchQuery('');
+            setSearchQuery("");
             setSearchResults([]);
             setSearchError(null);
-            setViewMode('list');
+            setViewMode("list");
           }}
           className="flex-shrink-0"
           title="Exit search and return to List view"
@@ -920,13 +946,13 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
       );
     }
 
-    if (viewMode === 'graph') {
+    if (viewMode === "graph") {
       // Graph mode: only show List View button
       return (
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setViewMode('list')}
+          onClick={() => setViewMode("list")}
           className="flex-shrink-0"
           title="Switch to List view to see documents only"
         >
@@ -943,7 +969,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setViewMode('graph')}
+          onClick={() => setViewMode("graph")}
           className="flex-shrink-0"
           title="Switch to Graph view to see documents and fragments"
         >
@@ -1008,15 +1034,15 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
       if (metadata.title) return metadata.title;
       if (metadata.filename) return metadata.filename;
       if (metadata.originalFilename) return metadata.originalFilename;
-      if (metadata.path) return metadata.path.split('/').pop() || metadata.path;
+      if (metadata.path) return metadata.path.split("/").pop() || metadata.path;
       if (memory.id) return `Document ${memory.id.substring(0, 8)}`;
       return `Document ${index + 1}`;
     };
 
     const getFileExtension = () => {
       if (metadata.fileExt) return metadata.fileExt.toLowerCase();
-      const filename = metadata.filename || metadata.originalFilename || metadata.path || '';
-      return filename.split('.').pop()?.toLowerCase() || 'doc';
+      const filename = metadata.filename || metadata.originalFilename || metadata.path || "";
+      return filename.split(".").pop()?.toLowerCase() || "doc";
     };
 
     const getSubtitle = () => {
@@ -1024,7 +1050,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
       if (metadata.filename) return metadata.filename;
       if (metadata.originalFilename) return metadata.originalFilename;
       if (metadata.source) return `Source: ${metadata.source}`;
-      return 'Knowledge Document';
+      return "Knowledge Document";
     };
 
     const displayName = getDocumentName();
@@ -1046,16 +1072,16 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-medium truncate">{subtitle}</span>
                 <Badge variant="outline" className="px-1 py-0 h-4 text-xs flex-shrink-0">
-                  {fileExt || 'doc'}
+                  {fileExt || "doc"}
                 </Badge>
               </div>
               <div className="text-xs text-muted-foreground">
                 {new Date(memory.createdAt || 0).toLocaleString(undefined, {
-                  month: 'numeric',
-                  day: 'numeric',
-                  year: '2-digit',
-                  hour: 'numeric',
-                  minute: 'numeric',
+                  month: "numeric",
+                  day: "numeric",
+                  year: "2-digit",
+                  hour: "numeric",
+                  minute: "numeric",
                 })}
               </div>
             </div>
@@ -1073,7 +1099,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                     e.stopPropagation();
                     e.preventDefault();
                   }
-                  handleDelete(memory.id || '');
+                  handleDelete(memory.id || "");
                 }}
                 title="Delete knowledge"
               >
@@ -1089,8 +1115,8 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   // Component to display the details of a fragment or document
   const MemoryDetails = ({ memory }: { memory: Memory }) => {
     const metadata = memory.metadata as MemoryMetadata;
-    const isFragment = metadata?.type === 'fragment';
-    const isDocument = metadata?.type === 'document';
+    const isFragment = metadata?.type === "fragment";
+    const isDocument = metadata?.type === "document";
 
     return (
       <div className="h-full flex flex-col border-t border-border bg-card text-card-foreground">
@@ -1120,7 +1146,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
 
               {isFragment && metadata.documentId && (
                 <div className="col-span-2">
-                  Parent Document:{' '}
+                  Parent Document:{" "}
                   <span className="font-mono text-primary/80">{metadata.documentId}</span>
                 </div>
               )}
@@ -1163,7 +1189,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
             <div className="flex-1 min-h-0 bg-background rounded border border-border p-6 flex flex-col items-center justify-center text-center">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
               <h4 className="text-sm font-medium mb-2">
-                {metadata?.title || metadata?.filename || 'Document'}
+                {metadata?.title || metadata?.filename || "Document"}
               </h4>
               <p className="text-xs text-muted-foreground mb-4">
                 Click "Open Document" to view the full content
@@ -1178,12 +1204,12 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
             <div
               className="flex-1 min-h-0 bg-background rounded border border-border p-3 overflow-y-auto"
               style={{
-                scrollbarWidth: 'thin',
-                scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent'
+                scrollbarWidth: "thin",
+                scrollbarColor: "rgba(155, 155, 155, 0.5) transparent",
               }}
             >
               <pre className="whitespace-pre-wrap font-mono text-xs break-words max-w-full">
-                {memory.content?.text || 'No content available'}
+                {memory.content?.text || "No content available"}
               </pre>
             </div>
           )}
@@ -1202,24 +1228,25 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
   };
 
   // Check if we're in a focused document view that needs simplified controls
-  const isDocumentFocused = viewMode === 'graph' && selectedDocumentForGraph && !showSearch;
+  const isDocumentFocused = viewMode === "graph" && selectedDocumentForGraph && !showSearch;
 
   return (
     <div className="flex flex-col h-full">
       <div
-        className={`flex flex-col sm:flex-row items-start sm:items-center justify-between border-b gap-3 ${isDocumentFocused ? 'p-6 pb-4' : 'p-4'
-          }`}
+        className={`flex flex-col sm:flex-row items-start sm:items-center justify-between border-b gap-3 ${
+          isDocumentFocused ? "p-6 pb-4" : "p-4"
+        }`}
       >
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold">Knowledge</h2>
           <p className="text-xs text-muted-foreground">
             {showSearch
-              ? 'Searching knowledge fragments'
-              : viewMode === 'list'
-                ? `Viewing ${documentCount} document${documentCount !== 1 ? 's' : ''}`
+              ? "Searching knowledge fragments"
+              : viewMode === "list"
+                ? `Viewing ${documentCount} document${documentCount !== 1 ? "s" : ""}`
                 : isDocumentFocused
-                  ? `Inspecting document with ${fragmentCount} fragment${fragmentCount !== 1 ? 's' : ''}`
-                  : `Viewing ${documentCount} document${documentCount !== 1 ? 's' : ''}`}
+                  ? `Inspecting document with ${fragmentCount} fragment${fragmentCount !== 1 ? "s" : ""}`
+                  : `Viewing ${documentCount} document${documentCount !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -1246,7 +1273,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === 'Enter' && searchQuery.trim()) {
+                    if (e.key === "Enter" && searchQuery.trim()) {
                       e.preventDefault();
                       handleSearch();
                     }
@@ -1314,7 +1341,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                   disabled={isUrlUploading}
                   className="flex-1"
                   onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === 'Enter' && urlInput.trim()) {
+                    if (e.key === "Enter" && urlInput.trim()) {
                       e.preventDefault();
                       addUrlToList();
                     }
@@ -1340,9 +1367,9 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                 <div className="border border-border rounded-md bg-card/50 p-3 mt-2">
                   <h4 className="text-sm font-medium mb-2">URLs to import ({urls.length})</h4>
                   <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {urls.map((url, index) => (
+                    {urls.map((url) => (
                       <div
-                        key={index}
+                        key={url}
                         className="flex items-center justify-between text-sm bg-background p-2 rounded border border-border"
                       >
                         <span className="truncate flex-1">{url}</span>
@@ -1393,7 +1420,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                     Importing...
                   </>
                 ) : (
-                  'Import'
+                  "Import"
                 )}
               </Button>
             </DialogFooter>
@@ -1429,7 +1456,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
             {searchResults.length > 0 && !isSearching && (
               <div className="space-y-3">
                 <h3 className="text-sm font-medium">
-                  Found {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+                  Found {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
                 </h3>
                 <div className="space-y-2">
                   {searchResults.map((result, index) => (
@@ -1446,7 +1473,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                         </div>
                       </div>
                       <p className="text-sm line-clamp-4 mb-2">
-                        {result.content?.text || 'No content'}
+                        {result.content?.text || "No content"}
                       </p>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -1487,17 +1514,17 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
           </div>
         ) : memories.length === 0 ? (
           <EmptyState />
-        ) : viewMode === 'graph' ? (
+        ) : viewMode === "graph" ? (
           <div className="flex flex-col h-full">
             <div
-              className={`p-4 overflow-hidden ${selectedMemory ? 'h-1/3' : 'flex-1'} transition-all duration-300`}
+              className={`p-4 overflow-hidden ${selectedMemory ? "h-1/3" : "flex-1"} transition-all duration-300`}
             >
               <MemoryGraphOptimized
                 onNodeClick={handleGraphNodeClick}
                 selectedMemoryId={selectedMemory?.id}
                 agentId={agentId}
               />
-              {viewMode === 'graph' && graphLoading && selectedDocumentForGraph && (
+              {viewMode === "graph" && graphLoading && selectedDocumentForGraph && (
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-card/90 backdrop-blur-sm p-4 rounded-lg shadow-lg border border-border">
                   <div className="flex items-center gap-2">
                     <LoaderIcon className="h-5 w-5 animate-spin" />
@@ -1548,17 +1575,17 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
               <div className="flex items-center justify-between">
                 <div>
                   <DialogTitle className="text-xl">
-                    {(viewingContent.metadata as MemoryMetadata)?.title || 'Document Content'}
+                    {(viewingContent.metadata as MemoryMetadata)?.title || "Document Content"}
                   </DialogTitle>
                   <DialogDescription>
-                    {(viewingContent.metadata as MemoryMetadata)?.filename || 'Knowledge document'}
+                    {(viewingContent.metadata as MemoryMetadata)?.filename || "Knowledge document"}
                   </DialogDescription>
                 </div>
                 {(() => {
                   const metadata = viewingContent.metadata as MemoryMetadata;
-                  const contentType = metadata?.contentType || '';
-                  const fileExt = metadata?.fileExt?.toLowerCase() || '';
-                  const isPdf = contentType === 'application/pdf' || fileExt === 'pdf';
+                  const contentType = metadata?.contentType || "";
+                  const fileExt = metadata?.fileExt?.toLowerCase() || "";
+                  const isPdf = contentType === "application/pdf" || fileExt === "pdf";
 
                   if (isPdf) {
                     return (
@@ -1595,9 +1622,9 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
             <div className="flex-1 overflow-auto px-6 pb-2">
               {(() => {
                 const metadata = viewingContent.metadata as MemoryMetadata;
-                const contentType = metadata?.contentType || '';
-                const fileExt = metadata?.fileExt?.toLowerCase() || '';
-                const isPdf = contentType === 'application/pdf' || fileExt === 'pdf';
+                const contentType = metadata?.contentType || "";
+                const fileExt = metadata?.fileExt?.toLowerCase() || "";
+                const isPdf = contentType === "application/pdf" || fileExt === "pdf";
 
                 if (isPdf && viewingContent.content?.text) {
                   // For PDFs, the content.text contains base64 data
@@ -1638,23 +1665,23 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                       <div
                         className="min-w-full flex items-center justify-center p-4"
                         style={{
-                          minHeight: '100%',
+                          minHeight: "100%",
                           transform: `scale(${pdfZoom})`,
-                          transformOrigin: 'top center',
-                          width: pdfZoom > 1 ? `${100 / pdfZoom}%` : '100%',
+                          transformOrigin: "top center",
+                          width: pdfZoom > 1 ? `${100 / pdfZoom}%` : "100%",
                         }}
                       >
                         <iframe
                           src={pdfDataUrl}
                           className="w-full border-0 shadow-md"
                           style={{
-                            height: '90vh',
-                            maxWidth: '1200px',
-                            backgroundColor: 'var(--background)',
+                            height: "90vh",
+                            maxWidth: "1200px",
+                            backgroundColor: "var(--background)",
                           }}
                           title="PDF Document"
                           onError={() => {
-                            console.error('Failed to load PDF in iframe');
+                            console.error("Failed to load PDF in iframe");
                           }}
                         />
                       </div>
@@ -1689,7 +1716,7 @@ export function KnowledgeTab({ agentId }: { agentId: UUID }) {
                   return (
                     <div className="h-full w-full bg-background rounded-lg border border-border p-6 overflow-y-auto">
                       <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed text-foreground break-words">
-                        {viewingContent.content?.text || 'No content available'}
+                        {viewingContent.content?.text || "No content available"}
                       </pre>
                     </div>
                   );

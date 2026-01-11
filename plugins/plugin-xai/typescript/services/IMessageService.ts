@@ -1,4 +1,4 @@
-import { UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
 
 export enum MessageType {
   POST = "post",
@@ -18,7 +18,7 @@ export interface Message {
   type: MessageType;
   timestamp: number;
   inReplyTo?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface GetMessagesOptions {
@@ -37,7 +37,7 @@ export interface SendMessageOptions {
   text: string;
   type: MessageType;
   replyToId?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IMessageService {

@@ -4,7 +4,7 @@ import pytest
 from uuid import uuid4
 
 from elizaos_plugin_planning.services.planning_service import PlanningService
-from elizaos_plugin_planning.types import PlanningConfig, RetryPolicy
+from elizaos_plugin_planning.types import PlanningConfig
 
 
 @pytest.fixture
@@ -30,7 +30,9 @@ def sample_context() -> dict:
     """Create a sample planning context for testing."""
     return {
         "goal": "Build and deploy a website",
-        "constraints": [{"type": "time", "value": "2 hours", "description": "Must complete in 2 hours"}],
+        "constraints": [
+            {"type": "time", "value": "2 hours", "description": "Must complete in 2 hours"}
+        ],
         "available_actions": ["ANALYZE_INPUT", "PROCESS_ANALYSIS", "EXECUTE_FINAL"],
         "preferences": {"execution_model": "sequential", "max_steps": 5},
     }
@@ -103,17 +105,13 @@ class TestComprehensivePlan:
         self, planning_service: PlanningService, sample_context: dict, sample_message: dict
     ) -> None:
         """Test comprehensive plan creation with message context."""
-        plan = await planning_service.create_comprehensive_plan(
-            sample_context, sample_message
-        )
+        plan = await planning_service.create_comprehensive_plan(sample_context, sample_message)
 
         assert plan is not None
         assert plan.execution_model == "sequential"
 
     @pytest.mark.asyncio
-    async def test_comprehensive_plan_empty_goal(
-        self, planning_service: PlanningService
-    ) -> None:
+    async def test_comprehensive_plan_empty_goal(self, planning_service: PlanningService) -> None:
         """Test comprehensive plan with empty goal raises error."""
         context = {
             "goal": "",
@@ -218,5 +216,8 @@ class TestServiceLifecycle:
 
         assert len(planning_service.active_plans) == 0
         assert len(planning_service.plan_executions) == 0
+
+
+
 
 

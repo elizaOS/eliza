@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -64,7 +64,7 @@ class GatewayClient:
         """Close the HTTP client."""
         await self._client.aclose()
 
-    async def __aenter__(self) -> "GatewayClient":
+    async def __aenter__(self) -> GatewayClient:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -181,9 +181,7 @@ class GatewayClient:
             if params.max_tokens is not None:
                 request_body["max_completion_tokens"] = params.max_tokens
 
-        async with self._client.stream(
-            "POST", "/chat/completions", json=request_body
-        ) as response:
+        async with self._client.stream("POST", "/chat/completions", json=request_body) as response:
             self._raise_for_status(response)
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):
@@ -240,9 +238,7 @@ class GatewayClient:
     # Image Generation
     # =========================================================================
 
-    async def generate_image(
-        self, params: ImageGenerationParams
-    ) -> list[ImageGenerationResult]:
+    async def generate_image(self, params: ImageGenerationParams) -> list[ImageGenerationResult]:
         """
         Generate images.
 
@@ -279,9 +275,7 @@ class GatewayClient:
     # Image Description
     # =========================================================================
 
-    async def describe_image(
-        self, params: ImageDescriptionParams
-    ) -> ImageDescriptionResult:
+    async def describe_image(self, params: ImageDescriptionParams) -> ImageDescriptionResult:
         """
         Describe/analyze an image using vision capabilities.
 
@@ -377,5 +371,8 @@ class GatewayClient:
             cleaned = cleaned[:-3]
 
         return json.loads(cleaned.strip())  # type: ignore[no-any-return]
+
+
+
 
 

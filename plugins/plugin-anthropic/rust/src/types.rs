@@ -149,7 +149,7 @@ impl TokenUsage {
 }
 
 /// Parameters for text generation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TextGenerationParams {
     /// The prompt to generate from.
     pub prompt: String,
@@ -169,20 +169,6 @@ pub struct TextGenerationParams {
     pub thinking_budget: Option<u32>,
 }
 
-impl Default for TextGenerationParams {
-    fn default() -> Self {
-        Self {
-            prompt: String::new(),
-            system: None,
-            messages: None,
-            max_tokens: None,
-            temperature: None,
-            top_p: None,
-            stop_sequences: None,
-            thinking_budget: None,
-        }
-    }
-}
 
 impl TextGenerationParams {
     /// Create new params with a prompt.
@@ -242,10 +228,11 @@ pub struct TextGenerationResponse {
 }
 
 /// Reason generation stopped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
     /// Reached natural end of generation.
+    #[default]
     EndTurn,
     /// Hit a stop sequence.
     StopSequence,
@@ -253,12 +240,6 @@ pub enum StopReason {
     MaxTokens,
     /// Model wants to use a tool.
     ToolUse,
-}
-
-impl Default for StopReason {
-    fn default() -> Self {
-        Self::EndTurn
-    }
 }
 
 /// Parameters for JSON object generation.
@@ -276,6 +257,7 @@ pub struct ObjectGenerationParams {
     pub max_tokens: Option<u32>,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for ObjectGenerationParams {
     fn default() -> Self {
         Self {
@@ -348,10 +330,6 @@ pub(crate) struct MessagesRequest {
 /// Response body from the Anthropic messages API.
 #[derive(Debug, Deserialize)]
 pub(crate) struct MessagesResponse {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub response_type: String,
-    pub role: Role,
     pub content: Vec<ContentBlock>,
     pub model: String,
     pub stop_reason: Option<StopReason>,
@@ -361,8 +339,6 @@ pub(crate) struct MessagesResponse {
 /// Error response from the Anthropic API.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ErrorResponse {
-    #[serde(rename = "type")]
-    pub error_type: String,
     pub error: ErrorDetail,
 }
 

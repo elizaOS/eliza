@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Core types for the OpenRouter API.
 //!
 //! All types are strongly typed with explicit field requirements.
@@ -271,6 +272,7 @@ pub(crate) struct ResponseFormat {
 
 /// Chat completion choice.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct ChatCompletionChoice {
     pub index: u32,
     pub message: ChatMessage,
@@ -280,6 +282,7 @@ pub(crate) struct ChatCompletionChoice {
 
 /// Response from chat completions.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct ChatCompletionResponse {
     pub id: String,
     pub object: String,
@@ -299,6 +302,7 @@ pub(crate) struct EmbeddingsRequest {
 
 /// Embedding data in response.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct EmbeddingData {
     pub object: String,
     pub embedding: Vec<f64>,
@@ -307,6 +311,7 @@ pub(crate) struct EmbeddingData {
 
 /// Response from embeddings API.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(crate) struct EmbeddingsResponseBody {
     pub object: String,
     pub data: Vec<EmbeddingData>,
@@ -320,5 +325,8 @@ pub(crate) struct EmbeddingsResponseBody {
 pub(crate) struct ModelsResponse {
     pub data: Vec<ModelInfo>,
 }
+
+
+
 
 

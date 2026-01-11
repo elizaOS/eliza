@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Key Derivation Provider for Phala TEE.
 
 use async_trait::async_trait;
@@ -8,7 +9,7 @@ use tracing::{debug, info};
 
 use crate::client::TeeClient;
 use crate::error::{Result, TeeError};
-use crate::providers::base::DeriveKeyProvider;
+use crate::providers::base::{DeriveKeyProvider, RemoteAttestationProvider};
 use crate::providers::remote_attestation::PhalaRemoteAttestationProvider;
 use crate::types::{
     DeriveKeyAttestationData, DeriveKeyResult, EcdsaKeypairResult, Ed25519KeypairResult,
@@ -204,5 +205,8 @@ impl DeriveKeyProvider for PhalaDeriveKeyProvider {
         })
     }
 }
+
+
+
 
 

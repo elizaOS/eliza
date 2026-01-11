@@ -7,15 +7,16 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { createBranchSchema, type CreateBranchParams } from "../types";
-import { GitHubService, GITHUB_SERVICE_NAME } from "../service";
+import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
+import { type CreateBranchParams, createBranchSchema } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -52,40 +53,26 @@ const examples: ActionExample[][] = [
 
 export const createBranchAction: Action = {
   name: "CREATE_GITHUB_BRANCH",
-  similes: [
-    "NEW_BRANCH",
-    "BRANCH_FROM",
-    "FORK_BRANCH",
-    "CREATE_FEATURE_BRANCH",
-  ],
-  description:
-    "Creates a new branch in a GitHub repository from an existing branch or commit.",
+  similes: ["NEW_BRANCH", "BRANCH_FROM", "FORK_BRANCH", "CREATE_FEATURE_BRANCH"],
+  description: "Creates a new branch in a GitHub repository from an existing branch or commit.",
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-  ): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
     }
 
     const text = (message.content as Content).text?.toLowerCase() ?? "";
-    return (
-      text.includes("branch") ||
-      text.includes("fork") ||
-      text.includes("checkout")
-    );
+    return text.includes("branch") || text.includes("fork") || text.includes("checkout");
   },
 
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
-  ): Promise<boolean> => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
@@ -95,20 +82,23 @@ export const createBranchAction: Action = {
           text: "GitHub service is not available. Please ensure the plugin is properly configured.",
         });
       }
-      return false;
+      return { success: false };
     }
 
     try {
       const params: CreateBranchParams = {
-        owner: (state?.["owner"] as string) ?? service.getConfig().owner ?? "",
-        repo: (state?.["repo"] as string) ?? service.getConfig().repo ?? "",
-        branchName: (state?.["branchName"] as string) ?? "",
-        fromRef: (state?.["fromRef"] as string) ?? service.getConfig().branch ?? "main",
+        owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
+        repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
+        branchName: (state?.branchName as string) ?? "",
+        fromRef: (state?.fromRef as string) ?? service.getConfig().branch ?? "main",
       };
 
       const validation = createBranchSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.errors
+        const zodError = validation.error as unknown as {
+          issues?: Array<{ path: (string | number)[]; message: string }>;
+        };
+        const errors = (zodError.issues || [])
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid branch parameters: ${errors}`);
@@ -117,7 +107,7 @@ export const createBranchAction: Action = {
             text: `I couldn't create the branch due to missing information: ${errors}`,
           });
         }
-        return false;
+        return { success: false };
       }
 
       const branch = await service.createBranch(params);
@@ -130,10 +120,9 @@ export const createBranchAction: Action = {
         });
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to create branch: ${errorMessage}`);
 
       if (callback) {
@@ -142,7 +131,7 @@ export const createBranchAction: Action = {
         });
       }
 
-      return false;
+      return { success: false };
     }
   },
 
@@ -150,5 +139,3 @@ export const createBranchAction: Action = {
 };
 
 export default createBranchAction;
-
-

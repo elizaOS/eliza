@@ -1,3 +1,1 @@
-export { shellHistoryProvider, default } from "./shellHistoryProvider";
-
-
+export { default, shellHistoryProvider } from "./shellHistoryProvider";

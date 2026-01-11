@@ -1,0 +1,50 @@
+{
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "files": {
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedVariables": "error",
+        "useHookAtTopLevel": "off"
+      },
+      "suspicious": {
+        "noImplicitAnyLet": "warn",
+        "noExplicitAny": "warn",
+        "noArrayIndexKey": "warn"
+      },
+      "a11y": {
+        "useButtonType": "off",
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "useValidAnchor": "off",
+        "noSvgWithoutTitle": "off",
+        "noLabelWithoutControl": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "complexity": {
+        "noCommaOperator": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentWidth": 2,
+    "indentStyle": "space",
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "es5",
+      "semicolons": "always"
+    }
+  }
+}

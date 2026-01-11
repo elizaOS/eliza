@@ -34,7 +34,9 @@ class NoneAction:
         "is required but processing should continue."
     )
 
-    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
+    ) -> bool:
         """Always valid."""
         return True
 

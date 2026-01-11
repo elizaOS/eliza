@@ -69,24 +69,24 @@ async fn main() -> anyhow::Result<()> {
 
 Environment variables:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key |
-| `ANTHROPIC_BASE_URL` | No | `https://api.anthropic.com` | API base URL |
-| `ANTHROPIC_SMALL_MODEL` | No | `claude-3-5-haiku-20241022` | Small model ID |
-| `ANTHROPIC_LARGE_MODEL` | No | `claude-sonnet-4-20250514` | Large model ID |
-| `ANTHROPIC_TIMEOUT_SECONDS` | No | `60` | Request timeout |
+| Variable                    | Required | Default                     | Description            |
+| --------------------------- | -------- | --------------------------- | ---------------------- |
+| `ANTHROPIC_API_KEY`         | Yes      | -                           | Your Anthropic API key |
+| `ANTHROPIC_BASE_URL`        | No       | `https://api.anthropic.com` | API base URL           |
+| `ANTHROPIC_SMALL_MODEL`     | No       | `claude-3-5-haiku-20241022` | Small model ID         |
+| `ANTHROPIC_LARGE_MODEL`     | No       | `claude-sonnet-4-20250514`  | Large model ID         |
+| `ANTHROPIC_TIMEOUT_SECONDS` | No       | `60`                        | Request timeout        |
 
 ## Models
 
 Available models:
 
-| Model | Size | Description |
-|-------|------|-------------|
-| `claude-3-5-haiku-20241022` | Small | Fast and efficient |
-| `claude-sonnet-4-20250514` | Large | Most capable |
+| Model                        | Size  | Description          |
+| ---------------------------- | ----- | -------------------- |
+| `claude-3-5-haiku-20241022`  | Small | Fast and efficient   |
+| `claude-sonnet-4-20250514`   | Large | Most capable         |
 | `claude-3-5-sonnet-20241022` | Large | Balanced performance |
-| `claude-3-opus-20240229` | Large | Previous flagship |
+| `claude-3-opus-20240229`     | Large | Previous flagship    |
 
 ## Testing
 
@@ -109,5 +109,3 @@ cargo test --features native -- --ignored
 ## License
 
 MIT
-
-

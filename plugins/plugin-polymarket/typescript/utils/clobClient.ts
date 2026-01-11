@@ -7,15 +7,11 @@
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { ClobClient } from "@polymarket/clob-client";
-import { privateKeyToAccount } from "viem/accounts";
 import { createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
-import {
-  POLYGON_CHAIN_ID,
-  DEFAULT_CLOB_API_URL,
-  DEFAULT_CLOB_WS_URL,
-} from "../constants";
-import type { ApiKeyCreds, BookParams } from "../types";
+import { DEFAULT_CLOB_API_URL, DEFAULT_CLOB_WS_URL, POLYGON_CHAIN_ID } from "../constants";
+import type { ApiKeyCreds } from "../types";
 
 // Re-export types for other modules
 export type { ClobClient } from "@polymarket/clob-client";
@@ -91,20 +87,14 @@ function createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
  * @param runtime - The agent runtime containing configuration
  * @returns Configured CLOB client instance
  */
-export async function initializeClobClient(
-  runtime: IAgentRuntime
-): Promise<ClobClient> {
-  const clobApiUrl = String(
-    runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
-  const clobWsUrl = String(
-    runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL);
+export async function initializeClobClient(runtime: IAgentRuntime): Promise<ClobClient> {
+  const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
+  const clobWsUrl = String(runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL);
 
   const privateKey = getPrivateKey(runtime);
   const enhancedWallet = createEnhancedWallet(privateKey);
 
-  logger.info(
-    `[initializeClobClient] Initializing CLOB client with HTTP URL: ${clobApiUrl}`
-  );
+  logger.info(`[initializeClobClient] Initializing CLOB client with HTTP URL: ${clobApiUrl}`);
   logger.info(`[initializeClobClient] Wallet address: ${enhancedWallet.address}`);
   logger.info(`[initializeClobClient] Chain ID: ${POLYGON_CHAIN_ID}`);
 
@@ -116,9 +106,7 @@ export async function initializeClobClient(
     clobWsUrl
   );
 
-  logger.info(
-    "[initializeClobClient] CLOB client initialized successfully with EOA wallet"
-  );
+  logger.info("[initializeClobClient] CLOB client initialized successfully with EOA wallet");
   return client;
 }
 
@@ -127,24 +115,20 @@ export async function initializeClobClient(
  * @param runtime - The agent runtime containing configuration
  * @returns Configured CLOB client instance with API credentials
  */
-export async function initializeClobClientWithCreds(
-  runtime: IAgentRuntime
-): Promise<ClobClient> {
-  const clobApiUrl = String(
-    runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
-  const clobWsUrl = String(
-    runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL);
+export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Promise<ClobClient> {
+  const clobApiUrl = String(runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL);
+  const clobWsUrl = String(runtime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL);
 
   const privateKey = getPrivateKey(runtime);
 
   const apiKey = runtime.getSetting("CLOB_API_KEY");
-  const apiSecret =
-    runtime.getSetting("CLOB_API_SECRET") || runtime.getSetting("CLOB_SECRET");
+  const apiSecret = runtime.getSetting("CLOB_API_SECRET") || runtime.getSetting("CLOB_SECRET");
   const apiPassphrase =
-    runtime.getSetting("CLOB_API_PASSPHRASE") ||
-    runtime.getSetting("CLOB_PASS_PHRASE");
+    runtime.getSetting("CLOB_API_PASSPHRASE") || runtime.getSetting("CLOB_PASS_PHRASE");
 
-  logger.info(`[initializeClobClientWithCreds] Checking credentials: hasApiKey=${Boolean(apiKey)}, hasApiSecret=${Boolean(apiSecret)}, hasApiPassphrase=${Boolean(apiPassphrase)}`);
+  logger.info(
+    `[initializeClobClientWithCreds] Checking credentials: hasApiKey=${Boolean(apiKey)}, hasApiSecret=${Boolean(apiSecret)}, hasApiPassphrase=${Boolean(apiPassphrase)}`
+  );
 
   if (!apiKey || !apiSecret || !apiPassphrase) {
     const missing: string[] = [];
@@ -164,9 +148,7 @@ export async function initializeClobClientWithCreds(
     passphrase: String(apiPassphrase),
   };
 
-  logger.info(
-    `[initializeClobClientWithCreds] Wallet address: ${enhancedWallet.address}`
-  );
+  logger.info(`[initializeClobClientWithCreds] Wallet address: ${enhancedWallet.address}`);
   logger.info(`[initializeClobClientWithCreds] Chain ID: ${POLYGON_CHAIN_ID}`);
 
   const client = new ClobClient(

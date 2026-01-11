@@ -1,0 +1,5 @@
+Based on this request: "{{request}}", generate a helpful and engaging reply for a Farcaster cast (max 320 characters).
+
+
+
+

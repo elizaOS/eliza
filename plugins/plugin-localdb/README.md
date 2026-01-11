@@ -46,10 +46,10 @@ const agent = {
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LOCALDB_DATA_DIR` | Directory for data files (Node.js only) | `./data` |
-| `LOCALDB_PREFIX` | localStorage key prefix (Browser only) | `elizaos` |
+| Variable           | Description                             | Default   |
+| ------------------ | --------------------------------------- | --------- |
+| `LOCALDB_DATA_DIR` | Directory for data files (Node.js only) | `./data`  |
+| `LOCALDB_PREFIX`   | localStorage key prefix (Browser only)  | `elizaos` |
 
 ## Data Storage
 
@@ -130,13 +130,13 @@ await adapter.init();
 
 ## Comparison with plugin-sql
 
-| Feature | plugin-localdb | plugin-sql |
-|---------|---------------|------------|
-| Setup | Zero configuration | Requires PostgreSQL |
-| Migrations | Not needed | Automatic with Drizzle |
-| Scalability | Single process | Multi-process/distributed |
-| Performance | Good for dev/small | Production-grade |
-| Dependencies | None | PostgreSQL, Drizzle |
+| Feature      | plugin-localdb     | plugin-sql                |
+| ------------ | ------------------ | ------------------------- |
+| Setup        | Zero configuration | Requires PostgreSQL       |
+| Migrations   | Not needed         | Automatic with Drizzle    |
+| Scalability  | Single process     | Multi-process/distributed |
+| Performance  | Good for dev/small | Production-grade          |
+| Dependencies | None               | PostgreSQL, Drizzle       |
 
 ## Use Cases
 

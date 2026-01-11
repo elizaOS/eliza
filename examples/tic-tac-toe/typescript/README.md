@@ -35,12 +35,12 @@ bun run examples/tic-tac-toe/typescript/game.ts --bench
 
 ### Command Line Options
 
-| Flag | Alias | Description |
-|------|-------|-------------|
-| `--watch` | `-w`, `watch` | AI vs AI mode |
-| `--human` | `-h`, `human`, `play` | Play against AI |
-| `--bench` | `-b`, `bench`, `benchmark` | Performance benchmark |
-| `--no-prompt` | `-y` | Skip "play again" prompts |
+| Flag          | Alias                      | Description               |
+| ------------- | -------------------------- | ------------------------- |
+| `--watch`     | `-w`, `watch`              | AI vs AI mode             |
+| `--human`     | `-h`, `human`, `play`      | Play against AI           |
+| `--bench`     | `-b`, `bench`, `benchmark` | Performance benchmark     |
+| `--no-prompt` | `-y`                       | Skip "play again" prompts |
 
 ## Game Modes
 
@@ -111,7 +111,7 @@ The AI uses the classic minimax algorithm with depth-based scoring to find the o
 ## Performance
 
 Since there's no LLM latency, the AI responds instantly:
+
 - ~100 games per second on typical hardware
 - Zero API calls
 - Zero cost
-

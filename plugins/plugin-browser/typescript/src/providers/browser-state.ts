@@ -2,13 +2,14 @@
  * Browser state provider
  */
 
-import type { Provider, ProviderResult, IAgentRuntime, Memory, State } from '@elizaos/core';
-import { ServiceType, logger } from '@elizaos/core';
-import { BrowserService } from '../services/browser-service.js';
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { logger, ServiceType } from "@elizaos/core";
+import type { BrowserService } from "../services/browser-service.js";
 
 export const browserStateProvider: Provider = {
-  name: 'BROWSER_STATE',
-  description: 'Provides current browser state information including active session status, current page URL, and page title',
+  name: "BROWSER_STATE",
+  description:
+    "Provides current browser state information including active session status, current page URL, and page title",
 
   get: async (
     runtime: IAgentRuntime,
@@ -20,7 +21,7 @@ export const browserStateProvider: Provider = {
 
     if (!session || !service) {
       return {
-        text: 'No active browser session',
+        text: "No active browser session",
         values: {
           hasSession: false,
         },
@@ -48,7 +49,7 @@ export const browserStateProvider: Provider = {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`Error getting browser state: ${errorMessage}`);
       return {
-        text: 'Error getting browser state',
+        text: "Error getting browser state",
         values: {
           hasSession: true,
           error: true,

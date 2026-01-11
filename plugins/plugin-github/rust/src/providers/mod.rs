@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! GitHub providers for elizaOS
 //!
 //! Providers supply contextual information to the agent.
@@ -47,5 +48,10 @@ pub trait GitHubProvider: Send + Sync {
         service: &GitHubService,
     ) -> impl std::future::Future<Output = Result<ProviderResult>> + Send;
 }
+
+
+
+
+
 
 

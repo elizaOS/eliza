@@ -2,7 +2,6 @@
  * elizaOS CLI - Public API
  */
 
-export { version, info, create } from "./commands/index.js";
+export { create, info, version } from "./commands/index.js";
 export { loadManifest } from "./manifest.js";
-export type { ExamplesManifest, Example, ExampleLanguage } from "./types.js";
-
+export type { Example, ExampleLanguage, ExamplesManifest } from "./types.js";

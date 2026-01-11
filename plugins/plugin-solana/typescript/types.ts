@@ -184,7 +184,6 @@ export interface TokenAccountResponse {
   amount: string;
 }
 
-
 // ============================================
 // Service types
 // ============================================
@@ -332,6 +331,58 @@ export interface JupiterServiceInterface {
 }
 
 /**
+ * Extended Jupiter service interface with additional methods used by SolanaService.
+ * This extends the base interface with methods that may be provided by Jupiter plugin implementations.
+ */
+export interface ExtendedJupiterServiceInterface extends JupiterServiceInterface {
+  getPriceImpact?(params: {
+    inputMint: string;
+    outputMint: string;
+    amount: number;
+  }): Promise<number>;
+  findBestSlippage?(params: {
+    inputMint: string;
+    outputMint: string;
+    amount: number;
+  }): Promise<number>;
+  estimateLamportsNeeded?(params: { inputMint: string; inAmount: number }): number;
+  executeSwap?(params: {
+    quoteResponse: JupiterQuote;
+    userPublicKey: string;
+    slippageBps: number;
+  }): Promise<JupiterSwapResult>;
+  estimateGasFees?(params: {
+    inputMint: string;
+    outputMint: string;
+    amount: number;
+  }): Promise<SwapFees>;
+}
+
+/**
+ * Trading signal for swap execution.
+ */
+export interface TradingSignal {
+  sourceTokenCA: string;
+  targetTokenCA: string;
+}
+
+/**
+ * Swap execution response for a single wallet.
+ */
+export interface SwapExecutionResponse {
+  success: boolean;
+  outAmount?: string;
+  outDecimal?: number;
+  signature?: string;
+  fees?: {
+    lamports: number;
+    sol: number;
+  };
+  swapResponse?: JupiterSwapResult;
+  error?: string;
+}
+
+/**
  * WebSocket account notification.
  */
 export interface AccountNotification {
@@ -340,11 +391,14 @@ export interface AccountNotification {
   };
   value: {
     lamports: number;
-    data: string | Buffer | {
-      parsed: unknown;
-      program: string;
-      space: number;
-    };
+    data:
+      | string
+      | Buffer
+      | {
+          parsed: unknown;
+          program: string;
+          space: number;
+        };
     owner: string;
     executable: boolean;
     rentEpoch: number;
@@ -399,6 +453,32 @@ export interface BirdeyePriceResponse {
 }
 
 /**
+ * Birdeye API token item in wallet response.
+ */
+export interface BirdeyeWalletTokenItem {
+  address: string;
+  symbol?: string;
+  name?: string;
+  decimals?: number;
+  balance?: string;
+  balanceUsd?: number;
+  priceUsd?: string;
+  valueUsd?: string;
+  uiAmount?: string;
+}
+
+/**
+ * Birdeye API wallet token list response.
+ */
+export interface BirdeyeWalletTokenListResponse {
+  success: boolean;
+  data?: {
+    totalUsd: number | string;
+    items: BirdeyeWalletTokenItem[];
+  };
+}
+
+/**
  * Swap wallet entry for batch swaps.
  */
 export interface SwapWalletEntry {
@@ -415,4 +495,61 @@ export interface BatchSwapResult {
   fees?: SwapFees;
   swapResponse?: JupiterSwapResult;
   error?: string;
+}
+
+/**
+ * Token account structure from Solana's getParsedTokenAccountsByOwner
+ */
+export interface TokenAccountEntry {
+  pubkey: PublicKey;
+  account: {
+    data: {
+      program: string;
+      parsed: {
+        type: string;
+        info: {
+          mint: string;
+          owner: string;
+          state: string;
+          tokenAmount: {
+            amount: string;
+            decimals: number;
+            uiAmount: number;
+            uiAmountString: string;
+          };
+          isNative?: boolean;
+          extensions?: unknown[];
+        };
+      };
+    };
+    owner: PublicKey;
+    lamports: number;
+  };
+}
+
+/**
+ * Token metadata cache entry
+ */
+export interface TokenMetaCacheEntry {
+  setAt: number;
+  data: {
+    symbol: string | null;
+    supply: string | number | null;
+    tokenProgram: string;
+    decimals: number;
+    isMutable: boolean | null;
+  };
+}
+
+/**
+ * Parsed token account result
+ */
+export interface ParsedTokenResult {
+  mint: string;
+  symbol: string | null;
+  supply: string | number | null;
+  tokenProgram: "Token-2022" | "Token";
+  decimals: number;
+  balanceUi: number;
+  isMutable: boolean | null;
 }

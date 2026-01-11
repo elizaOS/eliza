@@ -2,13 +2,8 @@
  * Tests for BlueSky types.
  */
 
-import { describe, it, expect } from "bun:test";
-import {
-  BlueSkyError,
-  CACHE_TTLS,
-  CACHE_SIZES,
-  ERROR_MESSAGES,
-} from "../../types";
+import { describe, expect, it } from "bun:test";
+import { BlueSkyError, CACHE_SIZES, CACHE_TTLS, ERROR_MESSAGES } from "../../types";
 
 describe("BlueSkyError", () => {
   it("should create an error with message", () => {
@@ -57,5 +52,3 @@ describe("Error Messages", () => {
     expect(ERROR_MESSAGES.RATE_LIMITED).toBeDefined();
   });
 });
-
-

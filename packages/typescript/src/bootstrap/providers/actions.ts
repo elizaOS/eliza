@@ -52,13 +52,9 @@ export const actionsProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get actions that validate for this message
     const actionPromises = runtime.actions.map(async (action: Action) => {
-      try {
-        const result = await action.validate(runtime, message, state);
-        if (result) {
-          return action;
-        }
-      } catch (e) {
-        console.error("ACTIONS GET -> validate err", action, e);
+      const result = await action.validate(runtime, message, state);
+      if (result) {
+        return action;
       }
       return null;
     });
@@ -80,7 +76,7 @@ export const actionsProvider: Provider = {
         ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
         : "";
 
-    const data = {
+    const _data = {
       actionsData,
     };
 

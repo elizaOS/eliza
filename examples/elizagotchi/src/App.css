@@ -2,7 +2,7 @@
  * Elizagotchi - Fullscreen Minimal Style
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap");
 
 * {
   box-sizing: border-box;
@@ -11,14 +11,16 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   overflow: hidden;
   touch-action: manipulation;
 }
 
 body {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: "Outfit", system-ui, sans-serif;
 }
 
 /* ============================================================================
@@ -30,7 +32,7 @@ body {
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #7EC8E3 0%, #A8E6CF 100%);
+  background: linear-gradient(180deg, #7ec8e3 0%, #a8e6cf 100%);
   transition: background 0.8s ease;
 }
 
@@ -467,73 +469,117 @@ body {
    ============================================================================ */
 
 @keyframes bounce {
-  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
-  50% { transform: translate(-50%, -50%) translateY(-20px); }
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateY(0);
+  }
+  50% {
+    transform: translate(-50%, -50%) translateY(-20px);
+  }
 }
 
 @keyframes munch {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); }
-  50% { transform: translate(-50%, -50%) scale(1.05); }
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
 }
 
 @keyframes breathe {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); }
-  50% { transform: translate(-50%, -50%) scale(1.02); }
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.02);
+  }
 }
 
 @keyframes glow-pulse {
-  0%, 100% { 
+  0%,
+  100% {
     filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.2)) brightness(1);
   }
-  50% { 
+  50% {
     filter: drop-shadow(0 20px 60px rgba(255, 215, 0, 0.5)) brightness(1.3);
   }
 }
 
 @keyframes shake {
-  0%, 100% { transform: translate(-50%, -50%) translateX(0); }
-  25% { transform: translate(-50%, -50%) translateX(-10px); }
-  75% { transform: translate(-50%, -50%) translateX(10px); }
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateX(0);
+  }
+  25% {
+    transform: translate(-50%, -50%) translateX(-10px);
+  }
+  75% {
+    transform: translate(-50%, -50%) translateX(10px);
+  }
 }
 
 @keyframes pulse-warn {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.2); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
 }
 
 @keyframes flash {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes wobble {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-10deg); }
-  75% { transform: rotate(10deg); }
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-10deg);
+  }
+  75% {
+    transform: rotate(10deg);
+  }
 }
 
 @keyframes toast-in {
-  from { 
+  from {
     opacity: 0;
     transform: translate(-50%, -100%);
   }
-  to { 
+  to {
     opacity: 1;
     transform: translate(-50%, -150%);
   }
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slide-up {
-  from { 
+  from {
     opacity: 0;
     transform: translateY(20px);
   }
-  to { 
+  to {
     opacity: 1;
     transform: translateY(0);
   }
@@ -559,8 +605,12 @@ body {
 }
 
 @keyframes drift {
-  from { transform: translateX(-50px); }
-  to { transform: translateX(150px); }
+  from {
+    transform: translateX(-50px);
+  }
+  to {
+    transform: translateX(150px);
+  }
 }
 
 .star {
@@ -568,8 +618,13 @@ body {
 }
 
 @keyframes twinkle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* ============================================================================
@@ -582,19 +637,19 @@ body {
     height: 46px;
     font-size: 18px;
   }
-  
+
   .actions-bar {
     gap: 6px;
   }
-  
+
   .stat-pill-bar {
     width: 24px;
   }
-  
+
   .stat-pill-icon {
     font-size: 12px;
   }
-  
+
   .settings-btn-top {
     width: 38px;
     height: 38px;
@@ -608,24 +663,24 @@ body {
     height: 60px;
     font-size: 26px;
   }
-  
+
   .actions-bar {
     gap: 14px;
   }
-  
+
   .stat-pill-bar {
     width: 45px;
     height: 6px;
   }
-  
+
   .stat-pill-icon {
     font-size: 18px;
   }
-  
+
   .pet-name {
     font-size: 2rem;
   }
-  
+
   .settings-btn-top {
     width: 48px;
     height: 48px;

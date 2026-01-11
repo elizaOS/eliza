@@ -1,10 +1,16 @@
-import type { ActionResult, ProviderResult } from "./components";
+import type { ActionResult } from "./components";
 import type { Entity, Room, World } from "./environment";
 
 /**
  * Allowed value types for state values (JSON-serializable)
  */
-export type StateValue = string | number | boolean | null | StateValue[] | { [key: string]: StateValue };
+export type StateValue =
+  | string
+  | number
+  | boolean
+  | null
+  | StateValue[]
+  | { [key: string]: StateValue };
 
 /** Single step in an action plan */
 export interface ActionPlanStep {
@@ -20,6 +26,8 @@ export interface ActionPlan {
   totalSteps: number;
   currentStep: number;
   steps: ActionPlanStep[];
+  /** Optional metadata for plan tracking and extensions */
+  metadata?: Record<string, unknown>;
 }
 
 /**

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the Roblox plugin.
 
 use chrono::{DateTime, Utc};
@@ -234,5 +235,10 @@ mod tests {
         assert_eq!(RobloxEventType::PlayerMessage.as_str(), "roblox:player_message");
     }
 }
+
+
+
+
+
 
 

@@ -5,14 +5,15 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
-import { RobloxService } from "../services/RobloxService";
-import { ROBLOX_SERVICE_NAME } from "../types";
+import type { RobloxService } from "../services/RobloxService";
+import { ROBLOX_SERVICE_NAME, type RobloxUser } from "../types";
 
 const getPlayerInfoExamples: ActionExample[][] = [
   [
@@ -79,15 +80,8 @@ function extractUserIdentifier(
  */
 const getPlayerInfo: Action = {
   name: "GET_ROBLOX_PLAYER",
-  similes: [
-    "LOOKUP_PLAYER",
-    "FIND_PLAYER",
-    "PLAYER_INFO",
-    "WHO_IS_PLAYER",
-    "ROBLOX_USER_INFO",
-  ],
-  description:
-    "Look up information about a Roblox player by their user ID or username.",
+  similes: ["LOOKUP_PLAYER", "FIND_PLAYER", "PLAYER_INFO", "WHO_IS_PLAYER", "ROBLOX_USER_INFO"],
+  description: "Look up information about a Roblox player by their user ID or username.",
   examples: getPlayerInfoExamples,
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -101,7 +95,7 @@ const getPlayerInfo: Action = {
     state: State | undefined,
     _options: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     try {
       const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
@@ -112,7 +106,10 @@ const getPlayerInfo: Action = {
             action: "GET_ROBLOX_PLAYER",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "Roblox service not found",
+        };
       }
 
       const client = service.getClient(runtime.agentId);
@@ -124,14 +121,15 @@ const getPlayerInfo: Action = {
             action: "GET_ROBLOX_PLAYER",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "Roblox client not found for agent",
+        };
       }
 
       // Extract user identifier from message
       const messageContent =
-        (state?.message as string) ||
-        (message.content as { text?: string }).text ||
-        "";
+        (state?.message as string) || (message.content as { text?: string }).text || "";
 
       const identifier = extractUserIdentifier(messageContent);
 
@@ -143,11 +141,14 @@ const getPlayerInfo: Action = {
             action: "GET_ROBLOX_PLAYER",
           });
         }
-        return false;
+        return {
+          success: false,
+          error: "Could not extract user identifier from message",
+        };
       }
 
       // Look up the user
-      let user;
+      let user: RobloxUser | null;
       if (identifier.type === "id") {
         user = await client.getUserById(identifier.value);
       } else {
@@ -161,7 +162,10 @@ const getPlayerInfo: Action = {
             action: "GET_ROBLOX_PLAYER",
           });
         }
-        return true;
+        return {
+          success: true,
+          text: `User not found with ${identifier.type === "id" ? "ID" : "username"}: ${identifier.value}`,
+        };
       }
 
       // Get avatar URL
@@ -171,9 +175,7 @@ const getPlayerInfo: Action = {
       logger.info({ userId: user.id, username: user.username }, "Found Roblox user");
 
       if (callback) {
-        const createdDate = user.createdAt
-          ? user.createdAt.toLocaleDateString()
-          : "Unknown";
+        const createdDate = user.createdAt ? user.createdAt.toLocaleDateString() : "Unknown";
         const bannedStatus = user.isBanned ? " (Banned)" : "";
 
         callback({
@@ -184,20 +186,33 @@ const getPlayerInfo: Action = {
         });
       }
 
-      return true;
+      return {
+        success: true,
+        text: `Found Roblox user: ${user.displayName} (@${user.username})`,
+        data: {
+          userId: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          avatarUrl: avatarUrl || undefined,
+          isBanned: user.isBanned,
+          createdAt: user.createdAt ? user.createdAt.toISOString() : undefined,
+        },
+      };
     } catch (error) {
       logger.error({ error }, "Failed to get Roblox player info");
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       if (callback) {
         callback({
           text: "I encountered an error looking up that player. Please try again.",
           action: "GET_ROBLOX_PLAYER",
         });
       }
-      return false;
+      return {
+        success: false,
+        error: errorMessage,
+      };
     }
   },
 };
 
 export default getPlayerInfo;
-
-

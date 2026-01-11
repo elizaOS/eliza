@@ -1,6 +1,6 @@
-import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import type { UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -49,7 +49,7 @@ describe("Cascade Delete Tests", () => {
         serverId: uuidv4() as UUID,
         worldId: worldId,
         channelId: uuidv4() as UUID,
-        type: "PUBLIC" as any,
+        type: ChannelType.PUBLIC,
         source: "test",
       },
     ]);
@@ -76,7 +76,7 @@ describe("Cascade Delete Tests", () => {
         createdAt: Date.now(),
         embedding: new Array(384).fill(0.1), // Test embedding
       },
-      "test_memories",
+      "test_memories"
     );
 
     // Create task
@@ -120,9 +120,7 @@ describe("Cascade Delete Tests", () => {
 
   it("should handle deletion of agent with no related data", async () => {
     // Create a separate test instance for this test
-    const setup = await createIsolatedTestDatabase(
-      "cascade-delete-simple-agent",
-    );
+    const setup = await createIsolatedTestDatabase("cascade-delete-simple-agent");
     const simpleAdapter = setup.adapter;
     const simpleAgentId = setup.testAgentId;
 

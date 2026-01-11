@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import os
 from enum import Enum
-from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -107,11 +106,7 @@ class ShellConfig(BaseModel):
 
         # Parse custom forbidden commands
         custom_forbidden_str = os.getenv("SHELL_FORBIDDEN_COMMANDS", "")
-        custom_forbidden = [
-            cmd.strip()
-            for cmd in custom_forbidden_str.split(",")
-            if cmd.strip()
-        ]
+        custom_forbidden = [cmd.strip() for cmd in custom_forbidden_str.split(",") if cmd.strip()]
 
         # Combine with defaults
         all_forbidden = list(set(list(DEFAULT_FORBIDDEN_COMMANDS) + custom_forbidden))
@@ -122,5 +117,8 @@ class ShellConfig(BaseModel):
             timeout=timeout,
             forbidden_commands=all_forbidden,
         )
+
+
+
 
 

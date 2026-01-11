@@ -5,17 +5,17 @@ on:
     branches:
       - main
     paths:
-      - 'Dockerfile'
+      - "Dockerfile"
   workflow_dispatch:
     inputs:
       logLevel:
-        description: 'Log level'
+        description: "Log level"
         required: true
-        default: 'warning'
+        default: "warning"
       environment:
-        description: 'Environment to deploy'
+        description: "Environment to deploy"
         required: false
-        default: 'staging'
+        default: "staging"
 
 env:
   APP_NAME: ${{ vars.APP_NAME || secrets.APP_NAME }}
@@ -92,12 +92,13 @@ jobs:
 
           # Optional parameters (with defaults)
           app-id: ${{ env.APP_ID || '' }} # App ID of existing CVM (if updating)
-          cvm-name: ''
-          compose-file: './tee-docker-compose.yaml' # Default: './docker-compose.yml'
-          vcpu: '4' # Default: '2'
-          memory: '4096' # Default: '2048'
-          disk-size: '40' # Default: '40'
-          envs: | # Environment variables in YAML format (will be converted to dotenv)
+          cvm-name: ""
+          compose-file: "./tee-docker-compose.yaml" # Default: './docker-compose.yml'
+          vcpu: "4" # Default: '2'
+          memory: "4096" # Default: '2048'
+          disk-size: "40" # Default: '40'
+          envs:
+            | # Environment variables in YAML format (will be converted to dotenv)
             DOCKER_REGISTRY_USERNAME: ${{ env.DOCKER_REGISTRY_USERNAME }}
             DOCKER_REGISTRY_PASSWORD: ${{ env.DOCKER_REGISTRY_PASSWORD }}
             DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
@@ -123,5 +124,5 @@ jobs:
             WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
             TEE_VENDOR: ${{ env.TEE_VENDOR || 'phala' }}
             TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
-          node-id: '' # Node ID (Teepod ID: Default to available node id)
-          base-image: '' # Base image to use for the CVM (Default to latest dstack image)
+          node-id: "" # Node ID (Teepod ID: Default to available node id)
+          base-image: "" # Base image to use for the CVM (Default to latest dstack image)

@@ -8,10 +8,7 @@ import {
 } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { BaseDrizzleAdapter } from "../base";
-import {
-  DIMENSION_MAP,
-  type EmbeddingDimensionColumn,
-} from "../schema/embedding";
+import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PostgresConnectionManager } from "./manager";
 
 /**
@@ -25,7 +22,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   constructor(
     agentId: UUID,
     manager: PostgresConnectionManager,
-    _schema?: Record<string, unknown>,
+    _schema?: Record<string, unknown>
   ) {
     super(agentId);
     this.manager = manager;
@@ -45,7 +42,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>,
+    callback: (tx: NodePgDatabase) => Promise<T>
   ): Promise<T> {
     return await this.manager.withEntityContext(entityId, callback);
   }
@@ -56,16 +53,10 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: {
-    serverId: UUID;
-    count?: number;
-  }): Promise<Memory[]> {
+  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
-    logger.warn(
-      { src: "plugin:sql" },
-      "getMemoriesByServerId called but not implemented",
-    );
+    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
     return [];
   }
 
@@ -146,11 +137,20 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   /**
-   * Asynchronously retrieves the connection from the manager.
+   * Asynchronously retrieves the Drizzle database connection.
    *
-   * @returns {Promise<Pool>} A Promise that resolves with the connection.
+   * @returns {Promise<NodePgDatabase>} A Promise that resolves with the Drizzle database.
    */
-  async getConnection() {
+  async getConnection(): Promise<NodePgDatabase> {
+    return this.db as NodePgDatabase;
+  }
+
+  /**
+   * Get the underlying connection pool (for testing/advanced use).
+   *
+   * @returns {Pool} The underlying connection pool.
+   */
+  getRawConnection() {
     return this.manager.getConnection();
   }
 
@@ -206,7 +206,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     entityId: UUID,
     type: string,
     worldId?: UUID,
-    sourceEntityId?: UUID,
+    sourceEntityId?: UUID
   ): Promise<Component | null> {
     return super.getComponent(entityId, type, worldId, sourceEntityId);
   }

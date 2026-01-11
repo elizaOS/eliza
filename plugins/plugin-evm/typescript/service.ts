@@ -11,7 +11,7 @@ import {
   EVM_WALLET_DATA_CACHE_KEY,
 } from "./constants";
 import { initWalletProvider, type WalletProvider } from "./providers/wallet";
-import { type SupportedChain, EVMError, EVMErrorCode } from "./types";
+import { EVMError, EVMErrorCode, type SupportedChain } from "./types";
 
 /**
  * Cached wallet data structure
@@ -42,11 +42,6 @@ export class EVMService extends Service {
 
   private walletProvider: WalletProvider | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
-  private lastRefreshTimestamp: number = 0;
-
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
 
   /**
    * Start the EVM service
@@ -79,7 +74,7 @@ export class EVMService extends Service {
   /**
    * Stop the EVM service by name
    */
-  static override async stop(runtime: IAgentRuntime): Promise<void> {
+  static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(EVM_SERVICE_NAME);
     if (!service) {
       logger.error("EVMService not found");
@@ -123,9 +118,7 @@ export class EVMService extends Service {
 
     for (const [chainName, balance] of Object.entries(balances)) {
       try {
-        const chain = this.walletProvider.getChainConfigs(
-          chainName as SupportedChain
-        );
+        const chain = this.walletProvider.getChainConfigs(chainName as SupportedChain);
         chainDetails.push({
           chainName,
           balance,
@@ -146,7 +139,6 @@ export class EVMService extends Service {
 
     // Cache the wallet data
     await this.runtime.setCache(EVM_WALLET_DATA_CACHE_KEY, walletData);
-    this.lastRefreshTimestamp = walletData.timestamp;
 
     logger.log(
       "EVM wallet data refreshed for chains:",
@@ -158,9 +150,7 @@ export class EVMService extends Service {
    * Get cached wallet data
    */
   async getCachedData(): Promise<EVMWalletData | undefined> {
-    const cachedData = await this.runtime.getCache<EVMWalletData>(
-      EVM_WALLET_DATA_CACHE_KEY
-    );
+    const cachedData = await this.runtime.getCache<EVMWalletData>(EVM_WALLET_DATA_CACHE_KEY);
 
     const now = Date.now();
 
@@ -168,9 +158,7 @@ export class EVMService extends Service {
     if (!cachedData || now - cachedData.timestamp > CACHE_REFRESH_INTERVAL_MS) {
       logger.log("EVM wallet data is stale, refreshing...");
       await this.refreshWalletData();
-      return await this.runtime.getCache<EVMWalletData>(
-        EVM_WALLET_DATA_CACHE_KEY
-      );
+      return await this.runtime.getCache<EVMWalletData>(EVM_WALLET_DATA_CACHE_KEY);
     }
 
     return cachedData;
@@ -190,10 +178,7 @@ export class EVMService extends Service {
    */
   getWalletProvider(): WalletProvider {
     if (!this.walletProvider) {
-      throw new EVMError(
-        EVMErrorCode.WALLET_NOT_INITIALIZED,
-        "Wallet provider not initialized"
-      );
+      throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet provider not initialized");
     }
     return this.walletProvider;
   }

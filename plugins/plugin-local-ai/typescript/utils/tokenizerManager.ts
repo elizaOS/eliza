@@ -1,8 +1,8 @@
-import { logger } from '@elizaos/core';
-import { AutoTokenizer, type PreTrainedTokenizer } from '@huggingface/transformers';
+import { logger } from "@elizaos/core";
+import { AutoTokenizer, type PreTrainedTokenizer } from "@huggingface/transformers";
 
 // Import the MODEL_SPECS type from a new types file we'll create later
-import type { ModelSpec } from '../types';
+import type { ModelSpec } from "../types";
 
 /**
  * Represents a Tokenizer Manager which manages tokenizers for different models.
@@ -49,7 +49,7 @@ export class TokenizerManager {
   async loadTokenizer(modelConfig: ModelSpec): Promise<PreTrainedTokenizer> {
     try {
       const tokenizerKey = `${modelConfig.tokenizer.type}-${modelConfig.tokenizer.name}`;
-      logger.info('Loading tokenizer:', {
+      logger.info("Loading tokenizer:", {
         key: tokenizerKey,
         name: modelConfig.tokenizer.name,
         type: modelConfig.tokenizer.type,
@@ -58,7 +58,7 @@ export class TokenizerManager {
       });
 
       if (this.tokenizers.has(tokenizerKey)) {
-        logger.info('Using cached tokenizer:', { key: tokenizerKey });
+        logger.info("Using cached tokenizer:", { key: tokenizerKey });
         const cachedTokenizer = this.tokenizers.get(tokenizerKey);
         if (!cachedTokenizer) {
           throw new Error(`Tokenizer ${tokenizerKey} exists in map but returned undefined`);
@@ -67,14 +67,14 @@ export class TokenizerManager {
       }
 
       // Check if models directory exists
-      const fs = await import('node:fs');
+      const fs = await import("node:fs");
       if (!fs.existsSync(this.modelsDir)) {
-        logger.warn('Models directory does not exist, creating it:', this.modelsDir);
+        logger.warn("Models directory does not exist, creating it:", this.modelsDir);
         fs.mkdirSync(this.modelsDir, { recursive: true });
       }
 
       logger.info(
-        'Initializing new tokenizer from HuggingFace with models directory:',
+        "Initializing new tokenizer from HuggingFace with models directory:",
         this.modelsDir
       );
 
@@ -85,10 +85,10 @@ export class TokenizerManager {
         });
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success('Tokenizer loaded successfully:', { key: tokenizerKey });
+        logger.success("Tokenizer loaded successfully:", { key: tokenizerKey });
         return tokenizer;
       } catch (tokenizeError) {
-        logger.error('Failed to load tokenizer from HuggingFace:', {
+        logger.error("Failed to load tokenizer from HuggingFace:", {
           error: tokenizeError instanceof Error ? tokenizeError.message : String(tokenizeError),
           stack: tokenizeError instanceof Error ? tokenizeError.stack : undefined,
           tokenizer: modelConfig.tokenizer.name,
@@ -96,20 +96,20 @@ export class TokenizerManager {
         });
 
         // Try again with local_files_only set to false and a longer timeout
-        logger.info('Retrying tokenizer loading...');
+        logger.info("Retrying tokenizer loading...");
         const tokenizer = await AutoTokenizer.from_pretrained(modelConfig.tokenizer.name, {
           cache_dir: this.modelsDir,
           local_files_only: false,
         });
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success('Tokenizer loaded successfully on retry:', {
+        logger.success("Tokenizer loaded successfully on retry:", {
           key: tokenizerKey,
         });
         return tokenizer;
       }
     } catch (error) {
-      logger.error('Failed to load tokenizer:', {
+      logger.error("Failed to load tokenizer:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         model: modelConfig.name,
@@ -130,26 +130,26 @@ export class TokenizerManager {
    */
   async encode(text: string, modelConfig: ModelSpec): Promise<number[]> {
     try {
-      logger.info('Encoding text with tokenizer:', {
+      logger.info("Encoding text with tokenizer:", {
         length: text.length,
         tokenizer: modelConfig.tokenizer.name,
       });
 
       const tokenizer = await this.loadTokenizer(modelConfig);
 
-      logger.info('Tokenizer loaded, encoding text...');
+      logger.info("Tokenizer loaded, encoding text...");
       const encoded = await tokenizer.encode(text, {
         add_special_tokens: true,
         return_token_type_ids: false,
       });
 
-      logger.info('Text encoded successfully:', {
+      logger.info("Text encoded successfully:", {
         tokenCount: encoded.length,
         tokenizer: modelConfig.tokenizer.name,
       });
       return encoded;
     } catch (error) {
-      logger.error('Text encoding failed:', {
+      logger.error("Text encoding failed:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         textLength: text.length,
@@ -170,26 +170,26 @@ export class TokenizerManager {
    */
   async decode(tokens: number[], modelConfig: ModelSpec): Promise<string> {
     try {
-      logger.info('Decoding tokens with tokenizer:', {
+      logger.info("Decoding tokens with tokenizer:", {
         count: tokens.length,
         tokenizer: modelConfig.tokenizer.name,
       });
 
       const tokenizer = await this.loadTokenizer(modelConfig);
 
-      logger.info('Tokenizer loaded, decoding tokens...');
+      logger.info("Tokenizer loaded, decoding tokens...");
       const decoded = await tokenizer.decode(tokens, {
         skip_special_tokens: true,
         clean_up_tokenization_spaces: true,
       });
 
-      logger.info('Tokens decoded successfully:', {
+      logger.info("Tokens decoded successfully:", {
         textLength: decoded.length,
         tokenizer: modelConfig.tokenizer.name,
       });
       return decoded;
     } catch (error) {
-      logger.error('Token decoding failed:', {
+      logger.error("Token decoding failed:", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         tokenCount: tokens.length,

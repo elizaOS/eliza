@@ -1,5 +1,5 @@
 export class Logger {
-  private prefix = '[StagehandServer]';
+  private prefix = "[StagehandServer]";
 
   info(message: string, ...args: any[]) {
     console.log(`${this.prefix} INFO:`, message, ...args);

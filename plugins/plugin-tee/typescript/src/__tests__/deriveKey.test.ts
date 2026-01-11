@@ -62,9 +62,7 @@ describe("PhalaDeriveKeyProvider", () => {
     });
 
     it("should throw error for invalid mode", () => {
-      expect(() => new PhalaDeriveKeyProvider("INVALID_MODE")).toThrow(
-        "Invalid TEE_MODE"
-      );
+      expect(() => new PhalaDeriveKeyProvider("INVALID_MODE")).toThrow("Invalid TEE_MODE");
     });
   });
 
@@ -136,5 +134,3 @@ describe("PhalaDeriveKeyProvider", () => {
     });
   });
 });
-
-

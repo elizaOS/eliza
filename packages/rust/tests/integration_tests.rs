@@ -552,7 +552,10 @@ mod runtime_tests {
         .await
         .unwrap();
 
+        #[cfg(feature = "native")]
         let runtime_character = runtime.character.read().await.clone();
+        #[cfg(not(feature = "native"))]
+        let runtime_character = runtime.character.read().unwrap().clone();
         assert_eq!(runtime_character.name, "TestAgent");
         assert_eq!(runtime_character.username, Some("test_agent".to_string()));
     }
@@ -605,7 +608,10 @@ mod runtime_tests {
         .await
         .unwrap();
 
+        #[cfg(feature = "native")]
         let runtime_character = runtime.character.read().await.clone();
+        #[cfg(not(feature = "native"))]
+        let runtime_character = runtime.character.read().unwrap().clone();
         assert_eq!(runtime_character.name, "JSONAgent");
     }
 }

@@ -15,6 +15,7 @@ Ollama enables running large language models locally on your machine. This plugi
 ## Installation
 
 1. Install this plugin in your ElizaOS project:
+
    ```bash
    bun add @elizaos/plugin-ollama
    ```
@@ -76,8 +77,6 @@ The plugin provides these model classes:
 
 For detailed information about the Ollama API used by this plugin, refer to the [official Ollama API documentation](https://github.com/ollama/ollama/blob/main/docs/api.md).
 
-
-
 ## Features
 
 ### Text Generation (Small Model)
@@ -86,7 +85,7 @@ Generate text using smaller, faster models optimized for quick responses:
 
 ```js
 const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-  prompt: 'What is the nature of reality?',
+  prompt: "What is the nature of reality?",
   stopSequences: [], // optional
 });
 ```
@@ -97,7 +96,7 @@ Generate comprehensive text responses using more powerful models for complex tas
 
 ```js
 const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-  prompt: 'Write a detailed explanation of quantum physics',
+  prompt: "Write a detailed explanation of quantum physics",
   stopSequences: [], // optional
   maxTokens: 8192, // optional (default: 8192)
   temperature: 0.7, // optional (default: 0.7)
@@ -112,10 +111,13 @@ Generate vector embeddings for text, which can be used for semantic search or ot
 
 ```js
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-  text: 'Text to embed',
+  text: "Text to embed",
 });
 // or
-const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, 'Text to embed');
+const embedding = await runtime.useModel(
+  ModelType.TEXT_EMBEDDING,
+  "Text to embed",
+);
 ```
 
 ### Object Generation (Small Model)
@@ -124,7 +126,7 @@ Generate structured JSON objects using faster models:
 
 ```js
 const object = await runtime.useModel(ModelType.OBJECT_SMALL, {
-  prompt: 'Generate a JSON object representing a user profile',
+  prompt: "Generate a JSON object representing a user profile",
   temperature: 0.7, // optional
 });
 ```
@@ -135,7 +137,7 @@ Generate complex, detailed JSON objects using more powerful models:
 
 ```js
 const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
-  prompt: 'Generate a detailed JSON object representing a restaurant',
+  prompt: "Generate a detailed JSON object representing a restaurant",
   temperature: 0.7, // optional
 });
 ```
@@ -153,7 +155,6 @@ const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
 - The plugin will attempt to download models automatically if they're not found
 - You can pre-download models using `ollama pull modelname`
 - Check model availability with `ollama list`
-
 
 ## License
 

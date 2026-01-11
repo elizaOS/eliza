@@ -5,9 +5,9 @@
  * - Compiles TypeScript to JavaScript
  */
 
-import { execSync } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
+import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const ROOT_DIR = path.resolve(import.meta.dir, "../..");
 const EXAMPLES_DIR = path.join(ROOT_DIR, "examples");
@@ -42,35 +42,35 @@ interface ExamplesManifest {
 
 // Categories and their descriptions
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  "plugin": "Plugin starter templates",
-  "_plugin": "Plugin starter templates",
-  "chat": "Interactive CLI chat applications",
+  plugin: "Plugin starter templates",
+  _plugin: "Plugin starter templates",
+  chat: "Interactive CLI chat applications",
   "text-adventure": "Text adventure games with AI decision making",
   "tic-tac-toe": "Tic-tac-toe game demonstrations",
   "rest-api": "REST API server implementations",
-  "a2a": "Agent-to-Agent communication examples",
-  "mcp": "Model Context Protocol examples",
-  "html": "Browser-based examples",
-  "react": "React web application examples",
+  a2a: "Agent-to-Agent communication examples",
+  mcp: "Model Context Protocol examples",
+  html: "Browser-based examples",
+  react: "React web application examples",
   "react-wasm": "React with WASM integration",
-  "next": "Next.js application examples",
-  "aws": "AWS Lambda deployment examples",
-  "gcp": "Google Cloud Platform examples",
-  "cloudflare": "Cloudflare Workers examples",
-  "vercel": "Vercel Edge Function examples",
-  "supabase": "Supabase Edge Function examples",
+  next: "Next.js application examples",
+  aws: "AWS Lambda deployment examples",
+  gcp: "Google Cloud Platform examples",
+  cloudflare: "Cloudflare Workers examples",
+  vercel: "Vercel Edge Function examples",
+  supabase: "Supabase Edge Function examples",
 };
 
 // Map internal directory names to display names
 const EXAMPLE_DISPLAY_NAMES: Record<string, string> = {
-  "_plugin": "plugin",
+  _plugin: "plugin",
 };
 
 // Language display names
-const LANGUAGE_NAMES: Record<string, string> = {
-  "typescript": "TypeScript",
-  "python": "Python",
-  "rust": "Rust",
+const _LANGUAGE_NAMES: Record<string, string> = {
+  typescript: "TypeScript",
+  python: "Python",
+  rust: "Rust",
   "rust-wasm": "Rust (WASM)",
 };
 
@@ -94,15 +94,15 @@ const KNOWN_LANGUAGES = new Set([
 ]);
 
 // Map framework names to their base language
-const FRAMEWORK_TO_LANGUAGE: Record<string, string> = {
-  "express": "typescript",
-  "hono": "typescript",
-  "elysia": "typescript",
-  "fastapi": "python",
-  "flask": "python",
-  "actix": "rust",
-  "axum": "rust",
-  "rocket": "rust",
+const _FRAMEWORK_TO_LANGUAGE: Record<string, string> = {
+  express: "typescript",
+  hono: "typescript",
+  elysia: "typescript",
+  fastapi: "python",
+  flask: "python",
+  actix: "rust",
+  axum: "rust",
+  rocket: "rust",
 };
 
 // Directories/files to skip when copying examples
@@ -123,7 +123,7 @@ const SKIP_PATTERNS = [
 ];
 
 function shouldSkip(name: string): boolean {
-  return SKIP_PATTERNS.some(pattern => {
+  return SKIP_PATTERNS.some((pattern) => {
     if (pattern.includes("*")) {
       const regex = new RegExp(pattern.replace("*", ".*"));
       return regex.test(name);
@@ -135,13 +135,13 @@ function shouldSkip(name: string): boolean {
 function copyDir(src: string, dest: string): void {
   fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
-  
+
   for (const entry of entries) {
     if (shouldSkip(entry.name)) continue;
-    
+
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
-    
+
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
     } else {
@@ -150,20 +150,16 @@ function copyDir(src: string, dest: string): void {
   }
 }
 
-function copyExamplesDir(
-  src: string,
-  dest: string,
-  examples: Example[]
-): void {
+function copyExamplesDir(src: string, dest: string, examples: Example[]): void {
   fs.mkdirSync(dest, { recursive: true });
-  
+
   for (const example of examples) {
     // Use category (original directory name) for source, name (display name) for destination
     const srcDirName = example.category; // e.g., "_plugin"
     const destDirName = example.name; // e.g., "plugin"
     const srcExample = path.join(src, srcDirName);
     const destExample = path.join(dest, destDirName);
-    
+
     if (fs.existsSync(srcExample)) {
       copyDir(srcExample, destExample);
     }
@@ -200,16 +196,20 @@ function detectLanguage(langDir: string): ExampleLanguage | null {
     return null;
   }
 
-  let hasPackageJson = fs.existsSync(path.join(langPath, "package.json"));
-  let hasRequirementsTxt = fs.existsSync(path.join(langPath, "requirements.txt"));
+  const hasPackageJson = fs.existsSync(path.join(langPath, "package.json"));
+  const hasRequirementsTxt = fs.existsSync(
+    path.join(langPath, "requirements.txt"),
+  );
   let hasCargoToml = fs.existsSync(path.join(langPath, "Cargo.toml"));
-  let hasPyprojectToml = fs.existsSync(path.join(langPath, "pyproject.toml"));
+  const hasPyprojectToml = fs.existsSync(path.join(langPath, "pyproject.toml"));
 
   // Check for source files even if no project file
   const files = fs.readdirSync(langPath);
-  const hasTsFiles = files.some(f => f.endsWith(".ts") || f.endsWith(".tsx"));
-  const hasPyFiles = files.some(f => f.endsWith(".py"));
-  let hasRsFiles = files.some(f => f.endsWith(".rs")) || fs.existsSync(path.join(langPath, "src"));
+  const hasTsFiles = files.some((f) => f.endsWith(".ts") || f.endsWith(".tsx"));
+  const hasPyFiles = files.some((f) => f.endsWith(".py"));
+  let hasRsFiles =
+    files.some((f) => f.endsWith(".rs")) ||
+    fs.existsSync(path.join(langPath, "src"));
 
   // For Rust, also check subdirectories for Cargo.toml (workspace structure)
   if (langName === "rust" && !hasCargoToml) {
@@ -226,7 +226,8 @@ function detectLanguage(langDir: string): ExampleLanguage | null {
   }
 
   // Skip if no valid project files
-  const hasAnyProjectFile = hasPackageJson || hasRequirementsTxt || hasCargoToml || hasPyprojectToml;
+  const hasAnyProjectFile =
+    hasPackageJson || hasRequirementsTxt || hasCargoToml || hasPyprojectToml;
 
   if (!hasAnyProjectFile && !hasTsFiles && !hasPyFiles && !hasRsFiles) {
     return null;
@@ -274,14 +275,23 @@ function scanExamples(): ExamplesManifest {
 
     // Also check if the example itself is a standalone project (like html, react, next)
     if (languages.length === 0) {
-      const hasPackageJson = fs.existsSync(path.join(examplePath, "package.json"));
-      const hasRequirementsTxt = fs.existsSync(path.join(examplePath, "requirements.txt"));
+      const hasPackageJson = fs.existsSync(
+        path.join(examplePath, "package.json"),
+      );
+      const hasRequirementsTxt = fs.existsSync(
+        path.join(examplePath, "requirements.txt"),
+      );
       const hasCargoToml = fs.existsSync(path.join(examplePath, "Cargo.toml"));
-      const hasPyprojectToml = fs.existsSync(path.join(examplePath, "pyproject.toml"));
-      
+      const hasPyprojectToml = fs.existsSync(
+        path.join(examplePath, "pyproject.toml"),
+      );
+
       const files = fs.readdirSync(examplePath);
-      
-      if (files.some(f => f.endsWith(".ts") || f.endsWith(".tsx")) || hasPackageJson) {
+
+      if (
+        files.some((f) => f.endsWith(".ts") || f.endsWith(".tsx")) ||
+        hasPackageJson
+      ) {
         languages.push({
           language: "typescript",
           path: examplePath,
@@ -291,7 +301,11 @@ function scanExamples(): ExamplesManifest {
           hasPyprojectToml: false,
         });
         languagesSet.add("typescript");
-      } else if (files.some(f => f.endsWith(".py")) || hasRequirementsTxt || hasPyprojectToml) {
+      } else if (
+        files.some((f) => f.endsWith(".py")) ||
+        hasRequirementsTxt ||
+        hasPyprojectToml
+      ) {
         languages.push({
           language: "python",
           path: examplePath,
@@ -317,7 +331,7 @@ function scanExamples(): ExamplesManifest {
     if (languages.length > 0) {
       // Use display name if available (e.g., "_plugin" -> "plugin")
       const displayName = EXAMPLE_DISPLAY_NAMES[entry] || entry;
-      
+
       examples.push({
         name: displayName,
         description: getExampleDescription(entry),
@@ -350,7 +364,9 @@ async function main() {
   console.log("🔍 Scanning examples directory...");
   const manifest = scanExamples();
 
-  console.log(`📦 Found ${manifest.examples.length} examples with ${manifest.languages.length} languages`);
+  console.log(
+    `📦 Found ${manifest.examples.length} examples with ${manifest.languages.length} languages`,
+  );
 
   // Write manifest
   const manifestPath = path.join(PACKAGE_DIR, "examples-manifest.json");
@@ -370,20 +386,18 @@ async function main() {
   if (fs.existsSync(pkgExamplesDir)) {
     fs.rmSync(pkgExamplesDir, { recursive: true, force: true });
   }
-  
+
   console.log("📦 Bundling examples...");
   copyExamplesDir(EXAMPLES_DIR, pkgExamplesDir, manifest.examples);
 
   // Compile TypeScript
   console.log("🔨 Compiling TypeScript...");
-  try {
-    // Use bunx to run tsc without workspace resolution
-    execSync("bunx --bun tsc -p tsconfig.json", { cwd: PACKAGE_DIR, stdio: "inherit" });
-    console.log("✅ TypeScript compilation complete");
-  } catch (error) {
-    console.error("❌ TypeScript compilation failed");
-    process.exit(1);
-  }
+  // Use bunx to run tsc without workspace resolution
+  execSync("bunx --bun tsc -p tsconfig.json", {
+    cwd: PACKAGE_DIR,
+    stdio: "inherit",
+  });
+  console.log("✅ TypeScript compilation complete");
 
   // Make CLI executable
   const cliPath = path.join(DIST_DIR, "cli.js");
@@ -391,7 +405,7 @@ async function main() {
     // Add shebang if not present
     let content = fs.readFileSync(cliPath, "utf-8");
     if (!content.startsWith("#!")) {
-      content = "#!/usr/bin/env node\n" + content;
+      content = `#!/usr/bin/env node\n${content}`;
       fs.writeFileSync(cliPath, content);
     }
     fs.chmodSync(cliPath, 0o755);
@@ -399,9 +413,10 @@ async function main() {
   }
 
   console.log("\n🎉 Build complete!");
-  console.log(`   Examples: ${manifest.examples.map(e => e.name).join(", ")}`);
+  console.log(
+    `   Examples: ${manifest.examples.map((e) => e.name).join(", ")}`,
+  );
   console.log(`   Languages: ${manifest.languages.join(", ")}`);
 }
 
 main().catch(console.error);
-

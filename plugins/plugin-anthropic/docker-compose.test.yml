@@ -79,5 +79,3 @@ services:
     command: ["./scripts/run-all-tests.sh"]
     profiles:
       - all
-
-

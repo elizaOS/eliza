@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { ShellService } from "../services/shellService";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ShellService } from "../services/shellService";
 
 // Mock the config module
 vi.mock("../utils/config", () => ({
@@ -72,7 +72,7 @@ describe("Shell History Tracking", () => {
 
     expect(history).toHaveLength(1);
     expect(history[0].fileOperations).toBeDefined();
-    expect(history[0].fileOperations![0]).toEqual({
+    expect(history[0].fileOperations?.[0]).toEqual({
       type: "create",
       target: "/test/allowed/test.txt",
     });
@@ -177,9 +177,7 @@ describe("Shell History Tracking", () => {
     expect(history).toHaveLength(commands.length);
 
     commands.forEach((command, index) => {
-      expect(history[index].fileOperations![0]).toEqual(command.expectedOp);
+      expect(history[index].fileOperations?.[0]).toEqual(command.expectedOp);
     });
   });
 });
-
-

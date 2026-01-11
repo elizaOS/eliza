@@ -223,7 +223,7 @@ export function assertValidApiKey(apiKey: string | undefined): asserts apiKey is
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(
       "ANTHROPIC_API_KEY is required but not configured. " +
-        "Set it in your environment variables or runtime settings.",
+        "Set it in your environment variables or runtime settings."
     );
   }
 }
@@ -241,9 +241,7 @@ export function createModelName(name: string): ModelName {
 /**
  * Type guard for ReconstructedResponse
  */
-export function isReconstructedResponse(
-  value: ExtractedJSON,
-): value is ReconstructedResponse {
+export function isReconstructedResponse(value: ExtractedJSON): value is ReconstructedResponse {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -255,9 +253,7 @@ export function isReconstructedResponse(
 /**
  * Type guard for ReflectionResponse
  */
-export function isReflectionResponse(
-  value: ExtractedJSON,
-): value is ReflectionResponse {
+export function isReflectionResponse(value: ExtractedJSON): value is ReflectionResponse {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -271,9 +267,7 @@ export function isReflectionResponse(
 /**
  * Type guard for UnstructuredResponse
  */
-export function isUnstructuredResponse(
-  value: ExtractedJSON,
-): value is UnstructuredResponse {
+export function isUnstructuredResponse(value: ExtractedJSON): value is UnstructuredResponse {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -285,8 +279,6 @@ export function isUnstructuredResponse(
 /**
  * Check if a schema is a reflection schema (has facts and relationships)
  */
-export function isReflectionSchema(
-  schema: JsonSchema | undefined,
-): boolean {
+export function isReflectionSchema(schema: JsonSchema | undefined): boolean {
   return !!(schema && "facts" in schema && "relationships" in schema);
 }

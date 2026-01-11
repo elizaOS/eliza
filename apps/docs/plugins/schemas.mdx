@@ -23,14 +23,15 @@ Example database adapter plugin:
 
 ```typescript
 export const plugin: Plugin = {
-  name: '@elizaos/plugin-sql',
-  description: 'A plugin for SQL database access with dynamic schema migrations',
+  name: "@elizaos/plugin-sql",
+  description:
+    "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema,
   init: async (_, runtime: IAgentRuntime) => {
     const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
     runtime.registerDatabaseAdapter(dbAdapter);
-  }
+  },
 };
 ```
 
@@ -43,20 +44,26 @@ To create a table that's accessible by all agents, define it without an `agentId
 ```typescript
 // In your plugin's schema.ts file
 
-import { pgTable, uuid, varchar, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  timestamp,
+  jsonb,
+  index,
+} from "drizzle-orm/pg-core";
 
 export const userPreferencesTable = pgTable(
-  'user_preferences',
+  "user_preferences",
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id').notNull(), // Links to the user
-    preferences: jsonb('preferences').default({}).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull(), // Links to the user
+    preferences: jsonb("preferences").default({}).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index('idx_user_preferences_user_id').on(table.userId),
-  ]
+  (table) => [index("idx_user_preferences_user_id").on(table.userId)],
 );
 
 // Export your schema
@@ -66,6 +73,7 @@ export const customSchema = {
 ```
 
 **Key Points:**
+
 - No `agentId` field means data is shared across all agents
 - elizaOS will automatically create migrations from this schema
 - Use appropriate indexes for query performance
@@ -76,17 +84,15 @@ For data that should be scoped to individual agents:
 
 ```typescript
 export const agentDataTable = pgTable(
-  'agent_data',
+  "agent_data",
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    agentId: uuid('agent_id').notNull(), // Scopes to specific agent
-    key: varchar('key', { length: 255 }).notNull(),
-    value: jsonb('value').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id").notNull(), // Scopes to specific agent
+    key: varchar("key", { length: 255 }).notNull(),
+    value: jsonb("value").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    index('idx_agent_data_agent_key').on(table.agentId, table.key),
-  ]
+  (table) => [index("idx_agent_data_agent_key").on(table.agentId, table.key)],
 );
 ```
 
@@ -99,10 +105,10 @@ Create a repository class to handle database operations. This follows the patter
 ```typescript
 // In your plugin's repositories/user-preferences-repository.ts
 
-import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { UUID } from '@elizaos/core';
-import { userPreferencesTable } from '../schema.ts';
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { UUID } from "@elizaos/core";
+import { userPreferencesTable } from "../schema.ts";
 
 export interface UserPreferences {
   id: UUID;
@@ -118,10 +124,13 @@ export class UserPreferencesRepository {
   /**
    * Create or update user preferences
    */
-  async upsert(userId: UUID, preferences: Record<string, any>): Promise<UserPreferences> {
+  async upsert(
+    userId: UUID,
+    preferences: Record<string, any>,
+  ): Promise<UserPreferences> {
     // Check if preferences exist
     const existing = await this.findByUserId(userId);
-    
+
     if (existing) {
       // Update existing
       const [updated] = await this.db
@@ -132,7 +141,7 @@ export class UserPreferencesRepository {
         })
         .where(eq(userPreferencesTable.userId, userId))
         .returning();
-      
+
       return this.mapToUserPreferences(updated);
     } else {
       // Create new
@@ -145,7 +154,7 @@ export class UserPreferencesRepository {
           updatedAt: new Date(),
         })
         .returning();
-      
+
       return this.mapToUserPreferences(created);
     }
   }
@@ -209,23 +218,27 @@ export class UserPreferencesRepository {
 
 ```typescript
 export class TransactionalRepository {
-  async transferPoints(fromUserId: UUID, toUserId: UUID, points: number): Promise<void> {
+  async transferPoints(
+    fromUserId: UUID,
+    toUserId: UUID,
+    points: number,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
       // Deduct from sender
       await tx
         .update(userPointsTable)
-        .set({ 
+        .set({
           points: sql`${userPointsTable.points} - ${points}`,
-          updatedAt: new Date()
+          updatedAt: new Date(),
         })
         .where(eq(userPointsTable.userId, fromUserId));
 
       // Add to receiver
       await tx
         .update(userPointsTable)
-        .set({ 
+        .set({
           points: sql`${userPointsTable.points} + ${points}`,
-          updatedAt: new Date()
+          updatedAt: new Date(),
         })
         .where(eq(userPointsTable.userId, toUserId));
 
@@ -234,7 +247,7 @@ export class TransactionalRepository {
         fromUserId,
         toUserId,
         amount: points,
-        createdAt: new Date()
+        createdAt: new Date(),
       });
     });
   }
@@ -252,9 +265,7 @@ export class AnalyticsRepository {
     const stats = await this.db
       .select({
         totalActions: count(userActionsTable.id),
-        uniqueDays: countDistinct(
-          sql`DATE(${userActionsTable.createdAt})`
-        ),
+        uniqueDays: countDistinct(sql`DATE(${userActionsTable.createdAt})`),
         mostCommonAction: sql`
           MODE() WITHIN GROUP (ORDER BY ${userActionsTable.actionType})
         `,
@@ -263,12 +274,14 @@ export class AnalyticsRepository {
       .where(
         and(
           eq(userActionsTable.userId, userId),
-          gte(userActionsTable.createdAt, startDate)
-        )
+          gte(userActionsTable.createdAt, startDate),
+        ),
       )
       .groupBy(userActionsTable.userId);
 
-    return stats[0] || { totalActions: 0, uniqueDays: 0, mostCommonAction: null };
+    return (
+      stats[0] || { totalActions: 0, uniqueDays: 0, mostCommonAction: null }
+    );
   }
 }
 ```
@@ -280,17 +293,26 @@ export class AnalyticsRepository {
 Actions process user input and store data using the repository:
 
 ```typescript
-import type { Action, IAgentRuntime, Memory, ActionResult } from '@elizaos/core';
-import { parseKeyValueXml } from '@elizaos/core';
-import { UserPreferencesRepository } from '../repositories/user-preferences-repository.ts';
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  ActionResult,
+} from "@elizaos/core";
+import { parseKeyValueXml } from "@elizaos/core";
+import { UserPreferencesRepository } from "../repositories/user-preferences-repository.ts";
 
 export const storeUserPreferencesAction: Action = {
-  name: 'STORE_USER_PREFERENCES',
-  description: 'Extract and store user preferences from messages',
-  
+  name: "STORE_USER_PREFERENCES",
+  description: "Extract and store user preferences from messages",
+
   validate: async (runtime: IAgentRuntime, message: Memory) => {
-    const text = message.content.text?.toLowerCase() || '';
-    return text.includes('preference') || text.includes('prefer') || text.includes('like');
+    const text = message.content.text?.toLowerCase() || "";
+    return (
+      text.includes("preference") ||
+      text.includes("prefer") ||
+      text.includes("like")
+    );
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory) => {
@@ -311,7 +333,7 @@ export const storeUserPreferencesAction: Action = {
 
     // 2. Use runtime's LLM
     const llmResponse = await runtime.completion({
-      messages: [{ role: 'system', content: extractionPrompt }]
+      messages: [{ role: "system", content: extractionPrompt }],
     });
 
     // 3. Parse the response
@@ -320,7 +342,7 @@ export const storeUserPreferencesAction: Action = {
     // 4. Get database and repository
     const db = runtime.databaseAdapter.db;
     const repository = new UserPreferencesRepository(db);
-    
+
     // 5. Store preferences
     const userId = message.userId || message.entityId;
     const stored = await repository.upsert(userId, extractedPreferences);
@@ -328,9 +350,9 @@ export const storeUserPreferencesAction: Action = {
     return {
       success: true,
       data: stored,
-      text: 'Your preferences have been saved successfully.'
+      text: "Your preferences have been saved successfully.",
     };
-  }
+  },
 };
 ```
 
@@ -338,32 +360,34 @@ export const storeUserPreferencesAction: Action = {
 
 ```typescript
 export const batchImportAction: Action = {
-  name: 'BATCH_IMPORT',
-  description: 'Import multiple records at once',
-  
+  name: "BATCH_IMPORT",
+  description: "Import multiple records at once",
+
   handler: async (runtime, message) => {
     const db = runtime.databaseAdapter.db;
     const repository = new DataRepository(db);
-    
+
     // Parse batch data from message
     const records = JSON.parse(message.content.text);
-    
+
     // Use batch insert for performance
     const results = await db
       .insert(dataTable)
-      .values(records.map(r => ({
-        ...r,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      })))
+      .values(
+        records.map((r) => ({
+          ...r,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })),
+      )
       .returning();
-    
+
     return {
       success: true,
       text: `Imported ${results.length} records successfully`,
-      data: { importedCount: results.length }
+      data: { importedCount: results.length },
     };
-  }
+  },
 };
 ```
 
@@ -374,47 +398,47 @@ export const batchImportAction: Action = {
 Providers make data available to agents during conversations:
 
 ```typescript
-import type { Provider, IAgentRuntime, Memory } from '@elizaos/core';
-import { UserPreferencesRepository } from '../repositories/user-preferences-repository.ts';
+import type { Provider, IAgentRuntime, Memory } from "@elizaos/core";
+import { UserPreferencesRepository } from "../repositories/user-preferences-repository.ts";
 
 export const userPreferencesProvider: Provider = {
-  name: 'USER_PREFERENCES',
-  description: 'Provides user preferences to customize agent behavior',
+  name: "USER_PREFERENCES",
+  description: "Provides user preferences to customize agent behavior",
   dynamic: true, // Fetches fresh data on each request
-  
+
   get: async (runtime: IAgentRuntime, message: Memory) => {
     // 1. Get user ID from message
     const userId = message.userId || message.entityId;
-    
+
     // 2. Get database and repository
     const db = runtime.databaseAdapter.db;
     const repository = new UserPreferencesRepository(db);
-    
+
     // 3. Fetch preferences
     const userPrefs = await repository.findByUserId(userId);
-    
+
     if (!userPrefs) {
       return {
         data: { preferences: {} },
-        values: { preferences: 'No preferences found' },
-        text: ''
+        values: { preferences: "No preferences found" },
+        text: "",
       };
     }
-    
+
     // 4. Format data for agent context
     const preferencesText = `
 # User Preferences
-${Object.entries(userPrefs.preferences).map(([key, value]) => 
-  `- ${key}: ${value}`
-).join('\n')}
+${Object.entries(userPrefs.preferences)
+  .map(([key, value]) => `- ${key}: ${value}`)
+  .join("\n")}
     `.trim();
-    
+
     return {
       data: { preferences: userPrefs.preferences },
       values: userPrefs.preferences,
-      text: preferencesText // This text is added to agent context
+      text: preferencesText, // This text is added to agent context
     };
-  }
+  },
 };
 ```
 
@@ -422,36 +446,37 @@ ${Object.entries(userPrefs.preferences).map(([key, value]) =>
 
 ```typescript
 export const cachedDataProvider: Provider = {
-  name: 'CACHED_DATA',
+  name: "CACHED_DATA",
   private: true,
-  
+
   get: async (runtime, message) => {
     const cacheKey = `data_${message.roomId}`;
     const cached = runtime.cacheManager.get(cacheKey);
-    
-    if (cached && Date.now() - cached.timestamp < 60000) { // 1 minute cache
+
+    if (cached && Date.now() - cached.timestamp < 60000) {
+      // 1 minute cache
       return cached.data;
     }
-    
+
     // Fetch fresh data
     const db = runtime.databaseAdapter.db;
     const repository = new DataRepository(db);
     const freshData = await repository.getRoomData(message.roomId);
-    
+
     const result = {
       text: formatData(freshData),
       data: freshData,
-      values: { roomData: freshData }
+      values: { roomData: freshData },
     };
-    
+
     // Cache the result
     runtime.cacheManager.set(cacheKey, {
       data: result,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
-    
+
     return result;
-  }
+  },
 };
 ```
 
@@ -462,11 +487,11 @@ export const cachedDataProvider: Provider = {
 Register your schema, actions, and providers in your plugin:
 
 ```typescript
-import type { Plugin } from '@elizaos/core';
+import type { Plugin } from "@elizaos/core";
 
 export const myPlugin: Plugin = {
-  name: 'my-plugin',
-  description: 'My custom plugin',
+  name: "my-plugin",
+  description: "My custom plugin",
   actions: [storeUserPreferencesAction],
   providers: [userPreferencesProvider],
   schema: customSchema, // Your schema export
@@ -484,6 +509,7 @@ export const myPlugin: Plugin = {
 ### 2. Shared Data Pattern
 
 Without `agentId` in your tables:
+
 - All agents can read and write the same data
 - Use `userId` or other identifiers to scope data appropriately
 - Consider data consistency across multiple agents
@@ -501,10 +527,10 @@ try {
   const result = await repository.upsert(userId, preferences);
   return { success: true, data: result };
 } catch (error) {
-  console.error('Failed to store preferences:', error);
-  return { 
-    success: false, 
-    error: error instanceof Error ? error.message : 'Unknown error' 
+  console.error("Failed to store preferences:", error);
+  return {
+    success: false,
+    error: error instanceof Error ? error.message : "Unknown error",
   };
 }
 ```
@@ -521,20 +547,20 @@ export const migrations = {
   },
   2: async (db) => {
     // Add new column
-    await db.schema.alterTable('user_preferences', (table) => {
-      table.addColumn('version', 'integer').defaultTo(1);
+    await db.schema.alterTable("user_preferences", (table) => {
+      table.addColumn("version", "integer").defaultTo(1);
     });
-  }
+  },
 };
 ```
 
 ## Example Flow
 
 1. **User sends message**: "I prefer dark theme and Spanish language"
-2. **Action triggered**: 
+2. **Action triggered**:
    - LLM extracts: `{ theme: 'dark', language: 'es' }`
    - Repository stores in database
-3. **Provider supplies data**: 
+3. **Provider supplies data**:
    - On next interaction, provider fetches preferences
    - Agent context includes: "User Preferences: theme: dark, language: es"
 4. **Multiple agents**: Any agent can access this user's preferences
@@ -544,11 +570,11 @@ export const migrations = {
 ### Embeddings and Vector Search
 
 ```typescript
-export const documentTable = pgTable('documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  content: text('content').notNull(),
-  embedding: vector('embedding', { dimensions: 1536 }),
-  metadata: jsonb('metadata').default({})
+export const documentTable = pgTable("documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  metadata: jsonb("metadata").default({}),
 });
 
 export class DocumentRepository {
@@ -556,9 +582,7 @@ export class DocumentRepository {
     return await this.db
       .select()
       .from(documentTable)
-      .orderBy(
-        sql`${documentTable.embedding} <-> ${embedding}`
-      )
+      .orderBy(sql`${documentTable.embedding} <-> ${embedding}`)
       .limit(limit);
   }
 }
@@ -567,18 +591,18 @@ export class DocumentRepository {
 ### Time-Series Data
 
 ```typescript
-export const metricsTable = pgTable('metrics', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  metric: varchar('metric', { length: 255 }).notNull(),
-  value: real('value').notNull(),
-  timestamp: timestamp('timestamp').defaultNow().notNull(),
-  tags: jsonb('tags').default({})
+export const metricsTable = pgTable("metrics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  metric: varchar("metric", { length: 255 }).notNull(),
+  value: real("value").notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  tags: jsonb("tags").default({}),
 });
 
 export class MetricsRepository {
   async getTimeSeries(metric: string, hours = 24): Promise<TimeSeries> {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-    
+
     return await this.db
       .select({
         time: metricsTable.timestamp,
@@ -588,12 +612,10 @@ export class MetricsRepository {
       .where(
         and(
           eq(metricsTable.metric, metric),
-          gte(metricsTable.timestamp, since)
-        )
+          gte(metricsTable.timestamp, since),
+        ),
       )
-      .groupBy(
-        sql`DATE_TRUNC('hour', ${metricsTable.timestamp})`
-      )
+      .groupBy(sql`DATE_TRUNC('hour', ${metricsTable.timestamp})`)
       .orderBy(metricsTable.timestamp);
   }
 }
@@ -617,15 +639,15 @@ elizaOS handles the rest - migrations, database connections, and making your dat
   <Card title="Plugin Components" icon="cube" href="/plugins/components">
     Learn about Actions, Providers, Evaluators, and Services
   </Card>
-  
-  <Card title="Development Guide" icon="code" href="/plugins/development">
-    Build your first plugin step by step
-  </Card>
-  
-  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
-    Learn proven plugin development patterns
-  </Card>
-  
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build your first plugin step by step
+</Card>
+
+<Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+  Learn proven plugin development patterns
+</Card>
+
   <Card title="Plugin Reference" icon="book" href="/plugins/reference">
     Complete API reference for all interfaces
   </Card>

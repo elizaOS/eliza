@@ -1,11 +1,12 @@
 """Tests for the Simple Voice plugin."""
 
 import pytest
+
 from eliza_plugin_simple_voice import (
-    simple_voice_plugin,
-    SamTTSService,
     SamTTSOptions,
+    SamTTSService,
     say_aloud_action,
+    simple_voice_plugin,
 )
 
 

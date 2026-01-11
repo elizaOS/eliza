@@ -1,14 +1,16 @@
 ---
-title: 'Publish a Plugin'
-description: 'Publish your elizaOS plugin to the elizaOS registry'
+title: "Publish a Plugin"
+description: "Publish your elizaOS plugin to the elizaOS registry"
 ---
 
 <Tip>
-  **Video Tutorial**: [**Create + Publish Your Own Plugin**](https://www.youtube.com/watch?v=3wVxXMwSzX4&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=6)
+  **Video Tutorial**: [**Create + Publish Your Own
+  Plugin**](https://www.youtube.com/watch?v=3wVxXMwSzX4&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=6)
 </Tip>
 
 <Note>
-This guide assumes you have a working plugin. If you need to create one first, see [Create a Plugin](/guides/create-a-plugin)
+  This guide assumes you have a working plugin. If you need to create one first,
+  see [Create a Plugin](/guides/create-a-plugin)
 </Note>
 
 Once you've built and tested your plugin locally, you'll want to publish it so others can discover and use it. You'll need an npm account and GitHub account for authentication.
@@ -30,19 +32,21 @@ cd plugin-fal-ai
 Your plugin needs these key elements for registry acceptance:
 
 **Required files:**
+
 ```
 plugin-fal-ai/
 ├── src/
 │   └── index.ts         # Your plugin code
-├── images/              # Registry assets 
+├── images/              # Registry assets
 │   ├── logo.jpg        # 400x400px, max 500KB
-│   └── banner.jpg      # 1280x640px, max 1MB  
+│   └── banner.jpg      # 1280x640px, max 1MB
 ├── package.json         # Plugin metadata
 ├── README.md           # Documentation
 └── dist/               # Built files (from `bun run build`)
 ```
 
 **What the publish command validates:**
+
 - `name` starts with `plugin-` (auto-added by CLI if missing)
 - Custom `description` (not the default generated placeholder)
 - Required images in `images/` directory
@@ -132,9 +136,10 @@ gh auth login
 ```
 
 <Note>
-If `gh` command is not found, you'll need to install GitHub CLI from [cli.github.com](https://cli.github.com) or the publish command will prompt you to create a token manually.
+  If `gh` command is not found, you'll need to install GitHub CLI from
+  [cli.github.com](https://cli.github.com) or the publish command will prompt
+  you to create a token manually.
 </Note>
-
 
 ---
 
@@ -149,12 +154,14 @@ elizaos publish --test
 ```
 
 This command will:
+
 - Check your npm and GitHub authentication
-- Validate your plugin structure  
+- Validate your plugin structure
 - Check for required images and descriptions
 - Show you exactly what would happen without making any changes
 
 **Example output:**
+
 ```
 ✓ Found existing NPM login: your-username
 ✓ GitHub token validated
@@ -167,7 +174,8 @@ Do you wish to continue anyway? No
 ```
 
 <Warning>
-Address any validation errors before proceeding. Your plugin may be rejected by maintainers if it's missing required assets or has placeholder content.
+  Address any validation errors before proceeding. Your plugin may be rejected
+  by maintainers if it's missing required assets or has placeholder content.
 </Warning>
 
 ### Run dry run (optional)
@@ -188,7 +196,7 @@ Once your test passes and you're satisfied with the setup, run the actual publis
 
 ### Execute full publish
 
-```bash Terminal  
+```bash Terminal
 elizaos publish
 ```
 
@@ -207,11 +215,13 @@ You will be asked for a scoped Github token and given these instructions:
     6. **Copy the token and paste it when prompted by the CLI**
 
     <img src="/images/github-token-scopes.png" alt="GitHub token scope selection showing repo, read:org, and workflow checked" />
+
   </Step>
 </Steps>
 
 <Note>
-Make sure to test that your plugin is configured correctly before publishing, as it will cause unnecessary delay if something is wrong.
+  Make sure to test that your plugin is configured correctly before publishing,
+  as it will cause unnecessary delay if something is wrong.
 </Note>
 
 **Example successful output:**
@@ -263,7 +273,9 @@ elizaos plugins add plugin-fal-ai
 **For plugin updates after initial publishing:**
 
 <Important>
-The `elizaos publish` command is only for initial publication. For all future updates, use standard npm and Git workflows - never run `elizaos publish` again.
+  The `elizaos publish` command is only for initial publication. For all future
+  updates, use standard npm and Git workflows - never run `elizaos publish`
+  again.
 </Important>
 
 ```bash Terminal
@@ -271,7 +283,7 @@ The `elizaos publish` command is only for initial publication. For all future up
 # 2. Update version in package.json
 npm version patch  # or minor/major
 
-# 3. Build and test  
+# 3. Build and test
 bun run build
 elizaos test
 
@@ -291,7 +303,11 @@ The elizaOS registry automatically syncs with npm updates, so you don't need to 
 ## See Also
 
 <CardGroup cols={2}>
-  <Card title="Contribute to Core" icon="heart" href="/guides/contribute-to-core">
+  <Card
+    title="Contribute to Core"
+    icon="heart"
+    href="/guides/contribute-to-core"
+  >
     Help improve elizaOS by contributing to the core framework
   </Card>
   <Card title="Plugin Registry" icon="book" href="/plugin-registry/overview">
@@ -300,7 +316,11 @@ The elizaOS registry automatically syncs with npm updates, so you don't need to 
   <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
     Master all elizaOS CLI commands for development
   </Card>
-  <Card title="Join Discord Community" icon="users" href="https://discord.gg/ai16z">
+  <Card
+    title="Join Discord Community"
+    icon="users"
+    href="https://discord.gg/ai16z"
+  >
     Share your plugin and get help from the community
   </Card>
 </CardGroup>

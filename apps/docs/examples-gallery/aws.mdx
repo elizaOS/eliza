@@ -1,6 +1,6 @@
 ---
-title: 'AWS Examples'
-description: 'Deploy elizaOS to AWS Lambda with API Gateway'
+title: "AWS Examples"
+description: "Deploy elizaOS to AWS Lambda with API Gateway"
 ---
 
 Deploy AI agents as serverless AWS Lambda functions.
@@ -27,11 +27,11 @@ sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
 
 ## Available Implementations
 
-| Language | Directory | Runtime |
-|----------|-----------|---------|
-| TypeScript | `examples/aws/typescript/` | Node.js 20 |
-| Python | `examples/aws/python/` | Python 3.11 |
-| Rust | `examples/aws/rust/` | Custom Runtime |
+| Language   | Directory                  | Runtime        |
+| ---------- | -------------------------- | -------------- |
+| TypeScript | `examples/aws/typescript/` | Node.js 20     |
+| Python     | `examples/aws/python/`     | Python 3.11    |
+| Rust       | `examples/aws/rust/`       | Custom Runtime |
 
 ## TypeScript Handler
 
@@ -73,18 +73,20 @@ curl -X POST http://localhost:3000/chat \
 
 ## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | Required | OpenAI API key |
-| `CHARACTER_NAME` | Eliza | Agent name |
-| `CHARACTER_BIO` | A helpful AI. | Agent bio |
-| `LOG_LEVEL` | INFO | Logging level |
+| Variable         | Default       | Description    |
+| ---------------- | ------------- | -------------- |
+| `OPENAI_API_KEY` | Required      | OpenAI API key |
+| `CHARACTER_NAME` | Eliza         | Agent name     |
+| `CHARACTER_BIO`  | A helpful AI. | Agent bio      |
+| `LOG_LEVEL`      | INFO          | Logging level  |
 
 ## Cost Estimate
 
 512MB memory, 2s average duration, 10K requests/month:
+
 - Requests: $0.002
 - Duration: $0.17
 - **Total: ~$0.20/month**
+
 
 

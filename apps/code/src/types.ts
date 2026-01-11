@@ -1,11 +1,14 @@
-import type { UUID, Task as CoreTask } from "@elizaos/core";
+import type { Task as CoreTask, UUID } from "@elizaos/core";
 
 // ============================================================================
 // JSON-safe value types (no `any` / `unknown`)
 // ============================================================================
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 // ============================================================================
 // Task Types (extends core elizaOS Task)

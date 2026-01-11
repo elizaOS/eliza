@@ -33,27 +33,13 @@ import type {
   Plugin,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { initializeAnthropic } from "./init";
+import { initializeAnthropic, type PluginConfig } from "./init";
 import { handleObjectLarge, handleObjectSmall, handleTextLarge, handleTextSmall } from "./models";
 import { getApiKeyOptional } from "./utils/config";
 
+export type { PluginConfig } from "./init";
 // Re-export types for consumers
 export * from "./types";
-
-/**
- * Plugin configuration object structure
- */
-export interface PluginConfig {
-  readonly ANTHROPIC_API_KEY?: string;
-  readonly ANTHROPIC_SMALL_MODEL?: string;
-  readonly ANTHROPIC_LARGE_MODEL?: string;
-  readonly ANTHROPIC_EXPERIMENTAL_TELEMETRY?: string;
-  readonly ANTHROPIC_BASE_URL?: string;
-  readonly ANTHROPIC_BROWSER_BASE_URL?: string;
-  readonly ANTHROPIC_COT_BUDGET?: string;
-  readonly ANTHROPIC_COT_BUDGET_SMALL?: string;
-  readonly ANTHROPIC_COT_BUDGET_LARGE?: string;
-}
 
 /**
  * Test suite for the Anthropic plugin.
@@ -171,15 +157,15 @@ export const anthropicPlugin: Plugin = {
   description: "Anthropic plugin (supports text and object generation)",
 
   config: {
-    ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"],
-    ANTHROPIC_SMALL_MODEL: process.env["ANTHROPIC_SMALL_MODEL"],
-    ANTHROPIC_LARGE_MODEL: process.env["ANTHROPIC_LARGE_MODEL"],
-    ANTHROPIC_EXPERIMENTAL_TELEMETRY: process.env["ANTHROPIC_EXPERIMENTAL_TELEMETRY"],
-    ANTHROPIC_BASE_URL: process.env["ANTHROPIC_BASE_URL"],
-    ANTHROPIC_BROWSER_BASE_URL: process.env["ANTHROPIC_BROWSER_BASE_URL"],
-    ANTHROPIC_COT_BUDGET: process.env["ANTHROPIC_COT_BUDGET"],
-    ANTHROPIC_COT_BUDGET_SMALL: process.env["ANTHROPIC_COT_BUDGET_SMALL"],
-    ANTHROPIC_COT_BUDGET_LARGE: process.env["ANTHROPIC_COT_BUDGET_LARGE"],
+    ["ANTHROPIC_API_KEY"]: process.env["ANTHROPIC_API_KEY"],
+    ["ANTHROPIC_SMALL_MODEL"]: process.env["ANTHROPIC_SMALL_MODEL"],
+    ["ANTHROPIC_LARGE_MODEL"]: process.env["ANTHROPIC_LARGE_MODEL"],
+    ["ANTHROPIC_EXPERIMENTAL_TELEMETRY"]: process.env["ANTHROPIC_EXPERIMENTAL_TELEMETRY"],
+    ["ANTHROPIC_BASE_URL"]: process.env["ANTHROPIC_BASE_URL"],
+    ["ANTHROPIC_BROWSER_BASE_URL"]: process.env["ANTHROPIC_BROWSER_BASE_URL"],
+    ["ANTHROPIC_COT_BUDGET"]: process.env["ANTHROPIC_COT_BUDGET"],
+    ["ANTHROPIC_COT_BUDGET_SMALL"]: process.env["ANTHROPIC_COT_BUDGET_SMALL"],
+    ["ANTHROPIC_COT_BUDGET_LARGE"]: process.env["ANTHROPIC_COT_BUDGET_LARGE"],
   },
 
   async init(config, runtime) {
@@ -189,28 +175,28 @@ export const anthropicPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams,
+      params: GenerateTextParams
     ): Promise<string> => {
       return handleTextSmall(runtime, params);
     },
 
     [ModelType.TEXT_LARGE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams,
+      params: GenerateTextParams
     ): Promise<string> => {
       return handleTextLarge(runtime, params);
     },
 
     [ModelType.OBJECT_SMALL]: async (
       runtime: IAgentRuntime,
-      params: ObjectGenerationParams,
+      params: ObjectGenerationParams
     ): Promise<Record<string, unknown>> => {
       return handleObjectSmall(runtime, params);
     },
 
     [ModelType.OBJECT_LARGE]: async (
       runtime: IAgentRuntime,
-      params: ObjectGenerationParams,
+      params: ObjectGenerationParams
     ): Promise<Record<string, unknown>> => {
       return handleObjectLarge(runtime, params);
     },

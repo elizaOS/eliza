@@ -1,5 +1,5 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { expandTildePath, resolveEnvFile, resolvePgliteDir } from "../../utils";
 
 // Mock dotenv to prevent loading actual .env file

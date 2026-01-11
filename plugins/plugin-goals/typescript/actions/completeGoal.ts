@@ -1,53 +1,55 @@
 import {
   type Action,
   type ActionResult,
+  asUUID,
   type HandlerCallback,
   type IAgentRuntime,
-  type Memory,
-  type State,
-  type UUID,
-  asUUID,
-  ModelType,
   logger,
-} from '@elizaos/core';
-import { createGoalDataService, type GoalData } from '../services/goalDataService.js';
+  type Memory,
+  ModelType,
+  type State,
+} from "@elizaos/core";
+import { createGoalDataService } from "../services/goalDataService.js";
 
 /**
  * The COMPLETE_GOAL action allows users to mark a goal as achieved.
  */
 export const completeGoalAction: Action = {
-  name: 'COMPLETE_GOAL',
-  similes: ['ACHIEVE_GOAL', 'FINISH_GOAL', 'CHECK_OFF_GOAL', 'ACCOMPLISH_GOAL'],
-  description: 'Marks a goal as completed/achieved.',
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  name: "COMPLETE_GOAL",
+  similes: ["ACHIEVE_GOAL", "FINISH_GOAL", "CHECK_OFF_GOAL", "ACCOMPLISH_GOAL"],
+  description: "Marks a goal as completed/achieved.",
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!message.roomId) {
-      logger.warn('No roomId provided for complete goal validation');
+      logger.warn("No roomId provided for complete goal validation");
       return false;
     }
 
     // Try to extract goal reference from the message
-    const messageText = message.content?.text?.toLowerCase() || '';
+    const messageText = message.content?.text?.toLowerCase() || "";
     const hasCompleteIntent =
-      messageText.includes('complete') ||
-      messageText.includes('achieve') ||
-      messageText.includes('finish') ||
-      messageText.includes('done') ||
-      messageText.includes('accomplished');
+      messageText.includes("complete") ||
+      messageText.includes("achieve") ||
+      messageText.includes("finish") ||
+      messageText.includes("done") ||
+      messageText.includes("accomplished");
 
-    logger.info({ hasCompleteIntent, messageText: messageText.substring(0, 100) }, 'Complete goal validation');
+    logger.info(
+      { hasCompleteIntent, messageText: messageText.substring(0, 100) },
+      "Complete goal validation"
+    );
 
     return hasCompleteIntent;
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State,
-    options?: { [key: string]: unknown },
+    _state?: State,
+    _options?: { [key: string]: unknown },
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
       if (!message.roomId) {
-        const errorMessage = 'No room context available';
+        const errorMessage = "No room context available";
         if (callback) {
           await callback({
             text: errorMessage,
@@ -62,13 +64,13 @@ export const completeGoalAction: Action = {
 
       // Determine owner context (entity vs agent)
       const isEntityMessage = message.entityId && message.entityId !== runtime.agentId;
-      const ownerType = isEntityMessage ? 'entity' : 'agent';
+      const ownerType = isEntityMessage ? "entity" : "agent";
       const ownerId = asUUID(isEntityMessage ? message.entityId : runtime.agentId);
-      const ownerText = isEntityMessage ? 'User' : 'Agent';
+      const ownerText = isEntityMessage ? "User" : "Agent";
 
       // Extract goal information from the message
-      const messageText = message.content?.text || '';
-      const lowerText = messageText.toLowerCase();
+      const messageText = message.content?.text || "";
+      const _lowerText = messageText.toLowerCase();
 
       // Try to find which goal to complete
       const activeGoals = await dataService.getGoals({
@@ -82,7 +84,7 @@ export const completeGoalAction: Action = {
         if (callback) {
           await callback({
             text: responseText,
-            actions: ['COMPLETE_GOAL'],
+            actions: ["COMPLETE_GOAL"],
           });
         }
         return { success: true, text: responseText };
@@ -93,7 +95,7 @@ export const completeGoalAction: Action = {
       
 Which of these active goals best matches the request? Return only the number.
 
-${activeGoals.map((goal, idx) => `${idx + 1}. ${goal.name}`).join('\n')}
+${activeGoals.map((goal, idx) => `${idx + 1}. ${goal.name}`).join("\n")}
 
 If none match well, return 0.`;
 
@@ -102,17 +104,17 @@ If none match well, return 0.`;
         temperature: 0.1,
       });
 
-      const matchIndex = parseInt(matchResult.trim()) - 1;
+      const matchIndex = parseInt(matchResult.trim(), 10) - 1;
 
       if (matchIndex < 0 || matchIndex >= activeGoals.length) {
         const responseText = `I couldn't determine which goal you want to complete. ${ownerText} have these active goals:\n\n${activeGoals
           .map((g) => `- ${g.name}`)
-          .join('\n')}\n\nPlease be more specific.`;
+          .join("\n")}\n\nPlease be more specific.`;
 
         if (callback) {
           await callback({
             text: responseText,
-            actions: ['COMPLETE_GOAL'],
+            actions: ["COMPLETE_GOAL"],
           });
         }
         return { success: true, text: responseText };
@@ -135,7 +137,7 @@ If none match well, return 0.`;
       if (callback) {
         await callback({
           text: responseText,
-          actions: ['COMPLETE_GOAL'],
+          actions: ["COMPLETE_GOAL"],
         });
       }
 
@@ -148,8 +150,8 @@ If none match well, return 0.`;
         },
       };
     } catch (error) {
-      logger.error('Error completing goal:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to complete goal';
+      logger.error("Error completing goal:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to complete goal";
 
       if (callback) {
         await callback({
@@ -164,49 +166,49 @@ If none match well, return 0.`;
   examples: [
     [
       {
-        name: 'Alice',
+        name: "Alice",
         content: {
           text: "I've completed my goal of learning French fluently!",
-          source: 'user',
+          source: "user",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
           text: '🎉 Congratulations! User goal achieved: "Learn French fluently"!',
-          actions: ['COMPLETE_GOAL'],
+          actions: ["COMPLETE_GOAL"],
         },
       },
     ],
     [
       {
-        name: 'Bob',
+        name: "Bob",
         content: {
-          text: 'I finally achieved my marathon goal!',
-          source: 'user',
+          text: "I finally achieved my marathon goal!",
+          source: "user",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
           text: '🎉 Congratulations! User goal achieved: "Run a marathon"!',
-          actions: ['COMPLETE_GOAL'],
+          actions: ["COMPLETE_GOAL"],
         },
       },
     ],
     [
       {
-        name: 'Carol',
+        name: "Carol",
         content: {
-          text: 'Mark my cooking goal as done',
-          source: 'user',
+          text: "Mark my cooking goal as done",
+          source: "user",
         },
       },
       {
-        name: 'Agent',
+        name: "Agent",
         content: {
           text: '🎉 Congratulations! User goal achieved: "Get better at cooking"!',
-          actions: ['COMPLETE_GOAL'],
+          actions: ["COMPLETE_GOAL"],
         },
       },
     ],

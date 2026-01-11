@@ -291,4 +291,3 @@ class ConfigurationManager:
             },
         }
         return presets.get(name, {})
-

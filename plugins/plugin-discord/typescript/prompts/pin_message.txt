@@ -1,0 +1,21 @@
+# Pinning a Discord message
+{{recentMessages}}
+
+# Instructions: {{senderName}} wants to pin a message. Extract which message they want to pin.
+
+Examples:
+- "pin that message" -> messageRef: "last"
+- "pin the last message" -> messageRef: "last"
+- "pin john's message about the meeting" -> messageRef: "john meeting"
+- "pin message 123456789" -> messageRef: "123456789"
+
+Your response must be formatted as a JSON block:
+```json
+{
+  "messageRef": "<last|previous|message-id|search-text>"
+}
+```
+
+
+
+

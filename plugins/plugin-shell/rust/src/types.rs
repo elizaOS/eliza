@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for the shell plugin.
 
 use serde::{Deserialize, Serialize};
@@ -106,6 +107,7 @@ pub struct ShellConfig {
     /// List of forbidden commands/patterns
     pub forbidden_commands: Vec<String>,
 }
+
 
 impl Default for ShellConfig {
     fn default() -> Self {
@@ -245,5 +247,7 @@ impl ShellConfigBuilder {
         })
     }
 }
+
+
 
 

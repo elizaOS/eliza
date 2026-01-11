@@ -3,14 +3,13 @@
  *
  * This file exports all the necessary functions and types for the Knowledge plugin.
  */
-import type { Plugin, IAgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { KnowledgeService } from './service';
-import { knowledgeProvider } from './provider';
-import { documentsProvider } from './documents-provider';
-import knowledgeTestSuite from './tests';
-import { knowledgeActions } from './actions';
-import { knowledgeRoutes } from './routes';
+import type { Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { knowledgeActions } from "./actions";
+import { documentsProvider } from "./documents-provider";
+import { knowledgeProvider } from "./provider";
+import { knowledgeRoutes } from "./routes";
+import { KnowledgeService } from "./service";
 
 /**
  * Configuration options for the Knowledge Plugin
@@ -70,9 +69,9 @@ export function createKnowledgePlugin(config: KnowledgePluginConfig = {}): Plugi
 
   // Build plugin based on configuration
   const plugin: Plugin = {
-    name: 'knowledge',
+    name: "knowledge",
     description:
-      'Plugin for Retrieval Augmented Generation, including knowledge management and embedding.',
+      "Plugin for Retrieval Augmented Generation, including knowledge management and embedding.",
     services: [KnowledgeService],
     providers: [knowledgeProvider, documentsProvider],
   };
@@ -80,9 +79,9 @@ export function createKnowledgePlugin(config: KnowledgePluginConfig = {}): Plugi
   // Add routes only if UI or routes are enabled
   if (enableUI || enableRoutes) {
     plugin.routes = knowledgeRoutes;
-    logger.debug('[Knowledge Plugin] Routes enabled');
+    logger.debug("[Knowledge Plugin] Routes enabled");
   } else {
-    logger.info('[Knowledge Plugin] Running in headless mode (no routes or UI)');
+    logger.info("[Knowledge Plugin] Running in headless mode (no routes or UI)");
   }
 
   // Add actions if enabled
@@ -90,8 +89,10 @@ export function createKnowledgePlugin(config: KnowledgePluginConfig = {}): Plugi
     plugin.actions = knowledgeActions;
   }
 
-  // Add tests if enabled
+  // Add tests if enabled (lazy import to avoid circular dependency)
   if (enableTests) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { default: knowledgeTestSuite } = require("./tests");
     plugin.tests = [knowledgeTestSuite];
   }
 
@@ -136,14 +137,13 @@ export const knowledgePlugin: Plugin = createKnowledgePlugin({
  */
 export default knowledgePlugin;
 
-/**
- * Export all types and utilities
- */
-export * from './types';
-
+export { documentsProvider } from "./documents-provider";
+export { knowledgeProvider } from "./provider";
 /**
  * Export service and provider for direct use
  */
-export { KnowledgeService } from './service';
-export { knowledgeProvider } from './provider';
-export { documentsProvider } from './documents-provider';
+export { KnowledgeService } from "./service";
+/**
+ * Export all types and utilities
+ */
+export * from "./types";

@@ -1,10 +1,10 @@
-import { parentPort, workerData } from 'worker_threads';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import sharp from 'sharp';
-import { logger } from './worker-logger';
+import { exec } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { promisify } from "node:util";
+import { parentPort, workerData } from "node:worker_threads";
+import sharp from "sharp";
+import { logger } from "./worker-logger";
 
 const execAsync = promisify(exec);
 
@@ -57,7 +57,7 @@ class ScreenCaptureWorker {
     this.displays = await this.getDisplays();
 
     if (this.displays.length === 0) {
-      throw new Error('No displays found');
+      throw new Error("No displays found");
     }
 
     // Set initial display
@@ -68,7 +68,7 @@ class ScreenCaptureWorker {
     logger.info(`[ScreenCaptureWorker] Initialized with ${this.displays.length} displays`);
     this.displays.forEach((d, i) => {
       logger.info(
-        `  Display ${i}: ${d.name} (${d.width}x${d.height}) ${d.isPrimary ? '[PRIMARY]' : ''}`
+        `  Display ${i}: ${d.name} (${d.width}x${d.height}) ${d.isPrimary ? "[PRIMARY]" : ""}`
       );
     });
   }
@@ -77,17 +77,17 @@ class ScreenCaptureWorker {
     const platform = process.platform;
 
     try {
-      if (platform === 'darwin') {
+      if (platform === "darwin") {
         // macOS: Use system_profiler
-        const { stdout } = await execAsync('system_profiler SPDisplaysDataType -json');
+        const { stdout } = await execAsync("system_profiler SPDisplaysDataType -json");
         const data = JSON.parse(stdout);
         const displays: DisplayInfo[] = [];
 
-        if (data.SPDisplaysDataType && data.SPDisplaysDataType[0]) {
+        if (data.SPDisplaysDataType?.[0]) {
           const gpuInfo = data.SPDisplaysDataType[0];
-          const items = gpuInfo._items || [];
+          const items: Array<{ native_resolution?: string; _name?: string }> = gpuInfo._items || [];
 
-          items.forEach((item: any, index: number) => {
+          items.forEach((item, index) => {
             const resolution = item.native_resolution;
             if (resolution) {
               const match = resolution.match(/(\d+) x (\d+)/);
@@ -107,14 +107,14 @@ class ScreenCaptureWorker {
         }
 
         return displays;
-      } else if (platform === 'linux') {
+      } else if (platform === "linux") {
         // Linux: Use xrandr
-        const { stdout } = await execAsync('xrandr --query');
+        const { stdout } = await execAsync("xrandr --query");
         const displays: DisplayInfo[] = [];
-        const lines = stdout.split('\n');
+        const lines = stdout.split("\n");
 
         for (const line of lines) {
-          if (line.includes(' connected')) {
+          if (line.includes(" connected")) {
             const match = line.match(/^(\S+) connected (?:primary )?(\d+)x(\d+)\+(\d+)\+(\d+)/);
             if (match) {
               displays.push({
@@ -124,27 +124,27 @@ class ScreenCaptureWorker {
                 height: parseInt(match[3], 10),
                 x: parseInt(match[4], 10),
                 y: parseInt(match[5], 10),
-                isPrimary: line.includes('primary'),
+                isPrimary: line.includes("primary"),
               });
             }
           }
         }
 
         return displays;
-      } else if (platform === 'win32') {
+      } else if (platform === "win32") {
         // Windows: Use wmic
         const { stdout } = await execAsync(
-          'wmic path Win32_DesktopMonitor get DeviceID,ScreenWidth,ScreenHeight /format:csv'
+          "wmic path Win32_DesktopMonitor get DeviceID,ScreenWidth,ScreenHeight /format:csv"
         );
         const displays: DisplayInfo[] = [];
-        const lines = stdout.trim().split('\n').slice(2); // Skip headers
+        const lines = stdout.trim().split("\n").slice(2); // Skip headers
 
         lines.forEach((line, index) => {
-          const parts = line.split(',');
+          const parts = line.split(",");
           if (parts.length >= 4) {
             const width = parseInt(parts[2], 10);
             const height = parseInt(parts[3], 10);
-            if (!isNaN(width) && !isNaN(height)) {
+            if (!Number.isNaN(width) && !Number.isNaN(height)) {
               displays.push({
                 id: parts[1],
                 name: parts[1] || `Display ${index + 1}`,
@@ -162,8 +162,8 @@ class ScreenCaptureWorker {
           ? displays
           : [
               {
-                id: 'primary',
-                name: 'Primary Display',
+                id: "primary",
+                name: "Primary Display",
                 width: 1920,
                 height: 1080,
                 x: 0,
@@ -173,14 +173,14 @@ class ScreenCaptureWorker {
             ];
       }
     } catch (error) {
-      logger.error('[ScreenCaptureWorker] Failed to get display info:', error);
+      logger.error("[ScreenCaptureWorker] Failed to get display info:", error);
     }
 
     // Fallback
     return [
       {
-        id: 'default',
-        name: 'Default Display',
+        id: "default",
+        name: "Default Display",
         width: 1920,
         height: 1080,
         x: 0,
@@ -193,7 +193,7 @@ class ScreenCaptureWorker {
   async run(): Promise<void> {
     await this.initialize();
 
-    logger.info('[ScreenCaptureWorker] Starting capture loop...');
+    logger.info("[ScreenCaptureWorker] Starting capture loop...");
 
     while (this.isRunning) {
       const startTime = Date.now();
@@ -211,7 +211,7 @@ class ScreenCaptureWorker {
           );
 
           parentPort?.postMessage({
-            type: 'fps',
+            type: "fps",
             fps,
             frameCount: this.frameCount,
             displayIndex: this.currentDisplayIndex,
@@ -235,7 +235,7 @@ class ScreenCaptureWorker {
           }
         }
       } catch (error) {
-        logger.error('[ScreenCaptureWorker] Capture error:', error);
+        logger.error("[ScreenCaptureWorker] Capture error:", error);
         await new Promise((resolve) => setTimeout(resolve, 100)); // Brief pause on error
       }
     }
@@ -303,11 +303,11 @@ class ScreenCaptureWorker {
     const platform = process.platform;
 
     try {
-      if (platform === 'darwin') {
+      if (platform === "darwin") {
         // macOS: Use screencapture with display index
-        const displayArg = this.currentDisplayIndex > 0 ? `-D ${this.currentDisplayIndex + 1}` : '';
+        const displayArg = this.currentDisplayIndex > 0 ? `-D ${this.currentDisplayIndex + 1}` : "";
         await execAsync(`screencapture -x ${displayArg} "${outputPath}"`);
-      } else if (platform === 'linux') {
+      } else if (platform === "linux") {
         // Linux: Use scrot with geometry for specific display
         if (display.x !== 0 || display.y !== 0) {
           // Multi-monitor setup
@@ -317,7 +317,7 @@ class ScreenCaptureWorker {
         } else {
           await execAsync(`scrot "${outputPath}"`);
         }
-      } else if (platform === 'win32') {
+      } else if (platform === "win32") {
         // Windows: PowerShell script for specific monitor
         const script = `
           Add-Type -AssemblyName System.Windows.Forms;
@@ -328,14 +328,15 @@ class ScreenCaptureWorker {
           $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height;
           $graphics = [System.Drawing.Graphics]::FromImage($bitmap);
           $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size);
-          $bitmap.Save('${outputPath.replace(/\\/g, '\\\\')}');
+          $bitmap.Save('${outputPath.replace(/\\/g, "\\\\")}');
           $graphics.Dispose();
           $bitmap.Dispose();
         `;
-        await execAsync(`powershell -Command "${script.replace(/\n/g, ' ')}"`);
+        await execAsync(`powershell -Command "${script.replace(/\n/g, " ")}"`);
       }
-    } catch (error: any) {
-      throw new Error(`Screen capture failed: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Screen capture failed: ${errorMessage}`);
     }
   }
 
@@ -350,16 +351,16 @@ if (parentPort) {
   const worker = new ScreenCaptureWorker(config, sharedBuffer);
 
   // Handle messages from main thread
-  parentPort.on('message', (msg) => {
-    if (msg.type === 'stop') {
+  parentPort.on("message", (msg) => {
+    if (msg.type === "stop") {
       worker.stop();
     }
   });
 
   // Run the worker
   worker.run().catch((error) => {
-    logger.error('[ScreenCaptureWorker] Fatal error:', error);
-    parentPort?.postMessage({ type: 'error', error: error.message });
+    logger.error("[ScreenCaptureWorker] Fatal error:", error);
+    parentPort?.postMessage({ type: "error", error: error.message });
     process.exit(1);
   });
 }

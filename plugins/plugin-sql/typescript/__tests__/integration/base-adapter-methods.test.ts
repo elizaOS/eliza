@@ -1,21 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
-import type {
-  ChannelType,
-  Component,
-  Content,
-  Entity,
-  Memory,
-  Room,
-  UUID,
-} from "@elizaos/core";
+import type { ChannelType, Component, Content, Entity, Memory, Room, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -336,7 +321,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         testEntityId,
         "relationship",
         worldId,
-        sourceEntityId,
+        sourceEntityId
       );
       expect(retrieved).not.toBeNull();
       if (!retrieved) throw new Error("Component should exist");
@@ -399,12 +384,7 @@ describe("Base Adapter Methods Integration Tests", () => {
       await adapter.deleteComponent(component.id);
 
       // Verify removal
-      const retrieved = await adapter.getComponent(
-        testEntityId,
-        "test",
-        worldId,
-        sourceEntityId,
-      );
+      const retrieved = await adapter.getComponent(testEntityId, "test", worldId, sourceEntityId);
       expect(retrieved).toBeNull();
     });
 
@@ -581,7 +561,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         testEntityId,
         "inventory",
         worldId,
-        sourceEntityId,
+        sourceEntityId
       );
 
       expect(retrieved).toBeDefined();
@@ -647,9 +627,7 @@ describe("Base Adapter Methods Integration Tests", () => {
 
       expect(searchResults.length).toBe(2);
       expect(
-        searchResults.every((e) =>
-          e.names.some((name) => name.toLowerCase().includes("alice")),
-        ),
+        searchResults.every((e) => e.names.some((name) => name.toLowerCase().includes("alice")))
       ).toBe(true);
 
       // Test with limit

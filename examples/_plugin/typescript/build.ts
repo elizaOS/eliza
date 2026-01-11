@@ -66,15 +66,9 @@ async function build() {
       // Task 2: Generate TypeScript declarations
       (async () => {
         console.log("📝 Generating TypeScript declarations...");
-        try {
-          await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
-          console.log("✓ TypeScript declarations generated");
-          return { success: true };
-        } catch (_error) {
-          console.warn("⚠ Failed to generate TypeScript declarations");
-          console.warn("  This is usually due to test files or type errors.");
-          return { success: false };
-        }
+        await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
+        console.log("✓ TypeScript declarations generated");
+        return { success: true };
       })(),
     ]);
 

@@ -1,4 +1,2 @@
-export { summarizationEvaluator } from './summarization';
-export { longTermExtractionEvaluator } from './long-term-extraction';
-
-
+export { longTermExtractionEvaluator } from "./long-term-extraction";
+export { summarizationEvaluator } from "./summarization";

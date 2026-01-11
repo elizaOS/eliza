@@ -52,7 +52,9 @@ class UpdateSettingsAction:
         "Use this to modify behavior and preferences."
     )
 
-    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that settings can be updated."""
         # Settings can always be updated if the agent is running
         return True
@@ -86,7 +88,8 @@ class UpdateSettingsAction:
 
             template = (
                 runtime.character.templates.get("updateSettingsTemplate")
-                if runtime.character.templates and "updateSettingsTemplate" in runtime.character.templates
+                if runtime.character.templates
+                and "updateSettingsTemplate" in runtime.character.templates
                 else UPDATE_SETTINGS_TEMPLATE
             )
             prompt = runtime.compose_prompt(state=state, template=template)
@@ -208,4 +211,3 @@ update_settings_action = Action(
     handler=UpdateSettingsAction().handler,
     examples=UpdateSettingsAction().examples,
 )
-

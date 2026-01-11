@@ -34,19 +34,19 @@ interface IStreamExtractor {
 
 **Built-in Extractors:**
 
-| Extractor | Use Case |
-|-----------|----------|
-| `PassthroughExtractor` | Stream everything as-is |
-| `XmlTagExtractor` | Extract content from XML tags |
-| `ResponseStreamExtractor` | Action-aware extraction |
+| Extractor                 | Use Case                      |
+| ------------------------- | ----------------------------- |
+| `PassthroughExtractor`    | Stream everything as-is       |
+| `XmlTagExtractor`         | Extract content from XML tags |
+| `ResponseStreamExtractor` | Action-aware extraction       |
 
 **Example:**
 
 ```typescript
-import { XmlTagExtractor } from '@elizaos/core';
+import { XmlTagExtractor } from "@elizaos/core";
 
-const extractor = new XmlTagExtractor('response');
-const streamable = extractor.push('<response>Hello');
+const extractor = new XmlTagExtractor("response");
+const streamable = extractor.push("<response>Hello");
 // streamable = 'Hello'
 ```
 
@@ -67,14 +67,14 @@ interface TaskWorker {
   execute(
     runtime: IAgentRuntime,
     options: Record<string, unknown>,
-    task: Task
+    task: Task,
   ): Promise<void>;
 
   // Optional validation before execution
   validate?(
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State
+    state?: State,
   ): Promise<boolean>;
 }
 ```
@@ -111,12 +111,12 @@ interface TaskMetadata {
 
 ```typescript
 const cleanupWorker: TaskWorker = {
-  name: 'CLEANUP_OLD_MESSAGES',
+  name: "CLEANUP_OLD_MESSAGES",
 
   async execute(runtime, options, task) {
-    const threshold = Date.now() - (24 * 60 * 60 * 1000);
+    const threshold = Date.now() - 24 * 60 * 60 * 1000;
     await runtime.deleteOldMessages(threshold);
-  }
+  },
 };
 
 // Register worker
@@ -124,8 +124,8 @@ runtime.registerTaskWorker(cleanupWorker);
 
 // Create recurring task (runs every hour)
 await runtime.createTask({
-  name: 'CLEANUP_OLD_MESSAGES',
-  metadata: { updateInterval: 3600000 }
+  name: "CLEANUP_OLD_MESSAGES",
+  metadata: { updateInterval: 3600000 },
 });
 ```
 
@@ -180,7 +180,7 @@ interface ActionPlan {
 
 interface ActionPlanStep {
   action: string;
-  status: 'pending' | 'completed' | 'failed';
+  status: "pending" | "completed" | "failed";
   error?: string;
   result?: ActionResult;
 }
@@ -193,7 +193,9 @@ interface ActionPlanStep {
 const state = await runtime.composeState(message);
 
 if (state.data.actionPlan) {
-  console.log(`Step ${state.data.actionPlan.currentStep} of ${state.data.actionPlan.totalSteps}`);
+  console.log(
+    `Step ${state.data.actionPlan.currentStep} of ${state.data.actionPlan.totalSteps}`,
+  );
   console.log(`Current action: ${state.data.actionPlan.steps[0].action}`);
 }
 ```
@@ -208,9 +210,9 @@ Backend-to-frontend control messages:
 
 ```typescript
 interface ControlMessage {
-  type: 'control';
+  type: "control";
   payload: {
-    action: 'disable_input' | 'enable_input';
+    action: "disable_input" | "enable_input";
     target?: string;
     [key: string]: unknown;
   };
@@ -223,22 +225,22 @@ interface ControlMessage {
 ```typescript
 // Emit control message to disable input
 await runtime.emit(EventType.CONTROL_MESSAGE, {
-  type: 'control',
+  type: "control",
   payload: {
-    action: 'disable_input',
+    action: "disable_input",
   },
-  roomId: currentRoomId
+  roomId: currentRoomId,
 });
 
 // ... do work ...
 
 // Re-enable input
 await runtime.emit(EventType.CONTROL_MESSAGE, {
-  type: 'control',
+  type: "control",
   payload: {
-    action: 'enable_input'
+    action: "enable_input",
   },
-  roomId: currentRoomId
+  roomId: currentRoomId,
 });
 ```
 
@@ -262,7 +264,7 @@ Message routing target:
 
 ```typescript
 interface TargetInfo {
-  source: string;           // Platform (discord, telegram, etc.)
+  source: string; // Platform (discord, telegram, etc.)
   roomId: UUID;
   channelId?: string;
   serverId?: string;
@@ -301,7 +303,7 @@ interface RunEventPayload extends EventPayload {
   roomId?: UUID;
   startTime: number;
   endTime?: number;
-  status: 'started' | 'completed' | 'failed' | 'timeout';
+  status: "started" | "completed" | "failed" | "timeout";
   error?: string;
 }
 ```
@@ -316,7 +318,7 @@ interface ActionEventPayload extends EventPayload {
   content: Content;
   roomId: UUID;
   messageId: UUID;
-  status: 'started' | 'completed' | 'failed';
+  status: "started" | "completed" | "failed";
   result?: ActionResult;
   error?: string;
   duration?: number;
@@ -330,7 +332,7 @@ interface EvaluatorEventPayload extends EventPayload {
   evaluator: string;
   roomId: UUID;
   messageId: UUID;
-  status: 'started' | 'completed' | 'failed';
+  status: "started" | "completed" | "failed";
   result?: unknown;
   duration?: number;
 }
@@ -356,8 +358,8 @@ interface ModelEventPayload extends EventPayload {
 ```typescript
 interface EmbeddingGenerationPayload extends EventPayload {
   memoryId: UUID;
-  priority: 'high' | 'normal' | 'low';
-  status: 'requested' | 'completed' | 'failed';
+  priority: "high" | "normal" | "low";
+  status: "requested" | "completed" | "failed";
   error?: string;
 }
 ```
@@ -374,16 +376,20 @@ interface Log {
   agentId: UUID;
   roomId?: UUID;
   entityId?: UUID;
-  type: 'action' | 'evaluator' | 'model' | 'embedding';
+  type: "action" | "evaluator" | "model" | "embedding";
   body: LogBody;
   createdAt: number;
 }
 
 // Discriminated union for log body types
-type LogBody = ActionLogBody | EvaluatorLogBody | ModelLogBody | EmbeddingLogBody;
+type LogBody =
+  | ActionLogBody
+  | EvaluatorLogBody
+  | ModelLogBody
+  | EmbeddingLogBody;
 
 interface ActionLogBody {
-  type: 'action';
+  type: "action";
   action: string;
   input: Content;
   output?: ActionResult;
@@ -393,7 +399,7 @@ interface ActionLogBody {
 }
 
 interface ModelLogBody {
-  type: 'model';
+  type: "model";
   modelType: ModelTypeName;
   provider: string;
   model: string;
@@ -421,7 +427,7 @@ interface AgentRunSummary {
   errors: string[];
 }
 
-type RunStatus = 'completed' | 'failed' | 'timeout' | 'cancelled';
+type RunStatus = "completed" | "failed" | "timeout" | "cancelled";
 ```
 
 ### Memory Options
@@ -438,7 +444,7 @@ interface MemoryRetrievalOptions {
 
 interface MemorySearchOptions extends MemoryRetrievalOptions {
   query: string;
-  threshold?: number;  // Similarity threshold (0-1)
+  threshold?: number; // Similarity threshold (0-1)
   embedding?: number[];
 }
 
@@ -452,12 +458,12 @@ interface EmbeddingSearchResult {
 
 ```typescript
 const VECTOR_DIMS = {
-  SMALL: 384,    // MiniLM
+  SMALL: 384, // MiniLM
   MEDIUM: 512,
-  LARGE: 768,    // BERT-base
+  LARGE: 768, // BERT-base
   XL: 1024,
-  XXL: 1536,     // OpenAI ada-002
-  XXXL: 3072,    // OpenAI text-embedding-3-large
+  XXL: 1536, // OpenAI ada-002
+  XXXL: 3072, // OpenAI text-embedding-3-large
 } as const;
 ```
 
@@ -471,10 +477,10 @@ Trusted Execution Environment modes:
 
 ```typescript
 enum TEEMode {
-  OFF = 'OFF',               // No TEE
-  LOCAL = 'LOCAL',           // Local simulation
-  DOCKER = 'DOCKER',         // Docker-based TEE
-  PRODUCTION = 'PRODUCTION', // Real hardware TEE
+  OFF = "OFF", // No TEE
+  LOCAL = "LOCAL", // Local simulation
+  DOCKER = "DOCKER", // Docker-based TEE
+  PRODUCTION = "PRODUCTION", // Real hardware TEE
 }
 ```
 
@@ -489,7 +495,7 @@ interface TeeAgent {
   agentName: string;
   createdAt: number;
   publicKey: string;
-  attestation: string;  // Attestation document as string
+  attestation: string; // Attestation document as string
 }
 ```
 
@@ -528,12 +534,12 @@ interface IElizaOS {
   handleMessage(
     agentId: UUID | IAgentRuntime,
     message: Message,
-    options?: HandleMessageOptions
+    options?: HandleMessageOptions,
   ): Promise<HandleMessageResult>;
 
   // Handle messages to multiple agents
   handleMessages(
-    messages: Array<{ agentId: UUID; message: Message }>
+    messages: Array<{ agentId: UUID; message: Message }>,
   ): Promise<HandleMessageResult[]>;
 
   // Get agent runtime by ID

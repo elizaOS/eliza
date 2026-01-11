@@ -29,65 +29,38 @@
       },
       "require": "./dist/cjs/index.node.cjs",
       "default": "./dist/node/index.node.js"
-    },
-    "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
-    },
-    "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
-    },
-    "./rust": {
-      "browser": {
-        "import": "../rust/pkg/web/elizaos_plugin_anthropic.js",
-        "default": "../rust/pkg/web/elizaos_plugin_anthropic.js"
-      },
-      "node": {
-        "import": "../rust/pkg/node/elizaos_plugin_anthropic.js",
-        "default": "../rust/pkg/node/elizaos_plugin_anthropic.js"
-      },
-      "default": "../rust/pkg/node/elizaos_plugin_anthropic.js"
     }
   },
   "files": [
-    "dist",
-    "../rust/pkg"
+    "dist"
   ],
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
-    "@elizaos/core": "^1.6.1",
+    "@elizaos/core": "workspace:*",
     "ai": "^6.0.23",
     "jsonrepair": "^3.12.0",
     "undici": "^7.16.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^25.0.3",
-    "prettier": "^3.7.4",
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "bun run build.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json",
     "dev": "bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
     "test:unit": "bun test __tests__/unit/",
     "test:integration": "bun test __tests__/integration/",
     "test:watch": "bun test --watch",
-    "build:rust": "cd ../rust && cargo build --release",
-    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
-    "test:rust": "cd ../rust && cargo test",
-    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
-    "lint:python": "cd ../python && ruff check . && ruff format --check .",
-    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
-    "test:python": "cd ../python && pytest",
-    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_anthropic"
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -132,4 +105,3 @@
   },
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }
-

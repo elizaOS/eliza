@@ -5,7 +5,6 @@ Configuration can be loaded from environment variables or constructed programmat
 """
 
 import os
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -25,13 +24,13 @@ class GitHubConfig(BaseModel):
     api_token: str
 
     # Optional fields with defaults
-    owner: Optional[str] = None
-    repo: Optional[str] = None
+    owner: str | None = None
+    repo: str | None = None
     branch: str = "main"
-    webhook_secret: Optional[str] = None
-    app_id: Optional[str] = None
-    app_private_key: Optional[str] = None
-    installation_id: Optional[str] = None
+    webhook_secret: str | None = None
+    app_id: str | None = None
+    app_private_key: str | None = None
+    installation_id: str | None = None
 
     @field_validator("api_token")
     @classmethod
@@ -77,7 +76,7 @@ class GitHubConfig(BaseModel):
         )
 
     def get_repository_ref(
-        self, owner: Optional[str] = None, repo: Optional[str] = None
+        self, owner: str | None = None, repo: str | None = None
     ) -> tuple[str, str]:
         """
         Get repository reference, falling back to defaults.
@@ -118,5 +117,8 @@ class GitHubConfig(BaseModel):
             raise ConfigError(
                 "GITHUB_INSTALLATION_ID is required when using GitHub App authentication"
             )
+
+
+
 
 

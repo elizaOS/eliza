@@ -44,7 +44,9 @@ class SendMessageAction:
         "Use this for targeted communication outside the current context."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate that message can be sent."""
         # Check if target information is available
         if message.content and message.content.target:

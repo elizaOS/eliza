@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration types and utilities for the Roblox plugin.
 
 use crate::error::{Result, RobloxError};
@@ -183,5 +184,10 @@ mod tests {
         assert!(invalid_config2.validate().is_err());
     }
 }
+
+
+
+
+
 
 

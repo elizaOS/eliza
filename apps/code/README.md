@@ -41,14 +41,14 @@ bun start
 
 ### Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `Enter` | Send message |
-| `Tab` | Toggle focus between chat/task panes |
-| `Ctrl+N` | Create new chat room |
-| `Ctrl+Q` | Quit |
-| `Ctrl+↑/↓` | Scroll chat history or task output |
-| `↑/↓` | Navigate task list (when task pane focused) |
+| Key        | Action                                      |
+| ---------- | ------------------------------------------- |
+| `Enter`    | Send message                                |
+| `Tab`      | Toggle focus between chat/task panes        |
+| `Ctrl+N`   | Create new chat room                        |
+| `Ctrl+Q`   | Quit                                        |
+| `Ctrl+↑/↓` | Scroll chat history or task output          |
+| `↑/↓`      | Navigate task list (when task pane focused) |
 
 ### Example Commands
 

@@ -1,17 +1,17 @@
 import {
   type Action,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  logger,
-  parseKeyValueXml,
+  type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
   ModelType,
-  type ActionResult,
+  parseKeyValueXml,
+  type State,
 } from "@elizaos/core";
-import { RolodexService } from "../../services/rolodex.ts";
+import type { RolodexService } from "../../services/rolodex.ts";
 
 interface RemoveContactXmlResult {
   contactName?: string;
@@ -187,4 +187,3 @@ export const removeContactAction: Action = {
     ],
   ],
 };
-

@@ -1,16 +1,21 @@
-import { generateText as aiGenerateText, embed, GenerateTextResult } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { google } from '@ai-sdk/google';
-import { ModelConfig, TextGenerationOptions } from './types';
-import { validateModelConfig } from './config';
-import { logger, IAgentRuntime } from '@elizaos/core';
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import {
+  generateText as aiGenerateText,
+  type CoreMessage,
+  embed,
+  type GenerateTextResult,
+  type LanguageModel,
+} from "ai";
+import { validateModelConfig } from "./config";
+import type { ModelConfig, TextGenerationOptions } from "./types";
 
 // Re-export for backwards compatibility
-export { validateModelConfig } from './config';
-export { getProviderRateLimits } from './config';
-export type { ModelConfig, ProviderRateLimits } from './types';
+export { getProviderRateLimits, validateModelConfig } from "./config";
+export type { ModelConfig, ProviderRateLimits } from "./types";
 
 /**
  * Generates text embeddings using the configured provider
@@ -25,9 +30,9 @@ export async function generateTextEmbedding(
   const dimensions = config.EMBEDDING_DIMENSION;
 
   try {
-    if (config.EMBEDDING_PROVIDER === 'openai') {
+    if (config.EMBEDDING_PROVIDER === "openai") {
       return await generateOpenAIEmbedding(text, config, dimensions);
-    } else if (config.EMBEDDING_PROVIDER === 'google') {
+    } else if (config.EMBEDDING_PROVIDER === "google") {
       return await generateGoogleEmbedding(text, config);
     }
 
@@ -48,12 +53,14 @@ export async function generateTextEmbeddingsBatch(
   runtime: IAgentRuntime,
   texts: string[],
   batchSize: number = 20
-): Promise<Array<{ embedding: number[] | null; success: boolean; error?: any; index: number }>> {
-  const config = validateModelConfig(runtime);
+): Promise<
+  Array<{ embedding: number[] | null; success: boolean; error?: unknown; index: number }>
+> {
+  const _config = validateModelConfig(runtime);
   const results: Array<{
     embedding: number[] | null;
     success: boolean;
-    error?: any;
+    error?: unknown;
     index: number;
   }> = [];
 
@@ -127,14 +134,18 @@ async function generateOpenAIEmbedding(
   const modelInstance = openai.embedding(config.TEXT_EMBEDDING_MODEL);
 
   // Some OpenAI models support dimension parameter
-  const embedOptions: any = {
+  const embedOptions: {
+    model: ReturnType<typeof openai.embedding>;
+    value: string;
+    dimensions?: number;
+  } = {
     model: modelInstance,
     value: text,
   };
 
   if (
     dimensions &&
-    ['text-embedding-3-small', 'text-embedding-3-large'].includes(config.TEXT_EMBEDDING_MODEL)
+    ["text-embedding-3-small", "text-embedding-3-large"].includes(config.TEXT_EMBEDDING_MODEL)
   ) {
     embedOptions.dimensions = dimensions;
   }
@@ -142,9 +153,9 @@ async function generateOpenAIEmbedding(
   const { embedding, usage } = await embed(embedOptions);
 
   const totalTokens = (usage as { totalTokens?: number })?.totalTokens;
-  const usageMessage = totalTokens ? `${totalTokens} total tokens` : 'Usage details N/A';
+  const usageMessage = totalTokens ? `${totalTokens} total tokens` : "Usage details N/A";
   logger.debug(
-    `[Document Processor] OpenAI embedding ${config.TEXT_EMBEDDING_MODEL}${embedOptions.dimensions ? ` (${embedOptions.dimensions}D)` : ''}: ${usageMessage}`
+    `[Document Processor] OpenAI embedding ${config.TEXT_EMBEDDING_MODEL}${embedOptions.dimensions ? ` (${embedOptions.dimensions}D)` : ""}: ${usageMessage}`
   );
 
   return { embedding };
@@ -172,7 +183,7 @@ async function generateGoogleEmbedding(
   });
 
   const totalTokens = (usage as { totalTokens?: number })?.totalTokens;
-  const usageMessage = totalTokens ? `${totalTokens} total tokens` : 'Usage details N/A';
+  const usageMessage = totalTokens ? `${totalTokens} total tokens` : "Usage details N/A";
   logger.debug(
     `[Document Processor] Google embedding ${config.TEXT_EMBEDDING_MODEL}: ${usageMessage}`
   );
@@ -215,7 +226,7 @@ export async function generateText(
   prompt: string,
   system?: string,
   overrideConfig?: TextGenerationOptions
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   const config = validateModelConfig(runtime);
   const provider = overrideConfig?.provider || config.TEXT_PROVIDER;
   const modelName = overrideConfig?.modelName || config.TEXT_MODEL;
@@ -224,25 +235,29 @@ export async function generateText(
   // Auto-detect contextual retrieval prompts for caching - enabled by default
   const autoCacheContextualRetrieval = overrideConfig?.autoCacheContextualRetrieval !== false;
 
+  if (!modelName) {
+    throw new Error(`No model name configured for provider: ${provider}`);
+  }
+
   try {
     switch (provider) {
-      case 'anthropic':
-        return await generateAnthropicText(config, prompt, system, modelName!, maxTokens);
-      case 'openai':
-        return await generateOpenAIText(config, prompt, system, modelName!, maxTokens);
-      case 'openrouter':
+      case "anthropic":
+        return await generateAnthropicText(config, prompt, system, modelName, maxTokens);
+      case "openai":
+        return await generateOpenAIText(config, prompt, system, modelName, maxTokens);
+      case "openrouter":
         return await generateOpenRouterText(
           config,
           prompt,
           system,
-          modelName!,
+          modelName,
           maxTokens,
           overrideConfig?.cacheDocument,
           overrideConfig?.cacheOptions,
           autoCacheContextualRetrieval
         );
-      case 'google':
-        return await generateGoogleText(prompt, system, modelName!, maxTokens, config);
+      case "google":
+        return await generateGoogleText(prompt, system, modelName, maxTokens, config);
       default:
         throw new Error(`Unsupported text provider: ${provider}`);
     }
@@ -261,7 +276,7 @@ async function generateAnthropicText(
   system: string | undefined,
   modelName: string,
   maxTokens: number
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   const anthropic = createAnthropic({
     apiKey: config.ANTHROPIC_API_KEY as string,
     baseURL: config.ANTHROPIC_BASE_URL,
@@ -286,17 +301,17 @@ async function generateAnthropicText(
         `[Document Processor] ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
       );
 
-      return result;
-    } catch (error: any) {
+      return result as GenerateTextResult<Record<string, never>, unknown>;
+    } catch (error) {
       // Check if it's a rate limit error (status 429)
       const isRateLimit =
         error?.status === 429 ||
-        error?.message?.includes('rate limit') ||
-        error?.message?.includes('429');
+        error?.message?.includes("rate limit") ||
+        error?.message?.includes("429");
 
       if (isRateLimit && attempt < maxRetries - 1) {
         // Exponential backoff: 2^attempt seconds (2s, 4s, 8s)
-        const delay = Math.pow(2, attempt + 1) * 1000;
+        const delay = 2 ** (attempt + 1) * 1000;
         logger.warn(
           `[Document Processor] Rate limit hit (${modelName}): attempt ${attempt + 1}/${maxRetries}, retrying in ${Math.round(delay / 1000)}s`
         );
@@ -309,7 +324,7 @@ async function generateAnthropicText(
     }
   }
 
-  throw new Error('Max retries exceeded for Anthropic text generation');
+  throw new Error("Max retries exceeded for Anthropic text generation");
 }
 
 /**
@@ -321,7 +336,7 @@ async function generateOpenAIText(
   system: string | undefined,
   modelName: string,
   maxTokens: number
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   const openai = createOpenAI({
     apiKey: config.OPENAI_API_KEY as string,
     baseURL: config.OPENAI_BASE_URL,
@@ -329,13 +344,13 @@ async function generateOpenAIText(
 
   const modelInstance = openai.chat(modelName);
 
-  const result = await aiGenerateText({
+  const result = (await aiGenerateText({
     model: modelInstance,
     prompt: prompt,
     system: system,
     temperature: 0.3,
     maxOutputTokens: maxTokens,
-  });
+  })) as GenerateTextResult<Record<string, never>, unknown>;
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
@@ -354,7 +369,7 @@ async function generateGoogleText(
   modelName: string,
   maxTokens: number,
   config: ModelConfig
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   // Use the google provider directly
   const googleProvider = google;
   if (config.GOOGLE_API_KEY) {
@@ -365,13 +380,13 @@ async function generateGoogleText(
   // Create model instance directly from google provider
   const modelInstance = googleProvider(modelName);
 
-  const result = await aiGenerateText({
+  const result = (await aiGenerateText({
     model: modelInstance,
     prompt: prompt,
     system: system,
     temperature: 0.3,
     maxOutputTokens: maxTokens,
-  });
+  })) as GenerateTextResult<Record<string, never>, unknown>;
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
@@ -406,9 +421,9 @@ async function generateOpenRouterText(
   modelName: string,
   maxTokens: number,
   cacheDocument?: string,
-  _cacheOptions?: { type: 'ephemeral' },
+  _cacheOptions?: { type: "ephemeral" },
   autoCacheContextualRetrieval = true
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   const openrouter = createOpenRouter({
     apiKey: config.OPENROUTER_API_KEY as string,
     baseURL: config.OPENROUTER_BASE_URL,
@@ -417,9 +432,9 @@ async function generateOpenRouterText(
   const modelInstance = openrouter.chat(modelName);
 
   // Determine if this is a Claude or Gemini model for caching
-  const isClaudeModel = modelName.toLowerCase().includes('claude');
-  const isGeminiModel = modelName.toLowerCase().includes('gemini');
-  const isGemini25Model = modelName.toLowerCase().includes('gemini-2.5');
+  const isClaudeModel = modelName.toLowerCase().includes("claude");
+  const isGeminiModel = modelName.toLowerCase().includes("gemini");
+  const isGemini25Model = modelName.toLowerCase().includes("gemini-2.5");
   const supportsCaching = isClaudeModel || isGeminiModel;
 
   // Extract document for caching from explicit param or auto-detect from prompt
@@ -428,7 +443,7 @@ async function generateOpenRouterText(
   if (!documentForCaching && autoCacheContextualRetrieval && supportsCaching) {
     // Try to extract document from the prompt if it contains document tags
     const docMatch = prompt.match(/<document>([\s\S]*?)<\/document>/);
-    if (docMatch && docMatch[1]) {
+    if (docMatch?.[1]) {
       documentForCaching = docMatch[1].trim();
       logger.debug(
         `[Document Processor] Auto-detected document for caching (${documentForCaching.length} chars)`
@@ -440,15 +455,15 @@ async function generateOpenRouterText(
   if (documentForCaching && supportsCaching) {
     // Parse out the prompt part - if it's a contextual query, strip document tags
     let promptText = prompt;
-    if (promptText.includes('<document>')) {
-      promptText = promptText.replace(/<document>[\s\S]*?<\/document>/, '').trim();
+    if (promptText.includes("<document>")) {
+      promptText = promptText.replace(/<document>[\s\S]*?<\/document>/, "").trim();
     }
 
     if (isClaudeModel) {
       return await generateClaudeWithCaching(
         promptText,
         system,
-        modelInstance,
+        modelInstance as unknown as LanguageModel,
         modelName,
         maxTokens,
         documentForCaching
@@ -457,7 +472,7 @@ async function generateOpenRouterText(
       return await generateGeminiWithCaching(
         promptText,
         system,
-        modelInstance,
+        modelInstance as unknown as LanguageModel,
         modelName,
         maxTokens,
         documentForCaching,
@@ -467,8 +482,14 @@ async function generateOpenRouterText(
   }
 
   // Standard request without caching
-  logger.debug('[Document Processor] Using standard request without caching');
-  return await generateStandardOpenRouterText(prompt, system, modelInstance, modelName, maxTokens);
+  logger.debug("[Document Processor] Using standard request without caching");
+  return await generateStandardOpenRouterText(
+    prompt,
+    system,
+    modelInstance as unknown as LanguageModel,
+    modelName,
+    maxTokens
+  );
 }
 
 /**
@@ -477,11 +498,11 @@ async function generateOpenRouterText(
 async function generateClaudeWithCaching(
   promptText: string,
   system: string | undefined,
-  modelInstance: any,
+  modelInstance: LanguageModel,
   modelName: string,
   maxTokens: number,
   documentForCaching: string
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   logger.debug(`[Document Processor] Using explicit prompt caching with Claude ${modelName}`);
 
   // Structure for Claude models
@@ -489,38 +510,38 @@ async function generateClaudeWithCaching(
     // System message with cached document (if system is provided)
     system
       ? {
-          role: 'system',
+          role: "system",
           content: [
             {
-              type: 'text',
+              type: "text",
               text: system,
             },
             {
-              type: 'text',
+              type: "text",
               text: documentForCaching,
               cache_control: {
-                type: 'ephemeral',
+                type: "ephemeral",
               },
             },
           ],
         }
       : // User message with cached document (if no system message)
         {
-          role: 'user',
+          role: "user",
           content: [
             {
-              type: 'text',
-              text: 'Document for context:',
+              type: "text",
+              text: "Document for context:",
             },
             {
-              type: 'text',
+              type: "text",
               text: documentForCaching,
               cache_control: {
-                type: 'ephemeral',
+                type: "ephemeral",
               },
             },
             {
-              type: 'text',
+              type: "text",
               text: promptText,
             },
           ],
@@ -528,10 +549,10 @@ async function generateClaudeWithCaching(
     // Only add user message if system was provided (otherwise we included user above)
     system
       ? {
-          role: 'user',
+          role: "user",
           content: [
             {
-              type: 'text',
+              type: "text",
               text: promptText,
             },
           ],
@@ -539,12 +560,12 @@ async function generateClaudeWithCaching(
       : null,
   ].filter(Boolean);
 
-  logger.debug('[Document Processor] Using Claude-specific caching structure');
+  logger.debug("[Document Processor] Using Claude-specific caching structure");
 
   // Generate text with cache-enabled structured messages
-  const result = await aiGenerateText({
+  const result = (await aiGenerateText({
     model: modelInstance,
-    messages: messages as any,
+    messages: messages as CoreMessage[],
     temperature: 0.3,
     maxOutputTokens: maxTokens,
     providerOptions: {
@@ -554,7 +575,7 @@ async function generateClaudeWithCaching(
         },
       },
     },
-  });
+  })) as GenerateTextResult<Record<string, never>, unknown>;
 
   logCacheMetrics(result);
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
@@ -571,19 +592,19 @@ async function generateClaudeWithCaching(
 async function generateGeminiWithCaching(
   promptText: string,
   system: string | undefined,
-  modelInstance: any,
+  modelInstance: LanguageModel,
   modelName: string,
   maxTokens: number,
   documentForCaching: string,
   isGemini25Model: boolean
-): Promise<GenerateTextResult<any, any>> {
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
   // Gemini models support implicit caching as of 2.5 models
   const usingImplicitCaching = isGemini25Model;
 
   // Check if document is large enough for implicit caching
   // Gemini 2.5 Flash requires minimum 1028 tokens, Gemini 2.5 Pro requires 2048 tokens
   const estimatedDocTokens = Math.ceil(documentForCaching.length / 4); // Rough estimate of tokens
-  const minTokensForImplicitCache = modelName.toLowerCase().includes('flash') ? 1028 : 2048;
+  const minTokensForImplicitCache = modelName.toLowerCase().includes("flash") ? 1028 : 2048;
   const likelyTriggersCaching = estimatedDocTokens >= minTokensForImplicitCache;
 
   if (usingImplicitCaching) {
@@ -610,13 +631,13 @@ async function generateGeminiWithCaching(
 
   // For Gemini models, we use a simpler format that works well with OpenRouter
   // The key for implicit caching is to keep the initial parts of the prompt consistent
-  const geminiSystemPrefix = system ? `${system}\n\n` : '';
+  const geminiSystemPrefix = system ? `${system}\n\n` : "";
 
   // Format consistent with OpenRouter and Gemini expectations
   const geminiPrompt = `${geminiSystemPrefix}${documentForCaching}\n\n${promptText}`;
 
   // Generate text with simple prompt structure to leverage implicit caching
-  const result = await aiGenerateText({
+  const result = (await aiGenerateText({
     model: modelInstance,
     prompt: geminiPrompt,
     temperature: 0.3,
@@ -628,11 +649,11 @@ async function generateGeminiWithCaching(
         },
       },
     },
-  });
+  })) as GenerateTextResult<Record<string, never>, unknown>;
 
   logCacheMetrics(result);
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
-  const cachingType = usingImplicitCaching ? 'implicit' : 'standard';
+  const cachingType = usingImplicitCaching ? "implicit" : "standard";
   logger.debug(
     `[Document Processor] OpenRouter ${modelName} (${cachingType} caching): ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
   );
@@ -646,11 +667,11 @@ async function generateGeminiWithCaching(
 async function generateStandardOpenRouterText(
   prompt: string,
   system: string | undefined,
-  modelInstance: any,
+  modelInstance: LanguageModel,
   modelName: string,
   maxTokens: number
-): Promise<GenerateTextResult<any, any>> {
-  const result = await aiGenerateText({
+): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+  const result = (await aiGenerateText({
     model: modelInstance,
     prompt: prompt,
     system: system,
@@ -663,7 +684,7 @@ async function generateStandardOpenRouterText(
         },
       },
     },
-  });
+  })) as GenerateTextResult<Record<string, never>, unknown>;
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
@@ -676,10 +697,11 @@ async function generateStandardOpenRouterText(
 /**
  * Logs cache metrics if available in the result
  */
-function logCacheMetrics(result: GenerateTextResult<any, any>): void {
-  if (result.usage && (result.usage as any).cacheTokens) {
+function logCacheMetrics(result: GenerateTextResult<Record<string, never>, unknown>): void {
+  const usage = result.usage as { cacheTokens?: number; cacheDiscount?: number } | undefined;
+  if (usage?.cacheTokens !== undefined) {
     logger.debug(
-      `[Document Processor] Cache metrics - tokens: ${(result.usage as any).cacheTokens}, discount: ${(result.usage as any).cacheDiscount}`
+      `[Document Processor] Cache metrics - tokens: ${usage.cacheTokens}, discount: ${usage.cacheDiscount ?? 0}`
     );
   }
 }

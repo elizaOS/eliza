@@ -19,8 +19,8 @@ import type {
   UUID,
 } from "../types";
 import {
-  requireInferenceProvider,
   type InferenceProviderInfo,
+  requireInferenceProvider,
 } from "./inference-provider";
 import { createOllamaModelHandlers } from "./ollama-provider";
 
@@ -158,9 +158,7 @@ export async function createIntegrationTestRuntime(
     timeoutId = setTimeout(
       () =>
         reject(
-          new Error(
-            `Runtime initialization timed out after ${initTimeout}ms`,
-          ),
+          new Error(`Runtime initialization timed out after ${initTimeout}ms`),
         ),
       initTimeout,
     );

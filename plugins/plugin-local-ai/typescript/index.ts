@@ -1,43 +1,48 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { Readable } from 'node:stream';
+import fs from "node:fs";
+import os from "node:os";
+import path, { basename } from "node:path";
+import { Readable } from "node:stream";
 import type {
   GenerateTextParams,
   ModelTypeName,
-  TextEmbeddingParams,
   ObjectGenerationParams,
-} from '@elizaos/core';
-import { type IAgentRuntime, ModelType, type Plugin, logger, parseKeyValueXml } from '@elizaos/core';
+  TextEmbeddingParams,
+} from "@elizaos/core";
 import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  type Plugin,
+  parseKeyValueXml,
+} from "@elizaos/core";
+import {
+  getLlama,
   type Llama,
   LlamaChatSession,
   type LlamaContext,
   type LlamaContextSequence,
-  LlamaEmbeddingContext,
+  type LlamaEmbeddingContext,
   type LlamaModel,
-  getLlama,
-} from 'node-llama-cpp';
-import { validateConfig, type Config } from './environment';
-import { MODEL_SPECS, type ModelSpec, type EmbeddingModelSpec } from './types';
-import { DownloadManager } from './utils/downloadManager';
-import { getPlatformManager } from './utils/platform';
-import { TokenizerManager } from './utils/tokenizerManager';
-import { TranscribeManager } from './utils/transcribeManager';
-import { TTSManager } from './utils/ttsManager';
-import { VisionManager } from './utils/visionManager';
-import { basename } from 'path';
+} from "node-llama-cpp";
+import { type Config, validateConfig } from "./environment";
+import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
+import { DownloadManager } from "./utils/downloadManager";
+import { getPlatformManager } from "./utils/platform";
+import { TokenizerManager } from "./utils/tokenizerManager";
+import { TranscribeManager } from "./utils/transcribeManager";
+import { TTSManager } from "./utils/ttsManager";
+import { VisionManager } from "./utils/visionManager";
 
 // Re-export XML utilities for users
 export {
+  buildXmlResponse,
+  escapeXml,
   extractXmlTag,
   parseSimpleXml,
-  escapeXml,
+  sanitizeForXml,
   unescapeXml,
   wrapInCdata,
-  sanitizeForXml,
-  buildXmlResponse,
-} from './utils/xmlParser';
+} from "./utils/xmlParser";
 
 // Words to punish in LLM responses
 /**
@@ -46,54 +51,54 @@ export {
  * @type {string[]}
  */
 const wordsToPunish = [
-  ' please',
-  ' feel',
-  ' free',
-  '!',
-  '–',
-  '—',
-  '?',
-  '.',
-  ',',
-  '; ',
-  ' cosmos',
-  ' tapestry',
-  ' tapestries',
-  ' glitch',
-  ' matrix',
-  ' cyberspace',
-  ' troll',
-  ' questions',
-  ' topics',
-  ' discuss',
-  ' basically',
-  ' simulation',
-  ' simulate',
-  ' universe',
-  ' like',
-  ' debug',
-  ' debugging',
-  ' wild',
-  ' existential',
-  ' juicy',
-  ' circuits',
-  ' help',
-  ' ask',
-  ' happy',
-  ' just',
-  ' cosmic',
-  ' cool',
-  ' joke',
-  ' punchline',
-  ' fancy',
-  ' glad',
-  ' assist',
-  ' algorithm',
-  ' Indeed',
-  ' Furthermore',
-  ' However',
-  ' Notably',
-  ' Therefore',
+  " please",
+  " feel",
+  " free",
+  "!",
+  "–",
+  "—",
+  "?",
+  ".",
+  ",",
+  "; ",
+  " cosmos",
+  " tapestry",
+  " tapestries",
+  " glitch",
+  " matrix",
+  " cyberspace",
+  " troll",
+  " questions",
+  " topics",
+  " discuss",
+  " basically",
+  " simulation",
+  " simulate",
+  " universe",
+  " like",
+  " debug",
+  " debugging",
+  " wild",
+  " existential",
+  " juicy",
+  " circuits",
+  " help",
+  " ask",
+  " happy",
+  " just",
+  " cosmic",
+  " cool",
+  " joke",
+  " punchline",
+  " fancy",
+  " glad",
+  " assist",
+  " algorithm",
+  " Indeed",
+  " Furthermore",
+  " However",
+  " Notably",
+  " Therefore",
 ];
 
 /**
@@ -189,11 +194,11 @@ class LocalAIManager {
     const modelsDirEnv = this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
     if (modelsDirEnv) {
       this.modelsDir = path.resolve(modelsDirEnv);
-      logger.info('Using models directory from MODELS_DIR environment variable:', this.modelsDir);
+      logger.info("Using models directory from MODELS_DIR environment variable:", this.modelsDir);
     } else {
-      this.modelsDir = path.join(os.homedir(), '.eliza', 'models');
+      this.modelsDir = path.join(os.homedir(), ".eliza", "models");
       logger.info(
-        'MODELS_DIR environment variable not set, using default models directory:',
+        "MODELS_DIR environment variable not set, using default models directory:",
         this.modelsDir
       );
     }
@@ -201,9 +206,9 @@ class LocalAIManager {
     // Ensure models directory exists
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
-      logger.debug('Ensured models directory exists (created):', this.modelsDir);
+      logger.debug("Ensured models directory exists (created):", this.modelsDir);
     } else {
-      logger.debug('Models directory already exists:', this.modelsDir);
+      logger.debug("Models directory already exists:", this.modelsDir);
     }
   }
 
@@ -216,26 +221,26 @@ class LocalAIManager {
     const cacheDirEnv = this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
     if (cacheDirEnv) {
       this.cacheDir = path.resolve(cacheDirEnv);
-      logger.info('Using cache directory from CACHE_DIR environment variable:', this.cacheDir);
+      logger.info("Using cache directory from CACHE_DIR environment variable:", this.cacheDir);
     } else {
-      const cacheDir = path.join(os.homedir(), '.eliza', 'cache');
+      const cacheDir = path.join(os.homedir(), ".eliza", "cache");
       // Ensure cache directory exists
       if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });
-        logger.debug('Ensuring cache directory exists (created):', cacheDir);
+        logger.debug("Ensuring cache directory exists (created):", cacheDir);
       }
       this.cacheDir = cacheDir;
       logger.info(
-        'CACHE_DIR environment variable not set, using default cache directory:',
+        "CACHE_DIR environment variable not set, using default cache directory:",
         this.cacheDir
       );
     }
     // Ensure cache directory exists if specified via env var but not yet created
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      logger.debug('Ensured cache directory exists (created):', this.cacheDir);
+      logger.debug("Ensured cache directory exists (created):", this.cacheDir);
     } else {
-      logger.debug('Cache directory already exists:', this.cacheDir);
+      logger.debug("Cache directory already exists:", this.cacheDir);
     }
   }
 
@@ -265,36 +270,27 @@ class LocalAIManager {
     }
 
     this.environmentInitializingPromise = (async () => {
-      try {
-        logger.info('Initializing environment configuration...');
+      logger.info("Initializing environment configuration...");
 
-        // Re-validate config to ensure it's up to date
-        this.config = await validateConfig();
+      // Re-validate config to ensure it's up to date
+      this.config = await validateConfig();
 
-        // Initialize components that depend on validated config
-        this._postValidateInit();
+      // Initialize components that depend on validated config
+      this._postValidateInit();
 
-        // Set model paths based on validated config
-        this.modelPath = path.join(this.modelsDir, this.config.LOCAL_SMALL_MODEL);
-        this.mediumModelPath = path.join(this.modelsDir, this.config.LOCAL_LARGE_MODEL);
-        this.embeddingModelPath = path.join(this.modelsDir, this.config.LOCAL_EMBEDDING_MODEL); // Set embedding path
+      // Set model paths based on validated config
+      this.modelPath = path.join(this.modelsDir, this.config.LOCAL_SMALL_MODEL);
+      this.mediumModelPath = path.join(this.modelsDir, this.config.LOCAL_LARGE_MODEL);
+      this.embeddingModelPath = path.join(this.modelsDir, this.config.LOCAL_EMBEDDING_MODEL); // Set embedding path
 
-        logger.info('Using small model path:', basename(this.modelPath));
-        logger.info('Using medium model path:', basename(this.mediumModelPath));
-        logger.info('Using embedding model path:', basename(this.embeddingModelPath));
+      logger.info("Using small model path:", basename(this.modelPath));
+      logger.info("Using medium model path:", basename(this.mediumModelPath));
+      logger.info("Using embedding model path:", basename(this.embeddingModelPath));
 
-        logger.info('Environment configuration validated and model paths set');
+      logger.info("Environment configuration validated and model paths set");
 
-        this.environmentInitialized = true;
-        logger.success('Environment initialization complete');
-      } catch (error) {
-        logger.error('Environment validation failed:', {
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        });
-        this.environmentInitializingPromise = null; // Allow retry on failure
-        throw error;
-      }
+      this.environmentInitialized = true;
+      logger.success("Environment initialization complete");
     })();
 
     await this.environmentInitializingPromise;
@@ -336,17 +332,8 @@ class LocalAIManager {
         modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath; // Use configured path
     }
 
-    try {
-      // Pass the determined path to the download manager
-      return await this.downloadManager.downloadModel(modelSpec, modelPathToDownload);
-    } catch (error) {
-      logger.error('Model download failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        modelType,
-        modelPath: modelPathToDownload,
-      });
-      throw error;
-    }
+    // Pass the determined path to the download manager
+    return await this.downloadManager.downloadModel(modelSpec, modelPathToDownload);
   }
 
   /**
@@ -355,20 +342,16 @@ class LocalAIManager {
    * @returns {Promise<void>} A promise that resolves once the platform capabilities have been checked.
    */
   public async checkPlatformCapabilities(): Promise<void> {
-    try {
-      const platformManager = getPlatformManager();
-      await platformManager.initialize();
-      const capabilities = platformManager.getCapabilities();
+    const platformManager = getPlatformManager();
+    await platformManager.initialize();
+    const capabilities = platformManager.getCapabilities();
 
-      logger.info('Platform capabilities detected:', {
-        platform: capabilities.platform,
-        gpu: capabilities.gpu?.type || 'none',
-        recommendedModel: capabilities.recommendedModelSize,
-        supportedBackends: capabilities.supportedBackends,
-      });
-    } catch (error) {
-      logger.warn('Platform detection failed:', error);
-    }
+    logger.info("Platform capabilities detected:", {
+      platform: capabilities.platform,
+      gpu: capabilities.gpu?.type || "none",
+      recommendedModel: capabilities.recommendedModelSize,
+      supportedBackends: capabilities.supportedBackends,
+    });
   }
 
   /**
@@ -394,12 +377,12 @@ class LocalAIManager {
   public async initializeEmbedding(): Promise<void> {
     try {
       await this.initializeEnvironment(); // Ensure environment/paths are ready
-      logger.info('Initializing embedding model...');
-      logger.info('Models directory:', this.modelsDir);
+      logger.info("Initializing embedding model...");
+      logger.info("Models directory:", this.modelsDir);
 
       // Ensure models directory exists
       if (!fs.existsSync(this.modelsDir)) {
-        logger.warn('Models directory does not exist, creating it:', this.modelsDir);
+        logger.warn("Models directory does not exist, creating it:", this.modelsDir);
         fs.mkdirSync(this.modelsDir, { recursive: true });
       }
 
@@ -414,7 +397,7 @@ class LocalAIManager {
 
       // Load the embedding model
       if (!this.embeddingModel) {
-        logger.info('Loading embedding model:', this.embeddingModelPath); // Use the correct path
+        logger.info("Loading embedding model:", this.embeddingModelPath); // Use the correct path
 
         this.embeddingModel = await this.llama.loadModel({
           modelPath: this.embeddingModelPath, // Use the correct path
@@ -428,15 +411,10 @@ class LocalAIManager {
           batchSize: 512,
         });
 
-        logger.success('Embedding model initialized successfully');
+        logger.success("Embedding model initialized successfully");
       }
     } catch (error) {
-      logger.error('Embedding initialization failed with details:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        modelsDir: this.modelsDir,
-        embeddingModelPath: this.embeddingModelPath, // Log the path being used
-      });
+      logger.error("Failed to initialize embedding model:", error);
       throw error;
     }
   }
@@ -445,43 +423,28 @@ class LocalAIManager {
    * Generate embeddings using the proper LlamaContext.getEmbedding method.
    */
   async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      // Lazy initialize embedding model
-      await this.lazyInitEmbedding();
+    // Lazy initialize embedding model
+    await this.lazyInitEmbedding();
 
-      if (!this.embeddingModel || !this.embeddingContext) {
-        throw new Error('Failed to initialize embedding model');
-      }
-
-      logger.info('Generating embedding for text', { textLength: text.length });
-
-      // Use the native getEmbedding method
-      const embeddingResult = await this.embeddingContext.getEmbeddingFor(text);
-
-      // Convert readonly array to mutable array
-      const mutableEmbedding = [...embeddingResult.vector];
-
-      // Normalize the embedding if needed (may already be normalized)
-      const normalizedEmbedding = this.normalizeEmbedding(mutableEmbedding);
-
-      logger.info('Embedding generation complete', {
-        dimensions: normalizedEmbedding.length,
-      });
-      return normalizedEmbedding;
-    } catch (error) {
-      logger.error('Embedding generation failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        textLength: text?.length ?? 'text is null',
-      });
-
-      // Return zero vector with correct dimensions as fallback
-      const zeroDimensions = this.config?.LOCAL_EMBEDDING_DIMENSIONS // Use validated config
-        ? this.config.LOCAL_EMBEDDING_DIMENSIONS
-        : this.embeddingModelConfig.dimensions;
-
-      return new Array(zeroDimensions).fill(0);
+    if (!this.embeddingModel || !this.embeddingContext) {
+      throw new Error("Failed to initialize embedding model");
     }
+
+    logger.info("Generating embedding for text", { textLength: text.length });
+
+    // Use the native getEmbedding method
+    const embeddingResult = await this.embeddingContext.getEmbeddingFor(text);
+
+    // Convert readonly array to mutable array
+    const mutableEmbedding = [...embeddingResult.vector];
+
+    // Normalize the embedding if needed (may already be normalized)
+    const normalizedEmbedding = this.normalizeEmbedding(mutableEmbedding);
+
+    logger.info("Embedding generation complete", {
+      dimensions: normalizedEmbedding.length,
+    });
+    return normalizedEmbedding;
   }
 
   /**
@@ -538,10 +501,10 @@ class LocalAIManager {
           });
 
           this.embeddingInitialized = true;
-          logger.info('Embedding model initialized successfully');
+          logger.info("Embedding model initialized successfully");
         } catch (error) {
-          logger.error('Failed to initialize embedding model:', error);
-          this.embeddingInitializingPromise = null;
+          logger.error("Failed to initialize embedding model:", error);
+          this.embeddingInitializingPromise = undefined;
           throw error;
         }
       })();
@@ -555,113 +518,108 @@ class LocalAIManager {
    * Now uses lazy initialization for models
    */
   async generateText(params: GenerateTextParams): Promise<string> {
-    try {
-      // Call LlamaContext.dispose() to free GPU memory.
-      if(this.ctx){
-        this.ctx.dispose();
-        this.ctx = undefined;
-      }
-      await this.initializeEnvironment(); // Ensure environment is initialized
-      logger.info('Generating text with model:', params.modelType);
-      // Lazy initialize the appropriate model
-      if (params.modelType === ModelType.TEXT_LARGE) {
-        await this.lazyInitMediumModel();
-
-        if (!this.mediumModel) {
-          throw new Error('Medium model initialization failed');
-        }
-
-        this.activeModelConfig = MODEL_SPECS.medium;
-        const mediumModel = this.mediumModel;
-
-        // Create fresh context
-        this.ctx = await mediumModel.createContext({
-          contextSize: MODEL_SPECS.medium.contextSize,
-        });
-      } else {
-        await this.lazyInitSmallModel();
-
-        if (!this.smallModel) {
-          throw new Error('Small model initialization failed');
-        }
-
-        this.activeModelConfig = MODEL_SPECS.small;
-        const smallModel = this.smallModel;
-
-        // Create fresh context
-        this.ctx = await smallModel.createContext({
-          contextSize: MODEL_SPECS.small.contextSize,
-        });
-      }
-
-      if (!this.ctx) {
-        throw new Error('Failed to create prompt');
-      }
-
-      // QUICK TEST FIX: Always get fresh sequence
-      this.sequence = this.ctx.getSequence();
-
-      // QUICK TEST FIX: Create new session each time without maintaining state
-      // Only use valid options for LlamaChatSession
-      this.chatSession = new LlamaChatSession({
-        contextSequence: this.sequence,
-      });
-
-      if (!this.chatSession) {
-        throw new Error('Failed to create chat session');
-      }
-      logger.info('Created new chat session for model:', params.modelType);
-      // Log incoming prompt for debugging
-      logger.info('Incoming prompt structure:', {
-        contextLength: params.prompt.length,
-        hasAction: params.prompt.includes('action'),
-        runtime: !!params.runtime,
-        stopSequences: params.stopSequences,
-      });
-
-      const tokens = await this.tokenizerManager.encode(params.prompt, this.activeModelConfig);
-      logger.info('Input tokens:', { count: tokens.length });
-
-      // QUICK TEST FIX: Add system message to reset prompt
-      const systemMessage = 'You are a helpful AI assistant. Respond to the current request only.';
-      await this.chatSession.prompt(systemMessage, {
-        maxTokens: 1, // Minimal tokens for system message
-        temperature: 0.0,
-      });
-
-      let response = await this.chatSession.prompt(params.prompt, {
-        maxTokens: 8192,
-        temperature: 0.7,
-        topP: 0.9,
-        repeatPenalty: {
-          punishTokensFilter: () =>
-            this.smallModel ? this.smallModel.tokenize(wordsToPunish.join(' ')) : [],
-          penalty: 1.2,
-          frequencyPenalty: 0.7,
-          presencePenalty: 0.7,
-        },
-      });
-
-      // Log raw response for debugging
-      logger.info('Raw response structure:', {
-        responseLength: response.length,
-        hasAction: response.includes('action'),
-        hasThinkTag: response.includes('<think>'),
-      });
-
-      // Clean think tags if present
-      if (response.includes('<think>')) {
-        logger.info('Cleaning think tags from response');
-        response = response.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
-        logger.info('Think tags removed from response');
-      }
-
-      // Return the raw response and let the framework handle JSON parsing and action validation
-      return response;
-    } catch (error) {
-      logger.error('Text generation failed:', error);
-      throw error;
+    // Call LlamaContext.dispose() to free GPU memory.
+    if (this.ctx) {
+      this.ctx.dispose();
+      this.ctx = undefined;
     }
+    await this.initializeEnvironment(); // Ensure environment is initialized
+    logger.info("Generating text with model:", params.modelType);
+    // Lazy initialize the appropriate model
+    if (params.modelType === ModelType.TEXT_LARGE) {
+      await this.lazyInitMediumModel();
+
+      if (!this.mediumModel) {
+        throw new Error("Medium model initialization failed");
+      }
+
+      this.activeModelConfig = MODEL_SPECS.medium;
+      const mediumModel = this.mediumModel;
+
+      // Create fresh context
+      this.ctx = await mediumModel.createContext({
+        contextSize: MODEL_SPECS.medium.contextSize,
+      });
+    } else {
+      await this.lazyInitSmallModel();
+
+      if (!this.smallModel) {
+        throw new Error("Small model initialization failed");
+      }
+
+      this.activeModelConfig = MODEL_SPECS.small;
+      const smallModel = this.smallModel;
+
+      // Create fresh context
+      this.ctx = await smallModel.createContext({
+        contextSize: MODEL_SPECS.small.contextSize,
+      });
+    }
+
+    if (!this.ctx) {
+      throw new Error("Failed to create prompt");
+    }
+
+    // QUICK TEST FIX: Always get fresh sequence
+    this.sequence = this.ctx.getSequence();
+
+    // QUICK TEST FIX: Create new session each time without maintaining state
+    // Only use valid options for LlamaChatSession
+    this.chatSession = new LlamaChatSession({
+      contextSequence: this.sequence,
+    });
+
+    if (!this.chatSession) {
+      throw new Error("Failed to create chat session");
+    }
+    logger.info("Created new chat session for model:", params.modelType);
+    // Log incoming prompt for debugging
+    logger.info("Incoming prompt structure:", {
+      contextLength: params.prompt.length,
+      hasAction: params.prompt.includes("action"),
+      runtime: !!params.runtime,
+      stopSequences: params.stopSequences,
+    });
+
+    const tokens = await this.tokenizerManager.encode(params.prompt, this.activeModelConfig);
+    logger.info("Input tokens:", { count: tokens.length });
+
+    // QUICK TEST FIX: Add system message to reset prompt
+    const systemMessage = "You are a helpful AI assistant. Respond to the current request only.";
+    await this.chatSession.prompt(systemMessage, {
+      maxTokens: 1, // Minimal tokens for system message
+      temperature: 0.0,
+    });
+
+    let response = await this.chatSession.prompt(params.prompt, {
+      maxTokens: 8192,
+      temperature: 0.7,
+      topP: 0.9,
+      repeatPenalty: {
+        punishTokensFilter: () =>
+          this.smallModel ? this.smallModel.tokenize(wordsToPunish.join(" ")) : [],
+        penalty: 1.2,
+        frequencyPenalty: 0.7,
+        presencePenalty: 0.7,
+      },
+    });
+
+    // Log raw response for debugging
+    logger.info("Raw response structure:", {
+      responseLength: response.length,
+      hasAction: response.includes("action"),
+      hasThinkTag: response.includes("<think>"),
+    });
+
+    // Clean think tags if present
+    if (response.includes("<think>")) {
+      logger.info("Cleaning think tags from response");
+      response = response.replace(/<think>[\s\S]*?<\/think>\n?/g, "");
+      logger.info("Think tags removed from response");
+    }
+
+    // Return the raw response and let the framework handle JSON parsing and action validation
+    return response;
   }
 
   /**
@@ -671,37 +629,24 @@ class LocalAIManager {
     imageData: Buffer,
     mimeType: string
   ): Promise<{ title: string; description: string }> {
-    try {
-      // Lazy initialize vision model
-      await this.lazyInitVision();
+    // Lazy initialize vision model
+    await this.lazyInitVision();
 
-      // Convert buffer to data URL
-      const base64 = imageData.toString('base64');
-      const dataUrl = `data:${mimeType};base64,${base64}`;
-      return await this.visionManager.processImage(dataUrl);
-    } catch (error) {
-      logger.error('Image description failed:', error);
-      throw error;
-    }
+    // Convert buffer to data URL
+    const base64 = imageData.toString("base64");
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    return await this.visionManager.processImage(dataUrl);
   }
 
   /**
    * Transcribe audio with lazy transcription model initialization
    */
   public async transcribeAudio(audioBuffer: Buffer): Promise<string> {
-    try {
-      // Lazy initialize transcription model
-      await this.lazyInitTranscription();
+    // Lazy initialize transcription model
+    await this.lazyInitTranscription();
 
-      const result = await this.transcribeManager.transcribe(audioBuffer);
-      return result.text;
-    } catch (error) {
-      logger.error('Audio transcription failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        bufferSize: audioBuffer.length,
-      });
-      throw error;
-    }
+    const result = await this.transcribeManager.transcribe(audioBuffer);
+    return result.text;
   }
 
   /**
@@ -714,7 +659,7 @@ class LocalAIManager {
 
       return await this.ttsManager.generateSpeech(text);
     } catch (error) {
-      logger.error('Speech generation failed:', {
+      logger.error("Speech generation failed:", {
         error: error instanceof Error ? error.message : String(error),
         textLength: text.length,
       });
@@ -755,31 +700,25 @@ class LocalAIManager {
         await this.downloadModel(ModelType.TEXT_SMALL);
 
         // Initialize Llama and small model
-        try {
-          // Use getLlama helper instead of directly creating
-          this.llama = await getLlama();
+        // Use getLlama helper instead of directly creating
+        this.llama = await getLlama();
 
-          const smallModel = await this.llama.loadModel({
-            gpuLayers: 43,
-            modelPath: this.modelPath, // Use the potentially overridden path
-            vocabOnly: false,
-          });
+        const smallModel = await this.llama.loadModel({
+          gpuLayers: 43,
+          modelPath: this.modelPath, // Use the potentially overridden path
+          vocabOnly: false,
+        });
 
-          this.smallModel = smallModel;
+        this.smallModel = smallModel;
 
-          const ctx = await smallModel.createContext({
-            contextSize: MODEL_SPECS.small.contextSize,
-          });
+        const ctx = await smallModel.createContext({
+          contextSize: MODEL_SPECS.small.contextSize,
+        });
 
-          this.ctx = ctx;
-          this.sequence = undefined; // Reset sequence to create a new one
-          this.smallModelInitialized = true;
-          logger.info('Small model initialized successfully');
-        } catch (error) {
-          logger.error('Failed to initialize small model:', error);
-          this.smallModelInitializingPromise = null;
-          throw error;
-        }
+        this.ctx = ctx;
+        this.sequence = undefined; // Reset sequence to create a new one
+        this.smallModelInitialized = true;
+        logger.info("Small model initialized successfully");
       })();
     }
 
@@ -808,21 +747,15 @@ class LocalAIManager {
         await this.downloadModel(ModelType.TEXT_LARGE);
 
         // Initialize medium model
-        try {
-          const mediumModel = await this.llama!.loadModel({
-            gpuLayers: 43,
-            modelPath: this.mediumModelPath, // Use the potentially overridden path
-            vocabOnly: false,
-          });
+        const mediumModel = await this.llama?.loadModel({
+          gpuLayers: 43,
+          modelPath: this.mediumModelPath, // Use the potentially overridden path
+          vocabOnly: false,
+        });
 
-          this.mediumModel = mediumModel;
-          this.mediumModelInitialized = true;
-          logger.info('Medium model initialized successfully');
-        } catch (error) {
-          logger.error('Failed to initialize medium model:', error);
-          this.mediumModelInitializingPromise = null;
-          throw error;
-        }
+        this.mediumModel = mediumModel;
+        this.mediumModelInitialized = true;
+        logger.info("Medium model initialized successfully");
       })();
     }
 
@@ -842,9 +775,9 @@ class LocalAIManager {
           // Use existing initialization code from the file
           // ...
           this.visionInitialized = true;
-          logger.info('Vision model initialized successfully');
+          logger.info("Vision model initialized successfully");
         } catch (error) {
-          logger.error('Failed to initialize vision model:', error);
+          logger.error("Failed to initialize vision model:", error);
           this.visionInitializingPromise = null;
           throw error;
         }
@@ -877,11 +810,11 @@ class LocalAIManager {
             // FFmpeg is not available, log instructions and throw
             // The TranscribeManager's ensureFFmpeg or initializeFFmpeg would have already logged instructions.
             logger.error(
-              'FFmpeg is not available or not configured correctly. Cannot proceed with transcription.'
+              "FFmpeg is not available or not configured correctly. Cannot proceed with transcription."
             );
             // No need to call logFFmpegInstallInstructions here as ensureFFmpeg/initializeFFmpeg already does.
             throw new Error(
-              'FFmpeg is required for transcription but is not available. Please see server logs for installation instructions.'
+              "FFmpeg is required for transcription but is not available. Please see server logs for installation instructions."
             );
           }
 
@@ -889,10 +822,10 @@ class LocalAIManager {
           // (Assuming TranscribeManager handles its own specific model init if any,
           // or that nodewhisper handles it internally)
           this.transcriptionInitialized = true;
-          logger.info('Transcription prerequisites (FFmpeg) checked and ready.');
-          logger.info('Transcription model initialized successfully');
+          logger.info("Transcription prerequisites (FFmpeg) checked and ready.");
+          logger.info("Transcription model initialized successfully");
         } catch (error) {
-          logger.error('Failed to initialize transcription model:', error);
+          logger.error("Failed to initialize transcription model:", error);
           this.transcriptionInitializingPromise = null;
           throw error;
         }
@@ -910,21 +843,15 @@ class LocalAIManager {
 
     if (!this.ttsInitializingPromise) {
       this.ttsInitializingPromise = (async () => {
-        try {
-          // Initialize TTS model directly
-          // Use existing initialization code from the file
-          // Get the TTSManager instance (ensure environment is initialized for cacheDir)
-          await this.initializeEnvironment();
-          this.ttsManager = TTSManager.getInstance(this.cacheDir);
-          // Note: The internal pipeline initialization within TTSManager happens
-          // when generateSpeech calls its own initialize method.
-          this.ttsInitialized = true;
-          logger.info('TTS model initialized successfully');
-        } catch (error) {
-          logger.error('Failed to lazy initialize TTS components:', error);
-          this.ttsInitializingPromise = null; // Allow retry
-          throw error;
-        }
+        // Initialize TTS model directly
+        // Use existing initialization code from the file
+        // Get the TTSManager instance (ensure environment is initialized for cacheDir)
+        await this.initializeEnvironment();
+        this.ttsManager = TTSManager.getInstance(this.cacheDir);
+        // Note: The internal pipeline initialization within TTSManager happens
+        // when generateSpeech calls its own initialize method.
+        this.ttsInitialized = true;
+        logger.info("TTS model initialized successfully");
       })();
     }
 
@@ -940,192 +867,135 @@ const localAIManager = LocalAIManager.getInstance();
  * @type {Plugin}
  */
 export const localAiPlugin: Plugin = {
-  name: 'local-ai',
-  description: 'Local AI plugin using LLaMA models',
+  name: "local-ai",
+  description: "Local AI plugin using LLaMA models",
 
-  async init(_config: any, runtime: IAgentRuntime) {
-    logger.info('🚀 Initializing Local AI plugin...');
-    
-    try {
-      // Initialize environment and validate configuration
-      await localAIManager.initializeEnvironment();
-      const config = validateConfig();
-      
-      // Check for critical configuration
-      if (!config.LOCAL_SMALL_MODEL || !config.LOCAL_LARGE_MODEL || !config.LOCAL_EMBEDDING_MODEL) {
-        logger.warn('⚠️ Local AI plugin: Model configuration is incomplete');
-        logger.warn('Please ensure the following environment variables are set:');
-        logger.warn('- LOCAL_SMALL_MODEL: Path to small language model file');
-        logger.warn('- LOCAL_LARGE_MODEL: Path to large language model file');
-        logger.warn('- LOCAL_EMBEDDING_MODEL: Path to embedding model file');
-        logger.warn('Example: LOCAL_SMALL_MODEL=llama-3.2-1b-instruct-q8_0.gguf');
-      }
-      
-      // Check if models directory is accessible
-      const modelsDir = config.MODELS_DIR || path.join(os.homedir(), '.eliza', 'models');
-      if (!fs.existsSync(modelsDir)) {
-        logger.warn(`⚠️ Models directory does not exist: ${modelsDir}`);
-        logger.warn('The directory will be created, but you need to download model files');
-        logger.warn('Visit https://huggingface.co/models to download compatible GGUF models');
-      }
-      
-      // Perform a basic initialization test
-      logger.info('🔍 Testing Local AI initialization...');
-      
-      try {
-        // Check platform capabilities
-        await localAIManager.checkPlatformCapabilities();
-        
-        // Test if we can get the llama instance
-        const llamaInstance = await getLlama();
-        if (llamaInstance) {
-          logger.success('✅ Local AI: llama.cpp library loaded successfully');
-        } else {
-          throw new Error('Failed to load llama.cpp library');
-        }
-        
-        // Check if at least one model file exists
-        const smallModelPath = path.join(modelsDir, config.LOCAL_SMALL_MODEL);
-        const largeModelPath = path.join(modelsDir, config.LOCAL_LARGE_MODEL);
-        const embeddingModelPath = path.join(modelsDir, config.LOCAL_EMBEDDING_MODEL);
-        
-        const modelsExist = {
-          small: fs.existsSync(smallModelPath),
-          large: fs.existsSync(largeModelPath),
-          embedding: fs.existsSync(embeddingModelPath)
-        };
-        
-        if (!modelsExist.small && !modelsExist.large && !modelsExist.embedding) {
-          logger.warn('⚠️ No model files found in models directory');
-          logger.warn('Models will be downloaded on first use, which may take time');
-          logger.warn('To pre-download models, run the plugin and it will fetch them automatically');
-        } else {
-          logger.info('📦 Found model files:', {
-            small: modelsExist.small ? '✓' : '✗',
-            large: modelsExist.large ? '✓' : '✗',
-            embedding: modelsExist.embedding ? '✓' : '✗'
-          });
-        }
-        
-        logger.success('✅ Local AI plugin initialized successfully');
-        logger.info('💡 Models will be loaded on-demand when first used');
-        
-      } catch (testError) {
-        logger.error('❌ Local AI initialization test failed:', testError);
-        logger.warn('The plugin may not function correctly');
-        logger.warn('Please check:');
-        logger.warn('1. Your system has sufficient memory (8GB+ recommended)');
-        logger.warn('2. C++ build tools are installed (for node-llama-cpp)');
-        logger.warn('3. Your CPU supports the required instruction sets');
-        // Don't throw here - allow the plugin to load even if the test fails
-      }
-      
-    } catch (error) {
-      logger.error('❌ Failed to initialize Local AI plugin:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-      
-      // Provide helpful guidance based on common errors
-      if (error instanceof Error) {
-        if (error.message.includes('Cannot find module')) {
-          logger.error('📚 Missing dependencies detected');
-          logger.error('Please run: npm install or bun install');
-        } else if (error.message.includes('node-llama-cpp')) {
-          logger.error('🔧 node-llama-cpp build issue detected');
-          logger.error('Please ensure C++ build tools are installed:');
-          logger.error('- Windows: Install Visual Studio Build Tools');
-          logger.error('- macOS: Install Xcode Command Line Tools');
-          logger.error('- Linux: Install build-essential package');
-        }
-      }
-      
-      // Don't throw - allow the system to continue without this plugin
-      logger.warn('⚠️ Local AI plugin will not be available');
+  async init(_config: Record<string, unknown> | undefined, _runtime: IAgentRuntime) {
+    logger.info("🚀 Initializing Local AI plugin...");
+
+    // Initialize environment and validate configuration
+    await localAIManager.initializeEnvironment();
+    const config = validateConfig();
+
+    // Check for critical configuration
+    if (!config.LOCAL_SMALL_MODEL || !config.LOCAL_LARGE_MODEL || !config.LOCAL_EMBEDDING_MODEL) {
+      logger.warn("⚠️ Local AI plugin: Model configuration is incomplete");
+      logger.warn("Please ensure the following environment variables are set:");
+      logger.warn("- LOCAL_SMALL_MODEL: Path to small language model file");
+      logger.warn("- LOCAL_LARGE_MODEL: Path to large language model file");
+      logger.warn("- LOCAL_EMBEDDING_MODEL: Path to embedding model file");
+      logger.warn("Example: LOCAL_SMALL_MODEL=llama-3.2-1b-instruct-q8_0.gguf");
     }
+
+    // Check if models directory is accessible
+    const modelsDir = config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");
+    if (!fs.existsSync(modelsDir)) {
+      logger.warn(`⚠️ Models directory does not exist: ${modelsDir}`);
+      logger.warn("The directory will be created, but you need to download model files");
+      logger.warn("Visit https://huggingface.co/models to download compatible GGUF models");
+    }
+
+    // Perform a basic initialization test
+    logger.info("🔍 Testing Local AI initialization...");
+
+    // Check platform capabilities
+    await localAIManager.checkPlatformCapabilities();
+
+    // Test if we can get the llama instance
+    const llamaInstance = await getLlama();
+    if (llamaInstance) {
+      logger.success("✅ Local AI: llama.cpp library loaded successfully");
+    } else {
+      throw new Error("Failed to load llama.cpp library");
+    }
+
+    // Check if at least one model file exists
+    const smallModelPath = path.join(modelsDir, config.LOCAL_SMALL_MODEL);
+    const largeModelPath = path.join(modelsDir, config.LOCAL_LARGE_MODEL);
+    const embeddingModelPath = path.join(modelsDir, config.LOCAL_EMBEDDING_MODEL);
+
+    const modelsExist = {
+      small: fs.existsSync(smallModelPath),
+      large: fs.existsSync(largeModelPath),
+      embedding: fs.existsSync(embeddingModelPath),
+    };
+
+    if (!modelsExist.small && !modelsExist.large && !modelsExist.embedding) {
+      logger.warn("⚠️ No model files found in models directory");
+      logger.warn("Models will be downloaded on first use, which may take time");
+      logger.warn("To pre-download models, run the plugin and it will fetch them automatically");
+    } else {
+      logger.info("📦 Found model files:", {
+        small: modelsExist.small ? "✓" : "✗",
+        large: modelsExist.large ? "✓" : "✗",
+        embedding: modelsExist.embedding ? "✓" : "✗",
+      });
+    }
+
+    logger.success("✅ Local AI plugin initialized successfully");
+    logger.info("💡 Models will be loaded on-demand when first used");
   },
   models: {
     [ModelType.TEXT_SMALL]: async (
       runtime: IAgentRuntime,
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
-      try {
-        // Ensure environment is initialized before generating text (now public)
-        await localAIManager.initializeEnvironment();
-        return await localAIManager.generateText({
-          prompt,
-          stopSequences,
-          runtime,
-          modelType: ModelType.TEXT_SMALL,
-        });
-      } catch (error) {
-        logger.error('Error in TEXT_SMALL handler:', error);
-        throw error;
-      }
+      // Ensure environment is initialized before generating text (now public)
+      await localAIManager.initializeEnvironment();
+      return await localAIManager.generateText({
+        prompt,
+        stopSequences,
+        runtime,
+        modelType: ModelType.TEXT_SMALL,
+      });
     },
 
     [ModelType.TEXT_LARGE]: async (
       runtime: IAgentRuntime,
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
-      try {
-        // Ensure environment is initialized before generating text (now public)
-        await localAIManager.initializeEnvironment();
-        return await localAIManager.generateText({
-          prompt,
-          stopSequences,
-          runtime,
-          modelType: ModelType.TEXT_LARGE,
-        });
-      } catch (error) {
-        logger.error('Error in TEXT_LARGE handler:', error);
-        throw error;
-      }
+      // Ensure environment is initialized before generating text (now public)
+      await localAIManager.initializeEnvironment();
+      return await localAIManager.generateText({
+        prompt,
+        stopSequences,
+        runtime,
+        modelType: ModelType.TEXT_LARGE,
+      });
     },
 
     [ModelType.TEXT_EMBEDDING]: async (_runtime: IAgentRuntime, params: TextEmbeddingParams) => {
       const text = params?.text;
-      try {
-        // Handle null/undefined/empty text
-        if (!text) {
-          logger.debug('Null or empty text input for embedding, returning zero vector');
-          return new Array(384).fill(0);
-        }
-
-        // Pass the raw text directly to the framework without any manipulation
-        return await localAIManager.generateEmbedding(text);
-      } catch (error) {
-        logger.error('Error in TEXT_EMBEDDING handler:', {
-          error: error instanceof Error ? error.message : String(error),
-          fullText: text,
-          textType: typeof text,
-          textStructure: text !== null ? JSON.stringify(text, null, 2) : 'null',
-        });
+      // Handle null/undefined/empty text
+      if (!text) {
+        logger.debug("Null or empty text input for embedding, returning zero vector");
         return new Array(384).fill(0);
       }
+
+      // Pass the raw text directly to the framework without any manipulation
+      return await localAIManager.generateEmbedding(text);
     },
 
     [ModelType.OBJECT_SMALL]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-      try {
-        // Ensure environment is initialized (now public)
-        await localAIManager.initializeEnvironment();
-        logger.info('OBJECT_SMALL handler - Processing request:', {
-          prompt: params.prompt,
-          hasSchema: !!params.schema,
-          temperature: params.temperature,
-        });
+      // Ensure environment is initialized (now public)
+      await localAIManager.initializeEnvironment();
+      logger.info("OBJECT_SMALL handler - Processing request:", {
+        prompt: params.prompt,
+        hasSchema: !!params.schema,
+        temperature: params.temperature,
+      });
 
-        // Build XML schema hint from the provided schema
-        let schemaHint = '';
-        if (params.schema) {
-          const schemaKeys = Object.keys(params.schema);
-          schemaHint = schemaKeys.map(key => `<${key}>value</${key}>`).join('\n');
-        }
+      // Build XML schema hint from the provided schema
+      let schemaHint = "";
+      if (params.schema) {
+        const schemaKeys = Object.keys(params.schema);
+        schemaHint = schemaKeys.map((key) => `<${key}>value</${key}>`).join("\n");
+      }
 
-        // Enhance the prompt to request XML output
-        const xmlPrompt = `${params.prompt}
+      // Enhance the prompt to request XML output
+      const xmlPrompt = `${params.prompt}
 
-Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ''}
+Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
 
 IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
 <code><![CDATA[
@@ -1138,135 +1008,130 @@ Example response format:
 <text>Your response text here</text>
 </response>`;
 
-        // Directly generate text using the local small model
-        const textResponse = await localAIManager.generateText({
-          prompt: xmlPrompt,
-          stopSequences: params.stopSequences,
-          runtime,
-          modelType: ModelType.TEXT_SMALL,
-        });
+      // Directly generate text using the local small model
+      const textResponse = await localAIManager.generateText({
+        prompt: xmlPrompt,
+        stopSequences: params.stopSequences,
+        runtime,
+        modelType: ModelType.TEXT_SMALL,
+      });
 
-        // Parse XML from the text response
-        try {
-          logger.debug('Raw model response:', textResponse.substring(0, 500));
+      // Parse XML from the text response
+      try {
+        logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-          // Use the robust XML parser from core
-          const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
+        // Use the robust XML parser from core
+        const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
-          if (parsedXml) {
-            logger.debug('Parsed XML result:', parsedXml);
+        if (parsedXml) {
+          logger.debug("Parsed XML result:", parsedXml);
 
-            // Validate against schema if provided
-            if (params.schema) {
-              for (const key of Object.keys(params.schema)) {
-                if (!(key in parsedXml)) {
-                  (parsedXml as Record<string, unknown>)[key] = null;
-                }
-              }
-            }
-
-            return parsedXml;
-          }
-
-          // Fallback: Try to extract structured data manually
-          logger.warn('parseKeyValueXml returned null, attempting manual extraction');
-          const result: Record<string, unknown> = {};
-
-          // Extract content from common XML tags
-          const extractTag = (text: string, tagName: string): string | null => {
-            // Handle CDATA sections
-            const cdataPattern = new RegExp(
-              `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
-              'i'
-            );
-            const cdataMatch = text.match(cdataPattern);
-            if (cdataMatch) {
-              return cdataMatch[1];
-            }
-
-            // Handle regular content with proper nesting
-            const startTag = `<${tagName}>`;
-            const endTag = `</${tagName}>`;
-            const startIdx = text.indexOf(startTag);
-            if (startIdx === -1) return null;
-
-            let depth = 1;
-            let searchStart = startIdx + startTag.length;
-            while (depth > 0 && searchStart < text.length) {
-              const nextOpen = text.indexOf(startTag, searchStart);
-              const nextClose = text.indexOf(endTag, searchStart);
-              if (nextClose === -1) break;
-
-              if (nextOpen !== -1 && nextOpen < nextClose) {
-                depth++;
-                searchStart = nextOpen + startTag.length;
-              } else {
-                depth--;
-                if (depth === 0) {
-                  return text.slice(startIdx + startTag.length, nextClose).trim();
-                }
-                searchStart = nextClose + endTag.length;
-              }
-            }
-            return null;
-          };
-
-          // Extract common fields
-          const thought = extractTag(textResponse, 'thought');
-          const text = extractTag(textResponse, 'text');
-          const code = extractTag(textResponse, 'code');
-
-          if (thought) result.thought = thought;
-          if (text) result.text = text;
-          if (code) result.code = code;
-
-          // Extract schema fields
+          // Validate against schema if provided
           if (params.schema) {
             for (const key of Object.keys(params.schema)) {
-              if (!(key in result)) {
-                const value = extractTag(textResponse, key);
-                result[key] = value;
+              if (!(key in parsedXml)) {
+                (parsedXml as Record<string, unknown>)[key] = null;
               }
             }
           }
 
-          if (Object.keys(result).length > 0) {
-            return result;
+          return parsedXml;
+        }
+
+        // Fallback: Try to extract structured data manually
+        logger.warn("parseKeyValueXml returned null, attempting manual extraction");
+        const result: Record<string, unknown> = {};
+
+        // Extract content from common XML tags
+        const extractTag = (text: string, tagName: string): string | null => {
+          // Handle CDATA sections
+          const cdataPattern = new RegExp(
+            `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
+            "i"
+          );
+          const cdataMatch = text.match(cdataPattern);
+          if (cdataMatch) {
+            return cdataMatch[1];
           }
 
-          throw new Error('Could not parse XML response');
-        } catch (parseError) {
-          logger.error('Failed to parse XML:', parseError);
-          logger.error('Raw response:', textResponse);
-          throw new Error('Invalid XML returned from model');
+          // Handle regular content with proper nesting
+          const startTag = `<${tagName}>`;
+          const endTag = `</${tagName}>`;
+          const startIdx = text.indexOf(startTag);
+          if (startIdx === -1) return null;
+
+          let depth = 1;
+          let searchStart = startIdx + startTag.length;
+          while (depth > 0 && searchStart < text.length) {
+            const nextOpen = text.indexOf(startTag, searchStart);
+            const nextClose = text.indexOf(endTag, searchStart);
+            if (nextClose === -1) break;
+
+            if (nextOpen !== -1 && nextOpen < nextClose) {
+              depth++;
+              searchStart = nextOpen + startTag.length;
+            } else {
+              depth--;
+              if (depth === 0) {
+                return text.slice(startIdx + startTag.length, nextClose).trim();
+              }
+              searchStart = nextClose + endTag.length;
+            }
+          }
+          return null;
+        };
+
+        // Extract common fields
+        const thought = extractTag(textResponse, "thought");
+        const text = extractTag(textResponse, "text");
+        const code = extractTag(textResponse, "code");
+
+        if (thought) result.thought = thought;
+        if (text) result.text = text;
+        if (code) result.code = code;
+
+        // Extract schema fields
+        if (params.schema) {
+          for (const key of Object.keys(params.schema)) {
+            if (!(key in result)) {
+              const value = extractTag(textResponse, key);
+              result[key] = value;
+            }
+          }
         }
-      } catch (error) {
-        logger.error('Error in OBJECT_SMALL handler:', error);
-        throw error;
+
+        if (Object.keys(result).length > 0) {
+          return result;
+        }
+
+        throw new Error("Could not parse XML response");
+      } catch (parseError) {
+        logger.error("Failed to parse XML:", parseError);
+        logger.error("Raw response:", textResponse);
+        throw new Error("Invalid XML returned from model");
       }
     },
 
     [ModelType.OBJECT_LARGE]: async (runtime: IAgentRuntime, params: ObjectGenerationParams) => {
-      try {
-        // Ensure environment is initialized (now public)
-        await localAIManager.initializeEnvironment();
-        logger.info('OBJECT_LARGE handler - Processing request:', {
-          prompt: params.prompt,
-          hasSchema: !!params.schema,
-          temperature: params.temperature,
-        });
+      // Ensure environment is initialized (now public)
+      await localAIManager.initializeEnvironment();
+      logger.info("OBJECT_LARGE handler - Processing request:", {
+        prompt: params.prompt,
+        hasSchema: !!params.schema,
+        temperature: params.temperature,
+      });
 
-        // Build XML schema hint from the provided schema
-        let schemaHint = '';
-        if (params.schema) {
-          const schemaKeys = Object.keys(params.schema);
-          schemaHint = schemaKeys.map(key => `<${key}>value</${key}>`).join('\n');
-        }
+      // Build XML schema hint from the provided schema
+      let schemaHint = "";
+      if (params.schema) {
+        const schemaKeys = Object.keys(params.schema);
+        schemaHint = schemaKeys.map((key) => `<${key}>value</${key}>`).join("\n");
+      }
 
-        // Enhance the prompt to request XML output
-        const xmlPrompt = `${params.prompt}
+      // Enhance the prompt to request XML output
+      const xmlPrompt = `${params.prompt}
 
-Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ''}
+Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ""}
 
 IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
 <code><![CDATA[
@@ -1279,111 +1144,107 @@ Example response format:
 <text>Your response text here</text>
 </response>`;
 
-        // Directly generate text using the local large model
-        const textResponse = await localAIManager.generateText({
-          prompt: xmlPrompt,
-          stopSequences: params.stopSequences,
-          runtime,
-          modelType: ModelType.TEXT_LARGE,
-        });
+      // Directly generate text using the local large model
+      const textResponse = await localAIManager.generateText({
+        prompt: xmlPrompt,
+        stopSequences: params.stopSequences,
+        runtime,
+        modelType: ModelType.TEXT_LARGE,
+      });
 
-        // Parse XML from the text response
-        try {
-          logger.debug('Raw model response:', textResponse.substring(0, 500));
+      // Parse XML from the text response
+      try {
+        logger.debug("Raw model response:", textResponse.substring(0, 500));
 
-          // Use the robust XML parser from core
-          const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
+        // Use the robust XML parser from core
+        const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
-          if (parsedXml) {
-            logger.debug('Parsed XML result:', parsedXml);
+        if (parsedXml) {
+          logger.debug("Parsed XML result:", parsedXml);
 
-            // Validate against schema if provided
-            if (params.schema) {
-              for (const key of Object.keys(params.schema)) {
-                if (!(key in parsedXml)) {
-                  (parsedXml as Record<string, unknown>)[key] = null;
-                }
-              }
-            }
-
-            return parsedXml;
-          }
-
-          // Fallback: Try to extract structured data manually
-          logger.warn('parseKeyValueXml returned null, attempting manual extraction');
-          const result: Record<string, unknown> = {};
-
-          // Extract content from common XML tags with CDATA support
-          const extractTag = (text: string, tagName: string): string | null => {
-            // Handle CDATA sections
-            const cdataPattern = new RegExp(
-              `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
-              'i'
-            );
-            const cdataMatch = text.match(cdataPattern);
-            if (cdataMatch) {
-              return cdataMatch[1];
-            }
-
-            // Handle regular content with proper nesting
-            const startTag = `<${tagName}>`;
-            const endTag = `</${tagName}>`;
-            const startIdx = text.indexOf(startTag);
-            if (startIdx === -1) return null;
-
-            let depth = 1;
-            let searchStart = startIdx + startTag.length;
-            while (depth > 0 && searchStart < text.length) {
-              const nextOpen = text.indexOf(startTag, searchStart);
-              const nextClose = text.indexOf(endTag, searchStart);
-              if (nextClose === -1) break;
-
-              if (nextOpen !== -1 && nextOpen < nextClose) {
-                depth++;
-                searchStart = nextOpen + startTag.length;
-              } else {
-                depth--;
-                if (depth === 0) {
-                  return text.slice(startIdx + startTag.length, nextClose).trim();
-                }
-                searchStart = nextClose + endTag.length;
-              }
-            }
-            return null;
-          };
-
-          // Extract common fields
-          const thought = extractTag(textResponse, 'thought');
-          const text = extractTag(textResponse, 'text');
-          const code = extractTag(textResponse, 'code');
-
-          if (thought) result.thought = thought;
-          if (text) result.text = text;
-          if (code) result.code = code;
-
-          // Extract schema fields
+          // Validate against schema if provided
           if (params.schema) {
             for (const key of Object.keys(params.schema)) {
-              if (!(key in result)) {
-                const value = extractTag(textResponse, key);
-                result[key] = value;
+              if (!(key in parsedXml)) {
+                (parsedXml as Record<string, unknown>)[key] = null;
               }
             }
           }
 
-          if (Object.keys(result).length > 0) {
-            return result;
+          return parsedXml;
+        }
+
+        // Fallback: Try to extract structured data manually
+        logger.warn("parseKeyValueXml returned null, attempting manual extraction");
+        const result: Record<string, unknown> = {};
+
+        // Extract content from common XML tags with CDATA support
+        const extractTag = (text: string, tagName: string): string | null => {
+          // Handle CDATA sections
+          const cdataPattern = new RegExp(
+            `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
+            "i"
+          );
+          const cdataMatch = text.match(cdataPattern);
+          if (cdataMatch) {
+            return cdataMatch[1];
           }
 
-          throw new Error('Could not parse XML response');
-        } catch (parseError) {
-          logger.error('Failed to parse XML:', parseError);
-          logger.error('Raw response:', textResponse);
-          throw new Error('Invalid XML returned from model');
+          // Handle regular content with proper nesting
+          const startTag = `<${tagName}>`;
+          const endTag = `</${tagName}>`;
+          const startIdx = text.indexOf(startTag);
+          if (startIdx === -1) return null;
+
+          let depth = 1;
+          let searchStart = startIdx + startTag.length;
+          while (depth > 0 && searchStart < text.length) {
+            const nextOpen = text.indexOf(startTag, searchStart);
+            const nextClose = text.indexOf(endTag, searchStart);
+            if (nextClose === -1) break;
+
+            if (nextOpen !== -1 && nextOpen < nextClose) {
+              depth++;
+              searchStart = nextOpen + startTag.length;
+            } else {
+              depth--;
+              if (depth === 0) {
+                return text.slice(startIdx + startTag.length, nextClose).trim();
+              }
+              searchStart = nextClose + endTag.length;
+            }
+          }
+          return null;
+        };
+
+        // Extract common fields
+        const thought = extractTag(textResponse, "thought");
+        const text = extractTag(textResponse, "text");
+        const code = extractTag(textResponse, "code");
+
+        if (thought) result.thought = thought;
+        if (text) result.text = text;
+        if (code) result.code = code;
+
+        // Extract schema fields
+        if (params.schema) {
+          for (const key of Object.keys(params.schema)) {
+            if (!(key in result)) {
+              const value = extractTag(textResponse, key);
+              result[key] = value;
+            }
+          }
         }
-      } catch (error) {
-        logger.error('Error in OBJECT_LARGE handler:', error);
-        throw error;
+
+        if (Object.keys(result).length > 0) {
+          return result;
+        }
+
+        throw new Error("Could not parse XML response");
+      } catch (parseError) {
+        logger.error("Failed to parse XML:", parseError);
+        logger.error("Raw response:", textResponse);
+        throw new Error("Invalid XML returned from model");
       }
     },
 
@@ -1391,90 +1252,56 @@ Example response format:
       _runtime: IAgentRuntime,
       { text }: { text: string }
     ) => {
-      try {
-        const manager = localAIManager.getTokenizerManager();
-        const config = localAIManager.getActiveModelConfig();
-        return await manager.encode(text, config);
-      } catch (error) {
-        logger.error('Error in TEXT_TOKENIZER_ENCODE handler:', error);
-        throw error;
-      }
+      const manager = localAIManager.getTokenizerManager();
+      const config = localAIManager.getActiveModelConfig();
+      return await manager.encode(text, config);
     },
 
     [ModelType.TEXT_TOKENIZER_DECODE]: async (
       _runtime: IAgentRuntime,
       { tokens }: { tokens: number[] }
     ) => {
-      try {
-        const manager = localAIManager.getTokenizerManager();
-        const config = localAIManager.getActiveModelConfig();
-        return await manager.decode(tokens, config);
-      } catch (error) {
-        logger.error('Error in TEXT_TOKENIZER_DECODE handler:', error);
-        throw error;
-      }
+      const manager = localAIManager.getTokenizerManager();
+      const config = localAIManager.getActiveModelConfig();
+      return await manager.decode(tokens, config);
     },
 
     [ModelType.IMAGE_DESCRIPTION]: async (_runtime: IAgentRuntime, imageUrl: string) => {
-      try {
-        logger.info('Processing image from URL:', imageUrl);
+      logger.info("Processing image from URL:", imageUrl);
 
-        // Fetch the image from URL
-        const response = await fetch(imageUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch image: ${response.statusText}`);
-        }
-
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const mimeType = response.headers.get('content-type') || 'image/jpeg';
-
-        return await localAIManager.describeImage(buffer, mimeType);
-      } catch (error) {
-        logger.error('Error in IMAGE_DESCRIPTION handler:', {
-          error: error instanceof Error ? error.message : String(error),
-          imageUrl,
-        });
-        throw error;
+      // Fetch the image from URL
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
       }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const mimeType = response.headers.get("content-type") || "image/jpeg";
+
+      return await localAIManager.describeImage(buffer, mimeType);
     },
 
     [ModelType.TRANSCRIPTION]: async (_runtime: IAgentRuntime, audioBuffer: Buffer) => {
-      try {
-        logger.info('Processing audio transcription:', {
-          bufferSize: audioBuffer.length,
-        });
+      logger.info("Processing audio transcription:", {
+        bufferSize: audioBuffer.length,
+      });
 
-        return await localAIManager.transcribeAudio(audioBuffer);
-      } catch (error) {
-        logger.error('Error in TRANSCRIPTION handler:', {
-          error: error instanceof Error ? error.message : String(error),
-          bufferSize: audioBuffer.length,
-        });
-        throw error;
-      }
+      return await localAIManager.transcribeAudio(audioBuffer);
     },
 
     [ModelType.TEXT_TO_SPEECH]: async (_runtime: IAgentRuntime, text: string) => {
-      try {
-        return await localAIManager.generateSpeech(text);
-      } catch (error) {
-        logger.error('Error in TEXT_TO_SPEECH handler:', {
-          error: error instanceof Error ? error.message : String(error),
-          textLength: text.length,
-        });
-        throw error;
-      }
+      return await localAIManager.generateSpeech(text);
     },
   },
   tests: [
     {
-      name: 'local_ai_plugin_tests',
+      name: "local_ai_plugin_tests",
       tests: [
         {
-          name: 'local_ai_test_initialization',
+          name: "local_ai_test_initialization",
           fn: async (runtime) => {
             try {
-              logger.info('Starting initialization test');
+              logger.info("Starting initialization test");
 
               // Test TEXT_SMALL model initialization
               const result = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -1483,19 +1310,19 @@ Example response format:
                 stopSequences: [],
               });
 
-              logger.info('Model response:', result);
+              logger.info("Model response:", result);
 
-              if (!result || typeof result !== 'string') {
-                throw new Error('Invalid response from model');
+              if (!result || typeof result !== "string") {
+                throw new Error("Invalid response from model");
               }
 
-              if (!result.includes('successful')) {
-                throw new Error('Model response does not indicate success');
+              if (!result.includes("successful")) {
+                throw new Error("Model response does not indicate success");
               }
 
-              logger.success('Initialization test completed successfully');
+              logger.success("Initialization test completed successfully");
             } catch (error) {
-              logger.error('Initialization test failed:', {
+              logger.error("Initialization test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1504,30 +1331,30 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_text_large',
+          name: "local_ai_test_text_large",
           fn: async (runtime) => {
             try {
-              logger.info('Starting TEXT_LARGE model test');
+              logger.info("Starting TEXT_LARGE model test");
 
               const result = await runtime.useModel(ModelType.TEXT_LARGE, {
                 prompt:
-                  'Debug Mode: Generate a one-sentence response about artificial intelligence.',
+                  "Debug Mode: Generate a one-sentence response about artificial intelligence.",
                 stopSequences: [],
               });
 
-              logger.info('Large model response:', result);
+              logger.info("Large model response:", result);
 
-              if (!result || typeof result !== 'string') {
-                throw new Error('Invalid response from large model');
+              if (!result || typeof result !== "string") {
+                throw new Error("Invalid response from large model");
               }
 
               if (result.length < 10) {
-                throw new Error('Response too short, possible model failure');
+                throw new Error("Response too short, possible model failure");
               }
 
-              logger.success('TEXT_LARGE test completed successfully');
+              logger.success("TEXT_LARGE test completed successfully");
             } catch (error) {
-              logger.error('TEXT_LARGE test failed:', {
+              logger.error("TEXT_LARGE test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1536,39 +1363,39 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_text_embedding',
+          name: "local_ai_test_text_embedding",
           fn: async (runtime) => {
             try {
-              logger.info('Starting TEXT_EMBEDDING test');
+              logger.info("Starting TEXT_EMBEDDING test");
 
               // Test with normal text
               const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-                text: 'This is a test of the text embedding model.',
+                text: "This is a test of the text embedding model.",
               });
 
-              logger.info('Embedding generated with dimensions:', embedding.length);
+              logger.info("Embedding generated with dimensions:", embedding.length);
 
               if (!Array.isArray(embedding)) {
-                throw new Error('Embedding is not an array');
+                throw new Error("Embedding is not an array");
               }
 
               if (embedding.length === 0) {
-                throw new Error('Embedding array is empty');
+                throw new Error("Embedding array is empty");
               }
 
-              if (embedding.some((val) => typeof val !== 'number')) {
-                throw new Error('Embedding contains non-numeric values');
+              if (embedding.some((val) => typeof val !== "number")) {
+                throw new Error("Embedding contains non-numeric values");
               }
 
               // Test with null input (should return zero vector)
               const nullEmbedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, null);
               if (!Array.isArray(nullEmbedding) || nullEmbedding.some((val) => val !== 0)) {
-                throw new Error('Null input did not return zero vector');
+                throw new Error("Null input did not return zero vector");
               }
 
-              logger.success('TEXT_EMBEDDING test completed successfully');
+              logger.success("TEXT_EMBEDDING test completed successfully");
             } catch (error) {
-              logger.error('TEXT_EMBEDDING test failed:', {
+              logger.error("TEXT_EMBEDDING test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1577,30 +1404,30 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_tokenizer_encode',
+          name: "local_ai_test_tokenizer_encode",
           fn: async (runtime) => {
             try {
-              logger.info('Starting TEXT_TOKENIZER_ENCODE test');
-              const text = 'Hello tokenizer test!';
+              logger.info("Starting TEXT_TOKENIZER_ENCODE test");
+              const text = "Hello tokenizer test!";
 
               const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { text });
-              logger.info('Encoded tokens:', { count: tokens.length });
+              logger.info("Encoded tokens:", { count: tokens.length });
 
               if (!Array.isArray(tokens)) {
-                throw new Error('Tokens output is not an array');
+                throw new Error("Tokens output is not an array");
               }
 
               if (tokens.length === 0) {
-                throw new Error('No tokens generated');
+                throw new Error("No tokens generated");
               }
 
               if (tokens.some((token) => !Number.isInteger(token))) {
-                throw new Error('Tokens contain non-integer values');
+                throw new Error("Tokens contain non-integer values");
               }
 
-              logger.success('TEXT_TOKENIZER_ENCODE test completed successfully');
+              logger.success("TEXT_TOKENIZER_ENCODE test completed successfully");
             } catch (error) {
-              logger.error('TEXT_TOKENIZER_ENCODE test failed:', {
+              logger.error("TEXT_TOKENIZER_ENCODE test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1609,13 +1436,13 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_tokenizer_decode',
+          name: "local_ai_test_tokenizer_decode",
           fn: async (runtime) => {
             try {
-              logger.info('Starting TEXT_TOKENIZER_DECODE test');
+              logger.info("Starting TEXT_TOKENIZER_DECODE test");
 
               // First encode some text
-              const originalText = 'Hello tokenizer test!';
+              const originalText = "Hello tokenizer test!";
               const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
                 text: originalText,
               });
@@ -1624,18 +1451,18 @@ Example response format:
               const decodedText = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
                 tokens,
               });
-              logger.info('Round trip tokenization:', {
+              logger.info("Round trip tokenization:", {
                 original: originalText,
                 decoded: decodedText,
               });
 
-              if (typeof decodedText !== 'string') {
-                throw new Error('Decoded output is not a string');
+              if (typeof decodedText !== "string") {
+                throw new Error("Decoded output is not a string");
               }
 
-              logger.success('TEXT_TOKENIZER_DECODE test completed successfully');
+              logger.success("TEXT_TOKENIZER_DECODE test completed successfully");
             } catch (error) {
-              logger.error('TEXT_TOKENIZER_DECODE test failed:', {
+              logger.error("TEXT_TOKENIZER_DECODE test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1644,33 +1471,33 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_image_description',
+          name: "local_ai_test_image_description",
           fn: async (runtime) => {
             try {
-              logger.info('Starting IMAGE_DESCRIPTION test');
+              logger.info("Starting IMAGE_DESCRIPTION test");
 
               // Use a more stable test image URL
               const imageUrl =
-                'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg';
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg";
               const result = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, imageUrl);
 
-              logger.info('Image description result:', result);
+              logger.info("Image description result:", result);
 
-              if (!result || typeof result !== 'object') {
-                throw new Error('Invalid response format');
+              if (!result || typeof result !== "object") {
+                throw new Error("Invalid response format");
               }
 
               if (!result.title || !result.description) {
-                throw new Error('Missing title or description in response');
+                throw new Error("Missing title or description in response");
               }
 
-              if (typeof result.title !== 'string' || typeof result.description !== 'string') {
-                throw new Error('Title or description is not a string');
+              if (typeof result.title !== "string" || typeof result.description !== "string") {
+                throw new Error("Title or description is not a string");
               }
 
-              logger.success('IMAGE_DESCRIPTION test completed successfully');
+              logger.success("IMAGE_DESCRIPTION test completed successfully");
             } catch (error) {
-              logger.error('IMAGE_DESCRIPTION test failed:', {
+              logger.error("IMAGE_DESCRIPTION test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1679,10 +1506,10 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_transcription',
+          name: "local_ai_test_transcription",
           fn: async (runtime) => {
             try {
-              logger.info('Starting TRANSCRIPTION test');
+              logger.info("Starting TRANSCRIPTION test");
 
               // Create a proper WAV file header and minimal audio data
               // WAV file format: RIFF header + fmt chunk + data chunk
@@ -1697,12 +1524,12 @@ Example response format:
               const buffer = Buffer.alloc(44 + dataSize);
 
               // RIFF header
-              buffer.write('RIFF', 0);
+              buffer.write("RIFF", 0);
               buffer.writeUInt32LE(36 + dataSize, 4); // File size - 8
-              buffer.write('WAVE', 8);
+              buffer.write("WAVE", 8);
 
               // fmt chunk
-              buffer.write('fmt ', 12);
+              buffer.write("fmt ", 12);
               buffer.writeUInt32LE(16, 16); // fmt chunk size
               buffer.writeUInt16LE(1, 20); // Audio format (1 = PCM)
               buffer.writeUInt16LE(channels, 22); // Number of channels
@@ -1712,7 +1539,7 @@ Example response format:
               buffer.writeUInt16LE(bitsPerSample, 34); // Bits per sample
 
               // data chunk
-              buffer.write('data', 36);
+              buffer.write("data", 36);
               buffer.writeUInt32LE(dataSize, 40); // Data size
 
               // Generate a simple sine wave tone (440Hz) instead of silence
@@ -1723,18 +1550,18 @@ Example response format:
               }
 
               const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, buffer);
-              logger.info('Transcription result:', transcription);
+              logger.info("Transcription result:", transcription);
 
-              if (typeof transcription !== 'string') {
-                throw new Error('Transcription result is not a string');
+              if (typeof transcription !== "string") {
+                throw new Error("Transcription result is not a string");
               }
 
               // Accept empty string as valid result (for non-speech audio)
-              logger.info('Transcription completed (may be empty for non-speech audio)');
+              logger.info("Transcription completed (may be empty for non-speech audio)");
 
-              logger.success('TRANSCRIPTION test completed successfully');
+              logger.success("TRANSCRIPTION test completed successfully");
             } catch (error) {
-              logger.error('TRANSCRIPTION test failed:', {
+              logger.error("TRANSCRIPTION test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });
@@ -1743,38 +1570,38 @@ Example response format:
           },
         },
         {
-          name: 'local_ai_test_text_to_speech',
+          name: "local_ai_test_text_to_speech",
           fn: async (runtime) => {
             try {
-              logger.info('Starting TEXT_TO_SPEECH test');
+              logger.info("Starting TEXT_TO_SPEECH test");
 
-              const testText = 'This is a test of the text to speech system.';
+              const testText = "This is a test of the text to speech system.";
               const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, testText);
 
               if (!(audioStream instanceof Readable)) {
-                throw new Error('TTS output is not a readable stream');
+                throw new Error("TTS output is not a readable stream");
               }
 
               // Test stream readability
               let dataReceived = false;
-              audioStream.on('data', () => {
+              audioStream.on("data", () => {
                 dataReceived = true;
               });
 
               await new Promise((resolve, reject) => {
-                audioStream.on('end', () => {
+                audioStream.on("end", () => {
                   if (!dataReceived) {
-                    reject(new Error('No audio data received from stream'));
+                    reject(new Error("No audio data received from stream"));
                   } else {
                     resolve(true);
                   }
                 });
-                audioStream.on('error', reject);
+                audioStream.on("error", reject);
               });
 
-              logger.success('TEXT_TO_SPEECH test completed successfully');
+              logger.success("TEXT_TO_SPEECH test completed successfully");
             } catch (error) {
-              logger.error('TEXT_TO_SPEECH test failed:', {
+              logger.error("TEXT_TO_SPEECH test failed:", {
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
               });

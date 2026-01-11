@@ -3,7 +3,7 @@
  */
 
 import { type IAgentRuntime, type Media, ModelType } from "@elizaos/core";
-import type { Embed as NeynarEmbed, EmbedUrl, EmbedCast } from "@neynar/nodejs-sdk/build/api";
+import type { EmbedCast, EmbedUrl, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 
 /**
  * Type guard to check if an embed is a URL embed.
@@ -107,7 +107,10 @@ export class EmbedManager {
     }
 
     this.runtime.logger.info(
-      { processedCount: processedMedia.length, types: processedMedia.map((m) => m.source) },
+      {
+        processedCount: processedMedia.length,
+        types: processedMedia.map((m) => m.source),
+      },
       "[EmbedManager] Finished processing embeds"
     );
 
@@ -132,8 +135,9 @@ export class EmbedManager {
     const { url, metadata } = embed;
     const embedId = `embed-${this.hashUrl(url)}`;
 
-    if (this.embedCache.has(embedId)) {
-      return this.embedCache.get(embedId)!;
+    const cached = this.embedCache.get(embedId);
+    if (cached) {
+      return cached;
     }
 
     const contentType = metadata?.content_type;
@@ -170,12 +174,11 @@ export class EmbedManager {
     let title = "Image";
 
     try {
-      const result = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION as any, {
+      const result = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
         prompt:
           "Analyze this image and provide a concise title and description. Focus on the main subject and any notable details.",
         imageUrl: url,
-        model: "gpt-4o-mini",
-      } as any);
+      });
 
       if (result && typeof result === "object") {
         const typedResult = result as { title?: string; description?: string };
@@ -186,7 +189,11 @@ export class EmbedManager {
       }
 
       this.runtime.logger.info(
-        { url: url.substring(0, 60) + "...", descriptionLength: description.length, title },
+        {
+          url: `${url.substring(0, 60)}...`,
+          descriptionLength: description.length,
+          title,
+        },
         "[EmbedManager] Processed image with vision model"
       );
     } catch (error) {
@@ -301,8 +308,9 @@ export class EmbedManager {
     const cast = embed.cast;
     const embedId = `cast-${cast.hash}`;
 
-    if (this.embedCache.has(embedId)) {
-      return this.embedCache.get(embedId)!;
+    const cached = this.embedCache.get(embedId);
+    if (cached) {
+      return cached;
     }
 
     const authorUsername = cast.author?.username || "unknown";
@@ -353,4 +361,3 @@ export class EmbedManager {
     this.embedCache.clear();
   }
 }
-

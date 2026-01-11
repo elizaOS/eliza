@@ -1,6 +1,6 @@
 ---
-title: 'REST API Examples'
-description: 'HTTP endpoints for elizaOS using 8 different web frameworks'
+title: "REST API Examples"
+description: "HTTP endpoints for elizaOS using 8 different web frameworks"
 ---
 
 Build REST APIs for your elizaOS agents using your preferred framework.
@@ -9,26 +9,26 @@ Build REST APIs for your elizaOS agents using your preferred framework.
 
 ### TypeScript
 
-| Framework | Location | Features |
-|-----------|----------|----------|
-| Express | `examples/rest-api/express/` | Most popular, middleware ecosystem |
-| Hono | `examples/rest-api/hono/` | Fast, small, edge-ready |
-| Elysia | `examples/rest-api/elysia/` | Bun-native, type-safe |
+| Framework | Location                     | Features                           |
+| --------- | ---------------------------- | ---------------------------------- |
+| Express   | `examples/rest-api/express/` | Most popular, middleware ecosystem |
+| Hono      | `examples/rest-api/hono/`    | Fast, small, edge-ready            |
+| Elysia    | `examples/rest-api/elysia/`  | Bun-native, type-safe              |
 
 ### Python
 
-| Framework | Location | Features |
-|-----------|----------|----------|
-| FastAPI | `examples/rest-api/fastapi/` | Async, auto-docs, Pydantic |
-| Flask | `examples/rest-api/flask/` | Simple, flexible, WSGI |
+| Framework | Location                     | Features                   |
+| --------- | ---------------------------- | -------------------------- |
+| FastAPI   | `examples/rest-api/fastapi/` | Async, auto-docs, Pydantic |
+| Flask     | `examples/rest-api/flask/`   | Simple, flexible, WSGI     |
 
 ### Rust
 
-| Framework | Location | Features |
-|-----------|----------|----------|
-| Actix Web | `examples/rest-api/actix/` | Fastest, actor model |
-| Axum | `examples/rest-api/axum/` | Tokio ecosystem, modular |
-| Rocket | `examples/rest-api/rocket/` | Type-safe, ergonomic |
+| Framework | Location                    | Features                 |
+| --------- | --------------------------- | ------------------------ |
+| Actix Web | `examples/rest-api/actix/`  | Fastest, actor model     |
+| Axum      | `examples/rest-api/axum/`   | Tokio ecosystem, modular |
+| Rocket    | `examples/rest-api/rocket/` | Type-safe, ergonomic     |
 
 ---
 
@@ -100,6 +100,7 @@ Health check.
 Send a message.
 
 **Request:**
+
 ```json
 {
   "message": "I am feeling anxious",
@@ -108,6 +109,7 @@ Send a message.
 ```
 
 **Response:**
+
 ```json
 {
   "response": "Tell me more about what's making you feel anxious.",
@@ -121,36 +123,36 @@ Send a message.
 ## Framework Comparison
 
 | Framework | Language | Async | Type Safety | Bundle Size | Performance |
-|-----------|----------|:-----:|:-----------:|:-----------:|:-----------:|
-| Express | TS | ✅ | ⚠️ | Medium | Good |
-| Hono | TS | ✅ | ✅ | Small | Excellent |
-| Elysia | TS | ✅ | ✅ | Small | Excellent |
-| FastAPI | Python | ✅ | ✅ | N/A | Good |
-| Flask | Python | ⚠️ | ⚠️ | N/A | Fair |
-| Actix | Rust | ✅ | ✅ | Small | Excellent |
-| Axum | Rust | ✅ | ✅ | Small | Excellent |
-| Rocket | Rust | ✅ | ✅ | Medium | Great |
+| --------- | -------- | :---: | :---------: | :---------: | :---------: |
+| Express   | TS       |  ✅   |     ⚠️      |   Medium    |    Good     |
+| Hono      | TS       |  ✅   |     ✅      |    Small    |  Excellent  |
+| Elysia    | TS       |  ✅   |     ✅      |    Small    |  Excellent  |
+| FastAPI   | Python   |  ✅   |     ✅      |     N/A     |    Good     |
+| Flask     | Python   |  ⚠️   |     ⚠️      |     N/A     |    Fair     |
+| Actix     | Rust     |  ✅   |     ✅      |    Small    |  Excellent  |
+| Axum      | Rust     |  ✅   |     ✅      |    Small    |  Excellent  |
+| Rocket    | Rust     |  ✅   |     ✅      |   Medium    |    Great    |
 
 ---
 
 ## Express Example
 
 ```typescript
-import express from 'express';
-import { AgentRuntime, ModelType } from '@elizaos/core';
-import { elizaClassicPlugin } from '@elizaos/plugin-eliza-classic';
+import express from "express";
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 
 const app = express();
 app.use(express.json());
 
 const runtime = new AgentRuntime({
-  character: { name: 'Eliza', bio: 'A helpful AI.' },
+  character: { name: "Eliza", bio: "A helpful AI." },
   plugins: [elizaClassicPlugin],
 });
 
 await runtime.initialize();
 
-app.post('/chat', async (req, res) => {
+app.post("/chat", async (req, res) => {
   const { message } = req.body;
   const response = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: message,
@@ -254,10 +256,11 @@ import { openaiPlugin } from '@elizaos/plugin-openai';
 import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
 const runtime = new AgentRuntime({
-  character,
-  plugins: [sqlPlugin, openaiPlugin],
+character,
+plugins: [sqlPlugin, openaiPlugin],
 });
-```
+
+````
   </Tab>
   <Tab title="Python">
 ```python
@@ -267,17 +270,19 @@ runtime = AgentRuntime(
     character=character,
     plugins=[get_openai_plugin()],
 )
-```
+````
+
   </Tab>
   <Tab title="Rust">
 ```rust
 use elizaos_plugin_openai::create_openai_plugin;
 
 let runtime = AgentRuntime::new(RuntimeOptions {
-    character: Some(character),
-    plugins: vec![create_openai_plugin()?],
-    ..Default::default()
+character: Some(character),
+plugins: vec![create_openai_plugin()?],
+..Default::default()
 }).await?;
+
 ```
   </Tab>
 </Tabs>
@@ -294,5 +299,9 @@ let runtime = AgentRuntime::new(RuntimeOptions {
     Build frontend interfaces
   </Card>
 </CardGroup>
+
+
+```
+
 
 

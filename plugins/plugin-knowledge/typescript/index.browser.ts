@@ -5,14 +5,8 @@
  * Routes and file operations are not available in browser context.
  */
 
-export * from "./types";
-export { knowledgeProvider } from "./provider";
 export { documentsProvider } from "./documents-provider";
-
 // Export types but not file-dependent implementations
-export type {
-  KnowledgePluginConfig,
-} from "./index";
-
-
-
+export type { KnowledgePluginConfig } from "./index";
+export { knowledgeProvider } from "./provider";
+export * from "./types";

@@ -1,6 +1,6 @@
 /**
  * In-memory database adapter for elizaOS
- * 
+ *
  * A simple, ephemeral in-memory implementation for testing and development.
  * All data is lost when the process ends or when close() is called.
  */
@@ -66,7 +66,7 @@ interface StoredRelationship {
 
 /**
  * In-memory database adapter
- * 
+ *
  * Completely ephemeral - all data is lost on restart.
  * Perfect for testing, development, and stateless deployments.
  */
@@ -101,7 +101,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     _options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
   ): Promise<void> {
     // No migrations needed for in-memory storage
-    logger.debug({ src: "plugin:inmemorydb" }, "Plugin migrations not needed for in-memory storage");
+    logger.debug(
+      { src: "plugin:inmemorydb" },
+      "Plugin migrations not needed for in-memory storage"
+    );
   }
 
   async isReady(): Promise<boolean> {
@@ -138,7 +141,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     const existing = await this.getAgent(agentId);
     if (!existing) return false;
-    await this.storage.set(COLLECTIONS.AGENTS, agentId, { ...existing, ...agent });
+    await this.storage.set(COLLECTIONS.AGENTS, agentId, {
+      ...existing,
+      ...agent,
+    });
     return true;
   }
 
@@ -220,11 +226,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return components[0] ?? null;
   }
 
-  async getComponents(
-    entityId: UUID,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component[]> {
+  async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
     return this.storage.getWhere<Component>(
       COLLECTIONS.COMPONENTS,
       (c) =>
@@ -263,20 +265,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomId?: UUID;
     worldId?: UUID;
   }): Promise<Memory[]> {
-    let memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (m) => {
-        if (params.entityId && m.entityId !== params.entityId) return false;
-        if (params.agentId && m.agentId !== params.agentId) return false;
-        if (params.roomId && m.roomId !== params.roomId) return false;
-        if (params.worldId && m.worldId !== params.worldId) return false;
-        if (params.tableName && m.metadata?.type !== params.tableName) return false;
-        if (params.start && m.createdAt && m.createdAt < params.start) return false;
-        if (params.end && m.createdAt && m.createdAt > params.end) return false;
-        if (params.unique && !m.unique) return false;
-        return true;
-      }
-    );
+    let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
+      if (params.entityId && m.entityId !== params.entityId) return false;
+      if (params.agentId && m.agentId !== params.agentId) return false;
+      if (params.roomId && m.roomId !== params.roomId) return false;
+      if (params.worldId && m.worldId !== params.worldId) return false;
+      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.start && m.createdAt && m.createdAt < params.start) return false;
+      if (params.end && m.createdAt && m.createdAt > params.end) return false;
+      if (params.unique && !m.unique) return false;
+      return true;
+    });
 
     // Sort by createdAt descending
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
@@ -343,14 +342,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     );
 
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
-    
+
     for (const memory of memories) {
       if (!memory.embedding) continue;
-      
+
       // Simple string matching score (not true Levenshtein)
-      const content = String((memory as unknown as Record<string, unknown>)[params.query_field_name] ?? "");
+      const content = String(
+        (memory as unknown as Record<string, unknown>)[params.query_field_name] ?? ""
+      );
       const score = this.simpleStringScore(params.query_input, content);
-      
+
       if (score <= params.query_threshold) {
         results.push({
           embedding: memory.embedding,
@@ -372,12 +373,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return 1;
   }
 
-  async log(params: {
-    body: LogBody;
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void> {
+  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
     const id = crypto.randomUUID() as UUID;
     const log: Log = {
       id,
@@ -397,19 +393,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     count?: number;
     offset?: number;
   }): Promise<Log[]> {
-    let logs = await this.storage.getWhere<Log>(
-      COLLECTIONS.LOGS,
-      (l) => {
-        if (params.entityId && l.entityId !== params.entityId) return false;
-        if (params.roomId && l.roomId !== params.roomId) return false;
-        if (params.type && l.type !== params.type) return false;
-        return true;
-      }
-    );
+    let logs = await this.storage.getWhere<Log>(COLLECTIONS.LOGS, (l) => {
+      if (params.entityId && l.entityId !== params.entityId) return false;
+      if (params.roomId && l.roomId !== params.roomId) return false;
+      if (params.type && l.type !== params.type) return false;
+      return true;
+    });
 
-    logs.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     if (params.offset) {
       logs = logs.slice(params.offset);
@@ -499,7 +490,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const updated = {
       ...existing,
       ...memory,
-      metadata: { ...(existing.metadata as Record<string, unknown>), ...(memory.metadata as Record<string, unknown>) },
+      metadata: {
+        ...(existing.metadata as Record<string, unknown>),
+        ...(memory.metadata as Record<string, unknown>),
+      },
     };
 
     await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
@@ -525,7 +519,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     const memories = await this.getMemories({ roomId, tableName });
-    await this.deleteManyMemories(memories.map((m) => m.id).filter((id): id is UUID => id !== undefined));
+    await this.deleteManyMemories(
+      memories.map((m) => m.id).filter((id): id is UUID => id !== undefined)
+    );
   }
 
   async countMemories(roomId: UUID, unique = false, tableName?: string): Promise<number> {
@@ -607,12 +603,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.ROOMS, roomId);
     // Also delete participants for this room
-    await this.storage.deleteWhere(COLLECTIONS.PARTICIPANTS, (p) => 
-      (p as unknown as StoredParticipant).roomId === roomId
+    await this.storage.deleteWhere(
+      COLLECTIONS.PARTICIPANTS,
+      (p) => (p as unknown as StoredParticipant).roomId === roomId
     );
     // Delete memories for this room
-    await this.storage.deleteWhere(COLLECTIONS.MEMORIES, (m) =>
-      (m as unknown as StoredMemory).roomId === roomId
+    await this.storage.deleteWhere(
+      COLLECTIONS.MEMORIES,
+      (m) => (m as unknown as StoredMemory).roomId === roomId
     );
   }
 
@@ -647,10 +645,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
-    return this.storage.getWhere<Room>(
-      COLLECTIONS.ROOMS,
-      (r) => r.worldId === worldId
-    );
+    return this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) => r.worldId === worldId);
   }
 
   // ==================== Participant Methods ====================
@@ -660,9 +655,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => p.entityId === entityId && p.roomId === roomId
     );
-    
+
     if (participants.length === 0) return false;
-    
+
     for (const p of participants) {
       if (p.id) {
         await this.storage.delete(COLLECTIONS.PARTICIPANTS, p.id);
@@ -676,7 +671,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => p.entityId === entityId
     );
-    
+
     // Convert stored format to Participant format
     const participants: Participant[] = [];
     for (const p of stored) {
@@ -731,7 +726,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
-    
+
     if (participants.length === 0) return null;
     const state = participants[0].userState;
     if (state === "FOLLOWED" || state === "MUTED") return state;
@@ -747,10 +742,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
-    
+
     for (const p of participants) {
       if (p.id) {
-        await this.storage.set(COLLECTIONS.PARTICIPANTS, p.id, { ...p, userState: state });
+        await this.storage.set(COLLECTIONS.PARTICIPANTS, p.id, {
+          ...p,
+          userState: state,
+        });
       }
     }
   }
@@ -783,12 +781,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const relationships = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) =>
-        r.sourceEntityId === params.sourceEntityId &&
-        r.targetEntityId === params.targetEntityId
+        r.sourceEntityId === params.sourceEntityId && r.targetEntityId === params.targetEntityId
     );
-    
+
     if (relationships.length === 0) return null;
-    
+
     const r = relationships[0];
     return {
       id: r.id as UUID,
@@ -800,10 +797,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     } as Relationship;
   }
 
-  async getRelationships(params: {
-    entityId: UUID;
-    tags?: string[];
-  }): Promise<Relationship[]> {
+  async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
     const stored = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) => {
@@ -816,8 +810,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         return true;
       }
     );
-    
-    return stored.map(r => ({
+
+    return stored.map((r) => ({
       id: r.id as UUID,
       sourceEntityId: r.sourceEntityId as UUID,
       targetEntityId: r.targetEntityId as UUID,
@@ -837,7 +831,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       sourceEntityId: params.sourceEntityId,
       targetEntityId: params.targetEntityId,
     });
-    
+
     if (!existing || !existing.id) return;
 
     const stored: StoredRelationship = {
@@ -848,25 +842,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       metadata: { ...(existing.metadata ?? {}), ...(params.metadata ?? {}) },
       createdAt: existing.createdAt as string,
     };
-    
+
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, existing.id, stored);
   }
 
   // ==================== Cache Methods ====================
 
   async getCache<T>(key: string): Promise<T | undefined> {
-    const cached = await this.storage.get<{ value: T; expiresAt?: number }>(
-      COLLECTIONS.CACHE,
-      key
-    );
+    const cached = await this.storage.get<{ value: T; expiresAt?: number }>(COLLECTIONS.CACHE, key);
     if (!cached) return undefined;
-    
+
     // Check expiration if set
     if (cached.expiresAt && Date.now() > cached.expiresAt) {
       await this.deleteCache(key);
       return undefined;
     }
-    
+
     return cached.value;
   }
 
@@ -887,22 +878,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return id;
   }
 
-  async getTasks(params: {
-    roomId?: UUID;
-    tags?: string[];
-    entityId?: UUID;
-  }): Promise<Task[]> {
-    return this.storage.getWhere<Task>(
-      COLLECTIONS.TASKS,
-      (t) => {
-        if (params.roomId && t.roomId !== params.roomId) return false;
-        if (params.entityId && t.entityId !== params.entityId) return false;
-        if (params.tags && params.tags.length > 0) {
-          if (!t.tags?.some((tag) => params.tags!.includes(tag))) return false;
-        }
-        return true;
+  async getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]> {
+    return this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => {
+      if (params.roomId && t.roomId !== params.roomId) return false;
+      if (params.entityId && t.entityId !== params.entityId) return false;
+      if (params.tags && params.tags.length > 0) {
+        if (!t.tags?.some((tag) => params.tags?.includes(tag))) return false;
       }
-    );
+      return true;
+    });
   }
 
   async getTask(id: UUID): Promise<Task | null> {
@@ -910,10 +894,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async getTasksByName(name: string): Promise<Task[]> {
-    return this.storage.getWhere<Task>(
-      COLLECTIONS.TASKS,
-      (t) => t.name === name
-    );
+    return this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => t.name === name);
   }
 
   async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
@@ -926,5 +907,3 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.delete(COLLECTIONS.TASKS, id);
   }
 }
-
-

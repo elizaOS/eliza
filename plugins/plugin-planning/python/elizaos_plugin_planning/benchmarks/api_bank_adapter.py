@@ -1,10 +1,8 @@
 """API-Bank Adapter - Tests ElizaOS tool-use planning capabilities."""
 
-import asyncio
 import json
 import logging
 import time
-from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -23,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ApiBankAdapter:
     """
     Production-Ready API-Bank Adapter.
-    
+
     Tests ElizaOS tool-use planning capabilities against API-Bank scenarios.
     """
 
@@ -206,12 +204,19 @@ class ApiBankAdapter:
                         name="get_weather",
                         description="Get current weather for a location",
                         parameters=[
-                            {"name": "city", "type": "string", "required": True, "description": "City name"},
+                            {
+                                "name": "city",
+                                "type": "string",
+                                "required": True,
+                                "description": "City name",
+                            },
                         ],
                         returns="Weather information",
                     )
                 ],
-                "expected_calls": [ApiBankApiCall(api="get_weather", parameters={"city": "San Francisco"})],
+                "expected_calls": [
+                    ApiBankApiCall(api="get_weather", parameters={"city": "San Francisco"})
+                ],
                 "expected_response": "The weather in San Francisco is...",
             },
             {
@@ -223,12 +228,19 @@ class ApiBankAdapter:
                         name="get_time",
                         description="Get current time in a timezone",
                         parameters=[
-                            {"name": "timezone", "type": "string", "required": True, "description": "Timezone"},
+                            {
+                                "name": "timezone",
+                                "type": "string",
+                                "required": True,
+                                "description": "Timezone",
+                            },
                         ],
                         returns="Current time",
                     )
                 ],
-                "expected_calls": [ApiBankApiCall(api="get_time", parameters={"timezone": "Asia/Tokyo"})],
+                "expected_calls": [
+                    ApiBankApiCall(api="get_time", parameters={"timezone": "Asia/Tokyo"})
+                ],
                 "expected_response": "The current time in Tokyo is...",
             },
         ]
@@ -257,15 +269,32 @@ class ApiBankAdapter:
                     ApiBankApi(
                         name="get_weather",
                         description="Get current weather",
-                        parameters=[{"name": "city", "type": "string", "required": True, "description": "City"}],
+                        parameters=[
+                            {
+                                "name": "city",
+                                "type": "string",
+                                "required": True,
+                                "description": "City",
+                            }
+                        ],
                         returns="Weather data",
                     ),
                     ApiBankApi(
                         name="get_clothing_recommendation",
                         description="Get clothing recommendation based on weather",
                         parameters=[
-                            {"name": "temperature", "type": "number", "required": True, "description": "Temperature"},
-                            {"name": "conditions", "type": "string", "required": True, "description": "Weather conditions"},
+                            {
+                                "name": "temperature",
+                                "type": "number",
+                                "required": True,
+                                "description": "Temperature",
+                            },
+                            {
+                                "name": "conditions",
+                                "type": "string",
+                                "required": True,
+                                "description": "Weather conditions",
+                            },
                         ],
                         returns="Clothing recommendation",
                     ),
@@ -303,8 +332,18 @@ class ApiBankAdapter:
                         name="get_weather_forecast",
                         description="Get weather forecast",
                         parameters=[
-                            {"name": "city", "type": "string", "required": True, "description": "City"},
-                            {"name": "days", "type": "number", "required": True, "description": "Days"},
+                            {
+                                "name": "city",
+                                "type": "string",
+                                "required": True,
+                                "description": "City",
+                            },
+                            {
+                                "name": "days",
+                                "type": "number",
+                                "required": True,
+                                "description": "Days",
+                            },
                         ],
                         returns="Weather forecast",
                     ),
@@ -312,30 +351,64 @@ class ApiBankAdapter:
                         name="search_hotels",
                         description="Search for hotels",
                         parameters=[
-                            {"name": "city", "type": "string", "required": True, "description": "City"},
-                            {"name": "check_in", "type": "string", "required": True, "description": "Check-in date"},
-                            {"name": "nights", "type": "number", "required": True, "description": "Number of nights"},
+                            {
+                                "name": "city",
+                                "type": "string",
+                                "required": True,
+                                "description": "City",
+                            },
+                            {
+                                "name": "check_in",
+                                "type": "string",
+                                "required": True,
+                                "description": "Check-in date",
+                            },
+                            {
+                                "name": "nights",
+                                "type": "number",
+                                "required": True,
+                                "description": "Number of nights",
+                            },
                         ],
                         returns="Hotel options",
                     ),
                     ApiBankApi(
                         name="get_attractions",
                         description="Get local attractions",
-                        parameters=[{"name": "city", "type": "string", "required": True, "description": "City"}],
+                        parameters=[
+                            {
+                                "name": "city",
+                                "type": "string",
+                                "required": True,
+                                "description": "City",
+                            }
+                        ],
                         returns="Attraction list",
                     ),
                     ApiBankApi(
                         name="create_itinerary",
                         description="Create a trip itinerary",
                         parameters=[
-                            {"name": "attractions", "type": "array", "required": True, "description": "Attractions"},
-                            {"name": "weather", "type": "object", "required": True, "description": "Weather data"},
+                            {
+                                "name": "attractions",
+                                "type": "array",
+                                "required": True,
+                                "description": "Attractions",
+                            },
+                            {
+                                "name": "weather",
+                                "type": "object",
+                                "required": True,
+                                "description": "Weather data",
+                            },
                         ],
                         returns="Complete itinerary",
                     ),
                 ],
                 "expected_calls": [
-                    ApiBankApiCall(api="get_weather_forecast", parameters={"city": "London", "days": 3}),
+                    ApiBankApiCall(
+                        api="get_weather_forecast", parameters={"city": "London", "days": 3}
+                    ),
                     ApiBankApiCall(api="search_hotels", parameters={"city": "London"}),
                     ApiBankApiCall(api="get_attractions", parameters={"city": "London"}),
                     ApiBankApiCall(api="create_itinerary", parameters={}),
@@ -369,7 +442,7 @@ class ApiBankAdapter:
         # API call accuracy
         expected_apis = {call.api for call in test_case.expected_api_calls}
         planned_apis = {call.api for call in api_calls_planned}
-        
+
         if expected_apis:
             api_overlap = len(expected_apis & planned_apis)
             api_call_accuracy = api_overlap / len(expected_apis)
@@ -453,5 +526,8 @@ class ApiBankAdapter:
         except Exception as e:
             logger.error(f"[ApiBankAdapter] Error saving report: {e}")
             raise
+
+
+
 
 

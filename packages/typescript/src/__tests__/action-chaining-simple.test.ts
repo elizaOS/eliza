@@ -1,4 +1,4 @@
-import {  beforeEach, describe, expect, it  } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { ActionPlan, ActionResult } from "../types";
 
@@ -112,13 +112,13 @@ describe("Action Chaining Fixes", () => {
     it("should enforce MAX_WORKING_MEMORY_ENTRIES limit", () => {
       // This is more of a documentation test showing the expected behavior
       const MAX_WORKING_MEMORY_ENTRIES = 50;
-      
+
       interface WorkingMemoryEntry {
         actionName: string;
         timestamp: number;
         result: { success: boolean };
       }
-      
+
       const workingMemory: Record<string, WorkingMemoryEntry> = {};
 
       // Add 60 entries
@@ -172,7 +172,7 @@ describe("Action Chaining Fixes", () => {
         logger: typeof mockLogger,
       ): T & { steps: S[] } => {
         if (!plan.steps || index < 0 || index >= plan.steps.length) {
-          const planStepsLength = plan.steps && plan.steps.length;
+          const planStepsLength = plan.steps?.length;
           logger.warn(
             `Invalid step index: ${index} for plan with ${planStepsLength || 0} steps`,
           );

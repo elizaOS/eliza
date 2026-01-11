@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 HandlerCallback = Callable[[Content], Coroutine[Any, Any, list[Memory]]]
 
+
 @dataclass
 class MessageProcessingResult:
     """Result of message processing."""
@@ -147,9 +148,7 @@ class DefaultMessageService(IMessageService):
         finally:
             runtime.end_run()
 
-    def _build_prompt(
-        self, runtime: IAgentRuntime, message: Memory, state: State
-    ) -> str:
+    def _build_prompt(self, runtime: IAgentRuntime, message: Memory, state: State) -> str:
         """Build the prompt for the model."""
         character = runtime.character
         user_text = message.content.text or ""
@@ -166,4 +165,3 @@ class DefaultMessageService(IMessageService):
         prompt_parts.append(f"{character.name}:")
 
         return "\n".join(prompt_parts)
-

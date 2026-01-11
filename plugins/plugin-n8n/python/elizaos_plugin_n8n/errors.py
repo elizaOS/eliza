@@ -52,7 +52,9 @@ class JobError(N8nError):
 class RateLimitError(N8nError):
     """Rate limit exceeded error."""
 
-    def __init__(self, message: str = "Rate limit exceeded. Please wait before creating another plugin.") -> None:
+    def __init__(
+        self, message: str = "Rate limit exceeded. Please wait before creating another plugin."
+    ) -> None:
         super().__init__(message)
 
 
@@ -68,7 +70,9 @@ class InvalidPluginNameError(ValidationError):
     """Invalid plugin name error."""
 
     def __init__(self, name: str) -> None:
-        super().__init__("name", f"Invalid plugin name: {name}. Must follow format: @scope/plugin-name")
+        super().__init__(
+            "name", f"Invalid plugin name: {name}. Must follow format: @scope/plugin-name"
+        )
 
 
 class MaxConcurrentJobsError(N8nError):
@@ -79,5 +83,8 @@ class MaxConcurrentJobsError(N8nError):
         super().__init__(
             f"Maximum number of concurrent jobs ({max_jobs}) reached. Please wait for existing jobs to complete."
         )
+
+
+
 
 

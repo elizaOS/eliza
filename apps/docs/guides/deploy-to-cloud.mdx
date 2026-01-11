@@ -1,6 +1,6 @@
 ---
-title: 'Deploy to Eliza Cloud'
-description: 'Ship your agent with a single command - infrastructure and monitoring handled for you'
+title: "Deploy to Eliza Cloud"
+description: "Ship your agent with a single command - infrastructure and monitoring handled for you"
 ---
 
 ## Why Eliza Cloud?
@@ -41,21 +41,18 @@ Beyond deployment: on-chain agent discovery (ERC-8004), crypto payments (X402), 
     Create your account at [elizacloud.ai](https://elizacloud.ai)
   </Step>
   <Step title="Login from CLI">
-    ```bash
-    elizaos login
-    ```
-    Opens your browser for auth. Your API key is saved automatically.
+    ```bash elizaos login ``` Opens your browser for auth. Your API key is saved
+    automatically.
   </Step>
   <Step title="Deploy">
-    ```bash
-    elizaos deploy --project-name my-agent
-    ```
-    First deploy: ~5 min. Updates: ~2 min.
+    ```bash elizaos deploy --project-name my-agent ``` First deploy: ~5 min.
+    Updates: ~2 min.
   </Step>
 </Steps>
 
 <Tip>
-**That's it.** You now have a production agent at `https://{userId}-{project-name}.containers.elizacloud.ai`
+  **That's it.** You now have a production agent at `https://{userId}-
+  {project - name}.containers.elizacloud.ai`
 </Tip>
 
 ---
@@ -110,12 +107,12 @@ elizaos deploy \
   --desired-count 2  # Multiple instances
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--cpu` | 1792 | CPU units (1792 = 1.75 vCPU) |
-| `--memory` | 1792 | Memory in MB (1792 = 1.75 GiB) |
-| `--desired-count` | 1 | Number of container instances |
-| `--port` | 3000 | Container port |
+| Option            | Default | Description                    |
+| ----------------- | ------- | ------------------------------ |
+| `--cpu`           | 1792    | CPU units (1792 = 1.75 vCPU)   |
+| `--memory`        | 1792    | Memory in MB (1792 = 1.75 GiB) |
+| `--desired-count` | 1       | Number of container instances  |
+| `--port`          | 3000    | Container port                 |
 
 ### Update Your Agent
 
@@ -201,37 +198,37 @@ Start Docker Desktop, then verify with `docker info`.
 
 ### Authentication
 
-| Command | Description |
-|---------|-------------|
-| `elizaos login` | Authenticate (opens browser) |
-| `elizaos login --no-browser` | Authenticate without browser |
-| `elizaos login --timeout 600` | Custom timeout (seconds) |
+| Command                       | Description                  |
+| ----------------------------- | ---------------------------- |
+| `elizaos login`               | Authenticate (opens browser) |
+| `elizaos login --no-browser`  | Authenticate without browser |
+| `elizaos login --timeout 600` | Custom timeout (seconds)     |
 
 ### Deployment
 
-| Command | Description |
-|---------|-------------|
-| `elizaos deploy --project-name <name>` | Deploy with project name |
-| `elizaos deploy --api-key <key>` | Deploy with explicit API key |
-| `elizaos deploy --port <port>` | Set container port (default: 3000) |
-| `elizaos deploy --cpu <units>` | Set CPU units (default: 1792) |
-| `elizaos deploy --memory <mb>` | Set memory in MB (default: 1792) |
-| `elizaos deploy --desired-count <n>` | Set instance count (default: 1) |
-| `elizaos deploy --env "KEY=VALUE"` | Add environment variable |
-| `elizaos deploy --skip-build` | Skip Docker build |
-| `elizaos deploy --platform <arch>` | Set Docker platform |
+| Command                                | Description                        |
+| -------------------------------------- | ---------------------------------- |
+| `elizaos deploy --project-name <name>` | Deploy with project name           |
+| `elizaos deploy --api-key <key>`       | Deploy with explicit API key       |
+| `elizaos deploy --port <port>`         | Set container port (default: 3000) |
+| `elizaos deploy --cpu <units>`         | Set CPU units (default: 1792)      |
+| `elizaos deploy --memory <mb>`         | Set memory in MB (default: 1792)   |
+| `elizaos deploy --desired-count <n>`   | Set instance count (default: 1)    |
+| `elizaos deploy --env "KEY=VALUE"`     | Add environment variable           |
+| `elizaos deploy --skip-build`          | Skip Docker build                  |
+| `elizaos deploy --platform <arch>`     | Set Docker platform                |
 
 ### Container Management
 
-| Command | Description |
-|---------|-------------|
-| `elizaos containers list` | List all deployments |
-| `elizaos containers list --json` | List as JSON |
-| `elizaos containers logs` | View logs |
-| `elizaos containers logs --follow` | Follow log output |
-| `elizaos containers logs --tail <n>` | Show last N lines |
-| `elizaos containers delete` | Delete deployment |
-| `elizaos containers delete --force` | Delete without confirmation |
+| Command                              | Description                 |
+| ------------------------------------ | --------------------------- |
+| `elizaos containers list`            | List all deployments        |
+| `elizaos containers list --json`     | List as JSON                |
+| `elizaos containers logs`            | View logs                   |
+| `elizaos containers logs --follow`   | Follow log output           |
+| `elizaos containers logs --tail <n>` | Show last N lines           |
+| `elizaos containers delete`          | Delete deployment           |
+| `elizaos containers delete --force`  | Delete without confirmation |
 
 ## Environment Variables
 
@@ -247,10 +244,18 @@ The `elizaos login` command writes to `ELIZAOS_CLOUD_API_KEY` in your project's 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="TEE Integration" icon="shield-halved" href="/guides/tee-integration">
+  <Card
+    title="TEE Integration"
+    icon="shield-halved"
+    href="/guides/tee-integration"
+  >
     Deploy with Trusted Execution Environment for enhanced security
   </Card>
-  <Card title="Self-Hosted Options" icon="server" href="/guides/deploy-a-project#option-2-self-hosted">
+  <Card
+    title="Self-Hosted Options"
+    icon="server"
+    href="/guides/deploy-a-project#option-2-self-hosted"
+  >
     Full control with your own infrastructure
   </Card>
 </CardGroup>

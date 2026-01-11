@@ -171,5 +171,3 @@ cargo build --release --target wasm32-unknown-unknown --features wasm
 ## License
 
 MIT
-
-

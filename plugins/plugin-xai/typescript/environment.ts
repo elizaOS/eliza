@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { getSetting } from "./utils/settings";
 import { z } from "zod";
+import { getSetting } from "./utils/settings";
 
 /**
  * Get setting with X_ prefix, falling back to TWITTER_ for compatibility
@@ -42,7 +42,10 @@ export type TwitterConfig = XConfig;
 
 function parseTargetUsers(str: string): string[] {
   if (!str.trim()) return [];
-  return str.split(",").map((s) => s.trim()).filter(Boolean);
+  return str
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export function shouldTargetUser(username: string, targetConfig: string): boolean {
@@ -87,8 +90,15 @@ export async function validateXConfig(runtime: IAgentRuntime): Promise<XConfig> 
   };
 
   if (mode === "env") {
-    if (!config.X_API_KEY || !config.X_API_SECRET || !config.X_ACCESS_TOKEN || !config.X_ACCESS_TOKEN_SECRET) {
-      throw new Error("X env auth requires X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET");
+    if (
+      !config.X_API_KEY ||
+      !config.X_API_SECRET ||
+      !config.X_ACCESS_TOKEN ||
+      !config.X_ACCESS_TOKEN_SECRET
+    ) {
+      throw new Error(
+        "X env auth requires X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET"
+      );
     }
   } else if (mode === "bearer") {
     if (!config.X_BEARER_TOKEN) {
@@ -107,14 +117,32 @@ export const validateTwitterConfig = validateXConfig;
 
 function parseInterval(value: string, fallback: number): number {
   const parsed = parseInt(value, 10);
-  return isNaN(parsed) ? fallback : parsed;
+  return Number.isNaN(parsed) ? fallback : parsed;
 }
 
-export function getRandomInterval(runtime: IAgentRuntime, type: "post" | "engagement" | "discovery"): number {
+export function getRandomInterval(
+  runtime: IAgentRuntime,
+  type: "post" | "engagement" | "discovery"
+): number {
   const intervals = {
-    post: { min: "X_POST_INTERVAL_MIN", max: "X_POST_INTERVAL_MAX", defMin: 90, defMax: 180 },
-    engagement: { min: "X_ENGAGEMENT_INTERVAL_MIN", max: "X_ENGAGEMENT_INTERVAL_MAX", defMin: 20, defMax: 40 },
-    discovery: { min: "X_DISCOVERY_INTERVAL_MIN", max: "X_DISCOVERY_INTERVAL_MAX", defMin: 15, defMax: 30 },
+    post: {
+      min: "X_POST_INTERVAL_MIN",
+      max: "X_POST_INTERVAL_MAX",
+      defMin: 90,
+      defMax: 180,
+    },
+    engagement: {
+      min: "X_ENGAGEMENT_INTERVAL_MIN",
+      max: "X_ENGAGEMENT_INTERVAL_MAX",
+      defMin: 20,
+      defMax: 40,
+    },
+    discovery: {
+      min: "X_DISCOVERY_INTERVAL_MIN",
+      max: "X_DISCOVERY_INTERVAL_MAX",
+      defMin: 15,
+      defMax: 30,
+    },
   };
 
   const { min, max, defMin, defMax } = intervals[type];
@@ -143,11 +171,16 @@ export function loadConfig(): XConfig {
     X_ENABLE_DISCOVERY: get("X_ENABLE_DISCOVERY", "TWITTER_ENABLE_DISCOVERY") || "false",
     X_POST_INTERVAL_MIN: get("X_POST_INTERVAL_MIN", "TWITTER_POST_INTERVAL_MIN") || "90",
     X_POST_INTERVAL_MAX: get("X_POST_INTERVAL_MAX", "TWITTER_POST_INTERVAL_MAX") || "180",
-    X_ENGAGEMENT_INTERVAL_MIN: get("X_ENGAGEMENT_INTERVAL_MIN", "TWITTER_ENGAGEMENT_INTERVAL_MIN") || "20",
-    X_ENGAGEMENT_INTERVAL_MAX: get("X_ENGAGEMENT_INTERVAL_MAX", "TWITTER_ENGAGEMENT_INTERVAL_MAX") || "40",
-    X_DISCOVERY_INTERVAL_MIN: get("X_DISCOVERY_INTERVAL_MIN", "TWITTER_DISCOVERY_INTERVAL_MIN") || "15",
-    X_DISCOVERY_INTERVAL_MAX: get("X_DISCOVERY_INTERVAL_MAX", "TWITTER_DISCOVERY_INTERVAL_MAX") || "30",
-    X_MAX_ENGAGEMENTS_PER_RUN: get("X_MAX_ENGAGEMENTS_PER_RUN", "TWITTER_MAX_ENGAGEMENTS_PER_RUN") || "5",
+    X_ENGAGEMENT_INTERVAL_MIN:
+      get("X_ENGAGEMENT_INTERVAL_MIN", "TWITTER_ENGAGEMENT_INTERVAL_MIN") || "20",
+    X_ENGAGEMENT_INTERVAL_MAX:
+      get("X_ENGAGEMENT_INTERVAL_MAX", "TWITTER_ENGAGEMENT_INTERVAL_MAX") || "40",
+    X_DISCOVERY_INTERVAL_MIN:
+      get("X_DISCOVERY_INTERVAL_MIN", "TWITTER_DISCOVERY_INTERVAL_MIN") || "15",
+    X_DISCOVERY_INTERVAL_MAX:
+      get("X_DISCOVERY_INTERVAL_MAX", "TWITTER_DISCOVERY_INTERVAL_MAX") || "30",
+    X_MAX_ENGAGEMENTS_PER_RUN:
+      get("X_MAX_ENGAGEMENTS_PER_RUN", "TWITTER_MAX_ENGAGEMENTS_PER_RUN") || "5",
     X_MAX_POST_LENGTH: get("X_MAX_POST_LENGTH", "TWITTER_MAX_TWEET_LENGTH") || "280",
     X_RETRY_LIMIT: get("X_RETRY_LIMIT", "TWITTER_RETRY_LIMIT") || "5",
   };

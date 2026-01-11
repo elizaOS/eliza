@@ -125,9 +125,7 @@ class PdfPlugin:
         """
         return await self._client.get_document_info(pdf_bytes)
 
-    async def get_document_info_from_file(
-        self, file_path: str | Path
-    ) -> PdfDocumentInfo:
+    async def get_document_info_from_file(self, file_path: str | Path) -> PdfDocumentInfo:
         """
         Get document information from a PDF file.
 
@@ -173,5 +171,8 @@ def get_pdf_plugin() -> PdfPlugin:
     if _pdf_plugin_instance is None:
         _pdf_plugin_instance = create_plugin()
     return _pdf_plugin_instance
+
+
+
 
 

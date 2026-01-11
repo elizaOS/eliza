@@ -575,7 +575,7 @@ export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
 /**
  * Base interface for database connection objects.
  * Specific adapters should extend this with their connection type.
- * 
+ *
  * @example
  * ```typescript
  * // In a PostgreSQL adapter:

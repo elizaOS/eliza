@@ -101,3 +101,8 @@ class MemoryStorage(IStorage):
         """Clear all data from all collections."""
         self._collections.clear()
 
+
+
+
+
+

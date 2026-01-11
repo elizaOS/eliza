@@ -11,13 +11,13 @@
 
 // Import generated prompts
 import {
-  transferTemplate,
   bridgeTemplate,
-  swapTemplate,
-  proposeTemplate,
-  voteTemplate,
-  queueProposalTemplate,
   executeProposalTemplate,
+  proposeTemplate,
+  queueProposalTemplate,
+  swapTemplate,
+  transferTemplate,
+  voteTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
 // Re-export for backwards compatibility

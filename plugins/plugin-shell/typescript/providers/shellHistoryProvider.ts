@@ -1,12 +1,12 @@
 import {
+  addHeader,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Provider,
   type State,
-  addHeader,
-  logger,
 } from "@elizaos/core";
-import { ShellService } from "../services/shellService";
+import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
 
 const MAX_OUTPUT_LENGTH = 8000;
@@ -17,11 +17,7 @@ export const shellHistoryProvider: Provider = {
   description:
     "Provides recent shell command history, current working directory, and file operations within the restricted environment",
   position: 99,
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State
-  ) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const shellService = runtime.getService<ShellService>("shell");
 
     if (!shellService) {
@@ -48,7 +44,7 @@ export const shellHistoryProvider: Provider = {
     let historyText = "No commands in history.";
     if (history.length > 0) {
       historyText = history
-        .map((entry) => {
+        .map((entry: CommandHistoryEntry) => {
           let entryStr = `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`;
 
           // Truncate long outputs
@@ -73,7 +69,7 @@ export const shellHistoryProvider: Provider = {
           // Add file operations if any
           if (entry.fileOperations && entry.fileOperations.length > 0) {
             entryStr += "\n  File Operations:";
-            entry.fileOperations.forEach((op) => {
+            entry.fileOperations.forEach((op: FileOperation) => {
               if (op.secondaryTarget) {
                 entryStr += `\n    - ${op.type}: ${op.target} → ${op.secondaryTarget}`;
               } else {
@@ -89,8 +85,10 @@ export const shellHistoryProvider: Provider = {
 
     // Get recent file operations
     const recentFileOps = history
-      .filter((entry) => entry.fileOperations && entry.fileOperations.length > 0)
-      .flatMap((entry) => entry.fileOperations!)
+      .filter(
+        (entry: CommandHistoryEntry) => entry.fileOperations && entry.fileOperations.length > 0
+      )
+      .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? [])
       .slice(-5); // Last 5 file operations
 
     let fileOpsText = "";
@@ -100,7 +98,7 @@ export const shellHistoryProvider: Provider = {
         addHeader(
           "# Recent File Operations",
           recentFileOps
-            .map((op) => {
+            .map((op: FileOperation) => {
               if (op.secondaryTarget) {
                 return `- ${op.type}: ${op.target} → ${op.secondaryTarget}`;
               }
@@ -132,4 +130,3 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
 };
 
 export default shellHistoryProvider;
-

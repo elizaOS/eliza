@@ -13,10 +13,7 @@ function pathJoin(...parts: string[]): string {
     return path.join(...parts);
   }
   // Browser fallback: simple forward-slash join
-  return parts
-    .filter(Boolean)
-    .join("/")
-    .replace(/\/+/g, "/");
+  return parts.filter(Boolean).join("/").replace(/\/+/g, "/");
 }
 
 /**
@@ -62,7 +59,10 @@ interface PathConfig {
 /**
  * Path configurations for all elizaOS directories
  */
-const PATH_CONFIGS: Record<keyof Omit<ElizaPathsConfig, "dataDir">, PathConfig> = {
+const PATH_CONFIGS: Record<
+  keyof Omit<ElizaPathsConfig, "dataDir">,
+  PathConfig
+> = {
   databaseDir: {
     envKey: "ELIZA_DATABASE_DIR",
     subPath: [".elizadb"],

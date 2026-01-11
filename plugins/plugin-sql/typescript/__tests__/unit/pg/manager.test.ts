@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Create mock pool instance
 const mockPoolInstance = {
@@ -79,9 +79,7 @@ describe("PostgresConnectionManager", () => {
       const connectionUrl = "postgresql://user:pass@localhost:5432/testdb";
       const manager = new PostgresConnectionManager(connectionUrl);
 
-      mockPoolInstance.connect.mockRejectedValue(
-        new Error("Connection failed"),
-      );
+      mockPoolInstance.connect.mockRejectedValue(new Error("Connection failed"));
 
       await expect(manager.getClient()).rejects.toThrow("Connection failed");
     });
@@ -110,9 +108,7 @@ describe("PostgresConnectionManager", () => {
       const connectionUrl = "postgresql://user:pass@localhost:5432/testdb";
       const manager = new PostgresConnectionManager(connectionUrl);
 
-      mockPoolInstance.connect.mockRejectedValue(
-        new Error("Connection failed"),
-      );
+      mockPoolInstance.connect.mockRejectedValue(new Error("Connection failed"));
 
       const result = await manager.testConnection();
       expect(result).toBe(false);
@@ -177,18 +173,13 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
-      const result = await manager.withEntityContext(
-        testEntityId as UUID,
-        async (_tx) => {
-          return "success";
-        },
-      );
+      const result = await manager.withEntityContext(testEntityId as UUID, async (_tx) => {
+        return "success";
+      });
 
       expect(result).toBe("success");
       // SET LOCAL should NOT be called when ENABLE_DATA_ISOLATION is not true
@@ -208,11 +199,9 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
       const result = await manager.withEntityContext(null, async (_tx) => {
         return "success";
@@ -240,11 +229,9 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
       await manager.withEntityContext(testEntityId as UUID, async (_tx) => {
         return "success";
@@ -255,8 +242,7 @@ describe("PostgresConnectionManager", () => {
       // Verify the query uses sql.raw() (inline value) not parameterized
       // sql.raw() produces a query with the value embedded in queryChunks[0].value[0]
       expect(executedQuery).toBeDefined();
-      const queryStr =
-        executedQuery?.queryChunks?.[0]?.value?.[0] || String(executedQuery);
+      const queryStr = executedQuery?.queryChunks?.[0]?.value?.[0] || String(executedQuery);
       expect(queryStr).toContain(testEntityId);
       expect(queryStr).not.toContain("$1");
 
@@ -274,16 +260,14 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
       await expect(
-        manager.withEntityContext(testEntityId as any, async (_tx) => {
+        manager.withEntityContext(testEntityId as UUID, async (_tx) => {
           throw new Error("Callback error");
-        }),
+        })
       ).rejects.toThrow("Callback error");
 
       db.transaction = originalTransaction;

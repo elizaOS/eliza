@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! SAY_ALOUD Action - Speak text using SAM synthesizer.
 
 use std::sync::Arc;
@@ -129,6 +130,7 @@ impl SayAloudAction {
         }
     }
 }
+
 
 impl Default for SayAloudAction {
     fn default() -> Self {

@@ -1,4 +1,5 @@
 {
+  "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -17,8 +18,19 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "baseUrl": "../../.."
   },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]
+  "include": ["./**/*.ts", "../../../packages/typescript/src/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "build.ts",
+    "../../../packages/typescript/src/__tests__/**",
+    "../../../packages/typescript/src/**/__tests__/**",
+    "../../../packages/typescript/src/**/*.test.ts"
+  ]
 }

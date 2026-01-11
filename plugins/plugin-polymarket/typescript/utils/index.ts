@@ -5,10 +5,10 @@
  */
 
 export {
+  type ClobClient,
+  getWalletAddress,
   initializeClobClient,
   initializeClobClientWithCreds,
-  getWalletAddress,
-  type ClobClient,
 } from "./clobClient";
 
 export {
@@ -16,5 +16,3 @@ export {
   extractFieldFromLLM,
   isLLMError,
 } from "./llmHelpers";
-
-

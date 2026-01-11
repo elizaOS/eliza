@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Object/structured generation model handlers.
 
 use crate::error::Result;
@@ -99,5 +100,10 @@ pub async fn handle_object_large(
     
     parse_json_response(&text)
 }
+
+
+
+
+
 
 

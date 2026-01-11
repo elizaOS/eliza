@@ -45,3 +45,8 @@ echo "     supabase functions serve eliza-chat-wasm --env-file .env"
 
 
 
+
+
+
+
+

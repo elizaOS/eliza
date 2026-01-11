@@ -14,11 +14,11 @@ Vercel AI Gateway plugin for elizaOS. Provides unified access to AI models throu
 
 This plugin is available in three languages with full feature parity:
 
-| Language | Directory | Package Name |
-|----------|-----------|--------------|
+| Language   | Directory     | Package Name              |
+| ---------- | ------------- | ------------------------- |
 | TypeScript | `typescript/` | `@elizaos/plugin-gateway` |
-| Python | `python/` | `elizaos-plugin-gateway` |
-| Rust | `rust/` | `elizaos-plugin-gateway` |
+| Python     | `python/`     | `elizaos-plugin-gateway`  |
+| Rust       | `rust/`       | `elizaos-plugin-gateway`  |
 
 ## Installation
 
@@ -112,15 +112,15 @@ export AI_GATEWAY_IMAGE_MODEL="dall-e-3"
 
 ## Supported Model Types
 
-| Model Type | Description |
-|------------|-------------|
-| `TEXT_SMALL` | Fast, efficient text generation |
-| `TEXT_LARGE` | High-quality text generation |
-| `TEXT_EMBEDDING` | Vector embeddings |
-| `OBJECT_SMALL` | JSON generation (small model) |
-| `OBJECT_LARGE` | JSON generation (large model) |
-| `IMAGE` | Image generation |
-| `IMAGE_DESCRIPTION` | Image analysis |
+| Model Type          | Description                     |
+| ------------------- | ------------------------------- |
+| `TEXT_SMALL`        | Fast, efficient text generation |
+| `TEXT_LARGE`        | High-quality text generation    |
+| `TEXT_EMBEDDING`    | Vector embeddings               |
+| `OBJECT_SMALL`      | JSON generation (small model)   |
+| `OBJECT_LARGE`      | JSON generation (large model)   |
+| `IMAGE`             | Image generation                |
+| `IMAGE_DESCRIPTION` | Image analysis                  |
 
 ## Development
 

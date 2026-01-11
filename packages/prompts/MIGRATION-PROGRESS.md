@@ -5,6 +5,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 ## ✅ Completed Migrations
 
 ### 1. plugin-forms (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 2 templates
   - `form_extraction.txt`
@@ -18,6 +19,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 2. plugin-discord (Partial)
+
 - **Status**: 🔄 Partially migrated (5 of ~15+ prompts)
 - **Prompts Migrated**: 5 templates
   - `get_user_info.txt`
@@ -34,6 +36,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Remaining Prompts**: ~10+ more templates in various action files
 
 ### 3. plugin-evm (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 7 templates
   - `transfer.txt`
@@ -48,6 +51,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 4. plugin-bluesky (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 3 templates
   - `generate_post.txt`
@@ -59,6 +63,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 5. plugin-mcp (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 7 templates
   - `resource_selection.txt`
@@ -78,6 +83,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 6. plugin-xai (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 2 templates
   - `twitter_message_handler.txt`
@@ -87,6 +93,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 7. plugin-memory (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 2 templates
   - `initial_summarization.txt`
@@ -96,6 +103,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 8. plugin-polymarket (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 16 templates
   - `retrieve_all_markets.txt`
@@ -119,6 +127,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 9. plugin-linear (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 9 templates
   - `search_issues.txt`
@@ -143,6 +152,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts` (if package.json exists)
 
 ### 10. plugin-memory (Complete - Long-term Extraction)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 3 templates (2 summarization + 1 extraction)
   - `initial_summarization.txt`
@@ -154,6 +164,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 11. plugin-todo (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 1 template
   - `extract_todo.txt`
@@ -162,6 +173,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 12. plugin-planning (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 1 template
   - `message_classifier.txt`
@@ -170,6 +182,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Added `build:prompts`
 
 ### 13. plugin-instagram (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 3 templates
   - `comment.txt`
@@ -181,6 +194,7 @@ This document tracks the migration of plugins to use the centralized prompt syst
 - **Build Script**: ✅ Already had `build:prompts`
 
 ### 14. plugin-shell (Complete)
+
 - **Status**: ✅ Fully migrated
 - **Prompts**: 1 template
   - `command_extraction.txt`
@@ -191,31 +205,37 @@ This document tracks the migration of plugins to use the centralized prompt syst
 ## 📋 Pending Migrations
 
 ### plugin-bluesky
+
 - **Status**: ⏳ Not started
 - **Notes**: Has simple inline prompts in `services/message.ts` and `services/post.ts`
 - **Estimated Prompts**: 2-3 templates
 
 ### plugin-farcaster
+
 - **Status**: ⏳ Not started
 - **Notes**: Has formatting utilities, not prompt templates
 - **Estimated Prompts**: 0 (no templates to migrate)
 
 ### plugin-anthropic
+
 - **Status**: ⏳ Not started
 - **Notes**: LLM provider plugin, may not have user-facing prompts
 - **Estimated Prompts**: TBD
 
 ### plugin-browser
+
 - **Status**: ⏳ Not started
 - **Notes**: Browser automation plugin
 - **Estimated Prompts**: TBD
 
 ### plugin-eliza-classic
+
 - **Status**: ⏳ Not started
 - **Notes**: Legacy plugin
 - **Estimated Prompts**: TBD
 
 ### plugin-elizacloud
+
 - **Status**: ⏳ Not started
 - **Notes**: Cloud services plugin
 - **Estimated Prompts**: TBD
@@ -256,4 +276,3 @@ For each plugin:
 2. Migrate plugin-bluesky (simple, good for demonstrating the pattern)
 3. Review other plugins for prompt extraction opportunities
 4. Update CI/CD to ensure `build:prompts` runs in build pipelines
-

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Configuration for the Planning Plugin.
 
 use crate::types::{ExecutionModel, RetryPolicy};
@@ -23,6 +24,7 @@ pub struct PlanningConfig {
     /// Max tokens for planning response
     pub planning_max_tokens: i32,
 }
+
 
 impl Default for PlanningConfig {
     fn default() -> Self {

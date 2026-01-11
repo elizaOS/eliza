@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-describe('Rate Limiter Bug Fix', () => {
-  it('should not throw when tokenUsage array is empty and token limit is exceeded', async () => {
+describe("Rate Limiter Bug Fix", () => {
+  it("should not throw when tokenUsage array is empty and token limit is exceeded", async () => {
     // This test verifies the fix for the bug: "Cannot read properties of undefined (reading 'timestamp')"
     const requestsPerMinute = 60;
     const tokensPerMinute = 10000;
@@ -70,14 +70,14 @@ describe('Rate Limiter Bug Fix', () => {
       await rateLimiter(1000);
     } catch (error) {
       errorThrown = true;
-      console.error('Unexpected error:', error);
+      console.error("Unexpected error:", error);
     }
 
     expect(errorThrown).toBe(false);
   });
 
-  it('should properly track token usage over time', async () => {
-    const requestsPerMinute = 100;
+  it("should properly track token usage over time", async () => {
+    const _requestsPerMinute = 100;
     const tokensPerMinute = 10000;
 
     const requestTimes: number[] = [];
@@ -124,7 +124,7 @@ describe('Rate Limiter Bug Fix', () => {
     expect(totalTokens).toBe(10000);
   });
 
-  it('should handle edge case with undefined tokenUsage entries', () => {
+  it("should handle edge case with undefined tokenUsage entries", () => {
     // Direct test of the bug scenario
     const tokenUsage: Array<{ timestamp: number; tokens: number }> = [];
     const now = Date.now();
@@ -145,7 +145,7 @@ describe('Rate Limiter Bug Fix', () => {
         // WITH THE FIX: This block won't execute because we check tokenUsage.length > 0
         const oldestTokenUsage = tokenUsage[0];
         const timeToWait = oldestTokenUsage.timestamp + intervalMs - now;
-        console.log('Time to wait:', timeToWait);
+        console.log("Time to wait:", timeToWait);
       }
       // No error should be thrown
     } catch (e) {

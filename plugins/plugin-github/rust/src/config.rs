@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! GitHub plugin configuration
 //!
 //! Configuration can be loaded from environment variables or constructed programmatically.
@@ -252,5 +253,10 @@ mod tests {
         assert!(config.validate().is_err());
     }
 }
+
+
+
+
+
 
 

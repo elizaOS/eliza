@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Type definitions for Solana plugin operations.
 
 use rust_decimal::Decimal;

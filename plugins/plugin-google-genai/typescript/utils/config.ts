@@ -1,6 +1,6 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
-import type { IAgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 
 /**
  * Retrieves a configuration setting from the runtime, falling back to environment variables or a default value if not found.
@@ -8,14 +8,22 @@ import { logger } from '@elizaos/core';
  * @param runtime - The runtime context.
  * @param key - The name of the setting to retrieve.
  * @param defaultValue - The value to return if the setting is not found in the runtime or environment.
- * @returns The resolved setting value, or {@link defaultValue} if not found.
+ * @returns The resolved setting value as a string, or {@link defaultValue} if not found.
  */
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
   defaultValue?: string
 ): string | undefined {
-  return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
+  const runtimeValue = runtime.getSetting(key);
+  if (runtimeValue !== undefined) {
+    return String(runtimeValue);
+  }
+  const envValue = process.env[key];
+  if (envValue !== undefined) {
+    return envValue;
+  }
+  return defaultValue;
 }
 
 /**
@@ -25,7 +33,7 @@ export function getSetting(
  * @returns The configured API key
  */
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
-  return getSetting(runtime, 'GOOGLE_GENERATIVE_AI_API_KEY');
+  return getSetting(runtime, "GOOGLE_GENERATIVE_AI_API_KEY");
 }
 
 /**
@@ -36,9 +44,9 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
  */
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, 'GOOGLE_SMALL_MODEL') ??
-    getSetting(runtime, 'SMALL_MODEL', 'gemini-2.0-flash-001') ??
-    'gemini-2.0-flash-001'
+    getSetting(runtime, "GOOGLE_SMALL_MODEL") ??
+    getSetting(runtime, "SMALL_MODEL", "gemini-2.0-flash-001") ??
+    "gemini-2.0-flash-001"
   );
 }
 
@@ -50,9 +58,9 @@ export function getSmallModel(runtime: IAgentRuntime): string {
  */
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, 'GOOGLE_LARGE_MODEL') ??
-    getSetting(runtime, 'LARGE_MODEL', 'gemini-2.5-pro-preview-03-25') ??
-    'gemini-2.5-pro-preview-03-25'
+    getSetting(runtime, "GOOGLE_LARGE_MODEL") ??
+    getSetting(runtime, "LARGE_MODEL", "gemini-2.5-pro-preview-03-25") ??
+    "gemini-2.5-pro-preview-03-25"
   );
 }
 
@@ -64,9 +72,9 @@ export function getLargeModel(runtime: IAgentRuntime): string {
  */
 export function getImageModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, 'GOOGLE_IMAGE_MODEL') ??
-    getSetting(runtime, 'IMAGE_MODEL', 'gemini-2.5-pro-preview-03-25') ??
-    'gemini-2.5-pro-preview-03-25'
+    getSetting(runtime, "GOOGLE_IMAGE_MODEL") ??
+    getSetting(runtime, "IMAGE_MODEL", "gemini-2.5-pro-preview-03-25") ??
+    "gemini-2.5-pro-preview-03-25"
   );
 }
 
@@ -78,7 +86,7 @@ export function getImageModel(runtime: IAgentRuntime): string {
  */
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, 'GOOGLE_EMBEDDING_MODEL', 'text-embedding-004') ?? 'text-embedding-004'
+    getSetting(runtime, "GOOGLE_EMBEDDING_MODEL", "text-embedding-004") ?? "text-embedding-004"
   );
 }
 
@@ -91,7 +99,7 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
 export function createGoogleGenAI(runtime: IAgentRuntime): GoogleGenAI | null {
   const apiKey = getApiKey(runtime);
   if (!apiKey) {
-    logger.error('Google Generative AI API Key is missing');
+    logger.error("Google Generative AI API Key is missing");
     return null;
   }
 
@@ -121,5 +129,3 @@ export function getSafetySettings() {
     },
   ];
 }
-
-

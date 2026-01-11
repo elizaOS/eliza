@@ -2,12 +2,12 @@
  * Type definitions for the Todo Plugin
  */
 
-import type { UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
 
 /**
  * Task types supported by the plugin
  */
-export type TaskType = 'daily' | 'one-off' | 'aspirational';
+export type TaskType = "daily" | "one-off" | "aspirational";
 
 /**
  * Priority levels (1 = highest, 4 = lowest)
@@ -17,7 +17,7 @@ export type Priority = 1 | 2 | 3 | 4;
 /**
  * Recurring patterns for daily tasks
  */
-export type RecurringPattern = 'daily' | 'weekly' | 'monthly';
+export type RecurringPattern = "daily" | "weekly" | "monthly";
 
 /**
  * Core todo item structure
@@ -110,7 +110,7 @@ export interface TodoFilters {
 export interface ReminderMessage {
   entityId: UUID;
   message: string;
-  priority: 'low' | 'medium' | 'high';
+  priority: "low" | "medium" | "high";
   platforms?: string[];
   metadata?: {
     todoId: UUID;
@@ -123,7 +123,7 @@ export interface ReminderMessage {
 /**
  * Notification types
  */
-export type NotificationType = 'overdue' | 'upcoming' | 'daily' | 'system';
+export type NotificationType = "overdue" | "upcoming" | "daily" | "system";
 
 /**
  * Plugin configuration
@@ -200,5 +200,3 @@ export interface StructuredTodoResponse {
     tasks: Todo[];
   }>;
 }
-
-

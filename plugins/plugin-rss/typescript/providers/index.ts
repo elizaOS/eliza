@@ -1,3 +1,1 @@
-export { feedItemsProvider } from './feedItems';
-
-
+export { feedItemsProvider } from "./feedItems";

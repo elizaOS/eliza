@@ -22,19 +22,19 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { PluginCreationService } from "./services/plugin-creation-service";
 import {
-  createPluginAction,
-  checkPluginCreationStatusAction,
   cancelPluginCreationAction,
+  checkPluginCreationStatusAction,
+  createPluginAction,
   createPluginFromDescriptionAction,
 } from "./actions/plugin-creation-actions";
 import {
-  pluginCreationStatusProvider,
   pluginCreationCapabilitiesProvider,
-  pluginRegistryProvider,
+  pluginCreationStatusProvider,
   pluginExistsProvider,
+  pluginRegistryProvider,
 } from "./providers";
+import { PluginCreationService } from "./services/plugin-creation-service";
 
 // Re-export types for consumers
 export * from "./types";
@@ -55,13 +55,12 @@ export interface PluginConfig {
  */
 export const n8nPlugin: Plugin = {
   name: "@elizaos/plugin-n8n",
-  description:
-    "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
+  description: "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
 
   config: {
-    ANTHROPIC_API_KEY: process.env["ANTHROPIC_API_KEY"],
-    PLUGIN_DATA_DIR: process.env["PLUGIN_DATA_DIR"],
-    CLAUDE_MODEL: process.env["CLAUDE_MODEL"],
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    PLUGIN_DATA_DIR: process.env.PLUGIN_DATA_DIR,
+    CLAUDE_MODEL: process.env.CLAUDE_MODEL,
   },
 
   actions: [
@@ -98,5 +97,3 @@ export {
 
 // Default export
 export default n8nPlugin;
-
-

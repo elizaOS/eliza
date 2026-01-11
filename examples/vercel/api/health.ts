@@ -30,7 +30,3 @@ export default function handler(_request: Request): Response {
   });
 }
 
-
-
-
-

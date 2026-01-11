@@ -49,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
 ## Configuration
 
 Environment variables:
+
 - `AWS_ACCESS_KEY_ID`: AWS access key ID
 - `AWS_SECRET_ACCESS_KEY`: AWS secret access key
 - `AWS_REGION`: AWS region
@@ -67,5 +68,6 @@ Environment variables:
 ## License
 
 MIT
+
 
 

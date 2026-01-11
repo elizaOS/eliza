@@ -85,16 +85,16 @@ runtime.register_plugin(plugin)
 
 ## Configuration
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `embedding_provider` | str | "openai" | Provider for embeddings (openai, google) |
-| `embedding_model` | str | "text-embedding-3-small" | Model name for embeddings |
-| `embedding_dimension` | int | 1536 | Embedding vector dimension |
-| `ctx_knowledge_enabled` | bool | False | Enable contextual enrichment |
-| `text_provider` | str | None | Provider for text generation |
-| `text_model` | str | None | Model for text generation |
-| `chunk_size` | int | 500 | Target tokens per chunk |
-| `chunk_overlap` | int | 100 | Overlap tokens between chunks |
+| Parameter               | Type | Default                  | Description                              |
+| ----------------------- | ---- | ------------------------ | ---------------------------------------- |
+| `embedding_provider`    | str  | "openai"                 | Provider for embeddings (openai, google) |
+| `embedding_model`       | str  | "text-embedding-3-small" | Model name for embeddings                |
+| `embedding_dimension`   | int  | 1536                     | Embedding vector dimension               |
+| `ctx_knowledge_enabled` | bool | False                    | Enable contextual enrichment             |
+| `text_provider`         | str  | None                     | Provider for text generation             |
+| `text_model`            | str  | None                     | Model for text generation                |
+| `chunk_size`            | int  | 500                      | Target tokens per chunk                  |
+| `chunk_overlap`         | int  | 100                      | Overlap tokens between chunks            |
 
 ## API Reference
 

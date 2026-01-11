@@ -1,18 +1,17 @@
-import {  describe, it, expect  } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  createKnowledgePlugin,
+  KnowledgeService,
   knowledgePlugin,
   knowledgePluginCore,
   knowledgePluginHeadless,
-  createKnowledgePlugin,
-  KnowledgeService,
   knowledgeProvider,
-  type KnowledgePluginConfig,
-} from '../src/index';
+} from "../src/index";
 
-describe('Knowledge Plugin Exports', () => {
-  it('should export the default full plugin', () => {
+describe("Knowledge Plugin Exports", () => {
+  it("should export the default full plugin", () => {
     expect(knowledgePlugin).toBeDefined();
-    expect(knowledgePlugin.name).toBe('knowledge');
+    expect(knowledgePlugin.name).toBe("knowledge");
     expect(knowledgePlugin.services).toBeDefined();
     expect(knowledgePlugin.providers).toBeDefined();
     expect(knowledgePlugin.routes).toBeDefined();
@@ -20,9 +19,9 @@ describe('Knowledge Plugin Exports', () => {
     expect(knowledgePlugin.tests).toBeDefined();
   });
 
-  it('should export the core plugin (service + provider only)', () => {
+  it("should export the core plugin (service + provider only)", () => {
     expect(knowledgePluginCore).toBeDefined();
-    expect(knowledgePluginCore.name).toBe('knowledge');
+    expect(knowledgePluginCore.name).toBe("knowledge");
     expect(knowledgePluginCore.services).toBeDefined();
     expect(knowledgePluginCore.providers).toBeDefined();
     expect(knowledgePluginCore.routes).toBeUndefined();
@@ -30,9 +29,9 @@ describe('Knowledge Plugin Exports', () => {
     expect(knowledgePluginCore.tests).toBeUndefined();
   });
 
-  it('should export the headless plugin (service + provider + actions)', () => {
+  it("should export the headless plugin (service + provider + actions)", () => {
     expect(knowledgePluginHeadless).toBeDefined();
-    expect(knowledgePluginHeadless.name).toBe('knowledge');
+    expect(knowledgePluginHeadless.name).toBe("knowledge");
     expect(knowledgePluginHeadless.services).toBeDefined();
     expect(knowledgePluginHeadless.providers).toBeDefined();
     expect(knowledgePluginHeadless.actions).toBeDefined();
@@ -40,12 +39,12 @@ describe('Knowledge Plugin Exports', () => {
     expect(knowledgePluginHeadless.tests).toBeUndefined();
   });
 
-  it('should export the createKnowledgePlugin factory function', () => {
+  it("should export the createKnowledgePlugin factory function", () => {
     expect(createKnowledgePlugin).toBeDefined();
-    expect(typeof createKnowledgePlugin).toBe('function');
+    expect(typeof createKnowledgePlugin).toBe("function");
   });
 
-  it('should create a custom plugin with specific configuration', () => {
+  it("should create a custom plugin with specific configuration", () => {
     const customPlugin = createKnowledgePlugin({
       enableUI: false,
       enableRoutes: false,
@@ -54,7 +53,7 @@ describe('Knowledge Plugin Exports', () => {
     });
 
     expect(customPlugin).toBeDefined();
-    expect(customPlugin.name).toBe('knowledge');
+    expect(customPlugin.name).toBe("knowledge");
     expect(customPlugin.services).toBeDefined();
     expect(customPlugin.providers).toBeDefined();
     expect(customPlugin.actions).toBeDefined();
@@ -62,17 +61,17 @@ describe('Knowledge Plugin Exports', () => {
     expect(customPlugin.tests).toBeUndefined();
   });
 
-  it('should export KnowledgeService class', () => {
+  it("should export KnowledgeService class", () => {
     expect(KnowledgeService).toBeDefined();
-    expect(KnowledgeService.serviceType).toBe('knowledge');
+    expect(KnowledgeService.serviceType).toBe("knowledge");
   });
 
-  it('should export knowledgeProvider', () => {
+  it("should export knowledgeProvider", () => {
     expect(knowledgeProvider).toBeDefined();
-    expect(knowledgeProvider.name).toBe('KNOWLEDGE');
+    expect(knowledgeProvider.name).toBe("KNOWLEDGE");
   });
 
-  it('should create plugin with all features enabled by default', () => {
+  it("should create plugin with all features enabled by default", () => {
     const defaultPlugin = createKnowledgePlugin();
 
     expect(defaultPlugin.services).toBeDefined();
@@ -82,7 +81,7 @@ describe('Knowledge Plugin Exports', () => {
     expect(defaultPlugin.tests).toBeDefined();
   });
 
-  it('should create plugin with only UI disabled', () => {
+  it("should create plugin with only UI disabled", () => {
     const noUIPlugin = createKnowledgePlugin({
       enableUI: false,
       enableRoutes: true,
@@ -95,7 +94,7 @@ describe('Knowledge Plugin Exports', () => {
     expect(noUIPlugin.tests).toBeDefined();
   });
 
-  it('should create plugin with no routes when both UI and routes disabled', () => {
+  it("should create plugin with no routes when both UI and routes disabled", () => {
     const noRoutesPlugin = createKnowledgePlugin({
       enableUI: false,
       enableRoutes: false,

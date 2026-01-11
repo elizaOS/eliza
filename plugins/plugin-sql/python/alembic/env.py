@@ -10,17 +10,17 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-# Import your models' Base and all models
-from elizaos_plugin_sql.schema.tables import Base
+from alembic import context
 
+# Import your models' Base and all models
 # Import all models to ensure they're registered with Base
 from elizaos_plugin_sql.schema.tables import (  # noqa: F401
     AgentTable,
+    Base,
     CacheTable,
     ComponentTable,
     EmbeddingTable,
@@ -120,6 +120,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     asyncio.run(run_migrations_online())
-
-
-

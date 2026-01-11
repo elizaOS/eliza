@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Image generation and description model handlers.
 
 use crate::error::Result;

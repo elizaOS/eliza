@@ -220,6 +220,7 @@ def build_xml_response(data: dict) -> str:
 # Test functions (run with pytest)
 # =============================================================================
 
+
 def test_extract_simple_tag():
     xml = "<response><name>John</name></response>"
     assert extract_xml_tag(xml, "name") == "John"
@@ -309,4 +310,3 @@ function test() {
     assert code is not None
     assert "if (x < 10 && y > 5)" in code
     assert "<div>" in code
-

@@ -3,13 +3,11 @@
  */
 
 export {
-  pluginCreationStatusProvider,
   pluginCreationCapabilitiesProvider,
+  pluginCreationStatusProvider,
 } from "./plugin-creation-providers";
 
 export {
-  pluginRegistryProvider,
   pluginExistsProvider,
+  pluginRegistryProvider,
 } from "./plugin-registry-provider";
-
-

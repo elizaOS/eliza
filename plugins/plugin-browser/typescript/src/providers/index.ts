@@ -2,6 +2,4 @@
  * Provider exports
  */
 
-export { browserStateProvider } from './browser-state.js';
-
-
+export { browserStateProvider } from "./browser-state.js";

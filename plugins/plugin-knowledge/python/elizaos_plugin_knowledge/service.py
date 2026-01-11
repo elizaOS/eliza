@@ -12,6 +12,7 @@ import os
 import uuid
 from typing import Protocol
 
+from elizaos.types import MemoryType
 from elizaos_plugin_knowledge.types import (
     AddKnowledgeOptions,
     ChunkResult,
@@ -20,7 +21,6 @@ from elizaos_plugin_knowledge.types import (
     KnowledgeDocument,
     KnowledgeFragment,
     KnowledgeItem,
-    MemoryType,
     ProcessingResult,
     SearchResult,
 )
@@ -40,9 +40,7 @@ class EmbeddingProvider(Protocol):
         """Generate an embedding for the given text."""
         ...
 
-    async def generate_embeddings_batch(
-        self, texts: list[str]
-    ) -> list[EmbeddingResult]:
+    async def generate_embeddings_batch(self, texts: list[str]) -> list[EmbeddingResult]:
         """Generate embeddings for multiple texts."""
         ...
 
@@ -309,9 +307,7 @@ class KnowledgeService:
             if self._embedding_provider:
                 await self._generate_fragment_embeddings(fragments)
 
-            logger.info(
-                f"Added document '{options.filename}' with {len(fragments)} fragments"
-            )
+            logger.info(f"Added document '{options.filename}' with {len(fragments)} fragments")
 
             return ProcessingResult(
                 document_id=document_id,
@@ -585,6 +581,3 @@ class KnowledgeService:
     def get_document(self, document_id: str) -> KnowledgeDocument | None:
         """Get a document by ID."""
         return self._documents.get(document_id)
-
-
-

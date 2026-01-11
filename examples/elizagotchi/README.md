@@ -30,14 +30,14 @@ Open http://localhost:5174 in your browser!
 
 ## 🎯 How to Play
 
-| Action | Description |
-|--------|-------------|
-| 🍔 **Feed** | Keep your pet fed. Don't overfeed! |
-| 🎮 **Play** | Make your pet happy (uses energy) |
-| 🧹 **Clean** | Clean up messes and bathe your pet |
-| 😴 **Sleep** | Rest when tired (turn off lights first) |
-| 💊 **Medicine** | Cure sickness |
-| 💡 **Light** | Toggle lights on/off for bedtime |
+| Action          | Description                             |
+| --------------- | --------------------------------------- |
+| 🍔 **Feed**     | Keep your pet fed. Don't overfeed!      |
+| 🎮 **Play**     | Make your pet happy (uses energy)       |
+| 🧹 **Clean**    | Clean up messes and bathe your pet      |
+| 😴 **Sleep**    | Rest when tired (turn off lights first) |
+| 💊 **Medicine** | Cure sickness                           |
+| 💡 **Light**    | Toggle lights on/off for bedtime        |
 
 ### Tips for a Happy Pet
 
@@ -94,14 +94,14 @@ elizagotchi/
 
 ## 🎨 Pet Life Stages
 
-| Stage | Description | Duration |
-|-------|-------------|----------|
-| 🥚 Egg | Your pet is incubating | 1 minute |
-| 👶 Baby | Newly hatched, needs lots of care | 3 minutes |
-| 🧒 Child | Growing up, developing personality | 5 minutes |
-| 🧑 Teen | Rebellious phase, needs discipline | 10 minutes |
-| 👨 Adult | Fully grown, stable personality | 30 minutes |
-| 👴 Elder | Wise and experienced | Until natural end |
+| Stage    | Description                        | Duration          |
+| -------- | ---------------------------------- | ----------------- |
+| 🥚 Egg   | Your pet is incubating             | 1 minute          |
+| 👶 Baby  | Newly hatched, needs lots of care  | 3 minutes         |
+| 🧒 Child | Growing up, developing personality | 5 minutes         |
+| 🧑 Teen  | Rebellious phase, needs discipline | 10 minutes        |
+| 👨 Adult | Fully grown, stable personality    | 30 minutes        |
+| 👴 Elder | Wise and experienced               | Until natural end |
 
 ## 😊 Mood System
 
@@ -155,5 +155,6 @@ MIT License - Part of the elizaOS project.
 ---
 
 Made with 💕 using elizaOS
+
 
 

@@ -1,5 +1,5 @@
-import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
@@ -73,7 +73,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
 
   beforeEach(async () => {
     const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
-      "schema_evolution_drop_table_test",
+      "schema_evolution_drop_table_test"
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
@@ -245,9 +245,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     console.log(`  - Agents: ${stats.agents}`);
     console.log(`  - Entities: ${stats.entities}`);
     console.log(`  - Rooms: ${stats.rooms}`);
-    console.log(
-      `  - Memories: ${stats.memories} (with FKs to agents, entities, rooms)`,
-    );
+    console.log(`  - Memories: ${stats.memories} (with FKs to agents, entities, rooms)`);
     console.log(`  - Relationships: ${stats.relationships}`);
 
     // Create V2 schema WITHOUT memories table (destructive!)
@@ -274,18 +272,13 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
 
     // Test 1: Check for data loss warnings
     console.log("\n🔍 Checking migration for cascade effects...");
-    const dataLossCheck = await migrator.checkMigration(
-      "@elizaos/production-schema-v1",
-      schemaV2,
-    );
+    const dataLossCheck = await migrator.checkMigration("@elizaos/production-schema-v1", schemaV2);
 
     if (dataLossCheck) {
       expect(dataLossCheck.hasDataLoss).toBe(true);
       expect(dataLossCheck.requiresConfirmation).toBe(true);
       expect(
-        dataLossCheck.warnings.some(
-          (w) => w.includes("memories") && w.includes("dropped"),
-        ),
+        dataLossCheck.warnings.some((w) => w.includes("memories") && w.includes("dropped"))
       ).toBe(true);
 
       console.log("\n⚠️  Table Drop Detection:");
@@ -307,7 +300,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     }
 
     expect(blockedError).not.toBeNull();
-    expect(blockedError && blockedError.message).toContain("Destructive migration blocked");
+    expect(blockedError?.message).toContain("Destructive migration blocked");
     console.log(`  ✅ Table drop blocked without env var`);
 
     // Test 3: Production mode should also block
@@ -322,10 +315,8 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     }
 
     expect(productionError).not.toBeNull();
-    expect(productionError && productionError.message).toContain("production");
-    expect(productionError && productionError.message).toContain(
-      "ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS",
-    );
+    expect(productionError?.message).toContain("production");
+    expect(productionError?.message).toContain("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS");
     console.log(`  ✅ Table drop blocked in production`);
 
     // Verify table still exists
@@ -333,7 +324,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       sql`SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_name = 'memories' AND table_schema = 'public'
-      ) as exists`,
+      ) as exists`
     );
     expect((tableExists.rows[0] as unknown as ExistsRow).exists).toBe(true);
 
@@ -341,9 +332,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     process.env.NODE_ENV = "development";
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
 
-    console.log(
-      "\n⚠️  Attempting migration with ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true...",
-    );
+    console.log("\n⚠️  Attempting migration with ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true...");
 
     // This might fail due to foreign key constraints from embeddings
     try {
@@ -354,12 +343,10 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
         sql`SELECT EXISTS (
           SELECT FROM information_schema.tables 
           WHERE table_name = 'memories'
-        ) as exists`,
+        ) as exists`
       );
 
-      expect((tableExistsAfter.rows[0] as unknown as ExistsRow).exists).toBe(
-        false,
-      );
+      expect((tableExistsAfter.rows[0] as unknown as ExistsRow).exists).toBe(false);
 
       console.log("\n📊 After forced table drop:");
       console.log("  ❌ Memories table dropped");
@@ -414,10 +401,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       messageServerAgents: messageServerAgentsTable,
     };
 
-    const check = await migrator.checkMigration(
-      "@elizaos/production-cascade-test",
-      schemaV2,
-    );
+    const check = await migrator.checkMigration("@elizaos/production-cascade-test", schemaV2);
 
     if (check) {
       expect(check.hasDataLoss).toBe(true);
@@ -432,9 +416,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       // Should detect all dropped tables
       expect(check.warnings.some((w) => w.includes("entities"))).toBe(true);
       expect(check.warnings.some((w) => w.includes("memories"))).toBe(true);
-      expect(check.warnings.some((w) => w.includes("relationships"))).toBe(
-        true,
-      );
+      expect(check.warnings.some((w) => w.includes("relationships"))).toBe(true);
       expect(check.warnings.some((w) => w.includes("embeddings"))).toBe(true);
     }
   });

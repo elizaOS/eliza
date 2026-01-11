@@ -1,6 +1,6 @@
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { build } from "bun";
-import { rmSync, cpSync } from "fs";
-import { join } from "path";
 
 const distDir = join(import.meta.dir, "dist");
 
@@ -35,5 +35,3 @@ const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDecla
 await proc.exited;
 
 console.log("Types generated!");
-
-

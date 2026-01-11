@@ -2,7 +2,7 @@
  * Validation utilities.
  */
 
-import { Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/core";
 
 /**
  * Validates if a memory contains a valid prompt.
@@ -27,5 +27,3 @@ export function isValidJsonSpecification(text: string): boolean {
     return false;
   }
 }
-
-

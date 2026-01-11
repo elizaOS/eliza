@@ -2,12 +2,12 @@
 
 /**
  * Prompt Generator Script
- * 
+ *
  * Generates native code from .txt prompt templates for:
  * - TypeScript
  * - Python
  * - Rust
- * 
+ *
  * Usage:
  *   node scripts/generate.js              # Generate all targets
  *   node scripts/generate.js --target typescript
@@ -15,23 +15,23 @@
  *   node scripts/generate.js --target rust
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '..');
-const PROMPTS_DIR = path.join(ROOT_DIR, 'prompts');
-const DIST_DIR = path.join(ROOT_DIR, 'dist');
+const ROOT_DIR = path.resolve(__dirname, "..");
+const PROMPTS_DIR = path.join(ROOT_DIR, "prompts");
+const DIST_DIR = path.join(ROOT_DIR, "dist");
 
 /**
  * Convert filename to constant name
  * e.g., "should_respond.txt" -> "SHOULD_RESPOND_TEMPLATE"
  */
 function fileToConstName(filename) {
-  const name = path.basename(filename, '.txt');
-  return name.toUpperCase().replace(/-/g, '_') + '_TEMPLATE';
+  const name = path.basename(filename, ".txt");
+  return `${name.toUpperCase().replace(/-/g, "_")}_TEMPLATE`;
 }
 
 /**
@@ -39,9 +39,16 @@ function fileToConstName(filename) {
  * e.g., "should_respond.txt" -> "shouldRespondTemplate"
  */
 function fileToCamelCase(filename) {
-  const name = path.basename(filename, '.txt');
-  const parts = name.split('_');
-  return parts[0] + parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('') + 'Template';
+  const name = path.basename(filename, ".txt");
+  const parts = name.split("_");
+  return (
+    parts[0] +
+    parts
+      .slice(1)
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join("") +
+    "Template"
+  );
 }
 
 /**
@@ -49,18 +56,16 @@ function fileToCamelCase(filename) {
  */
 function escapeTypeScript(content) {
   return content
-    .replace(/\\/g, '\\\\')
-    .replace(/`/g, '\\`')
-    .replace(/\$\{/g, '\\${');
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+    .replace(/\$\{/g, "\\${");
 }
 
 /**
  * Escape a string for use in Python triple-quoted string
  */
 function escapePython(content) {
-  return content
-    .replace(/\\/g, '\\\\')
-    .replace(/"""/g, '\\"\\"\\"');
+  return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
 }
 
 /**
@@ -70,7 +75,7 @@ function escapePython(content) {
 function escapeRust(content) {
   // Check if content contains "# - if so, we need more # in our delimiter
   let hashCount = 1;
-  while (content.includes('"' + '#'.repeat(hashCount))) {
+  while (content.includes(`"${"#".repeat(hashCount)}`)) {
     hashCount++;
   }
   return { content, hashCount };
@@ -82,13 +87,13 @@ function escapeRust(content) {
 function loadPrompts() {
   const prompts = [];
   const files = fs.readdirSync(PROMPTS_DIR);
-  
+
   for (const file of files) {
-    if (!file.endsWith('.txt')) continue;
-    
+    if (!file.endsWith(".txt")) continue;
+
     const filepath = path.join(PROMPTS_DIR, file);
-    const content = fs.readFileSync(filepath, 'utf-8');
-    
+    const content = fs.readFileSync(filepath, "utf-8");
+
     prompts.push({
       filename: file,
       constName: fileToConstName(file),
@@ -96,7 +101,7 @@ function loadPrompts() {
       content: content.trim(),
     });
   }
-  
+
   return prompts.sort((a, b) => a.constName.localeCompare(b.constName));
 }
 
@@ -104,9 +109,9 @@ function loadPrompts() {
  * Generate TypeScript output
  */
 function generateTypeScript(prompts) {
-  const outputDir = path.join(DIST_DIR, 'typescript');
+  const outputDir = path.join(DIST_DIR, "typescript");
   fs.mkdirSync(outputDir, { recursive: true });
-  
+
   let output = `/**
  * Auto-generated prompt templates for elizaOS
  * DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
@@ -131,8 +136,8 @@ function generateTypeScript(prompts) {
   output += `export const booleanFooter = "Respond with only a YES or a NO.";\n\n`;
   output += `export const BOOLEAN_FOOTER = booleanFooter;\n`;
 
-  fs.writeFileSync(path.join(outputDir, 'index.ts'), output);
-  
+  fs.writeFileSync(path.join(outputDir, "index.ts"), output);
+
   // Also generate a simple .d.ts file
   let dts = `/**
  * Auto-generated type definitions for elizaOS prompts
@@ -145,9 +150,9 @@ function generateTypeScript(prompts) {
   }
   dts += `export declare const booleanFooter: string;\n`;
   dts += `export declare const BOOLEAN_FOOTER: string;\n`;
-  
-  fs.writeFileSync(path.join(outputDir, 'index.d.ts'), dts);
-  
+
+  fs.writeFileSync(path.join(outputDir, "index.d.ts"), dts);
+
   console.log(`Generated TypeScript output: ${outputDir}/index.ts`);
 }
 
@@ -155,9 +160,9 @@ function generateTypeScript(prompts) {
  * Generate Python output
  */
 function generatePython(prompts) {
-  const outputDir = path.join(DIST_DIR, 'python');
+  const outputDir = path.join(DIST_DIR, "python");
   fs.mkdirSync(outputDir, { recursive: true });
-  
+
   let output = `"""
 Auto-generated prompt templates for elizaOS Python runtime.
 DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
@@ -188,12 +193,14 @@ from __future__ import annotations
   output += `    "BOOLEAN_FOOTER",\n`;
   output += `]\n`;
 
-  fs.writeFileSync(path.join(outputDir, 'prompts.py'), output);
-  
+  fs.writeFileSync(path.join(outputDir, "prompts.py"), output);
+
   // Create __init__.py for package import
-  fs.writeFileSync(path.join(outputDir, '__init__.py'), 
-    `"""elizaOS Prompts Package"""\nfrom .prompts import *\n`);
-  
+  fs.writeFileSync(
+    path.join(outputDir, "__init__.py"),
+    `"""elizaOS Prompts Package"""\nfrom .prompts import *\n`,
+  );
+
   console.log(`Generated Python output: ${outputDir}/prompts.py`);
 }
 
@@ -201,9 +208,9 @@ from __future__ import annotations
  * Generate Rust output
  */
 function generateRust(prompts) {
-  const outputDir = path.join(DIST_DIR, 'rust');
+  const outputDir = path.join(DIST_DIR, "rust");
   fs.mkdirSync(outputDir, { recursive: true });
-  
+
   let output = `//! Auto-generated prompt templates for elizaOS Rust runtime.
 //! DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
 //!
@@ -216,19 +223,21 @@ function generateRust(prompts) {
 
   for (const prompt of prompts) {
     const { content, hashCount } = escapeRust(prompt.content);
-    const delimiter = '#'.repeat(hashCount);
+    const delimiter = "#".repeat(hashCount);
     output += `pub const ${prompt.constName}: &str = r${delimiter}"${content}"${delimiter};\n\n`;
   }
 
   // Add boolean footer
   output += `pub const BOOLEAN_FOOTER: &str = "Respond with only a YES or a NO.";\n`;
 
-  fs.writeFileSync(path.join(outputDir, 'prompts.rs'), output);
-  
+  fs.writeFileSync(path.join(outputDir, "prompts.rs"), output);
+
   // Also create a mod.rs that re-exports
-  fs.writeFileSync(path.join(outputDir, 'mod.rs'), 
-    `//! elizaOS Prompts Module\nmod prompts;\npub use prompts::*;\n`);
-  
+  fs.writeFileSync(
+    path.join(outputDir, "mod.rs"),
+    `//! elizaOS Prompts Module\nmod prompts;\npub use prompts::*;\n`,
+  );
+
   console.log(`Generated Rust output: ${outputDir}/prompts.rs`);
 }
 
@@ -237,10 +246,10 @@ function generateRust(prompts) {
  */
 function main() {
   const args = process.argv.slice(2);
-  const targetIndex = args.indexOf('--target');
-  const target = targetIndex !== -1 ? args[targetIndex + 1] : 'all';
+  const targetIndex = args.indexOf("--target");
+  const target = targetIndex !== -1 ? args[targetIndex + 1] : "all";
 
-  console.log('Loading prompts...');
+  console.log("Loading prompts...");
   const prompts = loadPrompts();
   console.log(`Found ${prompts.length} prompt templates`);
 
@@ -248,16 +257,15 @@ function main() {
   fs.mkdirSync(DIST_DIR, { recursive: true });
 
   switch (target) {
-    case 'typescript':
+    case "typescript":
       generateTypeScript(prompts);
       break;
-    case 'python':
+    case "python":
       generatePython(prompts);
       break;
-    case 'rust':
+    case "rust":
       generateRust(prompts);
       break;
-    case 'all':
     default:
       generateTypeScript(prompts);
       generatePython(prompts);
@@ -265,9 +273,8 @@ function main() {
       break;
   }
 
-  console.log('Done!');
+  console.log("Done!");
 }
 
 main();
-
 

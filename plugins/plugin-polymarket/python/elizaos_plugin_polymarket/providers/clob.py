@@ -130,8 +130,8 @@ class ClobClientProvider:
 
         api_key = self._get_setting("CLOB_API_KEY")
         api_secret = self._get_setting("CLOB_API_SECRET") or self._get_setting("CLOB_SECRET")
-        api_passphrase = (
-            self._get_setting("CLOB_API_PASSPHRASE") or self._get_setting("CLOB_PASS_PHRASE")
+        api_passphrase = self._get_setting("CLOB_API_PASSPHRASE") or self._get_setting(
+            "CLOB_PASS_PHRASE"
         )
 
         if not api_key or not api_secret or not api_passphrase:
@@ -173,8 +173,8 @@ class ClobClientProvider:
         """Check if API credentials are available."""
         api_key = self._get_setting("CLOB_API_KEY")
         api_secret = self._get_setting("CLOB_API_SECRET") or self._get_setting("CLOB_SECRET")
-        api_passphrase = (
-            self._get_setting("CLOB_API_PASSPHRASE") or self._get_setting("CLOB_PASS_PHRASE")
+        api_passphrase = self._get_setting("CLOB_API_PASSPHRASE") or self._get_setting(
+            "CLOB_PASS_PHRASE"
         )
         return bool(api_key and api_secret and api_passphrase)
 
@@ -213,5 +213,8 @@ def get_authenticated_clob_client(runtime: RuntimeProtocol | None = None) -> Clo
     if runtime or _default_provider is None:
         _default_provider = ClobClientProvider(runtime)
     return _default_provider.get_authenticated_client()
+
+
+
 
 

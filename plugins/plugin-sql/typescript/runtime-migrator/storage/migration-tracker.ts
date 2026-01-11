@@ -56,7 +56,7 @@ export class MigrationTracker {
           FROM migrations._migrations
           WHERE plugin_name = ${pluginName}
           ORDER BY created_at DESC
-          LIMIT 1`,
+          LIMIT 1`
     );
     interface MigrationRow {
       id: number;
@@ -66,14 +66,10 @@ export class MigrationTracker {
     return getRow<MigrationRow>(result) || null;
   }
 
-  async recordMigration(
-    pluginName: string,
-    hash: string,
-    createdAt: number,
-  ): Promise<void> {
+  async recordMigration(pluginName: string, hash: string, createdAt: number): Promise<void> {
     await this.db.execute(
       sql`INSERT INTO migrations._migrations (plugin_name, hash, created_at) 
-          VALUES (${pluginName}, ${hash}, ${createdAt})`,
+          VALUES (${pluginName}, ${hash}, ${createdAt})`
     );
   }
 }

@@ -2,13 +2,13 @@
  * Object generation model handlers for Ollama.
  */
 
-import type { ObjectGenerationParams, IAgentRuntime } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { generateObject } from 'ai';
-import { createOllama } from 'ollama-ai-provider';
+import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { generateObject } from "ai";
+import { createOllama } from "ollama-ai-provider";
 
-import { getBaseURL, getSmallModel, getLargeModel } from '../utils/config';
-import { ensureModelAvailable } from './availability';
+import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
+import { ensureModelAvailable } from "./availability";
 
 /**
  * Generate an object using the specified Ollama model.
@@ -26,7 +26,7 @@ async function generateOllamaObject(
   try {
     const generateParams = {
       model: ollama(model),
-      output: 'no-schema' as const,
+      output: "no-schema" as const,
       prompt: params.prompt,
       temperature: params.temperature,
     };
@@ -36,7 +36,7 @@ async function generateOllamaObject(
     );
     return object as Record<string, unknown>;
   } catch (error: unknown) {
-    logger.error({ error }, 'Error generating object');
+    logger.error({ error }, "Error generating object");
     return {};
   }
 }
@@ -65,12 +65,12 @@ export async function handleObjectSmall(
     await ensureModelAvailable(model, baseURL, customFetch);
 
     if (params.schema) {
-      logger.info('Using OBJECT_SMALL without schema validation');
+      logger.info("Using OBJECT_SMALL without schema validation");
     }
 
     return await generateOllamaObject(ollama, model, params);
   } catch (error) {
-    logger.error({ error }, 'Error in OBJECT_SMALL model');
+    logger.error({ error }, "Error in OBJECT_SMALL model");
     return {};
   }
 }
@@ -99,12 +99,12 @@ export async function handleObjectLarge(
     await ensureModelAvailable(model, baseURL, customFetch);
 
     if (params.schema) {
-      logger.info('Using OBJECT_LARGE without schema validation');
+      logger.info("Using OBJECT_LARGE without schema validation");
     }
 
     return await generateOllamaObject(ollama, model, params);
   } catch (error) {
-    logger.error({ error }, 'Error in OBJECT_LARGE model');
+    logger.error({ error }, "Error in OBJECT_LARGE model");
     return {};
   }
 }

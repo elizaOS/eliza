@@ -2,9 +2,9 @@
  * CapSolver integration for CAPTCHA solving
  */
 
-import { logger } from '@elizaos/core';
-import axios from 'axios';
-import type { CapSolverConfig, CaptchaTask, CaptchaType } from '../types.js';
+import { logger } from "@elizaos/core";
+import axios from "axios";
+import type { CapSolverConfig, CaptchaTask, CaptchaType } from "../types.js";
 
 interface CapSolverTaskResult {
   token?: string;
@@ -20,7 +20,7 @@ export class CapSolverService {
   private readonly pollingInterval: number;
 
   constructor(private config: CapSolverConfig) {
-    this.apiUrl = config.apiUrl ?? 'https://api.capsolver.com';
+    this.apiUrl = config.apiUrl ?? "https://api.capsolver.com";
     this.retryAttempts = config.retryAttempts ?? 60;
     this.pollingInterval = config.pollingInterval ?? 2000;
   }
@@ -37,16 +37,16 @@ export class CapSolverService {
           task,
         },
         {
-          headers: { 'Content-Type': 'application/json' },
+          headers: { "Content-Type": "application/json" },
           timeout: 30000,
         }
       );
 
       if (response.data.errorId !== 0) {
-        throw new Error(`CapSolver error: ${response.data.errorDescription ?? 'Unknown error'}`);
+        throw new Error(`CapSolver error: ${response.data.errorDescription ?? "Unknown error"}`);
       }
 
-      logger.info('CapSolver task created:', response.data.taskId);
+      logger.info("CapSolver task created:", response.data.taskId);
       return response.data.taskId;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -70,17 +70,17 @@ export class CapSolverService {
             taskId,
           },
           {
-            headers: { 'Content-Type': 'application/json' },
+            headers: { "Content-Type": "application/json" },
             timeout: 30000,
           }
         );
 
         if (response.data.errorId !== 0) {
-          throw new Error(`CapSolver error: ${response.data.errorDescription ?? 'Unknown error'}`);
+          throw new Error(`CapSolver error: ${response.data.errorDescription ?? "Unknown error"}`);
         }
 
-        if (response.data.status === 'ready') {
-          logger.info('CapSolver task completed successfully');
+        if (response.data.status === "ready") {
+          logger.info("CapSolver task completed successfully");
           return response.data.solution;
         }
 
@@ -93,7 +93,7 @@ export class CapSolverService {
       }
     }
 
-    throw new Error('CapSolver task timeout');
+    throw new Error("CapSolver task timeout");
   }
 
   /**
@@ -105,16 +105,16 @@ export class CapSolverService {
     proxy?: string,
     userAgent?: string
   ): Promise<string> {
-    logger.info('Solving Cloudflare Turnstile captcha');
+    logger.info("Solving Cloudflare Turnstile captcha");
 
     const task: CaptchaTask = {
-      type: proxy ? 'AntiTurnstileTask' : 'AntiTurnstileTaskProxyLess',
+      type: proxy ? "AntiTurnstileTask" : "AntiTurnstileTaskProxyLess",
       websiteURL,
       websiteKey,
     };
 
     if (proxy) {
-      const proxyParts = proxy.split(':');
+      const proxyParts = proxy.split(":");
       task.proxy = `${proxyParts[0]}:${proxyParts[1]}`;
       if (proxyParts.length > 2) {
         task.proxyLogin = proxyParts[2];
@@ -129,7 +129,7 @@ export class CapSolverService {
     const taskId = await this.createTask(task);
     const solution = await this.getTaskResult(taskId);
 
-    return solution.token ?? '';
+    return solution.token ?? "";
   }
 
   /**
@@ -141,17 +141,17 @@ export class CapSolverService {
     isInvisible = false,
     proxy?: string
   ): Promise<string> {
-    logger.info('Solving reCAPTCHA v2');
+    logger.info("Solving reCAPTCHA v2");
 
     const task: CaptchaTask = {
-      type: proxy ? 'RecaptchaV2Task' : 'RecaptchaV2TaskProxyless',
+      type: proxy ? "RecaptchaV2Task" : "RecaptchaV2TaskProxyless",
       websiteURL,
       websiteKey,
       isInvisible,
     };
 
     if (proxy) {
-      const proxyParts = proxy.split(':');
+      const proxyParts = proxy.split(":");
       task.proxy = `${proxyParts[0]}:${proxyParts[1]}`;
       if (proxyParts.length > 2) {
         task.proxyLogin = proxyParts[2];
@@ -162,7 +162,7 @@ export class CapSolverService {
     const taskId = await this.createTask(task);
     const solution = await this.getTaskResult(taskId);
 
-    return solution.gRecaptchaResponse ?? '';
+    return solution.gRecaptchaResponse ?? "";
   }
 
   /**
@@ -175,10 +175,10 @@ export class CapSolverService {
     minScore = 0.7,
     proxy?: string
   ): Promise<string> {
-    logger.info('Solving reCAPTCHA v3');
+    logger.info("Solving reCAPTCHA v3");
 
     const task: CaptchaTask = {
-      type: proxy ? 'RecaptchaV3Task' : 'RecaptchaV3TaskProxyless',
+      type: proxy ? "RecaptchaV3Task" : "RecaptchaV3TaskProxyless",
       websiteURL,
       websiteKey,
       pageAction,
@@ -186,7 +186,7 @@ export class CapSolverService {
     };
 
     if (proxy) {
-      const proxyParts = proxy.split(':');
+      const proxyParts = proxy.split(":");
       task.proxy = `${proxyParts[0]}:${proxyParts[1]}`;
       if (proxyParts.length > 2) {
         task.proxyLogin = proxyParts[2];
@@ -197,23 +197,23 @@ export class CapSolverService {
     const taskId = await this.createTask(task);
     const solution = await this.getTaskResult(taskId);
 
-    return solution.gRecaptchaResponse ?? '';
+    return solution.gRecaptchaResponse ?? "";
   }
 
   /**
    * Solve hCaptcha
    */
   async solveHCaptcha(websiteURL: string, websiteKey: string, proxy?: string): Promise<string> {
-    logger.info('Solving hCaptcha');
+    logger.info("Solving hCaptcha");
 
     const task: CaptchaTask = {
-      type: proxy ? 'HCaptchaTask' : 'HCaptchaTaskProxyless',
+      type: proxy ? "HCaptchaTask" : "HCaptchaTaskProxyless",
       websiteURL,
       websiteKey,
     };
 
     if (proxy) {
-      const proxyParts = proxy.split(':');
+      const proxyParts = proxy.split(":");
       task.proxy = `${proxyParts[0]}:${proxyParts[1]}`;
       if (proxyParts.length > 2) {
         task.proxyLogin = proxyParts[2];
@@ -224,7 +224,7 @@ export class CapSolverService {
     const taskId = await this.createTask(task);
     const solution = await this.getTaskResult(taskId);
 
-    return solution.token ?? '';
+    return solution.token ?? "";
   }
 }
 
@@ -240,35 +240,37 @@ export async function detectCaptchaType(page: {
 }> {
   try {
     // Check for Cloudflare Turnstile
-    const turnstileElement = await page.$('[data-sitekey]');
+    const turnstileElement = await page.$("[data-sitekey]");
     if (turnstileElement) {
-      const cfTurnstile = await page.$('.cf-turnstile');
+      const cfTurnstile = await page.$(".cf-turnstile");
       if (cfTurnstile) {
-        return { type: 'turnstile' };
+        return { type: "turnstile" };
       }
     }
 
     // Check for reCAPTCHA
-    const recaptchaElement = await page.$('[data-sitekey], .g-recaptcha');
+    const recaptchaElement = await page.$("[data-sitekey], .g-recaptcha");
     if (recaptchaElement) {
       const isV3 = await page.evaluate(() => {
-        const grecaptcha = (globalThis as Record<string, unknown>).grecaptcha as Record<string, unknown> | undefined;
-        return typeof grecaptcha?.execute === 'function';
+        const grecaptcha = (globalThis as Record<string, unknown>).grecaptcha as
+          | Record<string, unknown>
+          | undefined;
+        return typeof grecaptcha?.execute === "function";
       });
-      return { type: isV3 ? 'recaptcha-v3' : 'recaptcha-v2' };
+      return { type: isV3 ? "recaptcha-v3" : "recaptcha-v2" };
     }
 
     // Check for hCaptcha
-    const hcaptchaElement = await page.$('[data-sitekey].h-captcha, [data-hcaptcha-sitekey]');
+    const hcaptchaElement = await page.$("[data-sitekey].h-captcha, [data-hcaptcha-sitekey]");
     if (hcaptchaElement) {
-      return { type: 'hcaptcha' };
+      return { type: "hcaptcha" };
     }
 
-    return { type: 'none' };
+    return { type: "none" };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`Error detecting CAPTCHA type: ${errorMessage}`);
-    return { type: 'none' };
+    return { type: "none" };
   }
 }
 
@@ -281,10 +283,15 @@ export async function injectCaptchaSolution(
   solution: string
 ): Promise<void> {
   switch (captchaType) {
-    case 'turnstile':
+    case "turnstile":
       await page.evaluate((token: string) => {
-        const doc = globalThis as unknown as { document: Document; turnstileCallback?: (token: string) => void };
-        const textarea = doc.document.querySelector('[name="cf-turnstile-response"]') as HTMLTextAreaElement | null;
+        const doc = globalThis as unknown as {
+          document: Document;
+          turnstileCallback?: (token: string) => void;
+        };
+        const textarea = doc.document.querySelector(
+          '[name="cf-turnstile-response"]'
+        ) as HTMLTextAreaElement | null;
         if (textarea) {
           textarea.value = token;
         }
@@ -292,27 +299,39 @@ export async function injectCaptchaSolution(
       }, solution);
       break;
 
-    case 'recaptcha-v2':
-    case 'recaptcha-v3':
+    case "recaptcha-v2":
+    case "recaptcha-v3":
       await page.evaluate((token: string) => {
-        const doc = globalThis as unknown as { document: Document; onRecaptchaSuccess?: (token: string) => void };
-        const textarea = doc.document.querySelector('[name="g-recaptcha-response"]') as HTMLTextAreaElement | null;
+        const doc = globalThis as unknown as {
+          document: Document;
+          onRecaptchaSuccess?: (token: string) => void;
+        };
+        const textarea = doc.document.querySelector(
+          '[name="g-recaptcha-response"]'
+        ) as HTMLTextAreaElement | null;
         if (textarea) {
           textarea.value = token;
-          (textarea as HTMLElement).style.display = 'block';
+          (textarea as HTMLElement).style.display = "block";
         }
         doc.onRecaptchaSuccess?.(token);
       }, solution);
       break;
 
-    case 'hcaptcha':
+    case "hcaptcha":
       await page.evaluate((token: string) => {
-        const doc = globalThis as unknown as { document: Document; hcaptchaCallback?: (token: string) => void };
-        const textarea = doc.document.querySelector('[name="h-captcha-response"]') as HTMLTextAreaElement | null;
+        const doc = globalThis as unknown as {
+          document: Document;
+          hcaptchaCallback?: (token: string) => void;
+        };
+        const textarea = doc.document.querySelector(
+          '[name="h-captcha-response"]'
+        ) as HTMLTextAreaElement | null;
         if (textarea) {
           textarea.value = token;
         }
-        const input = doc.document.querySelector('[name="g-recaptcha-response"]') as HTMLInputElement | null;
+        const input = doc.document.querySelector(
+          '[name="g-recaptcha-response"]'
+        ) as HTMLInputElement | null;
         if (input) {
           input.value = token;
         }
@@ -321,4 +340,3 @@ export async function injectCaptchaSolution(
       break;
   }
 }
-

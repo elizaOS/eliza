@@ -1,18 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
-import {
-  type AgentRuntime,
-  ChannelType,
-  type Room,
-  type UUID,
-} from "@elizaos/core";
+import { type AgentRuntime, ChannelType, type Room, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { roomTable } from "../../schema";
@@ -50,7 +38,9 @@ describe("Room Integration Tests", () => {
 
   describe("Room Tests", () => {
     beforeEach(async () => {
-      const db = adapter.getDatabase() as { delete: (table: typeof roomTable) => Promise<void> };
+      const db = adapter.getDatabase() as {
+        delete: (table: typeof roomTable) => Promise<void>;
+      };
       await db.delete(roomTable);
     });
 

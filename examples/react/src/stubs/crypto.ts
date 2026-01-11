@@ -14,15 +14,26 @@ export function randomUUID(): string {
 }
 
 export function createHash(_algorithm: string): {
-  update: (data: string | Uint8Array) => { digest: (encoding?: string) => string };
+  update: (data: string | Uint8Array) => {
+    digest: (encoding?: string) => string;
+  };
 } {
-  throw new Error("crypto.createHash is not available in browser - use Web Crypto API");
+  throw new Error(
+    "crypto.createHash is not available in browser - use Web Crypto API",
+  );
 }
 
-export function createHmac(_algorithm: string, _key: string | Uint8Array): {
-  update: (data: string | Uint8Array) => { digest: (encoding?: string) => string };
+export function createHmac(
+  _algorithm: string,
+  _key: string | Uint8Array,
+): {
+  update: (data: string | Uint8Array) => {
+    digest: (encoding?: string) => string;
+  };
 } {
-  throw new Error("crypto.createHmac is not available in browser - use Web Crypto API");
+  throw new Error(
+    "crypto.createHmac is not available in browser - use Web Crypto API",
+  );
 }
 
 export function pbkdf2Sync(
@@ -30,9 +41,11 @@ export function pbkdf2Sync(
   _salt: string | Uint8Array,
   _iterations: number,
   _keylen: number,
-  _digest: string
+  _digest: string,
 ): Uint8Array {
-  throw new Error("crypto.pbkdf2Sync is not available in browser - use Web Crypto API");
+  throw new Error(
+    "crypto.pbkdf2Sync is not available in browser - use Web Crypto API",
+  );
 }
 
 export const webcrypto = crypto;
@@ -45,8 +58,4 @@ export default {
   pbkdf2Sync,
   webcrypto,
 };
-
-
-
-
 

@@ -6,10 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
 
-# Import shared types from core
-from elizaos.types import MemoryType  # noqa: F401 - re-exported
+# Note: MemoryType should be imported directly from elizaos.types when needed
 
 
 class EmbeddingProvider(str, Enum):
@@ -186,5 +184,3 @@ class ProcessingResult:
     fragment_count: int
     success: bool
     error: str | None = None
-
-

@@ -2,29 +2,29 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
+  composePrompt,
+  type Entity,
   formatMessages,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
-  type Entity,
   ModelType,
   parseKeyValueXml,
   type State,
   type UUID,
-  composePrompt,
-} from '@elizaos/core';
-import { createGoalDataService } from '../services/goalDataService';
+} from "@elizaos/core";
 import {
-  extractGoalTemplate,
   checkSimilarityTemplate,
-} from '../generated/prompts/typescript/prompts.js';
+  extractGoalTemplate,
+} from "../generated/prompts/typescript/prompts.js";
+import { createGoalDataService } from "../services/goalDataService";
 
 // Interface for parsed goal data
 interface GoalInput {
   name: string;
   description?: string;
-  ownerType: 'agent' | 'entity';
+  ownerType: "agent" | "entity";
 }
 
 // Interface for similarity check result
@@ -50,7 +50,7 @@ async function extractGoalInfo(
 
     const prompt = composePrompt({
       state: {
-        text: message.content.text || '',
+        text: message.content.text || "",
         messageHistory,
       },
       template: extractGoalTemplate,
@@ -61,23 +61,23 @@ async function extractGoalInfo(
       stopSequences: [],
     });
 
-    logger.debug('Extract goal result:', result);
+    logger.debug("Extract goal result:", result);
 
     // Parse XML from the text results
     const parsedResult = parseKeyValueXml(result);
 
     if (!parsedResult || !parsedResult.name) {
-      logger.error('Failed to extract valid goal information from XML');
+      logger.error("Failed to extract valid goal information from XML");
       return null;
     }
 
     return {
       name: String(parsedResult.name),
       description: parsedResult.description ? String(parsedResult.description) : undefined,
-      ownerType: (parsedResult.ownerType === 'agent' ? 'agent' : 'entity') as 'agent' | 'entity',
+      ownerType: (parsedResult.ownerType === "agent" ? "agent" : "entity") as "agent" | "entity",
     };
   } catch (error) {
-    logger.error('Error extracting goal information:', error);
+    logger.error("Error extracting goal information:", error);
     return null;
   }
 }
@@ -85,10 +85,15 @@ async function extractGoalInfo(
 /**
  * Checks if a similar goal already exists
  */
+interface ExistingGoal {
+  name: string;
+  description?: string;
+}
+
 async function checkForSimilarGoal(
   runtime: IAgentRuntime,
   newGoal: GoalInput,
-  existingGoals: any[]
+  existingGoals: ExistingGoal[]
 ): Promise<SimilarityCheckResult> {
   try {
     if (existingGoals.length === 0) {
@@ -97,13 +102,13 @@ async function checkForSimilarGoal(
 
     // Format existing goals
     const existingGoalsText = existingGoals
-      .map((goal) => `- ${goal.name}: ${goal.description || 'No description'}`)
-      .join('\n');
+      .map((goal) => `- ${goal.name}: ${goal.description || "No description"}`)
+      .join("\n");
 
     const prompt = composePrompt({
       state: {
         newGoalName: newGoal.name,
-        newGoalDescription: newGoal.description || 'No description',
+        newGoalDescription: newGoal.description || "No description",
         existingGoals: existingGoalsText,
       },
       template: checkSimilarityTemplate,
@@ -121,12 +126,12 @@ async function checkForSimilarGoal(
     }
 
     return {
-      hasSimilar: String(parsedResult.hasSimilar) === 'true',
+      hasSimilar: String(parsedResult.hasSimilar) === "true",
       similarGoalName: parsedResult.similarGoalName,
       confidence: parseInt(String(parsedResult.confidence || 0), 10),
     };
   } catch (error) {
-    logger.error('Error checking for similar goals:', error);
+    logger.error("Error checking for similar goals:", error);
     return { hasSimilar: false, confidence: 0 };
   }
 }
@@ -135,11 +140,11 @@ async function checkForSimilarGoal(
  * The CREATE_GOAL action allows the agent to create a new goal.
  */
 export const createGoalAction: Action = {
-  name: 'CREATE_GOAL',
-  similes: ['ADD_GOAL', 'NEW_GOAL', 'SET_GOAL', 'TRACK_GOAL'],
-  description: 'Creates a new long-term achievable goal for the agent or a user.',
+  name: "CREATE_GOAL",
+  similes: ["ADD_GOAL", "NEW_GOAL", "SET_GOAL", "TRACK_GOAL"],
+  description: "Creates a new long-term achievable goal for the agent or a user.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
     // Always allow validation, we'll check limits in the handler
     return true;
   },
@@ -148,12 +153,12 @@ export const createGoalAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State | undefined,
-    options: any,
+    _options: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
       // Step 1: Compose state if needed
-      const currentState = state || (await runtime.composeState(message, ['GOALS']));
+      const currentState = state || (await runtime.composeState(message, ["GOALS"]));
 
       // Step 2: Extract goal info from the message
       const goalInfo = await extractGoalInfo(runtime, message, currentState);
@@ -162,18 +167,21 @@ export const createGoalAction: Action = {
         if (callback) {
           await callback({
             text: "I couldn't understand what goal you want to create. Could you please provide a clear goal description?",
-            actions: ['CREATE_GOAL_FAILED'],
+            actions: ["CREATE_GOAL_FAILED"],
             source: message.content.source,
           });
         }
-        return { success: false, error: 'Could not understand goal description' };
+        return {
+          success: false,
+          error: "Could not understand goal description",
+        };
       }
 
       // Step 3: Get the data service
       const dataService = createGoalDataService(runtime);
 
       // Determine the owner
-      const ownerId = goalInfo.ownerType === 'agent' ? runtime.agentId : (message.entityId as UUID);
+      const ownerId = goalInfo.ownerType === "agent" ? runtime.agentId : (message.entityId as UUID);
 
       // Step 4: Check goal count
       const activeGoalCount = await dataService.countGoals(goalInfo.ownerType, ownerId, false);
@@ -181,12 +189,12 @@ export const createGoalAction: Action = {
       if (activeGoalCount >= 10) {
         if (callback) {
           await callback({
-            text: `Cannot add new goal: The ${goalInfo.ownerType === 'agent' ? 'agent' : 'user'} already has 10 active goals, which is the maximum allowed. Please complete or remove some existing goals first.`,
-            actions: ['CREATE_GOAL_LIMIT_REACHED'],
+            text: `Cannot add new goal: The ${goalInfo.ownerType === "agent" ? "agent" : "user"} already has 10 active goals, which is the maximum allowed. Please complete or remove some existing goals first.`,
+            actions: ["CREATE_GOAL_LIMIT_REACHED"],
             source: message.content.source,
           });
         }
-        return { success: false, error: 'Goal limit reached' };
+        return { success: false, error: "Goal limit reached" };
       }
 
       // Step 5: Check for similar goals
@@ -197,22 +205,22 @@ export const createGoalAction: Action = {
         if (callback) {
           await callback({
             text: `It looks like there's already a similar goal: "${similarityCheck.similarGoalName}". Are you sure you want to add this as a separate goal?`,
-            actions: ['CREATE_GOAL_SIMILAR_EXISTS'],
+            actions: ["CREATE_GOAL_SIMILAR_EXISTS"],
             source: message.content.source,
           });
         }
-        return { success: false, error: 'Similar goal exists' };
+        return { success: false, error: "Similar goal exists" };
       }
 
       // Step 6: Create the goal
-      const tags = ['GOAL'];
-      if (goalInfo.ownerType === 'agent') {
-        tags.push('agent-goal');
+      const tags = ["GOAL"];
+      if (goalInfo.ownerType === "agent") {
+        tags.push("agent-goal");
       } else {
-        tags.push('entity-goal');
+        tags.push("entity-goal");
       }
 
-      const metadata: Record<string, any> = {
+      const metadata: Record<string, unknown> = {
         createdAt: new Date().toISOString(),
       };
 
@@ -227,7 +235,7 @@ export const createGoalAction: Action = {
       });
 
       if (!createdGoalId) {
-        throw new Error('Failed to create goal');
+        throw new Error("Failed to create goal");
       }
 
       // Step 7: Send success message with guidance based on goal count
@@ -240,67 +248,70 @@ export const createGoalAction: Action = {
       if (callback) {
         await callback({
           text: successMessage,
-          actions: ['CREATE_GOAL_SUCCESS'],
+          actions: ["CREATE_GOAL_SUCCESS"],
           source: message.content.source,
         });
       }
       return { success: true, text: successMessage };
     } catch (error) {
-      logger.error('Error in createGoal handler:', error);
+      logger.error("Error in createGoal handler:", error);
       if (callback) {
         await callback({
-          text: 'I encountered an error while creating your goal. Please try again.',
-          actions: ['CREATE_GOAL_FAILED'],
+          text: "I encountered an error while creating your goal. Please try again.",
+          actions: ["CREATE_GOAL_FAILED"],
           source: message.content.source,
         });
       }
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   },
 
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'I want to set a goal to learn French fluently',
+          text: "I want to set a goal to learn French fluently",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: '✅ New goal created: "Learn French fluently"',
-          actions: ['CREATE_GOAL_SUCCESS'],
+          actions: ["CREATE_GOAL_SUCCESS"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Add a goal for me to run a marathon',
+          text: "Add a goal for me to run a marathon",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: '✅ New goal created: "Run a marathon"',
-          actions: ['CREATE_GOAL_SUCCESS'],
+          actions: ["CREATE_GOAL_SUCCESS"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'I have a goal to get better at cooking',
+          text: "I have a goal to get better at cooking",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: '✅ New goal created: "Get better at cooking"\n\n⚠️ You now have 5 active goals. Consider focusing on completing some of these before adding more.',
-          actions: ['CREATE_GOAL_SUCCESS'],
+          actions: ["CREATE_GOAL_SUCCESS"],
         },
       },
     ],

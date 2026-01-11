@@ -63,9 +63,7 @@ class InsufficientBalanceError(SolanaError):
     def __init__(self, required: int, available: int) -> None:
         self.required = required
         self.available = available
-        super().__init__(
-            f"Insufficient balance: required {required}, available {available}"
-        )
+        super().__init__(f"Insufficient balance: required {required}, available {available}")
 
 
 class TokenAccountNotFoundError(SolanaError):
@@ -92,5 +90,3 @@ class AccountNotFoundError(SolanaError):
     """Account not found."""
 
     pass
-
-

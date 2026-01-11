@@ -6,11 +6,11 @@ Multi-language Trusted Execution Environment (TEE) integration plugin for elizaO
 
 This plugin is implemented in three languages for maximum flexibility:
 
-| Language | Package | Registry |
-|----------|---------|----------|
-| TypeScript | `@elizaos/plugin-tee` | npm |
-| Rust | `elizaos-plugin-tee` | crates.io |
-| Python | `elizaos-plugin-tee` | PyPI |
+| Language   | Package               | Registry  |
+| ---------- | --------------------- | --------- |
+| TypeScript | `@elizaos/plugin-tee` | npm       |
+| Rust       | `elizaos-plugin-tee`  | crates.io |
+| Python     | `elizaos-plugin-tee`  | PyPI      |
 
 All implementations share the same API design and behavior.
 
@@ -37,7 +37,11 @@ const runtime = new AgentRuntime({
 
 // Or use the service directly
 const service = await TEEService.start(runtime);
-const solanaKeys = await service.deriveEd25519Keypair("salt", "solana", agentId);
+const solanaKeys = await service.deriveEd25519Keypair(
+  "salt",
+  "solana",
+  agentId,
+);
 const evmKeys = await service.deriveEcdsaKeypair("salt", "evm", agentId);
 ```
 
@@ -49,13 +53,13 @@ use elizaos_plugin_tee::{TEEService, TeeMode};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let service = TEEService::start(Some("LOCAL"), None)?;
-    
+
     let solana = service.derive_ed25519_keypair("salt", "solana", "agent-id").await?;
     println!("Solana: {}", solana.public_key);
-    
+
     let evm = service.derive_ecdsa_keypair("salt", "evm", "agent-id").await?;
     println!("EVM: {}", evm.address);
-    
+
     Ok(())
 }
 ```
@@ -67,13 +71,13 @@ from elizaos_plugin_tee import TEEService, TeeMode
 
 async def main():
     service = await TEEService.start(tee_mode="LOCAL")
-    
+
     solana = await service.derive_ed25519_keypair("salt", "solana", "agent-id")
     print(f"Solana: {solana.public_key}")
-    
+
     evm = await service.derive_ecdsa_keypair("salt", "evm", "agent-id")
     print(f"EVM: {evm.address}")
-    
+
     await service.stop()
 ```
 
@@ -81,11 +85,11 @@ async def main():
 
 ### Environment Variables
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `TEE_MODE` | Operation mode: `LOCAL`, `DOCKER`, `PRODUCTION` | Yes | - |
-| `WALLET_SECRET_SALT` | Secret salt for deterministic key derivation | Yes | - |
-| `TEE_VENDOR` | TEE vendor to use | No | `phala` |
+| Variable             | Description                                     | Required | Default |
+| -------------------- | ----------------------------------------------- | -------- | ------- |
+| `TEE_MODE`           | Operation mode: `LOCAL`, `DOCKER`, `PRODUCTION` | Yes      | -       |
+| `WALLET_SECRET_SALT` | Secret salt for deterministic key derivation    | Yes      | -       |
+| `TEE_VENDOR`         | TEE vendor to use                               | No       | `phala` |
 
 ### TEE Modes
 
@@ -97,21 +101,21 @@ async def main():
 
 ### Actions
 
-| Action | Description |
-|--------|-------------|
+| Action               | Description                                                           |
+| -------------------- | --------------------------------------------------------------------- |
 | `REMOTE_ATTESTATION` | Generate and upload a remote attestation quote to prove TEE execution |
 
 ### Providers
 
-| Provider | Description |
-|----------|-------------|
-| `phala-derive-key` | Derive Solana and EVM keypairs with attestation |
-| `phala-remote-attestation` | Generate remote attestation quotes |
+| Provider                   | Description                                     |
+| -------------------------- | ----------------------------------------------- |
+| `phala-derive-key`         | Derive Solana and EVM keypairs with attestation |
+| `phala-remote-attestation` | Generate remote attestation quotes              |
 
 ### Services
 
-| Service | Description |
-|---------|-------------|
+| Service      | Description                                    |
+| ------------ | ---------------------------------------------- |
 | `TEEService` | Main service for key derivation and management |
 
 ## API Reference
@@ -124,21 +128,21 @@ class TEEService {
   async deriveEd25519Keypair(
     path: string,
     subject: string,
-    agentId: UUID
+    agentId: UUID,
   ): Promise<{ keypair: Keypair; attestation: RemoteAttestationQuote }>;
 
   // Derive ECDSA keypair for EVM
   async deriveEcdsaKeypair(
     path: string,
     subject: string,
-    agentId: UUID
-  ): Promise<{ keypair: PrivateKeyAccount; attestation: RemoteAttestationQuote }>;
+    agentId: UUID,
+  ): Promise<{
+    keypair: PrivateKeyAccount;
+    attestation: RemoteAttestationQuote;
+  }>;
 
   // Derive raw key for custom use cases
-  async rawDeriveKey(
-    path: string,
-    subject: string
-  ): Promise<DeriveKeyResponse>;
+  async rawDeriveKey(path: string, subject: string): Promise<DeriveKeyResponse>;
 }
 ```
 
@@ -149,7 +153,7 @@ class PhalaRemoteAttestationProvider {
   // Generate attestation quote
   async generateAttestation(
     reportData: string,
-    hashAlgorithm?: TdxQuoteHashAlgorithm
+    hashAlgorithm?: TdxQuoteHashAlgorithm,
   ): Promise<RemoteAttestationQuote>;
 }
 ```

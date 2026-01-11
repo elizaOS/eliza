@@ -65,7 +65,7 @@ export class NodeStorage implements IStorage {
       }
       const files = await readdir(collectionDir);
       const items: T[] = [];
-      
+
       for (const file of files) {
         if (!file.endsWith(".json")) continue;
         try {
@@ -75,7 +75,7 @@ export class NodeStorage implements IStorage {
           // Skip invalid files
         }
       }
-      
+
       return items;
     } catch {
       return [];
@@ -110,17 +110,20 @@ export class NodeStorage implements IStorage {
   }
 
   async deleteMany(collection: string, ids: string[]): Promise<void> {
-    await Promise.all(ids.map(id => this.delete(collection, id)));
+    await Promise.all(ids.map((id) => this.delete(collection, id)));
   }
 
-  async deleteWhere(collection: string, predicate: (item: Record<string, unknown>) => boolean): Promise<void> {
+  async deleteWhere(
+    collection: string,
+    predicate: (item: Record<string, unknown>) => boolean
+  ): Promise<void> {
     const collectionDir = this.getCollectionDir(collection);
     try {
       if (!existsSync(collectionDir)) {
         return;
       }
       const files = await readdir(collectionDir);
-      
+
       for (const file of files) {
         if (!file.endsWith(".json")) continue;
         try {
@@ -139,7 +142,10 @@ export class NodeStorage implements IStorage {
     }
   }
 
-  async count(collection: string, predicate?: (item: Record<string, unknown>) => boolean): Promise<number> {
+  async count(
+    collection: string,
+    predicate?: (item: Record<string, unknown>) => boolean
+  ): Promise<number> {
     if (!predicate) {
       const collectionDir = this.getCollectionDir(collection);
       try {
@@ -147,12 +153,12 @@ export class NodeStorage implements IStorage {
           return 0;
         }
         const files = await readdir(collectionDir);
-        return files.filter(f => f.endsWith(".json")).length;
+        return files.filter((f) => f.endsWith(".json")).length;
       } catch {
         return 0;
       }
     }
-    
+
     const items = await this.getAll<Record<string, unknown>>(collection);
     return items.filter(predicate).length;
   }
@@ -184,4 +190,3 @@ export class NodeStorage implements IStorage {
     }
   }
 }
-

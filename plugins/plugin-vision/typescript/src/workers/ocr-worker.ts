@@ -1,8 +1,8 @@
-import { parentPort, workerData } from 'worker_threads';
-import { logger } from './worker-logger';
-import { OCRService } from '../ocr-service';
-import type { OCRResult } from '../types';
-import sharp from 'sharp';
+import { parentPort, workerData } from "node:worker_threads";
+import sharp from "sharp";
+import { OCRService } from "../ocr-service";
+import type { OCRResult } from "../types";
+import { logger } from "./worker-logger";
 
 interface WorkerConfig {
   processFullScreen: boolean;
@@ -20,20 +20,19 @@ interface SharedMetadata {
 
 class OCRWorker {
   private config: WorkerConfig;
-  private sharedBuffer: SharedArrayBuffer;
   private dataView: DataView;
   private atomicState: Int32Array;
-  private resultsBuffer: SharedArrayBuffer;
   private resultsView: DataView;
   private ocrService: OCRService;
   private isRunning = true;
   private frameCount = 0;
   private lastFPSReport = Date.now();
   private lastFrameId = -1;
+  private sharedBuffer!: SharedArrayBuffer;
+  private resultsBuffer!: SharedArrayBuffer;
 
   // Atomic indices for input buffer
   private readonly FRAME_ID_INDEX = 0;
-  private readonly WRITE_LOCK_INDEX = 1;
   private readonly WIDTH_INDEX = 2;
   private readonly HEIGHT_INDEX = 3;
   private readonly DISPLAY_INDEX = 4;
@@ -60,13 +59,13 @@ class OCRWorker {
 
   async initialize(): Promise<void> {
     await this.ocrService.initialize();
-    logger.info('[OCRWorker] Initialized and ready');
+    logger.info("[OCRWorker] Initialized and ready");
   }
 
   async run(): Promise<void> {
     await this.initialize();
 
-    logger.info('[OCRWorker] Starting OCR loop...');
+    logger.info("[OCRWorker] Starting OCR loop...");
 
     while (this.isRunning) {
       try {
@@ -85,7 +84,7 @@ class OCRWorker {
             logger.info(`[OCRWorker] OCR FPS: ${fps.toFixed(2)}`);
 
             parentPort?.postMessage({
-              type: 'fps',
+              type: "fps",
               fps,
               frameCount: this.frameCount,
             });
@@ -98,7 +97,7 @@ class OCRWorker {
           await new Promise((resolve) => setImmediate(resolve));
         }
       } catch (error) {
-        logger.error('[OCRWorker] Processing error:', error);
+        logger.error("[OCRWorker] Processing error:", error);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
@@ -125,7 +124,7 @@ class OCRWorker {
 
         logger.debug(`[OCRWorker] Full screen OCR: ${ocrResult.fullText.length} chars`);
       } catch (error) {
-        logger.error('[OCRWorker] Full screen OCR failed:', error);
+        logger.error("[OCRWorker] Full screen OCR failed:", error);
       }
     }
 
@@ -141,7 +140,7 @@ class OCRWorker {
             `[OCRWorker] Region OCR (${region.x},${region.y}): ${ocrResult.fullText.length} chars`
           );
         } catch (error) {
-          logger.error('[OCRWorker] Region OCR failed:', error);
+          logger.error("[OCRWorker] Region OCR failed:", error);
         }
       }
     }
@@ -150,11 +149,11 @@ class OCRWorker {
     await this.writeResultsToBuffer(results, metadata.frameId);
 
     // Notify main thread
-    const totalText = results.map((r) => r.fullText).join('\n');
+    const totalText = results.map((r) => r.fullText).join("\n");
     const totalBlocks = results.reduce((sum, r) => sum + r.blocks.length, 0);
 
     parentPort?.postMessage({
-      type: 'ocr_complete',
+      type: "ocr_complete",
       frameId: metadata.frameId,
       displayIndex: metadata.displayIndex,
       textLength: totalText.length,
@@ -236,13 +235,13 @@ class OCRWorker {
     const combinedResult = {
       frameId,
       timestamp: Date.now(),
-      fullText: results.map((r) => r.fullText).join('\n'),
+      fullText: results.map((r) => r.fullText).join("\n"),
       blocks: results.flatMap((r) => r.blocks),
       regions: results.length,
     };
 
     const resultJson = JSON.stringify(combinedResult);
-    const resultBytes = Buffer.from(resultJson, 'utf-8');
+    const resultBytes = Buffer.from(resultJson, "utf-8");
 
     // Write to results buffer
     const offset = this.RESULTS_HEADER_SIZE;
@@ -282,21 +281,21 @@ if (parentPort) {
   const worker = new OCRWorker(config, sharedBuffer, resultsBuffer);
 
   // Handle messages from main thread
-  parentPort.on('message', (msg) => {
-    if (msg.type === 'stop') {
+  parentPort.on("message", (msg) => {
+    if (msg.type === "stop") {
       worker.stop();
       worker.dispose().then(() => {
-        parentPort?.postMessage({ type: 'stopped' });
+        parentPort?.postMessage({ type: "stopped" });
       });
-    } else if (msg.type === 'update_regions') {
+    } else if (msg.type === "update_regions") {
       worker.updateTextRegions(msg.regions);
     }
   });
 
   // Run the worker
   worker.run().catch((error) => {
-    logger.error('[OCRWorker] Fatal error:', error);
-    parentPort?.postMessage({ type: 'error', error: error.message });
+    logger.error("[OCRWorker] Fatal error:", error);
+    parentPort?.postMessage({ type: "error", error: error.message });
     process.exit(1);
   });
 }

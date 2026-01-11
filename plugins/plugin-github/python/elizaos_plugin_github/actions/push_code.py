@@ -33,12 +33,7 @@ class PushCodeAction:
         if isinstance(content, dict):
             text = str(content.get("text", "")).lower()
 
-        return (
-            "push" in text
-            or "commit" in text
-            or "save" in text
-            or "upload" in text
-        )
+        return "push" in text or "commit" in text or "save" in text or "upload" in text
 
     async def handler(
         self,
@@ -59,7 +54,7 @@ class PushCodeAction:
 
             files_data = context.message.get("files", [])
             files: list[FileChange] = []
-            
+
             if isinstance(files_data, list):
                 for f in files_data:
                     if isinstance(f, dict):
@@ -92,5 +87,8 @@ class PushCodeAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to push code: {e}")
+
+
+
 
 

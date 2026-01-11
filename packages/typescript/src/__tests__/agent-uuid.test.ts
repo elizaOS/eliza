@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Agent, Character, IDatabaseAdapter, UUID } from "../types";
 
@@ -53,8 +53,9 @@ describe("Agent UUID Identification", () => {
         agentStore.set(agent.id, fullAgent);
         return true;
       }),
-      updateAgent: vi.fn().mockImplementation(
-        async (agentId: UUID, updates: Partial<Agent>) => {
+      updateAgent: vi
+        .fn()
+        .mockImplementation(async (agentId: UUID, updates: Partial<Agent>) => {
           const existing = agentStore.get(agentId);
           if (!existing) return false;
           agentStore.set(agentId, {
@@ -63,21 +64,22 @@ describe("Agent UUID Identification", () => {
             updatedAt: Date.now(),
           });
           return true;
-        },
-      ),
+        }),
       deleteAgent: vi.fn().mockImplementation(async (agentId: UUID) => {
         return agentStore.delete(agentId);
       }),
       ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
-      getEntitiesByIds: vi.fn().mockImplementation(async (entityIds: UUID[]) => {
-        // Return entities for the requested IDs
-        return entityIds.map((id) => ({
-          id,
-          agentId: id,
-          names: ["Test Entity"],
-          metadata: {},
-        }));
-      }),
+      getEntitiesByIds: vi
+        .fn()
+        .mockImplementation(async (entityIds: UUID[]) => {
+          // Return entities for the requested IDs
+          return entityIds.map((id) => ({
+            id,
+            agentId: id,
+            names: ["Test Entity"],
+            metadata: {},
+          }));
+        }),
       createEntities: vi.fn().mockResolvedValue(true),
       getMemories: vi.fn().mockResolvedValue([]),
       getMemoryById: vi.fn().mockResolvedValue(null),
@@ -191,10 +193,10 @@ describe("Agent UUID Identification", () => {
 
     expect(agent1).toBeTruthy();
     expect(agent2).toBeTruthy();
-    expect(agent1 && agent1.id).toBe(agentId1);
-    expect(agent2 && agent2.id).toBe(agentId2);
-    expect(agent1 && agent1.name).toBe(sharedName);
-    expect(agent2 && agent2.name).toBe(sharedName);
+    expect(agent1?.id).toBe(agentId1);
+    expect(agent2?.id).toBe(agentId2);
+    expect(agent1?.name).toBe(sharedName);
+    expect(agent2?.name).toBe(sharedName);
   });
 
   it("should generate deterministic UUIDs from character names for backward compatibility", async () => {
@@ -257,7 +259,7 @@ describe("Agent UUID Identification", () => {
     // Verify agent created with the explicit ID
     const agent = await mockAdapter.getAgent(explicitId);
     expect(agent).toBeTruthy();
-    expect(agent && agent.id).toBe(explicitId);
+    expect(agent?.id).toBe(explicitId);
   });
 
   it("should update agent by UUID, not by name", async () => {
@@ -284,8 +286,8 @@ describe("Agent UUID Identification", () => {
 
     // Verify agent still has same ID but updated name
     const agent = await mockAdapter.getAgent(agentId);
-    expect(agent && agent.id).toBe(agentId);
-    expect(agent && agent.name).toBe(updatedName);
+    expect(agent?.id).toBe(agentId);
+    expect(agent?.name).toBe(updatedName);
 
     // Verify no duplicate was created
     const allAgents = await mockAdapter.getAgents();
@@ -318,9 +320,9 @@ describe("Agent UUID Identification", () => {
 
     expect(agent1).toBeTruthy();
     expect(agent2).toBeTruthy();
-    expect(agent1 && agent1.name).toBe(sharedName);
-    expect(agent2 && agent2.name).toBe(sharedName);
-    expect(agent1 && agent1.id).not.toBe(agent2 && agent2.id);
+    expect(agent1?.name).toBe(sharedName);
+    expect(agent2?.name).toBe(sharedName);
+    expect(agent1?.id).not.toBe(agent2?.id);
 
     const allAgents = await mockAdapter.getAgents();
     expect(allAgents).toHaveLength(2);

@@ -3,7 +3,7 @@
  * Includes: Poop, Food, Hearts, Action Icons, etc.
  */
 
-import React from "react";
+import type React from "react";
 
 // ============================================================================
 // POOP SPRITE
@@ -31,9 +31,27 @@ export const Poop: React.FC<PoopProps> = ({ x, y, size = 20 }) => (
     <ellipse cx="9" cy="10" rx="2" ry="1.5" fill="#A0522D" />
     <ellipse cx="15" cy="10" rx="2" ry="1.5" fill="#A0522D" />
     {/* Stink lines */}
-    <path d="M6 4 Q4 2 6 0" stroke="#90EE90" strokeWidth="1" fill="none" opacity="0.7" />
-    <path d="M12 3 Q10 1 12 -1" stroke="#90EE90" strokeWidth="1" fill="none" opacity="0.7" />
-    <path d="M18 4 Q16 2 18 0" stroke="#90EE90" strokeWidth="1" fill="none" opacity="0.7" />
+    <path
+      d="M6 4 Q4 2 6 0"
+      stroke="#90EE90"
+      strokeWidth="1"
+      fill="none"
+      opacity="0.7"
+    />
+    <path
+      d="M12 3 Q10 1 12 -1"
+      stroke="#90EE90"
+      strokeWidth="1"
+      fill="none"
+      opacity="0.7"
+    />
+    <path
+      d="M18 4 Q16 2 18 0"
+      stroke="#90EE90"
+      strokeWidth="1"
+      fill="none"
+      opacity="0.7"
+    />
   </svg>
 );
 
@@ -68,7 +86,9 @@ export const Heart: React.FC<HeartProps> = ({ x, y, delay = 0 }) => (
 // FOOD SPRITE
 // ============================================================================
 
-export const FoodSprite: React.FC<{ type?: "meal" | "snack" }> = ({ type = "meal" }) => (
+export const FoodSprite: React.FC<{ type?: "meal" | "snack" }> = ({
+  type = "meal",
+}) => (
   <svg width="40" height="40" viewBox="0 0 40 40" className="food-bounce">
     {type === "meal" ? (
       // Hamburger
@@ -108,7 +128,14 @@ export const FeedIcon: React.FC = () => (
 
 export const PlayIcon: React.FC = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
-    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    />
     <path d="M10 8l6 4-6 4V8z" />
   </svg>
 );
@@ -143,7 +170,12 @@ export const LightIcon: React.FC<{ on?: boolean }> = ({ on = true }) => (
     {on ? (
       <>
         <circle cx="12" cy="12" r="5" />
-        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="2" fill="none" />
+        <path
+          d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
       </>
     ) : (
       <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z" />
@@ -157,11 +189,39 @@ export const LightIcon: React.FC<{ on?: boolean }> = ({ on = true }) => (
 
 export const Clouds: React.FC = () => (
   <g className="clouds">
-    <ellipse cx="20" cy="15" rx="15" ry="8" fill="rgba(255,255,255,0.8)" className="cloud cloud-1" />
-    <ellipse cx="30" cy="12" rx="10" ry="6" fill="rgba(255,255,255,0.8)" className="cloud cloud-1" />
-    
-    <ellipse cx="80" cy="20" rx="12" ry="7" fill="rgba(255,255,255,0.7)" className="cloud cloud-2" />
-    <ellipse cx="90" cy="18" rx="8" ry="5" fill="rgba(255,255,255,0.7)" className="cloud cloud-2" />
+    <ellipse
+      cx="20"
+      cy="15"
+      rx="15"
+      ry="8"
+      fill="rgba(255,255,255,0.8)"
+      className="cloud cloud-1"
+    />
+    <ellipse
+      cx="30"
+      cy="12"
+      rx="10"
+      ry="6"
+      fill="rgba(255,255,255,0.8)"
+      className="cloud cloud-1"
+    />
+
+    <ellipse
+      cx="80"
+      cy="20"
+      rx="12"
+      ry="7"
+      fill="rgba(255,255,255,0.7)"
+      className="cloud cloud-2"
+    />
+    <ellipse
+      cx="90"
+      cy="18"
+      rx="8"
+      ry="5"
+      fill="rgba(255,255,255,0.7)"
+      className="cloud cloud-2"
+    />
   </g>
 );
 
@@ -201,12 +261,42 @@ export const Stars: React.FC = () => (
 export const Ground: React.FC<{ isNight?: boolean }> = ({ isNight }) => (
   <g>
     {/* Grass/ground */}
-    <rect x="0" y="85" width="100" height="15" fill={isNight ? "#2D5016" : "#7CFC00"} />
-    <ellipse cx="10" cy="85" rx="12" ry="3" fill={isNight ? "#1E4010" : "#32CD32"} />
-    <ellipse cx="35" cy="86" rx="15" ry="4" fill={isNight ? "#1E4010" : "#32CD32"} />
-    <ellipse cx="65" cy="85" rx="18" ry="3" fill={isNight ? "#1E4010" : "#32CD32"} />
-    <ellipse cx="90" cy="86" rx="12" ry="3" fill={isNight ? "#1E4010" : "#32CD32"} />
-    
+    <rect
+      x="0"
+      y="85"
+      width="100"
+      height="15"
+      fill={isNight ? "#2D5016" : "#7CFC00"}
+    />
+    <ellipse
+      cx="10"
+      cy="85"
+      rx="12"
+      ry="3"
+      fill={isNight ? "#1E4010" : "#32CD32"}
+    />
+    <ellipse
+      cx="35"
+      cy="86"
+      rx="15"
+      ry="4"
+      fill={isNight ? "#1E4010" : "#32CD32"}
+    />
+    <ellipse
+      cx="65"
+      cy="85"
+      rx="18"
+      ry="3"
+      fill={isNight ? "#1E4010" : "#32CD32"}
+    />
+    <ellipse
+      cx="90"
+      cy="86"
+      rx="12"
+      ry="3"
+      fill={isNight ? "#1E4010" : "#32CD32"}
+    />
+
     {/* Flowers (day only) */}
     {!isNight && (
       <>
@@ -228,11 +318,15 @@ export const Ground: React.FC<{ isNight?: boolean }> = ({ isNight }) => (
 export const Sparkles: React.FC = () => (
   <g className="sparkles-container">
     {[...Array(8)].map((_, i) => {
-      const angle = (i * 45) * Math.PI / 180;
+      const angle = (i * 45 * Math.PI) / 180;
       const x = 50 + Math.cos(angle) * 35;
       const y = 50 + Math.sin(angle) * 35;
       return (
-        <g key={i} className="sparkle-group" style={{ animationDelay: `${i * 100}ms` }}>
+        <g
+          key={i}
+          className="sparkle-group"
+          style={{ animationDelay: `${i * 100}ms` }}
+        >
           <polygon
             points={`${x},${y - 5} ${x + 2},${y} ${x},${y + 5} ${x - 2},${y}`}
             fill="#FFD700"
@@ -250,7 +344,14 @@ export const Sparkles: React.FC = () => (
 
 export const EvolutionGlow: React.FC = () => (
   <g className="evolution-glow">
-    <circle cx="50" cy="50" r="45" fill="none" stroke="url(#evolutionGradient)" strokeWidth="4" />
+    <circle
+      cx="50"
+      cy="50"
+      r="45"
+      fill="none"
+      stroke="url(#evolutionGradient)"
+      strokeWidth="4"
+    />
     <defs>
       <radialGradient id="evolutionGradient">
         <stop offset="0%" stopColor="#FFD700" />
@@ -260,5 +361,4 @@ export const EvolutionGlow: React.FC = () => (
     </defs>
   </g>
 );
-
 

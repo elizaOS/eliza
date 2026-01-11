@@ -16,11 +16,11 @@ This plugin provides BlueSky integration for elizaOS agents, enabling:
 
 This plugin is implemented in three languages with feature parity:
 
-| Language | Directory | Package Name |
-|----------|-----------|--------------|
+| Language   | Directory     | Package Name              |
+| ---------- | ------------- | ------------------------- |
 | TypeScript | `typescript/` | `@elizaos/plugin-bluesky` |
-| Python | `python/` | `elizaos-plugin-bluesky` |
-| Rust | `rust/` | `elizaos-plugin-bluesky` |
+| Python     | `python/`     | `elizaos-plugin-bluesky`  |
+| Rust       | `rust/`       | `elizaos-plugin-bluesky`  |
 
 ## Installation
 
@@ -52,6 +52,7 @@ elizaos-plugin-bluesky = "1.0.0"
 ### Environment Variables
 
 Required:
+
 - `BLUESKY_HANDLE`: Your BlueSky handle (e.g., `user.bsky.social`)
 - `BLUESKY_PASSWORD`: Your app password (generate at https://bsky.app/settings/app-passwords)
 
@@ -75,7 +76,7 @@ Optional:
 ### TypeScript
 
 ```typescript
-import { blueSkyPlugin } from '@elizaos/plugin-bluesky';
+import { blueSkyPlugin } from "@elizaos/plugin-bluesky";
 
 // Add to your elizaOS agent
 const agent = createAgent({
@@ -83,16 +84,16 @@ const agent = createAgent({
 });
 
 // Or use the client directly
-import { BlueSkyClient, validateBlueSkyConfig } from '@elizaos/plugin-bluesky';
+import { BlueSkyClient, validateBlueSkyConfig } from "@elizaos/plugin-bluesky";
 
 const client = new BlueSkyClient({
-  service: 'https://bsky.social',
-  handle: 'your-handle.bsky.social',
-  password: 'your-app-password',
+  service: "https://bsky.social",
+  handle: "your-handle.bsky.social",
+  password: "your-app-password",
 });
 
 await client.authenticate();
-const post = await client.sendPost({ content: { text: 'Hello BlueSky!' } });
+const post = await client.sendPost({ content: { text: "Hello BlueSky!" } });
 ```
 
 ### Python
@@ -103,7 +104,7 @@ from elizaos_plugin_bluesky import BlueSkyClient, BlueSkyConfig
 config = BlueSkyConfig.from_env()
 async with BlueSkyClient(config) as client:
     await client.authenticate()
-    
+
     from elizaos_plugin_bluesky import CreatePostRequest, CreatePostContent
     request = CreatePostRequest(content=CreatePostContent(text="Hello from Python!"))
     post = await client.send_post(request)
@@ -128,13 +129,13 @@ let post = client.send_post(CreatePostRequest::new("Hello from Rust!")).await?;
 ```typescript
 // Create a post
 const post = await client.sendPost({
-  content: { text: 'Hello BlueSky!' }
+  content: { text: "Hello BlueSky!" },
 });
 
 // Reply to a post
 const reply = await client.sendPost({
-  content: { text: 'This is a reply!' },
-  replyTo: { uri: post.uri, cid: post.cid }
+  content: { text: "This is a reply!" },
+  replyTo: { uri: post.uri, cid: post.cid },
 });
 
 // Like a post
@@ -158,8 +159,8 @@ const { messages } = await client.getMessages(convoId);
 
 // Send a message
 const message = await client.sendMessage({
-  convoId: 'conversation-id',
-  message: { text: 'Hello!' }
+  convoId: "conversation-id",
+  message: { text: "Hello!" },
 });
 ```
 
@@ -188,7 +189,7 @@ for (const item of timeline.feed) {
 
 ```typescript
 // Get a profile
-const profile = await client.getProfile('user.bsky.social');
+const profile = await client.getProfile("user.bsky.social");
 console.log(`${profile.displayName} - ${profile.followersCount} followers`);
 ```
 
@@ -196,15 +197,15 @@ console.log(`${profile.displayName} - ${profile.followersCount} followers`);
 
 The plugin emits the following events for elizaOS integration:
 
-| Event | Description |
-|-------|-------------|
-| `bluesky.mention_received` | Agent was mentioned in a post |
-| `bluesky.follow_received` | Agent received a new follower |
-| `bluesky.like_received` | Agent's post was liked |
-| `bluesky.repost_received` | Agent's post was reposted |
-| `bluesky.quote_received` | Agent's post was quoted |
-| `bluesky.should_respond` | Trigger for response generation |
-| `bluesky.create_post` | Trigger for automated posting |
+| Event                      | Description                     |
+| -------------------------- | ------------------------------- |
+| `bluesky.mention_received` | Agent was mentioned in a post   |
+| `bluesky.follow_received`  | Agent received a new follower   |
+| `bluesky.like_received`    | Agent's post was liked          |
+| `bluesky.repost_received`  | Agent's post was reposted       |
+| `bluesky.quote_received`   | Agent's post was quoted         |
+| `bluesky.should_respond`   | Trigger for response generation |
+| `bluesky.create_post`      | Trigger for automated posting   |
 
 ## Development
 

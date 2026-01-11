@@ -1,6 +1,6 @@
 /**
  * Pure in-memory storage implementation
- * 
+ *
  * All data is ephemeral and lost on process restart or close()
  */
 
@@ -70,28 +70,34 @@ export class MemoryStorage implements IStorage {
     }
   }
 
-  async deleteWhere(collection: string, predicate: (item: Record<string, unknown>) => boolean): Promise<void> {
+  async deleteWhere(
+    collection: string,
+    predicate: (item: Record<string, unknown>) => boolean
+  ): Promise<void> {
     const col = this.getCollection(collection);
     const toDelete: string[] = [];
-    
+
     for (const [id, item] of col) {
       if (predicate(item as Record<string, unknown>)) {
         toDelete.push(id);
       }
     }
-    
+
     for (const id of toDelete) {
       col.delete(id);
     }
   }
 
-  async count(collection: string, predicate?: (item: Record<string, unknown>) => boolean): Promise<number> {
+  async count(
+    collection: string,
+    predicate?: (item: Record<string, unknown>) => boolean
+  ): Promise<number> {
     const col = this.getCollection(collection);
-    
+
     if (!predicate) {
       return col.size;
     }
-    
+
     let count = 0;
     for (const item of col.values()) {
       if (predicate(item as Record<string, unknown>)) {
@@ -105,5 +111,3 @@ export class MemoryStorage implements IStorage {
     this.collections.clear();
   }
 }
-
-

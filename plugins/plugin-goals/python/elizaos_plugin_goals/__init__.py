@@ -4,14 +4,14 @@ elizaOS Goals Plugin - Goal management and tracking.
 This plugin provides goal management functionality for tracking and achieving objectives.
 """
 
-from elizaos_plugin_goals.types import Goal, GoalStatus, GoalOwnerType
 from elizaos_plugin_goals.prompts import (
-    EXTRACT_GOAL_TEMPLATE,
     CHECK_SIMILARITY_TEMPLATE,
-    build_extract_goal_prompt,
+    EXTRACT_GOAL_TEMPLATE,
     build_check_similarity_prompt,
+    build_extract_goal_prompt,
 )
 from elizaos_plugin_goals.service import GoalDataService
+from elizaos_plugin_goals.types import Goal, GoalOwnerType, GoalStatus
 
 __all__ = [
     "Goal",
@@ -25,5 +25,8 @@ __all__ = [
 ]
 
 __version__ = "1.2.0"
+
+
+
 
 

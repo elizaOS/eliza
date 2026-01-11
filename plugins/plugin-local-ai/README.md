@@ -57,13 +57,13 @@ The plugin provides these model classes:
 ```typescript
 // Using small model
 const smallResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
-  prompt: 'Generate a short response',
+  prompt: "Generate a short response",
   stopSequences: [],
 });
 
 // Using large model
 const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-  prompt: 'Generate a detailed response',
+  prompt: "Generate a detailed response",
   stopSequences: [],
 });
 ```
@@ -72,7 +72,7 @@ const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 
 ```typescript
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-  text: 'Text to get embedding for',
+  text: "Text to get embedding for",
 });
 ```
 
@@ -81,18 +81,24 @@ const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
 ```typescript
 const { title, description } = await runtime.useModel(
   ModelType.IMAGE_DESCRIPTION,
-  'https://example.com/image.jpg'
+  "https://example.com/image.jpg",
 );
 ```
 
 ### Text-to-Speech
 
 ```typescript
-const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to convert to speech');
+const audioStream = await runtime.useModel(
+  ModelType.TEXT_TO_SPEECH,
+  "Text to convert to speech",
+);
 ```
 
 ### Audio Transcription
 
 ```typescript
-const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
+const transcription = await runtime.useModel(
+  ModelType.TRANSCRIPTION,
+  audioBuffer,
+);
 ```

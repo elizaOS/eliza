@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the Planning Plugin.
 
 use thiserror::Error;
@@ -52,5 +53,10 @@ pub enum PlanningError {
     #[error("{0}")]
     General(String),
 }
+
+
+
+
+
 
 

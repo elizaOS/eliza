@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! RSS Plugin
 //!
 //! Main plugin definition and subscription management.
@@ -43,7 +44,8 @@ impl RssPlugin {
         self.client = Some(RssClient::new(self.config.clone())?);
 
         // Subscribe to initial feeds
-        for url in self.config.feeds.clone() {
+        let feeds: Vec<String> = self.config.feeds.clone();
+        for url in feeds {
             let _ = self.subscribe_feed(&url, None).await;
         }
 
@@ -72,7 +74,7 @@ impl RssPlugin {
     /// Subscribe to an RSS feed.
     pub async fn subscribe_feed(&mut self, url: &str, title: Option<&str>) -> Result<()> {
         {
-            let feeds = self.subscribed_feeds.read().await;
+            let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.read().await;
             if feeds.contains_key(url) {
                 return Err(RssError::AlreadySubscribed(url.to_string()));
             }
@@ -80,17 +82,20 @@ impl RssPlugin {
 
         // Validate feed by fetching it
         let _feed_title = if title.is_some() {
-            title.map(|s| s.to_string())
+            title.map(|s: &str| s.to_string())
         } else {
             match self.fetch_feed(url).await {
-                Ok(feed) => Some(feed.title().to_string()),
+                Ok(feed) => {
+                    let title_str: &str = feed.title();
+                    Some(title_str.to_string())
+                },
                 Err(_) => None,
             }
         };
 
         let metadata = FeedSubscriptionMetadata::new();
 
-        let mut feeds = self.subscribed_feeds.write().await;
+        let mut feeds: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
         feeds.insert(url.to_string(), metadata);
 
         Ok(())
@@ -98,7 +103,7 @@ impl RssPlugin {
 
     /// Unsubscribe from an RSS feed.
     pub async fn unsubscribe_feed(&mut self, url: &str) -> Result<()> {
-        let mut feeds = self.subscribed_feeds.write().await;
+        let mut feeds: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
         if feeds.remove(url).is_none() {
             return Err(RssError::NotSubscribed(url.to_string()));
         }
@@ -107,16 +112,17 @@ impl RssPlugin {
 
     /// Get all subscribed feeds.
     pub async fn get_subscribed_feeds(&self) -> Vec<(String, FeedSubscriptionMetadata)> {
-        let feeds = self.subscribed_feeds.read().await;
-        feeds
+        let feeds: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.read().await;
+        let result: Vec<(String, FeedSubscriptionMetadata)> = feeds
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+            .collect();
+        result
     }
 
     /// Check all subscribed feeds for new items.
     pub async fn check_all_feeds(&mut self) -> HashMap<String, usize> {
-        let mut results = HashMap::new();
+        let mut results: HashMap<String, usize> = HashMap::new();
 
         let feeds: Vec<String> = {
             let feeds = self.subscribed_feeds.read().await;
@@ -129,9 +135,9 @@ impl RssPlugin {
                 Err(_) => continue,
             };
 
-            let mut new_items = 0;
+            let mut new_items: usize = 0;
             {
-                let mut items = self.feed_items.write().await;
+                let mut items: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedItemMetadata>> = self.feed_items.write().await;
                 for item in &feed.items {
                     let item_id = format!(
                         "{}_{}_{}", 
@@ -152,7 +158,7 @@ impl RssPlugin {
 
             // Update subscription metadata
             {
-                let mut subs = self.subscribed_feeds.write().await;
+                let mut subs: tokio::sync::RwLockWriteGuard<'_, HashMap<String, FeedSubscriptionMetadata>> = self.subscribed_feeds.write().await;
                 if let Some(meta) = subs.get_mut(&url) {
                     meta.last_checked = chrono::Utc::now().timestamp_millis();
                     meta.last_item_count = feed.items.len();
@@ -167,8 +173,8 @@ impl RssPlugin {
 
     /// Get recent feed items.
     pub async fn get_feed_items(&self, limit: usize) -> Vec<FeedItemMetadata> {
-        let items = self.feed_items.read().await;
-        let mut result: Vec<_> = items.values().cloned().collect();
+        let items: tokio::sync::RwLockReadGuard<'_, HashMap<String, FeedItemMetadata>> = self.feed_items.read().await;
+        let mut result: Vec<FeedItemMetadata> = items.values().cloned().collect();
         
         // Sort by pub_date (most recent first)
         result.sort_by(|a, b| {
@@ -183,7 +189,7 @@ impl RssPlugin {
 
     /// Format feed items for display.
     pub async fn format_feed_items(&self, items: Option<Vec<FeedItemMetadata>>) -> String {
-        let items = match items {
+        let items: Vec<FeedItemMetadata> = match items {
             Some(i) => i,
             None => self.get_feed_items(50).await,
         };
@@ -229,13 +235,13 @@ impl RssPlugin {
                 if let Some(ref pub_date) = item.pub_date {
                     output.push_str(&format!("- Published: {}\n", pub_date));
                 }
-                if let Some(ref author) = item.author {
+                if let Some(author) = &item.author {
                     if !author.is_empty() {
                         output.push_str(&format!("- Author: {}\n", author));
                     }
                 }
-                if let Some(ref desc) = item.description {
-                    let short_desc = if desc.len() > 200 {
+                if let Some(desc) = &item.description {
+                    let short_desc: String = if desc.len() > 200 {
                         format!("{}...", &desc[..200])
                     } else {
                         desc.clone()
@@ -322,5 +328,7 @@ mod tests {
         assert!(feeds.is_empty());
     }
 }
+
+
 
 

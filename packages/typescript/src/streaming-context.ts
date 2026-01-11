@@ -91,12 +91,28 @@ async function createContextManager(): Promise<IStreamingContextManager> {
       return {
         storage: new AsyncLocalStorage<StreamingContext | undefined>(),
         run<T>(context: StreamingContext | undefined, fn: () => T): T {
-          return (this as { storage: InstanceType<typeof AsyncLocalStorage<StreamingContext | undefined>> }).storage.run(context, fn);
+          return (
+            this as {
+              storage: InstanceType<
+                typeof AsyncLocalStorage<StreamingContext | undefined>
+              >;
+            }
+          ).storage.run(context, fn);
         },
         active(): StreamingContext | undefined {
-          return (this as { storage: InstanceType<typeof AsyncLocalStorage<StreamingContext | undefined>> }).storage.getStore();
+          return (
+            this as {
+              storage: InstanceType<
+                typeof AsyncLocalStorage<StreamingContext | undefined>
+              >;
+            }
+          ).storage.getStore();
         },
-      } as IStreamingContextManager & { storage: InstanceType<typeof AsyncLocalStorage<StreamingContext | undefined>> };
+      } as IStreamingContextManager & {
+        storage: InstanceType<
+          typeof AsyncLocalStorage<StreamingContext | undefined>
+        >;
+      };
     } catch {
       // Fallback to stack-based if async_hooks not available
       return new StackContextManager();
@@ -113,15 +129,17 @@ function getOrCreateContextManager(): IStreamingContextManager {
   if (!globalContextManager) {
     // Synchronous fallback - use Stack until async init completes
     globalContextManager = new StackContextManager();
-    
+
     // Async upgrade to AsyncLocalStorage in Node.js
     if (isNodeEnvironment() && !contextManagerInitialized) {
       contextManagerInitialized = true;
-      createContextManager().then((manager) => {
-        globalContextManager = manager;
-      }).catch(() => {
-        // Keep using StackContextManager
-      });
+      createContextManager()
+        .then((manager) => {
+          globalContextManager = manager;
+        })
+        .catch(() => {
+          // Keep using StackContextManager
+        });
     }
   }
   return globalContextManager;

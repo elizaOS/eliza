@@ -65,7 +65,7 @@ bun test --watch packages/plugin-bootstrap/__tests__
 ### Testing Actions
 
 ```typescript
-describe('My Action', () => {
+describe("My Action", () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
   let mockState: Partial<State>;
@@ -80,7 +80,7 @@ describe('My Action', () => {
     callbackFn = setup.callbackFn;
   });
 
-  it('should validate correctly', async () => {
+  it("should validate correctly", async () => {
     // Test implementation
   });
 });
@@ -89,7 +89,7 @@ describe('My Action', () => {
 ### Testing Providers
 
 ```typescript
-describe('My Provider', () => {
+describe("My Provider", () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
   let mockState: Partial<State>;
@@ -99,7 +99,7 @@ describe('My Provider', () => {
     const setup = setupActionTest({
       stateOverrides: {
         values: {
-          customValue: 'test',
+          customValue: "test",
         },
       },
     });
@@ -108,7 +108,7 @@ describe('My Provider', () => {
     mockState = setup.mockState;
   });
 
-  it('should provide correct data', async () => {
+  it("should provide correct data", async () => {
     // Test implementation
   });
 });

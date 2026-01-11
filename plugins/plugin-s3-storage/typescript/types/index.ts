@@ -115,4 +115,3 @@ export function getContentType(filePath: string): string {
   const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
   return CONTENT_TYPES[ext] || "application/octet-stream";
 }
-

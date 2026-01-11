@@ -15,9 +15,7 @@ class GatewayConfig(BaseModel):
     """Vercel AI Gateway client configuration."""
 
     api_key: str = Field(..., min_length=1, description="API key for authentication")
-    base_url: str = Field(
-        default="https://ai-gateway.vercel.sh/v1", description="API base URL"
-    )
+    base_url: str = Field(default="https://ai-gateway.vercel.sh/v1", description="API base URL")
     small_model: str = Field(default="gpt-5-mini", description="Small model identifier")
     large_model: str = Field(default="gpt-5", description="Large model identifier")
     embedding_model: str = Field(
@@ -28,7 +26,7 @@ class GatewayConfig(BaseModel):
     timeout: float = Field(default=60.0, ge=1.0, description="Request timeout in seconds")
 
     @classmethod
-    def from_env(cls) -> "GatewayConfig":
+    def from_env(cls) -> GatewayConfig:
         """
         Create configuration from environment variables.
 
@@ -83,19 +81,31 @@ class GatewayConfig(BaseModel):
         if timeout_ms := os.environ.get("AI_GATEWAY_TIMEOUT_MS"):
             kwargs["timeout"] = float(timeout_ms) / 1000.0
 
-        return cls(**kwargs)
+        # Type checker needs explicit construction to handle mixed types
+        return cls(
+            api_key=str(kwargs["api_key"]),
+            base_url=str(kwargs.get("base_url", "https://ai-gateway.vercel.sh/v1")),
+            small_model=str(kwargs.get("small_model", "gpt-5-mini")),
+            large_model=str(kwargs.get("large_model", "gpt-5")),
+            embedding_model=str(kwargs.get("embedding_model", "text-embedding-3-small")),
+            embedding_dimensions=int(kwargs.get("embedding_dimensions", 1536)),
+            image_model=str(kwargs.get("image_model", "dall-e-3")),
+            timeout=float(kwargs.get("timeout", 60.0)),
+        )
 
 
 # Models that don't support temperature/sampling parameters (reasoning models)
-NO_TEMPERATURE_MODELS = frozenset({
-    "o1",
-    "o1-preview",
-    "o1-mini",
-    "o3",
-    "o3-mini",
-    "gpt-5",
-    "gpt-5-mini",
-})
+NO_TEMPERATURE_MODELS = frozenset(
+    {
+        "o1",
+        "o1-preview",
+        "o1-mini",
+        "o3",
+        "o3-mini",
+        "gpt-5",
+        "gpt-5-mini",
+    }
+)
 
 
 def model_supports_temperature(model: str) -> bool:
@@ -105,5 +115,3 @@ def model_supports_temperature(model: str) -> bool:
         if no_temp_model in model_lower:
             return False
     return True
-
-

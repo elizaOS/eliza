@@ -104,12 +104,7 @@ export interface ObjectGenerationParams {
 /**
  * Image size options.
  */
-export type ImageSize =
-  | "256x256"
-  | "512x512"
-  | "1024x1024"
-  | "1792x1024"
-  | "1024x1792";
+export type ImageSize = "256x256" | "512x512" | "1024x1024" | "1792x1024" | "1024x1792";
 
 /**
  * Image quality options.
@@ -295,5 +290,3 @@ export class GatewayError extends Error {
     this.statusCode = statusCode;
   }
 }
-
-

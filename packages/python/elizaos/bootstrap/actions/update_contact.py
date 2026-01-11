@@ -68,7 +68,9 @@ class UpdateContactAction:
     )
     description: str = "Updates an existing contact in the rolodex"
 
-    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
+    async def validate(
+        self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
+    ) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         return rolodex_service is not None
@@ -134,7 +136,9 @@ class UpdateContactAction:
             tags = None
 
             if parsed.get("categories"):
-                new_categories = [c.strip() for c in str(parsed["categories"]).split(",") if c.strip()]
+                new_categories = [
+                    c.strip() for c in str(parsed["categories"]).split(",") if c.strip()
+                ]
                 if operation == "add_to" and contact.categories:
                     categories = list(set(contact.categories + new_categories))
                 else:
@@ -199,7 +203,9 @@ class UpdateContactAction:
         """Example interactions."""
         return [
             [
-                ActionExample(name="{{name1}}", content=Content(text="Update John Doe and add the tech tag")),
+                ActionExample(
+                    name="{{name1}}", content=Content(text="Update John Doe and add the tech tag")
+                ),
                 ActionExample(
                     name="{{name2}}",
                     content=Content(
@@ -220,4 +226,3 @@ update_contact_action = Action(
     handler=UpdateContactAction().handler,
     examples=UpdateContactAction().examples,
 )
-

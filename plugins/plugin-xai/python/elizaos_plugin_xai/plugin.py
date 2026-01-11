@@ -62,7 +62,7 @@ class XAIPlugin:
             await self._x_client.close()
             self._x_client = None
 
-    async def __aenter__(self) -> "XAIPlugin":
+    async def __aenter__(self) -> XAIPlugin:
         return self
 
     async def __aexit__(self, *_: object) -> None:

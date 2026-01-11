@@ -9,10 +9,6 @@ import { pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
  */
 export const serverTable = pgTable("servers", {
   id: uuid("id").primaryKey(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
 });

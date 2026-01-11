@@ -8,10 +8,10 @@ import logging
 from typing import Any
 
 from elizaos_browser.services.browser_service import BrowserService
-from elizaos_browser.types import ActionResult, ScreenshotResult
+from elizaos_browser.types import ActionResult
 from elizaos_browser.utils.errors import (
-    BrowserError,
     ActionError,
+    BrowserError,
     SessionError,
     handle_browser_error,
 )
@@ -66,16 +66,18 @@ async def browser_screenshot(
 
         response_text = f'I\'ve taken a screenshot of the page "{title}" at {url}'
         if callback:
-            callback({
-                "text": response_text,
-                "actions": ["BROWSER_SCREENSHOT"],
-                "data": {
-                    "screenshot": screenshot_data.get("screenshot"),
-                    "mimeType": screenshot_data.get("mimeType", "image/png"),
-                    "url": url,
-                    "title": title,
-                },
-            })
+            callback(
+                {
+                    "text": response_text,
+                    "actions": ["BROWSER_SCREENSHOT"],
+                    "data": {
+                        "screenshot": screenshot_data.get("screenshot"),
+                        "mimeType": screenshot_data.get("mimeType", "image/png"),
+                        "url": url,
+                        "title": title,
+                    },
+                }
+            )
 
         return ActionResult(
             success=True,
@@ -99,12 +101,10 @@ async def browser_screenshot(
 
     except Exception as e:
         logger.error(f"Error in BROWSER_SCREENSHOT action: {e}")
-        error = ActionError("screenshot", "page", e)
-        handle_browser_error(error, callback)
+        browser_error: BrowserError = ActionError("screenshot", "page", e)
+        handle_browser_error(browser_error, callback)
         return ActionResult(
             success=False,
             error=str(e),
             data={"actionName": "BROWSER_SCREENSHOT"},
         )
-
-

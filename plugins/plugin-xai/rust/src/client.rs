@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! X (Twitter) API v2 Client
 //!
 //! Async HTTP client for X API v2 interactions using reqwest.

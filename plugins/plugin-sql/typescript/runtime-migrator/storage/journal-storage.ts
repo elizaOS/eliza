@@ -9,7 +9,7 @@ export class JournalStorage {
     const result = await this.db.execute(
       sql`SELECT version, dialect, entries 
           FROM migrations._journal 
-          WHERE plugin_name = ${pluginName}`,
+          WHERE plugin_name = ${pluginName}`
     );
 
     if (result.rows.length === 0) {
@@ -21,7 +21,10 @@ export class JournalStorage {
       dialect: string;
       entries: JournalEntry[];
     }
-    const row = getRow<JournalRow>(result)!;
+    const row = getRow<JournalRow>(result);
+    if (!row) {
+      throw new Error(`Journal not found for plugin: ${pluginName}`);
+    }
     return {
       version: row.version,
       dialect: row.dialect,
@@ -37,7 +40,7 @@ export class JournalStorage {
           DO UPDATE SET 
             version = EXCLUDED.version,
             dialect = EXCLUDED.dialect,
-            entries = EXCLUDED.entries`,
+            entries = EXCLUDED.entries`
     );
   }
 
@@ -76,7 +79,7 @@ export class JournalStorage {
     pluginName: string,
     idx: number,
     tag: string,
-    breakpoints: boolean = true,
+    breakpoints: boolean = true
   ): Promise<void> {
     const entry: JournalEntry = {
       idx,

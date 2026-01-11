@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Local JSON-based database adapter for elizaOS.
 
 use anyhow::Result;

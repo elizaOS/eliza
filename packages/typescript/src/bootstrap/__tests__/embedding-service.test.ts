@@ -1,21 +1,35 @@
+import {
+  type EventPayload,
+  EventType,
+  type Memory,
+  ModelType,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EventType, type Memory, ModelType, type UUID } from "@elizaos/core";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
-import { createMockRuntime } from "./test-utils.ts";
+import { createMockRuntime, type MockRuntime } from "./test-utils.ts";
 
 describe("EmbeddingGenerationService", () => {
   let service: EmbeddingGenerationService;
-  let mockRuntime: any;
-  let registeredEventHandlers: Map<string, Function>;
+  let mockRuntime: MockRuntime;
+  let registeredEventHandlers: Map<
+    string,
+    (params: EventPayload) => Promise<void>
+  >;
 
   beforeEach(() => {
     // Track registered event handlers
     registeredEventHandlers = new Map();
 
     mockRuntime = createMockRuntime({
-      registerEvent: vi.fn((eventType: string, handler: Function) => {
-        registeredEventHandlers.set(eventType, handler);
-      }),
+      registerEvent: vi.fn(
+        (
+          eventType: string,
+          handler: (params: EventPayload) => Promise<void>,
+        ) => {
+          registeredEventHandlers.set(eventType, handler);
+        },
+      ),
       useModel: vi.fn().mockImplementation((modelType: string) => {
         if (modelType === ModelType.TEXT_EMBEDDING) {
           // Simulate embedding generation with a small delay
@@ -165,11 +179,11 @@ describe("EmbeddingGenerationService", () => {
 
       if (handler) {
         await handler({
-        runtime: mockRuntime,
-        memory: normalMemory,
-        priority: "normal",
-        source: "test",
-      });
+          runtime: mockRuntime,
+          memory: normalMemory,
+          priority: "normal",
+          source: "test",
+        });
       }
       if (handler) {
         await handler({
@@ -389,9 +403,9 @@ describe("EmbeddingGenerationService", () => {
     });
 
     it("should emit failure event after max retries exceeded", async () => {
-      mockRuntime.useModel = vi.fn().mockRejectedValue(
-        new Error("Persistent failure"),
-      );
+      mockRuntime.useModel = vi
+        .fn()
+        .mockRejectedValue(new Error("Persistent failure"));
 
       service = (await EmbeddingGenerationService.start(
         mockRuntime,
@@ -532,9 +546,9 @@ describe("EmbeddingGenerationService", () => {
 
   describe("Service Lifecycle", () => {
     it("should process high priority items before stopping", async () => {
-      mockRuntime.useModel = vi.fn().mockResolvedValue([
-        0.1, 0.2, 0.3, 0.4, 0.5,
-      ]);
+      mockRuntime.useModel = vi
+        .fn()
+        .mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]);
 
       service = (await EmbeddingGenerationService.start(
         mockRuntime,

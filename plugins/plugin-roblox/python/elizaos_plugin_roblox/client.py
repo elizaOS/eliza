@@ -129,8 +129,7 @@ class RobloxClient:
 
         target_universe_id = universe_id or self.config.universe_id
         endpoint = (
-            f"/messaging-service/v1/universes/{target_universe_id}"
-            f"/topics/{quote(topic, safe='')}"
+            f"/messaging-service/v1/universes/{target_universe_id}/topics/{quote(topic, safe='')}"
         )
 
         await self._request(
@@ -331,9 +330,7 @@ class RobloxClient:
         endpoint = f"/v1/users/avatar-headshot?userIds={user_id}&size={size}&format=Png"
 
         try:
-            response = await self._request(
-                "GET", THUMBNAILS_API_BASE, endpoint, use_api_key=False
-            )
+            response = await self._request("GET", THUMBNAILS_API_BASE, endpoint, use_api_key=False)
             data = response.get("data", [])
             if data:
                 return data[0].get("imageUrl")  # type: ignore[no-any-return]
@@ -344,9 +341,7 @@ class RobloxClient:
 
     # ==================== Experience Info ====================
 
-    async def get_experience_info(
-        self, universe_id: str | None = None
-    ) -> RobloxExperienceInfo:
+    async def get_experience_info(self, universe_id: str | None = None) -> RobloxExperienceInfo:
         """Get experience/universe information.
 
         Args:
@@ -392,5 +387,8 @@ class RobloxClient:
             True if dry run mode is enabled.
         """
         return self.config.dry_run
+
+
+
 
 

@@ -1,35 +1,41 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
-  type Memory,
-  type State,
-  ModelType,
   logger,
+  type Memory,
+  ModelType,
+  type State,
 } from "@elizaos/core";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { getCwd } from "../providers/cwd.js";
 import { CODE_GENERATION_SYSTEM_PROMPT } from "../../lib/prompts.js";
+import { getCwd } from "../providers/cwd.js";
 
-function extractWriteParams(text: string): { filepath: string; content: string } {
+function extractWriteParams(text: string): {
+  filepath: string;
+  content: string;
+} {
   let filepath = "";
 
   const pathPatterns = [
-    /\bat\s+["']?([./\w\-]+\.[a-zA-Z0-9]+)["']?/i,
-    /\bto\s+["']?([./\w\-]+\.[a-zA-Z0-9]+)["']?/i,
-    /(?:called|named)\s+["']?([./\w\-]+\.[a-zA-Z0-9]+)["']?/i,
-    /\bfile[:\s]+["']?([./\w\-]+\.[a-zA-Z0-9]+)["']?/i,
-    /(?:write|create|save)\s+(?:to\s+)?(?:a\s+)?(?:new\s+)?(?:file\s+)?["']?([./\w\-]+\.[a-zA-Z0-9]+)["']?/i,
-    /["'`]([./\w\-]+\.[a-zA-Z0-9]+)["'`]/,
-    /\b([a-zA-Z][\w\-]*\.(?:js|ts|tsx|jsx|py|html|css|json|md|txt|sh|yaml|yml))\b/,
+    /\bat\s+["']?([./\w-]+\.[a-zA-Z0-9]+)["']?/i,
+    /\bto\s+["']?([./\w-]+\.[a-zA-Z0-9]+)["']?/i,
+    /(?:called|named)\s+["']?([./\w-]+\.[a-zA-Z0-9]+)["']?/i,
+    /\bfile[:\s]+["']?([./\w-]+\.[a-zA-Z0-9]+)["']?/i,
+    /(?:write|create|save)\s+(?:to\s+)?(?:a\s+)?(?:new\s+)?(?:file\s+)?["']?([./\w-]+\.[a-zA-Z0-9]+)["']?/i,
+    /["'`]([./\w-]+\.[a-zA-Z0-9]+)["'`]/,
+    /\b([a-zA-Z][\w-]*\.(?:js|ts|tsx|jsx|py|html|css|json|md|txt|sh|yaml|yml))\b/,
   ];
 
   for (const pattern of pathPatterns) {
     const match = text.match(pattern);
-    if (match?.[1] && !["a", "the", "an", "to", "at", "in"].includes(match[1].toLowerCase())) {
+    if (
+      match?.[1] &&
+      !["a", "the", "an", "to", "at", "in"].includes(match[1].toLowerCase())
+    ) {
       filepath = match[1];
       break;
     }
@@ -72,7 +78,10 @@ SAFETY:
 - Creates parent directories automatically
 - Warns when overwriting existing files (unless path was inferred)`,
 
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
     // Check for file creation intent AND either an explicit path or strong file hints.
     const hasIntent =
@@ -100,14 +109,17 @@ SAFETY:
     message: Memory,
     state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const text = message.content.text ?? "";
     let { filepath, content } = extractWriteParams(text);
     let inferredPath = false;
 
     if (!content && state?.pendingWrite) {
-      const pending = state.pendingWrite as { filepath?: string; content?: string };
+      const pending = state.pendingWrite as {
+        filepath?: string;
+        content?: string;
+      };
       filepath = filepath || pending.filepath || "";
       content = pending.content || "";
     }
@@ -121,13 +133,15 @@ SAFETY:
       }
       filepath = inferred;
       inferredPath = true;
-      await callback?.({ text: `No file path provided — inferred: ${filepath}` });
+      await callback?.({
+        text: `No file path provided — inferred: ${filepath}`,
+      });
     }
 
     // If no content provided, generate it using the LLM
     if (!content) {
       await callback?.({ text: `Generating content for ${filepath}...` });
-      
+
       try {
         const prompt = `${CODE_GENERATION_SYSTEM_PROMPT}
 
@@ -146,7 +160,7 @@ The content should be production-ready and complete.`;
         const generated =
           typeof result === "string"
             ? result.trim()
-            : (result as { text?: string })?.text?.trim() ?? "";
+            : ((result as { text?: string })?.text?.trim() ?? "");
 
         if (!generated) {
           const msg = "Failed to generate content for the file.";
@@ -208,7 +222,10 @@ The content should be production-ready and complete.`;
       };
     } catch (err) {
       const error = err as NodeJS.ErrnoException;
-      const msg = error.code === "EACCES" ? `Permission denied: ${filepath}` : `Error: ${error.message}`;
+      const msg =
+        error.code === "EACCES"
+          ? `Permission denied: ${filepath}`
+          : `Error: ${error.message}`;
       logger.error(`WRITE_FILE error: ${error.message}`);
       await callback?.({ text: msg });
       return { success: false, text: msg };
@@ -217,12 +234,27 @@ The content should be production-ready and complete.`;
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "create hello.txt with 'Hello World'" } },
-      { name: "{{agent}}", content: { text: "Creating hello.txt...", actions: ["WRITE_FILE"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "create hello.txt with 'Hello World'" },
+      },
+      {
+        name: "{{agent}}",
+        content: { text: "Creating hello.txt...", actions: ["WRITE_FILE"] },
+      },
     ],
     [
-      { name: "{{user1}}", content: { text: "build me a tetris game in tetris.html" } },
-      { name: "{{agent}}", content: { text: "Generating content for tetris.html...", actions: ["WRITE_FILE"] } },
+      {
+        name: "{{user1}}",
+        content: { text: "build me a tetris game in tetris.html" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Generating content for tetris.html...",
+          actions: ["WRITE_FILE"],
+        },
+      },
     ],
   ],
 };
@@ -234,7 +266,12 @@ function inferFilepath(text: string): string | null {
 
   // Infer extension from hints
   let ext = "txt";
-  if (/\bhtml\b/.test(lower) || lower.includes("webpage") || lower.includes("website")) ext = "html";
+  if (
+    /\bhtml\b/.test(lower) ||
+    lower.includes("webpage") ||
+    lower.includes("website")
+  )
+    ext = "html";
   else if (/\bjson\b/.test(lower)) ext = "json";
   else if (/\bya?ml\b/.test(lower)) ext = "yml";
   else if (/\btypescript\b/.test(lower) || /\bts\b/.test(lower)) ext = "ts";
@@ -242,14 +279,19 @@ function inferFilepath(text: string): string | null {
   else if (/\bpython\b/.test(lower) || /\bpy\b/.test(lower)) ext = "py";
 
   // Infer base name from request
-  const match = lower.match(/(?:build|create|write|make|save)\s+(?:me\s+)?(?:a|an|the)?\s*([a-z0-9][\w-]*)/i);
+  const match = lower.match(
+    /(?:build|create|write|make|save)\s+(?:me\s+)?(?:a|an|the)?\s*([a-z0-9][\w-]*)/i,
+  );
   const baseRaw = match?.[1] ?? "index";
   const base = baseRaw.replace(/[^a-z0-9_-]/gi, "").toLowerCase() || "index";
 
   return `${base}.${ext}`;
 }
 
-async function findAvailableFilename(cwd: string, filepath: string): Promise<string | null> {
+async function findAvailableFilename(
+  cwd: string,
+  filepath: string,
+): Promise<string | null> {
   const ext = path.extname(filepath);
   const base = ext ? filepath.slice(0, -ext.length) : filepath;
 

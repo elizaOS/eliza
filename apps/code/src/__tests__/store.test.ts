@@ -1,6 +1,11 @@
-import { describe, test, expect, beforeEach } from "vitest";
-import { useStore, selectCurrentRoom, selectMessages, selectTaskStats } from "../lib/store.js";
-import type { ChatRoom, Message, CodeTask, UUID } from "../types.js";
+import { beforeEach, describe, expect, test } from "vitest";
+import {
+  selectCurrentRoom,
+  selectMessages,
+  selectTaskStats,
+  useStore,
+} from "../lib/store.js";
+import type { ChatRoom, CodeTask, UUID } from "../types.js";
 
 // ============================================================================
 // Test Helpers
@@ -170,7 +175,12 @@ describe("Message Management", () => {
 
   test("should add message with taskId", () => {
     const { addMessage, currentRoomId } = useStore.getState();
-    const message = addMessage(currentRoomId, "assistant", "Task output", "task-123");
+    const message = addMessage(
+      currentRoomId,
+      "assistant",
+      "Task output",
+      "task-123",
+    );
 
     expect(message.taskId).toBe("task-123");
   });
@@ -193,7 +203,10 @@ describe("Task Management", () => {
 
   test("should set tasks", () => {
     const { setTasks } = useStore.getState();
-    const tasks = [createMockTask({ id: "task-1" }), createMockTask({ id: "task-2" })];
+    const tasks = [
+      createMockTask({ id: "task-1" }),
+      createMockTask({ id: "task-2" }),
+    ];
 
     setTasks(tasks);
 
@@ -339,11 +352,61 @@ describe("Selectors", () => {
   test("selectTaskStats should calculate task statistics", () => {
     const { setTasks } = useStore.getState();
     setTasks([
-      createMockTask({ id: "1", metadata: { status: "running", progress: 50, output: [], steps: [], workingDirectory: "/", createdAt: Date.now() } }),
-      createMockTask({ id: "2", metadata: { status: "running", progress: 30, output: [], steps: [], workingDirectory: "/", createdAt: Date.now() } }),
-      createMockTask({ id: "3", metadata: { status: "completed", progress: 100, output: [], steps: [], workingDirectory: "/", createdAt: Date.now() } }),
-      createMockTask({ id: "4", metadata: { status: "failed", progress: 0, output: [], steps: [], workingDirectory: "/", createdAt: Date.now() } }),
-      createMockTask({ id: "5", metadata: { status: "pending", progress: 0, output: [], steps: [], workingDirectory: "/", createdAt: Date.now() } }),
+      createMockTask({
+        id: "1",
+        metadata: {
+          status: "running",
+          progress: 50,
+          output: [],
+          steps: [],
+          workingDirectory: "/",
+          createdAt: Date.now(),
+        },
+      }),
+      createMockTask({
+        id: "2",
+        metadata: {
+          status: "running",
+          progress: 30,
+          output: [],
+          steps: [],
+          workingDirectory: "/",
+          createdAt: Date.now(),
+        },
+      }),
+      createMockTask({
+        id: "3",
+        metadata: {
+          status: "completed",
+          progress: 100,
+          output: [],
+          steps: [],
+          workingDirectory: "/",
+          createdAt: Date.now(),
+        },
+      }),
+      createMockTask({
+        id: "4",
+        metadata: {
+          status: "failed",
+          progress: 0,
+          output: [],
+          steps: [],
+          workingDirectory: "/",
+          createdAt: Date.now(),
+        },
+      }),
+      createMockTask({
+        id: "5",
+        metadata: {
+          status: "pending",
+          progress: 0,
+          output: [],
+          steps: [],
+          workingDirectory: "/",
+          createdAt: Date.now(),
+        },
+      }),
     ]);
 
     const state = useStore.getState();
@@ -461,4 +524,3 @@ describe("Session State", () => {
     expect(state.rooms).toEqual(initialRooms);
   });
 });
-

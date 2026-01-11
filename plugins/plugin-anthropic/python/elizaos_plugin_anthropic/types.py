@@ -35,7 +35,7 @@ class ContentBlock(BaseModel):
     type: str
 
     @classmethod
-    def create_text(cls, content: str) -> "TextContentBlock":
+    def create_text(cls, content: str) -> TextContentBlock:
         """Create a text content block."""
         return TextContentBlock(type="text", text_content=content)
 
@@ -99,12 +99,12 @@ class Message(BaseModel):
     content: list[ContentBlock]
 
     @classmethod
-    def user(cls, text: str) -> "Message":
+    def user(cls, text: str) -> Message:
         """Create a user message with text content."""
         return cls(role=Role.USER, content=[ContentBlock.create_text(text)])
 
     @classmethod
-    def assistant(cls, text: str) -> "Message":
+    def assistant(cls, text: str) -> Message:
         """Create an assistant message with text content."""
         return cls(role=Role.ASSISTANT, content=[ContentBlock.create_text(text)])
 
@@ -140,19 +140,19 @@ class TextGenerationParams(BaseModel):
     stop_sequences: list[str] | None = None
     thinking_budget: int | None = None
 
-    def with_system(self, system: str) -> "TextGenerationParams":
+    def with_system(self, system: str) -> TextGenerationParams:
         """Set the system prompt."""
         return self.model_copy(update={"system": system})
 
-    def with_max_tokens(self, max_tokens: int) -> "TextGenerationParams":
+    def with_max_tokens(self, max_tokens: int) -> TextGenerationParams:
         """Set max tokens."""
         return self.model_copy(update={"max_tokens": max_tokens})
 
-    def with_temperature(self, temperature: float) -> "TextGenerationParams":
+    def with_temperature(self, temperature: float) -> TextGenerationParams:
         """Set temperature (clears top_p since they're mutually exclusive)."""
         return self.model_copy(update={"temperature": temperature, "top_p": None})
 
-    def with_top_p(self, top_p: float) -> "TextGenerationParams":
+    def with_top_p(self, top_p: float) -> TextGenerationParams:
         """Set top_p (clears temperature since they're mutually exclusive)."""
         return self.model_copy(update={"top_p": top_p, "temperature": None})
 
@@ -176,15 +176,15 @@ class ObjectGenerationParams(BaseModel):
     temperature: float | None = Field(default=0.2)  # Lower default for structured output
     max_tokens: int | None = None
 
-    def with_system(self, system: str) -> "ObjectGenerationParams":
+    def with_system(self, system: str) -> ObjectGenerationParams:
         """Set the system prompt."""
         return self.model_copy(update={"system": system})
 
-    def with_schema(self, json_schema: dict[str, Any]) -> "ObjectGenerationParams":
+    def with_schema(self, json_schema: dict[str, Any]) -> ObjectGenerationParams:
         """Set a JSON schema."""
         return self.model_copy(update={"json_schema": json_schema})
 
-    def with_temperature(self, temperature: float) -> "ObjectGenerationParams":
+    def with_temperature(self, temperature: float) -> ObjectGenerationParams:
         """Set temperature."""
         return self.model_copy(update={"temperature": temperature})
 
@@ -259,4 +259,3 @@ class ErrorResponse(BaseModel):
 
     type: str
     error: ErrorDetail
-

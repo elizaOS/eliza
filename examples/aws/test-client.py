@@ -81,17 +81,14 @@ def send_message(
 
 def check_health(client: httpx.Client, base_endpoint: str) -> bool:
     """Check API health."""
-    try:
-        health_endpoint = base_endpoint.replace("/chat", "/health").rstrip("/")
-        response = client.get(health_endpoint, timeout=10.0)
+    health_endpoint = base_endpoint.replace("/chat", "/health").rstrip("/")
+    response = client.get(health_endpoint, timeout=10.0)
 
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✅ Connected to {data.get('runtime', 'unknown')} runtime (v{data.get('version', '?')})\n")
-            return True
-        return False
-    except Exception:
-        return False
+    if response.status_code == 200:
+        data = response.json()
+        print(f"✅ Connected to {data.get('runtime', 'unknown')} runtime (v{data.get('version', '?')})\n")
+        return True
+    return False
 
 
 def main() -> None:
@@ -132,18 +129,15 @@ def main() -> None:
             if not text:
                 continue
 
-            try:
-                print("Eliza: ", end="", flush=True)
-                start = time.time()
-                response = send_message(client, endpoint, text, conversation_id)
-                duration = int((time.time() - start) * 1000)
+            print("Eliza: ", end="", flush=True)
+            start = time.time()
+            response = send_message(client, endpoint, text, conversation_id)
+            duration = int((time.time() - start) * 1000)
 
-                print(response["response"])
-                print(f"\n  [{duration}ms | {response['conversationId'][:8]}...]\n")
+            print(response["response"])
+            print(f"\n  [{duration}ms | {response['conversationId'][:8]}...]\n")
 
-                conversation_id = response["conversationId"]
-            except Exception as e:
-                print(f"\n❌ Error: {e}\n")
+            conversation_id = response["conversationId"]
 
 
 if __name__ == "__main__":

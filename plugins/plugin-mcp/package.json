@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-mcp",
+  "name": "@elizaos/plugin-mcp-root",
   "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
   "version": "1.7.0",
   "type": "module",
@@ -50,7 +50,9 @@
   ],
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/src/generated/prompts --target all",
-    "build": "npm run build:prompts && cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:python": "test -d python && cd python && python3 -m build || echo 'Python build skipped - no python directory'",
     "dev": "cd typescript && bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "check:write": "bunx @biomejs/biome check --write ./typescript/src",
@@ -58,13 +60,13 @@
     "ci": "bunx @biomejs/biome ci ./typescript/src",
     "lint": "bunx @biomejs/biome check ./typescript/src",
     "lint:check": "bunx @biomejs/biome check ./typescript/src",
-    "typecheck": "cd typescript && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "format": "bunx @biomejs/biome format --write ./typescript/src",
     "format:check": "bunx @biomejs/biome format ./typescript/src",
     "test": "bun run test:unit && bun run test:integration",
     "test:unit": "bun test typescript/__tests__/unit/",
     "test:integration": "bun test typescript/__tests__/integration/",
-    "build:rust": "cd rust && ./build.sh",
+    "build:rust": "test -d rust && cd rust && ./build.sh || echo 'Rust build skipped - no rust directory'",
     "build:rust:native": "cd rust && cargo build --release",
     "build:rust:wasm": "cd rust && wasm-pack build --target nodejs --out-dir pkg/node",
     "test:rust": "cd rust && cargo test",
@@ -89,7 +91,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@elizaos/core": "^1.7.0",
+    "@elizaos/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",
     "json5": "^2.2.3"

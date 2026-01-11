@@ -5,7 +5,7 @@ Rust implementation of the elizaOS TEE Plugin for Trusted Execution Environment 
 ## Features
 
 - 🔐 **Remote Attestation** - Prove agent execution in TEE
-- 🔑 **Key Derivation** - Secure Ed25519 and ECDSA key derivation  
+- 🔑 **Key Derivation** - Secure Ed25519 and ECDSA key derivation
 - 🛡️ **Vendor Support** - Extensible vendor system (Phala Network)
 - ⚡ **Async** - Full async/await support with Tokio
 - 🔒 **Type Safe** - Strong Rust types with no unsafe code
@@ -51,11 +51,11 @@ async fn main() -> anyhow::Result<()> {
 
 ## Configuration
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `TEE_MODE` | Operation mode: `LOCAL`, `DOCKER`, `PRODUCTION` | Yes |
-| `WALLET_SECRET_SALT` | Secret for key derivation | Yes |
-| `TEE_VENDOR` | Vendor name (default: `phala`) | No |
+| Variable             | Description                                     | Required |
+| -------------------- | ----------------------------------------------- | -------- |
+| `TEE_MODE`           | Operation mode: `LOCAL`, `DOCKER`, `PRODUCTION` | Yes      |
+| `WALLET_SECRET_SALT` | Secret for key derivation                       | Yes      |
+| `TEE_VENDOR`         | Vendor name (default: `phala`)                  | No       |
 
 ## API Reference
 
@@ -127,5 +127,6 @@ cargo clippy --all-targets -- -D warnings
 ## License
 
 MIT
+
 
 

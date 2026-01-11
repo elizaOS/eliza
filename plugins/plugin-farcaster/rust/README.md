@@ -30,15 +30,15 @@ wasm-pack build --target nodejs --out-dir pkg/node
 
 The plugin requires the following environment variables:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `FARCASTER_FID` | Yes | Your Farcaster ID (FID) |
-| `FARCASTER_SIGNER_UUID` | Yes | Neynar signer UUID for signing casts |
-| `FARCASTER_NEYNAR_API_KEY` | Yes | Neynar API key for API access |
-| `FARCASTER_DRY_RUN` | No | Enable dry run mode (default: false) |
-| `FARCASTER_MODE` | No | Operation mode: 'polling' or 'webhook' (default: polling) |
-| `MAX_CAST_LENGTH` | No | Maximum cast length (default: 320) |
-| `FARCASTER_POLL_INTERVAL` | No | Polling interval in seconds (default: 120) |
+| Variable                   | Required | Description                                               |
+| -------------------------- | -------- | --------------------------------------------------------- |
+| `FARCASTER_FID`            | Yes      | Your Farcaster ID (FID)                                   |
+| `FARCASTER_SIGNER_UUID`    | Yes      | Neynar signer UUID for signing casts                      |
+| `FARCASTER_NEYNAR_API_KEY` | Yes      | Neynar API key for API access                             |
+| `FARCASTER_DRY_RUN`        | No       | Enable dry run mode (default: false)                      |
+| `FARCASTER_MODE`           | No       | Operation mode: 'polling' or 'webhook' (default: polling) |
+| `MAX_CAST_LENGTH`          | No       | Maximum cast length (default: 320)                        |
+| `FARCASTER_POLL_INTERVAL`  | No       | Polling interval in seconds (default: 120)                |
 
 ## Usage
 
@@ -49,18 +49,18 @@ use elizaos_plugin_farcaster::{FarcasterClient, FarcasterConfig};
 async fn main() -> anyhow::Result<()> {
     // Load configuration from environment
     let config = FarcasterConfig::from_env()?;
-    
+
     // Create client
     let client = FarcasterClient::new(config)?;
-    
+
     // Send a cast
     let casts = client.send_cast("Hello from elizaOS! 🤖", None).await?;
     println!("Cast sent: {}", casts[0].hash);
-    
+
     // Get profile
     let profile = client.get_profile(config.fid).await?;
     println!("Username: {}", profile.username);
-    
+
     Ok(())
 }
 ```

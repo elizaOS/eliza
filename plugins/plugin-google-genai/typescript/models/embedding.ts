@@ -1,8 +1,8 @@
-import type { IAgentRuntime, TextEmbeddingParams } from '@elizaos/core';
-import { logger, ModelType } from '@elizaos/core';
-import { createGoogleGenAI, getEmbeddingModel } from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
-import { countTokens } from '../utils/tokenization';
+import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { createGoogleGenAI, getEmbeddingModel } from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
+import { countTokens } from "../utils/tokenization";
 
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
@@ -10,7 +10,7 @@ export async function handleTextEmbedding(
 ): Promise<number[]> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
-    throw new Error('Google Generative AI client not initialized');
+    throw new Error("Google Generative AI client not initialized");
   }
 
   const embeddingModelName = getEmbeddingModel(runtime);
@@ -18,7 +18,7 @@ export async function handleTextEmbedding(
 
   // Handle null case for initialization
   if (params === null) {
-    logger.debug('Creating test embedding for initialization');
+    logger.debug("Creating test embedding for initialization");
     // Return 768-dimensional vector for text-embedding-004
     const dimension = 768;
     const testVector = Array(dimension).fill(0) as number[];
@@ -28,12 +28,12 @@ export async function handleTextEmbedding(
 
   // Extract text from params
   let text: string;
-  if (typeof params === 'string') {
+  if (typeof params === "string") {
     text = params;
-  } else if (typeof params === 'object' && params.text) {
+  } else if (typeof params === "object" && params.text) {
     text = params.text;
   } else {
-    logger.warn('Invalid input format for embedding');
+    logger.warn("Invalid input format for embedding");
     const dimension = 768;
     const fallbackVector = Array(dimension).fill(0) as number[];
     fallbackVector[0] = 0.2;
@@ -41,7 +41,7 @@ export async function handleTextEmbedding(
   }
 
   if (!text.trim()) {
-    logger.warn('Empty text for embedding');
+    logger.warn("Empty text for embedding");
     const dimension = 768;
     const emptyVector = Array(dimension).fill(0) as number[];
     emptyVector[0] = 0.3;
@@ -77,5 +77,3 @@ export async function handleTextEmbedding(
     return errorVector;
   }
 }
-
-

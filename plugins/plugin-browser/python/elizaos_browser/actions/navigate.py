@@ -12,13 +12,12 @@ from elizaos_browser.types import ActionResult
 from elizaos_browser.utils.errors import (
     BrowserError,
     NavigationError,
-    ServiceNotAvailableError,
     NoUrlFoundError,
     SecurityError,
     handle_browser_error,
 )
+from elizaos_browser.utils.retry import DEFAULT_RETRY_CONFIGS, retry_with_backoff
 from elizaos_browser.utils.security import default_url_validator, validate_secure_action
-from elizaos_browser.utils.retry import retry_with_backoff, DEFAULT_RETRY_CONFIGS
 from elizaos_browser.utils.url import extract_url
 
 logger = logging.getLogger(__name__)
@@ -29,9 +28,7 @@ NAVIGATE_ACTION = {
     "name": "BROWSER_NAVIGATE",
     "similes": ["GO_TO_URL", "OPEN_WEBSITE", "VISIT_PAGE", "NAVIGATE_TO"],
     "description": "Navigate the browser to a specified URL",
-    "examples": [
-        {"user": "Go to google.com", "agent": "I've navigated to https://google.com."}
-    ],
+    "examples": [{"user": "Go to google.com", "agent": "I've navigated to https://google.com."}],
 }
 
 
@@ -78,10 +75,13 @@ async def browser_navigate(
         if not session:
             session = await service.get_or_create_session()
 
+        # url is guaranteed to be str at this point due to the check above
+        assert url is not None
+        target_url: str = url
         result = await retry_with_backoff(
-            lambda: service.get_client().navigate(session.id, url),
+            lambda: service.get_client().navigate(session.id, target_url),
             DEFAULT_RETRY_CONFIGS["navigation"],
-            f"navigate to {url}",
+            f"navigate to {target_url}",
         )
 
         response_text = f'I\'ve navigated to {url}. The page title is: "{result.title}"'
@@ -110,12 +110,10 @@ async def browser_navigate(
     except Exception as e:
         logger.error(f"Error in BROWSER_NAVIGATE action: {e}")
         url = extract_url(message)
-        error = NavigationError(url or "the requested page", e)
-        handle_browser_error(error, callback)
+        browser_error: BrowserError = NavigationError(url or "the requested page", e)
+        handle_browser_error(browser_error, callback)
         return ActionResult(
             success=False,
             error=str(e),
             data={"actionName": "BROWSER_NAVIGATE", "url": url or "unknown"},
         )
-
-

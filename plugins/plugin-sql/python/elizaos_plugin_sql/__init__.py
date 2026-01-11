@@ -51,4 +51,3 @@ __all__ = [
     # Plugin
     "sql_plugin",
 ]
-

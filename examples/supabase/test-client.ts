@@ -2,14 +2,14 @@
 
 /**
  * Test client for elizaOS Supabase Edge Functions
- * 
+ *
  * Usage:
  *   # Test local function
  *   deno run --allow-net --allow-env test-client.ts
- *   
+ *
  *   # Test deployed function
  *   deno run --allow-net --allow-env test-client.ts --endpoint https://your-project.supabase.co/functions/v1/eliza-chat
- *   
+ *
  *   # Interactive mode
  *   deno run --allow-net --allow-env test-client.ts --interactive
  */
@@ -26,8 +26,10 @@ interface Config {
 
 function parseArgs(): Config {
   const args = Deno.args;
-  
-  let endpoint = Deno.env.get("SUPABASE_FUNCTION_URL") ?? "http://localhost:54321/functions/v1/eliza-chat";
+
+  let endpoint =
+    Deno.env.get("SUPABASE_FUNCTION_URL") ??
+    "http://localhost:54321/functions/v1/eliza-chat";
   let authToken = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   let interactive = false;
 
@@ -106,16 +108,16 @@ async function sendRequest<T>(
   config: Config,
   method: string,
   path: string,
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
 ): Promise<{ status: number; data: T }> {
   const url = `${config.endpoint}${path}`;
-  
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  
+
   if (config.authToken) {
-    headers["Authorization"] = `Bearer ${config.authToken}`;
+    headers.Authorization = `Bearer ${config.authToken}`;
   }
 
   const response = await fetch(url, {
@@ -124,20 +126,32 @@ async function sendRequest<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const data = await response.json() as T;
+  const data = (await response.json()) as T;
   return { status: response.status, data };
 }
 
 async function healthCheck(config: Config): Promise<HealthResponse> {
-  const { status, data } = await sendRequest<HealthResponse>(config, "GET", "/health");
+  const { status, data } = await sendRequest<HealthResponse>(
+    config,
+    "GET",
+    "/health",
+  );
   if (status !== 200) {
     throw new Error(`Health check failed with status ${status}`);
   }
   return data;
 }
 
-async function sendMessage(config: Config, request: ChatRequest): Promise<ChatResponse> {
-  const { status, data } = await sendRequest<ChatResponse>(config, "POST", "", request);
+async function sendMessage(
+  config: Config,
+  request: ChatRequest,
+): Promise<ChatResponse> {
+  const { status, data } = await sendRequest<ChatResponse>(
+    config,
+    "POST",
+    "",
+    request,
+  );
   if (status !== 200) {
     const error = data as unknown as { error: string };
     throw new Error(error.error ?? `Request failed with status ${status}`);
@@ -152,7 +166,9 @@ async function sendMessage(config: Config, request: ChatRequest): Promise<ChatRe
 async function runTests(config: Config): Promise<void> {
   console.log("🧪 Testing elizaOS Supabase Edge Function\n");
   console.log(`   Endpoint: ${config.endpoint}`);
-  console.log(`   Auth: ${config.authToken ? "✓ Token provided" : "✗ No token"}\n`);
+  console.log(
+    `   Auth: ${config.authToken ? "✓ Token provided" : "✗ No token"}\n`,
+  );
 
   let passed = 0;
   let failed = 0;
@@ -196,8 +212,13 @@ async function runTests(config: Config): Promise<void> {
     console.error("   ❌ Should have rejected empty message");
     failed++;
   } catch (error) {
-    if (String(error).includes("required") || String(error).includes("non-empty")) {
-      console.log("   ✅ Validation passed (correctly rejected empty message)\n");
+    if (
+      String(error).includes("required") ||
+      String(error).includes("non-empty")
+    ) {
+      console.log(
+        "   ✅ Validation passed (correctly rejected empty message)\n",
+      );
       passed++;
     } else {
       console.error(`   ❌ Unexpected error: ${error}`);
@@ -212,13 +233,15 @@ async function runTests(config: Config): Promise<void> {
       message: "Remember the number 42.",
     });
     const convId = response1.conversationId;
-    
+
     const response2 = await sendMessage(config, {
       message: "What number did I mention?",
       conversationId: convId,
     });
-    
-    console.log(`   Conversation ID preserved: ${response2.conversationId === convId}`);
+
+    console.log(
+      `   Conversation ID preserved: ${response2.conversationId === convId}`,
+    );
     console.log("   ✅ Conversation tracking passed\n");
     passed++;
   } catch (error) {
@@ -229,9 +252,11 @@ async function runTests(config: Config): Promise<void> {
   // Summary
   console.log("─".repeat(50));
   console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
-  
+
   if (failed > 0) {
-    console.log("\n⚠️  Some tests failed. Check your configuration and try again.");
+    console.log(
+      "\n⚠️  Some tests failed. Check your configuration and try again.",
+    );
     Deno.exit(1);
   } else {
     console.log("\n🎉 All tests passed!");
@@ -254,19 +279,19 @@ async function interactiveMode(config: Config): Promise<void> {
   while (true) {
     // Prompt
     await Deno.stdout.write(encoder.encode("You: "));
-    
+
     // Read input
     const buf = new Uint8Array(1024);
     const n = await Deno.stdin.read(buf);
     if (n === null) break;
-    
+
     const input = decoder.decode(buf.subarray(0, n)).trim();
-    
+
     if (input === "exit" || input === "quit") {
       console.log("\nGoodbye! 👋");
       break;
     }
-    
+
     if (!input) continue;
 
     try {
@@ -274,7 +299,7 @@ async function interactiveMode(config: Config): Promise<void> {
         message: input,
         conversationId,
       });
-      
+
       conversationId = response.conversationId;
       console.log(`\nEliza: ${response.response}\n`);
     } catch (error) {
@@ -301,8 +326,4 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   Deno.exit(1);
 });
-
-
-
-
 

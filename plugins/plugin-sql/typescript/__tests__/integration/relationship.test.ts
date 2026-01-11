@@ -1,13 +1,6 @@
-import { 
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
- } from "vitest";
 import type { AgentRuntime, Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { relationshipTable } from "../../schema";
@@ -72,7 +65,7 @@ describe("Relationship Integration Tests", () => {
         targetEntityId: testTargetEntityId,
       });
       expect(retrieved).toBeDefined();
-      expect(retrieved && retrieved.tags).toContain("friend");
+      expect(retrieved?.tags).toContain("friend");
     });
 
     it("should update an existing relationship", async () => {
@@ -100,8 +93,10 @@ describe("Relationship Integration Tests", () => {
         sourceEntityId: testEntityId,
         targetEntityId: testTargetEntityId,
       });
-      expect(updatedRetrieved && updatedRetrieved.tags).toContain("best_friend");
-      expect(updatedRetrieved && updatedRetrieved.metadata).toEqual({ since: "2023" });
+      expect(updatedRetrieved?.tags).toContain("best_friend");
+      expect(updatedRetrieved?.metadata).toEqual({
+        since: "2023",
+      });
     });
 
     it("should retrieve relationships by entity ID and tags", async () => {

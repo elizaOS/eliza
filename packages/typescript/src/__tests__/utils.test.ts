@@ -1,11 +1,12 @@
-import { afterEach,
+import {
+  afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  vi,
   setSystemTime,
-  vi } from "vitest";
+  vi,
+} from "vitest";
 import {
   type Content,
   type DetokenizeTextParams,
@@ -480,8 +481,8 @@ describe("Utils Comprehensive Tests", () => {
       const result = parseKeyValueXml(xml);
       // Ensure we did not truncate at the inner </text>
       expect(result).not.toBeNull();
-      expect(result && result.text).toContain("outer");
-      expect(result && result.text).toContain("<text>inner</text>");
+      expect(result?.text).toContain("outer");
+      expect(result?.text).toContain("<text>inner</text>");
     });
 
     it("should treat self-closing tags with whitespace as self-closing and skip them", () => {

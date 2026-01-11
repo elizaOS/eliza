@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ============================================================================
 # Enums
 # ============================================================================
@@ -162,9 +161,7 @@ class TextGenerationParams(BaseModel):
     system: str | None = Field(default=None, description="System message for the model")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Temperature for sampling")
     max_tokens: int | None = Field(default=None, ge=1, description="Maximum output tokens")
-    frequency_penalty: float = Field(
-        default=0.0, ge=-2.0, le=2.0, description="Frequency penalty"
-    )
+    frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0, description="Frequency penalty")
     presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0, description="Presence penalty")
     stop: list[str] | None = Field(default=None, description="Stop sequences")
     stream: bool = Field(default=False, description="Whether to stream the response")
@@ -201,7 +198,11 @@ class TokenUsage(BaseModel):
     """Token usage statistics."""
 
     prompt_tokens: int = Field(..., ge=0, description="Number of prompt tokens")
-    completion_tokens: int = Field(default=0, ge=0, description="Number of completion tokens (not present in embedding responses)")
+    completion_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Number of completion tokens (not present in embedding responses)",
+    )
     total_tokens: int = Field(..., ge=0, description="Total tokens used")
 
 
@@ -315,4 +316,3 @@ class OpenAIConfig(BaseModel):
         if not v.startswith("sk-"):
             raise ValueError("API key must start with 'sk-'")
         return v
-

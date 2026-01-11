@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from elizaos_plugin_github.types import CreateIssueParams, GitHubIssue
+from elizaos_plugin_github.types import CreateIssueParams
 
 
 class ActionContext(Protocol):
@@ -27,9 +27,7 @@ class ActionResult:
         self.data = data or {}
 
     @classmethod
-    def success_result(
-        cls, message: str, data: dict[str, object] | None = None
-    ) -> "ActionResult":
+    def success_result(cls, message: str, data: dict[str, object] | None = None) -> "ActionResult":
         return cls(success=True, message=message, data=data)
 
     @classmethod
@@ -65,13 +63,8 @@ class CreateIssueAction:
         text = ""
         if isinstance(content, dict):
             text = str(content.get("text", "")).lower()
-        
-        return (
-            "issue" in text
-            or "bug" in text
-            or "report" in text
-            or "ticket" in text
-        )
+
+        return "issue" in text or "bug" in text or "report" in text or "ticket" in text
 
     async def handler(
         self,
@@ -108,5 +101,8 @@ class CreateIssueAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create issue: {e}")
+
+
+
 
 

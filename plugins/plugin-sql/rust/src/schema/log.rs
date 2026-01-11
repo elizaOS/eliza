@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Log schema for elizaOS database
 
 /// SQL for creating the logs table

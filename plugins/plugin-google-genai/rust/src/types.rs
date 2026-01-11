@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Core types for the Google GenAI API.
 //!
 //! All types are strongly typed with explicit field requirements.
@@ -170,6 +171,7 @@ pub struct ObjectGenerationParams {
     pub max_tokens: Option<u32>,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for ObjectGenerationParams {
     fn default() -> Self {
         Self {
@@ -366,8 +368,6 @@ pub(crate) struct ErrorResponse {
 /// Error detail from the Google GenAI API.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ErrorDetail {
-    #[allow(dead_code)]
-    pub code: u16,
     pub message: String,
     pub status: String,
 }

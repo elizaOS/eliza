@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from elizaos_plugin_linear.actions.base import (
-    Action,
     ActionExample,
     ActionResult,
     HandlerCallback,
@@ -56,16 +55,18 @@ async def handler(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             raise RuntimeError("Linear service not available")
-        
+
         content = message.get("content", {}).get("text", "")
         if not content:
             error_message = "Please specify which issue to delete."
             if callback:
-                await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+                await callback(
+                    {"text": error_message, "source": message.get("content", {}).get("source")}
+                )
             return {"text": error_message, "success": False}
-        
+
         issue_id: str = ""
-        
+
         # Check if we have issueId in options
         if options and options.get("issueId"):
             issue_id = str(options["issueId"])
@@ -73,46 +74,53 @@ async def handler(
             # Use LLM to extract issue ID
             prompt = DELETE_ISSUE_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
-            
+
             if not response:
                 raise RuntimeError("Failed to extract issue identifier")
-            
+
             try:
                 cleaned = re.sub(r"^```(?:json)?\n?", "", response)
                 cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                 parsed = json.loads(cleaned)
-                
+
                 issue_id = parsed.get("issueId", "")
                 if not issue_id:
                     raise ValueError("Issue ID not found")
-                    
+
             except json.JSONDecodeError:
                 # Fallback to regex
                 logger.warning("Failed to parse LLM response, falling back to regex")
-                
+
                 issue_match = re.search(r"(\w+-\d+)", content)
                 if not issue_match:
                     error_message = "Please specify an issue ID (e.g., ENG-123) to delete."
                     if callback:
-                        await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+                        await callback(
+                            {
+                                "text": error_message,
+                                "source": message.get("content", {}).get("source"),
+                            }
+                        )
                     return {"text": error_message, "success": False}
-                
+
                 issue_id = issue_match.group(1)
-        
+
         # Get issue details before deletion
         issue = await linear_service.get_issue(issue_id)
         issue_title = issue.get("title", "Unknown")
         issue_identifier = issue.get("identifier", issue_id)
-        
+
         logger.info(f"Archiving issue {issue_identifier}: {issue_title}")
-        
+
         # Archive the issue
         await linear_service.delete_issue(issue_id)
-        
+
         success_message = f'✅ Successfully archived issue {issue_identifier}: "{issue_title}"\n\nThe issue has been moved to the archived state.'
         if callback:
-            await callback({"text": success_message, "source": message.get("content", {}).get("source")})
-        
+            await callback(
+                {"text": success_message, "source": message.get("content", {}).get("source")}
+            )
+
         return {
             "text": f'Archived issue {issue_identifier}: "{issue_title}"',
             "success": True,
@@ -123,12 +131,14 @@ async def handler(
                 "archived": True,
             },
         }
-        
+
     except Exception as error:
         logger.error(f"Failed to delete issue: {error}")
         error_message = f"❌ Failed to delete issue: {error}"
         if callback:
-            await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+            await callback(
+                {"text": error_message, "source": message.get("content", {}).get("source")}
+            )
         return {"text": error_message, "success": False}
 
 
@@ -139,11 +149,20 @@ delete_issue_action = create_action(
     examples=[
         [
             ActionExample(name="User", content={"text": "Delete issue ENG-123"}),
-            ActionExample(name="Assistant", content={"text": "I'll archive issue ENG-123 for you.", "actions": ["DELETE_LINEAR_ISSUE"]}),
+            ActionExample(
+                name="Assistant",
+                content={
+                    "text": "I'll archive issue ENG-123 for you.",
+                    "actions": ["DELETE_LINEAR_ISSUE"],
+                },
+            ),
         ],
     ],
     validate=validate,
     handler=handler,
 )
+
+
+
 
 

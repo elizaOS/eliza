@@ -1,9 +1,9 @@
-import {  describe, expect, it  } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  type CapabilityConfig,
-  bootstrapPlugin,
-  createBootstrapPlugin,
   basicCapabilities,
+  bootstrapPlugin,
+  type CapabilityConfig,
+  createBootstrapPlugin,
   extendedCapabilities,
 } from "../index";
 
@@ -86,7 +86,7 @@ describe("Capability System", () => {
       // Should only have extended capabilities
       expect(plugin.actions).toHaveLength(extendedCapabilities.actions.length);
       expect(plugin.providers).toHaveLength(
-        extendedCapabilities.providers.length
+        extendedCapabilities.providers.length,
       );
 
       // Should NOT have basic actions
@@ -104,23 +104,23 @@ describe("Capability System", () => {
     it("should be configured with basic capabilities only", () => {
       expect(bootstrapPlugin.name).toBe("bootstrap");
       expect(bootstrapPlugin.actions).toHaveLength(
-        basicCapabilities.actions.length
+        basicCapabilities.actions.length,
       );
       expect(bootstrapPlugin.providers).toHaveLength(
-        basicCapabilities.providers.length
+        basicCapabilities.providers.length,
       );
       expect(bootstrapPlugin.evaluators).toHaveLength(
-        basicCapabilities.evaluators.length
+        basicCapabilities.evaluators.length,
       );
       expect(bootstrapPlugin.services).toHaveLength(
-        basicCapabilities.services.length
+        basicCapabilities.services.length,
       );
     });
 
     it("should have events regardless of capability settings", () => {
       expect(bootstrapPlugin.events).toBeDefined();
       expect(Object.keys(bootstrapPlugin.events || {}).length).toBeGreaterThan(
-        0
+        0,
       );
     });
   });
@@ -184,4 +184,3 @@ describe("Capability System", () => {
     });
   });
 });
-

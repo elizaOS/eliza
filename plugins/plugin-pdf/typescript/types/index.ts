@@ -81,5 +81,3 @@ export interface PdfDocumentInfo {
   /** Per-page information */
   pages: PdfPageInfo[];
 }
-
-

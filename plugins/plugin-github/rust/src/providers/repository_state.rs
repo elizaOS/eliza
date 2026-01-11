@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Repository State Provider
 
 use serde_json::json;
@@ -74,5 +75,10 @@ impl GitHubProvider for RepositoryStateProvider {
         })
     }
 }
+
+
+
+
+
 
 

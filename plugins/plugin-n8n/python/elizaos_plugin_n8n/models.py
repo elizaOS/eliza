@@ -14,7 +14,7 @@ class ClaudeModel(str, Enum):
     OPUS_3 = "claude-3-opus-20240229"
 
     @classmethod
-    def default(cls) -> "ClaudeModel":
+    def default(cls) -> ClaudeModel:
         """Get the default model."""
         return cls.OPUS_3
 
@@ -46,5 +46,8 @@ class JobStatus(str, Enum):
     def is_terminal(self) -> bool:
         """Check if job has reached a terminal state."""
         return self in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+
+
+
 
 

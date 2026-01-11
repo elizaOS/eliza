@@ -17,7 +17,7 @@ from elizaos_plugin_n8n import N8nConfig, PluginCreationClient, PluginSpecificat
 async def main():
     # Create configuration from environment
     config = N8nConfig.from_env()
-    
+
     # Create client
     async with PluginCreationClient(config) as client:
         # Define plugin specification
@@ -31,11 +31,11 @@ async def main():
                 }
             ],
         )
-        
+
         # Create plugin
         job_id = await client.create_plugin(spec)
         print(f"Job started: {job_id}")
-        
+
         # Check status
         job = client.get_job_status(job_id)
         print(f"Status: {job.status}")
@@ -138,5 +138,6 @@ ruff format .
 ## License
 
 MIT
+
 
 

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Order placement actions for Polymarket
 
 use rust_decimal::Decimal;
@@ -229,5 +230,10 @@ mod tests {
         assert_eq!(params.order_type, OrderType::Fok);
     }
 }
+
+
+
+
+
 
 

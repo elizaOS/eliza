@@ -5,13 +5,13 @@
  * can be loaded and executed correctly across runtimes.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { loadPythonPlugin, stopPythonPlugin } from "../python-bridge";
 import type { Plugin } from "@elizaos/core";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stopPythonPlugin } from "../python-bridge";
 
 describe("Cross-Language Plugin Interop", () => {
   describe("Python Plugin Loading", () => {
-    let pythonPlugin: Plugin | null = null;
+    const pythonPlugin: Plugin | null = null;
 
     beforeAll(async () => {
       // Skip if Python is not available
@@ -73,7 +73,12 @@ describe("Cross-Language Plugin Interop", () => {
         type: "action.invoke",
         id: "test-123",
         action: "TEST_ACTION",
-        memory: { id: "mem-1", entityId: "entity-1", roomId: "room-1", content: { text: "test" } },
+        memory: {
+          id: "mem-1",
+          entityId: "entity-1",
+          roomId: "room-1",
+          content: { text: "test" },
+        },
         state: null,
         options: null,
       };
@@ -316,10 +321,10 @@ describe("ELIZA Classic Cross-Language Parity", () => {
     };
 
     // Verify reflection pairs
-    expect(reflections["i"]).toBe("you");
-    expect(reflections["my"]).toBe("your");
-    expect(reflections["you"]).toBe("me");
-    expect(reflections["me"]).toBe("you");
+    expect(reflections.i).toBe("you");
+    expect(reflections.my).toBe("your");
+    expect(reflections.you).toBe("me");
+    expect(reflections.me).toBe("you");
   });
 
   it("should have consistent default responses", () => {

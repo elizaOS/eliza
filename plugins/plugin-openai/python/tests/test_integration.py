@@ -168,9 +168,8 @@ class TestAudio:
         assert isinstance(audio_data, bytes)
         assert len(audio_data) > 1000  # Should be at least 1KB for a short phrase
         # MP3 files can start with ID3 tag or frame sync (0xFF with high bits set)
-        is_valid_mp3 = (
-            audio_data[:3] == b"ID3"
-            or (len(audio_data) >= 2 and audio_data[0] == 0xFF and (audio_data[1] & 0xE0) == 0xE0)
+        is_valid_mp3 = audio_data[:3] == b"ID3" or (
+            len(audio_data) >= 2 and audio_data[0] == 0xFF and (audio_data[1] & 0xE0) == 0xE0
         )
         assert is_valid_mp3, "Should be valid MP3 audio data"
 
@@ -192,4 +191,3 @@ class TestAudio:
         # Should contain expected words from the original text
         lower = transcription.lower()
         assert "hello" in lower or "test" in lower or "transcription" in lower
-

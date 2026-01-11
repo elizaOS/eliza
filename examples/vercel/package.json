@@ -21,14 +21,13 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "uuid": "^11.1.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.15.21",
-    "@types/uuid": "^10.0.0",
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
     "@vercel/node": "^5.1.8",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.3",
     "vercel": "^41.7.3"
   }
 }
-

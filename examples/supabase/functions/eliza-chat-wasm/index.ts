@@ -49,7 +49,8 @@ interface ErrorResponse {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -59,7 +60,11 @@ const corsHeaders = {
 
 interface WasmModule {
   parse_chat_request: (json: string) => unknown;
-  build_openai_request: (message: string, system: string, model: string) => string;
+  build_openai_request: (
+    message: string,
+    system: string,
+    model: string,
+  ) => string;
   generate_conversation_id: () => string;
   create_chat_response: (response: string, convId: string) => string;
   create_health_response: () => string;
@@ -68,27 +73,25 @@ interface WasmModule {
   extract_openai_response: (json: string) => string;
 }
 
-let wasmModule: WasmModule | null = null;
+const wasmModule: WasmModule | null = null;
 let wasmInitPromise: Promise<void> | null = null;
 
 async function initWasm(): Promise<WasmModule | null> {
   if (wasmModule) return wasmModule;
-  
+
   if (wasmInitPromise) {
     await wasmInitPromise;
     return wasmModule;
   }
 
   wasmInitPromise = (async () => {
-    try {
-      // Try to import the WASM module
-      // In production, this would be: const wasm = await import("./wasm/eliza_chat_wasm.js");
-      // await wasm.default();
-      // wasmModule = wasm;
-      console.log("[elizaOS-WASM] WASM module not built, using TypeScript fallback");
-    } catch (error) {
-      console.log("[elizaOS-WASM] WASM not available, using TypeScript fallback:", error);
-    }
+    // Try to import the WASM module
+    // In production, this would be: const wasm = await import("./wasm/eliza_chat_wasm.js");
+    // await wasm.default();
+    // wasmModule = wasm;
+    console.log(
+      "[elizaOS-WASM] WASM module not built, using TypeScript fallback",
+    );
   })();
 
   await wasmInitPromise;
@@ -111,7 +114,8 @@ function getCharacter(): { name: string; bio: string; system: string } {
   return {
     name: Deno.env.get("CHARACTER_NAME") ?? "Eliza",
     bio: Deno.env.get("CHARACTER_BIO") ?? "A helpful AI assistant.",
-    system: Deno.env.get("CHARACTER_SYSTEM") ??
+    system:
+      Deno.env.get("CHARACTER_SYSTEM") ??
       "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
   };
 }
@@ -130,7 +134,11 @@ function jsonResponse<T>(data: T, status = 200): Response {
   });
 }
 
-function errorResponse(message: string, status = 400, code = "ERROR"): Response {
+function errorResponse(
+  message: string,
+  status = 400,
+  code = "ERROR",
+): Response {
   const error: ErrorResponse = { error: message, code };
   return jsonResponse(error, status);
 }
@@ -143,15 +151,17 @@ async function handleChat(req: Request): Promise<Response> {
   const wasm = await initWasm();
 
   try {
-    const body = await req.json() as Record<string, unknown>;
-    
+    const body = (await req.json()) as Record<string, unknown>;
+
     // Validate request (use WASM if available)
     let message: string;
     let conversationId: string;
 
     if (wasm) {
       // Use WASM for parsing and validation
-      const parsed = wasm.parse_chat_request(JSON.stringify(body)) as ChatRequest;
+      const parsed = wasm.parse_chat_request(
+        JSON.stringify(body),
+      ) as ChatRequest;
       message = wasm.process_message(parsed.message);
       conversationId = parsed.conversationId ?? wasm.generate_conversation_id();
     } else {
@@ -160,10 +170,13 @@ async function handleChat(req: Request): Promise<Response> {
         throw new Error("Message is required and must be a non-empty string");
       }
       message = processMessage(body.message);
-      conversationId = (body.conversationId as string) ?? generateConversationId();
+      conversationId =
+        (body.conversationId as string) ?? generateConversationId();
     }
 
-    console.log(`[elizaOS-WASM] Processing message for conversation ${conversationId}`);
+    console.log(
+      `[elizaOS-WASM] Processing message for conversation ${conversationId}`,
+    );
 
     // Get character config
     const character = getCharacter();
@@ -177,7 +190,11 @@ async function handleChat(req: Request): Promise<Response> {
     // Build OpenAI request (use WASM if available)
     let openaiRequestBody: string;
     if (wasm) {
-      openaiRequestBody = wasm.build_openai_request(message, character.system, model);
+      openaiRequestBody = wasm.build_openai_request(
+        message,
+        character.system,
+        model,
+      );
     } else {
       openaiRequestBody = JSON.stringify({
         model,
@@ -195,7 +212,7 @@ async function handleChat(req: Request): Promise<Response> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${openaiApiKey}`,
+        Authorization: `Bearer ${openaiApiKey}`,
       },
       body: openaiRequestBody,
     });
@@ -207,13 +224,14 @@ async function handleChat(req: Request): Promise<Response> {
     }
 
     const data = await response.json();
-    
+
     // Extract response (use WASM if available)
     let responseText: string;
     if (wasm) {
       responseText = wasm.extract_openai_response(JSON.stringify(data));
     } else {
-      responseText = data.choices[0]?.message?.content ??
+      responseText =
+        data.choices[0]?.message?.content ??
         "I apologize, but I could not generate a response.";
     }
 
@@ -227,7 +245,8 @@ async function handleChat(req: Request): Promise<Response> {
     console.log("[elizaOS-WASM] Message processed successfully");
     return jsonResponse(chatResponse);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     console.error("[elizaOS-WASM] Chat error:", errorMessage);
 
     if (errorMessage.includes("required") || errorMessage.includes("must be")) {
@@ -269,31 +288,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  try {
-    // Health check endpoint
-    if (path.endsWith("/health") && method === "GET") {
-      return handleHealth();
-    }
-
-    // Root health check
-    if ((path === "/" || path.endsWith("/eliza-chat-wasm")) && method === "GET") {
-      return handleHealth();
-    }
-
-    // Chat endpoint
-    if (method === "POST") {
-      return await handleChat(req);
-    }
-
-    return errorResponse(`Method ${method} not allowed`, 405, "METHOD_NOT_ALLOWED");
-  } catch (error) {
-    console.error("[elizaOS-WASM] Unhandled error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return errorResponse(`Internal server error: ${errorMessage}`, 500, "INTERNAL_ERROR");
+  // Health check endpoint
+  if (path.endsWith("/health") && method === "GET") {
+    return handleHealth();
   }
+
+  // Root health check
+  if ((path === "/" || path.endsWith("/eliza-chat-wasm")) && method === "GET") {
+    return handleHealth();
+  }
+
+  // Chat endpoint
+  if (method === "POST") {
+    return await handleChat(req);
+  }
+
+  return errorResponse(
+    `Method ${method} not allowed`,
+    405,
+    "METHOD_NOT_ALLOWED",
+  );
 });
-
-
-
-
-

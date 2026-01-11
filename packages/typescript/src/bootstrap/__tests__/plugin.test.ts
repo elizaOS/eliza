@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventType, type IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootstrapPlugin } from "../index";
 import { createMockRuntime, type MockRuntime } from "./test-utils";
 

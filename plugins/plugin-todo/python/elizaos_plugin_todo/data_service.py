@@ -3,9 +3,9 @@ Data service for Todo operations.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
+from elizaos_plugin_todo.errors import NotFoundError, ValidationError
 from elizaos_plugin_todo.types import (
     CreateTodoParams,
     Priority,
@@ -15,7 +15,6 @@ from elizaos_plugin_todo.types import (
     TodoMetadata,
     UpdateTodoParams,
 )
-from elizaos_plugin_todo.errors import DatabaseError, NotFoundError, ValidationError
 
 
 class TodoDataService:
@@ -26,7 +25,7 @@ class TodoDataService:
     filtering, tags, and metadata management.
     """
 
-    def __init__(self, db_connection: Optional[object] = None) -> None:
+    def __init__(self, db_connection: object | None = None) -> None:
         """
         Initialize the data service.
 
@@ -88,7 +87,7 @@ class TodoDataService:
 
         return todo_id
 
-    async def get_todo(self, todo_id: UUID) -> Optional[Todo]:
+    async def get_todo(self, todo_id: UUID) -> Todo | None:
         """
         Get a single todo by ID.
 
@@ -103,7 +102,7 @@ class TodoDataService:
             todo.tags = self._tags.get(todo_id, [])
         return todo
 
-    async def get_todos(self, filters: Optional[TodoFilters] = None) -> list[Todo]:
+    async def get_todos(self, filters: TodoFilters | None = None) -> list[Todo]:
         """
         Get todos with optional filters.
 
@@ -130,9 +129,7 @@ class TodoDataService:
                 todos = [t for t in todos if t.is_completed == filters.is_completed]
             if filters.tags:
                 todos = [
-                    t
-                    for t in todos
-                    if any(tag in self._tags.get(t.id, []) for tag in filters.tags)
+                    t for t in todos if any(tag in self._tags.get(t.id, []) for tag in filters.tags)
                 ]
             if filters.limit:
                 todos = todos[: filters.limit]
@@ -246,9 +243,7 @@ class TodoDataService:
 
         return True
 
-    async def get_overdue_todos(
-        self, filters: Optional[TodoFilters] = None
-    ) -> list[Todo]:
+    async def get_overdue_todos(self, filters: TodoFilters | None = None) -> list[Todo]:
         """
         Get overdue tasks.
 
@@ -262,16 +257,12 @@ class TodoDataService:
         todos = await self.get_todos(filters)
 
         overdue = [
-            t
-            for t in todos
-            if not t.is_completed and t.due_date is not None and t.due_date < now
+            t for t in todos if not t.is_completed and t.due_date is not None and t.due_date < now
         ]
 
         return overdue
 
-    async def reset_daily_todos(
-        self, filters: Optional[TodoFilters] = None
-    ) -> int:
+    async def reset_daily_todos(self, filters: TodoFilters | None = None) -> int:
         """
         Reset daily todos for a new day.
 
@@ -309,7 +300,7 @@ class TodoDataService:
         return count
 
 
-def create_todo_data_service(db_connection: Optional[object] = None) -> TodoDataService:
+def create_todo_data_service(db_connection: object | None = None) -> TodoDataService:
     """
     Create a new TodoDataService instance.
 
@@ -320,5 +311,8 @@ def create_todo_data_service(db_connection: Optional[object] = None) -> TodoData
         TodoDataService instance
     """
     return TodoDataService(db_connection)
+
+
+
 
 

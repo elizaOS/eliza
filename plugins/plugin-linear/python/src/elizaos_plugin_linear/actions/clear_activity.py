@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from elizaos_plugin_linear.actions.base import (
-    Action,
     ActionExample,
     ActionResult,
     HandlerCallback,
@@ -43,20 +42,24 @@ async def handler(
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
             raise RuntimeError("Linear service not available")
-        
+
         linear_service.clear_activity_log()
-        
+
         success_message = "✅ Linear activity log has been cleared."
         if callback:
-            await callback({"text": success_message, "source": message.get("content", {}).get("source")})
-        
+            await callback(
+                {"text": success_message, "source": message.get("content", {}).get("source")}
+            )
+
         return {"text": success_message, "success": True}
-        
+
     except Exception as error:
         logger.error(f"Failed to clear Linear activity: {error}")
         error_message = f"❌ Failed to clear Linear activity: {error}"
         if callback:
-            await callback({"text": error_message, "source": message.get("content", {}).get("source")})
+            await callback(
+                {"text": error_message, "source": message.get("content", {}).get("source")}
+            )
         return {"text": error_message, "success": False}
 
 
@@ -67,11 +70,20 @@ clear_activity_action = create_action(
     examples=[
         [
             ActionExample(name="User", content={"text": "Clear the Linear activity log"}),
-            ActionExample(name="Assistant", content={"text": "I'll clear the Linear activity log.", "actions": ["CLEAR_LINEAR_ACTIVITY"]}),
+            ActionExample(
+                name="Assistant",
+                content={
+                    "text": "I'll clear the Linear activity log.",
+                    "actions": ["CLEAR_LINEAR_ACTIVITY"],
+                },
+            ),
         ],
     ],
     validate=validate,
     handler=handler,
 )
+
+
+
 
 

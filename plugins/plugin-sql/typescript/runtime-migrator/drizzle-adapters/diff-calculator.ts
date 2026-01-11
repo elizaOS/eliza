@@ -1,4 +1,12 @@
-import type { SchemaSnapshot } from "../types";
+import type {
+  IndexColumn,
+  SchemaCheckConstraint,
+  SchemaColumn,
+  SchemaForeignKey,
+  SchemaIndex,
+  SchemaSnapshot,
+  SchemaUniqueConstraint,
+} from "../types";
 
 /**
  * Normalize SQL types for comparison
@@ -10,10 +18,7 @@ function normalizeType(type: string | undefined): string {
   const normalized = type.toLowerCase().trim();
 
   // Handle timestamp variations
-  if (
-    normalized === "timestamp without time zone" ||
-    normalized === "timestamp with time zone"
-  ) {
+  if (normalized === "timestamp without time zone" || normalized === "timestamp with time zone") {
     return "timestamp";
   }
 
@@ -56,7 +61,7 @@ function normalizeType(type: string | undefined): string {
  * Helper function to compare two index definitions
  * Returns true if indexes are different and need to be recreated
  */
-function isIndexChanged(prevIndex: any, currIndex: any): boolean {
+function isIndexChanged(prevIndex: SchemaIndex, currIndex: SchemaIndex): boolean {
   // Compare basic properties
   if (prevIndex.isUnique !== currIndex.isUnique) return true;
   if (prevIndex.method !== currIndex.method) return true;
@@ -70,8 +75,8 @@ function isIndexChanged(prevIndex: any, currIndex: any): boolean {
   if (prevColumns.length !== currColumns.length) return true;
 
   for (let i = 0; i < prevColumns.length; i++) {
-    const prevCol = prevColumns[i];
-    const currCol = currColumns[i];
+    const prevCol = prevColumns[i] as string | IndexColumn;
+    const currCol = currColumns[i] as string | IndexColumn;
 
     // Handle both string columns and expression columns
     if (typeof prevCol === "string" && typeof currCol === "string") {
@@ -91,20 +96,42 @@ function isIndexChanged(prevIndex: any, currIndex: any): boolean {
   return false;
 }
 
+// Column changes interface
+export interface ColumnChanges {
+  typeChanged?: boolean;
+  prevType?: string;
+  newType?: string;
+  nullabilityChanged?: boolean;
+  wasNullable?: boolean;
+  isNullable?: boolean;
+  defaultChanged?: boolean;
+  prevDefault?: string | number | boolean;
+  newDefault?: string | number | boolean;
+  from?: SchemaColumn;
+  to?: SchemaColumn;
+}
+
+// Table changes interface
+export interface TableChanges {
+  columnsAdded: string[];
+  columnsDeleted: string[];
+  columnsModified: string[];
+}
+
 export interface SchemaDiff {
   tables: {
     created: string[];
     deleted: string[];
     modified: Array<{
       name: string;
-      changes: any;
+      changes: TableChanges;
     }>;
   };
   columns: {
     added: Array<{
       table: string;
       column: string;
-      definition: any;
+      definition: SchemaColumn;
     }>;
     deleted: Array<{
       table: string;
@@ -113,34 +140,34 @@ export interface SchemaDiff {
     modified: Array<{
       table: string;
       column: string;
-      changes: any;
+      changes: ColumnChanges;
     }>;
   };
   indexes: {
-    created: any[];
-    deleted: any[];
+    created: SchemaIndex[];
+    deleted: SchemaIndex[];
     altered: Array<{
       // Indexes with same name but different definition
-      old: any;
-      new: any;
+      old: SchemaIndex;
+      new: SchemaIndex;
     }>;
   };
   foreignKeys: {
-    created: any[];
-    deleted: any[];
+    created: SchemaForeignKey[];
+    deleted: SchemaForeignKey[];
     altered: Array<{
       // FKs with modified CASCADE behavior
-      old: any;
-      new: any;
+      old: SchemaForeignKey;
+      new: SchemaForeignKey;
     }>;
   };
   uniqueConstraints: {
-    created: any[];
-    deleted: any[];
+    created: SchemaUniqueConstraint[];
+    deleted: SchemaUniqueConstraint[];
   };
   checkConstraints: {
-    created: any[];
-    deleted: any[];
+    created: SchemaCheckConstraint[];
+    deleted: SchemaCheckConstraint[];
   };
 }
 
@@ -149,7 +176,7 @@ export interface SchemaDiff {
  */
 export async function calculateDiff(
   previousSnapshot: SchemaSnapshot | null,
-  currentSnapshot: SchemaSnapshot,
+  currentSnapshot: SchemaSnapshot
 ): Promise<SchemaDiff> {
   const diff: SchemaDiff = {
     tables: {
@@ -196,7 +223,7 @@ export async function calculateDiff(
           diff.indexes.created.push({
             ...table.indexes[indexName],
             table: tableName,
-          });
+          } as SchemaIndex & { table: string });
         }
       }
 
@@ -227,7 +254,7 @@ export async function calculateDiff(
           diff.indexes.created.push({
             ...table.indexes[indexName],
             table: tableName,
-          });
+          } as SchemaIndex & { table: string });
         }
       }
 
@@ -237,7 +264,7 @@ export async function calculateDiff(
           diff.uniqueConstraints.created.push({
             ...table.uniqueConstraints[uqName],
             table: tableName,
-          });
+          } as SchemaUniqueConstraint & { table: string });
         }
       }
 
@@ -247,7 +274,7 @@ export async function calculateDiff(
           diff.checkConstraints.created.push({
             ...table.checkConstraints[checkName],
             table: tableName,
-          });
+          } as SchemaCheckConstraint & { table: string });
         }
       }
 
@@ -329,8 +356,7 @@ export async function calculateDiff(
 
           // Check for changes in column properties
           // Use normalized type comparison
-          const typeChanged =
-            normalizeType(prevCol.type) !== normalizeType(currCol.type);
+          const typeChanged = normalizeType(prevCol.type) !== normalizeType(currCol.type);
           const hasChanges =
             typeChanged ||
             prevCol.notNull !== currCol.notNull ||
@@ -361,7 +387,7 @@ export async function calculateDiff(
           diff.indexes.created.push({
             ...currIndexes[indexName],
             table: tableName,
-          });
+          } as SchemaIndex & { table: string });
         } else {
           // Check if index definition changed
           const prevIndex = prevIndexes[indexName];
@@ -377,12 +403,12 @@ export async function calculateDiff(
                 ...prevIndex,
                 table: tableName,
                 name: indexName,
-              },
+              } as SchemaIndex & { table: string },
               new: {
                 ...currIndex,
                 table: tableName,
                 name: indexName,
-              },
+              } as SchemaIndex & { table: string },
             });
           }
         }
@@ -392,9 +418,9 @@ export async function calculateDiff(
       for (const indexName in prevIndexes) {
         if (!(indexName in currIndexes)) {
           diff.indexes.deleted.push({
-            name: indexName,
+            ...prevIndexes[indexName],
             table: tableName,
-          });
+          } as SchemaIndex & { table: string });
         }
       }
 
@@ -408,7 +434,7 @@ export async function calculateDiff(
           diff.uniqueConstraints.created.push({
             ...currUniqueConstraints[uqName],
             table: tableName,
-          });
+          } as SchemaUniqueConstraint & { table: string });
         }
       }
 
@@ -416,9 +442,9 @@ export async function calculateDiff(
       for (const uqName in prevUniqueConstraints) {
         if (!(uqName in currUniqueConstraints)) {
           diff.uniqueConstraints.deleted.push({
-            name: uqName,
+            ...prevUniqueConstraints[uqName],
             table: tableName,
-          });
+          } as SchemaUniqueConstraint & { table: string });
         }
       }
 
@@ -432,7 +458,7 @@ export async function calculateDiff(
           diff.checkConstraints.created.push({
             ...currCheckConstraints[checkName],
             table: tableName,
-          });
+          } as SchemaCheckConstraint & { table: string });
         }
       }
 
@@ -440,9 +466,9 @@ export async function calculateDiff(
       for (const checkName in prevCheckConstraints) {
         if (!(checkName in currCheckConstraints)) {
           diff.checkConstraints.deleted.push({
-            name: checkName,
+            ...prevCheckConstraints[checkName],
             table: tableName,
-          });
+          } as SchemaCheckConstraint & { table: string });
         }
       }
 
@@ -479,10 +505,11 @@ export async function calculateDiff(
       // Find deleted foreign keys (not altered)
       for (const fkName in prevFKs) {
         if (!(fkName in currFKs)) {
+          const prevFK = prevFKs[fkName];
           diff.foreignKeys.deleted.push({
-            name: fkName,
+            ...prevFK,
             tableFrom: tableName,
-          });
+          } as SchemaForeignKey);
         }
       }
     }

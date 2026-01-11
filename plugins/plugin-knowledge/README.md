@@ -11,9 +11,9 @@ The Knowledge plugin supports multiple deployment modes to fit your use case:
 Perfect for standard deployments with the full web interface:
 
 ```typescript
-import { knowledgePlugin } from '@elizaos/plugin-knowledge';
+import { knowledgePlugin } from "@elizaos/plugin-knowledge";
 // or
-import knowledgePlugin from '@elizaos/plugin-knowledge';
+import knowledgePlugin from "@elizaos/plugin-knowledge";
 
 export const character = {
   plugins: [knowledgePlugin],
@@ -25,7 +25,7 @@ export const character = {
 For server deployments without frontend:
 
 ```typescript
-import { knowledgePluginHeadless } from '@elizaos/plugin-knowledge';
+import { knowledgePluginHeadless } from "@elizaos/plugin-knowledge";
 
 export const character = {
   plugins: [knowledgePluginHeadless],
@@ -37,7 +37,7 @@ export const character = {
 For cloud runtimes or minimal deployments (no routes, no UI, no actions):
 
 ```typescript
-import { knowledgePluginCore } from '@elizaos/plugin-knowledge';
+import { knowledgePluginCore } from "@elizaos/plugin-knowledge";
 
 export const character = {
   plugins: [knowledgePluginCore],
@@ -49,7 +49,7 @@ export const character = {
 Create your own configuration:
 
 ```typescript
-import { createKnowledgePlugin } from '@elizaos/plugin-knowledge';
+import { createKnowledgePlugin } from "@elizaos/plugin-knowledge";
 
 const customPlugin = createKnowledgePlugin({
   enableUI: false, // Disable frontend UI
@@ -72,10 +72,10 @@ The Knowledge plugin works automatically with any ElizaOS agent. Just add it to 
 ```typescript
 // In your character file (e.g., character.ts)
 export const character = {
-  name: 'MyAgent',
+  name: "MyAgent",
   plugins: [
-    '@elizaos/plugin-openai', // ← Make sure you have this
-    '@elizaos/plugin-knowledge', // ← Add this line (full mode)
+    "@elizaos/plugin-openai", // ← Make sure you have this
+    "@elizaos/plugin-knowledge", // ← Add this line (full mode)
     // ... your other plugins
   ],
   // ... rest of your character config
@@ -251,25 +251,27 @@ MAX_OUTPUT_TOKENS=4096             # Response size limit
 ### Programmatic Usage
 
 ```typescript
-import { KnowledgeService } from '@elizaos/plugin-knowledge';
+import { KnowledgeService } from "@elizaos/plugin-knowledge";
 
 // Get the service from runtime
-const knowledgeService = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+const knowledgeService = runtime.getService<KnowledgeService>(
+  KnowledgeService.serviceType,
+);
 
 // Add knowledge programmatically
 const result = await knowledgeService.addKnowledge({
   agentId: runtime.agentId,
-  clientDocumentId: '' as UUID, // Auto-generated based on content
+  clientDocumentId: "" as UUID, // Auto-generated based on content
   content: documentContent, // Base64 for PDFs, plain text for others
-  contentType: 'application/pdf',
-  originalFilename: 'document.pdf',
+  contentType: "application/pdf",
+  originalFilename: "document.pdf",
   worldId: runtime.agentId,
   roomId: runtime.agentId,
   entityId: runtime.agentId,
   metadata: {
     // Optional custom metadata
-    source: 'upload',
-    author: 'John Doe',
+    source: "upload",
+    author: "John Doe",
   },
 });
 
@@ -281,7 +283,7 @@ const knowledgeItems = await knowledgeService.getKnowledge(
     roomId: runtime.agentId,
     worldId: runtime.agentId,
     entityId: runtime.agentId,
-  }
+  },
 );
 ```
 
@@ -290,7 +292,10 @@ const knowledgeItems = await knowledgeService.getKnowledge(
 For cloud deployments or custom runtimes, use the core mode and access the service directly:
 
 ```typescript
-import { knowledgePluginCore, KnowledgeService } from '@elizaos/plugin-knowledge';
+import {
+  knowledgePluginCore,
+  KnowledgeService,
+} from "@elizaos/plugin-knowledge";
 
 // In your cloud runtime setup
 const runtime = await createRuntime({
@@ -299,15 +304,17 @@ const runtime = await createRuntime({
 });
 
 // Access the service
-const knowledgeService = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+const knowledgeService = runtime.getService<KnowledgeService>(
+  KnowledgeService.serviceType,
+);
 
 // Add documents
 await knowledgeService.addKnowledge({
   agentId: runtime.agentId,
-  clientDocumentId: '' as UUID,
+  clientDocumentId: "" as UUID,
   content: base64Content,
-  contentType: 'application/pdf',
-  originalFilename: 'company-docs.pdf',
+  contentType: "application/pdf",
+  originalFilename: "company-docs.pdf",
   worldId: runtime.agentId,
   roomId: runtime.agentId,
   entityId: runtime.agentId,

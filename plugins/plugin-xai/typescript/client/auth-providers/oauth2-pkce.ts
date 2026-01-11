@@ -1,21 +1,16 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
-import type { TokenStore, StoredOAuth2Tokens } from "./token-store";
+import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
+import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
+import type { StoredOAuth2Tokens, TokenStore } from "./token-store";
 import { chooseDefaultTokenStore } from "./token-store";
 import type { TwitterAuthProvider } from "./types";
-import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
-import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
 
 const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
 const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 
-const DEFAULT_SCOPES = [
-  "tweet.read",
-  "tweet.write",
-  "users.read",
-  "offline.access",
-].join(" ");
+const DEFAULT_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"].join(" ");
 
 function nowMs(): number {
   return Date.now();
@@ -40,7 +35,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     private readonly runtime: IAgentRuntime,
     private readonly tokenStore: TokenStore = chooseDefaultTokenStore(runtime),
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly interactiveLoginFn?: () => Promise<StoredOAuth2Tokens>,
+    private readonly interactiveLoginFn?: () => Promise<StoredOAuth2Tokens>
   ) {}
 
   private get clientId(): string {
@@ -70,10 +65,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     await this.tokenStore.save(tokens);
   }
 
-  private buildAuthorizeUrl(opts: {
-    state: string;
-    codeChallenge: string;
-  }): string {
+  private buildAuthorizeUrl(opts: { state: string; codeChallenge: string }): string {
     const url = new URL(AUTHORIZE_URL);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", this.clientId);
@@ -105,9 +97,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(
-        `Twitter token exchange failed (${res.status}): ${JSON.stringify(json)}`,
-      );
+      throw new Error(`Twitter token exchange failed (${res.status}): ${JSON.stringify(json)}`);
     }
 
     const access = json.access_token as string | undefined;
@@ -145,9 +135,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(
-        `Twitter token refresh failed (${res.status}): ${JSON.stringify(json)}`,
-      );
+      throw new Error(`Twitter token refresh failed (${res.status}): ${JSON.stringify(json)}`);
     }
 
     const access = json.access_token as string | undefined;
@@ -189,13 +177,13 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
       code = cb.code;
     } catch (e) {
       logger.warn(
-        `Could not start loopback callback server (will fall back to paste URL): ${e instanceof Error ? e.message : String(e)}`,
+        `Could not start loopback callback server (will fall back to paste URL): ${e instanceof Error ? e.message : String(e)}`
       );
     }
 
     if (!code) {
       const redirected = await promptForRedirectedUrl(
-        "Paste the FULL redirected URL here (it contains ?code=...&state=...): ",
+        "Paste the FULL redirected URL here (it contains ?code=...&state=...): "
       );
       const parsed = new URL(redirected);
       const parsedCode = parsed.searchParams.get("code");
@@ -242,4 +230,3 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
 }
 
 export const OAUTH2_DEFAULT_SCOPES = DEFAULT_SCOPES;
-

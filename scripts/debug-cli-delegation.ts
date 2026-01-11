@@ -234,7 +234,7 @@ function checkProblematicArgs(): string[] {
     problematicArgs.push("update command");
   if (cmdArgs.length > 0 && (cmdArgs[0] === "-v" || cmdArgs[0] === "--version"))
     problematicArgs.push("version command");
-  if (process.argv[1] && process.argv[1].includes("test"))
+  if (process.argv[1]?.includes("test"))
     problematicArgs.push("test in script path");
 
   return problematicArgs;
@@ -259,8 +259,8 @@ function analyzePackageJson(): void {
       console.log(
         `   ${colors.bright}Package type:${colors.reset} ${packageJson.type || "not specified"}`,
       );
-      const hasDependency = packageJson.dependencies && packageJson.dependencies["@elizaos/core"];
-      const hasDevDependency = packageJson.devDependencies && packageJson.devDependencies["@elizaos/core"];
+      const hasDependency = packageJson.dependencies?.["@elizaos/core"];
+      const hasDevDependency = packageJson.devDependencies?.["@elizaos/core"];
       console.log(
         `   ${colors.bright}Has elizaos dependency:${colors.reset} ${hasDependency ? `${colors.green}✅${colors.reset}` : `${colors.red}❌${colors.reset}`}`,
       );

@@ -104,5 +104,3 @@ transfer_action = {
     ],
     "handler": execute_transfer,
 }
-
-

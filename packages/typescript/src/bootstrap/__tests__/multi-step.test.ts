@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type Content,
   type IAgentRuntime,
   type Memory,
   ModelType,
+  type State,
   type UUID,
 } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "./test-utils";
 
 // Mock the internal functions we need to test
@@ -40,7 +41,7 @@ mockStateCache.set("test_action_results", {
 describe("Multi-Step Workflow Functionality", () => {
   let mockRuntime: IAgentRuntime;
   let testMessage: Memory;
-  let testState: any;
+  let testState: State;
 
   beforeEach(() => {
     // Reset all mocks
@@ -135,7 +136,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
       // Mock provider execution
       const mockProvider = mockRuntime.providers.find(
-        (p: any) => p.name === "TEST_PROVIDER",
+        (p) => p.name === "TEST_PROVIDER",
       );
       if (mockProvider) {
         mockProvider.get = vi.fn().mockResolvedValue({
@@ -146,7 +147,7 @@ describe("Multi-Step Workflow Functionality", () => {
 
       // Mock action execution
       const mockAction = mockRuntime.actions.find(
-        (a: any) => a.name === "TEST_ACTION",
+        (a) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
         mockAction.handler = vi.fn().mockResolvedValue(true);
@@ -176,12 +177,12 @@ describe("Multi-Step Workflow Functionality", () => {
     it("should handle provider execution errors gracefully", async () => {
       // Mock provider that throws an error
       const mockProvider = mockRuntime.providers.find(
-        (p: any) => p.name === "TEST_PROVIDER",
+        (p) => p.name === "TEST_PROVIDER",
       );
       if (mockProvider) {
-        mockProvider.get = vi.fn().mockRejectedValue(
-          new Error("Provider failed"),
-        );
+        mockProvider.get = vi
+          .fn()
+          .mockRejectedValue(new Error("Provider failed"));
       }
 
       mockParseKeyValueXml
@@ -224,7 +225,7 @@ describe("Multi-Step Workflow Functionality", () => {
     it("should handle action execution errors gracefully", async () => {
       // Mock action that throws an error
       const mockAction = mockRuntime.actions.find(
-        (a: any) => a.name === "TEST_ACTION",
+        (a) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
         mockAction.handler = vi.fn().mockImplementation(() => {
@@ -349,7 +350,7 @@ describe("Multi-Step Workflow Functionality", () => {
     it("should track action results correctly", async () => {
       // Mock successful action execution
       const mockAction = mockRuntime.actions.find(
-        (a: any) => a.name === "TEST_ACTION",
+        (a) => a.name === "TEST_ACTION",
       );
       if (mockAction) {
         mockAction.handler = vi.fn().mockResolvedValue(true);
@@ -552,11 +553,11 @@ async function runMultiStepCoreTest({
 }: {
   runtime: IAgentRuntime;
   message: Memory;
-  state: any;
-  callback: any;
+  state: State;
+  callback: HandlerCallback;
 }) {
   // Simulate the multi-step workflow for testing
-  const traceActionResult: any[] = [];
+  const traceActionResult: Array<{ success: boolean; text: string }> = [];
   let accumulatedState = state;
   const maxIterations = parseInt(
     runtime.getSetting("MAX_MULTISTEP_ITERATIONS") || "6",
@@ -623,9 +624,7 @@ async function runMultiStepCoreTest({
     try {
       // Execute providers
       for (const providerName of providers) {
-        const provider = runtime.providers.find(
-          (p: any) => p.name === providerName,
-        );
+        const provider = runtime.providers.find((p) => p.name === providerName);
         if (!provider) {
           runtime.logger.warn(
             `[MultiStep] Provider not found: ${providerName}`,

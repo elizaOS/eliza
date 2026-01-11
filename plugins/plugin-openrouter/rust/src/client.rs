@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! OpenRouter API client implementation.
 //!
 //! The client handles HTTP communication with the OpenRouter API,
@@ -391,7 +392,7 @@ impl OpenRouterClient {
                     if depth == 0 {
                         if let Some(s) = start {
                             let candidate = &text[s..=i];
-                            if best.map_or(true, |b| candidate.len() > b.len()) {
+                            if best.is_none_or(|b| candidate.len() > b.len()) {
                                 best = Some(candidate);
                             }
                         }
@@ -445,5 +446,7 @@ mod tests {
         assert_eq!(result.unwrap()["message"], "hello");
     }
 }
+
+
 
 

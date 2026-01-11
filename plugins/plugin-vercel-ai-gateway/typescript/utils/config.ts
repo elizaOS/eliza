@@ -9,10 +9,7 @@ import { DEFAULT_CONFIG } from "../types";
 /**
  * Get a setting from runtime or environment.
  */
-export function getSetting(
-  runtime: IAgentRuntime | undefined,
-  key: string
-): string | undefined {
+export function getSetting(runtime: IAgentRuntime | undefined, key: string): string | undefined {
   if (runtime) {
     const value = runtime.getSetting(key);
     if (value) return String(value);
@@ -30,9 +27,7 @@ export function getApiKey(runtime?: IAgentRuntime): string {
     getSetting(runtime, "VERCEL_OIDC_TOKEN");
 
   if (!apiKey) {
-    throw new Error(
-      "AI_GATEWAY_API_KEY, AIGATEWAY_API_KEY, or VERCEL_OIDC_TOKEN is required"
-    );
+    throw new Error("AI_GATEWAY_API_KEY, AIGATEWAY_API_KEY, or VERCEL_OIDC_TOKEN is required");
   }
 
   return apiKey;
@@ -53,9 +48,7 @@ export function getApiKeyOptional(runtime?: IAgentRuntime): string | undefined {
  * Get the base URL from runtime or environment.
  */
 export function getBaseUrl(runtime?: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "AI_GATEWAY_BASE_URL") || DEFAULT_CONFIG.baseUrl
-  );
+  return getSetting(runtime, "AI_GATEWAY_BASE_URL") || DEFAULT_CONFIG.baseUrl;
 }
 
 /**
@@ -84,10 +77,7 @@ export function getLargeModel(runtime?: IAgentRuntime): string {
  * Get the embedding model from runtime or environment.
  */
 export function getEmbeddingModel(runtime?: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "AI_GATEWAY_EMBEDDING_MODEL") ||
-    DEFAULT_CONFIG.embeddingModel
-  );
+  return getSetting(runtime, "AI_GATEWAY_EMBEDDING_MODEL") || DEFAULT_CONFIG.embeddingModel;
 }
 
 /**
@@ -97,7 +87,7 @@ export function getEmbeddingDimensions(runtime?: IAgentRuntime): number {
   const dims = getSetting(runtime, "AI_GATEWAY_EMBEDDING_DIMENSIONS");
   if (dims) {
     const parsed = parseInt(dims, 10);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
   }
   return DEFAULT_CONFIG.embeddingDimensions;
 }
@@ -106,9 +96,7 @@ export function getEmbeddingDimensions(runtime?: IAgentRuntime): number {
  * Get the image model from runtime or environment.
  */
 export function getImageModel(runtime?: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "AI_GATEWAY_IMAGE_MODEL") || DEFAULT_CONFIG.imageModel
-  );
+  return getSetting(runtime, "AI_GATEWAY_IMAGE_MODEL") || DEFAULT_CONFIG.imageModel;
 }
 
 /**
@@ -118,7 +106,7 @@ export function getTimeoutMs(runtime?: IAgentRuntime): number {
   const timeout = getSetting(runtime, "AI_GATEWAY_TIMEOUT_MS");
   if (timeout) {
     const parsed = parseInt(timeout, 10);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
   }
   return DEFAULT_CONFIG.timeoutMs;
 }
@@ -174,5 +162,3 @@ export function modelSupportsTemperature(model: string): boolean {
   }
   return true;
 }
-
-

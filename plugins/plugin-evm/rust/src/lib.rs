@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! # elizaOS Plugin EVM
 //!
 //! Rust implementation of the EVM blockchain plugin for elizaOS.

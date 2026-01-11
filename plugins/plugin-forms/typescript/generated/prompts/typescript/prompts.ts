@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
- * DO NOT EDIT - Generated from ../../../../prompts/*.txt
- * 
+ * DO NOT EDIT - Generated from ../../../prompts/*.txt
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -58,4 +58,3 @@ Return your response in XML format:
 Be precise and extract only what is explicitly stated.`;
 
 export const FORM_EXTRACTION_TEMPLATE = formExtractionTemplate;
-

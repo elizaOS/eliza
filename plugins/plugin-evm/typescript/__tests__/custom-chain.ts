@@ -1,11 +1,5 @@
 import { defineChain } from "viem";
-import {
-  arbitrumSepolia,
-  baseSepolia,
-  hardhat,
-  optimismSepolia,
-  sepolia,
-} from "viem/chains";
+import { arbitrumSepolia, baseSepolia, hardhat, optimismSepolia, sepolia } from "viem/chains";
 
 // Export the actual testnets we'll use
 export { sepolia, baseSepolia, optimismSepolia, arbitrumSepolia, hardhat };

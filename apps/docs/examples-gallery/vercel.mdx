@@ -1,6 +1,6 @@
 ---
-title: 'Vercel Examples'
-description: 'Deploy elizaOS to Vercel Edge Functions'
+title: "Vercel Examples"
+description: "Deploy elizaOS to Vercel Edge Functions"
 ---
 
 Deploy AI agents to Vercel's global edge network.
@@ -14,10 +14,10 @@ vercel  # Deploy to production
 
 ## Available Implementations
 
-| Language | Directory | Runtime |
-|----------|-----------|---------|
-| TypeScript | `examples/vercel/api/` | Edge Runtime |
-| Python | `examples/vercel/api/python/` | Python |
+| Language   | Directory                     | Runtime      |
+| ---------- | ----------------------------- | ------------ |
+| TypeScript | `examples/vercel/api/`        | Edge Runtime |
+| Python     | `examples/vercel/api/python/` | Python       |
 
 ## Edge Function
 
@@ -87,7 +87,7 @@ export default async function handler(request: Request) {
             controller.enqueue(new TextEncoder().encode(content.text));
           }
           return [];
-        }
+        },
       );
       controller.close();
     },
@@ -105,5 +105,6 @@ export default async function handler(request: Request) {
 - **Global distribution** across 30+ regions
 - **Automatic HTTPS** and custom domains
 - **Built-in analytics** and logging
+
 
 

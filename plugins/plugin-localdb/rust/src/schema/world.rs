@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! World schema for elizaOS database
 
 /// SQL for creating the worlds table

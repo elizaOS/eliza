@@ -2,7 +2,7 @@ name: Update News Files
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Run at midnight UTC daily
+    - cron: "0 0 * * *" # Run at midnight UTC daily
   workflow_dispatch: # Allow manual trigger
 
 jobs:

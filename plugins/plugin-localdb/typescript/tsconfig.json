@@ -5,7 +5,7 @@
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
     "declaration": true,
     "declarationMap": true,
     "noEmit": true,
@@ -18,4 +18,3 @@
   "include": ["./**/*.ts"],
   "exclude": ["__tests__/**", "**/*.test.ts", "dist/**", "build.ts"]
 }
-

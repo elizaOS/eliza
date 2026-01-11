@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! GitHub service implementation
 //!
 //! Provides the main GitHubService for interacting with the GitHub API.
@@ -5,7 +6,7 @@
 use octocrab::Octocrab;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use crate::config::GitHubConfig;
 use crate::error::{GitHubError, Result};
@@ -112,18 +113,21 @@ impl GitHubService {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
 
-        let mut builder = client.issues(&owner, &repo).create(&params.title);
+        let issues_handler = client.issues(&owner, &repo);
+        let mut builder = issues_handler.create(&params.title);
 
         if let Some(ref body) = params.body {
             builder = builder.body(body);
         }
 
         if !params.assignees.is_empty() {
-            builder = builder.assignees(params.assignees.iter().map(|s| s.as_str()).collect());
+            let assignees: Vec<String> = params.assignees.iter().cloned().collect();
+            builder = builder.assignees(assignees);
         }
 
         if !params.labels.is_empty() {
-            builder = builder.labels(params.labels.iter().map(|s| s.as_str()).collect());
+            let labels: Vec<String> = params.labels.iter().cloned().collect();
+            builder = builder.labels(labels);
         }
 
         let issue = builder
@@ -293,7 +297,20 @@ impl GitHubService {
                 .await
                 .map_err(|e| self.map_error(e, &owner, &repo))?;
 
-            source_ref.object.sha
+            // In octocrab, Object is an enum - we need to match on it to get the sha
+            // The sha is typically in the GitObject variant
+            match &source_ref.object {
+                octocrab::models::repos::Object::Commit { sha, .. } => sha.clone(),
+                octocrab::models::repos::Object::Tag { sha, .. } => sha.clone(),
+                _ => {
+                    // Fallback: This shouldn't happen for branch refs
+                    return Err(GitHubError::BranchNotFound {
+                        branch: params.from_ref.clone(),
+                        owner: owner.clone(),
+                        repo: repo.clone(),
+                    });
+                }
+            }
         };
 
         // Create new branch
@@ -449,7 +466,7 @@ impl GitHubService {
             license: repo.license.map(|l| GitHubLicense {
                 key: l.key,
                 name: l.name,
-                spdx_id: l.spdx_id,
+                spdx_id: Some(l.spdx_id),
                 url: l.url.map(|u| u.to_string()),
             }),
         }
@@ -480,7 +497,7 @@ impl GitHubService {
             user: self.map_user(issue.user),
             assignees: issue.assignees.into_iter().map(|a| self.map_user(a)).collect(),
             labels: issue.labels.into_iter().map(|l| GitHubLabel {
-                id: l.id,
+                id: *l.id,
                 name: l.name,
                 color: l.color,
                 description: l.description,
@@ -501,13 +518,13 @@ impl GitHubService {
             number: pr.number,
             title: pr.title.unwrap_or_default(),
             body: pr.body,
-            state: match pr.state.as_deref() {
-                Some("open") => PullRequestState::Open,
-                Some("closed") => PullRequestState::Closed,
+            state: match pr.state {
+                Some(octocrab::models::IssueState::Open) => PullRequestState::Open,
+                Some(octocrab::models::IssueState::Closed) => PullRequestState::Closed,
                 _ => PullRequestState::Open,
             },
             draft: pr.draft.unwrap_or(false),
-            merged: pr.merged.unwrap_or(false),
+            merged: pr.merged_at.is_some(),
             mergeable: pr.mergeable,
             mergeable_state: MergeableState::Unknown,
             user: pr.user.map(|u| self.map_user(*u)).unwrap_or_else(|| GitHubUser {

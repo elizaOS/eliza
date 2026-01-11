@@ -1,37 +1,19 @@
 import {
   ChannelType,
   type Content,
+  createUniqueUuid,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
   type UUID,
-  createUniqueUuid,
-  logger,
 } from "@elizaos/core";
-import {
-  Client,
-  type QueryTweetsResponse,
-  SearchMode,
-  type Tweet,
-} from "./client/index";
-import { TwitterInteractionPayload } from "./types";
-import { getEpochMs } from "./utils/time";
+import { createTwitterAuthProvider, getTwitterAuthMode } from "./client/auth-providers/factory";
+import { Client, type QueryTweetsResponse, SearchMode, type Tweet } from "./client/index";
+import type { TwitterInteractionPayload } from "./types";
 import { createMemorySafe } from "./utils/memory";
 import { getSetting } from "./utils/settings";
-import {
-  createTwitterAuthProvider,
-  getTwitterAuthMode,
-} from "./client/auth-providers/factory";
-
-interface TwitterUser {
-  id_str: string;
-  screen_name: string;
-  name: string;
-}
-
-interface TwitterFollowersResponse {
-  users: TwitterUser[];
-}
+import { getEpochMs } from "./utils/time";
 
 /**
  * Extracts the answer from the given text.
@@ -67,10 +49,10 @@ type TwitterProfile = {
  */
 
 class RequestQueue {
-  private queue: (() => Promise<any>)[] = [];
+  private queue: (() => Promise<unknown>)[] = [];
   private processing = false;
   private maxRetries = 3;
-  private retryAttempts = new Map<() => Promise<any>, number>();
+  private retryAttempts = new Map<() => Promise<unknown>, number>();
 
   /**
    * Asynchronously adds a request to the queue, then processes the queue.
@@ -105,13 +87,15 @@ class RequestQueue {
     this.processing = true;
 
     while (this.queue.length > 0) {
-      const request = this.queue.shift()!;
+      const request = this.queue.shift();
+      if (!request) continue;
       try {
         await request();
         // Clear retry count on success
         this.retryAttempts.delete(request);
-      } catch (error) {
-        logger.error("Error processing request:", error);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error("Error processing request:", errorMsg);
 
         const retryCount = (this.retryAttempts.get(request) || 0) + 1;
 
@@ -122,9 +106,7 @@ class RequestQueue {
           // Break the loop to allow exponential backoff to take effect
           break;
         } else {
-          logger.error(
-            `Max retries (${this.maxRetries}) exceeded for request, skipping`,
-          );
+          logger.error(`Max retries (${this.maxRetries}) exceeded for request, skipping`);
           this.retryAttempts.delete(request);
         }
       }
@@ -173,7 +155,7 @@ export class ClientBase {
 
   requestQueue: RequestQueue = new RequestQueue();
 
-  profile: TwitterProfile | null;
+  profile: TwitterProfile | null = null;
 
   /**
    * Caches a tweet in the database.
@@ -196,9 +178,7 @@ export class ClientBase {
    * @returns {Promise<Tweet | undefined>} A Promise that resolves to the cached tweet, or undefined if the tweet is not found in the cache.
    */
   async getCachedTweet(tweetId: string): Promise<Tweet | undefined> {
-    const cached = await this.runtime.getCache<Tweet>(
-      `twitter/tweets/${tweetId}`,
-    );
+    const cached = await this.runtime.getCache<Tweet>(`twitter/tweets/${tweetId}`);
 
     if (!cached) {
       return undefined;
@@ -221,15 +201,17 @@ export class ClientBase {
       return cachedTweet;
     }
 
-    const tweet = await this.requestQueue.add(() =>
-      this.twitterClient.getTweet(tweetId),
-    );
+    const tweet = await this.requestQueue.add(() => this.twitterClient.getTweet(tweetId));
+
+    if (!tweet) {
+      throw new Error(`Tweet ${tweetId} not found`);
+    }
 
     await this.cacheTweet(tweet);
-    return tweet;
+    return tweet as Tweet;
   }
 
-  callback: (self: ClientBase) => any = null;
+  callback: ((self: ClientBase) => void) | null = null;
 
   /**
    * This method is called when the application is ready.
@@ -252,9 +234,9 @@ export class ClientBase {
    * @returns {Tweet} The parsed Tweet object.
    */
 
-  state: any;
+  state: Record<string, unknown>;
 
-  constructor(runtime: IAgentRuntime, state: any) {
+  constructor(runtime: IAgentRuntime, state: Record<string, unknown>) {
     this.runtime = runtime;
     this.state = state;
 
@@ -262,16 +244,22 @@ export class ClientBase {
     const mode = getTwitterAuthMode(runtime, state);
     const reuseKey =
       mode === "env"
-        ? state?.TWITTER_API_KEY ?? getSetting(runtime, "TWITTER_API_KEY")
+        ? typeof state?.TWITTER_API_KEY === "string"
+          ? state.TWITTER_API_KEY
+          : getSetting(runtime, "TWITTER_API_KEY")
         : mode === "oauth"
-          ? state?.TWITTER_CLIENT_ID ?? getSetting(runtime, "TWITTER_CLIENT_ID")
-          : state?.TWITTER_BROKER_URL ?? getSetting(runtime, "TWITTER_BROKER_URL");
+          ? typeof state?.TWITTER_CLIENT_ID === "string"
+            ? state.TWITTER_CLIENT_ID
+            : getSetting(runtime, "TWITTER_CLIENT_ID")
+          : typeof state?.TWITTER_BROKER_URL === "string"
+            ? state.TWITTER_BROKER_URL
+            : getSetting(runtime, "TWITTER_BROKER_URL");
 
-    if (reuseKey && ClientBase._twitterClients[reuseKey]) {
+    if (typeof reuseKey === "string" && reuseKey && ClientBase._twitterClients[reuseKey]) {
       this.twitterClient = ClientBase._twitterClients[reuseKey];
     } else {
       this.twitterClient = new Client();
-      if (reuseKey) {
+      if (typeof reuseKey === "string" && reuseKey) {
         ClientBase._twitterClients[reuseKey] = this.twitterClient;
       }
     }
@@ -283,9 +271,7 @@ export class ClientBase {
 
     const provider = createTwitterAuthProvider(this.runtime, this.state);
 
-    const maxRetries = process.env.MAX_RETRIES
-      ? parseInt(process.env.MAX_RETRIES)
-      : 3;
+    const maxRetries = process.env.MAX_RETRIES ? Number.parseInt(process.env.MAX_RETRIES, 10) : 3;
     let retryCount = 0;
     let lastError: Error | null = null;
 
@@ -300,9 +286,7 @@ export class ClientBase {
         }
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        logger.error(
-          `Authentication attempt ${retryCount + 1} failed: ${lastError.message}`,
-        );
+        logger.error(`Authentication attempt ${retryCount + 1} failed: ${lastError.message}`);
         retryCount++;
 
         if (retryCount < maxRetries) {
@@ -315,7 +299,7 @@ export class ClientBase {
 
     if (retryCount >= maxRetries) {
       throw new Error(
-        `Twitter authentication failed after ${maxRetries} attempts. Last error: ${lastError?.message}`,
+        `Twitter authentication failed after ${maxRetries} attempts. Last error: ${lastError?.message}`
       );
     }
 
@@ -328,24 +312,28 @@ export class ClientBase {
       const agentId = this.runtime.agentId;
 
       const entity = await this.runtime.getEntityById(agentId);
-      const entityMetadata = entity?.metadata as any;
-      if (entityMetadata?.twitter?.userName !== profile.username) {
+      const entityMetadata = entity?.metadata;
+      const twitterMetadata = entityMetadata?.twitter as
+        | { userName?: string; name?: string }
+        | undefined;
+      if (twitterMetadata?.userName !== profile.username) {
         logger.log(
           "Updating Agents known X/twitter handle",
           profile.username,
           "was",
-          entityMetadata?.twitter,
+          entityMetadata?.twitter
         );
-        const names = [profile.name, profile.username];
+        const names = [profile.name, profile.username].filter((n): n is string => !!n);
+        if (!entity) {
+          throw new Error("Entity not found");
+        }
         await this.runtime.updateEntity({
           id: agentId,
-          names: [...new Set([...(entity.names || []), ...names])].filter(
-            Boolean,
-          ),
+          names: [...new Set([...(entity.names || []), ...names])],
           metadata: {
             ...(entityMetadata || {}),
             twitter: {
-              ...(entityMetadata?.twitter || {}),
+              ...(twitterMetadata || {}),
               name: profile.name,
               userName: profile.username,
             },
@@ -355,6 +343,9 @@ export class ClientBase {
       }
 
       // Store profile info for use in responses
+      if (!profile.userId || !profile.username || !profile.name) {
+        throw new Error("Profile missing required fields");
+      }
       this.profile = {
         id: profile.userId,
         username: profile.username, // this is the at
@@ -372,10 +363,10 @@ export class ClientBase {
 
   async fetchOwnPosts(count: number): Promise<Tweet[]> {
     logger.debug("fetching own posts");
-    const homeTimeline = await this.twitterClient.getUserTweets(
-      this.profile.id,
-      count,
-    );
+    if (!this.profile?.id) {
+      throw new Error("Profile not initialized");
+    }
+    const homeTimeline = await this.twitterClient.getUserTweets(this.profile.id, count);
     // homeTimeline.tweets already contains Tweet objects from v2 API, no parsing needed
     return homeTimeline.tweets;
   }
@@ -383,10 +374,7 @@ export class ClientBase {
   /**
    * Fetch timeline for twitter account, optionally only from followed accounts
    */
-  async fetchHomeTimeline(
-    count: number,
-    following?: boolean,
-  ): Promise<Tweet[]> {
+  async fetchHomeTimeline(count: number, following?: boolean): Promise<Tweet[]> {
     logger.debug("fetching home timeline");
     const homeTimeline = following
       ? await this.twitterClient.fetchFollowingTimeline(count, [])
@@ -400,37 +388,22 @@ export class ClientBase {
     query: string,
     maxTweets: number,
     searchMode: SearchMode,
-    cursor?: string,
+    cursor?: string
   ): Promise<QueryTweetsResponse> {
-    try {
-      // Sometimes this fails because we are rate limited. in this case, we just need to return an empty array
-      // if we dont get a response in 5 seconds, something is wrong
-      const timeoutPromise = new Promise((resolve) =>
-        setTimeout(() => resolve({ tweets: [] }), 15000),
-      );
+    // Sometimes this fails because we are rate limited. in this case, we just need to return an empty array
+    // if we dont get a response in 5 seconds, something is wrong
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => resolve({ tweets: [] }), 15000)
+    );
 
-      try {
-        const result = await this.requestQueue.add(
-          async () =>
-            await Promise.race([
-              this.twitterClient.fetchSearchTweets(
-                query,
-                maxTweets,
-                searchMode,
-                cursor,
-              ),
-              timeoutPromise,
-            ]),
-        );
-        return (result ?? { tweets: [] }) as QueryTweetsResponse;
-      } catch (error) {
-        logger.error("Error fetching search tweets:", error);
-        return { tweets: [] };
-      }
-    } catch (error) {
-      logger.error("Error fetching search tweets:", error);
-      return { tweets: [] };
-    }
+    const result = await this.requestQueue.add(
+      async () =>
+        await Promise.race([
+          this.twitterClient.fetchSearchTweets(query, maxTweets, searchMode, cursor),
+          timeoutPromise,
+        ])
+    );
+    return (result ?? { tweets: [] }) as QueryTweetsResponse;
   }
 
   private async populateTimeline() {
@@ -445,36 +418,44 @@ export class ClientBase {
       // Get the existing memories from the database
       const existingMemories = await this.runtime.getMemoriesByRoomIds({
         tableName: "messages",
-        roomIds: cachedTimeline.map((tweet) =>
-          createUniqueUuid(this.runtime, tweet.conversationId),
-        ),
+        roomIds: cachedTimeline
+          .map((tweet) => tweet.conversationId)
+          .filter((id): id is string => !!id)
+          .map((id) => createUniqueUuid(this.runtime, id as string)),
       });
 
       //TODO: load tweets not in cache?
 
       // Create a Set to store the IDs of existing memories
       const existingMemoryIds = new Set(
-        existingMemories.map((memory) => memory.id.toString()),
+        existingMemories.map((memory) => memory.id?.toString()).filter((id): id is string => !!id)
       );
 
       // Check if any of the cached tweets exist in the existing memories
       const someCachedTweetsExist = cachedTimeline.some((tweet) =>
-        existingMemoryIds.has(createUniqueUuid(this.runtime, tweet.id)),
+        tweet.id ? existingMemoryIds.has(createUniqueUuid(this.runtime, tweet.id as string)) : false
       );
 
       if (someCachedTweetsExist) {
         // Filter out the cached tweets that already exist in the database
         const tweetsToSave = cachedTimeline.filter(
           (tweet) =>
-            tweet.userId !== this.profile.id &&
-            !existingMemoryIds.has(createUniqueUuid(this.runtime, tweet.id)),
+            tweet.userId &&
+            tweet.id &&
+            tweet.userId !== this.profile?.id &&
+            !existingMemoryIds.has(createUniqueUuid(this.runtime, tweet.id as string))
         );
 
         // Save the missing tweets as memories
         for (const tweet of tweetsToSave) {
+          if (!tweet.id || !tweet.userId || !tweet.conversationId || !tweet.username) {
+            logger.warn("Skipping tweet with missing required fields");
+            continue;
+          }
+
           logger.log("Saving Tweet", tweet.id);
 
-          if (tweet.userId === this.profile.id) {
+          if (tweet.userId === this.profile?.id) {
             continue;
           }
 
@@ -484,7 +465,7 @@ export class ClientBase {
             id: worldId,
             name: `${tweet.username}'s Twitter`,
             agentId: this.runtime.agentId,
-            serverId: tweet.userId,
+            serverId: createUniqueUuid(this.runtime, tweet.userId) as UUID,
             metadata: {
               ownership: { ownerId: tweet.userId },
               twitter: {
@@ -494,50 +475,48 @@ export class ClientBase {
             },
           });
 
-          const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
+          const roomId = createUniqueUuid(this.runtime, tweet.conversationId as string);
           const entityId =
-            tweet.userId === this.profile.id
+            tweet.userId === this.profile?.id
               ? this.runtime.agentId
-              : createUniqueUuid(this.runtime, tweet.userId);
+              : createUniqueUuid(this.runtime, tweet.userId as string);
 
           // Ensure the entity exists with proper world association
           await this.runtime.ensureConnection({
             entityId,
             roomId,
-            userName: tweet.username,
-            name: tweet.name,
+            userName: tweet.username as string,
+            name: (tweet.name || tweet.username) as string,
             source: "twitter",
             type: ChannelType.FEED,
             worldId: worldId,
           });
 
           const content = {
-            text: tweet.text,
+            text: tweet.text || "",
             url: tweet.permanentUrl,
             source: "twitter",
             inReplyTo: tweet.inReplyToStatusId
-              ? createUniqueUuid(this.runtime, tweet.inReplyToStatusId)
+              ? createUniqueUuid(this.runtime, tweet.inReplyToStatusId as string)
               : undefined,
           } as Content;
 
           await this.runtime.createMemory(
             {
-              id: createUniqueUuid(this.runtime, tweet.id),
+              id: createUniqueUuid(this.runtime, tweet.id as string),
               entityId,
               content: content,
               agentId: this.runtime.agentId,
               roomId,
               createdAt: getEpochMs(tweet.timestamp),
             },
-            "messages",
+            "messages"
           );
 
           await this.cacheTweet(tweet);
         }
 
-        logger.log(
-          `Populated ${tweetsToSave.length} missing tweets from the cache.`,
-        );
+        logger.log(`Populated ${tweetsToSave.length} missing tweets from the cache.`);
         return;
       }
     }
@@ -545,10 +524,15 @@ export class ClientBase {
     const timeline = await this.fetchHomeTimeline(cachedTimeline ? 10 : 50);
 
     // Get the most recent 20 mentions and interactions
+    if (!this.profile?.username) {
+      logger.warn("Profile username not available, skipping mentions fetch");
+      return;
+    }
+
     const mentionsAndInteractions = await this.fetchSearchTweets(
       `@${this.profile.username}`,
       20,
-      SearchMode.Latest,
+      SearchMode.Latest
     );
 
     // Combine the timeline tweets and mentions/interactions
@@ -560,6 +544,9 @@ export class ClientBase {
 
     // Add tweet IDs to the Set
     for (const tweet of allTweets) {
+      if (!tweet.id || !tweet.conversationId) {
+        continue;
+      }
       tweetIdsToCheck.add(tweet.id);
       roomIds.add(createUniqueUuid(this.runtime, tweet.conversationId));
     }
@@ -572,25 +559,35 @@ export class ClientBase {
 
     // Create a Set to store the existing memory IDs
     const existingMemoryIds = new Set<UUID>(
-      existingMemories.map((memory) => memory.id),
+      existingMemories.map((memory) => memory.id).filter((id): id is UUID => !!id)
     );
 
     // Filter out the tweets that already exist in the database
     const tweetsToSave = allTweets.filter(
       (tweet) =>
-        tweet.userId !== this.profile.id &&
-        !existingMemoryIds.has(createUniqueUuid(this.runtime, tweet.id)),
+        tweet.userId &&
+        tweet.id &&
+        tweet.userId !== this.profile?.id &&
+        !existingMemoryIds.has(createUniqueUuid(this.runtime, tweet.id))
     );
 
     logger.debug({
-      processingTweets: tweetsToSave.map((tweet) => tweet.id).join(","),
+      processingTweets: tweetsToSave
+        .map((tweet) => tweet.id)
+        .filter(Boolean)
+        .join(","),
     });
 
     // Save the new tweets as memories
     for (const tweet of tweetsToSave) {
+      if (!tweet.id || !tweet.userId || !tweet.conversationId || !tweet.username) {
+        logger.warn("Skipping tweet with missing required fields");
+        continue;
+      }
+
       logger.log("Saving Tweet", tweet.id);
 
-      if (tweet.userId === this.profile.id) {
+      if (tweet.userId === this.profile?.id) {
         continue;
       }
 
@@ -600,7 +597,7 @@ export class ClientBase {
         id: worldId,
         name: `${tweet.username}'s Twitter`,
         agentId: this.runtime.agentId,
-        serverId: tweet.userId,
+        serverId: createUniqueUuid(this.runtime, tweet.userId) as UUID,
         metadata: {
           ownership: { ownerId: tweet.userId },
           twitter: {
@@ -613,7 +610,7 @@ export class ClientBase {
       const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 
       const entityId =
-        tweet.userId === this.profile.id
+        tweet.userId === this.profile?.id
           ? this.runtime.agentId
           : createUniqueUuid(this.runtime, tweet.userId);
 
@@ -629,7 +626,7 @@ export class ClientBase {
       });
 
       const content = {
-        text: tweet.text,
+        text: tweet.text || "",
         url: tweet.permanentUrl,
         source: "twitter",
         inReplyTo: tweet.inReplyToStatusId
@@ -647,7 +644,7 @@ export class ClientBase {
           roomId,
           createdAt: getEpochMs(tweet.timestamp),
         },
-        "messages",
+        "messages"
       );
 
       await this.cacheTweet(tweet);
@@ -667,10 +664,7 @@ export class ClientBase {
         unique: false,
       });
 
-      if (
-        recentMessage.length > 0 &&
-        recentMessage[0].content === message.content
-      ) {
+      if (recentMessage.length > 0 && recentMessage[0].content === message.content) {
         logger.debug("Message already saved", recentMessage[0].id);
       } else {
         await createMemorySafe(this.runtime, message, "messages");
@@ -684,8 +678,11 @@ export class ClientBase {
   }
 
   async loadLatestCheckedTweetId(): Promise<void> {
+    if (!this.profile?.username) {
+      return;
+    }
     const latestCheckedTweetId = await this.runtime.getCache<string>(
-      `twitter/${this.profile.username}/latest_checked_tweet_id`,
+      `twitter/${this.profile.username}/latest_checked_tweet_id`
     );
 
     if (latestCheckedTweetId) {
@@ -694,17 +691,20 @@ export class ClientBase {
   }
 
   async cacheLatestCheckedTweetId() {
-    if (this.lastCheckedTweetId) {
+    if (this.lastCheckedTweetId && this.profile?.username) {
       await this.runtime.setCache<string>(
         `twitter/${this.profile.username}/latest_checked_tweet_id`,
-        this.lastCheckedTweetId.toString(),
+        this.lastCheckedTweetId.toString()
       );
     }
   }
 
   async getCachedTimeline(): Promise<Tweet[] | undefined> {
+    if (!this.profile?.username) {
+      return undefined;
+    }
     const cached = await this.runtime.getCache<Tweet[]>(
-      `twitter/${this.profile.username}/timeline`,
+      `twitter/${this.profile.username}/timeline`
     );
 
     if (!cached) {
@@ -715,91 +715,85 @@ export class ClientBase {
   }
 
   async cacheTimeline(timeline: Tweet[]) {
-    await this.runtime.setCache<Tweet[]>(
-      `twitter/${this.profile.username}/timeline`,
-      timeline,
-    );
+    if (!this.profile?.username) {
+      return;
+    }
+    await this.runtime.setCache<Tweet[]>(`twitter/${this.profile.username}/timeline`, timeline);
   }
 
   async cacheMentions(mentions: Tweet[]) {
-    await this.runtime.setCache<Tweet[]>(
-      `twitter/${this.profile.username}/mentions`,
-      mentions,
-    );
+    if (!this.profile?.username) {
+      return;
+    }
+    await this.runtime.setCache<Tweet[]>(`twitter/${this.profile.username}/mentions`, mentions);
   }
 
   async fetchProfile(username: string): Promise<TwitterProfile> {
-    try {
-      const profile = await this.requestQueue.add(async () => {
-        const profile = await this.twitterClient.getProfile(username);
+    const profile = await this.requestQueue.add(async () => {
+      const profile = await this.twitterClient.getProfile(username);
 
-        // Handle case where runtime.character might be undefined
-        const defaultName = "AI Assistant";
-        const defaultBio = "";
+      // Handle case where runtime.character might be undefined
+      const defaultName = "AI Assistant";
+      const defaultBio = "";
 
-        let characterName = defaultName;
-        let characterBio = defaultBio;
+      let characterName = defaultName;
+      let characterBio = defaultBio;
 
-        if (this.runtime?.character) {
-          characterName = this.runtime.character.name || defaultName;
+      if (this.runtime?.character) {
+        characterName = this.runtime.character.name || defaultName;
 
-          if (typeof this.runtime.character.bio === "string") {
-            characterBio = this.runtime.character.bio;
-          } else if (
-            Array.isArray(this.runtime.character.bio) &&
-            this.runtime.character.bio.length > 0
-          ) {
-            characterBio = this.runtime.character.bio[0];
-          }
+        if (typeof this.runtime.character.bio === "string") {
+          characterBio = this.runtime.character.bio;
+        } else if (
+          Array.isArray(this.runtime.character.bio) &&
+          this.runtime.character.bio.length > 0
+        ) {
+          characterBio = this.runtime.character.bio[0];
         }
+      }
 
-        return {
-          id: profile.userId,
-          username,
-          screenName: profile.name || characterName,
-          bio: profile.biography || characterBio,
-          nicknames: this.profile?.nicknames || [],
-        } satisfies TwitterProfile;
-      });
+      if (!profile.userId) {
+        throw new Error("Profile missing userId");
+      }
+      return {
+        id: profile.userId,
+        username: username || "",
+        screenName: profile.name || characterName || "",
+        bio: profile.biography || characterBio || "",
+        nicknames: this.profile?.nicknames || [],
+      } satisfies TwitterProfile;
+    });
 
-      return profile;
-    } catch (error) {
-      logger.error("Error fetching Twitter profile:", error);
-      throw error;
-    }
+    return profile;
   }
 
   /**
    * Fetches recent interactions (likes, retweets, quotes) for the authenticated user's tweets
    */
   async fetchInteractions() {
-    try {
-      const username = this.profile.username;
-      // Use fetchSearchTweets to get mentions instead of the non-existent get method
-      const mentionsResponse = await this.requestQueue.add(() =>
-        this.twitterClient.fetchSearchTweets(
-          `@${username}`,
-          100,
-          SearchMode.Latest,
-        ),
-      );
-
-      // Process tweets directly into the expected interaction format
-      return mentionsResponse.tweets.map((tweet) =>
-        this.formatTweetToInteraction(tweet),
-      );
-    } catch (error) {
-      logger.error("Error fetching Twitter interactions:", error);
+    if (!this.profile?.username) {
       return [];
     }
+    const username = this.profile.username;
+    // Use fetchSearchTweets to get mentions instead of the non-existent get method
+    const mentionsResponse = await this.requestQueue.add(() =>
+      this.twitterClient.fetchSearchTweets(`@${username}`, 100, SearchMode.Latest)
+    );
+
+    // Process tweets directly into the expected interaction format
+    return mentionsResponse.tweets.map((tweet: Tweet) => this.formatTweetToInteraction(tweet));
   }
 
-  formatTweetToInteraction(tweet): TwitterInteractionPayload | null {
+  formatTweetToInteraction(tweet: Tweet): TwitterInteractionPayload | null {
     if (!tweet) return null;
 
     const isQuote = tweet.isQuoted;
     const isRetweet = !!tweet.retweetedStatus;
-    const type = isQuote ? "quote" : isRetweet ? "retweet" : "like";
+    const type: "quote" | "retweet" | "like" = isQuote ? "quote" : isRetweet ? "retweet" : "like";
+
+    if (!tweet.id || !tweet.userId || !tweet.username) {
+      return null;
+    }
 
     return {
       id: tweet.id,
@@ -807,7 +801,7 @@ export class ClientBase {
       userId: tweet.userId,
       username: tweet.username,
       name: tweet.name || tweet.username,
-      targetTweetId: tweet.inReplyToStatusId || tweet.quotedStatusId,
+      targetTweetId: tweet.inReplyToStatusId || tweet.quotedStatusId || undefined,
       targetTweet: tweet.quotedStatus || tweet,
       quoteTweet: isQuote ? tweet : undefined,
       retweetId: tweet.retweetedStatus?.id,

@@ -1,9 +1,5 @@
-import {  describe, expect, it  } from "vitest";
-import {
-  expandTildePath,
-  resolveEnvFile,
-  resolvePgliteDir,
-} from "../../utils.browser";
+import { describe, expect, it } from "vitest";
+import { expandTildePath, resolveEnvFile, resolvePgliteDir } from "../../utils.browser";
 
 describe("utils.browser", () => {
   it("expandTildePath returns input unchanged in browser", () => {

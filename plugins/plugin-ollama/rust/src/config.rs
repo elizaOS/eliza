@@ -1,8 +1,9 @@
+#![allow(missing_docs)]
 //! Configuration for the Ollama client.
 //!
 //! Configuration is loaded from environment variables or provided explicitly.
 
-use crate::error::{OllamaError, Result};
+use crate::error::Result;
 
 /// Default API base URL.
 pub const DEFAULT_BASE_URL: &str = "http://localhost:11434";
@@ -30,6 +31,7 @@ pub struct OllamaConfig {
     /// Request timeout in seconds.
     timeout_seconds: u64,
 }
+
 
 impl Default for OllamaConfig {
     fn default() -> Self {

@@ -18,7 +18,8 @@ const myPlugin: Plugin = {
 ```
 
 <Tip>
-**One plugin, one concern.** Twitter integration? Plugin. Blockchain actions? Plugin. Custom memory? Plugin. Keep them focused and composable.
+  **One plugin, one concern.** Twitter integration? Plugin. Blockchain actions?
+  Plugin. Custom memory? Plugin. Keep them focused and composable.
 </Tip>
 
 ## Overview
@@ -33,9 +34,7 @@ The elizaOS plugin system is a modular extension mechanism that allows developer
 - **Data Sources**: Connect to databases, APIs, or external services
 - **Custom Actions**: Define new agent behaviors and capabilities
 
-<Tip>
-  **Guide**: [Create a Plugin](/guides/create-a-plugin)
-</Tip>
+<Tip>**Guide**: [Create a Plugin](/guides/create-a-plugin)</Tip>
 
 ## Plugin Interface
 
@@ -58,6 +57,7 @@ Based on the runtime implementation, the initialization process follows a specif
 ### 1. Plugin Registration (`registerPlugin` method)
 
 When a plugin is registered with the runtime:
+
 1. Validates plugin has a name
 2. Checks for duplicate plugins
 3. Adds to active plugins list
@@ -136,13 +136,17 @@ Plugins can expose HTTP endpoints through the route system:
 
 ```typescript
 export type Route = {
-  type: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'STATIC';
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
   path: string;
-  filePath?: string;                    // For static files
-  public?: boolean;                     // Public access
-  name?: string;                        // Route name
-  handler?: (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => Promise<void>;
-  isMultipart?: boolean;                // File uploads
+  filePath?: string; // For static files
+  public?: boolean; // Public access
+  name?: string; // Route name
+  handler?: (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+  isMultipart?: boolean; // File uploads
 };
 ```
 
@@ -151,14 +155,14 @@ Example route implementation:
 ```typescript
 routes: [
   {
-    name: 'hello-world-route',
-    path: '/helloworld',
-    type: 'GET',
+    name: "hello-world-route",
+    path: "/helloworld",
+    type: "GET",
     handler: async (_req: any, res: any) => {
-      res.json({ message: 'Hello World!' });
-    }
-  }
-]
+      res.json({ message: "Hello World!" });
+    },
+  },
+];
 ```
 
 ## Event System Integration
@@ -168,6 +172,7 @@ Plugins can handle system events through the event system:
 ### Event Types
 
 Standard events include:
+
 - World events: WORLD_JOINED, WORLD_CONNECTED, WORLD_LEFT
 - Entity events: ENTITY_JOINED, ENTITY_LEFT, ENTITY_UPDATED
 - Room events: ROOM_JOINED, ROOM_LEFT
@@ -192,6 +197,7 @@ export type PluginEvents = {
 Plugins can provide database adapters for custom storage backends:
 
 The IDatabaseAdapter interface is extensive, including methods for:
+
 - Agents, Entities, Components
 - Memories (with embeddings)
 - Rooms, Participants
@@ -204,27 +210,29 @@ Example database adapter plugin:
 
 ```typescript
 export const plugin: Plugin = {
-  name: '@elizaos/plugin-sql',
-  description: 'A plugin for SQL database access with dynamic schema migrations',
+  name: "@elizaos/plugin-sql",
+  description:
+    "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema,
   init: async (_, runtime: IAgentRuntime) => {
     const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
     runtime.registerDatabaseAdapter(dbAdapter);
-  }
+  },
 };
 ```
 
 ## Plugin Priority System
 
 Plugins can specify a priority to control loading order:
+
 - Higher priority plugins are loaded first
 - Useful for plugins that provide fundamental services
 - Model handlers use priority to determine which provider handles a model type
 
 ```typescript
 export const myPlugin: Plugin = {
-  name: 'high-priority-plugin',
+  name: "high-priority-plugin",
   priority: 100, // Loads before lower priority plugins
   // ...
 };
@@ -236,9 +244,9 @@ Plugins can declare dependencies on other plugins:
 
 ```typescript
 export const myPlugin: Plugin = {
-  name: 'my-plugin',
-  dependencies: ['@elizaos/plugin-sql'],
-  testDependencies: ['@elizaos/plugin-test-utils'],
+  name: "my-plugin",
+  dependencies: ["@elizaos/plugin-sql"],
+  testDependencies: ["@elizaos/plugin-test-utils"],
   // ...
 };
 ```
@@ -253,18 +261,18 @@ Plugins can accept configuration through multiple mechanisms:
 
 ```typescript
 init: async (config, runtime) => {
-  const apiKey = runtime.getSetting('MY_API_KEY');
+  const apiKey = runtime.getSetting("MY_API_KEY");
   if (!apiKey) {
-    throw new Error('MY_API_KEY not configured');
+    throw new Error("MY_API_KEY not configured");
   }
-}
+};
 ```
 
 ### 2. Config Object
 
 ```typescript
 export const myPlugin: Plugin = {
-  name: 'my-plugin',
+  name: "my-plugin",
   config: {
     defaultTimeout: 5000,
     retryAttempts: 3,
@@ -282,19 +290,19 @@ Settings can be accessed through `runtime.getSetting()` which provides a consist
 Plugins are often conditionally loaded based on environment variables:
 
 ```typescript
-import { bootstrapPlugin } from '@elizaos/core';
+import { bootstrapPlugin } from "@elizaos/core";
 
 const plugins = [
   // Bootstrap is included in core
   bootstrapPlugin,
-  
+
   // Conditionally loaded based on API keys
-  ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-  ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-  
+  ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
+  ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
+
   // Platform plugins
-  ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
-  ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+  ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+  ...(process.env.TELEGRAM_BOT_TOKEN ? ["@elizaos/plugin-telegram"] : []),
 ];
 ```
 
@@ -303,7 +311,9 @@ const plugins = [
 elizaOS includes essential plugins that provide foundational functionality:
 
 ### Bootstrap (in @elizaos/core)
+
 The core message handler and event system is built into `@elizaos/core`. Import `bootstrapPlugin` from `@elizaos/core` to use it. It provides essential functionality for message processing, knowledge management, and basic agent operations:
+
 - 13 essential actions (REPLY, SEND_MESSAGE, etc.)
 - Core providers (time, character, recent messages)
 - Task service and Embedding service
@@ -311,7 +321,9 @@ The core message handler and event system is built into `@elizaos/core`. Import 
 - Available in TypeScript, Python, and Rust
 
 ### SQL Plugin
+
 Database integration and management for elizaOS. Features:
+
 - Automatic schema migrations
 - Multi-database support (PostgreSQL, PGLite)
 - Sophisticated plugin architecture
@@ -333,15 +345,15 @@ Database integration and management for elizaOS. Features:
   <Card title="Plugin Components" icon="cube" href="/plugins/components">
     Learn about Actions, Providers, Evaluators, and Services
   </Card>
-  
-  <Card title="Development Guide" icon="code" href="/plugins/development">
-    Build your first plugin step by step
-  </Card>
-  
-  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
-    Learn proven plugin development patterns
-  </Card>
-  
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build your first plugin step by step
+</Card>
+
+<Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+  Learn proven plugin development patterns
+</Card>
+
   <Card title="Plugin Reference" icon="book" href="/plugins/reference">
     Complete API reference for all interfaces
   </Card>

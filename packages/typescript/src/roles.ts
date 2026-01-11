@@ -75,7 +75,7 @@ export async function findWorldsForOwner(
   // Find world where the user is the owner
   for (const world of worlds) {
     const worldMetadata = world.metadata;
-    const worldMetadataOwnership = worldMetadata && worldMetadata.ownership;
+    const worldMetadataOwnership = worldMetadata?.ownership;
     if (worldMetadataOwnership && worldMetadataOwnership.ownerId === entityId) {
       ownerWorlds.push(world);
     }

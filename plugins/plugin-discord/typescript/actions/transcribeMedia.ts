@@ -14,8 +14,8 @@ import {
   type State,
 } from "@elizaos/core";
 import {
-  transcriptionTemplate,
   mediaAttachmentIdTemplate,
+  transcriptionTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
 // Re-export for backwards compatibility
@@ -32,7 +32,7 @@ export { transcriptionTemplate, mediaAttachmentIdTemplate };
 const getMediaAttachmentId = async (
   runtime: IAgentRuntime,
   _message: Memory,
-  state: State,
+  state: State
 ): Promise<string | null> => {
   const prompt = composePromptFromState({
     state,
@@ -48,7 +48,7 @@ const getMediaAttachmentId = async (
       attachmentId: string;
     } | null;
 
-    if (parsedResponse && parsedResponse.attachmentId) {
+    if (parsedResponse?.attachmentId) {
       return parsedResponse.attachmentId;
     }
   }
@@ -75,8 +75,7 @@ export const transcribeMedia = {
     "VIDEO_TRANSCRIPT",
     "AUDIO_TRANSCRIPT",
   ],
-  description:
-    "Transcribe the full text of an audio or video file that the user has attached.",
+  description: "Transcribe the full text of an audio or video file that the user has attached.",
   validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     if (message.content.source !== "discord") {
       return false;
@@ -100,15 +99,15 @@ export const transcribeMedia = {
       "presentation",
     ];
     return keywords.some((keyword) =>
-      (message.content.text && message.content.text.toLowerCase().includes(keyword.toLowerCase())),
+      message.content.text?.toLowerCase().includes(keyword.toLowerCase())
     );
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _options: Record<string, unknown>,
+    callback: HandlerCallback
   ) => {
     const callbackData: Content = {
       text: "", // fill in later
@@ -124,7 +123,7 @@ export const transcribeMedia = {
           src: "plugin:discord:action:transcribe-media",
           agentId: runtime.agentId,
         },
-        "Could not get media attachment ID from message",
+        "Could not get media attachment ID from message"
       );
       await runtime.createMemory(
         {
@@ -140,7 +139,7 @@ export const transcribeMedia = {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
@@ -155,13 +154,10 @@ export const transcribeMedia = {
     });
 
     const attachment = recentMessages
-      .filter(
-        (msg) => msg.content.attachments && msg.content.attachments.length > 0,
-      )
+      .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
       .flatMap((msg) => msg.content.attachments)
       .find(
-        (attachment) =>
-          attachment && attachment.id.toLowerCase() === attachmentId.toLowerCase(),
+        (attachment) => attachment && attachment.id.toLowerCase() === attachmentId.toLowerCase()
       );
 
     if (!attachment) {
@@ -171,7 +167,7 @@ export const transcribeMedia = {
           agentId: runtime.agentId,
           attachmentId,
         },
-        "Could not find attachment",
+        "Could not find attachment"
       );
       await runtime.createMemory(
         {
@@ -187,24 +183,23 @@ export const transcribeMedia = {
             type: MemoryType.CUSTOM,
           },
         },
-        "messages",
+        "messages"
       );
       return;
     }
 
     const mediaTranscript = attachment.text;
 
-    callbackData.text = (mediaTranscript && mediaTranscript.trim());
+    callbackData.text = mediaTranscript?.trim();
 
     // if callbackData.text is < 4 lines or < 100 words, then we we callback with normal message wrapped in markdown block
     if (
       callbackData.text &&
-      ((callbackData.text.split("\n").length < 4) ||
-        (callbackData.text.split(" ").length < 100))
+      (callbackData.text.split("\n").length < 4 || callbackData.text.split(" ").length < 100)
     ) {
       callbackData.text = `Here is the transcript:
 \`\`\`md
-${(mediaTranscript && mediaTranscript.trim()) || ""}
+${mediaTranscript?.trim() || ""}
 \`\`\`
 `;
       await callback(callbackData);
@@ -236,7 +231,7 @@ ${(mediaTranscript && mediaTranscript.trim()) || ""}
           src: "plugin:discord:action:transcribe-media",
           agentId: runtime.agentId,
         },
-        "Empty response from transcribe media action",
+        "Empty response from transcribe media action"
       );
     }
 

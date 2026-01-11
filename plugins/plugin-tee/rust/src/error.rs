@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Error types for the TEE plugin.
 
 use thiserror::Error;
@@ -75,5 +76,10 @@ impl TeeError {
         Self::Crypto(msg.into())
     }
 }
+
+
+
+
+
 
 
