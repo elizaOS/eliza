@@ -21,26 +21,13 @@ import {
   createUUID,
 } from "./test-utils";
 
-// Import the actual module first
-const coreModule = await import("@elizaos/core");
-
-// Mock the getEntityDetails function while preserving other exports
-vi.mock("@elizaos/core", () => ({
-  ...coreModule,
-  getEntityDetails: vi.fn().mockImplementation(() => {
-    return Promise.resolve([
-      { id: "test-entity-id", names: ["Test Entity"], metadata: {} },
-      { id: "test-agent-id", names: ["Test Agent"], metadata: {} },
-    ]);
-  }),
-  composePrompt: vi.fn().mockReturnValue("Composed prompt"),
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+// Spy on logger methods
+beforeEach(() => {
+  vi.spyOn(logger, "info").mockImplementation(() => {});
+  vi.spyOn(logger, "warn").mockImplementation(() => {});
+  vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(logger, "debug").mockImplementation(() => {});
+});
 
 describe("Reflection Evaluator", () => {
   let runtime: IAgentRuntime;

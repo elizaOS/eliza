@@ -543,11 +543,12 @@ describe("settings utilities", () => {
 
     it("should return false when world not found", async () => {
       vi.spyOn(runtime, "getWorld").mockResolvedValue(null);
+      const updateWorldSpy = vi.spyOn(runtime, "updateWorld");
 
       const result = await updateWorldSettings(runtime, "server-123", {});
 
       expect(result).toBe(false);
-      expect(runtime.updateWorld).not.toHaveBeenCalled();
+      expect(updateWorldSpy).not.toHaveBeenCalled();
     });
 
     it("should initialize metadata if it does not exist", async () => {
