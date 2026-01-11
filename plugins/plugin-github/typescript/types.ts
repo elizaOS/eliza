@@ -986,7 +986,10 @@ export const gitHubSettingsSchema = z.object({
 export function formatZodErrors(error: z.ZodError): string {
   const flattened = error.flatten();
   const fieldErrors = Object.entries(flattened.fieldErrors)
-    .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? messages.join(", ") : String(messages)}`)
+    .map(
+      ([field, messages]) =>
+        `${field}: ${Array.isArray(messages) ? messages.join(", ") : String(messages)}`
+    )
     .join("; ");
   const formErrors = flattened.formErrors.join(", ");
   return [fieldErrors, formErrors].filter(Boolean).join("; ");

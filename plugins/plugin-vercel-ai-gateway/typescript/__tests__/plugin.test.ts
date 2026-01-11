@@ -50,11 +50,11 @@ describe("gatewayPlugin", () => {
   });
 
   it("should initialize without error when API key is present", async () => {
-    const mockRuntime = createMockRuntime({
+    const agentRuntime = createMockRuntime({
       AI_GATEWAY_API_KEY: "test-key",
     });
 
-    await expect(gatewayPlugin.init?.({}, mockRuntime)).resolves.not.toThrow();
+    await expect(gatewayPlugin.init?.({}, agentRuntime)).resolves.not.toThrow();
   });
 });
 

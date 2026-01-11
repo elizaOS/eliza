@@ -142,11 +142,11 @@ function findSchemaChanges(original: JSONSchema7, transformed: JSONSchema7): str
 // Example of how to use in practice
 export async function exampleUsage() {
   // In your MCP action, you would do something like this:
-  const mockRuntime = {
+  const agentRuntime = {
     modelProvider: "openai",
     model: "o3-mini",
   } as unknown as IAgentRuntime;
-  const compatibility = await createMcpToolCompatibility(mockRuntime);
+  const compatibility = await createMcpToolCompatibility(agentRuntime);
 
   // Original MCP tool schema from server
   const originalSchema: JSONSchema7 = {

@@ -22,6 +22,14 @@ import type {
 } from "../types";
 
 /**
+ * Type-safe extraction of rows from SQL query results.
+ * Raw SQL queries in Drizzle return untyped rows - this helper provides type safety.
+ */
+function getRows<T>(result: { rows: unknown[] }): T[] {
+  return result.rows as T[];
+}
+
+/**
  * Introspect the current database state and generate a snapshot
  * This is used when no previous snapshot exists for a plugin
  * to capture the existing database state before migrations
@@ -204,7 +212,7 @@ export class DatabaseIntrospector {
             AND table_type = 'BASE TABLE'
           ORDER BY table_name`
     );
-    return result.rows as unknown as TableInfoRow[];
+    return getRows<TableInfoRow>(result);
   }
 
   /**
@@ -253,7 +261,7 @@ export class DatabaseIntrospector {
             AND cls.relname = ${tableName}
           ORDER BY a.attnum`
     );
-    return result.rows as unknown as ColumnInfoRow[];
+    return getRows<ColumnInfoRow>(result);
   }
 
   /**
@@ -283,7 +291,7 @@ export class DatabaseIntrospector {
           WHERE n.nspname = ${schemaName}
             AND c.relname = ${tableName}`
     );
-    return result.rows as unknown as IndexInfoRow[];
+    return getRows<IndexInfoRow>(result);
   }
 
   /**
@@ -327,7 +335,7 @@ export class DatabaseIntrospector {
             AND nsp.nspname = ${schemaName}
             AND rel.relname = ${tableName}`
     );
-    return result.rows as unknown as ForeignKeyInfoRow[];
+    return getRows<ForeignKeyInfoRow>(result);
   }
 
   /**
@@ -354,7 +362,7 @@ export class DatabaseIntrospector {
             AND nsp.nspname = ${schemaName}
             AND rel.relname = ${tableName}`
     );
-    return result.rows as unknown as PrimaryKeyInfoRow[];
+    return getRows<PrimaryKeyInfoRow>(result);
   }
 
   /**
@@ -381,7 +389,7 @@ export class DatabaseIntrospector {
             AND nsp.nspname = ${schemaName}
             AND rel.relname = ${tableName}`
     );
-    return result.rows as unknown as UniqueConstraintInfoRow[];
+    return getRows<UniqueConstraintInfoRow>(result);
   }
 
   /**
@@ -402,7 +410,7 @@ export class DatabaseIntrospector {
             AND nsp.nspname = ${schemaName}
             AND rel.relname = ${tableName}`
     );
-    return result.rows as unknown as CheckConstraintInfoRow[];
+    return getRows<CheckConstraintInfoRow>(result);
   }
 
   /**
@@ -421,7 +429,7 @@ export class DatabaseIntrospector {
           WHERE n.nspname = ${schemaName}
           ORDER BY schema, name, sort_order`
     );
-    return result.rows as unknown as EnumInfoRow[];
+    return getRows<EnumInfoRow>(result);
   }
 
   /**

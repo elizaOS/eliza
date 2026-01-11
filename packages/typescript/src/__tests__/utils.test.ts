@@ -36,6 +36,7 @@ import {
   truncateToCompleteSentence,
   validateUuid,
 } from "../utils";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("Utils Comprehensive Tests", () => {
   describe("parseBooleanFromText", () => {
@@ -330,51 +331,58 @@ describe("Utils Comprehensive Tests", () => {
   });
 
   describe("trimTokens", () => {
-    let mockRuntime: IAgentRuntime;
+    let runtime: IAgentRuntime;
 
-    beforeEach(() => {
-      mockRuntime = {
-        useModel: vi.fn(async (type, params) => {
+    beforeEach(async () => {
+      runtime = await createTestRuntime();
+
+      vi.spyOn(runtime, "useModel").mockImplementation(
+        async (type, params: Record<string, unknown>) => {
           if (type === "TEXT_TOKENIZER_ENCODE") {
             // Simple mock: each word is a token
-            return params.prompt.split(" ");
+            return (params.prompt as string).split(" ");
           }
           if (type === "TEXT_TOKENIZER_DECODE") {
             // Simple mock: join tokens back
-            return params.tokens.join(" ");
+            return (params.tokens as string[]).join(" ");
           }
           return null;
-        }),
-      } as Partial<IAgentRuntime> as IAgentRuntime;
+        },
+      );
+    });
+
+    afterEach(async () => {
+      vi.clearAllMocks();
+      await cleanupTestRuntime(runtime);
     });
 
     it("should trim tokens to specified limit", async () => {
       const prompt = "one two three four five six seven eight nine ten";
-      const result = await trimTokens(prompt, 5, mockRuntime);
+      const result = await trimTokens(prompt, 5, runtime);
 
       expect(result).toBe("six seven eight nine ten");
-      expect(mockRuntime.useModel).toHaveBeenCalledTimes(2);
+      expect(runtime.useModel).toHaveBeenCalledTimes(2);
     });
 
     it("should return unchanged if within limit", async () => {
       const prompt = "short text";
-      const result = await trimTokens(prompt, 10, mockRuntime);
+      const result = await trimTokens(prompt, 10, runtime);
 
       expect(result).toBe(prompt);
     });
 
     it("should throw error for invalid inputs", async () => {
-      await expect(trimTokens("", 10, mockRuntime)).rejects.toThrow();
-      await expect(trimTokens("text", 0, mockRuntime)).rejects.toThrow();
-      await expect(trimTokens("text", -1, mockRuntime)).rejects.toThrow();
+      await expect(trimTokens("", 10, runtime)).rejects.toThrow();
+      await expect(trimTokens("text", 0, runtime)).rejects.toThrow();
+      await expect(trimTokens("text", -1, runtime)).rejects.toThrow();
     });
 
     it("should skip tokenization for very short prompts", async () => {
       const prompt = "hi";
-      const result = await trimTokens(prompt, 100, mockRuntime);
+      const result = await trimTokens(prompt, 100, runtime);
 
       expect(result).toBe(prompt);
-      expect(mockRuntime.useModel).not.toHaveBeenCalled();
+      expect(runtime.useModel).not.toHaveBeenCalled();
     });
   });
 
@@ -1268,28 +1276,31 @@ describe("Utils Comprehensive Tests", () => {
   });
 
   it("trimTokens truncates using runtime tokenizer", async () => {
-    const runtime = {
-      useModel: vi.fn(
-        async (
-          type: (typeof ModelType)[keyof typeof ModelType],
-          params:
-            | TokenizeTextParams
-            | DetokenizeTextParams
-            | Record<string, unknown>,
-        ) => {
-          if (type === ModelType.TEXT_TOKENIZER_ENCODE) {
-            const encodeParams = params as TokenizeTextParams;
-            return encodeParams.prompt.split(" ");
-          }
-          if (type === ModelType.TEXT_TOKENIZER_DECODE) {
-            const decodeParams = params as DetokenizeTextParams;
-            return decodeParams.tokens.join(" ");
-          }
-          return [];
-        },
-      ),
-    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const runtime = await createTestRuntime();
+
+    vi.spyOn(runtime, "useModel").mockImplementation(
+      async (
+        type: (typeof ModelType)[keyof typeof ModelType],
+        params:
+          | TokenizeTextParams
+          | DetokenizeTextParams
+          | Record<string, unknown>,
+      ) => {
+        if (type === ModelType.TEXT_TOKENIZER_ENCODE) {
+          const encodeParams = params as TokenizeTextParams;
+          return encodeParams.prompt.split(" ");
+        }
+        if (type === ModelType.TEXT_TOKENIZER_DECODE) {
+          const decodeParams = params as DetokenizeTextParams;
+          return decodeParams.tokens.join(" ");
+        }
+        return [];
+      },
+    );
+
     const result = await utils.trimTokens("a b c d e", 3, runtime);
     expect(result).toBe("c d e");
+
+    await cleanupTestRuntime(runtime);
   });
 });

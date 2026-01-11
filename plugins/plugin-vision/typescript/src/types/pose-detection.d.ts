@@ -40,10 +40,7 @@ declare module "@tensorflow-models/pose-detection" {
   }
 
   export interface PoseDetector {
-    estimatePoses(
-      input: PoseDetectorInput,
-      config?: EstimatePosesConfig
-    ): Promise<Pose[]>;
+    estimatePoses(input: PoseDetectorInput, config?: EstimatePosesConfig): Promise<Pose[]>;
     dispose(): void;
   }
 

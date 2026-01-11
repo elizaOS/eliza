@@ -1,17 +1,21 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
+import { cleanupTestRuntime, createTestRuntime, createUUID } from "./test-utils";
 
 describe("DefaultMessageService", () => {
   let messageService: IMessageService;
-  let mockRuntime: Partial<IAgentRuntime>;
+  let runtime: IAgentRuntime;
   let mockCallback: HandlerCallback;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Create REAL runtime
+    runtime = await createTestRuntime();
+
     // Create mock callback
     mockCallback = vi.fn(async (content: Content) => {
       return [
@@ -19,125 +23,121 @@ describe("DefaultMessageService", () => {
           id: "123e4567-e89b-12d3-a456-426614174099" as UUID,
           content,
           entityId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
           createdAt: Date.now(),
         },
       ];
     });
 
-    // Create mock runtime
-    mockRuntime = {
-      agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-      logger: {
-        debug: vi.fn(() => {}),
-        info: vi.fn(() => {}),
-        warn: vi.fn(() => {}),
-        error: vi.fn(() => {}),
-        success: vi.fn(() => {}),
-      },
-      character: {
-        name: "TestAgent",
-        username: "testagent",
-        clients: [],
-        modelProvider: "openai",
-        settings: {
-          secrets: {},
-          voice: {
-            model: "en_US-male-medium",
-          },
-        },
-        system: "You are a helpful AI assistant.",
-      },
-      getSetting: vi.fn((key: string) => {
-        const settings: Record<string, string> = {
-          ALWAYS_RESPOND_CHANNELS: "",
-          ALWAYS_RESPOND_SOURCES: "",
-          SHOULD_RESPOND_BYPASS_TYPES: "",
-          SHOULD_RESPOND_BYPASS_SOURCES: "",
-        };
-        return settings[key];
-      }),
-      isCheckShouldRespondEnabled: vi.fn(() => true),
-      isActionPlanningEnabled: vi.fn(() => true),
-      createMemory: vi.fn(async (memory: Memory, _tableName: string) => {
+    // Spy on runtime methods with specific implementations
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      const settings: Record<string, string> = {
+        ALWAYS_RESPOND_CHANNELS: "",
+        ALWAYS_RESPOND_SOURCES: "",
+        SHOULD_RESPOND_BYPASS_TYPES: "",
+        SHOULD_RESPOND_BYPASS_SOURCES: "",
+      };
+      return settings[key] ?? null;
+    });
+    vi.spyOn(runtime, "isCheckShouldRespondEnabled").mockReturnValue(true);
+    vi.spyOn(runtime, "isActionPlanningEnabled").mockReturnValue(true);
+    vi.spyOn(runtime, "createMemory").mockImplementation(
+      async (memory: Memory) => {
         return memory;
-      }),
-      getMemoryById: vi.fn(async (_id: UUID) => null),
-      getMemoriesByRoomIds: vi.fn(async () => []),
-      composeState: vi.fn(async () => ({
-        data: {},
-        values: {},
-      })),
-      useModel: vi.fn(
-        async (
-          modelType: (typeof ModelType)[keyof typeof ModelType],
-          params: unknown,
-        ) => {
-          if (modelType === ModelType.TEXT_SMALL) {
-            // Response for shouldRespond check (no streaming)
-            return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
-          }
-          // Response for message handler - now with streaming support
-          // Must include <response> wrapper for parseKeyValueXml to work
-          const responseText =
-            "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
-          const textParams = params as GenerateTextParams;
-          if (textParams?.stream) {
-            // Return TextStreamResult for streaming - simulate chunked response
-            return {
-              textStream: (async function* () {
-                // Yield in chunks to simulate real streaming
-                yield "<response><thought>Processing message</thought>";
-                yield "<actions>REPLY</actions><providers></providers>";
-                yield "<text>Hello! How can I help you?</text></response>";
-              })(),
-              text: Promise.resolve(responseText),
-            };
-          }
-          return responseText;
-        },
-      ),
-      processActions: vi.fn(async () => {}),
-      evaluate: vi.fn(async () => {}),
-      emitEvent: vi.fn(async () => {}),
-      getRoom: vi.fn(async (roomId: UUID) => ({
-        id: roomId,
-        type: ChannelType.GROUP,
-        name: "Test Room",
-        worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
-      })),
-      getWorld: vi.fn(async (worldId: UUID) => ({
-        id: worldId,
-        name: "Test World",
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-      })),
-      ensureRoomExists: vi.fn(async () => {}),
-      getActions: vi.fn(() => []),
-      startRun: vi.fn(() => "123e4567-e89b-12d3-a456-426614174100" as UUID),
-      endRun: vi.fn((_runId: UUID) => {}),
-      queueEmbeddingGeneration: vi.fn(async () => {}),
-      log: vi.fn(async () => {}),
-      getParticipantUserState: vi.fn(async () => ({
-        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        userId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-      })),
-      getRoomsByIds: vi.fn(async (roomIds: UUID[]) => {
+      },
+    );
+    vi.spyOn(runtime, "getMemoryById").mockResolvedValue(null);
+    vi.spyOn(runtime, "getMemoriesByRoomIds").mockResolvedValue([]);
+    vi.spyOn(runtime, "composeState").mockResolvedValue({
+      data: {},
+      values: {},
+    });
+    vi.spyOn(runtime, "useModel").mockImplementation(
+      async (
+        modelType: (typeof ModelType)[keyof typeof ModelType],
+        params: unknown,
+      ) => {
+        if (modelType === ModelType.TEXT_SMALL) {
+          // Response for shouldRespond check (no streaming)
+          return "<response><action>REPLY</action><reason>User asked a question</reason></response>";
+        }
+        // Response for message handler - now with streaming support
+        // Must include <response> wrapper for parseKeyValueXml to work
+        const responseText =
+          "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
+        const textParams = params as GenerateTextParams;
+        if (textParams?.stream) {
+          // Return TextStreamResult for streaming - simulate chunked response
+          return {
+            textStream: (async function* () {
+              // Yield in chunks to simulate real streaming
+              yield "<response><thought>Processing message</thought>";
+              yield "<actions>REPLY</actions><providers></providers>";
+              yield "<text>Hello! How can I help you?</text></response>";
+            })(),
+            text: Promise.resolve(responseText),
+          };
+        }
+        return responseText;
+      },
+    );
+    vi.spyOn(runtime, "processActions").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "evaluate").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "emitEvent").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "getRoom").mockImplementation(async (roomId: UUID) => ({
+      id: roomId,
+      type: ChannelType.GROUP,
+      name: "Test Room",
+      worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
+    }));
+    vi.spyOn(runtime, "getWorld").mockImplementation(async (worldId: UUID) => ({
+      id: worldId,
+      name: "Test World",
+      agentId: runtime.agentId,
+    }));
+    vi.spyOn(runtime, "ensureRoomExists").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "getActions").mockReturnValue([]);
+    vi.spyOn(runtime, "startRun").mockReturnValue(
+      "123e4567-e89b-12d3-a456-426614174100" as UUID,
+    );
+    vi.spyOn(runtime, "endRun").mockImplementation(() => {});
+    vi.spyOn(runtime, "queueEmbeddingGeneration").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "log").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "getParticipantUserState").mockResolvedValue({
+      roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+      userId: runtime.agentId,
+    });
+    vi.spyOn(runtime, "getRoomsByIds").mockImplementation(
+      async (roomIds: UUID[]) => {
         return roomIds.map((id) => ({
           id,
           name: "Test Room",
           type: ChannelType.GROUP,
           worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
         }));
-      }),
-      getEntityById: vi.fn(async (entityId: UUID) => ({
+      },
+    );
+    vi.spyOn(runtime, "getEntityById").mockImplementation(
+      async (entityId: UUID) => ({
         id: entityId,
         names: ["Test User"],
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-      })),
-    } as IAgentRuntime;
+        agentId: runtime.agentId,
+      }),
+    );
+
+    // Spy on logger methods
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
 
     messageService = new DefaultMessageService();
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   describe("shouldRespond", () => {
@@ -147,7 +147,7 @@ describe("DefaultMessageService", () => {
         content: { text: "Hello", channelType: ChannelType.DM } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -159,11 +159,7 @@ describe("DefaultMessageService", () => {
         source: "test",
       };
 
-      const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
-        message,
-        room,
-      );
+      const result = messageService.shouldRespond(runtime, message, room);
 
       expect(result.shouldRespond).toBe(true);
       expect(result.skipEvaluation).toBe(true);
@@ -179,7 +175,7 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -199,7 +195,7 @@ describe("DefaultMessageService", () => {
       };
 
       const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
+        runtime,
         message,
         room,
         mentionContext,
@@ -216,7 +212,7 @@ describe("DefaultMessageService", () => {
         content: { text: "Thanks!", channelType: ChannelType.GROUP } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -236,7 +232,7 @@ describe("DefaultMessageService", () => {
       };
 
       const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
+        runtime,
         message,
         room,
         mentionContext,
@@ -256,7 +252,7 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -268,11 +264,7 @@ describe("DefaultMessageService", () => {
         source: "test",
       };
 
-      const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
-        message,
-        room,
-      );
+      const result = messageService.shouldRespond(runtime, message, room);
 
       expect(result.shouldRespond).toBe(true);
       expect(result.skipEvaluation).toBe(true);
@@ -289,7 +281,7 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -301,11 +293,7 @@ describe("DefaultMessageService", () => {
         source: "test",
       };
 
-      const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
-        message,
-        room,
-      );
+      const result = messageService.shouldRespond(runtime, message, room);
 
       expect(result.shouldRespond).toBe(true);
       expect(result.skipEvaluation).toBe(true);
@@ -321,7 +309,7 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -333,11 +321,7 @@ describe("DefaultMessageService", () => {
         source: "test",
       };
 
-      const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
-        message,
-        room,
-      );
+      const result = messageService.shouldRespond(runtime, message, room);
 
       expect(result.shouldRespond).toBe(true);
       expect(result.skipEvaluation).toBe(true);
@@ -353,7 +337,7 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
@@ -365,11 +349,7 @@ describe("DefaultMessageService", () => {
         source: "test",
       };
 
-      const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
-        message,
-        room,
-      );
+      const result = messageService.shouldRespond(runtime, message, room);
 
       expect(result.shouldRespond).toBe(false);
       expect(result.skipEvaluation).toBe(false);
@@ -382,14 +362,11 @@ describe("DefaultMessageService", () => {
         content: { text: "Message without room" } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
-      const result = messageService.shouldRespond(
-        mockRuntime as IAgentRuntime,
-        message,
-      );
+      const result = messageService.shouldRespond(runtime, message);
 
       expect(result.shouldRespond).toBe(false);
       expect(result.skipEvaluation).toBe(true);
@@ -408,18 +385,18 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
       const result = await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
+        runtime,
         message,
         mockCallback,
       );
 
       expect(result.didRespond).toBeDefined();
-      expect(mockRuntime.createMemory).toHaveBeenCalled();
+      expect(runtime.createMemory).toHaveBeenCalled();
     });
 
     it("should emit RUN_STARTED event when handling message", async () => {
@@ -432,20 +409,16 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
-      await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
-        message,
-        mockCallback,
-      );
+      await messageService.handleMessage(runtime, message, mockCallback);
 
-      expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.RUN_STARTED,
         expect.objectContaining({
-          runtime: mockRuntime,
+          runtime: runtime,
           messageId: message.id,
         }),
       );
@@ -461,19 +434,16 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
-      await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
-        message,
-        mockCallback,
-      );
+      await messageService.handleMessage(runtime, message, mockCallback);
 
       // Check that RUN_ENDED was called
-      const emitEventCalls = (mockRuntime.emitEvent as ReturnType<typeof mock>)
-        .mock.calls;
+      const emitEventCalls = (
+        runtime.emitEvent as ReturnType<typeof vi.fn>
+      ).mock.calls;
       const runEndedCall = emitEventCalls.find(
         (call: unknown[]) =>
           Array.isArray(call) && call[0] === EventType.RUN_ENDED,
@@ -492,12 +462,12 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
       const result = await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
+        runtime,
         message,
         mockCallback,
       );
@@ -516,17 +486,13 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
-      await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
-        message,
-        mockCallback,
-      );
+      await messageService.handleMessage(runtime, message, mockCallback);
 
-      expect(mockRuntime.createMemory).toHaveBeenCalledWith(
+      expect(runtime.createMemory).toHaveBeenCalledWith(
         expect.objectContaining({
           content: expect.objectContaining({
             text: "Store this message",
@@ -549,19 +515,19 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
       const result = await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
+        runtime,
         voiceMessage,
         mockCallback,
       );
 
       // Should process voice messages just like regular messages
       expect(result).toBeDefined();
-      expect(mockRuntime.createMemory).toHaveBeenCalled();
+      expect(runtime.createMemory).toHaveBeenCalled();
     });
 
     it("should handle message without callback", async () => {
@@ -574,13 +540,13 @@ describe("DefaultMessageService", () => {
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
       // Should not throw when callback is undefined
       const result = await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
+        runtime,
         message,
         undefined,
       );
@@ -596,14 +562,14 @@ describe("DefaultMessageService", () => {
           source: "client_chat",
           channelType: ChannelType.DM,
         } as Content,
-        entityId: mockRuntime.agentId as UUID, // Same as agent
+        entityId: runtime.agentId, // Same as agent
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: mockRuntime.agentId as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
       const result = await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
+        runtime,
         agentMessage,
         mockCallback,
       );
@@ -615,75 +581,61 @@ describe("DefaultMessageService", () => {
 
   describe("deleteMessage", () => {
     it("should delete a message memory by ID", async () => {
-      const mockDeleteMemory = vi.fn(async () => {});
-      mockRuntime.deleteMemory = mockDeleteMemory;
+      vi.spyOn(runtime, "deleteMemory").mockResolvedValue(undefined);
 
       const message: Memory = {
         id: "123e4567-e89b-12d3-a456-426614174040" as UUID,
         content: { text: "Message to delete" } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
-      await messageService.deleteMessage(mockRuntime as IAgentRuntime, message);
+      await messageService.deleteMessage(runtime, message);
 
-      expect(mockDeleteMemory).toHaveBeenCalledWith(message.id);
-      if (mockRuntime.logger) {
-        expect(mockRuntime.logger.info).toHaveBeenCalled();
-      }
+      expect(runtime.deleteMemory).toHaveBeenCalledWith(message.id);
+      expect(runtime.logger.info).toHaveBeenCalled();
     });
 
     it("should handle missing message ID gracefully", async () => {
-      const mockDeleteMemory = vi.fn(async () => {});
-      mockRuntime.deleteMemory = mockDeleteMemory;
+      vi.spyOn(runtime, "deleteMemory").mockResolvedValue(undefined);
 
       const messageWithoutId: Memory = {
         content: { text: "Message without ID" } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       } as Memory;
 
-      await messageService.deleteMessage(
-        mockRuntime as IAgentRuntime,
-        messageWithoutId,
-      );
+      await messageService.deleteMessage(runtime, messageWithoutId);
 
-      expect(mockDeleteMemory).not.toHaveBeenCalled();
-      if (mockRuntime.logger) {
-        expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-          { src: "service:message", agentId: mockRuntime.agentId },
-          "Cannot delete memory: message ID is missing",
-        );
-      }
+      expect(runtime.deleteMemory).not.toHaveBeenCalled();
+      expect(runtime.logger.error).toHaveBeenCalledWith(
+        { src: "service:message", agentId: runtime.agentId },
+        "Cannot delete memory: message ID is missing",
+      );
     });
 
     it("should handle deletion errors and re-throw", async () => {
       const deleteError = new Error("Database deletion failed");
-      const mockDeleteMemory = vi.fn(async () => {
-        throw deleteError;
-      });
-      mockRuntime.deleteMemory = mockDeleteMemory;
+      vi.spyOn(runtime, "deleteMemory").mockRejectedValue(deleteError);
 
       const message: Memory = {
         id: "123e4567-e89b-12d3-a456-426614174041" as UUID,
         content: { text: "Message to delete" } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         createdAt: Date.now(),
       };
 
       await expect(
-        messageService.deleteMessage(mockRuntime as IAgentRuntime, message),
+        messageService.deleteMessage(runtime, message),
       ).rejects.toThrow("Database deletion failed");
 
-      if (mockRuntime.logger) {
-        expect(mockRuntime.logger.error).toHaveBeenCalled();
-      }
+      expect(runtime.logger.error).toHaveBeenCalled();
     });
   });
 
@@ -698,7 +650,7 @@ describe("DefaultMessageService", () => {
           content: { text: "Message 1" } as Content,
           entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
           roomId,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           createdAt: Date.now(),
         },
         {
@@ -706,7 +658,7 @@ describe("DefaultMessageService", () => {
           content: { text: "Message 2" } as Content,
           entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
           roomId,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           createdAt: Date.now(),
         },
         {
@@ -714,51 +666,35 @@ describe("DefaultMessageService", () => {
           content: { text: "Message 3" } as Content,
           entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
           roomId,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           createdAt: Date.now(),
         },
       ];
 
-      const mockGetMemories = vi.fn(async () => mockMemories);
-      const mockDeleteMemory = vi.fn(async () => {});
+      vi.spyOn(runtime, "getMemoriesByRoomIds").mockResolvedValue(mockMemories);
+      vi.spyOn(runtime, "deleteMemory").mockResolvedValue(undefined);
 
-      mockRuntime.getMemoriesByRoomIds = mockGetMemories;
-      mockRuntime.deleteMemory = mockDeleteMemory;
+      await messageService.clearChannel(runtime, roomId, channelId);
 
-      await messageService.clearChannel(
-        mockRuntime as IAgentRuntime,
-        roomId,
-        channelId,
-      );
-
-      expect(mockGetMemories).toHaveBeenCalledWith({
+      expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
         tableName: "messages",
         roomIds: [roomId],
       });
-      expect(mockDeleteMemory).toHaveBeenCalledTimes(3);
-      if (mockRuntime.logger) {
-        expect(mockRuntime.logger.info).toHaveBeenCalled();
-      }
+      expect(runtime.deleteMemory).toHaveBeenCalledTimes(3);
+      expect(runtime.logger.info).toHaveBeenCalled();
     });
 
     it("should handle empty channel gracefully", async () => {
       const roomId = "123e4567-e89b-12d3-a456-426614174060" as UUID;
       const channelId = "empty-channel";
 
-      const mockGetMemories = vi.fn(async () => []);
-      const mockDeleteMemory = vi.fn(async () => {});
+      vi.spyOn(runtime, "getMemoriesByRoomIds").mockResolvedValue([]);
+      vi.spyOn(runtime, "deleteMemory").mockResolvedValue(undefined);
 
-      mockRuntime.getMemoriesByRoomIds = mockGetMemories;
-      mockRuntime.deleteMemory = mockDeleteMemory;
+      await messageService.clearChannel(runtime, roomId, channelId);
 
-      await messageService.clearChannel(
-        mockRuntime as IAgentRuntime,
-        roomId,
-        channelId,
-      );
-
-      expect(mockGetMemories).toHaveBeenCalled();
-      expect(mockDeleteMemory).not.toHaveBeenCalled();
+      expect(runtime.getMemoriesByRoomIds).toHaveBeenCalled();
+      expect(runtime.deleteMemory).not.toHaveBeenCalled();
     });
 
     it("should continue clearing even if individual deletions fail", async () => {
@@ -771,7 +707,7 @@ describe("DefaultMessageService", () => {
           content: { text: "Message 1" } as Content,
           entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
           roomId,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           createdAt: Date.now(),
         },
         {
@@ -779,36 +715,28 @@ describe("DefaultMessageService", () => {
           content: { text: "Message 2" } as Content,
           entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
           roomId,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           createdAt: Date.now(),
         },
       ];
 
       let callCount = 0;
-      const mockDeleteMemory = vi.fn(async () => {
+      vi.spyOn(runtime, "getMemoriesByRoomIds").mockResolvedValue(mockMemories);
+      vi.spyOn(runtime, "deleteMemory").mockImplementation(async () => {
         callCount++;
         if (callCount === 1) {
           throw new Error("First deletion failed");
         }
       });
 
-      mockRuntime.getMemoriesByRoomIds = vi.fn(async () => mockMemories);
-      mockRuntime.deleteMemory = mockDeleteMemory;
-
-      await messageService.clearChannel(
-        mockRuntime as IAgentRuntime,
-        roomId,
-        channelId,
-      );
+      await messageService.clearChannel(runtime, roomId, channelId);
 
       // Should have attempted to delete both messages
-      expect(mockDeleteMemory).toHaveBeenCalledTimes(2);
+      expect(runtime.deleteMemory).toHaveBeenCalledTimes(2);
       // Should have logged warning for the failed deletion
-      if (mockRuntime.logger) {
-        expect(mockRuntime.logger.warn).toHaveBeenCalled();
-        // Should have logged success for partial completion
-        expect(mockRuntime.logger.info).toHaveBeenCalled();
-      }
+      expect(runtime.logger.warn).toHaveBeenCalled();
+      // Should have logged success for partial completion
+      expect(runtime.logger.info).toHaveBeenCalled();
     });
 
     it("should skip memories without IDs", async () => {
@@ -820,25 +748,18 @@ describe("DefaultMessageService", () => {
           content: { text: "Message without ID" } as Content,
           entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
           roomId,
-          agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+          agentId: runtime.agentId,
           createdAt: Date.now(),
         } as Memory,
       ];
 
-      const mockGetMemories = vi.fn(async () => mockMemories);
-      const mockDeleteMemory = vi.fn(async () => {});
+      vi.spyOn(runtime, "getMemoriesByRoomIds").mockResolvedValue(mockMemories);
+      vi.spyOn(runtime, "deleteMemory").mockResolvedValue(undefined);
 
-      mockRuntime.getMemoriesByRoomIds = mockGetMemories;
-      mockRuntime.deleteMemory = mockDeleteMemory;
-
-      await messageService.clearChannel(
-        mockRuntime as IAgentRuntime,
-        roomId,
-        channelId,
-      );
+      await messageService.clearChannel(runtime, roomId, channelId);
 
       // Should not attempt to delete memories without IDs
-      expect(mockDeleteMemory).not.toHaveBeenCalled();
+      expect(runtime.deleteMemory).not.toHaveBeenCalled();
     });
   });
 
@@ -853,13 +774,13 @@ describe("DefaultMessageService", () => {
           channelType: ChannelType.API,
         } as Content,
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
-        agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
+        agentId: runtime.agentId,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         createdAt: Date.now(),
       };
 
       // Mock useModel to return XML where thought/text are objects (empty tags become {})
-      mockRuntime.useModel = vi.fn(
+      vi.spyOn(runtime, "useModel").mockImplementation(
         async (
           modelType: (typeof ModelType)[keyof typeof ModelType],
           params: unknown,
@@ -888,57 +809,47 @@ describe("DefaultMessageService", () => {
         },
       );
       // Add required mocks for the message processing flow
-      mockRuntime.emitEvent = vi.fn(async () => {});
-      mockRuntime.getRoom = vi.fn(async () => ({
+      vi.spyOn(runtime, "getRoom").mockResolvedValue({
         id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         name: "Test Room",
         source: "test",
         type: ChannelType.API,
         channelId: "test-channel",
         worldId: "123e4567-e89b-12d3-a456-426614174099" as UUID,
-      }));
+      });
 
       // The test passes if no error is thrown during message processing
       // This validates that the type guards prevent .substring() from being called on non-strings
-      await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
-        message,
-        mockCallback,
-      );
+      await messageService.handleMessage(runtime, message, mockCallback);
 
       // Verify the logging was called (which uses the type guards)
-      const mockRuntimeLogger = mockRuntime.logger;
-      expect(mockRuntimeLogger?.info).toHaveBeenCalled();
+      expect(runtime.logger.info).toHaveBeenCalled();
     });
   });
 
   describe("provider timeout", () => {
     it("should use default timeout of 1000ms when PROVIDERS_TOTAL_TIMEOUT_MS is not set", () => {
-      const getSetting = mockRuntime.getSetting as ReturnType<typeof mock>;
-      getSetting.mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         if (key === "PROVIDERS_TOTAL_TIMEOUT_MS") return null;
         return null;
       });
 
       // The default timeout should be 1000ms (1 second)
-      const mockRuntimeGetSetting = mockRuntime.getSetting;
       const timeout = parseInt(
-        String(mockRuntimeGetSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(runtime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
       expect(timeout).toBe(1000);
     });
 
     it("should use custom timeout when PROVIDERS_TOTAL_TIMEOUT_MS is set", () => {
-      const getSetting = mockRuntime.getSetting as ReturnType<typeof mock>;
-      getSetting.mockImplementation((key: string) => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         if (key === "PROVIDERS_TOTAL_TIMEOUT_MS") return "5000";
         return null;
       });
 
-      const mockRuntimeGetSetting = mockRuntime.getSetting;
       const timeout = parseInt(
-        String(mockRuntimeGetSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(runtime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
       expect(timeout).toBe(5000);

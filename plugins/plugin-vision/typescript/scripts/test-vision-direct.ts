@@ -1,8 +1,8 @@
 import { type IAgentRuntime, logger, type ModelType } from "@elizaos/core";
 import { VisionService } from "../src/service.js";
 
-// Mock runtime for testing
-const mockRuntime: Partial<IAgentRuntime> = {
+// Test runtime with minimal implementation for direct testing
+const testRuntime: Partial<IAgentRuntime> = {
   getSetting: (key: string) => {
     const settings: Record<string, string> = {
       VISION_MODE: "BOTH",
@@ -19,7 +19,7 @@ const mockRuntime: Partial<IAgentRuntime> = {
   },
   useModel: async (type: ModelType, input: unknown) => {
     console.log(
-      "[MockRuntime] Model request:",
+      "[TestRuntime] Model request:",
       type,
       typeof input === "string" ? "image data" : input
     );
@@ -34,7 +34,7 @@ async function testVisionService() {
   try {
     // Create and start service
     console.log("📦 Creating Vision Service...");
-    const service = await VisionService.start(mockRuntime as IAgentRuntime);
+    const service = await VisionService.start(testRuntime as IAgentRuntime);
 
     console.log("✅ Service started successfully!\n");
 

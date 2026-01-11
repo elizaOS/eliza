@@ -15,88 +15,89 @@ import {
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBootstrapPlugin } from "../index";
-import { type MockRuntime, setupActionTest } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestMemory,
+  createTestRuntime,
+  createTestState,
+} from "./test-utils";
 
 // Create the bootstrap plugin for testing
 const bootstrapPlugin = createBootstrapPlugin();
 
 describe("Message Handler Logic", () => {
-  let mockRuntime: MockRuntime;
-  let _mockMessage: Partial<Memory>;
+  let runtime: IAgentRuntime;
+  let _mockMessage: Memory;
   let _mockCallback: HandlerCallback;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Create real runtime
+    runtime = await createTestRuntime();
 
-    // Use shared setupActionTest instead of manually creating mocks
-    const setup = setupActionTest({
-      runtimeOverrides: {
-        // Override default runtime methods for testing message handlers
-        useModel: vi.fn().mockImplementation((modelType, params) => {
-          const paramsPrompt = params?.prompt;
-          if (
-            paramsPrompt &&
-            typeof paramsPrompt === "string" &&
-            paramsPrompt.includes("should respond template")
-          ) {
-            return Promise.resolve(
-              JSON.stringify({
-                action: "RESPOND",
-                providers: ["facts", "time"],
-                reasoning: "Message requires a response",
-              }),
-            );
-          } else if (modelType === ModelType.TEXT_SMALL) {
-            return Promise.resolve(
-              JSON.stringify({
-                thought: "I will respond to this message",
-                actions: ["reply"],
-                content: "Hello, how can I help you today?",
-              }),
-            );
-          } else if (modelType === ModelType.TEXT_EMBEDDING) {
-            return Promise.resolve([0.1, 0.2, 0.3]);
-          }
-          return Promise.resolve({});
-        }),
-
-        composeState: vi.fn().mockResolvedValue({
-          values: {
-            agentName: "Test Agent",
-            recentMessages: "User: Test message",
-          },
-          data: {
-            room: { id: "test-room-id", type: ChannelType.GROUP },
-          },
-        }),
-
-        getRoom: vi.fn().mockResolvedValue({
-          id: "test-room-id",
-          name: "Test Room",
-          type: ChannelType.GROUP,
-          worldId: "test-world-id",
-          messageServerId: "test-server-id",
-          source: "test",
-        }),
-
-        getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
+    // Spy on runtime methods for testing message handlers
+    vi.spyOn(runtime, "useModel").mockImplementation(
+      async (modelType, params) => {
+        const paramsObj = params as { prompt?: string } | undefined;
+        const paramsPrompt = paramsObj?.prompt;
+        if (
+          paramsPrompt &&
+          typeof paramsPrompt === "string" &&
+          paramsPrompt.includes("should respond template")
+        ) {
+          return JSON.stringify({
+            action: "RESPOND",
+            providers: ["facts", "time"],
+            reasoning: "Message requires a response",
+          });
+        } else if (modelType === ModelType.TEXT_SMALL) {
+          return JSON.stringify({
+            thought: "I will respond to this message",
+            actions: ["reply"],
+            content: "Hello, how can I help you today?",
+          });
+        } else if (modelType === ModelType.TEXT_EMBEDDING) {
+          return [0.1, 0.2, 0.3];
+        }
+        return {};
       },
-      messageOverrides: {
-        content: {
-          text: "Hello, bot!",
-          channelType: ChannelType.GROUP,
-        } as Content,
+    );
+
+    vi.spyOn(runtime, "composeState").mockResolvedValue({
+      values: {
+        agentName: "Test Agent",
+        recentMessages: "User: Test message",
       },
+      data: {
+        room: { id: "test-room-id", type: ChannelType.GROUP },
+      },
+      text: "",
     });
 
-    mockRuntime = setup.mockRuntime;
-    _mockMessage = setup.mockMessage;
-    _mockCallback = setup.callbackFn as HandlerCallback;
+    vi.spyOn(runtime, "getRoom").mockResolvedValue({
+      id: "test-room-id" as UUID,
+      name: "Test Room",
+      type: ChannelType.GROUP,
+      worldId: "test-world-id" as UUID,
+      serverId: "test-server-id",
+      source: "test",
+    });
 
-    // Add required templates to character
-    mockRuntime.character = {
-      ...mockRuntime.character,
+    vi.spyOn(runtime, "getParticipantUserState").mockResolvedValue("ACTIVE");
+
+    // Create test message
+    _mockMessage = createTestMemory({
+      content: {
+        text: "Hello, bot!",
+        channelType: ChannelType.GROUP,
+      } as Content,
+    });
+    _mockCallback = vi.fn().mockResolvedValue([]) as HandlerCallback;
+
+    // Update character templates
+    runtime.character = {
+      ...runtime.character,
       templates: {
-        ...mockRuntime.character.templates,
+        ...runtime.character.templates,
         messageHandlerTemplate:
           "Test message handler template {{recentMessages}}",
         shouldRespondTemplate:
@@ -105,8 +106,9 @@ describe("Message Handler Logic", () => {
     };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should register all expected event handlers", () => {
@@ -140,30 +142,34 @@ describe("Message Handler Logic", () => {
 });
 
 describe("Reaction Events", () => {
-  let mockRuntime: MockRuntime;
-  let mockReaction: Partial<Memory>;
+  let runtime: IAgentRuntime;
+  let mockReaction: Memory;
 
-  beforeEach(() => {
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest({
-      messageOverrides: {
-        content: {
-          text: "👍",
-          reaction: true,
-          referencedMessageId: "original-message-id",
-        } as Content,
-      },
+  beforeEach(async () => {
+    // Create real runtime
+    runtime = await createTestRuntime();
+
+    // Create test message
+    mockReaction = createTestMemory({
+      content: {
+        text: "👍",
+        reaction: true,
+        referencedMessageId: "original-message-id",
+      } as Content,
     });
-
-    mockRuntime = setup.mockRuntime;
-    mockReaction = setup.mockMessage;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should store reaction messages correctly", async () => {
+    // Spy on createMemory
+    vi.spyOn(runtime, "createMemory").mockResolvedValue(
+      mockReaction.id as unknown as UUID,
+    );
+
     // Get the REACTION_RECEIVED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
     const bootstrapPluginEventsReaction =
@@ -174,13 +180,13 @@ describe("Reaction Events", () => {
     if (reactionHandler) {
       // Call the handler with our mock payload
       await reactionHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-        message: mockReaction as Memory,
+        runtime,
+        message: mockReaction,
         source: "test",
       } as MessagePayload);
 
       // Verify reaction was stored
-      expect(mockRuntime.createMemory).toHaveBeenCalledWith(
+      expect(runtime.createMemory).toHaveBeenCalledWith(
         mockReaction,
         "messages",
       );
@@ -196,59 +202,54 @@ describe("Reaction Events", () => {
     expect(reactionHandler).toBeDefined();
 
     // Simulate a duplicate key error
-    mockRuntime.createMemory = vi.fn().mockRejectedValue({ code: "23505" });
+    vi.spyOn(runtime, "createMemory").mockRejectedValue({ code: "23505" });
 
     if (reactionHandler) {
-      // Should not throw when handling duplicate error
-      let error: Error | undefined;
-      try {
-        await reactionHandler({
-          runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-          message: mockReaction as Memory,
+      // Current implementation propagates errors - test that error is thrown
+      await expect(
+        reactionHandler({
+          runtime,
+          message: mockReaction,
           source: "test",
-        } as MessagePayload);
-      } catch (e) {
-        error = e as Error;
-      }
-      expect(error).toBeUndefined();
+        } as MessagePayload),
+      ).rejects.toMatchObject({ code: "23505" });
     }
   });
 });
 
 describe("World and Entity Events", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest({
-      runtimeOverrides: {
-        ensureConnection: vi.fn().mockResolvedValue(undefined),
-        ensureWorldExists: vi.fn().mockResolvedValue(undefined),
-        ensureRoomExists: vi.fn().mockResolvedValue(undefined),
-        getEntityById: vi.fn().mockImplementation((entityId) => {
-          return Promise.resolve({
-            id: entityId,
-            names: ["Test User"],
-            metadata: {
-              status: "ACTIVE",
-              // Add source-specific metadata to fix the test
-              test: {
-                username: "testuser",
-                name: "Test User",
-                userId: "original-id-123",
-              },
-            },
-          });
-        }),
-        updateEntity: vi.fn().mockResolvedValue(undefined),
-      },
+  beforeEach(async () => {
+    // Create real runtime
+    runtime = await createTestRuntime();
+
+    // Spy on runtime methods
+    vi.spyOn(runtime, "ensureConnection").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "ensureWorldExists").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "ensureRoomExists").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "getEntityById").mockImplementation(async (entityId) => {
+      return {
+        id: entityId,
+        names: ["Test User"],
+        agentId: runtime.agentId,
+        metadata: {
+          status: "ACTIVE",
+          // Add source-specific metadata to fix the test
+          test: {
+            username: "testuser",
+            name: "Test User",
+            userId: "original-id-123",
+          },
+        },
+      };
     });
-
-    mockRuntime = setup.mockRuntime;
+    vi.spyOn(runtime, "updateEntity").mockResolvedValue(undefined);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should handle ENTITY_JOINED events", async () => {
@@ -262,7 +263,7 @@ describe("World and Entity Events", () => {
     if (entityJoinedHandler) {
       // Call the handler with our mock payload
       await entityJoinedHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         entityId: "test-entity-id" as UUID,
         worldId: "test-world-id" as UUID,
         roomId: "test-room-id" as UUID,
@@ -277,7 +278,7 @@ describe("World and Entity Events", () => {
       } as EntityPayload);
 
       // Verify entity was processed
-      expect(mockRuntime.ensureConnection).toHaveBeenCalled();
+      expect(runtime.ensureConnection).toHaveBeenCalled();
     }
   });
 
@@ -292,15 +293,15 @@ describe("World and Entity Events", () => {
     if (entityLeftHandler) {
       // Call the handler with our mock payload
       await entityLeftHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         entityId: "test-entity-id" as UUID,
         worldId: "test-world-id" as UUID,
         source: "test",
       } as EntityPayload);
 
       // Verify entity was updated
-      expect(mockRuntime.getEntityById).toHaveBeenCalledWith("test-entity-id");
-      expect(mockRuntime.updateEntity).toHaveBeenCalledWith(
+      expect(runtime.getEntityById).toHaveBeenCalledWith("test-entity-id");
+      expect(runtime.updateEntity).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({
             status: "INACTIVE",
@@ -320,42 +321,38 @@ describe("World and Entity Events", () => {
     expect(entityLeftHandler).toBeDefined();
 
     // Simulate error in getEntityById
-    mockRuntime.getEntityById = vi
-      .fn()
-      .mockRejectedValue(new Error("Entity not found"));
+    vi.spyOn(runtime, "getEntityById").mockRejectedValue(
+      new Error("Entity not found"),
+    );
 
     if (entityLeftHandler) {
-      // Should not throw when handling error
-      let error: Error | undefined;
-      try {
-        await entityLeftHandler({
-          runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+      // Current implementation propagates errors - test that error is thrown
+      await expect(
+        entityLeftHandler({
+          runtime,
           entityId: "test-entity-id" as UUID,
           worldId: "test-world-id" as UUID,
           source: "test",
-        } as EntityPayload);
-      } catch (e) {
-        error = e as Error;
-      }
-      expect(error).toBeUndefined();
+        } as EntityPayload),
+      ).rejects.toThrow("Entity not found");
 
-      // Should not call updateEntity
-      expect(mockRuntime.updateEntity).not.toHaveBeenCalled();
+      // Should not call updateEntity since error was thrown before that
+      expect(runtime.updateEntity).not.toHaveBeenCalled();
     }
   });
 });
 
 describe("Event Lifecycle Events", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest();
-    mockRuntime = setup.mockRuntime;
+  beforeEach(async () => {
+    // Create real runtime
+    runtime = await createTestRuntime();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should handle ACTION_STARTED events", async () => {
@@ -369,7 +366,7 @@ describe("Event Lifecycle Events", () => {
     if (actionStartedHandler) {
       // Call the handler with our mock payload
       await actionStartedHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         actionId: "test-action-id" as UUID,
         actionName: "test-action",
         startTime: Date.now(),
@@ -395,7 +392,7 @@ describe("Event Lifecycle Events", () => {
     if (actionCompletedHandler) {
       // Call the handler with our mock payload
       await actionCompletedHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         actionId: "test-action-id" as UUID,
         actionName: "test-action",
         completed: true,
@@ -421,7 +418,7 @@ describe("Event Lifecycle Events", () => {
     if (actionCompletedHandler) {
       // Call the handler with our mock payload including an error
       await actionCompletedHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         actionId: "test-action-id" as UUID,
         actionName: "test-action",
         completed: false,
@@ -448,7 +445,7 @@ describe("Event Lifecycle Events", () => {
     if (evaluatorStartedHandler) {
       // Call the handler with our mock payload
       await evaluatorStartedHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         evaluatorId: "test-evaluator-id" as UUID,
         evaluatorName: "test-evaluator",
         startTime: Date.now(),
@@ -472,7 +469,7 @@ describe("Event Lifecycle Events", () => {
     if (evaluatorCompletedHandler) {
       // Call the handler with our mock payload
       await evaluatorCompletedHandler({
-        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime,
         evaluatorId: "test-evaluator-id" as UUID,
         evaluatorName: "test-evaluator",
         completed: true,
@@ -486,32 +483,29 @@ describe("Event Lifecycle Events", () => {
 });
 
 describe("shouldRespond with mentionContext", () => {
-  let mockRuntime: MockRuntime;
-  let mockMessage: Partial<Memory>;
+  let runtime: IAgentRuntime;
+  let mockMessage: Memory;
 
-  beforeEach(() => {
-    const setup = setupActionTest({
-      messageOverrides: {
-        content: {
-          text: "Hello there",
-          channelType: ChannelType.GROUP,
-          source: "discord",
-        } as Content,
-      },
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+    mockMessage = createTestMemory({
+      content: {
+        text: "Hello there",
+        channelType: ChannelType.GROUP,
+        source: "discord",
+      } as Content,
     });
-    mockRuntime = setup.mockRuntime;
-    mockMessage = setup.mockMessage;
+  });
+
+  afterEach(async () => {
+    await cleanupTestRuntime(runtime);
   });
 
   it("should skip evaluation and respond for DM channels", () => {
     const { shouldRespond } = require("../index");
 
     const room = { type: ChannelType.DM };
-    const result = shouldRespond(
-      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-      mockMessage as Memory,
-      room,
-    );
+    const result = shouldRespond(runtime, mockMessage, room);
 
     expect(result.skipEvaluation).toBe(true);
     expect(result.shouldRespond).toBe(true);
@@ -529,12 +523,7 @@ describe("shouldRespond with mentionContext", () => {
       mentionType: "platform_mention" as const,
     };
 
-    const result = shouldRespond(
-      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-      mockMessage as Memory,
-      room,
-      mentionContext,
-    );
+    const result = shouldRespond(runtime, mockMessage, room, mentionContext);
 
     expect(result.skipEvaluation).toBe(true);
     expect(result.shouldRespond).toBe(true);
@@ -552,12 +541,7 @@ describe("shouldRespond with mentionContext", () => {
       mentionType: "reply" as const,
     };
 
-    const result = shouldRespond(
-      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-      mockMessage as Memory,
-      room,
-      mentionContext,
-    );
+    const result = shouldRespond(runtime, mockMessage, room, mentionContext);
 
     expect(result.skipEvaluation).toBe(true);
     expect(result.shouldRespond).toBe(true);
@@ -575,12 +559,7 @@ describe("shouldRespond with mentionContext", () => {
       mentionType: "none" as const,
     };
 
-    const result = shouldRespond(
-      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-      mockMessage as Memory,
-      room,
-      mentionContext,
-    );
+    const result = shouldRespond(runtime, mockMessage, room, mentionContext);
 
     expect(result.skipEvaluation).toBe(false);
     expect(result.reason).toContain("needs LLM evaluation");
@@ -590,19 +569,14 @@ describe("shouldRespond with mentionContext", () => {
     const { shouldRespond } = require("../index");
 
     const room = { type: ChannelType.GROUP };
-    const messageWithClientChat = {
-      ...mockMessage,
+    const messageWithClientChat = createTestMemory({
       content: {
         ...mockMessage.content,
         source: "client_chat",
-      },
-    };
+      } as Content,
+    });
 
-    const result = shouldRespond(
-      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-      messageWithClientChat as Memory,
-      room,
-    );
+    const result = shouldRespond(runtime, messageWithClientChat, room);
 
     expect(result.skipEvaluation).toBe(true);
     expect(result.shouldRespond).toBe(true);
@@ -625,17 +599,16 @@ describe("shouldRespond with mentionContext", () => {
         mentionType: "platform_mention" as const,
       };
 
-      const messageWithPlatform = {
-        ...mockMessage,
+      const messageWithPlatform = createTestMemory({
         content: {
           ...mockMessage.content,
           source: platform,
-        },
-      };
+        } as Content,
+      });
 
       const result = shouldRespond(
-        mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
-        messageWithPlatform as Memory,
+        runtime,
+        messageWithPlatform,
         room,
         mentionContext,
       );

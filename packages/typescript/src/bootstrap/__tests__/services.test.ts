@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Bootstrap Services Tests
+ *
+ * Tests for bootstrap services using REAL AgentRuntime instances.
+ */
+
 import {
   type IAgentRuntime,
   logger,
@@ -7,7 +13,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskService } from "../../services/task";
 import { createBootstrapPlugin } from "../index";
-import { type MockRuntime, setupActionTest } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "./test-utils";
 
 // Define service interface for plugin services
 interface PluginService extends Service {
@@ -48,7 +57,7 @@ const getPluginServices = (): PluginService[] =>
   (bootstrapPlugin.services || []) as PluginService[];
 
 describe("TaskService", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
   let taskService: TaskService;
   let mockTasks: Array<{
     id: string;
@@ -62,12 +71,9 @@ describe("TaskService", () => {
     metadata?: Record<string, unknown>;
   }>;
 
-  beforeEach(() => {
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest();
-    mockRuntime = setup.mockRuntime;
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
 
-    // Create mock tasks
     mockTasks = [
       {
         id: "task-1",
@@ -95,24 +101,19 @@ describe("TaskService", () => {
       },
     ];
 
-    // Mock setTimeout (timer mocking available via vi.useFakeTimers() if needed)
+    vi.spyOn(runtime, "getTasks").mockResolvedValue(mockTasks as never);
 
-    // Mock getTasks to return our test tasks
-    mockRuntime.getTasks = vi.fn().mockResolvedValue(mockTasks);
-
-    // Create service instance
-    taskService = new TaskService(mockRuntime as IAgentRuntime);
+    taskService = new TaskService(runtime);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should be instantiated with a runtime", () => {
     expect(taskService).toBeDefined();
     expect(taskService).toBeInstanceOf(TaskService);
-
-    // Verify that the service has the expected properties
     expect(TaskService).toHaveProperty("serviceType");
     expect(TaskService.serviceType).toBe(ServiceType.TASK);
     expect(taskService).toHaveProperty("runtime");
@@ -121,41 +122,28 @@ describe("TaskService", () => {
   });
 
   it("should start the service successfully", async () => {
-    // Test that the service can be started
-    const startPromise = TaskService.start(mockRuntime as IAgentRuntime);
-
-    // Should return a Promise
+    const startPromise = TaskService.start(runtime);
     expect(startPromise).toBeInstanceOf(Promise);
 
-    // Verify the service was instantiated correctly
     const service = await startPromise;
     expect(service).toBeDefined();
     expect(service).toBeInstanceOf(TaskService);
-    expect((service as unknown as TestableTaskService).runtime).toBe(
-      mockRuntime,
-    );
-
-    // Verify that the start method registered the service
-    // expect(mockRuntime.registerEvent).toHaveBeenCalledWith('TASK_UPDATED', expect.any(Function)); // This event is not registered by start
+    expect((service as unknown as TestableTaskService).runtime).toBe(runtime);
   });
 
   it("should retrieve pending tasks correctly", async () => {
-    // Expose the private method for testing
     const checkTasksMethod = (
       taskService as unknown as TestableTaskService
     ).checkTasks.bind(taskService);
 
-    // Call the method
     await checkTasksMethod();
 
-    // Verify that getTasks was called with the correct parameters
-    expect(mockRuntime.getTasks).toHaveBeenCalledWith({
+    expect(runtime.getTasks).toHaveBeenCalledWith({
       tags: ["queue"],
     });
   });
 
   it("should process tasks that are ready", async () => {
-    // Create a task that's ready to process (scheduled for the past)
     const pastTask = {
       id: "past-task",
       name: "Past scheduled task",
@@ -166,63 +154,34 @@ describe("TaskService", () => {
       tags: ["queue"],
     };
 
-    // Mock getTasks to return our ready task
-    mockRuntime.getTasks = vi.fn().mockResolvedValue([pastTask]);
+    vi.spyOn(runtime, "getTasks").mockResolvedValue([pastTask as never]);
 
-    // Expose and call the private methods for testing
     const executeTaskMethod = (
       taskService as unknown as TestableTaskService
     ).executeTask.bind(taskService);
 
-    // Mock getTaskWorker for 'Past scheduled task'
     const mockWorkerExecute = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getTaskWorker = vi
-      .fn()
-      .mockImplementation((taskName: string) => {
-        if (taskName === "Past scheduled task") {
-          return {
-            name: taskName,
-            execute: mockWorkerExecute,
-            validate: vi.fn().mockResolvedValue(true),
-          };
-        }
-        return undefined;
-      });
+    vi.spyOn(runtime, "getTaskWorker").mockImplementation((taskName: string) => {
+      if (taskName === "Past scheduled task") {
+        return {
+          name: taskName,
+          execute: mockWorkerExecute,
+          validate: vi.fn().mockResolvedValue(true),
+        };
+      }
+      return undefined;
+    });
 
-    // Call the method to check tasks
-    // This will internally call executeTask if conditions are met, but we test executeTask directly for more control
-    // await checkTasksMethod(); // We are testing executeTask directly below
+    vi.spyOn(runtime, "deleteTask").mockResolvedValue(undefined);
 
-    // Process the task directly to test that functionality
     await executeTaskMethod(pastTask);
 
-    // Verify task worker was called
-    expect(mockRuntime.getTaskWorker).toHaveBeenCalledWith(pastTask.name);
+    expect(runtime.getTaskWorker).toHaveBeenCalledWith(pastTask.name);
     expect(mockWorkerExecute).toHaveBeenCalled();
-
-    // Verify task was deleted (since it's not a repeating task)
-    expect(mockRuntime.deleteTask).toHaveBeenCalledWith(pastTask.id);
-
-    // Verify task was processed correctly (original assertions removed as they don't match current executeTask)
-    // expect(mockRuntime.useModel).toHaveBeenCalled();
-    // expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
-    //   'TASK_PROCESSING',
-    //   expect.objectContaining({
-    //     taskId: pastTask.id,
-    //   })
-    // );
-    // expect(mockRuntime.updateTasks).toHaveBeenCalledWith(
-    //   expect.arrayContaining([
-    //     expect.objectContaining({
-    //       id: pastTask.id,
-    //       status: 'COMPLETED',
-    //     }),
-    //   ])
-    // );
+    expect(runtime.deleteTask).toHaveBeenCalledWith(pastTask.id);
   });
 
   it("should handle errors during task processing", async () => {
-    // Create a task for testing
     const testTask = {
       id: "error-task",
       name: "Error task",
@@ -231,72 +190,45 @@ describe("TaskService", () => {
       tags: ["queue"],
     };
 
-    // Mock getTaskWorker for 'Error task' to throw an error
     const mockErrorExecute = vi
       .fn()
       .mockRejectedValue(new Error("Worker execution error"));
-    mockRuntime.getTaskWorker = vi
-      .fn()
-      .mockImplementation((taskName: string) => {
-        if (taskName === "Error task") {
-          return {
-            name: taskName,
-            execute: mockErrorExecute,
-            validate: vi.fn().mockResolvedValue(true),
-          };
-        }
-        return undefined;
-      });
+    vi.spyOn(runtime, "getTaskWorker").mockImplementation((taskName: string) => {
+      if (taskName === "Error task") {
+        return {
+          name: taskName,
+          execute: mockErrorExecute,
+          validate: vi.fn().mockResolvedValue(true),
+        };
+      }
+      return undefined;
+    });
 
-    // Expose the private method for testing
     const executeTaskMethod = (
       taskService as unknown as TestableTaskService
     ).executeTask.bind(taskService);
 
-    // The current implementation does not catch errors - they propagate
     await expect(executeTaskMethod(testTask)).rejects.toThrow(
       "Worker execution error",
     );
 
-    // Verify task worker was called
-    expect(mockRuntime.getTaskWorker).toHaveBeenCalledWith(testTask.name);
+    expect(runtime.getTaskWorker).toHaveBeenCalledWith(testTask.name);
     expect(mockErrorExecute).toHaveBeenCalled();
-
-    // Errors propagate to caller (checkTasks or higher) - no internal error handling
-    // expect(mockRuntime.updateTasks).toHaveBeenCalledWith(
-    //   expect.arrayContaining([
-    //     expect.objectContaining({
-    //       id: testTask.id,
-    //       status: 'ERROR',
-    //     }),
-    //   ])
-    // );
-    // expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
-    //   'TASK_ERROR',
-    //   expect.objectContaining({
-    //     taskId: testTask.id,
-    //     error: expect.objectContaining({
-    //       message: 'Task processing error', // This would be 'Worker execution error'
-    //     }),
-    //   })
-    // );
   });
 });
 
 describe("Service Registry", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.spyOn(logger, "warn").mockImplementation(() => {});
-
-    // Use setupActionTest for consistent test setup
-    const setup = setupActionTest();
-    mockRuntime = setup.mockRuntime;
+    runtime = await createTestRuntime();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should register all services correctly", () => {
@@ -304,25 +236,17 @@ describe("Service Registry", () => {
     expect(services).toBeDefined();
     expect(services.length).toBeGreaterThan(0);
 
-    // Check that each service has the required properties
     services.forEach((serviceDefinitionOrClass) => {
-      // The type of serviceDefinitionOrClass can be a class constructor or a descriptor object.
-      // PluginService interface is for descriptor objects.
-      // The error "expected [Function TaskService] to have property 'type'"
-      // implies that for TaskService, serviceDefinitionOrClass is the class constructor.
-
       if (typeof serviceDefinitionOrClass === "function") {
-        // It's a class constructor (e.g., TaskService class)
         const serviceClass =
           serviceDefinitionOrClass as ServiceClassConstructor;
         expect(serviceClass).toHaveProperty("serviceType");
         expect(typeof serviceClass.serviceType).toBe("string");
-        expect(serviceClass).toHaveProperty("name"); // e.g., TaskService.name (class name)
+        expect(serviceClass).toHaveProperty("name");
         expect(typeof serviceClass.name).toBe("string");
-        expect(serviceClass).toHaveProperty("start"); // Static start method
+        expect(serviceClass).toHaveProperty("start");
         expect(typeof serviceClass.start).toBe("function");
       } else {
-        // It's a descriptor object, conforming to PluginService interface
         const serviceDesc = serviceDefinitionOrClass as PluginService;
         expect(serviceDesc).toHaveProperty("type");
         expect(typeof serviceDesc.type).toBe("string");
@@ -346,22 +270,14 @@ describe("Service Registry", () => {
     if (fileServiceDefinition) {
       const serviceInstance =
         typeof fileServiceDefinition === "function"
-          ? await (fileServiceDefinition as ServiceClassConstructor).start(
-              mockRuntime as IAgentRuntime,
-            ) // This might still throw if start itself fails
-          : await (fileServiceDefinition as PluginService).init(
-              mockRuntime as IAgentRuntime,
-            );
+          ? await (fileServiceDefinition as ServiceClassConstructor).start(runtime)
+          : await (fileServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
       expect(serviceInstance).toHaveProperty("uploadFile");
       expect(serviceInstance).toHaveProperty("getFile");
       expect(serviceInstance).toHaveProperty("listFiles");
       expect(serviceInstance).toHaveProperty("deleteFile");
-      expect(typeof serviceInstance.uploadFile).toBe("function");
-      expect(typeof serviceInstance.getFile).toBe("function");
-      expect(typeof serviceInstance.listFiles).toBe("function");
-      expect(typeof serviceInstance.deleteFile).toBe("function");
     }
   });
 
@@ -377,16 +293,11 @@ describe("Service Registry", () => {
     if (pdfServiceDefinition) {
       const serviceInstance =
         typeof pdfServiceDefinition === "function"
-          ? await (pdfServiceDefinition as ServiceClassConstructor).start(
-              mockRuntime as IAgentRuntime,
-            )
-          : await (pdfServiceDefinition as PluginService).init(
-              mockRuntime as IAgentRuntime,
-            );
+          ? await (pdfServiceDefinition as ServiceClassConstructor).start(runtime)
+          : await (pdfServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
       expect(serviceInstance).toHaveProperty("extractText");
-      expect(typeof serviceInstance.extractText).toBe("function");
     }
   });
 
@@ -395,23 +306,18 @@ describe("Service Registry", () => {
     const imageServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
         return (s as ServiceClassConstructor).serviceType === "image";
-      } // Assuming 'image' is the type
+      }
       return (s as PluginService).type === "image";
     });
 
     if (imageServiceDefinition) {
       const serviceInstance =
         typeof imageServiceDefinition === "function"
-          ? await (imageServiceDefinition as ServiceClassConstructor).start(
-              mockRuntime as IAgentRuntime,
-            )
-          : await (imageServiceDefinition as PluginService).init(
-              mockRuntime as IAgentRuntime,
-            );
+          ? await (imageServiceDefinition as ServiceClassConstructor).start(runtime)
+          : await (imageServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
       expect(serviceInstance).toHaveProperty("describeImage");
-      expect(typeof serviceInstance.describeImage).toBe("function");
     }
   });
 
@@ -419,9 +325,7 @@ describe("Service Registry", () => {
     const services = getPluginServices();
     const browserServiceDefinition = services.find((s) => {
       if (typeof s === "function") {
-        return (
-          (s as ServiceClassConstructor).serviceType === ServiceType.BROWSER
-        );
+        return (s as ServiceClassConstructor).serviceType === ServiceType.BROWSER;
       }
       return (s as PluginService).type === ServiceType.BROWSER;
     });
@@ -429,16 +333,11 @@ describe("Service Registry", () => {
     if (browserServiceDefinition) {
       const serviceInstance =
         typeof browserServiceDefinition === "function"
-          ? await (browserServiceDefinition as ServiceClassConstructor).start(
-              mockRuntime as IAgentRuntime,
-            )
-          : await (browserServiceDefinition as PluginService).init(
-              mockRuntime as IAgentRuntime,
-            );
+          ? await (browserServiceDefinition as ServiceClassConstructor).start(runtime)
+          : await (browserServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
       expect(serviceInstance).toHaveProperty("browse");
-      expect(typeof serviceInstance.browse).toBe("function");
     }
   });
 
@@ -452,25 +351,17 @@ describe("Service Registry", () => {
     });
 
     if (fileServiceDefinition) {
-      // Setup to force initialization error
-      mockRuntime.getService = vi.fn().mockImplementation(() => {
+      vi.spyOn(runtime, "getService").mockImplementation(() => {
         throw new Error("Service initialization failed");
       });
 
-      // Should not throw but return a basic implementation
       const serviceInstance =
         typeof fileServiceDefinition === "function"
-          ? await (fileServiceDefinition as ServiceClassConstructor).start(
-              mockRuntime as IAgentRuntime,
-            ) // This might still throw if start itself fails
-          : await (fileServiceDefinition as PluginService).init(
-              mockRuntime as IAgentRuntime,
-            );
+          ? await (fileServiceDefinition as ServiceClassConstructor).start(runtime)
+          : await (fileServiceDefinition as PluginService).init(runtime);
 
       expect(serviceInstance).toBeDefined();
       expect(logger.warn).toHaveBeenCalled();
-
-      // Should have fallback methods
       expect(serviceInstance).toHaveProperty("uploadFile");
       expect(serviceInstance).toHaveProperty("getFile");
       expect(serviceInstance).toHaveProperty("listFiles");

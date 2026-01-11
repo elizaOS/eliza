@@ -28,7 +28,9 @@ interface TodoTaskInput {
 }
 
 // Type guard for TodoTaskInput
-function isValidTodoInput(obj: Record<string, unknown>): obj is TodoTaskInput {
+function isValidTodoInput(
+  obj: Record<string, unknown>
+): obj is Record<string, unknown> & TodoTaskInput {
   return (
     typeof obj.name === "string" &&
     typeof obj.taskType === "string" &&

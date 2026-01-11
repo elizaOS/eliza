@@ -28,7 +28,7 @@ function createMockRuntime(): IAgentRuntime & {
   useModel: (modelType: ModelType, params: GenerateTextParams) => Promise<string>;
 } {
   const services = new Map<string, unknown>();
-  const mockRuntime = {
+  const agentRuntime = {
     agentId: asUUID(uuidv4()),
     character: {
       name: "TestAgent",
@@ -49,7 +49,7 @@ function createMockRuntime(): IAgentRuntime & {
     registerService: (name: string, service: unknown) => services.set(name, service),
   };
 
-  return mockRuntime as unknown as IAgentRuntime & {
+  return agentRuntime as unknown as IAgentRuntime & {
     useModel: (modelType: ModelType, params: GenerateTextParams) => Promise<string>;
   };
 }
@@ -75,18 +75,18 @@ const createMockState = (): State => ({
 });
 
 describe("Forms Plugin Integration Tests", () => {
-  let mockRuntime: IAgentRuntime & {
+  let agentRuntime: IAgentRuntime & {
     useModel: (modelType: ModelType, params: GenerateTextParams) => Promise<string>;
   };
   let formsService: FormsService;
 
   beforeEach(async () => {
-    mockRuntime = createMockRuntime();
+    agentRuntime = createMockRuntime();
 
     // Initialize the forms service
-    formsService = (await FormsService.start(mockRuntime)) as FormsService;
+    formsService = (await FormsService.start(agentRuntime)) as FormsService;
     (
-      mockRuntime as unknown as {
+      agentRuntime as unknown as {
         registerService: (name: string, service: unknown) => void;
       }
     ).registerService("forms", formsService);
@@ -106,11 +106,11 @@ describe("Forms Plugin Integration Tests", () => {
       };
 
       // Validate the action
-      const isValid = await createFormAction.validate(mockRuntime, message, state);
+      const isValid = await createFormAction.validate(agentRuntime, message, state);
       expect(isValid).toBe(true);
 
       // Execute the action
-      await createFormAction.handler(mockRuntime, message, state, {}, callback);
+      await createFormAction.handler(agentRuntime, message, state, {}, callback);
 
       expect(responseReceived).toBe(true);
       expect(responseText).toContain("created");
@@ -130,7 +130,7 @@ describe("Forms Plugin Integration Tests", () => {
       const message = createMockMemory("test");
       const state = createMockState();
 
-      const providerResult = await formsProvider.get(mockRuntime, message, state);
+      const providerResult = await formsProvider.get(agentRuntime, message, state);
 
       expect(providerResult.text).toContain("[FORMS]");
       expect(providerResult.text).toContain("contact");
@@ -159,14 +159,14 @@ describe("Forms Plugin Integration Tests", () => {
       };
 
       // Mock the LLM response
-      mockRuntime.useModel.mockResolvedValueOnce('{"name": "John Doe"}');
+      agentRuntime.useModel.mockResolvedValueOnce('{"name": "John Doe"}');
 
       // Validate the action
-      const isValid = await updateFormAction.validate(mockRuntime, message, state);
+      const isValid = await updateFormAction.validate(agentRuntime, message, state);
       expect(isValid).toBe(true);
 
       // Execute the action
-      await updateFormAction.handler(mockRuntime, message, state, {}, callback);
+      await updateFormAction.handler(agentRuntime, message, state, {}, callback);
 
       expect(responseReceived).toBe(true);
       expect(responseText).toContain("Updated");
@@ -193,12 +193,12 @@ describe("Forms Plugin Integration Tests", () => {
 
         // Mock appropriate responses
         if (text.includes("name")) {
-          mockRuntime.useModel.mockResolvedValueOnce('{"name": "John Doe"}');
+          agentRuntime.useModel.mockResolvedValueOnce('{"name": "John Doe"}');
         } else if (text.includes("email")) {
-          mockRuntime.useModel.mockResolvedValueOnce('{"email": "john@example.com"}');
+          agentRuntime.useModel.mockResolvedValueOnce('{"email": "john@example.com"}');
         }
 
-        await updateFormAction.handler(mockRuntime, message, state, {}, callback);
+        await updateFormAction.handler(agentRuntime, message, state, {}, callback);
       }
 
       // Check that form is completed
@@ -228,11 +228,11 @@ describe("Forms Plugin Integration Tests", () => {
       };
 
       // Validate the action
-      const isValid = await cancelFormAction.validate(mockRuntime, message, state);
+      const isValid = await cancelFormAction.validate(agentRuntime, message, state);
       expect(isValid).toBe(true);
 
       // Execute the action
-      await cancelFormAction.handler(mockRuntime, message, state, {}, callback);
+      await cancelFormAction.handler(agentRuntime, message, state, {}, callback);
 
       expect(responseReceived).toBe(true);
       expect(responseText).toContain("cancelled");
@@ -263,7 +263,7 @@ describe("Forms Plugin Integration Tests", () => {
       // Create a form with a secret field and another required field to keep it active
       const form = await formsService.createForm({
         name: "api-config",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "credentials",
@@ -287,12 +287,12 @@ describe("Forms Plugin Integration Tests", () => {
       });
 
       // Update with secret value (but not the endpoint, so form stays active)
-      mockRuntime.useModel.mockResolvedValueOnce('{"apiKey": "sk-12345"}');
+      agentRuntime.useModel.mockResolvedValueOnce('{"apiKey": "sk-12345"}');
       await formsService.updateForm(form.id, createMockMemory("My API key is sk-12345"));
 
       // Get provider output
       const providerResult = await formsProvider.get(
-        mockRuntime,
+        agentRuntime,
         createMockMemory("test"),
         createMockState()
       );
@@ -327,9 +327,9 @@ describe("Forms Plugin Integration Tests", () => {
       };
 
       // Mock LLM to return invalid JSON
-      mockRuntime.useModel.mockResolvedValueOnce("invalid json response");
+      agentRuntime.useModel.mockResolvedValueOnce("invalid json response");
 
-      await updateFormAction.handler(mockRuntime, message, state, {}, callback);
+      await updateFormAction.handler(agentRuntime, message, state, {}, callback);
 
       // Should handle the error gracefully
       expect(responseText).toContain("No active forms to update");
@@ -341,7 +341,7 @@ describe("Forms Plugin Integration Tests", () => {
       // Create a multi-step form
       const multiStepForm = await formsService.createForm({
         name: "registration",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "personal",
@@ -374,9 +374,9 @@ describe("Forms Plugin Integration Tests", () => {
       };
 
       // Step 1: Fill personal info
-      mockRuntime.useModel.mockResolvedValueOnce('{"name": "Alice", "age": 30}');
+      agentRuntime.useModel.mockResolvedValueOnce('{"name": "Alice", "age": 30}');
       await updateFormAction.handler(
-        mockRuntime,
+        agentRuntime,
         createMockMemory("My name is Alice and I am 30 years old"),
         createMockState(),
         {},
@@ -388,9 +388,9 @@ describe("Forms Plugin Integration Tests", () => {
       expect(lastResponse).toContain("Contact Info");
 
       // Step 2: Fill contact info
-      mockRuntime.useModel.mockResolvedValueOnce('{"email": "alice@example.com"}');
+      agentRuntime.useModel.mockResolvedValueOnce('{"email": "alice@example.com"}');
       await updateFormAction.handler(
-        mockRuntime,
+        agentRuntime,
         createMockMemory("My email is alice@example.com"),
         createMockState(),
         {},
@@ -439,7 +439,7 @@ describe("Forms Plugin Integration Tests", () => {
       expect(surveyForm.steps[0].fields).toHaveLength(2);
 
       // Update with choice field
-      mockRuntime.useModel.mockResolvedValueOnce('{"satisfaction": "Very satisfied"}');
+      agentRuntime.useModel.mockResolvedValueOnce('{"satisfaction": "Very satisfied"}');
       const result = await formsService.updateForm(
         surveyForm.id,
         createMockMemory("I am very satisfied")

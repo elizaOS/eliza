@@ -152,3 +152,7 @@ export class XAuth {
     return this.authenticated && !this.loggedOut;
   }
 }
+
+// Backward-compatible alias
+/** @deprecated Use XAuth instead */
+export { XAuth as TwitterAuth };

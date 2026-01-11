@@ -64,12 +64,12 @@ describe("Configuration Utilities", () => {
     const { getSmallModel, getLargeModel } = await import("../../utils/config");
 
     // Create a mock runtime that returns undefined for all settings
-    const mockRuntime = {
+    const agentRuntime = {
       getSetting: () => undefined,
     };
 
-    const smallModel = getSmallModel(mockRuntime as never);
-    const largeModel = getLargeModel(mockRuntime as never);
+    const smallModel = getSmallModel(agentRuntime as never);
+    const largeModel = getLargeModel(agentRuntime as never);
 
     expect(smallModel).toBe("claude-3-5-haiku-20241022");
     expect(largeModel).toBe("claude-sonnet-4-20250514");
@@ -78,7 +78,7 @@ describe("Configuration Utilities", () => {
   it("should allow overriding model names via settings", async () => {
     const { getSmallModel, getLargeModel } = await import("../../utils/config");
 
-    const mockRuntime = {
+    const agentRuntime = {
       getSetting: (key: string) => {
         if (key === "ANTHROPIC_SMALL_MODEL") return "custom-small";
         if (key === "ANTHROPIC_LARGE_MODEL") return "custom-large";
@@ -86,8 +86,8 @@ describe("Configuration Utilities", () => {
       },
     };
 
-    const smallModel = getSmallModel(mockRuntime as never);
-    const largeModel = getLargeModel(mockRuntime as never);
+    const smallModel = getSmallModel(agentRuntime as never);
+    const largeModel = getLargeModel(agentRuntime as never);
 
     expect(smallModel).toBe("custom-small");
     expect(largeModel).toBe("custom-large");

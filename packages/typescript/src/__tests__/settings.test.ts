@@ -30,17 +30,19 @@ import type {
   WorldSettings,
 } from "../types";
 import { getEnvironment } from "../utils/environment";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 // Remove global module mocks - they interfere with other tests
 
 describe("settings utilities", () => {
-  let mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
   let mockWorld: World;
-  let getWorldMock: MockFunction<(id: UUID) => Promise<World | null>>;
-  let updateWorldMock: MockFunction<(world: World) => Promise<void>>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Create REAL runtime
+    runtime = await createTestRuntime();
 
     // Set up scoped mocks for this test
     vi.spyOn(entities, "createUniqueUuid").mockImplementation(
@@ -59,45 +61,32 @@ describe("settings utilities", () => {
       });
     }
 
+    // Spy on runtime.logger methods
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+
     // Mock process.env
     process.env.SECRET_SALT = "test-salt-value";
     // Clear environment cache after setting env var
     getEnvironment().clearCache();
 
-    getWorldMock = mock<(id: UUID) => Promise<World | null>>();
-    updateWorldMock = mock<(world: World) => Promise<void>>();
-
-    mockRuntime = {
-      agentId: "agent-123" as UUID,
-      character: {
-        id: "agent-123" as UUID,
-        name: "TestAgent",
-        username: "testagent",
-        bio: [],
-        messageExamples: [],
-        postExamples: [],
-        topics: [],
-        style: { all: [], chat: [], post: [] },
-        adjectives: [],
-      },
-      getWorld: getWorldMock,
-      updateWorld: updateWorldMock,
-    } as Partial<IAgentRuntime> as IAgentRuntime;
-
     mockWorld = {
       id: "world-123" as UUID,
       name: "Test World",
-      agentId: "agent-123" as UUID,
+      agentId: runtime.agentId,
       messageServerId: "server-123",
       metadata: {},
       createdAt: Date.now(),
     };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
     delete process.env.SECRET_SALT;
     getEnvironment().clearCache(); // Clear cache after cleanup
+    await cleanupTestRuntime(runtime);
   });
 
   describe("createSettingFromConfig", () => {
@@ -144,7 +133,7 @@ describe("settings utilities", () => {
         secret: true,
         dependsOn: ["OTHER_SETTING"],
         onSetAction: onSetActionFn,
-        visibleIf: (settings) => {
+        visibleIf: (settings: Record<string, Setting>) => {
           const otherSetting = settings.OTHER_SETTING;
           return otherSetting?.value === "enabled";
         },
@@ -160,7 +149,7 @@ describe("settings utilities", () => {
       expect(setting.onSetAction).toBe(onSetActionFn);
       expect(setting.visibleIf).toBeInstanceOf(Function);
       expect(
-        setting.visibleIf({
+        setting.visibleIf?.({
           OTHER_SETTING: {
             name: "OTHER_SETTING",
             description: "Other setting",
@@ -172,7 +161,7 @@ describe("settings utilities", () => {
         }),
       ).toBe(true);
       expect(
-        setting.visibleIf({
+        setting.visibleIf?.({
           OTHER_SETTING: {
             name: "OTHER_SETTING",
             description: "Other setting",
@@ -533,17 +522,17 @@ describe("settings utilities", () => {
         },
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
-      updateWorldMock.mockResolvedValue(undefined);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "updateWorld").mockResolvedValue(undefined);
 
       const result = await updateWorldSettings(
-        mockRuntime,
+        runtime,
         "server-123",
         worldSettings,
       );
 
       expect(result).toBe(true);
-      expect(mockRuntime.updateWorld).toHaveBeenCalledWith(
+      expect(runtime.updateWorld).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({
             settings: expect.any(Object),
@@ -553,23 +542,23 @@ describe("settings utilities", () => {
     });
 
     it("should return false when world not found", async () => {
-      getWorldMock.mockResolvedValue(null);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(null);
 
-      const result = await updateWorldSettings(mockRuntime, "server-123", {});
+      const result = await updateWorldSettings(runtime, "server-123", {});
 
       expect(result).toBe(false);
-      expect(mockRuntime.updateWorld).not.toHaveBeenCalled();
+      expect(runtime.updateWorld).not.toHaveBeenCalled();
     });
 
     it("should initialize metadata if it does not exist", async () => {
       const worldWithoutMetadata = { ...mockWorld, metadata: undefined };
-      getWorldMock.mockResolvedValue(worldWithoutMetadata);
-      updateWorldMock.mockResolvedValue(undefined);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(worldWithoutMetadata);
+      vi.spyOn(runtime, "updateWorld").mockResolvedValue(undefined);
 
-      const result = await updateWorldSettings(mockRuntime, "server-123", {});
+      const result = await updateWorldSettings(runtime, "server-123", {});
 
       expect(result).toBe(true);
-      expect(mockRuntime.updateWorld).toHaveBeenCalledWith(
+      expect(runtime.updateWorld).toHaveBeenCalledWith(
         expect.objectContaining({
           metadata: expect.objectContaining({
             settings: {},
@@ -597,9 +586,9 @@ describe("settings utilities", () => {
         },
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
-      const result = await getWorldSettings(mockRuntime, "server-123");
+      const result = await getWorldSettings(runtime, "server-123");
 
       expect(result).not.toBeNull();
       const resultApiKey = result?.API_KEY;
@@ -607,17 +596,17 @@ describe("settings utilities", () => {
     });
 
     it("should return null when world not found", async () => {
-      getWorldMock.mockResolvedValue(null);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(null);
 
-      const result = await getWorldSettings(mockRuntime, "server-123");
+      const result = await getWorldSettings(runtime, "server-123");
 
       expect(result).toBeNull();
     });
 
     it("should return null when world has no settings", async () => {
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
-      const result = await getWorldSettings(mockRuntime, "server-123");
+      const result = await getWorldSettings(runtime, "server-123");
 
       expect(result).toBeNull();
     });
@@ -644,9 +633,9 @@ describe("settings utilities", () => {
         },
       };
 
-      updateWorldMock.mockResolvedValue(undefined);
+      vi.spyOn(runtime, "updateWorld").mockResolvedValue(undefined);
 
-      const result = await initializeOnboarding(mockRuntime, mockWorld, config);
+      const result = await initializeOnboarding(runtime, mockWorld, config);
 
       expect(result).not.toBeNull();
       const resultApiKey = result?.API_KEY;
@@ -686,7 +675,7 @@ describe("settings utilities", () => {
         },
       };
 
-      const result = await initializeOnboarding(mockRuntime, mockWorld, config);
+      const result = await initializeOnboarding(runtime, mockWorld, config);
 
       expect(result).not.toBeNull();
       const resultApiKey = result?.API_KEY;
@@ -698,12 +687,12 @@ describe("settings utilities", () => {
     it("should handle config without settings", async () => {
       const config: OnboardingConfig = { settings: {} };
 
-      updateWorldMock.mockResolvedValue(undefined);
+      vi.spyOn(runtime, "updateWorld").mockResolvedValue(undefined);
 
-      const result = await initializeOnboarding(mockRuntime, mockWorld, config);
+      const result = await initializeOnboarding(runtime, mockWorld, config);
 
       expect(result).toEqual({});
-      expect(mockRuntime.updateWorld).toHaveBeenCalled();
+      expect(runtime.updateWorld).toHaveBeenCalled();
     });
   });
 
@@ -797,7 +786,7 @@ describe("settings utilities", () => {
         },
       };
 
-      const decrypted = decryptedCharacter(character, mockRuntime);
+      const decrypted = decryptedCharacter(character, runtime);
 
       const decryptedSettings = decrypted.settings;
       const decryptedSettingsSecrets = decryptedSettings?.secrets;
@@ -817,7 +806,7 @@ describe("settings utilities", () => {
         },
       };
 
-      const decrypted = decryptedCharacter(character, mockRuntime);
+      const decrypted = decryptedCharacter(character, runtime);
 
       const decryptedSecrets = decrypted.secrets;
       expect(decryptedSecrets?.TOKEN).toBe("secret-token");
@@ -831,7 +820,7 @@ describe("settings utilities", () => {
         bio: "Test character bio",
       };
 
-      const decrypted = decryptedCharacter(character, mockRuntime);
+      const decrypted = decryptedCharacter(character, runtime);
 
       expect(decrypted).toEqual(character);
     });

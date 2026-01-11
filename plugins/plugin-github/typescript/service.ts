@@ -31,10 +31,10 @@ import type {
   ListIssuesParams,
   ListPullRequestsParams,
   MergeableState,
-  PullRequestState,
-  ReviewState,
   MergePullRequestParams,
+  PullRequestState,
   RepositoryRef,
+  ReviewState,
   UpdateIssueParams,
   UpdatePullRequestParams,
 } from "./types";

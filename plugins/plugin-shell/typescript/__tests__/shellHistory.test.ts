@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShellService } from "../services/shellService";
 
 // Mock the config module
@@ -18,13 +18,67 @@ vi.mock("cross-spawn", () => ({
   default: vi.fn(),
 }));
 
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
+
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent for shell operations"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
 describe("Shell History Tracking", () => {
   let shellService: ShellService;
-  let mockRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
-  beforeEach(() => {
-    mockRuntime = {} as IAgentRuntime;
-    shellService = new ShellService(mockRuntime);
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+    shellService = new ShellService(runtime);
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   it("should track command history per conversation", async () => {

@@ -1,7 +1,7 @@
 import { EventType, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBootstrapPlugin } from "../index";
-import { createMockRuntime, type MockRuntime } from "./test-utils";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 // Create the bootstrap plugin for testing
 const bootstrapPlugin = createBootstrapPlugin();
@@ -11,16 +11,28 @@ const bootstrapPlugin = createBootstrapPlugin();
 const mockInit = vi.fn();
 
 describe("Bootstrap Plugin", () => {
-  let mockRuntime: MockRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
 
-    mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue("medium"),
-      getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
-      composeState: vi.fn().mockResolvedValue({}),
+    runtime = await createTestRuntime();
+
+    // Spy on runtime methods for testing
+    vi.spyOn(runtime, "getSetting").mockReturnValue("medium");
+    vi.spyOn(runtime, "getParticipantUserState").mockResolvedValue("ACTIVE");
+    vi.spyOn(runtime, "composeState").mockResolvedValue({
+      values: {},
+      data: {},
+      text: "",
     });
+
+    // Spy on registration methods
+    vi.spyOn(runtime, "registerProvider").mockImplementation(() => {});
+    vi.spyOn(runtime, "registerAction").mockImplementation(() => {});
+    vi.spyOn(runtime, "registerEvaluator").mockImplementation(() => {});
+    vi.spyOn(runtime, "registerService").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "registerEvent").mockImplementation(() => {});
 
     // Set or reset mockInit's implementation for each test
     mockInit.mockImplementation(async (_config, runtime) => {
@@ -91,8 +103,9 @@ describe("Bootstrap Plugin", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should have the correct name and description", () => {
@@ -103,58 +116,58 @@ describe("Bootstrap Plugin", () => {
 
   it("should register all providers during initialization", async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
+    await mockInit({}, runtime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all providers were registered
     if (bootstrapPlugin.providers) {
-      expect(mockRuntime.registerProvider).toHaveBeenCalledTimes(
+      expect(runtime.registerProvider).toHaveBeenCalledTimes(
         bootstrapPlugin.providers.length,
       );
 
       // Verify each provider was registered
       bootstrapPlugin.providers.forEach((provider) => {
-        expect(mockRuntime.registerProvider).toHaveBeenCalledWith(provider);
+        expect(runtime.registerProvider).toHaveBeenCalledWith(provider);
       });
     }
   });
 
   it("should register all actions during initialization", async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
+    await mockInit({}, runtime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all actions were registered
     if (bootstrapPlugin.actions) {
-      expect(mockRuntime.registerAction).toHaveBeenCalledTimes(
+      expect(runtime.registerAction).toHaveBeenCalledTimes(
         bootstrapPlugin.actions.length,
       );
 
       // Verify each action was registered
       bootstrapPlugin.actions.forEach((action) => {
-        expect(mockRuntime.registerAction).toHaveBeenCalledWith(action);
+        expect(runtime.registerAction).toHaveBeenCalledWith(action);
       });
     }
   });
 
   it("should register all evaluators during initialization", async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
+    await mockInit({}, runtime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all evaluators were registered
     if (bootstrapPlugin.evaluators) {
-      expect(mockRuntime.registerEvaluator).toHaveBeenCalledTimes(
+      expect(runtime.registerEvaluator).toHaveBeenCalledTimes(
         bootstrapPlugin.evaluators.length,
       );
 
       // Verify each evaluator was registered
       bootstrapPlugin.evaluators.forEach((evaluator) => {
-        expect(mockRuntime.registerEvaluator).toHaveBeenCalledWith(evaluator);
+        expect(runtime.registerEvaluator).toHaveBeenCalledWith(evaluator);
       });
     }
   });
 
   it("should register all events during initialization", async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
+    await mockInit({}, runtime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Count the number of event registrations expected
     let expectedEventCount = 0;
@@ -164,7 +177,7 @@ describe("Bootstrap Plugin", () => {
       });
 
       // Check that all events were registered
-      expect(mockRuntime.registerEvent).toHaveBeenCalledTimes(
+      expect(runtime.registerEvent).toHaveBeenCalledTimes(
         expectedEventCount,
       );
     }
@@ -172,24 +185,24 @@ describe("Bootstrap Plugin", () => {
 
   it("should register all services during initialization", async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
+    await mockInit({}, runtime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all services were registered
     if (bootstrapPlugin.services) {
-      expect(mockRuntime.registerService).toHaveBeenCalledTimes(
+      expect(runtime.registerService).toHaveBeenCalledTimes(
         bootstrapPlugin.services.length,
       );
 
       // Verify each service was registered
       bootstrapPlugin.services.forEach((service) => {
-        expect(mockRuntime.registerService).toHaveBeenCalledWith(service);
+        expect(runtime.registerService).toHaveBeenCalledWith(service);
       });
     }
   });
 
   it("should handle initialization errors gracefully", async () => {
     // Setup runtime to fail during registration
-    mockRuntime.registerProvider = vi.fn().mockImplementation(() => {
+    runtime.registerProvider = vi.fn().mockImplementation(() => {
       throw new Error("Registration failed");
     });
 
@@ -202,7 +215,7 @@ describe("Bootstrap Plugin", () => {
     await expect(async () => {
       await mockInit(
         {},
-        mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
+        runtime as Partial<IAgentRuntime> as IAgentRuntime,
       );
     }).not.toThrow();
 

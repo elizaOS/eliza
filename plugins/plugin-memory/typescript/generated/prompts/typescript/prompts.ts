@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../prompts/*.txt
- *
+ * 
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -211,3 +211,4 @@ Respond in this XML format:
 </summary>`;
 
 export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
+

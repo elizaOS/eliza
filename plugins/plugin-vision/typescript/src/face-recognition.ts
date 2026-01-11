@@ -11,18 +11,35 @@ const __dirname = path.dirname(__filename);
 // Canvas package types differ from DOM types but are runtime-compatible with face-api.js
 let CanvasModule: typeof import("canvas") | undefined;
 
+/**
+ * Type helpers for node-canvas to face-api.js compatibility.
+ * The canvas package provides Node.js implementations that are runtime-compatible
+ * with face-api.js, but have different TypeScript types than DOM equivalents.
+ */
+type FaceApiEnv = {
+  Canvas: typeof HTMLCanvasElement;
+  Image: typeof HTMLImageElement;
+  ImageData: typeof ImageData;
+};
+
+function asCanvasEnv(canvas: typeof import("canvas")): FaceApiEnv {
+  return {
+    Canvas: canvas.Canvas as typeof HTMLCanvasElement,
+    Image: canvas.Image as typeof HTMLImageElement,
+    ImageData: canvas.ImageData as typeof ImageData,
+  };
+}
+
+function asHTMLCanvasElement(canvas: import("canvas").Canvas): HTMLCanvasElement {
+  return canvas as HTMLCanvasElement;
+}
+
 async function initializeCanvas() {
   try {
     CanvasModule = await import("canvas");
 
-    // Polyfill for face-api.js - use type assertion since canvas package
-    // provides Node.js compatible implementations that work with face-api.js
-    // but have different TypeScript types than DOM equivalents
-    faceapi.env.monkeyPatch({
-      Canvas: CanvasModule.Canvas as unknown as typeof HTMLCanvasElement,
-      Image: CanvasModule.Image as unknown as typeof HTMLImageElement,
-      ImageData: CanvasModule.ImageData as unknown as typeof ImageData,
-    });
+    // Polyfill for face-api.js - node-canvas is runtime-compatible with face-api.js
+    faceapi.env.monkeyPatch(asCanvasEnv(CanvasModule));
   } catch (error) {
     logger.error("[FaceRecognition] Canvas module not available:", error);
     throw new Error(
@@ -124,7 +141,7 @@ export class FaceRecognition {
       // face-api.js accepts HTMLCanvasElement or compatible canvas (node-canvas works)
       const detections = await faceapi
         .detectAllFaces(
-          canvas as unknown as HTMLCanvasElement,
+          asHTMLCanvasElement(canvas),
           new faceapi.SsdMobilenetv1Options({
             minConfidence: 0.5,
             maxResults: 10,

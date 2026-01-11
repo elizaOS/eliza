@@ -393,8 +393,14 @@ export class SwapAction {
     const walletClient = this.walletProvider.getWalletClient(chainName as SupportedChain);
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
 
-    if (!walletClient.account) {
+    const account = walletClient.account;
+    if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
+    }
+
+    const chain = walletClient.chain;
+    if (!chain) {
+      throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, "Wallet chain is not configured");
     }
 
     const txRequest = stepWithTx.transactionRequest;
@@ -412,11 +418,11 @@ export class SwapAction {
     }
 
     const hash = await walletClient.sendTransaction({
-      account: walletClient.account!,
+      account,
       to: txRequest.to as Address,
       value: BigInt(txRequest.value ?? "0"),
       data: txRequest.data as Hex,
-      chain: walletClient.chain!,
+      chain,
       gas: txRequest.gasLimit
         ? BigInt(Math.floor(Number(txRequest.gasLimit) * GAS_BUFFER_MULTIPLIER))
         : undefined,
@@ -436,7 +442,7 @@ export class SwapAction {
 
     return {
       hash,
-      from: walletClient.account.address,
+      from: account.address,
       to: txRequest.to as Address,
       value: BigInt(txRequest.value ?? "0"),
       data: txRequest.data as Hex,
