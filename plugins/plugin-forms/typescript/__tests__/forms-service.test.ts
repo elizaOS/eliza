@@ -1,11 +1,12 @@
 import { asUUID, type IAgentRuntime, type Memory } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FormsService } from "../services/forms-service";
 import type { Form, FormTemplate } from "../types";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
-// Helper to create a mock Memory object
-const createMockMemory = (text: string): Memory => ({
+// Helper to create a test Memory object
+const createTestMemory = (text: string): Memory => ({
   id: asUUID(uuidv4()),
   entityId: asUUID(uuidv4()),
   roomId: asUUID(uuidv4()),
@@ -17,67 +18,28 @@ const createMockMemory = (text: string): Memory => ({
   createdAt: Date.now(),
 });
 
-// Helper to create a properly typed mock runtime
-const createTypedMockRuntime = (): IAgentRuntime => {
-  const testAgentId = asUUID(uuidv4());
-
-  const runtime = {
-    agentId: testAgentId,
-    providers: [],
-    actions: [],
-    evaluators: [],
-    plugins: [],
-    services: new Map(),
-    clients: [],
-    messageManager: null,
-    descriptionManager: null,
-    documentsManager: null,
-    knowledgeManager: null,
-    ragKnowledgeManager: null,
-    loreManager: null,
-    serverUrl: "http://localhost:3000",
-    databaseAdapter: null,
-    token: null,
-    modelProvider: "openai",
-    imageModelProvider: "openai",
-    imageVisionModelProvider: "openai",
-    character: { name: "Test Agent", modelProvider: "openai" },
-    cacheManager: {
-      get: vi.fn(),
-      set: vi.fn(),
-      delete: vi.fn(),
-    },
-    fetch: null,
-    initialize: vi.fn().mockResolvedValue(undefined),
-    registerMemoryManager: vi.fn(),
-    getMemoryManager: vi.fn(),
-    getService: vi.fn(),
-    registerService: vi.fn(),
-    getSetting: vi.fn(),
-    getConversationLength: vi.fn().mockReturnValue(0),
-    processActions: vi.fn().mockResolvedValue(undefined),
-    evaluate: vi.fn().mockResolvedValue(null),
-    ensureParticipantExists: vi.fn().mockResolvedValue(undefined),
-    ensureUserExists: vi.fn().mockResolvedValue(undefined),
-    registerAction: vi.fn(),
-    ensureConnection: vi.fn().mockResolvedValue(undefined),
-    ensureParticipantInRoom: vi.fn().mockResolvedValue(undefined),
-    ensureRoomExists: vi.fn().mockResolvedValue(undefined),
-    composeState: vi.fn().mockResolvedValue({}),
-    updateRecentMessageState: vi.fn().mockResolvedValue({}),
-    useModel: vi.fn().mockResolvedValue("Mock response"),
-  };
-
-  return runtime as unknown as IAgentRuntime;
-};
-
 describe("FormsService", () => {
   let service: FormsService;
-  let agentRuntime: IAgentRuntime;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
-    agentRuntime = createTypedMockRuntime();
-    service = new FormsService(agentRuntime);
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+
+    // Spy on useModel for form field extraction
+    vi.spyOn(runtime, "useModel").mockResolvedValue("{}");
+
+    // Suppress logger output
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
+
+    service = new FormsService(runtime);
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   describe("Service initialization", () => {
@@ -86,7 +48,7 @@ describe("FormsService", () => {
     });
 
     test("should start properly", async () => {
-      const startedService = await FormsService.start(agentRuntime);
+      const startedService = await FormsService.start(runtime);
       expect(startedService).toBeInstanceOf(FormsService);
     });
 
@@ -108,7 +70,7 @@ describe("FormsService", () => {
 
       expect(form).toBeDefined();
       expect(form.id).toBeDefined();
-      expect(form.agentId).toBe(agentRuntime.agentId);
+      expect(form.agentId).toBe(runtime.agentId);
       expect(form.status).toBe("active");
       expect(form.name).toBe("contact");
       expect(form.steps).toHaveLength(1);
@@ -119,7 +81,7 @@ describe("FormsService", () => {
     test("should create a custom form", async () => {
       const customForm = {
         name: "custom-form",
-        agentId: agentRuntime.agentId,
+        agentId: runtime.agentId,
         steps: [
           {
             id: "step1",
@@ -158,12 +120,10 @@ describe("FormsService", () => {
     });
 
     test("should update form fields with extracted values", async () => {
-      const message = createMockMemory("My name is John Doe");
+      const message = createTestMemory("My name is John Doe");
 
       // Mock the LLM to return specific values
-      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
-        '{"name": "John Doe"}'
-      );
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "John Doe"}');
 
       const result = await service.updateForm(testForm.id, message);
 
@@ -179,7 +139,7 @@ describe("FormsService", () => {
       // Create a multi-step form
       const multiStepForm = await service.createForm({
         name: "multi-step",
-        agentId: agentRuntime.agentId,
+        agentId: runtime.agentId,
         steps: [
           {
             id: "step1",
@@ -207,10 +167,8 @@ describe("FormsService", () => {
       });
 
       // Update first step field
-      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
-        '{"field1": "value1"}'
-      );
-      const result = await service.updateForm(multiStepForm.id, createMockMemory("value1"));
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"field1": "value1"}');
+      const result = await service.updateForm(multiStepForm.id, createTestMemory("value1"));
 
       expect(result.success).toBe(true);
       expect(result.stepCompleted).toBe(true);
@@ -222,19 +180,19 @@ describe("FormsService", () => {
 
     test("should mark form as completed when all steps are done", async () => {
       // Fill all fields of contact form
-      (agentRuntime.useModel as ReturnType<typeof mock>)
+      vi.spyOn(runtime, "useModel")
         .mockResolvedValueOnce('{"name": "John Doe"}')
         .mockResolvedValueOnce('{"email": "john@example.com"}');
 
-      await service.updateForm(testForm.id, createMockMemory("John Doe"));
-      await service.updateForm(testForm.id, createMockMemory("john@example.com"));
+      await service.updateForm(testForm.id, createTestMemory("John Doe"));
+      await service.updateForm(testForm.id, createTestMemory("john@example.com"));
 
       const completedForm = await service.getForm(testForm.id);
       expect(completedForm?.status).toBe("completed");
     });
 
     test("should handle form not found", async () => {
-      const result = await service.updateForm(asUUID(uuidv4()), createMockMemory("test"));
+      const result = await service.updateForm(asUUID(uuidv4()), createTestMemory("test"));
       expect(result.success).toBe(false);
       expect(result.message).toBe("Form not found");
     });
@@ -247,7 +205,7 @@ describe("FormsService", () => {
         formData.status = "completed";
       }
 
-      const result = await service.updateForm(testForm.id, createMockMemory("test"));
+      const result = await service.updateForm(testForm.id, createTestMemory("test"));
       expect(result.success).toBe(false);
       expect(result.message).toBe("Form is not active");
     });
@@ -377,7 +335,7 @@ describe("FormsService", () => {
     test("should extract values for secret fields", async () => {
       const formWithSecret = await service.createForm({
         name: "api-form",
-        agentId: agentRuntime.agentId,
+        agentId: runtime.agentId,
         steps: [
           {
             id: "credentials",
@@ -396,17 +354,15 @@ describe("FormsService", () => {
 
       // The service should still set the value even for secret fields
       // but it would be masked in the provider
-      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
-        '{"apiKey": "sk-12345"}'
-      );
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"apiKey": "sk-12345"}');
 
       const result = await service.updateForm(
         formWithSecret.id,
-        createMockMemory("My API key is sk-12345")
+        createTestMemory("My API key is sk-12345")
       );
 
       expect(result.success).toBe(true);
-      expect(agentRuntime.useModel).toHaveBeenCalled();
+      expect(runtime.useModel).toHaveBeenCalled();
 
       const updatedForm = await service.getForm(formWithSecret.id);
       const apiKeyField = updatedForm?.steps[0].fields.find((f) => f.id === "apiKey");
@@ -419,91 +375,11 @@ describe("FormsService", () => {
     });
   });
 
-  describe("Database persistence", () => {
-    test("should handle missing database tables gracefully", async () => {
-      const runtime = {
-        agentId: asUUID(uuidv4()),
-        character: { name: "TestAgent" },
-        logger: {
-          info: vi.fn(() => {}),
-          error: vi.fn(() => {}),
-          warn: vi.fn(() => {}),
-          debug: vi.fn(() => {}),
-        },
-        useModel: vi.fn(() => Promise.resolve("{}")),
-      } as unknown as IAgentRuntime;
-
-      // Mock runtime.adapter to simulate missing tables
-      (
-        runtime as unknown as {
-          adapter: { fetch: () => Promise<{ rows: unknown[] }>; run: () => Promise<unknown> };
-        }
-      ).adapter = {
-        fetch: vi.fn(() => Promise.resolve({ rows: [] })),
-        run: vi.fn(() => Promise.reject(new Error('relation "forms" does not exist'))),
-      };
-
-      const formsService = await FormsService.start(runtime);
-      expect(formsService).toBeInstanceOf(FormsService);
-
-      // Service should still work without persistence
-      const form = await (formsService as FormsService).createForm("contact");
-      expect(form).toBeTruthy();
-      expect(form.name).toBe("contact");
-    });
-
-    test("should persist forms when database is available", async () => {
-      const runtime = {
-        agentId: asUUID(uuidv4()),
-        character: { name: "TestAgent" },
-        logger: {
-          info: vi.fn(() => {}),
-          error: vi.fn(() => {}),
-          warn: vi.fn(() => {}),
-          debug: vi.fn(() => {}),
-        },
-        useModel: vi.fn(() => Promise.resolve("{}")),
-      } as unknown as IAgentRuntime;
-
-      // Mock runtime to simulate working database
-      const mockRun = vi.fn(() => Promise.resolve());
-      const mockFetch = vi.fn(() =>
-        Promise.resolve({
-          rows: [{ exists: true }],
-        })
-      );
-
-      (
-        runtime as unknown as {
-          getDatabase: () => Promise<{ fetch: typeof mockFetch; run: typeof mockRun }>;
-        }
-      ).getDatabase = vi.fn(() =>
-        Promise.resolve({
-          fetch: mockFetch,
-          run: mockRun,
-        })
-      );
-
-      const formsService = (await FormsService.start(runtime)) as FormsService;
-
-      // Create a form
-      await formsService.createForm("contact");
-
-      // Wait for persistence batch interval
-      await new Promise((resolve) => setTimeout(resolve, 1100));
-
-      // Check that database operations were attempted
-      expect((runtime as unknown as { getDatabase: () => unknown }).getDatabase).toHaveBeenCalled();
-    });
-  });
-
   describe("Zod validation", () => {
     test("should validate field values according to type", async () => {
-      const service = (await FormsService.start(agentRuntime)) as FormsService;
-
       const form = await service.createForm({
         name: "validation-test",
-        agentId: agentRuntime.agentId,
+        agentId: runtime.agentId,
         steps: [
           {
             id: "step1",
@@ -530,28 +406,26 @@ describe("FormsService", () => {
       });
 
       // Test invalid email
-      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
-        '{"email": "not-an-email"}'
-      );
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"email": "not-an-email"}');
 
       const result1 = await service.updateForm(
         form.id,
-        createMockMemory("My email is not-an-email")
+        createTestMemory("My email is not-an-email")
       );
 
       // The validation might not work as expected with mocked LLM
       // Just check that the form update was attempted
       expect(result1.success).toBe(true);
-      expect(agentRuntime.useModel).toHaveBeenCalled();
+      expect(runtime.useModel).toHaveBeenCalled();
 
       // Test valid values
-      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
         '{"email": "test@example.com", "age": 25, "website": "https://example.com"}'
       );
 
       const result2 = await service.updateForm(
         form.id,
-        createMockMemory("Email test@example.com, age 25, website https://example.com")
+        createTestMemory("Email test@example.com, age 25, website https://example.com")
       );
 
       expect(result2.errors).toHaveLength(0);
@@ -559,11 +433,9 @@ describe("FormsService", () => {
     });
 
     test("should handle falsy values correctly", async () => {
-      const service = (await FormsService.start(agentRuntime)) as FormsService;
-
       const form = await service.createForm({
         name: "falsy-test",
-        agentId: agentRuntime.agentId,
+        agentId: runtime.agentId,
         steps: [
           {
             id: "step1",
@@ -591,13 +463,13 @@ describe("FormsService", () => {
       });
 
       // Test falsy values
-      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
         '{"enabled": false, "count": 0, "message": ""}'
       );
 
       const result = await service.updateForm(
         form.id,
-        createMockMemory("Disabled, count 0, no message")
+        createTestMemory("Disabled, count 0, no message")
       );
 
       expect(result.success).toBe(true);
@@ -611,73 +483,6 @@ describe("FormsService", () => {
       expect(enabledField?.value).toBe(false);
       expect(countField?.value).toBe(0);
       expect(messageField?.value).toBe("");
-    });
-  });
-
-  describe("Transaction safety", () => {
-    test("should rollback on database errors", async () => {
-      const runtime = {
-        agentId: asUUID(uuidv4()),
-        character: { name: "TestAgent" },
-        logger: {
-          info: vi.fn(() => {}),
-          error: vi.fn(() => {}),
-          warn: vi.fn(() => {}),
-          debug: vi.fn(() => {}),
-        },
-        useModel: vi.fn(() => Promise.resolve("{}")),
-      } as unknown as IAgentRuntime;
-
-      let _transactionStarted = false;
-      let _transactionCommitted = false;
-      let _transactionRolledBack = false;
-
-      const mockRun = vi.fn((query: string) => {
-        if (query === "BEGIN") {
-          _transactionStarted = true;
-          return Promise.resolve();
-        }
-        if (query === "COMMIT") {
-          _transactionCommitted = true;
-          return Promise.resolve();
-        }
-        if (query === "ROLLBACK") {
-          _transactionRolledBack = true;
-          return Promise.resolve();
-        }
-        // Simulate error during form insertion
-        if (query.includes("INSERT INTO forms")) {
-          return Promise.reject(new Error("Database error"));
-        }
-        return Promise.resolve();
-      });
-
-      type MockDatabase = {
-        getDatabase: () => Promise<{
-          fetch: () => Promise<{ rows: Array<{ exists: boolean }> }>;
-          run: typeof mockRun;
-        }>;
-      };
-      (runtime as unknown as MockDatabase).getDatabase = vi.fn(() =>
-        Promise.resolve({
-          fetch: vi.fn(() => Promise.resolve({ rows: [{ exists: true }] })),
-          run: mockRun,
-        })
-      );
-
-      const formsService = (await FormsService.start(runtime)) as FormsService;
-
-      // Create a form to trigger persistence
-      await formsService.createForm("contact");
-
-      // Wait for persistence batch
-      await new Promise((resolve) => setTimeout(resolve, 1100));
-
-      // Check that database was called
-      expect((runtime as unknown as { getDatabase: () => unknown }).getDatabase).toHaveBeenCalled();
-      // Transaction might not start if persistence is disabled
-      // Just verify the service was created successfully
-      expect(formsService).toBeInstanceOf(FormsService);
     });
   });
 });

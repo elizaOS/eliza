@@ -58,30 +58,13 @@ describe("Reply Action", () => {
   });
 
   it("should handle reply action successfully", async () => {
-    // Import the actual module first
-    const coreModule = await import("@elizaos/core");
-
-    // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = vi.fn().mockImplementation((_xml: string) => {
-      return {
-        text: "Hello there! How can I help you today?",
-        thought: "Responding to the user greeting.",
-      };
-    });
-
-    // Override the module mock for this test
-    vi.mock("@elizaos/core", () => ({
-      ...coreModule,
-      parseKeyValueXml: parseKeyValueXmlMock,
-    }));
-
     const setup = await setupActionTest();
     runtime = setup.runtime;
     message = setup.message;
     state = setup.state;
     callback = setup.callback as HandlerCallback;
 
-    // Spy on useModel to return expected response
+    // Spy on useModel to return expected XML response
     vi.spyOn(runtime, "useModel").mockImplementation(async () => {
       return `<response>
   <thought>Responding to the user greeting.</thought>
@@ -804,16 +787,6 @@ describe("Generate Image Action", () => {
   });
 
   it("should handle generate image action successfully", async () => {
-    // Ensure XML parsing returns our expected prompt
-    const coreModule = await import("@elizaos/core");
-    const parseKeyValueXmlMock = vi.fn().mockImplementation((_xml: string) => ({
-      prompt: "Draw a cat on the moon",
-    }));
-    vi.mock("@elizaos/core", () => ({
-      ...coreModule,
-      parseKeyValueXml: parseKeyValueXmlMock,
-    }));
-
     const setup = await setupActionTest();
     runtime = setup.runtime;
     message = setup.message;
