@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "tsc --watch",
     "test": "vitest run",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "lint:check": "bunx @biomejs/biome check .",

@@ -10,7 +10,6 @@ import {
   type Memory,
   type Provider,
   type ProviderResult,
-  type ProviderValue,
   type Setting,
   type State,
   unsaltWorldSettings,
@@ -357,7 +356,7 @@ export const settingsProvider: Provider = {
 
     return {
       data: {
-        settings: worldSettings as unknown as ProviderValue,
+        settings: worldSettings,
       },
       values: {
         settings: output,

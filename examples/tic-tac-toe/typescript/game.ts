@@ -21,7 +21,7 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 
 // ============================================================================
 // TIC-TAC-TOE ENGINE

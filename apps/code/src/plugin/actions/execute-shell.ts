@@ -126,7 +126,6 @@ SUPPORTED PATTERNS:
       const cmdError = createCommandError(
         command,
         error.code ?? 1,
-        error.stdout ?? "",
         error.stderr ?? error.message,
       );
       const errorMsg = formatErrorForDisplay(cmdError);

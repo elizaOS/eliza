@@ -4,7 +4,6 @@ import {
   type IAgentRuntime,
   type Memory,
   type Provider,
-  type ProviderValue,
   type State,
 } from "@elizaos/core";
 
@@ -210,10 +209,10 @@ export const actionStateProvider: Provider = {
 
     return {
       data: {
-        actionResults: actionResults as unknown as ProviderValue,
-        actionPlan: actionPlan as unknown as ProviderValue,
-        workingMemory: workingMemory as unknown as ProviderValue,
-        recentActionMemories: recentActionMemories as unknown as ProviderValue,
+        actionResults,
+        actionPlan,
+        workingMemory,
+        recentActionMemories,
       },
       values: {
         hasActionResults: actionResults.length > 0,

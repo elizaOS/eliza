@@ -40,9 +40,7 @@ export async function handleImageDescription(
       ],
     };
 
-    const response = await generateText(
-      generateParams as unknown as Parameters<typeof generateText>[0]
-    );
+    const response = await generateText(generateParams);
 
     if (response.usage) {
       emitModelUsageEvent(runtime, ModelType.IMAGE_DESCRIPTION, prompt, response.usage);
@@ -74,9 +72,7 @@ export async function handleImageGeneration(
       prompt: `Generate an image: ${params.prompt}`,
     };
 
-    const response = await generateText(
-      generateParams as unknown as Parameters<typeof generateText>[0]
-    );
+    const response = await generateText(generateParams);
 
     if (response.usage) {
       emitModelUsageEvent(runtime, ModelType.IMAGE, params.prompt, response.usage);

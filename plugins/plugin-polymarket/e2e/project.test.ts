@@ -1,4 +1,4 @@
-import type { TestSuite } from "@elizaos/core";
+import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 
 export class ProjectTestSuite implements TestSuite {
   name = "project";
@@ -7,7 +7,7 @@ export class ProjectTestSuite implements TestSuite {
   tests = [
     {
       name: "Project runtime environment test",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Test that the project's runtime environment is set up correctly
         try {
           // Verify character is loaded
@@ -23,8 +23,9 @@ export class ProjectTestSuite implements TestSuite {
 
           // No need to return anything - assertions above will throw on failure
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           throw new Error(
-            `Project runtime environment test failed: ${error.message}`,
+            `Project runtime environment test failed: ${errorMessage}`,
           );
         }
       },

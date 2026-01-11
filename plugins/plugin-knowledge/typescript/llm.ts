@@ -7,9 +7,34 @@ import {
   generateText as aiGenerateText,
   type CoreMessage,
   embed,
-  type GenerateTextResult,
-  type LanguageModel,
 } from "ai";
+
+// Use a flexible type derived from generateText to handle AI SDK version differences
+type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
+
+// Infer GenerateTextResult from the function's return type - parameterized for compatibility
+type GenerateTextResult<_T = Record<string, never>, _U = unknown> = Awaited<ReturnType<typeof aiGenerateText>>;
+
+// Alias for code using LanguageModel
+type LanguageModel = AIModel;
+
+/**
+ * Result type for text generation operations.
+ * Contains the generated text and usage information.
+ */
+interface TextGenerationResult {
+  text: string;
+  usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+  finishReason?: string;
+  response?: {
+    id?: string;
+    modelId?: string;
+  };
+}
 import { validateModelConfig } from "./config";
 import type { ModelConfig, TextGenerationOptions } from "./types";
 
@@ -226,7 +251,7 @@ export async function generateText(
   prompt: string,
   system?: string,
   overrideConfig?: TextGenerationOptions
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   const config = validateModelConfig(runtime);
   const provider = overrideConfig?.provider || config.TEXT_PROVIDER;
   const modelName = overrideConfig?.modelName || config.TEXT_MODEL;
@@ -276,7 +301,7 @@ async function generateAnthropicText(
   system: string | undefined,
   modelName: string,
   maxTokens: number
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   const anthropic = createAnthropic({
     apiKey: config.ANTHROPIC_API_KEY as string,
     baseURL: config.ANTHROPIC_BASE_URL,
@@ -301,7 +326,7 @@ async function generateAnthropicText(
         `[Document Processor] ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
       );
 
-      return result as unknown as GenerateTextResult<Record<string, never>, unknown>;
+      return result;
     } catch (error: unknown) {
       // Check if it's a rate limit error (status 429)
       const errorObj = error as { status?: number; message?: string } | null;
@@ -337,7 +362,7 @@ async function generateOpenAIText(
   system: string | undefined,
   modelName: string,
   maxTokens: number
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   const openai = createOpenAI({
     apiKey: config.OPENAI_API_KEY as string,
     baseURL: config.OPENAI_BASE_URL,
@@ -345,13 +370,13 @@ async function generateOpenAIText(
 
   const modelInstance = openai.chat(modelName);
 
-  const result = (await aiGenerateText({
+  const result = await aiGenerateText({
     model: modelInstance,
     prompt: prompt,
     system: system,
     temperature: 0.3,
     maxOutputTokens: maxTokens,
-  })) as GenerateTextResult<Record<string, never>, unknown>;
+  });
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
@@ -370,7 +395,7 @@ async function generateGoogleText(
   modelName: string,
   maxTokens: number,
   config: ModelConfig
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   // Use the google provider directly
   const googleProvider = google;
   if (config.GOOGLE_API_KEY) {
@@ -381,13 +406,13 @@ async function generateGoogleText(
   // Create model instance directly from google provider
   const modelInstance = googleProvider(modelName);
 
-  const result = (await aiGenerateText({
+  const result = await aiGenerateText({
     model: modelInstance,
     prompt: prompt,
     system: system,
     temperature: 0.3,
     maxOutputTokens: maxTokens,
-  })) as GenerateTextResult<Record<string, never>, unknown>;
+  });
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
@@ -424,7 +449,7 @@ async function generateOpenRouterText(
   cacheDocument?: string,
   _cacheOptions?: { type: "ephemeral" },
   autoCacheContextualRetrieval = true
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   const openrouter = createOpenRouter({
     apiKey: config.OPENROUTER_API_KEY as string,
     baseURL: config.OPENROUTER_BASE_URL,
@@ -464,7 +489,7 @@ async function generateOpenRouterText(
       return await generateClaudeWithCaching(
         promptText,
         system,
-        modelInstance as unknown as LanguageModel,
+        modelInstance as AIModel,
         modelName,
         maxTokens,
         documentForCaching
@@ -473,7 +498,7 @@ async function generateOpenRouterText(
       return await generateGeminiWithCaching(
         promptText,
         system,
-        modelInstance as unknown as LanguageModel,
+        modelInstance as AIModel,
         modelName,
         maxTokens,
         documentForCaching,
@@ -487,7 +512,7 @@ async function generateOpenRouterText(
   return await generateStandardOpenRouterText(
     prompt,
     system,
-    modelInstance as unknown as LanguageModel,
+    modelInstance as AIModel,
     modelName,
     maxTokens
   );
@@ -499,11 +524,11 @@ async function generateOpenRouterText(
 async function generateClaudeWithCaching(
   promptText: string,
   system: string | undefined,
-  modelInstance: LanguageModel,
+  modelInstance: AIModel,
   modelName: string,
   maxTokens: number,
   documentForCaching: string
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   logger.debug(`[Document Processor] Using explicit prompt caching with Claude ${modelName}`);
 
   // Structure for Claude models
@@ -564,7 +589,7 @@ async function generateClaudeWithCaching(
   logger.debug("[Document Processor] Using Claude-specific caching structure");
 
   // Generate text with cache-enabled structured messages
-  const result = (await aiGenerateText({
+  const result = await aiGenerateText({
     model: modelInstance,
     messages: messages as CoreMessage[],
     temperature: 0.3,
@@ -576,7 +601,7 @@ async function generateClaudeWithCaching(
         },
       },
     },
-  })) as GenerateTextResult<Record<string, never>, unknown>;
+  });
 
   logCacheMetrics(result);
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
@@ -593,12 +618,12 @@ async function generateClaudeWithCaching(
 async function generateGeminiWithCaching(
   promptText: string,
   system: string | undefined,
-  modelInstance: LanguageModel,
+  modelInstance: AIModel,
   modelName: string,
   maxTokens: number,
   documentForCaching: string,
   isGemini25Model: boolean
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
+): Promise<TextGenerationResult> {
   // Gemini models support implicit caching as of 2.5 models
   const usingImplicitCaching = isGemini25Model;
 
@@ -638,7 +663,7 @@ async function generateGeminiWithCaching(
   const geminiPrompt = `${geminiSystemPrefix}${documentForCaching}\n\n${promptText}`;
 
   // Generate text with simple prompt structure to leverage implicit caching
-  const result = (await aiGenerateText({
+  const result = await aiGenerateText({
     model: modelInstance,
     prompt: geminiPrompt,
     temperature: 0.3,
@@ -650,7 +675,7 @@ async function generateGeminiWithCaching(
         },
       },
     },
-  })) as GenerateTextResult<Record<string, never>, unknown>;
+  });
 
   logCacheMetrics(result);
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
@@ -668,11 +693,11 @@ async function generateGeminiWithCaching(
 async function generateStandardOpenRouterText(
   prompt: string,
   system: string | undefined,
-  modelInstance: LanguageModel,
+  modelInstance: AIModel,
   modelName: string,
   maxTokens: number
-): Promise<GenerateTextResult<Record<string, never>, unknown>> {
-  const result = (await aiGenerateText({
+): Promise<TextGenerationResult> {
+  const result = await aiGenerateText({
     model: modelInstance,
     prompt: prompt,
     system: system,
@@ -685,7 +710,7 @@ async function generateStandardOpenRouterText(
         },
       },
     },
-  })) as GenerateTextResult<Record<string, never>, unknown>;
+  });
 
   const totalTokens = (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0);
   logger.debug(
@@ -698,7 +723,7 @@ async function generateStandardOpenRouterText(
 /**
  * Logs cache metrics if available in the result
  */
-function logCacheMetrics(result: GenerateTextResult<Record<string, never>, unknown>): void {
+function logCacheMetrics(result: TextGenerationResult): void {
   const usage = result.usage as { cacheTokens?: number; cacheDiscount?: number } | undefined;
   if (usage?.cacheTokens !== undefined) {
     logger.debug(

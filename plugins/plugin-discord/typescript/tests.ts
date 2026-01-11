@@ -1,3 +1,4 @@
+import type { Readable } from "node:stream";
 import {
   AudioPlayerStatus,
   createAudioPlayer,
@@ -367,7 +368,11 @@ export class DiscordTestSuite implements TestSuite {
    * @throws {Error} If the channel is not a text-based channel or does not exist.
    * @throws {Error} If there is an error sending the message.
    */
-  async sendMessageToChannel(channel: TextChannel, messageContent: string, files: any[]) {
+  async sendMessageToChannel(
+    channel: TextChannel,
+    messageContent: string,
+    files: AttachmentBuilder[]
+  ) {
     try {
       if (!channel || !channel.isTextBased()) {
         throw new Error("Channel is not a text-based channel or does not exist.");
@@ -387,14 +392,17 @@ export class DiscordTestSuite implements TestSuite {
    * @param {VoiceConnection} connection - The VoiceConnection to use for playing the audio.
    * @returns {Promise<void>} - A Promise that resolves when the TTS playback is finished.
    */
-  async playAudioStream(responseStream: any, connection: VoiceConnection) {
+  async playAudioStream(
+    responseStream: ReadableStream | NodeJS.ReadableStream | Readable,
+    connection: VoiceConnection
+  ) {
     const audioPlayer = createAudioPlayer({
       behaviors: {
         noSubscriber: NoSubscriberBehavior.Pause,
       },
     });
 
-    const audioResource = createAudioResource(responseStream);
+    const audioResource = createAudioResource(responseStream as Readable);
 
     audioPlayer.play(audioResource);
     connection.subscribe(audioPlayer);

@@ -1,10 +1,12 @@
 import type { Entity, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { PgDatabaseAdapter } from "../../pg/adapter";
+import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createTestDatabase } from "../test-helpers";
 
 describe("Entity Array Serialization Fix Tests", () => {
-  let adapter: any;
+  let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
 
@@ -86,12 +88,13 @@ describe("Entity Array Serialization Fix Tests", () => {
 
       // Simulate what might happen if names accidentally becomes a Set
       const namesSet = new Set(["user-name1", "user-name2"]);
-      const entity: any = {
+      // Use type assertion to test edge case where names is a Set (not conforming to Entity type)
+      const entity = {
         id: entityId,
         agentId: testAgentId,
         names: namesSet, // This should be normalized to an array
         metadata: {},
-      };
+      } as unknown as Entity;
 
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
@@ -153,12 +156,13 @@ describe("Entity Array Serialization Fix Tests", () => {
 
       // Update with Set-like names
       const namesSet = new Set(["updated-name1", "updated-name2"]);
-      const updatedEntity: any = {
+      // Use type assertion to test edge case where names is a Set (not conforming to Entity type)
+      const updatedEntity = {
         id: entityId,
         agentId: testAgentId,
         names: namesSet, // This should be normalized to an array
         metadata: { updated: true },
-      };
+      } as unknown as Entity;
 
       await adapter.updateEntity(updatedEntity);
 

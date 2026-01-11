@@ -16,7 +16,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
-import { type CreateCommentParams, createCommentSchema } from "../types";
+import { type CreateCommentParams, createCommentSchema, formatZodErrors } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -98,12 +98,7 @@ export const createCommentAction: Action = {
 
       const validation = createCommentSchema.safeParse(params);
       if (!validation.success) {
-        const zodError = validation.error as unknown as {
-          issues?: Array<{ path: (string | number)[]; message: string }>;
-        };
-        const errors = (zodError.issues || [])
-          .map((e) => `${e.path.join(".")}: ${e.message}`)
-          .join(", ");
+        const errors = formatZodErrors(validation.error);
         logger.error(`Invalid comment parameters: ${errors}`);
         if (callback) {
           await callback({

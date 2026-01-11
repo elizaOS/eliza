@@ -38,9 +38,7 @@ async function generateObjectWithModel(
       temperature: temperature,
     };
 
-    const { object, usage } = await generateObject(
-      generateParams as unknown as Parameters<typeof generateObject>[0]
-    );
+    const { object, usage } = await generateObject(generateParams);
 
     if (usage) {
       emitModelUsageEvent(runtime, modelType, params.prompt, usage);

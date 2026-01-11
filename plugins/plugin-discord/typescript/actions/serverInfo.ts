@@ -1,8 +1,10 @@
 import type {
   Action,
   ActionExample,
+  ActionResult,
   Content,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -80,7 +82,7 @@ const formatServerInfo = (guild: Guild, detailed: boolean = false): string => {
   return basicInfo.join("\n");
 };
 
-export const serverInfo = {
+export const serverInfo: Action = {
   name: "SERVER_INFO",
   similes: [
     "SERVER_INFO",
@@ -93,24 +95,36 @@ export const serverInfo = {
   ],
   description:
     "Get information about the current Discord server including member count, creation date, and other statistics.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
-        text: "Discord service is not available.",
-        source: "discord",
-      });
-      return;
+      if (callback) {
+        await callback({
+          text: "Discord service is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "Discord service is not available" };
+    }
+
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
     }
 
     try {
@@ -118,11 +132,13 @@ export const serverInfo = {
       const room = stateData?.room || (await runtime.getRoom(message.roomId));
       const serverId = room?.messageServerId;
       if (!serverId) {
-        await callback({
-          text: "I couldn't determine the current server.",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I couldn't determine the current server.",
+            source: "discord",
+          });
+        }
+        return { success: false, error: "Could not determine current server" };
       }
 
       const guild = await discordService.client.guilds.fetch(serverId);
@@ -143,7 +159,10 @@ export const serverInfo = {
         source: message.content.source,
       };
 
-      await callback(response);
+      if (callback) {
+        await callback(response);
+      }
+      return { success: true, text: response.text };
     } catch (error) {
       runtime.logger.error(
         {
@@ -153,10 +172,13 @@ export const serverInfo = {
         },
         "Error getting server info"
       );
-      await callback({
-        text: "I encountered an error while getting server information. Please try again.",
-        source: "discord",
-      });
+      if (callback) {
+        await callback({
+          text: "I encountered an error while getting server information. Please try again.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
   examples: [
@@ -206,6 +228,6 @@ export const serverInfo = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default serverInfo;

@@ -2,6 +2,7 @@ import type {
   Content,
   HandlerCallback,
   IAgentRuntime,
+  State,
   TestSuite,
 } from "@elizaos/core";
 
@@ -76,12 +77,6 @@ interface Memory {
     source: string;
     actions?: string[];
   };
-}
-
-interface State {
-  values: Record<string, any>;
-  data: Record<string, any>;
-  text: string;
 }
 
 export const StarterPluginTestSuite: TestSuite = {

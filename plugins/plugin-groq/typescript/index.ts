@@ -67,7 +67,7 @@ async function generateWithRetry(
 ): Promise<string> {
   const generate = () =>
     generateText({
-      model: groq.languageModel(model) as unknown as Parameters<typeof generateText>[0]["model"],
+      model: groq.languageModel(model),
       prompt: params.prompt,
       system: params.system,
       temperature: params.temperature,

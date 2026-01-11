@@ -185,7 +185,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
         sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`
       );
 
-      const tableNames = result.rows.map((row: any) => row.table_name);
+      const tableNames = result.rows.map((row) => (row as { table_name: string }).table_name);
       expect(tableNames).toContain("base_entities");
       expect(tableNames).toContain("dependent_entities");
       expect(tableNames).toContain("vector_embeddings");
@@ -231,10 +231,12 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
       // Check specific foreign keys
       const dependentFk = foreignKeys.find(
-        (fk) => fk.table_name === "dependent_entities" && fk.column_name === "base_id"
+        (fk) =>
+          fk.table_name === "dependent_entities" &&
+          (fk as { column_name: string }).column_name === "base_id"
       );
       expect(dependentFk).toBeDefined();
-      expect(dependentFk.referenced_table).toBe("base_entities");
+      expect((dependentFk as { referenced_table: string }).referenced_table).toBe("base_entities");
     });
 
     it("should create unique constraints properly", async () => {
@@ -371,7 +373,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     it("should handle idempotent migrations (running same migration twice)", async () => {
       // Run migration again - should not fail
       let errorThrown = false;
-      let _errorDetails: any = null;
+      let _errorDetails: unknown = null;
       try {
         await migrator.migrate("test-plugin", testSchema, { verbose: true });
       } catch (error) {
@@ -390,7 +392,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
     it("should handle empty schema gracefully", async () => {
       let errorThrown = false;
-      let _errorDetails: any = null;
+      let _errorDetails: unknown = null;
       try {
         await migrator.migrate("empty-plugin", {}, { verbose: true });
       } catch (error) {
@@ -417,7 +419,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       };
 
       let errorThrown = false;
-      let _errorDetails: any = null;
+      let _errorDetails: unknown = null;
       try {
         await migrator.migrate("mixed-plugin", mixedSchema, { verbose: true });
       } catch (error) {
@@ -433,7 +435,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       );
       // Should have mixed_test_table plus any tables from previous tests
       const mixedTableExists = result.rows.some(
-        (row: any) => row.table_name === "mixed_test_table"
+        (row) => (row as { table_name: string }).table_name === "mixed_test_table"
       );
       expect(mixedTableExists).toBe(true);
     });

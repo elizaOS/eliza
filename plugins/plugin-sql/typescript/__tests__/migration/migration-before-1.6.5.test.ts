@@ -9,15 +9,35 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
+import type { IDatabaseAdapter } from "@elizaos/core";
 import { sql } from "drizzle-orm";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { migrateToEntityRLS } from "../../migrations";
 
+// Helper types for database query results
+interface ColumnInfoRow {
+  column_name: string;
+  data_type?: string;
+  [key: string]: unknown;
+}
+
+interface TableInfoRow {
+  table_name: string;
+  [key: string]: unknown;
+}
+
+// Mock adapter interface for migration testing
+interface MockDatabaseAdapter extends Partial<IDatabaseAdapter> {
+  db: PgliteDatabase;
+  getDatabase: () => PgliteDatabase;
+}
+
 describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
   let pgClient: PGlite;
-  let db: any;
-  let mockAdapter: any;
+  let db: PgliteDatabase;
+  let mockAdapter: MockDatabaseAdapter;
 
   beforeEach(async () => {
     pgClient = new PGlite({ extensions: { vector } });
@@ -46,7 +66,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
       `);
 
       // Only system tables should exist (if any)
-      const tableNames = tablesResult.rows.map((r: any) => r.table_name);
+      const tableNames = tablesResult.rows.map((r: TableInfoRow) => r.table_name);
       expect(tableNames).not.toContain("rooms");
       expect(tableNames).not.toContain("memories");
     });
@@ -109,7 +129,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'rooms'
         ORDER BY column_name
       `);
-      const roomColumnNames = roomsColumns.rows.map((r: any) => r.column_name);
+      const roomColumnNames = roomsColumns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       expect(roomColumnNames).toContain("agent_id");
       expect(roomColumnNames).toContain("world_id");
@@ -129,7 +149,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'memories'
         ORDER BY column_name
       `);
-      const memoryColumnNames = memoriesColumns.rows.map((r: any) => r.column_name);
+      const memoryColumnNames = memoriesColumns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       expect(memoryColumnNames).toContain("agent_id");
       expect(memoryColumnNames).toContain("room_id");
@@ -149,7 +169,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'worlds'
         ORDER BY column_name
       `);
-      const worldColumnNames = worldsColumns.rows.map((r: any) => r.column_name);
+      const worldColumnNames = worldsColumns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       expect(worldColumnNames).toContain("message_server_id");
       expect(worldColumnNames).not.toContain("serverId");
@@ -274,7 +294,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'rooms'
         ORDER BY column_name
       `);
-      const roomColumnNames = roomsColumns.rows.map((r: any) => r.column_name);
+      const roomColumnNames = roomsColumns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       // Should still have snake_case columns
       expect(roomColumnNames).toContain("agent_id");
@@ -477,7 +497,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'agents'
         ORDER BY column_name
       `);
-      const agentColumnNames = agentsColumns.rows.map((r: any) => r.column_name);
+      const agentColumnNames = agentsColumns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       expect(agentColumnNames).toContain("server_id");
       expect(agentColumnNames).not.toContain("owner_id");
@@ -549,7 +569,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'custom_plugin_data'
         ORDER BY column_name
       `);
-      const columnNames = columns.rows.map((r: any) => r.column_name);
+      const columnNames = columns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       // CURRENT BEHAVIOR: migrations.ts DROPS server_id from tables not in exclusion list
       // This is DOCUMENTED BEHAVIOR - other plugins should NOT use server_id column name
@@ -609,7 +629,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'twitter_posts'
         ORDER BY column_name
       `);
-      const columnNames = columns.rows.map((r: any) => r.column_name);
+      const columnNames = columns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       expect(columnNames).toContain("tweet_id");
       expect(columnNames).toContain("author_id");
@@ -672,7 +692,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'other_schema' AND table_name = 'custom_table'
         ORDER BY column_name
       `);
-      const columnNames = columns.rows.map((r: any) => r.column_name);
+      const columnNames = columns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       // server_id should still exist (not dropped)
       expect(columnNames).toContain("server_id");
@@ -824,7 +844,7 @@ describe("migrateToEntityRLS (pre-1.6.5 migration)", () => {
         WHERE table_schema = 'public' AND table_name = 'rooms'
         ORDER BY column_name
       `);
-      const roomColumnNames = roomsColumns.rows.map((r: any) => r.column_name);
+      const roomColumnNames = roomsColumns.rows.map((r: ColumnInfoRow) => r.column_name);
 
       expect(roomColumnNames).toContain("agent_id");
       expect(roomColumnNames).toContain("created_at");

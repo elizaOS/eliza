@@ -136,9 +136,6 @@ jobs:
           # Set memory limits for CI
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
-          # Set test timeout for CI (60 seconds per test)
-          export BUN_TEST_TIMEOUT=60000
-
           # CLI tests are handled by the dedicated cli-tests.yml workflow
           # Client tests are handled by the dedicated client-cypress-tests.yml workflow
           echo "Starting core package tests..."
@@ -148,7 +145,7 @@ jobs:
 
           # Run tests in each package that has them (excluding CLI and client)
           # These packages are tested together because they:
-          # - Use standard bun test without special environment requirements
+          # - Use vitest for testing (via bun run test)
           # - Form the core backend functionality of elizaOS
           # - Can run with in-memory PGLite database
           for package in core plugin-bootstrap plugin-dummy-services project-tee-starter server; do

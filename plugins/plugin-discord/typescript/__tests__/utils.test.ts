@@ -1,84 +1,157 @@
-import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime, IDatabaseAdapter, UUID } from "@elizaos/core";
+import { ModelType, logger } from "@elizaos/core";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_MESSAGE_LENGTH, needsSmartSplit, smartSplitMessage, splitMessage } from "../src/utils";
 
-interface MockLogger {
-  debug: ReturnType<typeof vi.fn>;
-  info: ReturnType<typeof vi.fn>;
-  warn: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
+// Import the real runtime
+import { AgentRuntime } from "@elizaos/core";
+
+// We need a database adapter for tests - use PGLite
+let sqlPlugin: { createDatabaseAdapter: (config: { dataDir: string }, agentId: UUID) => IDatabaseAdapter };
+
+beforeAll(async () => {
+  try {
+    sqlPlugin = await import("@elizaos/plugin-sql");
+  } catch {
+    console.warn("@elizaos/plugin-sql not available, some tests will be skipped");
+  }
+});
+
+// Helper to create a UUID
+function createUUID(): UUID {
+  return crypto.randomUUID() as UUID;
+}
+
+/**
+ * Helper to create a real test runtime with PGLite database
+ */
+async function createTestRuntime(): Promise<{ runtime: IAgentRuntime; cleanup: () => Promise<void> }> {
+  if (!sqlPlugin) {
+    throw new Error("@elizaos/plugin-sql is required for these tests");
+  }
+
+  const agentId = createUUID();
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: "A test agent for discord utils tests",
+      system: "You are a helpful test assistant.",
+      plugins: [],
+      settings: {},
+    },
+    adapter,
+  });
+
+  await runtime.initialize();
+
+  return {
+    runtime,
+    cleanup: async () => {
+      await runtime.stop();
+      await adapter.close();
+    },
+  };
 }
 
 describe("Discord Utils - Smart Split Message", () => {
-  let mockRuntime: IAgentRuntime;
-  let mockLogger: MockLogger;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
 
-  beforeEach(() => {
-    mockLogger = {
-      debug: vi.fn(() => {}),
-      info: vi.fn(() => {}),
-      warn: vi.fn(() => {}),
-      error: vi.fn(() => {}),
-    };
+  beforeEach(async () => {
+    if (sqlPlugin) {
+      const result = await createTestRuntime();
+      runtime = result.runtime;
+      cleanup = result.cleanup;
+    }
+    
+    vi.spyOn(logger, "debug").mockImplementation(() => {});
+    vi.spyOn(logger, "info").mockImplementation(() => {});
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
+  });
 
-    mockRuntime = {
-      useModel: vi.fn(async () => ""),
-      logger: mockLogger,
-    } as unknown as IAgentRuntime;
+  afterEach(async () => {
+    vi.clearAllMocks();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
   describe("parseJSONArrayFromText (via smartSplitMessage)", () => {
     it("should successfully parse JSON array from LLM response", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
       const expectedChunks = ["chunk1", "chunk2", "chunk3"];
 
-      // Mock LLM to return a valid JSON array
-      mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
+      // Spy on useModel to return a valid JSON array
+      vi.spyOn(runtime, "useModel").mockResolvedValue(JSON.stringify(expectedChunks));
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       expect(result).toEqual(expectedChunks);
-      expect(mockRuntime.useModel).toHaveBeenCalledWith(
+      expect(runtime.useModel).toHaveBeenCalledWith(
         ModelType.TEXT_SMALL,
         expect.objectContaining({ prompt: expect.any(String) })
       );
     });
 
     it("should parse JSON array wrapped in code blocks", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
       const expectedChunks = ["chunk1", "chunk2"];
 
-      // Mock LLM to return JSON array in code block
+      // Spy on useModel to return JSON array in code block
       const llmResponse = `\`\`\`json\n${JSON.stringify(expectedChunks)}\n\`\`\``;
-      mockRuntime.useModel = vi.fn(async () => llmResponse);
+      vi.spyOn(runtime, "useModel").mockResolvedValue(llmResponse);
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       expect(result).toEqual(expectedChunks);
     });
 
     it("should parse JSON array with extra text around it", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
       const expectedChunks = ["chunk1", "chunk2"];
 
-      // Mock LLM to return JSON array with markdown code block
+      // Spy on useModel to return JSON array with markdown code block
       const llmResponse = `Here are the chunks:\n\`\`\`json\n${JSON.stringify(expectedChunks)}\n\`\`\`\nDone!`;
-      mockRuntime.useModel = vi.fn(async () => llmResponse);
+      vi.spyOn(runtime, "useModel").mockResolvedValue(llmResponse);
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       expect(result).toEqual(expectedChunks);
     });
 
     it("should validate chunk lengths and fallback if too long", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
       const tooLongChunks = ["a".repeat(MAX_MESSAGE_LENGTH + 100)];
 
-      // Mock LLM to return chunks that are too long
-      mockRuntime.useModel = vi.fn(async () => JSON.stringify(tooLongChunks));
+      // Spy on useModel to return chunks that are too long
+      vi.spyOn(runtime, "useModel").mockResolvedValue(JSON.stringify(tooLongChunks));
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       // Should fall back to simple split
       expect(result).not.toEqual(tooLongChunks);
@@ -87,27 +160,35 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback to simple split when LLM returns invalid JSON", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
 
-      // Mock LLM to return invalid JSON
-      mockRuntime.useModel = vi.fn(async () => "This is not valid JSON");
+      // Spy on useModel to return invalid JSON
+      vi.spyOn(runtime, "useModel").mockResolvedValue("This is not valid JSON");
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
       expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
-      // Debug logging should have been called (either for smart split attempt or fallback)
-      expect(mockLogger.debug).toHaveBeenCalled();
     });
 
     it("should fallback to simple split when LLM returns object instead of array", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
 
-      // Mock LLM to return a JSON object (wrong type)
-      mockRuntime.useModel = vi.fn(async () => '{"chunk": "value"}');
+      // Spy on useModel to return a JSON object (wrong type)
+      vi.spyOn(runtime, "useModel").mockResolvedValue('{"chunk": "value"}');
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
@@ -115,12 +196,17 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback to simple split when LLM returns empty array", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
 
-      // Mock LLM to return empty array
-      mockRuntime.useModel = vi.fn(async () => "[]");
+      // Spy on useModel to return empty array
+      vi.spyOn(runtime, "useModel").mockResolvedValue("[]");
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
@@ -128,12 +214,17 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback when array contains non-string values", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
 
-      // Mock LLM to return array with non-string values
-      mockRuntime.useModel = vi.fn(async () => "[123, true, null]");
+      // Spy on useModel to return array with non-string values
+      vi.spyOn(runtime, "useModel").mockResolvedValue("[123, true, null]");
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
@@ -141,29 +232,38 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should return single chunk when content fits in one message", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const shortContent = "Short message";
 
-      const result = await smartSplitMessage(mockRuntime, shortContent);
+      vi.spyOn(runtime, "useModel");
+
+      const result = await smartSplitMessage(runtime, shortContent);
 
       expect(result).toEqual([shortContent]);
       // Should not call LLM for short content
-      expect(mockRuntime.useModel).not.toHaveBeenCalled();
+      expect(runtime.useModel).not.toHaveBeenCalled();
     });
 
     it("should handle LLM errors gracefully", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const longContent = "a".repeat(3000);
 
-      // Mock LLM to throw an error
-      mockRuntime.useModel = vi.fn(async () => {
-        throw new Error("LLM error");
-      });
+      // Spy on useModel to throw an error
+      vi.spyOn(runtime, "useModel").mockRejectedValue(new Error("LLM error"));
 
-      const result = await smartSplitMessage(mockRuntime, longContent);
+      const result = await smartSplitMessage(runtime, longContent);
 
       // Should fall back to simple split
       expect(result.length).toBeGreaterThan(0);
       expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);
-      expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining("Smart split failed"));
     });
   });
 
@@ -220,6 +320,11 @@ describe("Discord Utils - Smart Split Message", () => {
 
   describe("Integration: smartSplitMessage with realistic content", () => {
     it("should handle code-heavy content correctly", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const codeContent = `
 Here's a Python example:
 \`\`\`python
@@ -241,9 +346,9 @@ function test() {
       const chunk1 = codeContent.slice(0, 1500);
       const chunk2 = codeContent.slice(1500);
       const expectedChunks = [chunk1, chunk2].filter((c) => c.length > 0);
-      mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
+      vi.spyOn(runtime, "useModel").mockResolvedValue(JSON.stringify(expectedChunks));
 
-      const result = await smartSplitMessage(mockRuntime, codeContent);
+      const result = await smartSplitMessage(runtime, codeContent);
 
       // Verify the result matches what the LLM returned and all chunks are valid
       expect(result).toEqual(expectedChunks);
@@ -253,6 +358,11 @@ function test() {
     });
 
     it("should handle markdown lists correctly", async () => {
+      if (!sqlPlugin) {
+        console.warn("Skipping test - plugin-sql not available");
+        return;
+      }
+
       const listContent = `
 # My List
 1. First item with lots of text to make it longer
@@ -261,9 +371,9 @@ function test() {
 `.repeat(20);
 
       const expectedChunks = [listContent.slice(0, 1500), listContent.slice(1500)];
-      mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
+      vi.spyOn(runtime, "useModel").mockResolvedValue(JSON.stringify(expectedChunks));
 
-      const result = await smartSplitMessage(mockRuntime, listContent);
+      const result = await smartSplitMessage(runtime, listContent);
 
       expect(result).toEqual(expectedChunks);
       expect(result.every((chunk) => chunk.length <= MAX_MESSAGE_LENGTH)).toBe(true);

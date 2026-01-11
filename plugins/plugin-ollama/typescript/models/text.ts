@@ -43,9 +43,7 @@ async function generateOllamaText(
       stopSequences: params.stopSequences,
     };
 
-    const { text: ollamaResponse } = await generateText(
-      generateParams as unknown as Parameters<typeof generateText>[0]
-    );
+    const { text: ollamaResponse } = await generateText(generateParams);
     return ollamaResponse;
   } catch (error: unknown) {
     logger.error({ error }, "Error in generateOllamaText");

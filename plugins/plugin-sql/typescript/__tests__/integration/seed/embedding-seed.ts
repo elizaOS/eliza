@@ -120,8 +120,18 @@ export const embeddingTestMemories: TestMemory[] = [
   },
 ];
 
+// Embedding test data interface
+interface EmbeddingTestDataItem {
+  id: UUID;
+  memoryId: UUID;
+  createdAt: number;
+  dim384?: number[];
+  dim512?: number[];
+  dim768?: number[];
+}
+
 // Sample embeddings of different dimensions
-export const embeddingTestData: any[] = [
+export const embeddingTestData: EmbeddingTestDataItem[] = [
   {
     id: fixedUuid(30),
     memoryId: embeddingTestMemories[0].id as UUID,

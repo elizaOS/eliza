@@ -691,7 +691,7 @@ describe("Memory Integration Tests", () => {
       ]);
 
       // Create a partial memory object
-      const partialMemory: Partial<any> = {
+      const partialMemory: Partial<Memory> = {
         id: memoryTestAgentId, // Using a known UUID
         entityId: uniqueEntityId,
         roomId: testRoomId,

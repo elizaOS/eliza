@@ -1,15 +1,22 @@
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+/**
+ * @fileoverview Test Utilities for Forms Plugin Tests
+ *
+ * This module provides testing utilities that use REAL AgentRuntime instances.
+ * NO MOCKS - all tests run against actual runtime infrastructure.
+ */
+
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
 /**
- * Creates a mock memory object for testing
+ * Creates a test memory object for testing
  */
-export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
+export function createTestMemory(overrides: Partial<Memory> = {}): Memory {
   return {
-    id: `memory-${uuidv4()}` as `${string}-${string}-${string}-${string}-${string}`,
-    entityId: `entity-${uuidv4()}` as `${string}-${string}-${string}-${string}-${string}`,
-    roomId: `room-${uuidv4()}` as `${string}-${string}-${string}-${string}-${string}`,
-    agentId: `agent-${uuidv4()}` as `${string}-${string}-${string}-${string}-${string}`,
+    id: `${uuidv4()}` as UUID,
+    entityId: `${uuidv4()}` as UUID,
+    roomId: `${uuidv4()}` as UUID,
+    agentId: `${uuidv4()}` as UUID,
     content: {
       text: "test message",
       source: "test",
@@ -20,9 +27,9 @@ export function createMockMemory(overrides: Partial<Memory> = {}): Memory {
 }
 
 /**
- * Creates a mock state object for testing
+ * Creates a test state object for testing
  */
-export function createMockState(overrides: Partial<State> = {}): State {
+export function createTestState(overrides: Partial<State> = {}): State {
   return {
     values: {},
     data: {},
@@ -57,6 +64,3 @@ export function setupLoggerSpies(mockFn?: typeof console.info) {
     console.debug = originalConsole.debug;
   };
 }
-
-// Legacy export for compatibility
-export type MockRuntime = IAgentRuntime;

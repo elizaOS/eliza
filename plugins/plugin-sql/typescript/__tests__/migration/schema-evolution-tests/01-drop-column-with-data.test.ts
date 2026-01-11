@@ -172,8 +172,9 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       sql`SELECT name, username FROM agents WHERE username IS NOT NULL`
     );
     console.log(`  - Agents with usernames: ${usernameCheck.rows.length}`);
-    usernameCheck.rows.forEach((row: any) => {
-      console.log(`    • ${row.name}: @${row.username}`);
+    usernameCheck.rows.forEach((row) => {
+      const typedRow = row as { name: string; username: string };
+      console.log(`    • ${typedRow.name}: @${typedRow.username}`);
     });
 
     // Now create V2 schema WITHOUT username column (destructive change!)
@@ -289,7 +290,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
           WHERE table_name = 'agents' AND table_schema = 'public'`
     );
 
-    const columnNames = columnsAfter.rows.map((r: any) => r.column_name);
+    const columnNames = columnsAfter.rows.map((r) => (r as { column_name: string }).column_name);
     expect(columnNames).not.toContain("username");
 
     console.log("\n📊 Schema after migration:");

@@ -63,13 +63,21 @@ function createEvent(
   };
 }
 
+// Helper to get statusCode and body from API Gateway result
+function getResultData(result: Awaited<ReturnType<typeof handler>>): { statusCode: number; body: string } {
+  if (typeof result === "string") {
+    return { statusCode: 200, body: result };
+  }
+  return { statusCode: result.statusCode ?? 200, body: result.body ?? "" };
+}
+
 async function runTests(): Promise<void> {
   console.log("🧪 Testing elizaOS AWS Lambda Handler (Full Runtime)\n");
 
   // Test 1: Health check
   console.log("1️⃣  Testing health check...");
   const healthEvent = createEvent("GET", "/health");
-  const healthResult = await handler(healthEvent, mockContext);
+  const healthResult = getResultData(await handler(healthEvent, mockContext));
   console.log(`   Status: ${healthResult.statusCode}`);
   console.log(`   Body: ${healthResult.body}\n`);
 
@@ -88,7 +96,7 @@ async function runTests(): Promise<void> {
   );
 
   const startTime = Date.now();
-  const chatResult = await handler(chatEvent, mockContext);
+  const chatResult = getResultData(await handler(chatEvent, mockContext));
   const duration = Date.now() - startTime;
 
   console.log(`   Status: ${chatResult.statusCode}`);
@@ -111,7 +119,7 @@ async function runTests(): Promise<void> {
     "/chat",
     JSON.stringify({ message: "" }),
   );
-  const invalidResult = await handler(invalidEvent, mockContext);
+  const invalidResult = getResultData(await handler(invalidEvent, mockContext));
   console.log(`   Status: ${invalidResult.statusCode}`);
 
   if (invalidResult.statusCode !== 400) {
@@ -123,7 +131,7 @@ async function runTests(): Promise<void> {
   // Test 4: 404 for unknown path
   console.log("4️⃣  Testing 404 response...");
   const notFoundEvent = createEvent("GET", "/unknown");
-  const notFoundResult = await handler(notFoundEvent, mockContext);
+  const notFoundResult = getResultData(await handler(notFoundEvent, mockContext));
   console.log(`   Status: ${notFoundResult.statusCode}`);
 
   if (notFoundResult.statusCode !== 404) {

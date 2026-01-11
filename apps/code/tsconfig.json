@@ -7,6 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "outDir": "dist",
     "rootDir": "src",
     "declaration": true,
@@ -16,8 +17,8 @@
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "types": ["node", "react", "vitest/globals"]
+    "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "src/__tests__/**"]
 }

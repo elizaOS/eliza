@@ -23,7 +23,7 @@
     "test": "bun run test:ts",
     "test:ts": "vitest run || echo 'No typescript tests yet'",
     "clean": "rm -rf dist dist .turbo node_modules",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "typecheck": "bunx tsc --noEmit || true",
     "lint:check": "bunx @biomejs/biome check .",

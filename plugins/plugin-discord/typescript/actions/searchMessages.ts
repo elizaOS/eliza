@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -114,7 +116,7 @@ const searchInMessages = (
   });
 };
 
-export const searchMessages = {
+export const searchMessages: Action = {
   name: "SEARCH_MESSAGES",
   similes: [
     "SEARCH_MESSAGES",
@@ -126,16 +128,16 @@ export const searchMessages = {
     "SEARCH_DISCORD",
   ],
   description: "Search for messages in Discord channels based on keywords, author, or time range.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
@@ -326,6 +328,6 @@ export const searchMessages = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default searchMessages;

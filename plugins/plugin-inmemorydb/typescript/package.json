@@ -55,7 +55,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run __tests__/",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

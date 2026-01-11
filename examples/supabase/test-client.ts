@@ -142,21 +142,29 @@ async function healthCheck(config: Config): Promise<HealthResponse> {
   return data;
 }
 
+interface ErrorResponse {
+  error: string;
+}
+
+function isErrorResponse(data: unknown): data is ErrorResponse {
+  return typeof data === "object" && data !== null && "error" in data;
+}
+
 async function sendMessage(
   config: Config,
   request: ChatRequest,
 ): Promise<ChatResponse> {
-  const { status, data } = await sendRequest<ChatResponse>(
+  const { status, data } = await sendRequest<ChatResponse | ErrorResponse>(
     config,
     "POST",
     "",
     request,
   );
   if (status !== 200) {
-    const error = data as unknown as { error: string };
-    throw new Error(error.error ?? `Request failed with status ${status}`);
+    const errorMsg = isErrorResponse(data) ? data.error : `Request failed with status ${status}`;
+    throw new Error(errorMsg);
   }
-  return data;
+  return data as ChatResponse;
 }
 
 // ============================================================================

@@ -35,7 +35,7 @@
     "dev": "bun --hot build.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",

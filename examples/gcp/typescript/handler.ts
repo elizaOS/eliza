@@ -14,13 +14,12 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
-  type Content,
   createMessageMemory,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 // Types for request/response
@@ -139,10 +138,10 @@ function validateChatRequest(body: Record<string, unknown>): ChatRequest {
 /**
  * Send JSON response
  */
-function sendJson<T extends Record<string, unknown>>(
+function sendJson(
   res: ServerResponse,
   statusCode: number,
-  body: T,
+  body: object,
 ): void {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
@@ -184,7 +183,7 @@ async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     id: uuidv4() as UUID,
     entityId: userId,
     roomId,
-    content: { text: request.message } as Content,
+    content: { text: request.message },
   });
 
   // Process message and collect response
@@ -221,9 +220,11 @@ function handleHealth(): HealthResponse {
  */
 function handleInfo(): InfoResponse {
   const character = getCharacter();
+  const bio = character.bio;
+  const bioStr = Array.isArray(bio) ? bio.join(" ") : (bio ?? "A helpful AI assistant.");
   return {
     name: character.name,
-    bio: character.bio ?? "A helpful AI assistant.",
+    bio: bioStr,
     version: "1.0.0",
     powered_by: "elizaOS",
     endpoints: {

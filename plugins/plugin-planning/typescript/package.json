@@ -24,7 +24,7 @@
     "clean": "rm -rf dist .turbo node_modules",
     "test": "vitest run || echo 'Tests skipped due to missing dependencies'",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

@@ -27,6 +27,15 @@ interface TodoTaskInput {
   recurring?: "daily" | "weekly" | "monthly"; // For recurring tasks
 }
 
+// Type guard for TodoTaskInput
+function isValidTodoInput(obj: Record<string, unknown>): obj is TodoTaskInput {
+  return (
+    typeof obj.name === "string" &&
+    typeof obj.taskType === "string" &&
+    ["daily", "one-off", "aspirational"].includes(obj.taskType)
+  );
+}
+
 import { composePrompt } from "@elizaos/core";
 /**
  * Template for extracting todo information from the user's message.
@@ -82,13 +91,13 @@ async function extractTodoInfo(
   }
 
   // Now check if essential fields are missing for a *real* task
-  if (!parsedResult || !parsedResult.name || !parsedResult.taskType) {
+  if (!parsedResult || !isValidTodoInput(parsedResult)) {
     logger.error("Failed to extract valid todo information from XML (missing name or type)");
     return null;
   }
 
-  // Cast to the expected type *after* validation
-  const validatedTodo = parsedResult as unknown as TodoTaskInput;
+  // Type is now narrowed via the type guard
+  const validatedTodo = parsedResult;
 
   // Convert specific fields from string if necessary and apply defaults
   const finalTodo: TodoTaskInput = {

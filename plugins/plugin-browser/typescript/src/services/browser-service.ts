@@ -31,8 +31,12 @@ export class BrowserService extends Service {
   private client: BrowserWebSocketClient;
   private isInitialized = false;
 
-  constructor(protected runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
+    if (!runtime) {
+      throw new Error("BrowserService requires a runtime");
+    }
+    this.runtime = runtime;
     const portSetting = runtime.getSetting("BROWSER_SERVER_PORT");
     const port = typeof portSetting === "string" ? parseInt(portSetting, 10) : 3456;
     this.processManager = new BrowserProcessManager(port);
@@ -70,9 +74,9 @@ export class BrowserService extends Service {
   }
 
   /**
-   * Stop the browser service
+   * Stop the browser service for a runtime
    */
-  static async stop(runtime: IAgentRuntime): Promise<void> {
+  static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
     logger.info("Stopping browser automation service");
     const service = runtime.getService<BrowserService>(BrowserService.serviceType);
     if (!service) {

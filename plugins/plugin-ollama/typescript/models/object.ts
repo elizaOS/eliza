@@ -31,9 +31,7 @@ async function generateOllamaObject(
       temperature: params.temperature,
     };
 
-    const { object } = await generateObject(
-      generateParams as unknown as Parameters<typeof generateObject>[0]
-    );
+    const { object } = await generateObject(generateParams);
     return object as Record<string, unknown>;
   } catch (error: unknown) {
     logger.error({ error }, "Error generating object");

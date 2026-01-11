@@ -16,7 +16,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
-import { type CreateReviewParams, createReviewSchema } from "../types";
+import { type CreateReviewParams, createReviewSchema, formatZodErrors } from "../types";
 
 const examples: ActionExample[][] = [
   [
@@ -129,12 +129,7 @@ export const reviewPullRequestAction: Action = {
 
       const validation = createReviewSchema.safeParse(params);
       if (!validation.success) {
-        const zodError = validation.error as unknown as {
-          issues?: Array<{ path: (string | number)[]; message: string }>;
-        };
-        const errors = (zodError.issues || [])
-          .map((e) => `${e.path.join(".")}: ${e.message}`)
-          .join(", ");
+        const errors = formatZodErrors(validation.error);
         logger.error(`Invalid review parameters: ${errors}`);
         if (callback) {
           await callback({

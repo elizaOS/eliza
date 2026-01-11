@@ -74,8 +74,9 @@ async function generateTextByModelType(
   // which has better compatibility than the Responses API
   // Note: gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
   // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
+  const model = openai.chat(modelName);
   const generateParams = {
-    model: openai.chat(modelName) as unknown as Parameters<typeof generateText>[0]["model"],
+    model,
     prompt: params.prompt,
     system: systemPrompt,
     maxOutputTokens: params.maxTokens ?? 8192,
@@ -84,7 +85,7 @@ async function generateTextByModelType(
 
   // Handle streaming mode
   if (params.stream) {
-    const result = streamText(generateParams as unknown as Parameters<typeof streamText>[0]);
+    const result = streamText(generateParams);
 
     return {
       textStream: result.textStream,
@@ -95,9 +96,7 @@ async function generateTextByModelType(
   }
 
   // Non-streaming mode
-  const { text, usage } = await generateText(
-    generateParams as unknown as Parameters<typeof generateText>[0]
-  );
+  const { text, usage } = await generateText(generateParams);
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, params.prompt, usage);

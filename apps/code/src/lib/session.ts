@@ -161,9 +161,9 @@ function deserializeRoom(data: SerializedRoom): ChatRoom {
 /**
  * Validate session data structure.
  */
-function isValidSessionData(data: JsonValue | undefined): data is SessionData {
+function isValidSessionData(data: unknown): data is SessionData {
   if (!data || typeof data !== "object" || Array.isArray(data)) return false;
-  const d = data as Record<string, JsonValue>;
+  const d = data as Record<string, unknown>;
   return (
     d.version === 1 &&
     typeof d.currentRoomId === "string" &&

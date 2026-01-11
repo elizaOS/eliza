@@ -5,3 +5,4 @@ custom_actions/
 cache/
 coverage/
 *.tsbuildinfo
+:memory:

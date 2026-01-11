@@ -27,7 +27,7 @@ jobs:
         run: bun run build
 
       - name: Run tests
-        run: bun test typescript/
+        run: npx vitest run typescript/
         continue-on-error: true
 
   # ============ PYTHON TESTS ============

@@ -169,7 +169,9 @@ const findChannel = async (
   }
 };
 
-export const leaveChannel = {
+import type { HandlerOptions } from "@elizaos/core";
+
+export const leaveChannel: Action = {
   name: "LEAVE_CHANNEL",
   similes: [
     "LEAVE_CHANNEL",
@@ -191,19 +193,16 @@ export const leaveChannel = {
   ],
   description:
     "Leave a Discord channel - either text (stop monitoring messages) or voice (disconnect from voice chat). Use this when asked to leave, exit, or disconnect from any Discord channel.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
-    if (message.content.source !== "discord") {
-      return false;
-    }
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ): Promise<undefined | ActionResult | undefined> => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
@@ -568,6 +567,6 @@ export const leaveChannel = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default leaveChannel;

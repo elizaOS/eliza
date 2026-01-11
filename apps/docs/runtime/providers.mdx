@@ -41,8 +41,8 @@ interface Provider {
 }
 
 interface ProviderResult {
-  values: Record<string, any>; // Key-value pairs for templates
-  data: Record<string, any>; // Structured data
+  values: Record<string, unknown>; // Key-value pairs for templates
+  data: Record<string, unknown>; // Structured data
   text: string; // Textual context
 }
 ```
@@ -493,7 +493,7 @@ class BoundedCache extends Map {
     this.maxSize = maxSize;
   }
 
-  set(key: string, value: any) {
+  set(key: string, value: unknown) {
     if (this.size >= this.maxSize) {
       const firstKey = this.keys().next().value;
       this.delete(firstKey);

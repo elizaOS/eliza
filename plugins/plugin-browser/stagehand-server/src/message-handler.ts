@@ -3,18 +3,51 @@ import { detectCaptchaType } from "./captcha-handler.js";
 import type { Logger } from "./logger.js";
 import type { SessionManager } from "./session-manager.js";
 
+export interface MessageData {
+  url?: string;
+  description?: string;
+  text?: string;
+  field?: string;
+  option?: string;
+  dropdown?: string;
+  instruction?: string;
+  [key: string]: unknown;
+}
+
 export interface Message {
   type: string;
   requestId: string;
   sessionId?: string;
-  data?: any;
+  data?: MessageData;
+}
+
+export interface ResponseData {
+  sessionId?: string;
+  createdAt?: Date;
+  url?: string;
+  title?: string;
+  description?: string;
+  text?: string;
+  field?: string;
+  option?: string;
+  dropdown?: string;
+  screenshot?: string;
+  mimeType?: string;
+  status?: string;
+  message?: string;
+  captchaDetected?: boolean;
+  captchaType?: string | null;
+  siteKey?: string | null;
+  data?: string;
+  found?: boolean;
+  [key: string]: unknown;
 }
 
 export interface Response {
   type: string;
   requestId: string;
   success: boolean;
-  data?: any;
+  data?: ResponseData;
   error?: string;
 }
 

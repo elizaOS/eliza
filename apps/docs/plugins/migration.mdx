@@ -280,13 +280,23 @@ interface Provider {
 
 ### Test Framework (Vitest)
 
-```typescript
-// Using Vitest for tests
-import { describe, it, expect, vi } from "vitest";
+All tests use **real runtime instances** with PGLite - no mocks:
 
-const mockRuntime = {
-  getSetting: vi.fn(() => "test-value"),
-};
+```typescript
+// Using Vitest for tests with real runtime
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestRuntime, cleanupRuntime } from "./test-utils";
+import type { IAgentRuntime } from "@elizaos/core";
+
+let runtime: IAgentRuntime;
+
+beforeEach(async () => {
+  runtime = await createTestRuntime();
+});
+
+afterEach(async () => {
+  await cleanupRuntime(runtime);
+});
 ```
 
 Run tests with:
@@ -297,30 +307,32 @@ npx vitest
 ### Test Structure
 
 ```typescript
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { myAction } from "../src/actions/myAction";
+import { createTestRuntime, cleanupRuntime } from "./test-utils";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 describe("MyAction", () => {
-  let mockRuntime: any;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
-    mockRuntime = {
-      agentId: "test-agent",
-      getSetting: vi.fn((key: string) => "test-value"),
-      useModel: vi.fn(async () => ({ content: "response" })),
-      composeState: vi.fn(async () => ({ values: {}, text: "" })),
-    };
+  beforeEach(async () => {
+    // Create real runtime with PGLite database
+    runtime = await createTestRuntime();
+  });
+
+  afterEach(async () => {
+    await cleanupRuntime(runtime);
   });
 
   it("should validate correctly", async () => {
-    const message = { content: { text: "test" } };
-    const isValid = await myAction.validate(mockRuntime, message);
+    const message = { content: { text: "test" } } as Memory;
+    const isValid = await myAction.validate(runtime, message);
     expect(isValid).toBe(true);
   });
 
   it("should return ActionResult", async () => {
-    const message = { content: { text: "test" } };
-    const result = await myAction.handler(mockRuntime, message);
+    const message = { content: { text: "test" } } as Memory;
+    const result = await myAction.handler(runtime, message);
 
     expect(result).toHaveProperty("success");
     expect(result.success).toBe(true);
@@ -689,7 +701,7 @@ Clients now have a simpler interface:
 // v0: Client with config
 export type Client = {
   name: string;
-  config?: { [key: string]: any };
+  config?: { [key: string]: string | number | boolean };
   start: (runtime: IAgentRuntime) => Promise<ClientInstance>;
 };
 

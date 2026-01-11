@@ -22,7 +22,12 @@ import type {
   ModelTypeName,
   TextGenerationModelType,
 } from "./model";
-import type { Plugin, Route, RuntimeEventStorage } from "./plugin";
+import type {
+  Plugin,
+  Route,
+  RuntimeEventStorage,
+  ServiceClass,
+} from "./plugin";
 import type { ChannelType, Content, UUID } from "./primitives";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
@@ -65,7 +70,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   getAllServices(): Map<ServiceTypeName, Service[]>;
 
-  registerService(service: typeof Service): Promise<void>;
+  registerService(service: ServiceClass): Promise<void>;
 
   getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
 

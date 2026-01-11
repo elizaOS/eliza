@@ -4048,8 +4048,8 @@ export class DiscordService extends Service implements IDiscordService {
     options?: {
       processedContent?: string;
       processedAttachments?: Media[];
-      extraContent?: Record<string, any>;
-      extraMetadata?: Record<string, any>;
+      extraContent?: Record<string, unknown>;
+      extraMetadata?: Record<string, unknown>;
     }
   ): Promise<Memory | null> {
     if (!message.author || !message.channel) {

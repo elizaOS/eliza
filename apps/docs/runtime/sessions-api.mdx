@@ -85,7 +85,7 @@ interface Session {
   };
 
   // Application State
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 ```
 
@@ -920,7 +920,7 @@ abstract class SessionError extends Error {
     message: string,
     public code: string,
     public statusCode: number,
-    public details?: any,
+    public details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -947,7 +947,7 @@ class SessionExpiredError extends SessionError {
 }
 
 class SessionRenewalError extends SessionError {
-  constructor(sessionId: string, reason: string, details?: any) {
+  constructor(sessionId: string, reason: string, details?: Record<string, unknown>) {
     super(
       `Cannot renew session: ${reason}`,
       "SESSION_RENEWAL_FAILED",
@@ -1075,7 +1075,7 @@ class AgentConfigCache {
 ### Memory Leak Prevention
 
 ```typescript
-class BoundedCache extends Map {
+class BoundedCache<T> extends Map<string, T> {
   private maxSize: number;
 
   constructor(maxSize: number = 1000) {
@@ -1083,7 +1083,7 @@ class BoundedCache extends Map {
     this.maxSize = maxSize;
   }
 
-  set(key: string, value: any) {
+  set(key: string, value: T) {
     // Remove oldest entries if at capacity
     if (this.size >= this.maxSize) {
       const firstKey = this.keys().next().value;
@@ -1102,7 +1102,7 @@ process.once("beforeExit", clearAllIntervals);
 ### Cache with TTL
 
 ```typescript
-class CacheWithTTL extends Map {
+class CacheWithTTL<T> extends Map<string, T> {
   private ttl: number;
   private timestamps = new Map<string, number>();
 
@@ -1111,7 +1111,7 @@ class CacheWithTTL extends Map {
     this.ttl = ttl;
   }
 
-  set(key: string, value: any) {
+  set(key: string, value: T) {
     this.timestamps.set(key, Date.now());
     return super.set(key, value);
   }
@@ -1393,7 +1393,7 @@ interface CreateSessionRequest {
   userId: string; // UUID of the user
   metadata?: {
     // Optional session metadata
-    [key: string]: any;
+    [key: string]: unknown;
   };
   timeoutConfig?: {
     // Optional timeout configuration
@@ -1487,9 +1487,9 @@ interface SendMessageRequest {
   content: string; // Message content (max 4000 chars)
   metadata?: {
     // Optional message metadata
-    [key: string]: any;
+    [key: string]: unknown;
   };
-  attachments?: any[]; // Optional attachments
+  attachments?: Attachment[]; // Optional attachments
 }
 ```
 
@@ -1559,7 +1559,7 @@ interface SimplifiedMessage {
   metadata: {
     thought?: string; // Agent's internal reasoning
     actions?: string[]; // Actions taken by agent
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 ```
@@ -1726,7 +1726,7 @@ interface ErrorResponse {
   error: string; // Error message
   details?: {
     // Additional context
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 ```

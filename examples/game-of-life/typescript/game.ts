@@ -18,9 +18,11 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 import { randomUUID } from "node:crypto";
 import {
   type Action,
+  type ActionResult,
   AgentRuntime,
   type Character,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -190,11 +192,11 @@ const moveTowardFoodAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const agentState = getAgentState(runtime);
-    if (!agentState) return false;
+    if (!agentState) return { success: false };
 
     // Find nearest food
     let nearest: Position | null = null;
@@ -234,7 +236,7 @@ const moveTowardFoodAction: Action = {
         });
       }
     }
-    return true;
+    return { success: true };
   },
 
   examples: [],
@@ -255,11 +257,11 @@ const eatAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const agentState = getAgentState(runtime);
-    if (!agentState) return false;
+    if (!agentState) return { success: false };
 
     const key = posKey(agentState.position.x, agentState.position.y);
     if (world.food.has(key)) {
@@ -275,7 +277,7 @@ const eatAction: Action = {
         });
       }
     }
-    return true;
+    return { success: true };
   },
 
   examples: [],
@@ -308,11 +310,11 @@ const fleeAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const agentState = getAgentState(runtime);
-    if (!agentState) return false;
+    if (!agentState) return { success: false };
 
     // Find nearest threat and run opposite direction
     let threat: AgentState | null = null;
@@ -351,7 +353,7 @@ const fleeAction: Action = {
         callback({ text: `Fleeing from threat!`, action: "FLEE" });
       }
     }
-    return true;
+    return { success: true };
   },
 
   examples: [],
@@ -384,11 +386,11 @@ const attackAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const agentState = getAgentState(runtime);
-    if (!agentState) return false;
+    if (!agentState) return { success: false };
 
     // Find weakest nearby prey
     let prey: AgentState | null = null;
@@ -429,7 +431,7 @@ const attackAction: Action = {
         });
       }
     }
-    return true;
+    return { success: true };
   },
 
   examples: [],
@@ -453,11 +455,11 @@ const reproduceAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const agentState = getAgentState(runtime);
-    if (!agentState) return false;
+    if (!agentState) return { success: false };
 
     agentState.energy -= CONFIG.REPRODUCTION_COST;
 
@@ -494,7 +496,7 @@ const reproduceAction: Action = {
         action: "REPRODUCE",
       });
     }
-    return true;
+    return { success: true };
   },
 
   examples: [],
@@ -507,18 +509,18 @@ const wanderAction: Action = {
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const state = getAgentState(runtime);
-    return state?.isAlive;
+    return state?.isAlive ?? false;
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     _callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const agentState = getAgentState(runtime);
-    if (!agentState) return false;
+    if (!agentState) return { success: false };
 
     const dx = Math.floor(Math.random() * 3) - 1;
     const dy = Math.floor(Math.random() * 3) - 1;
@@ -534,7 +536,7 @@ const wanderAction: Action = {
     );
     agentState.energy -= CONFIG.MOVE_COST * agentState.dna.efficiency * 0.5;
 
-    return true;
+    return { success: true };
   },
 
   examples: [],

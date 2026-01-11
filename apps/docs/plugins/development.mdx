@@ -423,7 +423,7 @@ bun link @yourorg/plugin-myplugin
 ```
 src/
   __tests__/
-    test-utils.ts         # Shared test utilities and mocks
+    test-utils.ts         # Shared test utilities (real runtime helpers)
     index.test.ts         # Main plugin tests
     actions.test.ts       # Action tests
     providers.test.ts     # Provider tests
@@ -462,10 +462,9 @@ import {
 
 ### Creating Test Utilities
 
-Create a `test-utils.ts` file with reusable mocks:
+Create a `test-utils.ts` file with test helpers. All tests use **real runtime instances** with PGLite:
 
 ```typescript
-import { vi } from "vitest";
 import {
   type IAgentRuntime,
   type Memory,
@@ -473,70 +472,64 @@ import {
   type Character,
   type UUID,
 } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
-// Mock Runtime Type
-export type MockRuntime = Partial<IAgentRuntime> & {
-  agentId: UUID;
-  character: Character;
-  getSetting: ReturnType<typeof vi.fn>;
-  useModel: ReturnType<typeof vi.fn>;
-  composeState: ReturnType<typeof vi.fn>;
-  createMemory: ReturnType<typeof vi.fn>;
-  getMemories: ReturnType<typeof vi.fn>;
-  getService: ReturnType<typeof vi.fn>;
-};
-
-// Create Mock Runtime
-export function createMockRuntime(
-  overrides?: Partial<MockRuntime>,
-): MockRuntime {
-  return {
-    agentId: "test-agent-123" as UUID,
-    character: {
-      name: "TestAgent",
-      bio: "A test agent",
-      id: "test-character" as UUID,
-      ...overrides?.character,
-    },
-    getSetting: vi.fn((key: string) => {
-      const settings: Record<string, string> = {
-        TEST_API_KEY: "test-key-123",
-        ...overrides?.settings,
-      };
-      return settings[key];
-    }),
-    useModel: vi.fn(async () => ({
-      content: "Mock response from LLM",
-      success: true,
-    })),
-    composeState: vi.fn(async () => ({
-      values: { test: "state" },
-      data: {},
-      text: "Composed state",
-    })),
-    createMemory: vi.fn(async () => ({ id: "memory-123" })),
-    getMemories: vi.fn(async () => []),
-    getService: vi.fn(() => null),
-    ...overrides,
+/**
+ * Creates a real AgentRuntime for testing with PGLite database.
+ * NO MOCKS - all tests use actual runtime infrastructure.
+ */
+export async function createTestRuntime(
+  characterOverrides?: Partial<Character>,
+): Promise<IAgentRuntime> {
+  const agentId = uuidv4() as UUID;
+  const character: Character = {
+    id: agentId,
+    name: "TestAgent",
+    bio: "A test agent",
+    plugins: [],
+    settings: {},
+    ...characterOverrides,
   };
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character,
+    logLevel: "error",
+  });
+
+  await runtime.initialize();
+  return runtime;
 }
 
-// Create Mock Message
-export function createMockMessage(overrides?: Partial<Memory>): Memory {
+/**
+ * Cleans up a test runtime after tests complete
+ */
+export async function cleanupRuntime(runtime: IAgentRuntime): Promise<void> {
+  await runtime.stop();
+}
+
+/**
+ * Creates a test Memory object
+ */
+export function createTestMemory(overrides?: Partial<Memory>): Memory {
   return {
-    id: "msg-123" as UUID,
-    entityId: "entity-123" as UUID,
-    roomId: "room-123" as UUID,
+    id: uuidv4() as UUID,
+    entityId: uuidv4() as UUID,
+    roomId: uuidv4() as UUID,
     content: {
       text: "Test message",
       ...overrides?.content,
     },
+    createdAt: Date.now(),
     ...overrides,
   } as Memory;
 }
 
-// Create Mock State
-export function createMockState(overrides?: Partial<State>): State {
+/**
+ * Creates a test State object
+ */
+export function createTestState(overrides?: Partial<State>): State {
   return {
     values: {
       test: "value",
@@ -550,103 +543,76 @@ export function createMockState(overrides?: Partial<State>): State {
 
 ### Testing Actions
 
+All tests use **real runtime instances** - no mocks:
+
 ```typescript
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { myAction } from "../src/actions/myAction";
 import {
-  createMockRuntime,
-  createMockMessage,
-  createMockState,
+  createTestRuntime,
+  cleanupRuntime,
+  createTestMemory,
+  createTestState,
 } from "./test-utils";
-import { ActionResult } from "@elizaos/core";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
 describe("MyAction", () => {
-  let mockRuntime: any;
-  let mockMessage: Memory;
-  let mockState: State;
+  let runtime: IAgentRuntime;
+  let message: Memory;
+  let state: State;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime({
-      settings: { MY_API_KEY: "test-key" },
-    });
-    mockMessage = createMockMessage({ content: { text: "Do the thing" } });
-    mockState = createMockState();
+  beforeEach(async () => {
+    // Create real runtime with PGLite database
+    runtime = await createTestRuntime();
+    runtime.setSetting("MY_API_KEY", "test-key");
+    message = createTestMemory({ content: { text: "Do the thing" } });
+    state = createTestState();
+  });
+
+  afterEach(async () => {
+    await cleanupRuntime(runtime);
   });
 
   describe("validation", () => {
     it("should validate when all requirements are met", async () => {
-      const isValid = await myAction.validate(
-        mockRuntime,
-        mockMessage,
-        mockState,
-      );
+      const isValid = await myAction.validate(runtime, message, state);
       expect(isValid).toBe(true);
     });
 
-    it("should not validate without required service", async () => {
-      mockRuntime.getService = vi.fn(() => null);
-      const isValid = await myAction.validate(
-        mockRuntime,
-        mockMessage,
-        mockState,
-      );
+    it("should not validate without required setting", async () => {
+      runtime.setSetting("MY_API_KEY", null);
+      const isValid = await myAction.validate(runtime, message, state);
       expect(isValid).toBe(false);
     });
   });
 
   describe("handler", () => {
     it("should return success ActionResult on successful execution", async () => {
-      const mockCallback = vi.fn();
+      const callback = vi.fn();
 
       const result = await myAction.handler(
-        mockRuntime,
-        mockMessage,
-        mockState,
+        runtime,
+        message,
+        state,
         {},
-        mockCallback,
+        callback,
       );
 
       expect(result.success).toBe(true);
       expect(result.text).toContain("completed");
       expect(result.values).toHaveProperty("lastActionTime");
-      expect(mockCallback).toHaveBeenCalled();
+      expect(callback).toHaveBeenCalled();
     });
 
     it("should handle errors gracefully", async () => {
-      // Make service throw error
-      mockRuntime.getService = vi.fn(() => {
-        throw new Error("Service unavailable");
-      });
+      // Remove required setting to trigger error
+      runtime.setSetting("MY_API_KEY", null);
 
-      const result = await myAction.handler(
-        mockRuntime,
-        mockMessage,
-        mockState,
-      );
+      const result = await myAction.handler(runtime, message, state);
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
       expect(result.text).toContain("Failed");
-    });
-
-    it("should access previous action results", async () => {
-      const previousResults: ActionResult[] = [
-        {
-          success: true,
-          values: { previousData: "test" },
-          data: { actionName: "PREVIOUS_ACTION" },
-        },
-      ];
-
-      const result = await myAction.handler(
-        mockRuntime,
-        mockMessage,
-        mockState,
-        { context: { previousResults } },
-      );
-
-      // Verify it used previous results
-      expect(result.values?.usedPreviousData).toBe(true);
     });
   });
 
@@ -673,27 +639,33 @@ describe("MyAction", () => {
 ### Testing Providers
 
 ```typescript
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { myProvider } from "../src/providers/myProvider";
 import {
-  createMockRuntime,
-  createMockMessage,
-  createMockState,
+  createTestRuntime,
+  cleanupRuntime,
+  createTestMemory,
+  createTestState,
 } from "./test-utils";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
 describe("MyProvider", () => {
-  let mockRuntime: any;
-  let mockMessage: Memory;
-  let mockState: State;
+  let runtime: IAgentRuntime;
+  let message: Memory;
+  let state: State;
 
-  beforeEach(() => {
-    mockRuntime = createMockRuntime();
-    mockMessage = createMockMessage();
-    mockState = createMockState();
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+    message = createTestMemory();
+    state = createTestState();
+  });
+
+  afterEach(async () => {
+    await cleanupRuntime(runtime);
   });
 
   it("should return provider result with text and data", async () => {
-    const result = await myProvider.get(mockRuntime, mockMessage, mockState);
+    const result = await myProvider.get(runtime, message, state);
 
     expect(result).toBeDefined();
     expect(result.text).toContain("Current");
@@ -701,16 +673,13 @@ describe("MyProvider", () => {
     expect(result.values).toBeDefined();
   });
 
-  it("should handle errors gracefully", async () => {
-    // Mock service to throw error
-    mockRuntime.getService = vi.fn(() => {
-      throw new Error("Service error");
-    });
+  it("should handle missing data gracefully", async () => {
+    // Test with empty message content
+    message.content.text = "";
 
-    const result = await myProvider.get(mockRuntime, mockMessage, mockState);
+    const result = await myProvider.get(runtime, message, state);
 
-    expect(result.text).toContain("Unable");
-    expect(result.data?.error).toBeDefined();
+    expect(result.text).toBeDefined();
   });
 });
 ```
@@ -720,42 +689,41 @@ describe("MyProvider", () => {
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MyService } from "../src/services/myService";
-import { createMockRuntime } from "./test-utils";
+import { createTestRuntime, cleanupRuntime } from "./test-utils";
+import type { IAgentRuntime } from "@elizaos/core";
 
 describe("MyService", () => {
-  let mockRuntime: any;
+  let runtime: IAgentRuntime;
   let service: MyService;
 
   beforeEach(async () => {
-    mockRuntime = createMockRuntime({
-      settings: {
-        MY_API_KEY: "test-api-key",
-      },
-    });
+    runtime = await createTestRuntime();
+    runtime.setSetting("MY_API_KEY", "test-api-key");
   });
 
   afterEach(async () => {
     if (service) {
       await service.stop();
     }
+    await cleanupRuntime(runtime);
   });
 
   it("should initialize successfully with valid config", async () => {
-    service = await MyService.start(mockRuntime);
+    service = await MyService.start(runtime);
     expect(service).toBeDefined();
     expect(service.capabilityDescription).toBeDefined();
   });
 
   it("should throw error without API key", async () => {
-    mockRuntime.getSetting = vi.fn(() => undefined);
+    runtime.setSetting("MY_API_KEY", null);
 
-    expect(async () => {
-      await MyService.start(mockRuntime);
-    }).toThrow("MY_API_KEY not configured");
+    await expect(MyService.start(runtime)).rejects.toThrow(
+      "MY_API_KEY not configured",
+    );
   });
 
   it("should clean up resources on stop", async () => {
-    service = await MyService.start(mockRuntime);
+    service = await MyService.start(runtime);
     await service.stop();
     // Verify cleanup happened
   });
@@ -838,14 +806,14 @@ npx vitest --coverage
 
 ### Test Best Practices
 
-1. **Test in Isolation**: Use mocks to isolate components
-2. **Test Happy Path and Errors**: Cover both success and failure cases
-3. **Test Validation Logic**: Ensure actions validate correctly
-4. **Test Examples**: Verify example structures are valid
-5. **Test Side Effects**: Verify database writes, API calls, etc.
-6. **Use Descriptive Names**: Make test purposes clear
-7. **Keep Tests Fast**: Mock external dependencies
-8. **Test Public API**: Focus on what users interact with
+1. **Use Real Runtime**: All tests use actual `AgentRuntime` with PGLite - no mocks
+2. **Isolate Tests**: Use `beforeEach`/`afterEach` to create and cleanup runtime instances
+3. **Test Happy Path and Errors**: Cover both success and failure cases
+4. **Test Validation Logic**: Ensure actions validate correctly
+5. **Test Examples**: Verify example structures are valid
+6. **Test Side Effects**: Verify database writes with real database operations
+7. **Use Descriptive Names**: Make test purposes clear
+8. **Keep Tests Fast**: PGLite provides fast in-memory database
 
 ## Development Workflow
 

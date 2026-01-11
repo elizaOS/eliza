@@ -194,7 +194,7 @@ describe("Hello World Action", () => {
       content: { text: "say hello", source: "test" },
     });
 
-    let callbackContent: any = null;
+    let callbackContent: Content | null = null;
     const callback: HandlerCallback = async (content: Content) => {
       callbackContent = content;
       return [];
@@ -484,16 +484,16 @@ describe("API Routes", () => {
     }
 
     const mockRes = {
-      json: (data: any) => {
+      json: (data: { message: string }) => {
         mockRes._jsonData = data;
       },
-      _jsonData: null,
+      _jsonData: null as { message: string } | null,
     };
 
     await helloRoute.handler({}, mockRes, runtime);
 
     expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData.message).toBe("Hello World!");
+    expect(mockRes._jsonData!.message).toBe("Hello World!");
   });
 
   it("should validate route configuration", () => {
@@ -525,16 +525,16 @@ describe("API Routes", () => {
     };
 
     const mockRes = {
-      json: (data: any) => {
+      json: (data: { message: string }) => {
         mockRes._jsonData = data;
       },
-      _jsonData: null,
+      _jsonData: null as { message: string } | null,
     };
 
     await helloRoute.handler(mockReq, mockRes, runtime);
 
     expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData.message).toBe("Hello World!");
+    expect(mockRes._jsonData!.message).toBe("Hello World!");
   });
 });
 

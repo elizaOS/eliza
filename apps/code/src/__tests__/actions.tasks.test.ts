@@ -54,8 +54,8 @@ function createMockRuntimeWithService(): {
 
     getRoom: async (id: UUID) => rooms.get(id) ?? null,
 
-    getService: (type: string) => {
-      if (type === "CODE_TASK") return serviceRef;
+    getService: <T>(type: string): T | null => {
+      if (type === "CODE_TASK") return serviceRef as T;
       return null;
     },
 
@@ -96,7 +96,7 @@ function createMockRuntimeWithService(): {
       if (updates.roomId) task.roomId = updates.roomId;
       if (updates.worldId) task.worldId = updates.worldId;
       if (updates.metadata) {
-        task.metadata = { ...task.metadata, ...updates.metadata };
+        task.metadata = { ...task.metadata, ...updates.metadata } as CodeTaskMetadata;
       }
     },
 
@@ -178,9 +178,9 @@ describe("plugin actions: task management", () => {
       undefined,
       undefined,
     );
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("Created task");
-    expect(result.text.toLowerCase()).toContain("execution disabled");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toContain("Created task");
+    expect(result!.text!.toLowerCase()).toContain("execution disabled");
 
     const tasks = await service.getTasks();
     expect(tasks).toHaveLength(1);
@@ -208,12 +208,12 @@ describe("plugin actions: task management", () => {
       runtime,
       createMemory("show me my tasks", roomId),
     );
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("Tasks:");
-    expect(result.text).toContain("Running");
-    expect(result.text).toContain("Pending");
-    expect(result.text).toContain("Completed");
-    expect(result.text).toContain("(current)");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toContain("Tasks:");
+    expect(result!.text).toContain("Running");
+    expect(result!.text).toContain("Pending");
+    expect(result!.text).toContain("Completed");
+    expect(result!.text).toContain("(current)");
   });
 
   test("SWITCH_TASK selects the best match and updates current task", async () => {
@@ -228,8 +228,8 @@ describe("plugin actions: task management", () => {
       runtime,
       createMemory("switch to task auth", roomId),
     );
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("Switched to task");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toContain("Switched to task");
     expect(service.getCurrentTaskId()).toBe(t1.id ?? null);
   });
 
@@ -241,8 +241,8 @@ describe("plugin actions: task management", () => {
       runtime,
       createMemory("find tasks about auth", roomId),
     );
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("Authentication API");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toContain("Authentication API");
   });
 
   test("PAUSE_TASK/RESUME_TASK updates status of current task", async () => {
@@ -254,7 +254,7 @@ describe("plugin actions: task management", () => {
       runtime,
       createMemory("pause the task", roomId),
     );
-    expect(paused.success).toBe(true);
+    expect(paused!.success).toBe(true);
     expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe(
       "paused",
     );
@@ -263,7 +263,7 @@ describe("plugin actions: task management", () => {
       runtime,
       createMemory("resume the task", roomId),
     );
-    expect(resumed.success).toBe(true);
+    expect(resumed!.success).toBe(true);
     expect((await service.getTask(task.id ?? ""))?.metadata.status).toBe(
       "running",
     );
@@ -303,7 +303,7 @@ describe("plugin actions: task management", () => {
       createMemory("cancel task cancel me", roomId),
     );
 
-    expect(result.success).toBe(true);
+    expect(result!.success).toBe(true);
     const updated = await service.getTask(task.id ?? "");
     expect(updated?.metadata.status).toBe("cancelled");
   });

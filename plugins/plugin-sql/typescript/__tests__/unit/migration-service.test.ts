@@ -16,9 +16,20 @@ const mockRunPluginMigrations = vi.fn(() => Promise.resolve());
 
 // For this test, we'll spy on the actual logger rather than mock the entire module
 
+// Mock database interface for testing
+interface MockDatabase {
+  query: {
+    agentTable: { findFirst: ReturnType<typeof vi.fn> };
+    entityTable: { findFirst: ReturnType<typeof vi.fn> };
+    memoryTable: { findFirst: ReturnType<typeof vi.fn> };
+  };
+  transaction: ReturnType<typeof vi.fn>;
+  execute: ReturnType<typeof vi.fn>;
+}
+
 describe("DatabaseMigrationService", () => {
   let migrationService: DatabaseMigrationService;
-  let mockDb: any;
+  let mockDb: MockDatabase;
 
   beforeEach(() => {
     mockLogger.info.mockClear();

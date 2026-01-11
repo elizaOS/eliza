@@ -1,8 +1,10 @@
 import type {
   Action,
   ActionExample,
+  ActionResult,
   Content,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -10,7 +12,7 @@ import type {
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-export const listChannels = {
+export const listChannels: Action = {
   name: "LIST_CHANNELS",
   similes: [
     "SHOW_CHANNELS",
@@ -21,19 +23,16 @@ export const listChannels = {
     "CHANNELS_LIST",
   ],
   description: "Lists all Discord channels the bot is currently listening to and responding in.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-    if (message.content.source !== "discord") {
-      return false;
-    }
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    _state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
@@ -44,7 +43,7 @@ export const listChannels = {
         },
         "Discord service not found or not initialized"
       );
-      return;
+      return { success: false, error: "Discord service not available" };
     }
 
     try {
@@ -52,11 +51,13 @@ export const listChannels = {
       const allowedChannelIds = discordService.getAllowedChannels();
 
       if (allowedChannelIds.length === 0) {
-        await callback({
-          text: "I'm currently listening to all channels (no restrictions are set).",
-          source: "discord",
-        });
-        return;
+        if (callback) {
+          await callback({
+            text: "I'm currently listening to all channels (no restrictions are set).",
+            source: "discord",
+          });
+        }
+        return { success: true, text: "Listening to all channels (no restrictions)" };
       }
 
       // Fetch channel information for each allowed channel
@@ -129,7 +130,10 @@ export const listChannels = {
         source: message.content.source,
       };
 
-      await callback(response);
+      if (callback) {
+        await callback(response);
+      }
+      return { success: true, text: response.text };
     } catch (error) {
       runtime.logger.error(
         {
@@ -139,10 +143,13 @@ export const listChannels = {
         },
         "Error listing channels"
       );
-      await callback({
-        text: "I encountered an error while trying to list the channels. Please try again.",
-        source: "discord",
-      });
+      if (callback) {
+        await callback({
+          text: "I encountered an error while trying to list the channels. Please try again.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
   examples: [
@@ -192,6 +199,6 @@ export const listChannels = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default listChannels;

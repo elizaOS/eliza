@@ -81,7 +81,7 @@ export class EVMService extends Service {
       return;
     }
 
-    const evmService = service as unknown as EVMService;
+    const evmService = service as EVMService;
     await evmService.stop();
   }
 

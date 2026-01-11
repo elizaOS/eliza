@@ -1,10 +1,12 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   ContentType,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Media,
   type Memory,
@@ -52,7 +54,7 @@ const getMediaUrl = async (
   return null;
 };
 
-export const downloadMedia = {
+export const downloadMedia: Action = {
   name: "DOWNLOAD_MEDIA",
   similes: [
     "DOWNLOAD_VIDEO",
@@ -63,22 +65,25 @@ export const downloadMedia = {
   ],
   description:
     "Downloads a video or audio file from a URL and attaches it to the response message.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-    if (message.content.source !== "discord") {
-      return false;
-    }
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
-    const videoService = runtime.getService(ServiceType.VIDEO) as unknown as {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
+    // Define the expected video service interface
+    interface VideoServiceInterface {
       fetchVideoInfo: (url: string) => Promise<{ title: string; description: string }>;
       downloadVideo: (videoInfo: { title: string; description: string }) => Promise<string>;
-    };
+    }
+
+    const videoService = runtime.getService(
+      ServiceType.VIDEO
+    ) as unknown as VideoServiceInterface | null;
 
     if (!videoService) {
       runtime.logger.error(
@@ -88,7 +93,17 @@ export const downloadMedia = {
         },
         "Video service not found"
       );
-      return;
+      return { success: false, error: "Video service not available" };
+    }
+
+    if (!state) {
+      if (callback) {
+        await callback({
+          text: "State is not available.",
+          source: "discord",
+        });
+      }
+      return { success: false, error: "State is not available" };
     }
 
     const mediaUrl = await getMediaUrl(runtime, message, state);
@@ -116,7 +131,7 @@ export const downloadMedia = {
         },
         "messages"
       );
-      return;
+      return { success: false, error: "Could not get media URL from messages" };
     }
 
     const videoInfo = await videoService.fetchVideoInfo(mediaUrl);
@@ -177,7 +192,7 @@ export const downloadMedia = {
       }
     }
 
-    return response;
+    return { success: true, ...response };
   },
   examples: [
     [
@@ -226,6 +241,6 @@ export const downloadMedia = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default downloadMedia;

@@ -121,7 +121,7 @@ export class CodeTaskService extends Service {
       this.currentTaskId = taskId;
     }
 
-    this.emit("task:created", taskId, { task });
+    this.emit("task:created", taskId, { task: task as unknown as JsonValue });
     return task;
   }
 
@@ -284,7 +284,7 @@ export class CodeTaskService extends Service {
     metadata.progress = Math.round((completed / metadata.steps.length) * 100);
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
-    this.emit("task:progress", taskId, { step, progress: metadata.progress });
+    this.emit("task:progress", taskId, { step: step as unknown as JsonValue, progress: metadata.progress });
   }
 
   async setTaskResult(taskId: string, result: TaskResult): Promise<void> {
@@ -307,10 +307,10 @@ export class CodeTaskService extends Service {
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
     if (metadata.status === "cancelled") {
-      this.emit("task:cancelled", taskId, { result });
+      this.emit("task:cancelled", taskId, { result: result as unknown as JsonValue });
     } else {
       this.emit(result.success ? "task:completed" : "task:failed", taskId, {
-        result,
+        result: result as unknown as JsonValue,
       });
     }
   }

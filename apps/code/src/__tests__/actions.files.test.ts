@@ -52,8 +52,8 @@ describe("plugin actions: filesystem + directory", () => {
     const msg = createMemory("create hello.txt\n```txt\nHello world\n```");
     const result = await writeFileAction.handler(runtime, msg);
 
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("hello.txt");
+    expect(result!.success).toBe(true);
+    expect(result!.text).toContain("hello.txt");
 
     const content = await fs.readFile(path.join(tempDir, "hello.txt"), "utf-8");
     expect(content).toBe("Hello world");
@@ -66,13 +66,13 @@ describe("plugin actions: filesystem + directory", () => {
       runtime,
       createMemory("read hello.txt"),
     );
-    expect(ok.success).toBe(true);
-    expect(ok.text).toContain("File: hello.txt");
-    expect(ok.text).toContain("Hello");
+    expect(ok!.success).toBe(true);
+    expect(ok!.text).toContain("File: hello.txt");
+    expect(ok!.text).toContain("Hello");
 
     const dir = await readFileAction.handler(runtime, createMemory("read sub"));
-    expect(dir.success).toBe(false);
-    expect(dir.text).toContain("directory");
+    expect(dir!.success).toBe(false);
+    expect(dir!.text).toContain("directory");
   });
 
   test("EDIT_FILE replaces text and reports failures when old text not found", async () => {
@@ -82,7 +82,7 @@ describe("plugin actions: filesystem + directory", () => {
       runtime,
       createMemory('edit edit.txt replace "beta" with "gamma"'),
     );
-    expect(edited.success).toBe(true);
+    expect(edited!.success).toBe(true);
 
     const content = await fs.readFile(path.join(tempDir, "edit.txt"), "utf-8");
     expect(content).toBe("alpha gamma");
@@ -91,8 +91,8 @@ describe("plugin actions: filesystem + directory", () => {
       runtime,
       createMemory('edit edit.txt replace "does-not-exist" with "x"'),
     );
-    expect(notFound.success).toBe(false);
-    expect(notFound.text).toContain("Could not find");
+    expect(notFound!.success).toBe(false);
+    expect(notFound!.text).toContain("Could not find");
   });
 
   test("LIST_FILES lists contents and excludes dotfiles", async () => {
@@ -104,11 +104,11 @@ describe("plugin actions: filesystem + directory", () => {
       runtime,
       createMemory("list files in ."),
     );
-    expect(listed.success).toBe(true);
-    expect(listed.text).toContain("Directory:");
-    expect(listed.text).toContain("a.txt");
-    expect(listed.text).toContain("dir/");
-    expect(listed.text).not.toContain(".hidden.txt");
+    expect(listed!.success).toBe(true);
+    expect(listed!.text).toContain("Directory:");
+    expect(listed!.text).toContain("a.txt");
+    expect(listed!.text).toContain("dir/");
+    expect(listed!.text).not.toContain(".hidden.txt");
   });
 
   test("SEARCH_FILES finds matches in text files", async () => {
@@ -127,9 +127,9 @@ describe("plugin actions: filesystem + directory", () => {
       runtime,
       createMemory('search for "todo" in .'),
     );
-    expect(searched.success).toBe(true);
-    expect(searched.text).toContain("search.txt");
-    expect(searched.text).toContain("TODO: fix this");
+    expect(searched!.success).toBe(true);
+    expect(searched!.text).toContain("search.txt");
+    expect(searched!.text).toContain("TODO: fix this");
   });
 
   test("CHANGE_DIRECTORY shows current dir when no target is provided and changes dir when target exists", async () => {
@@ -137,14 +137,14 @@ describe("plugin actions: filesystem + directory", () => {
       runtime,
       createMemory("cd"),
     );
-    expect(current.success).toBe(true);
-    expect(current.text).toContain("CWD:");
+    expect(current!.success).toBe(true);
+    expect(current!.text).toContain("CWD:");
 
     const changed = await changeDirectoryAction.handler(
       runtime,
       createMemory("cd sub"),
     );
-    expect(changed.success).toBe(true);
+    expect(changed!.success).toBe(true);
     expect(getCwd()).toBe(path.join(tempDir, "sub"));
   });
 });

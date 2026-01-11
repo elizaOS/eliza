@@ -1,10 +1,4 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderValue,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 
 /**
  * Time provider function that retrieves the current date and time in UTC
@@ -35,7 +29,8 @@ export const timeProvider: Provider = {
     );
     return {
       data: {
-        time: currentDate as unknown as ProviderValue,
+        timestamp: currentDate.getTime(),
+        isoString: currentDate.toISOString(),
       },
       values: {
         time: humanReadable,

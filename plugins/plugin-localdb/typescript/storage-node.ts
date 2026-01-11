@@ -113,9 +113,9 @@ export class NodeStorage implements IStorage {
     await Promise.all(ids.map((id) => this.delete(collection, id)));
   }
 
-  async deleteWhere(
+  async deleteWhere<T = Record<string, unknown>>(
     collection: string,
-    predicate: (item: Record<string, unknown>) => boolean
+    predicate: (item: T) => boolean
   ): Promise<void> {
     const collectionDir = this.getCollectionDir(collection);
     try {
@@ -129,7 +129,7 @@ export class NodeStorage implements IStorage {
         try {
           const filePath = join(collectionDir, file);
           const content = await readFile(filePath, "utf-8");
-          const item = JSON.parse(content) as Record<string, unknown>;
+          const item = JSON.parse(content) as T;
           if (predicate(item)) {
             await rm(filePath);
           }
@@ -142,9 +142,9 @@ export class NodeStorage implements IStorage {
     }
   }
 
-  async count(
+  async count<T = Record<string, unknown>>(
     collection: string,
-    predicate?: (item: Record<string, unknown>) => boolean
+    predicate?: (item: T) => boolean
   ): Promise<number> {
     if (!predicate) {
       const collectionDir = this.getCollectionDir(collection);
@@ -159,7 +159,7 @@ export class NodeStorage implements IStorage {
       }
     }
 
-    const items = await this.getAll<Record<string, unknown>>(collection);
+    const items = await this.getAll<T>(collection);
     return items.filter(predicate).length;
   }
 

@@ -145,10 +145,8 @@ export abstract class Service {
     throw new Error("Service.start() must be implemented by subclass");
   }
 
-  /** Stop service connection - subclasses must override this */
-  static async stopRuntime(_runtime: IAgentRuntime): Promise<void> {
-    throw new Error("Service.stopRuntime() must be implemented by subclass");
-  }
+  /** Stop service connection - optional, subclasses may override this */
+  static stopRuntime?(_runtime: IAgentRuntime): Promise<void>;
 
   /** Optional static method to register send handlers */
   static registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;

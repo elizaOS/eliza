@@ -37,7 +37,7 @@ declare global {
         agentId: string;
         apiBase?: string;
       }): Chainable<Window>;
-      mount(component: React.ReactElement): Chainable<any>;
+      mount(component: React.ReactElement): Chainable<unknown>;
     }
   }
 }

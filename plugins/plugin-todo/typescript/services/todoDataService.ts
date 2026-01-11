@@ -2,16 +2,23 @@ import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { InferSelectModel } from "drizzle-orm";
 import { and, desc, eq, isNull, not, or, type SQL } from "drizzle-orm";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 import { todosTable, todoTagsTable } from "../schema";
 
 // Type inferred from the todos table schema
 type TodoRow = InferSelectModel<typeof todosTable>;
 
+/**
+ * Drizzle database type that can be either NodePgDatabase or PgliteDatabase.
+ * The runtime.db is typed as `unknown` in the core package to avoid coupling
+ * to a specific database implementation.
+ */
+type DrizzleDatabase = NodePgDatabase | PgliteDatabase;
+
 // Helper function to get typed database instance
-// The runtime.db is typed loosely by the core package, but we need to use drizzle methods
-function getDb(runtime: IAgentRuntime) {
-  // biome-ignore lint/suspicious/noExplicitAny: Drizzle DB instance typing is runtime-dependent
-  return runtime.db as any;
+function getDb(runtime: IAgentRuntime): DrizzleDatabase {
+  return runtime.db as DrizzleDatabase;
 }
 
 /**

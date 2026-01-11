@@ -3,7 +3,6 @@ import type {
   Memory,
   Provider,
   ProviderResult,
-  ProviderValue,
   State,
 } from "@elizaos/core";
 
@@ -111,7 +110,7 @@ export const choiceProvider: Provider = {
 
     return {
       data: {
-        tasks: tasksWithOptions as unknown as ProviderValue,
+        tasks: tasksWithOptions,
       },
       values: {
         tasks: output,

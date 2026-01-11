@@ -21,6 +21,18 @@ interface SnapshotRow {
   [key: string]: unknown;
 }
 
+interface ColumnInfoRow {
+  column_name: string;
+  data_type?: string;
+  is_nullable?: string;
+  [key: string]: unknown;
+}
+
+interface TableInfoRow {
+  tablename: string;
+  [key: string]: unknown;
+}
+
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { RuntimeMigrator } from "../../runtime-migrator";
@@ -96,7 +108,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
                  ORDER BY ordinal_position`)
       );
 
-      const columnNames = migrationsColumns.rows.map((r: any) => r.column_name);
+      const columnNames = migrationsColumns.rows.map((r: ColumnInfoRow) => r.column_name);
       expect(columnNames).toContain("id");
       expect(columnNames).toContain("plugin_name");
       expect(columnNames).toContain("hash");
@@ -110,7 +122,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
                  AND table_name = '_journal'`)
       );
 
-      const journalColumnNames = journalColumns.rows.map((r: any) => r.column_name);
+      const journalColumnNames = journalColumns.rows.map((r: ColumnInfoRow) => r.column_name);
       expect(journalColumnNames).toContain("plugin_name");
       expect(journalColumnNames).toContain("entries");
 
@@ -122,7 +134,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
                  AND table_name = '_snapshots'`)
       );
 
-      const snapshotColumnNames = snapshotColumns.rows.map((r: any) => r.column_name);
+      const snapshotColumnNames = snapshotColumns.rows.map((r: ColumnInfoRow) => r.column_name);
       expect(snapshotColumnNames).toContain("plugin_name");
       expect(snapshotColumnNames).toContain("snapshot");
       expect(snapshotColumnNames).toContain("idx");
@@ -142,7 +154,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
                  ORDER BY tablename`)
       );
 
-      const createdTables = tablesResult.rows.map((r: any) => r.tablename);
+      const createdTables = tablesResult.rows.map((r: TableInfoRow) => r.tablename);
 
       const expectedTables = [
         "agents",

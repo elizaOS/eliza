@@ -1,11 +1,4 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  ProviderValue,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import BigNumber from "../bn";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
@@ -100,14 +93,14 @@ export const walletProvider: Provider = {
         text += `ETH: $${values.eth_price}\n`;
       }
 
-      // Convert portfolio to Record<string, ProviderValue> for the ProviderResult
+      // Portfolio data for the ProviderResult
       const data = {
         totalUsd: portfolio.totalUsd,
         totalSol: portfolio.totalSol,
         items: portfolio.items,
         prices: portfolio.prices,
         lastUpdated: portfolio.lastUpdated,
-      } as unknown as Record<string, ProviderValue>;
+      };
 
       return {
         data,

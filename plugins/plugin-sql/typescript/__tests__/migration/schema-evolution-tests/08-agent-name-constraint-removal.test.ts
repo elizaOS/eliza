@@ -148,7 +148,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     `);
 
     // Verify old constraint prevents duplicates
-    let duplicateError: any = null;
+    let duplicateError: unknown = null;
     try {
       await db.execute(sql`
         INSERT INTO agents_old_schema (id, name, username)
@@ -190,7 +190,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       id: string;
       name: string;
       username: string;
-      bio: any;
+      bio: unknown;
     }>(sql`SELECT id, name, username, bio FROM agents_old_schema ORDER BY created_at`);
 
     expect(allAgents.rows.length).toBeGreaterThanOrEqual(5);
@@ -289,7 +289,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     expect(Number(countBefore.rows[0].count)).toBe(4);
 
     // Verify constraint blocks duplicate names
-    let constraintError: any = null;
+    let constraintError: unknown = null;
     try {
       await db.execute(sql`
         INSERT INTO agents (id, name, username)
@@ -319,7 +319,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       id: string;
       name: string;
       username: string;
-      bio: any;
+      bio: unknown;
     }>(sql`SELECT id, name, username, bio FROM agents ORDER BY created_at`);
 
     expect(allAgentsAfterMigration.rows.length).toBe(4);
@@ -355,7 +355,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       id: string;
       name: string;
       username: string;
-      bio: any;
+      bio: unknown;
     }>(sql`SELECT id, name, username, bio FROM agents WHERE name = 'Eliza' ORDER BY created_at`);
 
     expect(elizas.rows.length).toBe(4); // 1 original + 3 clones
@@ -377,7 +377,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       WHERE id = ${elizaClone1}
     `);
 
-    const updatedEliza = await db.execute<{ bio: any }>(sql`
+    const updatedEliza = await db.execute<{ bio: unknown }>(sql`
       SELECT bio FROM agents WHERE id = ${elizaClone1}
     `);
 
@@ -482,11 +482,19 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     await db.execute(sql`ALTER TABLE agents DROP CONSTRAINT IF EXISTS name_unique`);
 
     // Verify complex data is preserved
+    interface AgentSettings {
+      nested?: { deep?: { value?: string } };
+      secrets?: { apiKey?: string };
+    }
+    interface MessageExample {
+      name?: string;
+      content?: { text?: string };
+    }
     const retrievedAgent = await db.execute<{
       id: string;
       name: string;
-      settings: any;
-      message_examples: any;
+      settings: AgentSettings;
+      message_examples: MessageExample[][];
     }>(sql`
       SELECT id, name, settings, message_examples 
       FROM agents 
@@ -499,7 +507,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     expect(retrievedAgent.rows[0].message_examples[0][0].name).toBe("user");
 
     // Verify session relationship is intact
-    const session = await db.execute<{ session_data: any }>(sql`
+    const session = await db.execute<{ session_data: { active?: boolean } }>(sql`
       SELECT session_data FROM agent_sessions WHERE agent_id = ${complexAgent1.id}
     `);
     expect(session.rows[0].session_data.active).toBe(true);
@@ -581,7 +589,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     const agent1 = await db.execute<{
       id: string;
       username: string;
-      bio: any;
+      bio: unknown;
     }>(sql`
       SELECT id, username, bio FROM agents WHERE id = ${agent1Id}
     `);
@@ -593,13 +601,13 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
       UPDATE agents SET bio = '["Updated Agent 1"]'::jsonb WHERE id = ${agent1Id}
     `);
 
-    const updated = await db.execute<{ bio: any }>(sql`
+    const updated = await db.execute<{ bio: unknown }>(sql`
       SELECT bio FROM agents WHERE id = ${agent1Id}
     `);
     expect(updated.rows[0].bio).toContain("Updated Agent 1");
 
     // Others unchanged
-    const agent2Check = await db.execute<{ bio: any }>(sql`
+    const agent2Check = await db.execute<{ bio: unknown }>(sql`
       SELECT bio FROM agents WHERE id = ${agent2Id}
     `);
     expect(agent2Check.rows[0].bio).toContain("Agent 2");
@@ -665,7 +673,7 @@ describe("Schema Evolution: Agent Name Constraint Removal", () => {
     expect(constraintBefore.rows.length).toBe(1);
 
     // Perform migration in transaction
-    let migrationError: any = null;
+    let migrationError: unknown = null;
     try {
       await db.transaction(async (tx) => {
         // Drop constraint

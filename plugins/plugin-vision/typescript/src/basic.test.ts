@@ -1,14 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { visionPlugin } from "./index";
 
+// Test configuration interface
+interface TestSuiteConfig {
+  beforeEach?: () => Record<string, unknown>;
+}
+
+// Test case interface
+interface TestCase {
+  name: string;
+  fn: (context?: Record<string, unknown>) => Promise<void> | void;
+}
+
 // Simplified TestSuite implementation for local use
 class TestSuite {
   constructor(
     private name: string,
-    private config: any
+    private config: TestSuiteConfig
   ) {}
 
-  addTest(test: any) {
+  addTest(test: TestCase) {
     it(test.name, async () => {
       const context = this.config.beforeEach ? this.config.beforeEach() : {};
       await test.fn(context);
@@ -20,8 +31,7 @@ class TestSuite {
   }
 }
 
-const createUnitTest = (config: { name: string; fn: (context?: any) => Promise<void> | void }) =>
-  config;
+const createUnitTest = (config: TestCase): TestCase => config;
 
 describe("Vision Plugin", () => {
   const visionPluginSuite = new TestSuite("Vision Plugin", {});

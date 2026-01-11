@@ -113,7 +113,7 @@ import { userPreferencesTable } from "../schema.ts";
 export interface UserPreferences {
   id: UUID;
   userId: UUID;
-  preferences: Record<string, any>;
+  preferences: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -126,7 +126,7 @@ export class UserPreferencesRepository {
    */
   async upsert(
     userId: UUID,
-    preferences: Record<string, any>,
+    preferences: Record<string, unknown>,
   ): Promise<UserPreferences> {
     // Check if preferences exist
     const existing = await this.findByUserId(userId);
@@ -200,7 +200,7 @@ export class UserPreferencesRepository {
   /**
    * Map database row to domain type
    */
-  private mapToUserPreferences(row: any): UserPreferences {
+  private mapToUserPreferences(row: Record<string, unknown>): UserPreferences {
     return {
       id: row.id as UUID,
       userId: row.userId || row.user_id,

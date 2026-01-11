@@ -26,7 +26,7 @@ interface TestableEmbeddingService {
 }
 
 describe("EmbeddingGenerationService - Queue Management", () => {
-  let service: EmbeddingGenerationService;
+  let service: EmbeddingGenerationService | null;
   let mockRuntime: IAgentRuntime;
   let registeredHandlers: Map<string, (params: EventPayload) => Promise<void>> =
     new Map();
@@ -72,7 +72,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         testService.processingInterval = null;
       }
       await service.stop();
-      service = null as unknown as EmbeddingGenerationService;
+      service = null;
     }
   });
 

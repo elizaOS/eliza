@@ -146,11 +146,12 @@ export class BridgeAction {
     const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
-    return (await publicClient.readContract({
+    // @ts-expect-error - viem type narrowing issue
+    return Number(await publicClient.readContract({
       address: tokenAddress as Address,
       abi: decimalsAbi,
       functionName: "decimals",
-    } as unknown as Parameters<typeof publicClient.readContract>[0])) as number;
+    }));
   }
 
   private createExecutionOptions(routeId: string): ExecutionOptions {

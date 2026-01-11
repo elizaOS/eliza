@@ -309,7 +309,7 @@ export class SolanaWalletService extends IWalletService {
 export class SolanaService extends Service {
   static override readonly serviceType: string = SOLANA_SERVICE_NAME;
   public readonly capabilityDescription =
-    "The agent is able to interact with the Solana blockchain, and has access to the wallet data" as unknown as typeof IWalletService.prototype.capabilityDescription;
+    "The agent is able to interact with the Solana blockchain, and has access to the wallet data";
 
   private lastUpdate = 0;
   private readonly UPDATE_INTERVAL = 2 * 60_000; // 2 minutes
@@ -465,7 +465,7 @@ export class SolanaService extends Service {
   /**
    * Fetches data from the provided URL with retry logic.
    * @param {string} url - The URL to fetch data from.
-   * @param {Record<string, any>} [options={}] - The options for the fetch request.
+   * @param {RequestInit} [options={}] - The options for the fetch request.
    * @returns {Promise<unknown>} - A promise that resolves to the fetched data.
    */
   private async birdeyeFetchWithRetry(url: string, options: RequestInit = {}): Promise<unknown> {
@@ -1880,7 +1880,7 @@ export class SolanaService extends Service {
   /**
    * Asynchronously fetches token accounts for a specific owner.
    *
-   * @returns {Promise<any[]>} A promise that resolves to an array of token accounts.
+   * @returns {Promise<KeyedParsedTokenAccount[] | null>} A promise that resolves to an array of token accounts.
    */
   private async getTokenAccounts() {
     const publicKey = await this.ensurePublicKey();

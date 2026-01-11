@@ -58,7 +58,7 @@ function handleStreamingGeneration(
 ): TextStreamResult {
   logger.debug(`[OpenRouter] Streaming text with ${modelLabel} model`);
 
-  const streamResult = streamText(generateParams as unknown as Parameters<typeof streamText>[0]);
+  const streamResult = streamText(generateParams);
 
   return {
     textStream: streamResult.textStream,
@@ -102,9 +102,7 @@ async function generateTextWithModel(
   }
 
   // Non-streaming mode
-  const response = await generateText(
-    generateParams as unknown as Parameters<typeof generateText>[0]
-  );
+  const response = await generateText(generateParams);
 
   if (response.usage) {
     emitModelUsageEvent(runtime, modelType, prompt, response.usage);

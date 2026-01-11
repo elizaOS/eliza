@@ -138,23 +138,16 @@ describe("Reply Action", () => {
     mockState = setup.mockState;
     callbackFn = setup.callbackFn as HandlerCallback;
 
-    const result = await replyAction.handler(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      mockState as State,
-      {},
-      callbackFn,
-    );
-
-    // Check error ActionResult
-    expect(result).toMatchObject({
-      success: false,
-      text: "Error generating reply",
-      values: expect.objectContaining({
-        success: false,
-        error: true,
-      }),
-    });
+    // Action propagates errors - test that they are thrown
+    await expect(
+      replyAction.handler(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State,
+        {},
+        callbackFn,
+      ),
+    ).rejects.toThrow("Model API timeout");
   });
 });
 
@@ -847,23 +840,16 @@ describe("Generate Image Action", () => {
       .fn()
       .mockRejectedValue(new Error("Image generation service unavailable"));
 
-    const result = await generateImageAction.handler(
-      mockRuntime as IAgentRuntime,
-      mockMessage as Memory,
-      mockState as State,
-      {},
-      callbackFn,
-    );
-
-    // Check error ActionResult
-    expect(result).toMatchObject({
-      success: false,
-      text: "Image generation failed",
-      values: expect.objectContaining({
-        success: false,
-        error: "IMAGE_GENERATION_FAILED",
-      }),
-    });
+    // Action propagates errors - test that they are thrown
+    await expect(
+      generateImageAction.handler(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State,
+        {},
+        callbackFn,
+      ),
+    ).rejects.toThrow("Image generation service unavailable");
   });
 });
 

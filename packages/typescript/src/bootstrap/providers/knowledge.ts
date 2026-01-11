@@ -3,7 +3,6 @@ import type {
   Memory,
   Provider,
   ProviderResult,
-  ProviderValue,
   State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
@@ -39,7 +38,7 @@ export const knowledgeProvider: Provider = {
           hasKnowledge: false as boolean,
         },
         data: {
-          entries: [] as unknown as ProviderValue,
+          entries: [],
           query: "",
         },
       } as ProviderResult;
@@ -84,7 +83,7 @@ export const knowledgeProvider: Provider = {
         hasKnowledge: knowledgeEntries.length > 0,
       },
       data: {
-        entries: knowledgeEntries as unknown as ProviderValue,
+        entries: knowledgeEntries,
         query: queryText,
       },
     } as ProviderResult;

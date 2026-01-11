@@ -1,40 +1,13 @@
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  State,
+  TestSuite,
+  UUID,
+} from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { character } from "../dist/index.js";
-
-// Define a minimal TestSuite interface that matches what's needed
-interface TestSuite {
-  name: string;
-  description: string;
-  tests: Array<{
-    name: string;
-    fn: (runtime: any) => Promise<any>;
-  }>;
-}
-
-// Define minimal interfaces for the types we need
-type UUID = `${string}-${string}-${string}-${string}-${string}`;
-
-interface Memory {
-  entityId: UUID;
-  roomId: UUID;
-  content: {
-    text: string;
-    source: string;
-    actions?: string[];
-  };
-}
-
-interface State {
-  values: Record<string, any>;
-  data: Record<string, any>;
-  text: string;
-}
-
-interface Content {
-  text: string;
-  source?: string;
-  actions?: string[];
-}
 
 export class StarterTestSuite implements TestSuite {
   name = "starter";
@@ -43,7 +16,7 @@ export class StarterTestSuite implements TestSuite {
   tests = [
     {
       name: "Character configuration test",
-      fn: async (_runtime: any) => {
+      fn: async (_runtime: IAgentRuntime) => {
         const requiredFields = [
           "name",
           "bio",
@@ -83,7 +56,7 @@ export class StarterTestSuite implements TestSuite {
     },
     {
       name: "Plugin initialization test",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Test plugin initialization with empty config
         try {
           await runtime.registerPlugin({
@@ -93,13 +66,14 @@ export class StarterTestSuite implements TestSuite {
             config: {},
           });
         } catch (error) {
-          throw new Error(`Failed to register plugin: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          throw new Error(`Failed to register plugin: ${errorMessage}`);
         }
       },
     },
     {
       name: "Hello world action test",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         const message: Memory = {
           entityId: uuidv4() as UUID,
           roomId: uuidv4() as UUID,
@@ -169,13 +143,14 @@ export class StarterTestSuite implements TestSuite {
             );
           }
         } catch (error) {
-          throw new Error(`Hello world action test failed: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          throw new Error(`Hello world action test failed: ${errorMessage}`);
         }
       },
     },
     {
       name: "Hello world provider test",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         const message: Memory = {
           entityId: uuidv4() as UUID,
           roomId: uuidv4() as UUID,
@@ -216,13 +191,14 @@ export class StarterTestSuite implements TestSuite {
             );
           }
         } catch (error) {
-          throw new Error(`Hello world provider test failed: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          throw new Error(`Hello world provider test failed: ${errorMessage}`);
         }
       },
     },
     {
       name: "Starter service test",
-      fn: async (runtime: any) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Test service registration and lifecycle
         try {
           const service = runtime.getService("starter");
@@ -239,7 +215,8 @@ export class StarterTestSuite implements TestSuite {
 
           await service.stop();
         } catch (error) {
-          throw new Error(`Starter service test failed: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          throw new Error(`Starter service test failed: ${errorMessage}`);
         }
       },
     },

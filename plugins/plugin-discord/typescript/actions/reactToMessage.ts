@@ -1,9 +1,11 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   type Content,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -120,7 +122,7 @@ const emojiMap: Record<string, string> = {
   ":rocket:": "🚀",
 };
 
-export const reactToMessage = {
+export const reactToMessage: Action = {
   name: "REACT_TO_MESSAGE",
   similes: [
     "REACT_TO_MESSAGE",
@@ -131,16 +133,16 @@ export const reactToMessage = {
     "MESSAGE_REACTION",
   ],
   description: "Add an emoji reaction to a Discord message.",
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     return message.content.source === "discord";
   },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: Record<string, unknown>,
-    callback: HandlerCallback
-  ) => {
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
@@ -413,6 +415,6 @@ export const reactToMessage = {
       },
     ],
   ] as ActionExample[][],
-} as unknown as Action;
+};
 
 export default reactToMessage;

@@ -57,7 +57,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
                  ORDER BY tablename`)
       );
 
-      const createdTables = tablesResult.rows.map((r: any) => r.tablename);
+      const createdTables = tablesResult.rows.map((r) => (r as { tablename: string }).tablename);
       console.log("Core tables created in public schema:", createdTables);
 
       const expectedCoreTables = [
@@ -119,7 +119,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
                  ORDER BY tablename`)
       );
 
-      const createdTables = tablesResult.rows.map((r: any) => r.tablename);
+      const createdTables = tablesResult.rows.map((r) => (r as { tablename: string }).tablename);
       console.log("Plugin tables created in polymarket schema:", createdTables);
 
       const expectedPluginTables = ["markets", "tokens", "rewards", "prices", "sync_status"];
@@ -182,13 +182,21 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       console.log(`Found ${foreignKeys.length} foreign keys in polymarket schema`);
 
       // Verify at least some expected foreign keys exist
+      interface ForeignKeyResult {
+        table_name: string;
+        foreign_table_name: string;
+      }
       const tokensFk = foreignKeys.find(
-        (fk: any) => fk.table_name === "tokens" && fk.foreign_table_name === "markets"
+        (fk) =>
+          (fk as ForeignKeyResult).table_name === "tokens" &&
+          (fk as ForeignKeyResult).foreign_table_name === "markets"
       );
       expect(tokensFk).toBeDefined();
 
       const pricesFk = foreignKeys.find(
-        (fk: any) => fk.table_name === "prices" && fk.foreign_table_name === "markets"
+        (fk) =>
+          (fk as ForeignKeyResult).table_name === "prices" &&
+          (fk as ForeignKeyResult).foreign_table_name === "markets"
       );
       expect(pricesFk).toBeDefined();
     });
@@ -211,12 +219,16 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       console.log(`Found ${indexes.length} indexes in polymarket schema`);
 
       // Verify some expected indexes exist
-      const marketIndexes = indexes.filter((idx: any) => idx.tablename === "markets");
+      interface IndexResult {
+        tablename: string;
+        indexname: string;
+      }
+      const marketIndexes = indexes.filter((idx) => (idx as IndexResult).tablename === "markets");
       expect(marketIndexes.length).toBeGreaterThan(0);
 
       // Check for specific index
       const conditionIdIdx = indexes.find(
-        (idx: any) => idx.indexname === "markets_condition_id_idx"
+        (idx) => (idx as IndexResult).indexname === "markets_condition_id_idx"
       );
       expect(conditionIdIdx).toBeDefined();
     });
@@ -266,7 +278,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
                  ORDER BY schema_name`)
       );
 
-      const schemas = schemasResult.rows.map((r: any) => r.schema_name);
+      const schemas = schemasResult.rows.map((r) => (r as { schema_name: string }).schema_name);
       console.log("Available schemas:", schemas);
 
       expect(schemas).toContain("public");
@@ -287,8 +299,13 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         `)
       );
 
-      const counts = tableCountsResult.rows.reduce((acc: any, row: any) => {
-        acc[row.schemaname] = parseInt(row.table_count, 10);
+      interface TableCountRow {
+        schemaname: string;
+        table_count: string;
+      }
+      const counts = tableCountsResult.rows.reduce<Record<string, number>>((acc, row) => {
+        const typedRow = row as TableCountRow;
+        acc[typedRow.schemaname] = parseInt(typedRow.table_count, 10);
         return acc;
       }, {});
 
@@ -495,19 +512,20 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
 
         // If we get here, the foreign key constraint didn't work
         throw new Error("Foreign key constraint should have prevented this insert");
-      } catch (error: any) {
+      } catch (error) {
         // This is expected - foreign key violation
         console.log("✅ Foreign key constraint working correctly");
 
         // In PGLite, the actual error is in the cause property
-        const errorMessage = error.cause?.message || error.message;
+        const errorObj = error as Error & { cause?: { message?: string } };
+        const errorMessage = errorObj.cause?.message || errorObj.message;
 
         // The error should be a foreign key violation
         const isValidForeignKeyError =
           errorMessage.includes("violates foreign key constraint") ||
-          (error.message.includes("Failed query") &&
-            error.message.includes('insert into "polymarket"."tokens"') &&
-            !error.message.includes("Foreign key constraint should have prevented this insert"));
+          (errorObj.message.includes("Failed query") &&
+            errorObj.message.includes('insert into "polymarket"."tokens"') &&
+            !errorObj.message.includes("Foreign key constraint should have prevented this insert"));
 
         expect(isValidForeignKeyError).toBe(true);
       }
@@ -524,7 +542,7 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       let transactionSucceeded = false;
 
       try {
-        await db.transaction(async (tx: any) => {
+        await db.transaction(async (tx) => {
           // Insert market
           await tx.insert(polymarketMarketsTable).values({
             id: sql`gen_random_uuid()`,

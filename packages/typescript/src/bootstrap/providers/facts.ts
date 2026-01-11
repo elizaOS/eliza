@@ -3,7 +3,6 @@ import {
   type Memory,
   ModelType,
   type Provider,
-  type ProviderValue,
   type State,
 } from "@elizaos/core";
 
@@ -86,7 +85,7 @@ const factsProvider: Provider = {
           facts: "",
         },
         data: {
-          facts: allFacts as unknown as ProviderValue,
+          facts: allFacts,
         },
         text: "No facts available.",
       };
@@ -103,7 +102,7 @@ const factsProvider: Provider = {
         facts: formattedFacts,
       },
       data: {
-        facts: allFacts as unknown as ProviderValue,
+        facts: allFacts,
       },
       text,
     };

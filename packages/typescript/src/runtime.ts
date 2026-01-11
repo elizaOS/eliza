@@ -63,6 +63,7 @@ import {
   type RuntimeSettings,
   type SendHandlerFunction,
   type Service,
+  type ServiceClass,
   type ServiceTypeName,
   type State,
   type TargetInfo,
@@ -129,7 +130,7 @@ export class AgentRuntime implements IAgentRuntime {
   stateCache = new Map<string, State>();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
-  private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
+  private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
   models = new Map<string, ModelHandler[]>();
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
@@ -2423,9 +2424,9 @@ export class AgentRuntime implements IAgentRuntime {
     return health;
   }
 
-  async registerService(serviceDef: typeof Service): Promise<void> {
+  async registerService(serviceDef: ServiceClass): Promise<void> {
     const serviceType = serviceDef.serviceType as ServiceTypeName;
-    const serviceName = serviceDef.name || "Unknown";
+    const serviceName = (serviceDef as { name?: string }).name || "Unknown";
 
     if (!serviceType) {
       this.logger.warn(
@@ -2509,11 +2510,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (serviceDef.registerSendHandlers) {
-      const registerSendHandlers = (serviceDef.constructor as typeof Service)
-        .registerSendHandlers;
-      if (registerSendHandlers) {
-        registerSendHandlers(this as IAgentRuntime, serviceInstance);
-      }
+      serviceDef.registerSendHandlers(this as IAgentRuntime, serviceInstance);
     }
     // Update service status to registered
     this.serviceRegistrationStatus.set(serviceType, "registered");

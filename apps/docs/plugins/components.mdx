@@ -514,11 +514,17 @@ The system includes predefined service types:
 ```typescript
 import { Service, IAgentRuntime, logger } from "@elizaos/core";
 
+// Define client interface for type safety
+interface ServiceClient {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+}
+
 export class MyService extends Service {
   static serviceType = "my-service";
   capabilityDescription = "Description of what this service provides";
 
-  private client: any;
+  private client: ServiceClient | null = null;
   private refreshInterval: NodeJS.Timer | null = null;
 
   constructor(protected runtime: IAgentRuntime) {

@@ -8,6 +8,25 @@ import type { Service } from "./service";
 import type { TestSuite } from "./testing";
 
 /**
+ * Type for a service class constructor.
+ * This is more flexible than `typeof Service` to allow for:
+ * - Service classes with more specific `serviceType` values (e.g., "task" instead of string)
+ * - Service classes that properly extend the base Service class
+ */
+export interface ServiceClass {
+  /** The service type identifier */
+  serviceType: string;
+  /** Factory method to create and start the service */
+  start(runtime: IAgentRuntime): Promise<Service>;
+  /** Stop service for a runtime - optional as not all services implement this */
+  stopRuntime?(runtime: IAgentRuntime): Promise<void>;
+  /** Optional static method to register send handlers */
+  registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
+  /** Constructor (optional runtime parameter) */
+  new (runtime?: IAgentRuntime): Service;
+}
+
+/**
  * Supported types for route request body fields
  */
 export type RouteBodyValue =
@@ -120,7 +139,12 @@ export interface Plugin {
   /** Plugin configuration - string keys to primitive values */
   config?: Record<string, string | number | boolean | null>;
 
-  services?: (typeof Service)[];
+  /**
+   * Service classes to be registered with the runtime.
+   * Uses ServiceClass interface which is more flexible than `typeof Service`
+   * to allow service classes with specific serviceType values.
+   */
+  services?: ServiceClass[];
 
   /** Entity component definitions with JSON schema */
   componentTypes?: ComponentTypeDefinition[];

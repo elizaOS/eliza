@@ -9,7 +9,6 @@ import {
   type IAgentRuntime,
   type Memory,
   type Provider,
-  type ProviderValue,
   type State,
   type UUID,
 } from "@elizaos/core";
@@ -199,9 +198,9 @@ export const recentMessagesProvider: Provider = {
     ) {
       return {
         data: {
-          recentMessages: dialogueMessages as unknown as ProviderValue,
-          recentInteractions: [] as unknown as ProviderValue,
-          actionResults: actionResultMessages as unknown as ProviderValue,
+          recentMessages: dialogueMessages,
+          recentInteractions: [],
+          actionResults: actionResultMessages,
         },
         values: {
           recentPosts: "",
@@ -394,9 +393,9 @@ export const recentMessagesProvider: Provider = {
 
     return {
       data: {
-        recentMessages: data.recentMessages as unknown as ProviderValue,
-        recentInteractions: data.recentInteractions as unknown as ProviderValue,
-        actionResults: data.actionResults as unknown as ProviderValue,
+        recentMessages: data.recentMessages,
+        recentInteractions: data.recentInteractions,
+        actionResults: data.actionResults,
       },
       values,
       text,

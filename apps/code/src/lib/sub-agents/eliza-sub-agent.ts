@@ -1,4 +1,4 @@
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, type ModelTypeName, ModelType } from "@elizaos/core";
 import type {
   CodeTask,
   JsonValue,
@@ -314,7 +314,8 @@ export class ElizaSubAgent implements SubAgent {
         error instanceof Error ? error.message : String(error);
       onMessage(`Error: ${errorMessage}`, "error");
       onTrace?.({
-        kind: "error",
+        kind: "note",
+        level: "error",
         message: errorMessage,
         ...base(),
       });
@@ -332,7 +333,7 @@ export class ElizaSubAgent implements SubAgent {
     runtime: IAgentRuntime,
     messages: ConversationMessage[],
     cwd: string,
-  ): Promise<{ prompt: string; response: string; modelType: ModelType }> {
+  ): Promise<{ prompt: string; response: string; modelType: ModelTypeName }> {
     const systemPrompt = SYSTEM_PROMPT.replace("{cwd}", cwd);
 
     const history = messages

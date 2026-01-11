@@ -38,7 +38,7 @@
     "clean": "rm -rf dist node_modules",
     "format": "bunx @biomejs/biome format --write .",
     "test": "vitest run typescript/",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

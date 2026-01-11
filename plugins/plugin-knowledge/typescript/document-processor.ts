@@ -1,5 +1,6 @@
 import type { Buffer } from "node:buffer";
 import {
+  type CustomMetadata,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -313,7 +314,7 @@ export function createDocumentMemory({
       timestamp: Date.now(),
       // Merge custom metadata if provided
       ...(customMetadata || {}),
-    } as unknown as Memory["metadata"],
+    } satisfies CustomMetadata,
   };
 }
 
@@ -664,14 +665,22 @@ async function generateBatchEmbeddingsViaRuntime(
     text: string;
   } & { texts: string[] });
 
+  // Type guard for number[][]
+  const isEmbeddingBatch = (val: unknown): val is number[][] =>
+    Array.isArray(val) && val.length > 0 && Array.isArray(val[0]) && typeof val[0][0] === "number";
+
+  // Type guard for number[]
+  const isEmbeddingVector = (val: unknown): val is number[] =>
+    Array.isArray(val) && val.length > 0 && typeof val[0] === "number";
+
   // Handle the response - should be number[][] for batch
-  if (Array.isArray(batchResult) && Array.isArray(batchResult[0])) {
-    return batchResult as unknown as number[][];
+  if (isEmbeddingBatch(batchResult)) {
+    return batchResult;
   }
 
   // If handler returned single embedding (doesn't support batch), wrap it
   // This shouldn't happen if using plugin-elizacloud, but handle it gracefully
-  if (Array.isArray(batchResult) && typeof batchResult[0] === "number") {
+  if (isEmbeddingVector(batchResult)) {
     logger.warn(
       "[Document Processor] Runtime returned single embedding for batch request - falling back to individual calls"
     );
@@ -679,10 +688,11 @@ async function generateBatchEmbeddingsViaRuntime(
     const embeddings: number[][] = await Promise.all(
       texts.map(async (text) => {
         const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
-        if (Array.isArray(result)) {
-          return result as unknown as number[];
+        if (isEmbeddingVector(result)) {
+          return result;
         }
-        return (result as { embedding: number[] })?.embedding || [];
+        const embeddingResult = result as { embedding?: number[] } | undefined;
+        return embeddingResult?.embedding ?? [];
       })
     );
     return embeddings;

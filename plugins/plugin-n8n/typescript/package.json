@@ -50,7 +50,7 @@
     "test:unit": "vitest run __tests__/unit/",
     "test:integration": "vitest run __tests__/integration/",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check --write .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

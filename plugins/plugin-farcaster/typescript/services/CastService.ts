@@ -220,41 +220,24 @@ export class FarcasterCastService implements CastServiceInterface {
 
   private async storeCastInMemory(roomId: UUID, cast: FarcasterCast): Promise<void> {
     try {
+      const entityId = createUniqueUuid(this.runtime, cast.userId);
       const memory = {
         id: createUniqueUuid(this.runtime, cast.id),
         agentId: this.runtime.agentId,
+        entityId,
         content: {
           text: cast.text,
-          castHash: cast.metadata?.castHash,
+          castHash: cast.metadata?.castHash as string,
           castId: cast.id,
           author: cast.username,
           timestamp: cast.timestamp,
         },
         roomId,
-        userId: cast.userId,
         createdAt: Date.now(),
       };
 
-      if (typeof (this.runtime as unknown as Record<string, unknown>).storeMemory === "function") {
-        await (
-          this.runtime as unknown as Record<string, unknown> & {
-            storeMemory: (m: unknown) => Promise<void>;
-          }
-        ).storeMemory(memory);
-      } else if (
-        (this.runtime as unknown as Record<string, unknown>).memory &&
-        typeof (
-          (this.runtime as unknown as Record<string, unknown>).memory as Record<string, unknown>
-        ).create === "function"
-      ) {
-        await (
-          (this.runtime as unknown as Record<string, unknown>).memory as {
-            create: (m: unknown) => Promise<void>;
-          }
-        ).create(memory);
-      } else {
-        this.runtime.logger.warn("Memory storage method not available in runtime");
-      }
+      // Use the database adapter's createMemory method
+      await this.runtime.createMemory(memory, "farcaster_casts");
     } catch (error) {
       this.runtime.logger.error(`Failed to store cast in memory: ${JSON.stringify({ error })}`);
     }
