@@ -11,12 +11,12 @@ import {
   type State,
 } from "@elizaos/core";
 import type { XService } from "../services/x.service";
-import { sendTweet } from "../utils";
+import { sendPost } from "../utils";
 
 export const postAction: Action = {
   name: "POST",
-  similes: ["POST_TO_X", "TWEET", "SEND_POST", "SHARE_ON_X"],
-  description: "Post content on X (Twitter)",
+  similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
+  description: "Post content on X (X)",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const service = runtime.getService("x");
@@ -42,7 +42,7 @@ export const postAction: Action = {
     if (!clientBase.profile) {
       throw new Error("X client not initialized - no profile");
     }
-    const _client = clientBase.twitterClient;
+    const _client = clientBase.xClient;
 
     let text = message.content?.text?.trim();
     if (!text) {
@@ -74,7 +74,7 @@ export const postAction: Action = {
     if (
       text.length < 50 ||
       text.toLowerCase().includes("post") ||
-      text.toLowerCase().includes("tweet")
+      text.toLowerCase().includes("post")
     ) {
       const prompt = `You are ${runtime.character.name}.
 ${runtime.character.bio || ""}
@@ -102,10 +102,10 @@ Post:`;
       finalText = String(response).trim();
     }
 
-    const result = await sendTweet(clientBase, finalText);
+    const result = await sendPost(clientBase, finalText);
 
     if (result) {
-      // Extract post ID from the nested TweetResponse structure
+      // Extract post ID from the nested PostResponse structure
       const postId = result.id || result.data?.id || result.data?.data?.id || Date.now().toString();
       const postUrl = `https://x.com/${clientBase.profile.username}/status/${postId}`;
 

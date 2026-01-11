@@ -659,8 +659,7 @@ async function generateBatchEmbeddingsViaRuntime(
   texts: string[]
 ): Promise<number[][]> {
   // Call runtime.useModel with batch params { texts: string[] }
-  // Note: Some handlers support batch mode with { texts: string[] } even though
-  // the type definition only shows { text: string }
+  // Some handlers support batch mode with { texts: string[] } despite type definition
   const batchResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, { texts } as {
     text: string;
   } & { texts: string[] });
@@ -884,8 +883,7 @@ async function generateContextsInBatch(
           } else {
             // Fall back to runtime.useModel (original behavior)
             if (item.usesCaching && item.promptText) {
-              // Use the newer caching approach - embed system prompt into main prompt
-              // Note: runtime.useModel doesn't support separate system prompt
+              // Embed system prompt into main prompt (runtime.useModel has no separate system param)
               const combinedPrompt = item.systemPrompt
                 ? `${item.systemPrompt}\n\n${item.promptText}`
                 : item.promptText;
@@ -1113,9 +1111,8 @@ async function withRateLimitRetry<T>(
 }
 
 /**
- * Creates a simple rate limiter for basic request/token tracking
- * Note: Actual rate limiting is now handled at the API level (plugin-elizacloud)
- * which reads x-ratelimit-remaining-* headers from the response
+ * Creates a simple rate limiter for basic request/token tracking.
+ * Actual rate limiting is handled at API level (plugin-elizacloud) via response headers.
  */
 function createRateLimiter(
   requestsPerMinute: number,

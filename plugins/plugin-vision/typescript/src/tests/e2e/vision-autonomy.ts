@@ -213,7 +213,7 @@ export class VisionAutonomyE2ETestSuite implements TestSuite {
         // In the minimal test runtime, we just verify memory creation works
         // Real runtime would have actual message processing
         if (!visionService.isActive()) {
-          console.log("  Note: Vision service not active, simulated memory test only");
+          console.log("  Vision service not active, simulated memory test only");
         }
       },
     },

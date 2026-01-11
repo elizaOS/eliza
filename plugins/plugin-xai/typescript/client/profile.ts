@@ -1,6 +1,6 @@
 import type { RequestApiResult } from "./api-types";
-import type { TwitterAuth } from "./auth";
-import type { TwitterApiErrorRaw } from "./errors";
+import type { XAuth } from "./auth";
+import type { XApiErrorRaw } from "./errors";
 
 /**
  * Interface representing a raw user object from a legacy system.
@@ -21,7 +21,7 @@ import type { TwitterApiErrorRaw } from "./errors";
  * @property {string} [name] - The user's name.
  * @property {string} location - The user's location.
  * @property {boolean} [geo_enabled] - Indicates if geo locations are enabled.
- * @property {string[]} [pinned_tweet_ids_str] - Array of pinned tweet IDs as strings.
+ * @property {string[]} [pinned_post_ids_str] - Array of pinned post IDs as strings.
  * @property {string} [profile_background_color] - The background color of the user's profile.
  * @property {string} [profile_banner_url] - The URL of the user's profile banner.
  * @property {string} [profile_image_url_https] - The URL of the user's profile image (HTTPS).
@@ -53,7 +53,7 @@ export interface LegacyUserRaw {
   name?: string;
   location: string;
   geo_enabled?: boolean;
-  pinned_tweet_ids_str?: string[];
+  pinned_post_ids_str?: string[];
   profile_background_color?: string;
   profile_banner_url?: string;
   profile_image_url_https?: string;
@@ -89,8 +89,8 @@ export interface LegacyUserRaw {
  * @property {number} [listedCount] - The number of times the user has been listed.
  * @property {string} location - The user's location.
  * @property {string} [name] - The user's name.
- * @property {string[]} [pinnedTweetIds] - The IDs of the user's pinned tweets.
- * @property {number} [tweetsCount] - The number of tweets the user has posted.
+ * @property {string[]} [pinnedPostIds] - The IDs of the user's pinned posts.
+ * @property {number} [postsCount] - The number of posts the user has posted.
  * @property {string} [url] - The user's website URL.
  * @property {string} [userId] - The unique user ID.
  * @property {string} [username] - The user's username.
@@ -115,8 +115,8 @@ export interface Profile {
   listedCount?: number;
   location: string;
   name?: string;
-  pinnedTweetIds?: string[];
-  tweetsCount?: number;
+  pinnedPostIds?: string[];
+  postsCount?: number;
   url?: string;
   userId?: string;
   username?: string;
@@ -134,7 +134,7 @@ export interface UserRaw {
       };
     };
   };
-  errors?: TwitterApiErrorRaw[];
+  errors?: XApiErrorRaw[];
 }
 
 function getAvatarOriginalSizeUrl(avatarUrl: string | undefined) {
@@ -156,9 +156,9 @@ export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Pro
     listedCount: user.listed_count,
     location: user.location,
     name: user.name,
-    pinnedTweetIds: user.pinned_tweet_ids_str,
-    tweetsCount: user.statuses_count,
-    url: `https://twitter.com/${user.screen_name}`,
+    pinnedPostIds: user.pinned_post_ids_str,
+    postsCount: user.statuses_count,
+    url: `https://x.com/${user.screen_name}`,
     userId: user.id_str,
     username: user.screen_name,
     isBlueVerified: isBlueVerified ?? false,
@@ -177,10 +177,10 @@ export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Pro
   return profile;
 }
 
-import type { UserV2 } from "twitter-api-v2";
+import type { UserV2 } from "x-api-v2";
 
 /**
- * Convert Twitter API v2 user data to Profile format
+ * Convert X API v2 user data to Profile format
  */
 function parseV2Profile(user: UserV2): Profile {
   const profile: Profile = {
@@ -189,15 +189,15 @@ function parseV2Profile(user: UserV2): Profile {
     followersCount: user.public_metrics?.followers_count,
     followingCount: user.public_metrics?.following_count,
     friendsCount: user.public_metrics?.following_count,
-    tweetsCount: user.public_metrics?.tweet_count,
+    postsCount: user.public_metrics?.post_count,
     isPrivate: user.protected ?? false,
     isVerified: user.verified ?? false,
     likesCount: user.public_metrics?.like_count,
     listedCount: user.public_metrics?.listed_count,
     location: user.location || "",
     name: user.name,
-    pinnedTweetIds: user.pinned_tweet_id ? [user.pinned_tweet_id] : [],
-    url: `https://twitter.com/${user.username}`,
+    pinnedPostIds: user.pinned_post_id ? [user.pinned_post_id] : [],
+    url: `https://x.com/${user.username}`,
     userId: user.id,
     username: user.username,
     isBlueVerified: user.verified_type === "blue",
@@ -216,7 +216,7 @@ function parseV2Profile(user: UserV2): Profile {
 
 export async function getProfile(
   username: string,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<RequestApiResult<Profile>> {
   if (!auth) {
     return {
@@ -236,7 +236,7 @@ export async function getProfile(
         "description",
         "entities",
         "location",
-        "pinned_tweet_id",
+        "pinned_post_id",
         "profile_image_url",
         "protected",
         "public_metrics",
@@ -269,7 +269,7 @@ const idCache = new Map<string, string>();
 
 export async function getScreenNameByUserId(
   userId: string,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<RequestApiResult<string>> {
   if (!auth) {
     return {
@@ -305,7 +305,7 @@ export async function getScreenNameByUserId(
 
 export async function getEntityIdByScreenName(
   screenName: string,
-  auth: TwitterAuth
+  auth: XAuth
 ): Promise<RequestApiResult<string>> {
   const cached = idCache.get(screenName);
   if (cached != null) {

@@ -1,15 +1,7 @@
-// Expose a tiny test hook to clear env cache in logger tests (kept internal)
-// Note: we re-export a function that clears the environment cache indirectly via getEnv
+// Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
   __noop: () => {},
 };
-
-// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
-// - safeStringify: JSON.stringify with circular ref handling - KEEP (logger robustness)
-// - adzeStore.addListener: Silent fail on log processing - KEEP (logger cannot crash app)
-// - safeRedact: fast-redact error handling - KEEP (security feature robustness)
-// - invoke: Fallback to console.log on adze failure - KEEP (logging must always work)
-// NOTE: Consider consolidating duplicate safeRedact implementations
 
 import adze, {
   type ConsoleStyle,
@@ -222,7 +214,7 @@ function formatExtraValue(value: unknown): string {
  * Format a log entry in compact pretty format
  * Format: [src] message (key=val, key=val)
  *
- * Note: agentId/agentName are NOT displayed in pretty mode because:
+ * agentId/agentName are NOT displayed in pretty mode because:
  * - Loggers with namespace already show #agentName prefix (via Adze)
  * - These fields ARE still included in JSON mode for filtering/monitoring
  */
@@ -266,7 +258,7 @@ const DEFAULT_LOG_LEVEL = "info";
 const effectiveLogLevel = getEnvironmentVar("LOG_LEVEL") || DEFAULT_LOG_LEVEL;
 
 // Custom log levels mapping (elizaOS to Adze)
-// Note: These are for our internal shouldLog function, not Adze's levels
+// These are for our internal shouldLog function, not Adze's levels
 export const customLevels: Record<string, number> = {
   fatal: 60,
   error: 50,

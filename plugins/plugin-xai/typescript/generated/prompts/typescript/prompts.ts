@@ -37,18 +37,18 @@ export const messageHandlerTemplate = `{{agentName}} is replying to you:
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
 
-export const quoteTweetTemplate = `# Task: Write a quote tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+export const quotePostTemplate = `# Task: Write a quote post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
 
 <response>
-  <thought>Your thought here, explaining why the quote tweet is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The quote tweet content here, under 280 characters, without emojis, no questions</post>
+  <thought>Your thought here, explaining why the quote post is meaningful or how it connects to what {{agentName}} cares about</thought>
+  <post>The quote post content here, under 280 characters, without emojis, no questions</post>
 </response>
 
-Your quote tweet should be:
-- A reaction, agreement, disagreement, or expansion of the original tweet
+Your quote post should be:
+- A reaction, agreement, disagreement, or expansion of the original post
 - Personal and unique to {{agentName}}'s style and point of view
 - 1 to 3 sentences long, chosen at random
 - No questions, no emojis, concise
@@ -57,20 +57,20 @@ Your quote tweet should be:
 
 Your output must ONLY contain the XML block.`;
 
-export const QUOTE_TWEET_TEMPLATE = quoteTweetTemplate;
+export const QUOTE_TWEET_TEMPLATE = quotePostTemplate;
 
-export const replyTweetTemplate = `# Task: Write a reply tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+export const replyPostTemplate = `# Task: Write a reply post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
 
 <response>
   <thought>Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The reply tweet content here, under 280 characters, without emojis, no questions</post>
+  <post>The reply post content here, under 280 characters, without emojis, no questions</post>
 </response>
 
 Your reply should be:
-- A direct response, agreement, disagreement, or personal take on the original tweet
+- A direct response, agreement, disagreement, or personal take on the original post
 - Reflective of {{agentName}}'s unique voice and values
 - 1 to 2 sentences long, chosen at random
 - No questions, no emojis, concise
@@ -79,9 +79,9 @@ Your reply should be:
 
 Your output must ONLY contain the XML block.`;
 
-export const REPLY_TWEET_TEMPLATE = replyTweetTemplate;
+export const REPLY_TWEET_TEMPLATE = replyPostTemplate;
 
-export const twitterActionTemplate = `# INSTRUCTIONS: Determine actions for {{agentName}} (@{{twitterUserName}}) based on:
+export const xActionTemplate = `# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
 {{bio}}
 {{postDirections}}
 
@@ -100,13 +100,13 @@ Guidelines:
 
 Actions (respond only with tags):
 [LIKE] - Content is relevant and interesting (7/10 or higher)
-[RETWEET] - Content is valuable and worth sharing (8/10 or higher)
+[REPOST] - Content is valuable and worth sharing (8/10 or higher)
 [QUOTE] - You can add meaningful commentary (7.5/10 or higher)
 [REPLY] - You can contribute helpful insights (7/10 or higher)`;
 
-export const TWITTER_ACTION_TEMPLATE = twitterActionTemplate;
+export const TWITTER_ACTION_TEMPLATE = xActionTemplate;
 
-export const twitterMessageHandlerTemplate = `# Task: Generate dialog and actions for {{agentName}}.
+export const xMessageHandlerTemplate = `# Task: Generate dialog and actions for {{agentName}}.
 {{providers}}
 Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
 {{currentPost}}
@@ -120,4 +120,4 @@ Response format should be formatted in a valid JSON block like this:
 
 The "action" field should be one of the options in [Available Actions] and the "text" field should be the response you want to send. Do not including any thinking or internal reflection in the "text" field. "thought" should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response.`;
 
-export const TWITTER_MESSAGE_HANDLER_TEMPLATE = twitterMessageHandlerTemplate;
+export const TWITTER_MESSAGE_HANDLER_TEMPLATE = xMessageHandlerTemplate;

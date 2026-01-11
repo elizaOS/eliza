@@ -16,11 +16,11 @@ class XAIPlugin:
 
     Provides:
     - xAI Grok model client for text generation and embeddings
-    - X (Twitter) API v2 client for social interactions
+    - X (X) API v2 client for social interactions
     """
 
     name = "xai"
-    description = "xAI Grok models and X (Twitter) API integration"
+    description = "xAI Grok models and X (X) API integration"
 
     def __init__(
         self,

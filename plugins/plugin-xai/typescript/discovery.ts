@@ -6,10 +6,10 @@ import {
   ModelType,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
-import type { Client, Tweet } from "./client/index";
+import type { Client, Post } from "./client/index";
 import { SearchMode } from "./client/index";
 import { getRandomInterval } from "./environment";
-import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
+import { createMemorySafe, ensureXContext } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 
 interface DiscoveryConfig {
@@ -27,8 +27,8 @@ interface DiscoveryConfig {
   quoteThreshold: number;
 }
 
-interface ScoredTweet {
-  tweet: Tweet;
+interface ScoredPost {
+  post: Post;
   relevanceScore: number;
   engagementType: "like" | "reply" | "quote" | "skip";
 }
@@ -44,15 +44,15 @@ interface ScoredAccount {
   relevanceScore: number;
 }
 
-export class TwitterDiscoveryClient {
-  private twitterClient: Client;
+export class XDiscoveryClient {
+  private xClient: Client;
   private runtime: IAgentRuntime;
   private config: DiscoveryConfig;
   private isRunning: boolean = false;
   private isDryRun: boolean;
 
   constructor(client: ClientBase, runtime: IAgentRuntime, state: Record<string, unknown>) {
-    this.twitterClient = client.twitterClient;
+    this.xClient = client.xClient;
     this.runtime = runtime;
 
     // Check dry run mode
@@ -69,12 +69,12 @@ export class TwitterDiscoveryClient {
     this.config = this.buildDiscoveryConfig();
 
     logger.info(
-      `Twitter Discovery Config: topics=${this.config.topics.join(", ")}, isDryRun=${this.isDryRun}, minFollowerCount=${this.config.minFollowerCount}, maxFollowsPerCycle=${this.config.maxFollowsPerCycle}, maxEngagementsPerCycle=${this.config.maxEngagementsPerCycle}`
+      `X Discovery Config: topics=${this.config.topics.join(", ")}, isDryRun=${this.isDryRun}, minFollowerCount=${this.config.minFollowerCount}, maxFollowsPerCycle=${this.config.maxFollowsPerCycle}, maxEngagementsPerCycle=${this.config.maxEngagementsPerCycle}`
     );
   }
 
   /**
-   * Sanitizes a topic for use in Twitter search queries
+   * Sanitizes a topic for use in X search queries
    * - Removes common stop words that might be interpreted as operators
    * - Handles special characters
    * - Simplifies complex phrases
@@ -165,7 +165,7 @@ export class TwitterDiscoveryClient {
   }
 
   async start() {
-    logger.info("Starting Twitter Discovery Client...");
+    logger.info("Starting X Discovery Client...");
     this.isRunning = true;
 
     const discoveryLoop = async () => {
@@ -196,23 +196,23 @@ export class TwitterDiscoveryClient {
   }
 
   async stop() {
-    logger.info("Stopping Twitter Discovery Client...");
+    logger.info("Stopping X Discovery Client...");
     this.isRunning = false;
   }
 
   private async runDiscoveryCycle() {
-    logger.info("Starting Twitter discovery cycle...");
+    logger.info("Starting X discovery cycle...");
 
     const discoveries = await this.discoverContent();
-    const { tweets, accounts } = discoveries;
+    const { posts, accounts } = discoveries;
 
-    logger.info(`Discovered ${tweets.length} tweets and ${accounts.length} accounts`);
+    logger.info(`Discovered ${posts.length} posts and ${accounts.length} accounts`);
 
     // Process discovered accounts (follow high-quality ones)
     const followedCount = await this.processAccounts(accounts);
 
-    // Process discovered tweets (engage with relevant ones)
-    const engagementCount = await this.processTweets(tweets);
+    // Process discovered posts (engage with relevant ones)
+    const engagementCount = await this.processPosts(posts);
 
     logger.info(
       `Discovery cycle complete: ${followedCount} follows, ${engagementCount} engagements`
@@ -220,18 +220,18 @@ export class TwitterDiscoveryClient {
   }
 
   private async discoverContent(): Promise<{
-    tweets: ScoredTweet[];
+    posts: ScoredPost[];
     accounts: ScoredAccount[];
   }> {
-    const allTweets: ScoredTweet[] = [];
+    const allPosts: ScoredPost[] = [];
     const allAccounts = new Map<string, ScoredAccount>();
 
-    // Note: Twitter API v2 doesn't support trends, so we skip trend-based discovery
+    // X API v2 doesn't support trends - using topic-based discovery only
 
     // 1. Discover from topic searches (primary discovery method)
     try {
       const topicContent = await this.discoverFromTopics();
-      allTweets.push(...topicContent.tweets);
+      allPosts.push(...topicContent.posts);
       for (const acc of topicContent.accounts) {
         allAccounts.set(acc.user.id, acc);
       }
@@ -243,7 +243,7 @@ export class TwitterDiscoveryClient {
     // 2. Discover from conversation threads
     try {
       const threadContent = await this.discoverFromThreads();
-      allTweets.push(...threadContent.tweets);
+      allPosts.push(...threadContent.posts);
       for (const acc of threadContent.accounts) {
         allAccounts.set(acc.user.id, acc);
       }
@@ -255,7 +255,7 @@ export class TwitterDiscoveryClient {
     // 3. Discover from popular accounts in our topics
     try {
       const popularContent = await this.discoverFromPopularAccounts();
-      allTweets.push(...popularContent.tweets);
+      allPosts.push(...popularContent.posts);
       for (const acc of popularContent.accounts) {
         allAccounts.set(acc.user.id, acc);
       }
@@ -267,22 +267,22 @@ export class TwitterDiscoveryClient {
     }
 
     // Sort by relevance score
-    const sortedTweets = allTweets.sort((a, b) => b.relevanceScore - a.relevanceScore).slice(0, 50); // Top 50 tweets
+    const sortedPosts = allPosts.sort((a, b) => b.relevanceScore - a.relevanceScore).slice(0, 50); // Top 50 posts
 
     const sortedAccounts = Array.from(allAccounts.values())
       .sort((a, b) => b.qualityScore * b.relevanceScore - a.qualityScore * a.relevanceScore)
       .slice(0, 20); // Top 20 accounts
 
-    return { tweets: sortedTweets, accounts: sortedAccounts };
+    return { posts: sortedPosts, accounts: sortedAccounts };
   }
 
   private async discoverFromTopics(): Promise<{
-    tweets: ScoredTweet[];
+    posts: ScoredPost[];
     accounts: ScoredAccount[];
   }> {
     logger.debug("Discovering from character topics...");
 
-    const tweets: ScoredTweet[] = [];
+    const posts: ScoredPost[] = [];
     const accounts = new Map<string, ScoredAccount>();
 
     // Search for each topic with different query strategies
@@ -291,40 +291,39 @@ export class TwitterDiscoveryClient {
         // Sanitize topic for search query
         const searchTopic = this.sanitizeTopic(topic);
 
-        // Strategy 1: Popular tweets in topic
-        // Note: min_faves is not supported in Twitter API v2, we'll filter after retrieval
-        const popularQuery = `${searchTopic} -is:retweet -is:reply lang:en`;
+        // Strategy 1: Popular posts in topic (min_faves filter applied post-retrieval)
+        const popularQuery = `${searchTopic} -is:repost -is:reply lang:en`;
 
-        logger.debug(`Searching popular tweets for topic: ${topic}`);
-        const popularResults = await this.twitterClient.fetchSearchTweets(
+        logger.debug(`Searching popular posts for topic: ${topic}`);
+        const popularResults = await this.xClient.fetchSearchPosts(
           popularQuery,
           20,
           SearchMode.Top
         );
 
-        for (const tweet of popularResults.tweets) {
+        for (const post of popularResults.posts) {
           // Filter by engagement after retrieval
-          if ((tweet.likes || 0) < 10) continue;
+          if ((post.likes || 0) < 10) continue;
 
-          const scored = this.scoreTweet(tweet, "topic");
-          tweets.push(scored);
+          const scored = this.scorePost(post, "topic");
+          posts.push(scored);
 
-          // Extract account info from popular tweet authors
-          if (!tweet.userId || !tweet.username) {
+          // Extract account info from popular post authors
+          if (!post.userId || !post.username) {
             continue;
           }
-          const authorUsername = tweet.username;
-          const authorName = tweet.name || tweet.username;
+          const authorUsername = post.username;
+          const authorName = post.name || post.username;
 
-          // Estimate follower count based on tweet engagement
-          // Popular tweets often come from accounts with decent followings
+          // Estimate follower count based on post engagement
+          // Popular posts often come from accounts with decent followings
           const estimatedFollowers = Math.max(
             1000, // minimum estimate
-            (tweet.likes || 0) * 100 // rough estimate: 100 followers per like
+            (post.likes || 0) * 100 // rough estimate: 100 followers per like
           );
 
           const account = this.scoreAccount({
-            id: tweet.userId,
+            id: post.userId,
             username: authorUsername,
             name: authorName,
             followersCount: estimatedFollowers,
@@ -332,42 +331,42 @@ export class TwitterDiscoveryClient {
 
           if (account.qualityScore > 0.3) {
             // Lower threshold to discover more accounts
-            accounts.set(tweet.userId, account);
+            accounts.set(post.userId, account);
           }
         }
 
-        // Strategy 2: Latest tweets with good engagement (not just verified)
-        const engagedQuery = `${searchTopic} -is:retweet lang:en`;
+        // Strategy 2: Latest posts with good engagement (not just verified)
+        const engagedQuery = `${searchTopic} -is:repost lang:en`;
 
-        logger.debug(`Searching engaged tweets for topic: ${topic}`);
-        const engagedResults = await this.twitterClient.fetchSearchTweets(
+        logger.debug(`Searching engaged posts for topic: ${topic}`);
+        const engagedResults = await this.xClient.fetchSearchPosts(
           engagedQuery,
           15,
           SearchMode.Latest
         );
 
-        for (const tweet of engagedResults.tweets) {
-          // Only include tweets with some engagement
-          if ((tweet.likes || 0) < 5) continue;
+        for (const post of engagedResults.posts) {
+          // Only include posts with some engagement
+          if ((post.likes || 0) < 5) continue;
 
-          const scored = this.scoreTweet(tweet, "topic");
-          tweets.push(scored);
+          const scored = this.scorePost(post, "topic");
+          posts.push(scored);
 
-          // Extract account info from tweet author
-          if (!tweet.userId || !tweet.username) {
+          // Extract account info from post author
+          if (!post.userId || !post.username) {
             continue;
           }
-          const authorUsername = tweet.username;
-          const authorName = tweet.name || tweet.username;
+          const authorUsername = post.username;
+          const authorName = post.name || post.username;
 
           // Estimate follower count based on engagement
           const estimatedFollowers = Math.max(
-            500, // minimum for engaged tweets
-            (tweet.likes || 0) * 50
+            500, // minimum for engaged posts
+            (post.likes || 0) * 50
           );
 
           const account = this.scoreAccount({
-            id: tweet.userId,
+            id: post.userId,
             username: authorUsername,
             name: authorName,
             followersCount: estimatedFollowers,
@@ -375,7 +374,7 @@ export class TwitterDiscoveryClient {
 
           if (account.qualityScore > 0.2) {
             // Even lower threshold for engaged content
-            accounts.set(tweet.userId, account);
+            accounts.set(post.userId, account);
           }
         }
       } catch (error) {
@@ -386,59 +385,58 @@ export class TwitterDiscoveryClient {
       }
     }
 
-    return { tweets, accounts: Array.from(accounts.values()) };
+    return { posts, accounts: Array.from(accounts.values()) };
   }
 
   private async discoverFromThreads(): Promise<{
-    tweets: ScoredTweet[];
+    posts: ScoredPost[];
     accounts: ScoredAccount[];
   }> {
     logger.debug("Discovering from conversation threads...");
 
-    const tweets: ScoredTweet[] = [];
+    const posts: ScoredPost[] = [];
     const accounts = new Map<string, ScoredAccount>();
 
     // Search for viral conversations in our topics
-    // Note: Twitter API v2 doesn't support min_replies or min_faves operators
-    // We'll search for popular conversations and filter by engagement in scoring
+    // X API v2 doesn't support min_replies/min_faves - filter by engagement in scoring
     const topicQuery = this.config.topics
       .slice(0, 3)
       .map((t) => this.sanitizeTopic(t))
       .join(" OR ");
 
     try {
-      // Search for conversations (tweets with engagement)
-      const viralQuery = `(${topicQuery}) -is:retweet has:mentions`;
+      // Search for conversations (posts with engagement)
+      const viralQuery = `(${topicQuery}) -is:repost has:mentions`;
 
       logger.debug(`Searching viral threads with query: ${viralQuery}`);
-      const searchResults = await this.twitterClient.fetchSearchTweets(
+      const searchResults = await this.xClient.fetchSearchPosts(
         viralQuery,
         15,
         SearchMode.Top
       );
 
-      for (const tweet of searchResults.tweets) {
-        // Filter for tweets with good engagement (proxy for viral threads)
-        const engagementScore = (tweet.likes || 0) + (tweet.retweets || 0) * 2;
+      for (const post of searchResults.posts) {
+        // Filter for posts with good engagement (proxy for viral threads)
+        const engagementScore = (post.likes || 0) + (post.reposts || 0) * 2;
         if (engagementScore < 10) continue; // Lowered from 50 - more inclusive
 
-        const scored = this.scoreTweet(tweet, "thread");
-        tweets.push(scored);
+        const scored = this.scorePost(post, "thread");
+        posts.push(scored);
 
         // Viral thread authors are likely high-quality accounts
-        if (!tweet.userId || !tweet.username) {
+        if (!post.userId || !post.username) {
           continue;
         }
         const account = this.scoreAccount({
-          id: tweet.userId,
-          username: tweet.username,
-          name: tweet.name || tweet.username,
+          id: post.userId,
+          username: post.username,
+          name: post.name || post.username,
           followersCount: 1000, // Reasonable estimate for engaged users
         });
 
         if (account.qualityScore > 0.5) {
           // Lowered from 0.6
-          accounts.set(tweet.userId, account);
+          accounts.set(post.userId, account);
         }
       }
     } catch (error) {
@@ -448,63 +446,62 @@ export class TwitterDiscoveryClient {
       );
     }
 
-    return { tweets, accounts: Array.from(accounts.values()) };
+    return { posts, accounts: Array.from(accounts.values()) };
   }
 
   private async discoverFromPopularAccounts(): Promise<{
-    tweets: ScoredTweet[];
+    posts: ScoredPost[];
     accounts: ScoredAccount[];
   }> {
     logger.debug("Discovering from popular accounts in topics...");
 
-    const tweets: ScoredTweet[] = [];
+    const posts: ScoredPost[] = [];
     const accounts = new Map<string, ScoredAccount>();
 
-    // Search for users who frequently tweet about our topics
+    // Search for users who frequently post about our topics
     for (const topic of this.config.topics.slice(0, 3)) {
       try {
         // Sanitize topic for search query
         const searchTopic = this.sanitizeTopic(topic);
 
-        // Find tweets from accounts with high engagement
-        // Note: Twitter API v2 doesn't support min_faves or min_retweets in search
-        // We'll search for general high-quality content
-        const influencerQuery = `${searchTopic} -is:retweet lang:en`;
+        // Find posts from accounts with high engagement
+        // X API v2 doesn't support min_faves/min_reposts - filter post-retrieval
+        const influencerQuery = `${searchTopic} -is:repost lang:en`;
 
         logger.debug(`Searching for influencers in topic: ${topic}`);
-        const results = await this.twitterClient.fetchSearchTweets(
+        const results = await this.xClient.fetchSearchPosts(
           influencerQuery,
           10,
           SearchMode.Top
         );
 
-        for (const tweet of results.tweets) {
+        for (const post of results.posts) {
           // Filter by engagement metrics after retrieval
-          const engagement = (tweet.likes || 0) + (tweet.retweets || 0) * 2;
+          const engagement = (post.likes || 0) + (post.reposts || 0) * 2;
           if (engagement < 5) continue; // Lowered from 20 - more inclusive
 
-          const scored = this.scoreTweet(tweet, "topic");
-          tweets.push(scored);
+          const scored = this.scorePost(post, "topic");
+          posts.push(scored);
 
           // High engagement suggests a quality account
           const estimatedFollowers = Math.max(
-            (tweet.likes || 0) * 100,
-            (tweet.retweets || 0) * 200,
+            (post.likes || 0) * 100,
+            (post.reposts || 0) * 200,
             10000
           );
 
-          if (!tweet.userId || !tweet.username) {
+          if (!post.userId || !post.username) {
             continue;
           }
           const account = this.scoreAccount({
-            id: tweet.userId,
-            username: tweet.username,
-            name: tweet.name || tweet.username,
+            id: post.userId,
+            username: post.username,
+            name: post.name || post.username,
             followersCount: estimatedFollowers,
           });
 
           if (account.qualityScore > 0.7) {
-            accounts.set(tweet.userId, account);
+            accounts.set(post.userId, account);
           }
         }
       } catch (error) {
@@ -515,17 +512,17 @@ export class TwitterDiscoveryClient {
       }
     }
 
-    return { tweets, accounts: Array.from(accounts.values()) };
+    return { posts, accounts: Array.from(accounts.values()) };
   }
 
   // Remove the discoverFromTrends method since API v2 doesn't support it
   // Remove the isTrendRelevant method since we're not using trends
 
-  private scoreTweet(tweet: Tweet, source: string): ScoredTweet {
-    // Skip retweets - we want original content
-    if (tweet.isRetweet) {
+  private scorePost(post: Post, source: string): ScoredPost {
+    // Skip reposts - we want original content
+    if (post.isRepost) {
       return {
-        tweet,
+        post,
         relevanceScore: 0,
         engagementType: "skip",
       };
@@ -542,35 +539,34 @@ export class TwitterDiscoveryClient {
 
     // Score by engagement metrics - much more realistic thresholds
     const engagementScore = Math.min(
-      (tweet.likes || 0) / 100 + // 100 likes = 0.1 points (was 1000)
-        (tweet.retweets || 0) / 50 + // 50 retweets = 0.1 points (was 500)
-        (tweet.replies || 0) / 20, // 20 replies = 0.1 points (was 100)
+      (post.likes || 0) / 100 + // 100 likes = 0.1 points (was 1000)
+        (post.reposts || 0) / 50 + // 50 reposts = 0.1 points (was 500)
+        (post.replies || 0) / 20, // 20 replies = 0.1 points (was 100)
       0.3
     );
     relevanceScore += engagementScore;
 
     // Score by text relevance if text exists
-    if (tweet.text) {
+    if (post.text) {
       // Additional scoring based on text content can go here
     }
 
     // Score by content relevance to topics
-    if (tweet.text) {
-      const textLower = tweet.text.toLowerCase();
+    if (post.text) {
+      const textLower = post.text.toLowerCase();
       const topicMatches = this.config.topics.filter((topic) =>
         textLower.includes(topic.toLowerCase())
       ).length;
       relevanceScore += Math.min(topicMatches * 0.15, 0.3); // Increased from 0.1
     }
 
-    // Bonus for verified accounts (if available in tweet data)
-    // Note: isBlueVerified might not be available in all tweet responses
+    // Bonus for verified accounts (isBlueVerified may not be in all responses)
 
     // Normalize score
     relevanceScore = Math.min(relevanceScore, 1);
 
     // Determine engagement type based on score
-    let engagementType: ScoredTweet["engagementType"] = "skip";
+    let engagementType: ScoredPost["engagementType"] = "skip";
     if (relevanceScore >= this.config.quoteThreshold) {
       engagementType = "quote";
     } else if (relevanceScore >= this.config.replyThreshold) {
@@ -580,7 +576,7 @@ export class TwitterDiscoveryClient {
     }
 
     return {
-      tweet,
+      post,
       relevanceScore,
       engagementType,
     };
@@ -651,7 +647,7 @@ export class TwitterDiscoveryClient {
           );
         } else {
           // Follow the account
-          await this.twitterClient.followUser(scoredAccount.user.id);
+          await this.xClient.followUser(scoredAccount.user.id);
 
           logger.info(
             `Followed @${scoredAccount.user.username} ` +
@@ -678,75 +674,75 @@ export class TwitterDiscoveryClient {
     return followedCount;
   }
 
-  private async processTweets(tweets: ScoredTweet[]): Promise<number> {
+  private async processPosts(posts: ScoredPost[]): Promise<number> {
     let engagementCount = 0;
 
-    for (const scoredTweet of tweets) {
+    for (const scoredPost of posts) {
       if (engagementCount >= this.config.maxEngagementsPerCycle) break;
-      if (scoredTweet.engagementType === "skip") continue;
+      if (scoredPost.engagementType === "skip") continue;
 
       try {
         // Check if already engaged
-        if (!scoredTweet.tweet.id) {
+        if (!scoredPost.post.id) {
           continue;
         }
-        const tweetMemoryId = createUniqueUuid(this.runtime, scoredTweet.tweet.id);
-        const existingMemory = await this.runtime.getMemoryById(tweetMemoryId);
+        const postMemoryId = createUniqueUuid(this.runtime, scoredPost.post.id);
+        const existingMemory = await this.runtime.getMemoryById(postMemoryId);
         if (existingMemory) {
-          logger.debug(`Already engaged with tweet ${scoredTweet.tweet.id}, skipping`);
+          logger.debug(`Already engaged with post ${scoredPost.post.id}, skipping`);
           continue;
         }
 
         // Perform engagement
-        switch (scoredTweet.engagementType) {
+        switch (scoredPost.engagementType) {
           case "like":
             if (this.isDryRun) {
               logger.info(
-                `[DRY RUN] Would like tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`
+                `[DRY RUN] Would like post: ${scoredPost.post.id} (score: ${scoredPost.relevanceScore.toFixed(2)})`
               );
             } else {
-              if (!scoredTweet.tweet.id) {
+              if (!scoredPost.post.id) {
                 continue;
               }
-              await this.twitterClient.likeTweet(scoredTweet.tweet.id);
+              await this.xClient.likePost(scoredPost.post.id);
               logger.info(
-                `Liked tweet: ${scoredTweet.tweet.id} (score: ${scoredTweet.relevanceScore.toFixed(2)})`
+                `Liked post: ${scoredPost.post.id} (score: ${scoredPost.relevanceScore.toFixed(2)})`
               );
             }
             break;
 
           case "reply": {
-            const replyText = await this.generateReply(scoredTweet.tweet);
+            const replyText = await this.generateReply(scoredPost.post);
             if (this.isDryRun) {
               logger.info(
-                `[DRY RUN] Would reply to tweet ${scoredTweet.tweet.id} with: "${replyText}"`
+                `[DRY RUN] Would reply to post ${scoredPost.post.id} with: "${replyText}"`
               );
             } else {
-              await this.twitterClient.sendTweet(replyText, scoredTweet.tweet.id);
-              logger.info(`Replied to tweet: ${scoredTweet.tweet.id}`);
+              await this.xClient.sendPost(replyText, scoredPost.post.id);
+              logger.info(`Replied to post: ${scoredPost.post.id}`);
             }
             break;
           }
 
           case "quote": {
-            if (!scoredTweet.tweet.id) {
+            if (!scoredPost.post.id) {
               continue;
             }
-            const quoteText = await this.generateQuote(scoredTweet.tweet);
+            const quoteText = await this.generateQuote(scoredPost.post);
             if (this.isDryRun) {
               logger.info(
-                `[DRY RUN] Would quote tweet ${scoredTweet.tweet.id} with: "${quoteText}"`
+                `[DRY RUN] Would quote post ${scoredPost.post.id} with: "${quoteText}"`
               );
             } else {
-              await this.twitterClient.sendQuoteTweet(quoteText, scoredTweet.tweet.id);
-              logger.info(`Quoted tweet: ${scoredTweet.tweet.id}`);
+              await this.xClient.sendQuotePost(quoteText, scoredPost.post.id);
+              logger.info(`Quoted post: ${scoredPost.post.id}`);
             }
             break;
           }
         }
 
         // Save engagement to memory (even in dry run for tracking)
-        await this.saveEngagementMemory(scoredTweet.tweet, scoredTweet.engagementType);
+        await this.saveEngagementMemory(scoredPost.post, scoredPost.engagementType);
 
         engagementCount++;
 
@@ -757,21 +753,21 @@ export class TwitterDiscoveryClient {
         const errorMessage = (error as { message?: string })?.message;
         if (errorMessage?.includes("403")) {
           logger.warn(
-            `Permission denied (403) for tweet ${scoredTweet.tweet.id}. ` +
-              `This might be a protected account or restricted tweet. Skipping.`
+            `Permission denied (403) for post ${scoredPost.post.id}. ` +
+              `This might be a protected account or restricted post. Skipping.`
           );
           // Still save to memory to avoid retrying
-          await this.saveEngagementMemory(scoredTweet.tweet, "skip");
+          await this.saveEngagementMemory(scoredPost.post, "skip");
         } else if (errorMessage?.includes("429")) {
           logger.warn(
-            `Rate limit (429) hit while engaging with tweet ${scoredTweet.tweet.id}. ` +
+            `Rate limit (429) hit while engaging with post ${scoredPost.post.id}. ` +
               `Pausing engagement cycle.`
           );
           // Break out of the loop on rate limit
           break;
         } else {
           logger.error(
-            `Failed to engage with tweet ${scoredTweet.tweet.id}:`,
+            `Failed to engage with post ${scoredPost.post.id}:`,
             error instanceof Error ? error.message : String(error)
           );
         }
@@ -784,7 +780,7 @@ export class TwitterDiscoveryClient {
   private async checkIfFollowing(userId: string): Promise<boolean> {
     // Check our memory to see if we've followed them
     const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-      text: `followed twitter user ${userId}`,
+      text: `followed X user ${userId}`,
     });
 
     const followMemories = await this.runtime.searchMemories({
@@ -796,7 +792,7 @@ export class TwitterDiscoveryClient {
     return followMemories.length > 0;
   }
 
-  private async generateReply(tweet: Tweet): Promise<string> {
+  private async generateReply(post: Post): Promise<string> {
     // Handle case where runtime.character might be undefined
     const characterName = this.runtime?.character?.name || "AI Assistant";
     let characterBio = "";
@@ -809,9 +805,9 @@ export class TwitterDiscoveryClient {
       }
     }
 
-    const prompt = `You are ${characterName}. Generate a thoughtful reply to this tweet:
+    const prompt = `You are ${characterName}. Generate a thoughtful reply to this post:
 
-Tweet by @${tweet.username || "unknown"}: "${tweet.text || ""}"
+Post by @${post.username || "unknown"}: "${post.text || ""}"
 
 Your interests: ${this.config.topics.join(", ")}
 Character bio: ${characterBio}
@@ -834,7 +830,7 @@ Reply:`;
     return response.trim();
   }
 
-  private async generateQuote(tweet: Tweet): Promise<string> {
+  private async generateQuote(post: Post): Promise<string> {
     // Handle case where runtime.character might be undefined
     const characterName = this.runtime?.character?.name || "AI Assistant";
     let characterBio = "";
@@ -847,21 +843,21 @@ Reply:`;
       }
     }
 
-    const prompt = `You are ${characterName}. Add your perspective to this tweet with a quote tweet:
+    const prompt = `You are ${characterName}. Add your perspective to this post with a quote post:
 
-Original tweet by @${tweet.username || "unknown"}: "${tweet.text || ""}"
+Original post by @${post.username || "unknown"}: "${post.text || ""}"
 
 Your interests: ${this.config.topics.join(", ")}
 Character bio: ${characterBio}
 
-Create a quote tweet that:
+Create a quote post that:
 - Adds unique insight or perspective
 - Is under 280 characters
 - Respectfully builds on the original idea
 - Showcases your expertise
 - Encourages further discussion
 
-Quote tweet:`;
+Quote post:`;
 
     const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
@@ -872,26 +868,26 @@ Quote tweet:`;
     return response.trim();
   }
 
-  private async saveEngagementMemory(tweet: Tweet, engagementType: string) {
+  private async saveEngagementMemory(post: Post, engagementType: string) {
     try {
       // Ensure context exists before saving memory
-      if (!tweet.userId || !tweet.username) {
+      if (!post.userId || !post.username) {
         logger.warn("Cannot ensure context: missing userId or username");
         return;
       }
-      const context = await ensureTwitterContext(this.runtime, {
-        userId: tweet.userId,
-        username: tweet.username,
-        conversationId: tweet.conversationId || tweet.id || "",
+      const context = await ensureXContext(this.runtime, {
+        userId: post.userId,
+        username: post.username,
+        conversationId: post.conversationId || post.id || "",
       });
 
       const memory: Memory = {
-        id: createUniqueUuid(this.runtime, `${tweet.id}-${engagementType}`),
+        id: createUniqueUuid(this.runtime, `${post.id}-${engagementType}`),
         entityId: context.entityId,
         content: {
-          text: `${engagementType} tweet from @${tweet.username}: ${tweet.text}`,
+          text: `${engagementType} post from @${post.username}: ${post.text}`,
           metadata: {
-            tweetId: tweet.id,
+            postId: post.id,
             engagementType,
             source: "discovery",
             isDryRun: this.isDryRun,
@@ -903,7 +899,7 @@ Quote tweet:`;
       };
 
       await createMemorySafe(this.runtime, memory, "messages");
-      logger.debug(`[Discovery] Saved ${engagementType} memory for tweet ${tweet.id}`);
+      logger.debug(`[Discovery] Saved ${engagementType} memory for post ${post.id}`);
     } catch (error) {
       logger.error(
         `[Discovery] Failed to save engagement memory:`,
@@ -916,18 +912,18 @@ Quote tweet:`;
   private async saveFollowMemory(user: ScoredAccount["user"]) {
     try {
       // Create a simple context for follows
-      const context = await ensureTwitterContext(this.runtime, {
+      const context = await ensureXContext(this.runtime, {
         userId: user.id,
         username: user.username,
         name: user.name,
-        conversationId: `twitter-follows`,
+        conversationId: `x-follows`,
       });
 
       const memory: Memory = {
         id: createUniqueUuid(this.runtime, `follow-${user.id}`),
         entityId: context.entityId,
         content: {
-          text: `followed twitter user ${user.id} @${user.username}`,
+          text: `followed X user ${user.id} @${user.username}`,
           metadata: {
             userId: user.id,
             username: user.username,
@@ -957,3 +953,4 @@ Quote tweet:`;
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
+

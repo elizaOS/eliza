@@ -16,7 +16,7 @@ describe("ELIZA Classic Plugin", () => {
     });
 
     test("should reflect 'you' to 'me' and 'are' to 'am'", () => {
-      // Note: "are" also gets reflected to "am" in ELIZA's pronoun system
+      // "are" also gets reflected to "am" in ELIZA's pronoun system
       expect(reflect("you are nice")).toBe("me am nice");
     });
 

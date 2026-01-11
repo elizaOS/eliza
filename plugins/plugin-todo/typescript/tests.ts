@@ -7,6 +7,4 @@ export { ReminderDeliveryE2ETestSuite } from "./__tests__/e2e/reminder-delivery"
 // E2E Test Suites
 export { TodoPluginE2ETestSuite } from "./__tests__/e2e/todo-plugin";
 
-// Unit and Integration Test Suites
-// Note: These are vitest test files, not traditional test suites
-// They should be run via vitest command line tool
+// Unit and Integration Test Suites (vitest test files - run via vitest CLI)

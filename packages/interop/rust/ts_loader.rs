@@ -1,7 +1,3 @@
-// TODO: Try-catch review completed 2026-01-11. This is a Rust file.
-// Rust uses Result<T, E> for error handling, not try-catch.
-// All error handling via ? operator and Result types is appropriate.
-
 //! TypeScript Plugin Loader for elizaOS Rust Runtime
 //!
 //! This module provides utilities for loading TypeScript plugins into the Rust runtime

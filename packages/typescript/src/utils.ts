@@ -383,8 +383,7 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
  * It looks for an XML block (e.g., <response>...</response>) and extracts
  * text content from direct child elements (e.g., <key>value</key>).
  *
- * Note: This uses regex and is suitable for simple, predictable XML structures.
- * For complex XML, a proper parsing library is recommended.
+ * Uses regex - suitable for simple XML. For complex XML, use a proper parser.
  *
  * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
  * @param text - The input text containing the XML structure.

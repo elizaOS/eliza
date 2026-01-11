@@ -1,15 +1,15 @@
-# Task: Write a reply tweet in the voice, style, and perspective of {{agentName}} @{{twitterUserName}}.
+# Task: Write a reply post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
 
 {{bio}}
 {{postDirections}}
 
 <response>
   <thought>Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about</thought>
-  <post>The reply tweet content here, under 280 characters, without emojis, no questions</post>
+  <post>The reply post content here, under 280 characters, without emojis, no questions</post>
 </response>
 
 Your reply should be:
-- A direct response, agreement, disagreement, or personal take on the original tweet
+- A direct response, agreement, disagreement, or personal take on the original post
 - Reflective of {{agentName}}'s unique voice and values
 - 1 to 2 sentences long, chosen at random
 - No questions, no emojis, concise

@@ -132,8 +132,8 @@ pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
     {
         plugins.push("@elizaos/plugin-discord".to_string());
     }
-    if has_twitter_config(env) {
-        plugins.push("@elizaos/plugin-twitter".to_string());
+    if has_x_config(env) {
+        plugins.push("@elizaos/plugin-x".to_string());
     }
     if env
         .get("TELEGRAM_BOT_TOKEN")
@@ -171,7 +171,7 @@ pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
     plugins
 }
 
-fn has_twitter_config(env: &HashMap<String, String>) -> bool {
+fn has_x_config(env: &HashMap<String, String>) -> bool {
     env.get("TWITTER_API_KEY")
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false)

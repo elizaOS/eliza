@@ -164,7 +164,7 @@ class Content(BaseModel):
     target: str | None = Field(default=None, description="Target/destination for responses")
     url: str | None = Field(
         default=None,
-        description="URL of the original message/post (e.g. tweet URL, Discord message link)",
+        description="URL of the original message/post (e.g. post URL, Discord message link)",
     )
     in_reply_to: UUID | None = Field(
         default=None,

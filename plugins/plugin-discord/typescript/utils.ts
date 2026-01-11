@@ -106,7 +106,7 @@ export const MAX_MESSAGE_LENGTH = 1900;
  * - Markdown link leakage (url](url -> url)
  * - Trailing punctuation and markdown (*_/.,;!>)
  * - Trailing full-width/CJK punctuation (（）［］、。etc.)
- * Note: Preserves valid non-ASCII path characters for internationalized URLs
+ * Preserves valid non-ASCII path characters for internationalized URLs
  *
  * @param {string} url - The raw URL to clean
  * @returns {string} The cleaned URL
@@ -133,7 +133,7 @@ export function cleanUrl(url: string): string {
       clean = clean.substring(0, markdownPatternIdx);
     }
   }
-  // Note: Trailing brackets will be handled by the trailing junk removal step below
+  // Trailing brackets handled by the trailing junk removal step below
 
   // 3. Remove trailing junk in a loop - handles layered issues like:
   //    - Punctuation/markdown: "site.com**" -> "site.com"

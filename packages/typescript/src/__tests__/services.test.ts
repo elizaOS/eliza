@@ -111,7 +111,7 @@ describe("service builder", () => {
           capabilityDescription = "Definition without stop";
           async stop() {}
         })(),
-      // Note: no stop function provided
+      // no stop function provided
     });
 
     await Def.start(runtime);

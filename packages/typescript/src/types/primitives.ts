@@ -16,8 +16,6 @@ export enum ChannelType {
   THREAD = "THREAD", // Threaded conversation
   WORLD = "WORLD", // World channel
   FORUM = "FORUM", // Forum discussion
-  // Legacy types - kept for backward compatibility but should be replaced
-  API = "API", // @deprecated - Use DM or GROUP instead
 }
 
 /**
@@ -79,7 +77,7 @@ export interface Content {
   /** Target/destination for responses */
   target?: string;
 
-  /** URL of the original message/post (e.g. tweet URL, Discord message link) */
+  /** URL of the original message/post (e.g. post URL, Discord message link) */
   url?: string;
 
   /** UUID of parent message if this is a reply/thread */

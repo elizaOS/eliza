@@ -17,12 +17,12 @@ impl RelationshipExtractionEvaluator {
     fn extract_platform_identities(text: &str) -> Vec<(String, String, f64)> {
         let mut identities = Vec::new();
 
-        // Twitter handles
-        let twitter_re = Regex::new(r"@[\w]+").unwrap();
-        for cap in twitter_re.find_iter(text) {
+        // X handles
+        let x_re = Regex::new(r"@[\w]+").unwrap();
+        for cap in x_re.find_iter(text) {
             let handle = cap.as_str();
             if !["@here", "@everyone", "@channel"].contains(&handle.to_lowercase().as_str()) {
-                identities.push(("twitter".to_string(), handle.to_string(), 0.7));
+                identities.push(("x".to_string(), handle.to_string(), 0.7));
             }
         }
 

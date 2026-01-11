@@ -217,7 +217,7 @@ export type GenerateTextParams = {
   /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
   temperature?: number;
   /** Optional. Nucleus sampling parameter (0.0-1.0). Controls diversity via nucleus sampling.
-   * Note: Some providers may not support both `temperature` and `topP` simultaneously.
+   * Some providers may not support both `temperature` and `topP` simultaneously.
    * Plugin implementations should filter based on provider capabilities. */
   topP?: number;
   /** Optional. Limits the number of highest-probability tokens considered at each step.
@@ -252,7 +252,7 @@ export type GenerateTextParams = {
    * - `user: ""` - Explicitly sends empty user identifier
    * - `user: undefined` - Auto-populates with character name (e.g., "MyAgent")
    *
-   * Note: Plugin implementations should pass this parameter to their provider's API when supported.
+   * Plugin implementations should pass this parameter to their provider's API when supported.
    */
   user?: string | null;
   /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
@@ -530,7 +530,7 @@ export interface ModelParamsMap {
 /**
  * Map of model types to their DEFAULT return value types.
  *
- * Note: For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*),
+ * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*),
  * the actual return type depends on the parameters and is handled by overloads:
  * - `{ prompt }`: Returns `string` (this default)
  * - `{ prompt, stream: true }`: Returns `TextStreamResult` (via overload)

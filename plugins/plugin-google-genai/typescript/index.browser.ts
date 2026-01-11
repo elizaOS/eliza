@@ -1,8 +1,6 @@
 /**
  * Browser entry point for the Google GenAI plugin.
- *
- * Note: Browser usage may require a proxy server to handle API calls
- * due to CORS restrictions on direct Google API access.
+ * Browser usage may require a proxy server due to CORS restrictions.
  */
 
 export * from "./index";

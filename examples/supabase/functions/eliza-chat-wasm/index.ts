@@ -10,7 +10,7 @@
  */
 
 // Import WASM module (will be available after building)
-// Note: In production, you would import the actual WASM module
+// In production, import the actual WASM module
 // import init, { ... } from "./wasm/eliza_chat_wasm.js";
 
 // Fallback to pure TypeScript implementation if WASM not available

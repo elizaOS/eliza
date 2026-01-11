@@ -3,28 +3,29 @@ import { getSetting } from "../../utils/settings";
 import { BrokerAuthProvider } from "./broker";
 import { EnvAuthProvider } from "./env";
 import { OAuth2PKCEAuthProvider } from "./oauth2-pkce";
-import type { TwitterAuthMode, TwitterAuthProvider } from "./types";
+import type { XAuthMode, XAuthProvider } from "./types";
 
-function normalizeMode(v: string | undefined | null): TwitterAuthMode {
+function normalizeMode(v: string | undefined | null): XAuthMode {
   const mode = (v ?? "env").toLowerCase();
   if (mode === "env" || mode === "oauth" || mode === "broker") return mode;
   throw new Error(`Invalid TWITTER_AUTH_MODE=${v}. Expected env|oauth|broker.`);
 }
 
-export function getTwitterAuthMode(
+export function getXAuthMode(
   runtime?: IAgentRuntime,
   state?: Record<string, unknown>
-): TwitterAuthMode {
+): XAuthMode {
   const modeRaw = state?.TWITTER_AUTH_MODE ?? getSetting(runtime ?? null, "TWITTER_AUTH_MODE");
   const mode = typeof modeRaw === "string" ? modeRaw : undefined;
   return normalizeMode(mode ?? "env");
 }
 
-export function createTwitterAuthProvider(
+
+export function createXAuthProvider(
   runtime: IAgentRuntime,
   state?: Record<string, unknown>
-): TwitterAuthProvider {
-  const mode = getTwitterAuthMode(runtime, state);
+): XAuthProvider {
+  const mode = getXAuthMode(runtime, state);
   switch (mode) {
     case "env":
       return new EnvAuthProvider(runtime, state);
@@ -34,3 +35,4 @@ export function createTwitterAuthProvider(
       return new BrokerAuthProvider(runtime);
   }
 }
+

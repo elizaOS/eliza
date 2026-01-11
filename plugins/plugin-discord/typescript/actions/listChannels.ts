@@ -121,7 +121,7 @@ export const listChannels: Action = {
       const envChannelIds = runtime.getSetting("CHANNEL_IDS") as string;
       if (envChannelIds) {
         responseText +=
-          "\n*Note: Some channels are configured in my environment settings and cannot be removed dynamically.*";
+          "\n*Some channels are configured in environment settings and cannot be removed dynamically.*";
       }
 
       const response: Content = {

@@ -1,9 +1,9 @@
-import type { TwitterAuth } from "./auth";
+import type { XAuth } from "./auth";
 import type { Profile } from "./profile";
 import type { QueryProfilesResponse } from "./types";
 
-/** Twitter API v2 user data shape */
-interface TwitterV2User {
+/** X API v2 user data shape */
+interface XV2User {
   id: string;
   username: string;
   name: string;
@@ -12,7 +12,7 @@ interface TwitterV2User {
   public_metrics?: {
     followers_count?: number;
     following_count?: number;
-    tweet_count?: number;
+    post_count?: number;
     like_count?: number;
     listed_count?: number;
   };
@@ -20,7 +20,7 @@ interface TwitterV2User {
   verified?: boolean;
   verified_type?: string;
   location?: string;
-  pinned_tweet_id?: string;
+  pinned_post_id?: string;
   created_at?: string;
   entities?: {
     url?: {
@@ -30,24 +30,24 @@ interface TwitterV2User {
 }
 
 /**
- * Convert Twitter API v2 user data to Profile format
+ * Convert X API v2 user data to Profile format
  */
-function parseV2UserToProfile(user: TwitterV2User): Profile {
+function parseV2UserToProfile(user: XV2User): Profile {
   return {
     avatar: user.profile_image_url?.replace("_normal", ""),
     biography: user.description,
     followersCount: user.public_metrics?.followers_count,
     followingCount: user.public_metrics?.following_count,
     friendsCount: user.public_metrics?.following_count,
-    tweetsCount: user.public_metrics?.tweet_count,
+    postsCount: user.public_metrics?.post_count,
     isPrivate: user.protected ?? false,
     isVerified: user.verified ?? false,
     likesCount: user.public_metrics?.like_count,
     listedCount: user.public_metrics?.listed_count,
     location: user.location || "",
     name: user.name,
-    pinnedTweetIds: user.pinned_tweet_id ? [user.pinned_tweet_id] : [],
-    url: `https://twitter.com/${user.username}`,
+    pinnedPostIds: user.pinned_post_id ? [user.pinned_post_id] : [],
+    url: `https://x.com/${user.username}`,
     userId: user.id,
     username: user.username,
     isBlueVerified: user.verified_type === "blue",
@@ -60,13 +60,13 @@ function parseV2UserToProfile(user: TwitterV2User): Profile {
  * Function to get the following profiles of a user.
  * @param {string} userId - The ID of the user to get the following profiles for.
  * @param {number} maxProfiles - The maximum number of profiles to retrieve.
- * @param {TwitterAuth} auth - The Twitter authentication credentials.
+ * @param {XAuth} auth - The X authentication credentials.
  * @returns {AsyncGenerator<Profile, void>} An async generator that yields Profile objects.
  */
 export async function* getFollowing(
   userId: string,
   maxProfiles: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): AsyncGenerator<Profile, void> {
   if (!auth) {
     throw new Error("Not authenticated");
@@ -89,7 +89,7 @@ export async function* getFollowing(
           "description",
           "entities",
           "location",
-          "pinned_tweet_id",
+          "pinned_post_id",
           "profile_image_url",
           "protected",
           "public_metrics",
@@ -122,13 +122,13 @@ export async function* getFollowing(
  * Get followers for a specific user.
  * @param {string} userId - The user ID for which to retrieve followers.
  * @param {number} maxProfiles - The maximum number of profiles to retrieve.
- * @param {TwitterAuth} auth - The authentication credentials for the Twitter API.
+ * @param {XAuth} auth - The authentication credentials for the X API.
  * @returns {AsyncGenerator<Profile, void>} - An async generator that yields Profile objects representing followers.
  */
 export async function* getFollowers(
   userId: string,
   maxProfiles: number,
-  auth: TwitterAuth
+  auth: XAuth
 ): AsyncGenerator<Profile, void> {
   if (!auth) {
     throw new Error("Not authenticated");
@@ -151,7 +151,7 @@ export async function* getFollowers(
           "description",
           "entities",
           "location",
-          "pinned_tweet_id",
+          "pinned_post_id",
           "profile_image_url",
           "protected",
           "public_metrics",
@@ -184,14 +184,14 @@ export async function* getFollowers(
  * Fetches the profiles that a user is following.
  * @param {string} userId - The ID of the user whose following profiles are to be fetched.
  * @param {number} maxProfiles - The maximum number of profiles to fetch.
- * @param {TwitterAuth} auth - The Twitter authentication details.
+ * @param {XAuth} auth - The X authentication details.
  * @param {string} [cursor] - Optional cursor for pagination.
  * @returns {Promise<QueryProfilesResponse>} A Promise that resolves with the response containing profiles the user is following.
  */
 export async function fetchProfileFollowing(
   userId: string,
   maxProfiles: number,
-  auth: TwitterAuth,
+  auth: XAuth,
   cursor?: string
 ): Promise<QueryProfilesResponse> {
   if (!auth) {
@@ -212,7 +212,7 @@ export async function fetchProfileFollowing(
         "description",
         "entities",
         "location",
-        "pinned_tweet_id",
+        "pinned_post_id",
         "profile_image_url",
         "protected",
         "public_metrics",
@@ -239,14 +239,14 @@ export async function fetchProfileFollowing(
  *
  * @param {string} userId - The user ID for which to fetch profile followers.
  * @param {number} maxProfiles - The maximum number of profiles to fetch.
- * @param {TwitterAuth} auth - The Twitter authentication credentials.
+ * @param {XAuth} auth - The X authentication credentials.
  * @param {string} [cursor] - Optional cursor for paginating results.
  * @returns {Promise<QueryProfilesResponse>} A promise that resolves with the parsed profile followers timeline.
  */
 export async function fetchProfileFollowers(
   userId: string,
   maxProfiles: number,
-  auth: TwitterAuth,
+  auth: XAuth,
   cursor?: string
 ): Promise<QueryProfilesResponse> {
   if (!auth) {
@@ -267,7 +267,7 @@ export async function fetchProfileFollowers(
         "description",
         "entities",
         "location",
-        "pinned_tweet_id",
+        "pinned_post_id",
         "profile_image_url",
         "protected",
         "public_metrics",
@@ -290,13 +290,13 @@ export async function fetchProfileFollowers(
 }
 
 /**
- * Follow a user using Twitter API v2
+ * Follow a user using X API v2
  *
  * @param {string} username - The username to follow
- * @param {TwitterAuth} auth - The authentication credentials
+ * @param {XAuth} auth - The authentication credentials
  * @returns {Promise<Response>} Response from the API
  */
-export async function followUser(username: string, auth: TwitterAuth): Promise<Response> {
+export async function followUser(username: string, auth: XAuth): Promise<Response> {
   if (!auth) {
     throw new Error("Not authenticated");
   }

@@ -54,18 +54,15 @@ async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
     ...envVars, // Lower priority: defaults from environment
     ...existingSecrets, // Higher priority: character-specific secrets
   };
-
-  // Note: We do NOT touch character.secrets (root level)
-  // That property is reserved for runtime-generated secrets via setSetting(..., true)
+  // character.secrets (root level) is reserved for runtime-generated secrets
 
   return true;
 }
 
 /**
  * Sets default secrets from local .env if character doesn't have any
- * Returns true if secrets were set, false otherwise
- *
- * Note: This is a Node.js-only feature. In browser environments, it returns false.
+ * Returns true if secrets were set, false otherwise.
+ * Node.js-only - returns false in browser environments.
  *
  * @param character - The character to load secrets into
  * @param options - Optional configuration

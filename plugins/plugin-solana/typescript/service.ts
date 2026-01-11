@@ -36,7 +36,7 @@ import {
 } from "@solana/web3.js";
 import BigNumber from "bignumber.js";
 import bs58 from "bs58";
-import nacl from "tweetnacl";
+import nacl from "postnacl";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
 import { getWalletKey } from "./keypairUtils";
 import type {
@@ -779,7 +779,6 @@ export class SolanaService extends Service {
   }
 
   async getCirculatingSupplies(mints: string[]) {
-    // TODO: Consider using batchGetMultipleAccountsInfo for better efficiency
     return Promise.all(mints.map((m) => this.getCirculatingSupply(m)));
   }
 
@@ -880,7 +879,6 @@ export class SolanaService extends Service {
     return metadataPDA;
   }
 
-  // TODO: Add caching for token symbols
   public async getTokenSymbol(mint: PublicKey): Promise<string | null> {
     const metadataAddress = await this.getMetadataAddress(mint);
     console.log("getTokenSymbol - getAccountInfo");

@@ -7,7 +7,7 @@ description: "Execute complex workflows with action chaining and error recovery"
 
 Simple agents can do one thing at a time. But real tasks are complex:
 
-- "Search the web, summarize results, and tweet the highlights"
+- "Search the web, summarize results, and post the highlights"
 - "Check my calendar, find a free slot, and schedule a meeting"
 - "Analyze this data, generate a chart, and email it to the team"
 
@@ -43,10 +43,10 @@ The plan flows through state, so each action can see what came before:
 
 ```mermaid
 flowchart TB
-    User["User: Search for AI news and tweet the top story"]
+    User["User: Search for AI news and post the top story"]
     LLM["LLM Decision: SEARCH, TWEET<br/>Creates plan with 2 steps"]
     Step1["Step 1: SEARCH<br/>Executes web search<br/>Status: completed"]
-    Step2["Step 2: TWEET<br/>Reads previous results<br/>Composes tweet<br/>Status: completed"]
+    Step2["Step 2: TWEET<br/>Reads previous results<br/>Composes post<br/>Status: completed"]
 
     User --> LLM
     LLM --> Step1

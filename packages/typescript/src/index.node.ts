@@ -3,8 +3,7 @@
  *
  * This file exports all modules including Node.js-specific functionality.
  * This is the full API surface of the core package.
- *
- * Note: Streaming context manager is now auto-detected at runtime.
+ * Streaming context manager is auto-detected at runtime.
  */
 
 // Export all core modules

@@ -41,11 +41,11 @@ export class EnvAuthProvider implements XOAuth1Provider {
     if (!accessToken) missing.push("TWITTER_ACCESS_TOKEN");
     if (!accessTokenSecret) missing.push("TWITTER_ACCESS_TOKEN_SECRET");
     if (missing.length) {
-      throw new Error(`Missing required Twitter env credentials: ${missing.join(", ")}`);
+      throw new Error(`Missing required X env credentials: ${missing.join(", ")}`);
     }
 
     if (!apiKey || !apiSecretKey || !accessToken || !accessTokenSecret) {
-      throw new Error("Twitter credentials validation failed");
+      throw new Error("X credentials validation failed");
     }
 
     return {

@@ -1,15 +1,15 @@
 import { type IAgentRuntime, logger, parseBooleanFromText, Service } from "@elizaos/core";
 import { ClientBase } from "../base";
-import { TwitterDiscoveryClient } from "../discovery";
+import { XDiscoveryClient } from "../discovery";
 import { validateXConfig } from "../environment";
-import { TwitterInteractionClient } from "../interactions";
-import { TwitterPostClient } from "../post";
-import { TwitterTimelineClient } from "../timeline";
+import { XInteractionClient } from "../interactions";
+import { XPostClient } from "../post";
+import { XTimelineClient } from "../timeline";
 import type { IXClient } from "../types";
 import { getSetting } from "../utils/settings";
 
 /**
- * X Client Instance - orchestrates all X (Twitter) functionality:
+ * X Client Instance - orchestrates all X (X) functionality:
  * - client: base operations (auth, timeline caching)
  * - post: autonomous posting
  * - interaction: mentions and replies
@@ -18,10 +18,10 @@ import { getSetting } from "../utils/settings";
  */
 export class XClientInstance implements IXClient {
   client: ClientBase;
-  post?: TwitterPostClient;
-  interaction?: TwitterInteractionClient;
-  timeline?: TwitterTimelineClient;
-  discovery?: TwitterDiscoveryClient;
+  post?: XPostClient;
+  interaction?: XInteractionClient;
+  timeline?: XTimelineClient;
+  discovery?: XDiscoveryClient;
 
   constructor(runtime: IAgentRuntime, state: Record<string, unknown>) {
     this.client = new ClientBase(runtime, state);
@@ -30,21 +30,21 @@ export class XClientInstance implements IXClient {
     const postEnabled = parseBooleanFromText(getSetting(runtime, "X_ENABLE_POST"));
     if (postEnabled) {
       logger.info("X posting ENABLED");
-      this.post = new TwitterPostClient(this.client, runtime, state);
+      this.post = new XPostClient(this.client, runtime, state);
     }
 
     // Replies/interactions
     const repliesEnabled = getSetting(runtime, "X_ENABLE_REPLIES") !== "false";
     if (repliesEnabled) {
       logger.info("X replies ENABLED");
-      this.interaction = new TwitterInteractionClient(this.client, runtime, state);
+      this.interaction = new XInteractionClient(this.client, runtime, state);
     }
 
     // Timeline actions
     const actionsEnabled = getSetting(runtime, "X_ENABLE_ACTIONS") === "true";
     if (actionsEnabled) {
       logger.info("X timeline actions ENABLED");
-      this.timeline = new TwitterTimelineClient(this.client, runtime, state);
+      this.timeline = new XTimelineClient(this.client, runtime, state);
     }
 
     // Discovery
@@ -53,14 +53,14 @@ export class XClientInstance implements IXClient {
       (actionsEnabled && getSetting(runtime, "X_ENABLE_DISCOVERY") !== "false");
     if (discoveryEnabled) {
       logger.info("X discovery ENABLED");
-      this.discovery = new TwitterDiscoveryClient(this.client, runtime, state);
+      this.discovery = new XDiscoveryClient(this.client, runtime, state);
     }
   }
 }
 
 export class XService extends Service {
   static serviceType = "x";
-  capabilityDescription = "Send and receive posts on X (Twitter)";
+  capabilityDescription = "Send and receive posts on X (X)";
 
   public xClient?: XClientInstance;
 

@@ -18,7 +18,7 @@ grok = GrokClient(GrokConfig.from_env())
 result = await grok.generate_text(TextGenerationParams(prompt="Hello world"))
 print(result.text)
 
-# X (Twitter) integration
+# X (X) integration
 x = XClient(XConfig.from_env())
 me = await x.me()
 print(f"@{me.username}")

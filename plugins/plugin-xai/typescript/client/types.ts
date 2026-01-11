@@ -1,18 +1,17 @@
 /**
- * Common types for Twitter plugin API responses
- *
- * Note: These types use type-only imports to avoid circular dependencies.
- * The actual Profile and Tweet interfaces are defined in profile.ts and tweets.ts.
+ * Common types for X plugin API responses.
+ * Uses type-only imports to avoid circular dependencies.
+ * Profile and Post interfaces are defined in profile.ts and posts.ts.
  */
 
 import type { Profile } from "./profile";
-import type { Tweet } from "./tweets";
+import type { Post } from "./posts";
 
 /**
- * Response for paginated tweets queries
+ * Response for paginated posts queries
  */
-export interface QueryTweetsResponse {
-  tweets: Tweet[];
+export interface QueryPostsResponse {
+  posts: Post[];
   next?: string;
   previous?: string;
 }

@@ -1,5 +1,5 @@
 """
-X (Twitter) API v2 Client
+X (X) API v2 Client
 
 Async HTTP client for X API v2 interactions using httpx.
 All methods use strong typing and fail-fast error handling.
@@ -44,13 +44,13 @@ class XClientError(Exception):
 
 class XClient:
     """
-    Async X (Twitter) API v2 client.
+    Async X (X) API v2 client.
 
     All methods are async and use httpx for HTTP requests.
     Errors are raised immediately - no silent failures.
     """
 
-    API_BASE = "https://api.twitter.com/2"
+    API_BASE = "https://api.x.com/2"
 
     def __init__(self, config: XConfig) -> None:
         """Initialize the X client."""
@@ -209,7 +209,7 @@ class XClient:
             protected=user.get("protected", False),
             followers_count=metrics.get("followers_count", 0),
             following_count=metrics.get("following_count", 0),
-            post_count=metrics.get("tweet_count", 0),
+            post_count=metrics.get("post_count", 0),
             listed_count=metrics.get("listed_count", 0),
         )
 
@@ -240,7 +240,7 @@ class XClient:
             protected=user.get("protected", False),
             followers_count=metrics.get("followers_count", 0),
             following_count=metrics.get("following_count", 0),
-            post_count=metrics.get("tweet_count", 0),
+            post_count=metrics.get("post_count", 0),
             listed_count=metrics.get("listed_count", 0),
         )
 
@@ -264,7 +264,7 @@ class XClient:
         author = users.get(post_data.get("author_id", ""), {})
         metrics = post_data.get("public_metrics", {})
         entities = post_data.get("entities", {})
-        refs = post_data.get("referenced_tweets", [])
+        refs = post_data.get("referenced_posts", [])
         attachments = post_data.get("attachments", {})
 
         # Parse media
@@ -331,7 +331,7 @@ class XClient:
             name=author.get("name", ""),
             metrics=PostMetrics(
                 like_count=metrics.get("like_count", 0),
-                repost_count=metrics.get("retweet_count", 0),
+                repost_count=metrics.get("repost_count", 0),
                 reply_count=metrics.get("reply_count", 0),
                 quote_count=metrics.get("quote_count", 0),
                 impression_count=metrics.get("impression_count", 0),
@@ -346,9 +346,9 @@ class XClient:
             place=place,
             in_reply_to_id=next((r["id"] for r in refs if r.get("type") == "replied_to"), None),
             quoted_id=next((r["id"] for r in refs if r.get("type") == "quoted"), None),
-            reposted_id=next((r["id"] for r in refs if r.get("type") == "retweeted"), None),
+            reposted_id=next((r["id"] for r in refs if r.get("type") == "reposted"), None),
             is_reply=any(r.get("type") == "replied_to" for r in refs),
-            is_repost=any(r.get("type") == "retweeted" for r in refs),
+            is_repost=any(r.get("type") == "reposted" for r in refs),
             is_quote=any(r.get("type") == "quoted" for r in refs),
             is_sensitive=post_data.get("possibly_sensitive", False),
         )
@@ -357,13 +357,13 @@ class XClient:
         """Get a single post by ID."""
         data = await self._request(
             "GET",
-            f"/tweets/{post_id}",
+            f"/posts/{post_id}",
             params={
-                "tweet.fields": "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments,geo,lang,possibly_sensitive",
+                "post.fields": "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments,geo,lang,possibly_sensitive",
                 "user.fields": "id,name,username,profile_image_url",
                 "media.fields": "url,preview_image_url,type,variants,alt_text",
                 "poll.fields": "id,options,duration_minutes,end_datetime,voting_status",
-                "expansions": "author_id,attachments.media_keys,attachments.poll_ids,referenced_tweets.id,geo.place_id",
+                "expansions": "author_id,attachments.media_keys,attachments.poll_ids,referenced_posts.id,geo.place_id",
             },
         )
 
@@ -384,10 +384,10 @@ class XClient:
         body: dict = {"text": text}
 
         if reply_to:
-            body["reply"] = {"in_reply_to_tweet_id": reply_to}
+            body["reply"] = {"in_reply_to_post_id": reply_to}
 
         if quote_post_id:
-            body["quote_tweet_id"] = quote_post_id
+            body["quote_post_id"] = quote_post_id
 
         if poll:
             body["poll"] = {
@@ -395,7 +395,7 @@ class XClient:
                 "duration_minutes": poll.duration_minutes,
             }
 
-        data = await self._request("POST", "/tweets", json=body)
+        data = await self._request("POST", "/posts", json=body)
         result = data["data"]
 
         return PostCreateResult(
@@ -408,7 +408,7 @@ class XClient:
         if self._config.dry_run:
             return True
 
-        data = await self._request("DELETE", f"/tweets/{post_id}")
+        data = await self._request("DELETE", f"/posts/{post_id}")
         return data["data"]["deleted"]
 
     async def like_post(self, post_id: str) -> bool:
@@ -417,7 +417,7 @@ class XClient:
             return True
 
         me = await self.me()
-        data = await self._request("POST", f"/users/{me.id}/likes", json={"tweet_id": post_id})
+        data = await self._request("POST", f"/users/{me.id}/likes", json={"post_id": post_id})
         return data["data"]["liked"]
 
     async def unlike_post(self, post_id: str) -> bool:
@@ -435,8 +435,8 @@ class XClient:
             return True
 
         me = await self.me()
-        data = await self._request("POST", f"/users/{me.id}/retweets", json={"tweet_id": post_id})
-        return data["data"]["retweeted"]
+        data = await self._request("POST", f"/users/{me.id}/reposts", json={"post_id": post_id})
+        return data["data"]["reposted"]
 
     async def unrepost(self, post_id: str) -> bool:
         """Undo a repost."""
@@ -444,8 +444,8 @@ class XClient:
             return True
 
         me = await self.me()
-        data = await self._request("DELETE", f"/users/{me.id}/retweets/{post_id}")
-        return not data["data"]["retweeted"]
+        data = await self._request("DELETE", f"/users/{me.id}/reposts/{post_id}")
+        return not data["data"]["reposted"]
 
     # =========================================================================
     # Timeline Methods
@@ -459,10 +459,10 @@ class XClient:
         """Get the home timeline for the authenticated user."""
         params: dict = {
             "max_results": min(max_results, 100),
-            "tweet.fields": "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments",
+            "post.fields": "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments",
             "user.fields": "id,name,username,profile_image_url",
             "media.fields": "url,preview_image_url,type",
-            "expansions": "author_id,attachments.media_keys,referenced_tweets.id",
+            "expansions": "author_id,attachments.media_keys,referenced_posts.id",
         }
 
         if pagination_token:
@@ -491,24 +491,24 @@ class XClient:
         """Get posts from a specific user."""
         params: dict = {
             "max_results": min(max_results, 100),
-            "tweet.fields": "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments",
+            "post.fields": "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments",
             "user.fields": "id,name,username,profile_image_url",
             "media.fields": "url,preview_image_url,type",
-            "expansions": "author_id,attachments.media_keys,referenced_tweets.id",
+            "expansions": "author_id,attachments.media_keys,referenced_posts.id",
         }
 
         excludes = []
         if exclude_replies:
             excludes.append("replies")
         if exclude_reposts:
-            excludes.append("retweets")
+            excludes.append("reposts")
         if excludes:
             params["exclude"] = ",".join(excludes)
 
         if pagination_token:
             params["pagination_token"] = pagination_token
 
-        data = await self._request("GET", f"/users/{user_id}/tweets", params=params)
+        data = await self._request("GET", f"/users/{user_id}/posts", params=params)
 
         posts = [self._parse_post(t, data.get("includes")) for t in data.get("data", [])]
 
@@ -537,16 +537,16 @@ class XClient:
                 "query": query,
                 "max_results": min(max_results - count, 100),
                 "sort_order": sort_order,
-                "tweet.fields": "id,text,created_at,author_id,conversation_id,referenced_tweets,entities,public_metrics,attachments",
+                "post.fields": "id,text,created_at,author_id,conversation_id,referenced_posts,entities,public_metrics,attachments",
                 "user.fields": "id,name,username,profile_image_url",
                 "media.fields": "url,preview_image_url,type",
-                "expansions": "author_id,attachments.media_keys,referenced_tweets.id",
+                "expansions": "author_id,attachments.media_keys,referenced_posts.id",
             }
 
             if pagination_token:
                 params["next_token"] = pagination_token
 
-            data = await self._request("GET", "/tweets/search/recent", params=params)
+            data = await self._request("GET", "/posts/search/recent", params=params)
 
             for post_data in data.get("data", []):
                 yield self._parse_post(post_data, data.get("includes"))
@@ -592,7 +592,7 @@ class XClient:
                     verified=u.get("verified", False),
                     followers_count=metrics.get("followers_count", 0),
                     following_count=metrics.get("following_count", 0),
-                    post_count=metrics.get("tweet_count", 0),
+                    post_count=metrics.get("post_count", 0),
                 )
             )
 
@@ -631,7 +631,7 @@ class XClient:
                     verified=u.get("verified", False),
                     followers_count=metrics.get("followers_count", 0),
                     following_count=metrics.get("following_count", 0),
-                    post_count=metrics.get("tweet_count", 0),
+                    post_count=metrics.get("post_count", 0),
                 )
             )
 

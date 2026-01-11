@@ -144,14 +144,14 @@ describe("Utils Comprehensive Tests", () => {
       const text =
         'Here is some JSON:\n```json\n{"key": "value", "number": 42}\n```';
       const result = parseJSONObjectFromText(text);
-      // Note: normalizeJsonString converts numbers to strings
+      // normalizeJsonString converts numbers to strings
       expect(result).toEqual({ key: "value", number: "42" });
     });
 
     it("should parse direct JSON without code blocks", () => {
       const text = '{"name": "Alice", "age": 30}';
       const result = parseJSONObjectFromText(text);
-      // Note: normalizeJsonString converts numbers to strings
+      // normalizeJsonString converts numbers to strings
       expect(result).toEqual({ name: "Alice", age: "30" });
     });
 
@@ -176,7 +176,7 @@ describe("Utils Comprehensive Tests", () => {
 
   describe("normalizeJsonString", () => {
     it("should remove extra spaces after { and before }", () => {
-      // Note: normalizeJsonString doesn't handle unquoted keys
+      // normalizeJsonString doesn't handle unquoted keys
       expect(normalizeJsonString('{  "key": "value"  }')).toBe(
         '{"key": "value"}',
       );
@@ -661,7 +661,7 @@ describe("Utils Comprehensive Tests", () => {
           createdAt: Date.now() - 3600000,
           content: {
             text: "First message",
-            source: "twitter",
+            source: "x",
           } as Content,
         },
         {
@@ -671,7 +671,7 @@ describe("Utils Comprehensive Tests", () => {
           createdAt: Date.now(),
           content: {
             text: "Second message",
-            source: "twitter",
+            source: "x",
           } as Content,
         },
       ];
@@ -683,7 +683,7 @@ describe("Utils Comprehensive Tests", () => {
       expect(result).toContain("Name: Alice");
       expect(result).toContain("First message");
       expect(result).toContain("Second message");
-      expect(result).toContain("Source: twitter");
+      expect(result).toContain("Source: x");
     });
 
     it("should include reply information", () => {

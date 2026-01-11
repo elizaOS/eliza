@@ -239,7 +239,7 @@ describe("Action parameters (optional)", () => {
         content: {
           text: "move",
           actions: ["MOVE"],
-          // Note: <params> omitted entirely
+          // <params> omitted entirely
         },
         type: MemoryType.MESSAGE,
         createdAt: Date.now(),

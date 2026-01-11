@@ -100,7 +100,7 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
 
     console.log("\n--- Testing Scenario A: Polymarket creates its own migrator ---");
     const polymarketMigrator = new RuntimeMigrator(db);
-    // Note: initialize() is idempotent, so it should detect existing migration tables
+    // initialize() is idempotent - detects existing migration tables
     await polymarketMigrator.initialize();
 
     await polymarketMigrator.migrate("polymarket", testPolymarketSchema, {

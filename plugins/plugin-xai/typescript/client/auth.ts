@@ -1,4 +1,4 @@
-import { TwitterApi } from "twitter-api-v2";
+import { XApi } from "x-api-v2";
 import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
 import type { Profile } from "./profile";
 
@@ -6,7 +6,7 @@ import type { Profile } from "./profile";
  * X API v2 authentication using developer credentials
  */
 export class XAuth {
-  private v2Client: TwitterApi | null = null;
+  private v2Client: XApi | null = null;
   private authenticated = false;
   private profile?: Profile;
   private loggedOut = false;
@@ -32,7 +32,7 @@ export class XAuth {
     if (this.isOAuth1Provider(this.provider)) {
       if (this.v2Client) return;
       const creds = await this.provider.getOAuth1Credentials();
-      this.v2Client = new TwitterApi({
+      this.v2Client = new XApi({
         appKey: creds.appKey,
         appSecret: creds.appSecret,
         accessToken: creds.accessToken,
@@ -46,7 +46,7 @@ export class XAuth {
     const token = await this.provider.getAccessToken();
     if (!this.v2Client || this.lastAccessToken !== token) {
       // OAuth2 user context token: Bearer token
-      this.v2Client = new TwitterApi(token);
+      this.v2Client = new XApi(token);
       this.authenticated = true;
       this.lastAccessToken = token;
     }
@@ -55,7 +55,7 @@ export class XAuth {
   /**
    * Get the X API v2 client
    */
-  async getV2Client(): Promise<TwitterApi> {
+  async getV2Client(): Promise<XApi> {
     await this.ensureClientInitialized();
     if (!this.v2Client) {
       throw new Error("X API client not initialized");

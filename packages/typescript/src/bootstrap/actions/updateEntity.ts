@@ -1,5 +1,5 @@
 // I want to create an action that lets anyone create or update a component for an entity.
-// Components represent different sources of data about an entity (telegram, twitter, etc)
+// Components represent different sources of data about an entity (telegram, x, etc)
 // Sources can be registered by plugins or inferred from room context and available components
 // The action should first check if the component exists for the entity, and if not, create it.
 // We want to use an LLM (runtime.useModel) to generate the component data.
@@ -54,7 +54,7 @@ const componentTemplate = `# Task: Extract Source and Update Component Data
 
 # Instructions:
 1. Analyze the conversation to identify:
-   - The source/platform being referenced (e.g. telegram, twitter, discord)
+   - The source/platform being referenced (e.g. telegram, x, discord)
    - Any specific component data being shared
 
 2. Generate updated component data that:
@@ -85,9 +85,9 @@ Example outputs:
   </data>
 </response>
 
-2. For "update my twitter handle to @tech_master":
+2. For "update my x handle to @tech_master":
 <response>
-  <source>twitter</source>
+  <source>x</source>
   <data>
     <username>tech_master</username>
   </data>
@@ -99,7 +99,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
  * Action for updating contact details for a user entity.
  *
  * @name UPDATE_ENTITY
- * @description Add or edit contact details for a user entity (like twitter, discord, email address, etc.)
+ * @description Add or edit contact details for a user entity (like x, discord, email address, etc.)
  *
  * @param {IAgentRuntime} _runtime - The runtime environment.
  * @param {Memory} _message - The message data.
@@ -477,13 +477,13 @@ export const updateEntityAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text: "Set Jimmy's twitter username to @jimmy_codes",
+          text: "Set Jimmy's x username to @jimmy_codes",
         },
       },
       {
         name: "{{name2}}",
         content: {
-          text: "I've updated Jimmy's twitter information.",
+          text: "I've updated Jimmy's x information.",
           actions: ["UPDATE_ENTITY"],
         },
       },

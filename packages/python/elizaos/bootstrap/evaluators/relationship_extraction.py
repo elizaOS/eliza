@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 # Platform identity patterns
-TWITTER_PATTERN = re.compile(r"@[\w]+")
+X_HANDLE_PATTERN = re.compile(r"@[\w]+")
 EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
 PHONE_PATTERN = re.compile(r"\+?[\d\s\-()]{10,}")
 DISCORD_PATTERN = re.compile(r"[\w]+#\d{4}")
@@ -28,13 +28,13 @@ def extract_platform_identities(text: str) -> list[dict[str, str | bool | float]
     """Extract platform identities from text."""
     identities: list[dict[str, str | bool | float]] = []
 
-    # Twitter handles
-    for match in TWITTER_PATTERN.finditer(text):
+    # X handles
+    for match in X_HANDLE_PATTERN.finditer(text):
         handle = match.group()
         if handle.lower() not in ("@here", "@everyone", "@channel"):
             identities.append(
                 {
-                    "platform": "twitter",
+                    "platform": "x",
                     "handle": handle,
                     "verified": False,
                     "confidence": 0.7,
@@ -137,7 +137,7 @@ async def evaluate_relationship_extraction(
     Extract relationship information from the conversation.
 
     This evaluator passively analyzes messages to:
-    - Extract platform identities (Twitter, Discord, email)
+    - Extract platform identities (X, Discord, email)
     - Detect relationship indicators
     - Update entity metadata
     """

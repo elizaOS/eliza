@@ -51,7 +51,7 @@ export const sendCastAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() || "";
-    const keywords = ["post", "cast", "share", "announce", "farcaster", "tweet"];
+    const keywords = ["post", "cast", "share", "announce", "farcaster", "post"];
 
     const hasKeyword = keywords.some((keyword) => text.includes(keyword));
 

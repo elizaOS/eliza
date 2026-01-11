@@ -46,9 +46,8 @@ export function transformPluginSchema(pluginName: string, schema: DrizzleSchema)
 
       // If the table doesn't have a schema or is in public, warn about it
       if (!config.schema || config.schema === "public") {
-        // Note: We can't easily transform existing tables to use a different schema
-        // as it would require reconstructing all column definitions, constraints, etc.
-        // For now, we'll log a warning and return the original
+        // Can't easily transform existing tables to different schema
+        // (would require reconstructing all column definitions, constraints, etc.)
         logger.warn(
           {
             src: "plugin:sql",

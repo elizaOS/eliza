@@ -93,7 +93,7 @@ declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
     DISCORD: "discord";
     TELEGRAM: "telegram";
-    TWITTER: "twitter";
+    X: "x";
     SEARCH: "search";
     IMAGE_GENERATION: "image_generation";
     TRANSCRIPTION: "transcription";
@@ -588,7 +588,7 @@ async stop() {
 
 | Service             | Purpose                   | Example Plugin                       |
 | ------------------- | ------------------------- | ------------------------------------ |
-| Platform Services   | Connect to chat platforms | Discord, Telegram, Twitter           |
+| Platform Services   | Connect to chat platforms | Discord, Telegram, X           |
 | Model Services      | AI model providers        | OpenAI, Anthropic, Ollama            |
 | Data Services       | External data sources     | Web search, SQL, APIs                |
 | Media Services      | Process media             | TTS, image generation, transcription |

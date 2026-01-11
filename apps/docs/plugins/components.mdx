@@ -170,7 +170,7 @@ handler: async (runtime, message, state, options, callback) => {
 
 // Using services
 handler: async (runtime, message) => {
-  const service = runtime.getService<TwitterService>("twitter");
+  const service = runtime.getService<XService>("x");
   return service.post(message.content);
 };
 
