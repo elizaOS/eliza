@@ -1,24 +1,61 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import * as undici from "undici";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { openrouterPlugin } from "../src/index";
 
-// Create a minimal mock runtime
-const createMockRuntime = (env: Record<string, string>) => {
-  return {
-    getSetting: (key: string) => env[key],
-    emitEvent: () => {},
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(settings: Record<string, string> = {}): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
+
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
     character: {
+      name: "Test Agent",
+      bio: ["A test agent"],
       system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {
+        secrets: settings,
+      },
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
     },
-  } as unknown as {
-    getSetting: (key: string) => string | undefined;
-    emitEvent: () => void;
-    character: { system: string };
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
   };
-};
+
+  return { runtime, cleanup };
+}
 
 describe("OpenRouter Plugin Configuration", () => {
+  let cleanup: () => Promise<void>;
+
   beforeEach(() => {
     // Stub undici fetch to prevent network calls
     vi.spyOn(undici, "fetch").mockImplementation(() =>
@@ -31,10 +68,14 @@ describe("OpenRouter Plugin Configuration", () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // Clear all mocks
     vi.restoreAllMocks();
+    if (cleanup) {
+      await cleanup();
+    }
   });
+
   test("should warn when API key is missing", async () => {
     // Save original env value
     const originalApiKey = process.env.OPENROUTER_API_KEY;
@@ -42,15 +83,16 @@ describe("OpenRouter Plugin Configuration", () => {
     // Clear API key from environment
     delete process.env.OPENROUTER_API_KEY;
 
-    // Create a mock runtime with no API key
-    const mockRuntime = createMockRuntime({});
+    // Create a real runtime with no API key
+    const result = await createTestRuntime({});
+    cleanup = result.cleanup;
 
     // Spy on logger warnings
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     // Initialize plugin
     if (openrouterPlugin.init) {
-      await openrouterPlugin.init({}, mockRuntime);
+      await openrouterPlugin.init({}, result.runtime);
     }
 
     // Wait a tick for async initialization
@@ -75,14 +117,15 @@ describe("OpenRouter Plugin Configuration", () => {
       return;
     }
 
-    // Create a mock runtime with API key
-    const mockRuntime = createMockRuntime({
+    // Create a real runtime with API key
+    const result = await createTestRuntime({
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     });
+    cleanup = result.cleanup;
 
     // Initialize plugin
     if (openrouterPlugin.init) {
-      await openrouterPlugin.init({}, mockRuntime);
+      await openrouterPlugin.init({}, result.runtime);
     }
 
     // Wait a tick for async validation
@@ -100,16 +143,17 @@ describe("OpenRouter Plugin Configuration", () => {
     );
   });
 
-  test("should use custom image model when configured", () => {
-    // Create a mock runtime with custom model settings
+  test("should use custom image model when configured", async () => {
+    // Create a real runtime with custom model settings
     const customImageModel = "anthropic/claude-3-opus-vision";
-    const mockRuntime = createMockRuntime({
+    const result = await createTestRuntime({
       OPENROUTER_IMAGE_MODEL: customImageModel,
       OPENROUTER_API_KEY: "test-api-key",
     });
+    cleanup = result.cleanup;
 
     // Create spy to access private function
-    const getSpy = vi.spyOn(mockRuntime, "getSetting");
+    const getSpy = vi.spyOn(result.runtime, "getSetting");
 
     // Check if our model is used
     if (openrouterPlugin.models?.IMAGE_DESCRIPTION) {
@@ -117,7 +161,7 @@ describe("OpenRouter Plugin Configuration", () => {
 
       // Just initiating the handler should call getSetting with OPENROUTER_IMAGE_MODEL
       try {
-        imageDescHandler(mockRuntime, "https://example.com/image.jpg");
+        imageDescHandler(result.runtime, "https://example.com/image.jpg");
       } catch (_err) {
         // We expect an error since we're not making a real API call
         // We just want to verify getSetting was called
@@ -136,20 +180,21 @@ describe("OpenRouter Plugin Configuration", () => {
     expect(typeof models.TEXT_EMBEDDING).toBe("function");
   });
 
-  test("should use default embedding model", () => {
-    const mockRuntime = createMockRuntime({
+  test("should use default embedding model", async () => {
+    const result = await createTestRuntime({
       OPENROUTER_API_KEY: "test-api-key",
     });
+    cleanup = result.cleanup;
 
     // Create spy to access getSetting calls
-    const getSpy = vi.spyOn(mockRuntime, "getSetting");
+    const getSpy = vi.spyOn(result.runtime, "getSetting");
 
     if (openrouterPlugin.models?.TEXT_EMBEDDING) {
       const embeddingHandler = openrouterPlugin.models.TEXT_EMBEDDING;
 
       // Call with null to trigger the test embedding path (no API call)
       try {
-        embeddingHandler(mockRuntime, null);
+        embeddingHandler(result.runtime, null);
       } catch (_err) {
         // Ignore errors, we just want to verify config access
       }

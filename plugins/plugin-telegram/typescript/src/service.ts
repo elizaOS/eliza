@@ -729,9 +729,8 @@ export class TelegramService extends Service {
    * Gets chat title and channel type based on Telegram chat type.
    * Maps Telegram-specific chat types to standardized system types.
    *
-   * @param {any} chat - The Telegram chat object
-   * @returns {Object} Object containing chatTitle and channelType
-   * @private
+   * @param chat - The Telegram chat object
+   * @returns Object containing chatTitle and channelType
    */
   private getChatTypeInfo(chat: Chat): {
     chatTitle: string;
@@ -769,9 +768,8 @@ export class TelegramService extends Service {
    * Builds standardized entity representations from Telegram chat data.
    * Transforms Telegram-specific user data into system-standard Entity objects.
    *
-   * @param {any} chat - The Telegram chat object
-   * @returns {Promise<Entity[]>} Array of standardized Entity objects
-   * @private
+   * @param chat - The Telegram chat object
+   * @returns Array of standardized Entity objects
    */
   private async buildStandardizedEntities(chat: Chat): Promise<Entity[]> {
     const entities: Entity[] = [];

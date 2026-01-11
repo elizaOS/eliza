@@ -1,4 +1,4 @@
-import type { Agent, Entity, Relationship, UUID } from "@elizaos/core";
+import type { Agent, Entity, Metadata, Relationship, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
 // Test IDs for relationship tests
@@ -73,7 +73,7 @@ export const createTestRelationship = (
   sourceId: UUID,
   targetId: UUID,
   tags: string[] = [],
-  metadata: Record<string, any> = {}
+  metadata: Metadata = {}
 ): Relationship => {
   return {
     id: uuidv4() as UUID,

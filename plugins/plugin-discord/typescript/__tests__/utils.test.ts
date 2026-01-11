@@ -1,13 +1,13 @@
 import type { IAgentRuntime, IDatabaseAdapter, UUID } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
+// Import the real runtime
+import { AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_MESSAGE_LENGTH, needsSmartSplit, smartSplitMessage, splitMessage } from "../src/utils";
 
-// Import the real runtime
-import { AgentRuntime } from "@elizaos/core";
-
 // We need a database adapter for tests - use PGLite
-let sqlPlugin: { createDatabaseAdapter: (config: { dataDir: string }, agentId: UUID) => IDatabaseAdapter };
+let sqlPlugin: {
+  createDatabaseAdapter: (config: { dataDir: string }, agentId: UUID) => IDatabaseAdapter;
+};
 
 beforeAll(async () => {
   try {
@@ -25,7 +25,10 @@ function createUUID(): UUID {
 /**
  * Helper to create a real test runtime with PGLite database
  */
-async function createTestRuntime(): Promise<{ runtime: IAgentRuntime; cleanup: () => Promise<void> }> {
+async function createTestRuntime(): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
   if (!sqlPlugin) {
     throw new Error("@elizaos/plugin-sql is required for these tests");
   }
@@ -67,7 +70,7 @@ describe("Discord Utils - Smart Split Message", () => {
       runtime = result.runtime;
       cleanup = result.cleanup;
     }
-    
+
     vi.spyOn(logger, "debug").mockImplementation(() => {});
     vi.spyOn(logger, "info").mockImplementation(() => {});
     vi.spyOn(logger, "warn").mockImplementation(() => {});

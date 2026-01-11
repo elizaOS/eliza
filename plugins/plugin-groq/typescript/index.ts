@@ -161,15 +161,24 @@ export const groqPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
-      interface LocalTranscriptionParams {
-        audioData: Buffer;
+      // Type guard for audio data params
+      function hasAudioData(obj: unknown): obj is { audioData: Buffer } {
+        return (
+          typeof obj === "object" &&
+          obj !== null &&
+          "audioData" in obj &&
+          Buffer.isBuffer((obj as { audioData: unknown }).audioData)
+        );
       }
+
       const audioBuffer =
         typeof params === "string"
           ? Buffer.from(params, "base64")
           : Buffer.isBuffer(params)
             ? params
-            : (params as unknown as LocalTranscriptionParams).audioData;
+            : hasAudioData(params)
+              ? params.audioData
+              : Buffer.alloc(0);
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
       formData.append(

@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { getSimplifiedMarketsAction } from "../actions/getSimplifiedMarkets";
 import type { SimplifiedMarket, SimplifiedMarketsResponse } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
@@ -12,55 +12,59 @@ vi.mock("../utils/llmHelpers");
 const mockInitializeClobClient = initializeClobClient as Mock;
 const mockCallLLMWithTimeout = callLLMWithTimeout as Mock;
 
-// Mock runtime object
-const mockRuntime: Partial<IAgentRuntime> = {
-  getSetting: vi.fn((key: string) => {
-    if (key === "CLOB_API_URL") return "https://clob.polymarket.com";
-    if (key === "CLOB_API_KEY") return "test-api-key";
-    return undefined;
-  }),
-};
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(
+  settings: Record<string, string | undefined> = {}
+): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
 
-// Mock memory object
-const mockMemory: Memory = {
-  id: "test-memory-id",
-  userId: "test-user-id",
-  agentId: "test-agent-id",
-  roomId: "test-room-id",
-  content: {
-    text: "Get simplified market data",
-  },
-  embedding: new Float32Array(),
-  createdAt: Date.now(),
-};
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
 
-// Mock state object
-const mockState: State = {
-  userId: "test-user-id",
-  agentId: "test-agent-id",
-  roomId: "test-room-id",
-  agentName: "test-agent",
-  bio: "test bio",
-  lore: "test lore",
-  messageDirections: "test directions",
-  postDirections: "test post directions",
-  actors: "test actors",
-  actorsData: [],
-  goals: "test goals",
-  goalsData: [],
-  recentMessages: "test recent messages",
-  recentMessagesData: [],
-  actionNames: "test action names",
-  actions: "test actions",
-  actionExamples: "test action examples",
-  providers: "test providers",
-  responseData: "test response data",
-  recentInteractionsData: [],
-  recentInteractions: "test recent interactions",
-  formattedConversation: "test formatted conversation",
-  knowledge: "test knowledge",
-  knowledgeData: [],
-};
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent for Polymarket"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {
+        secrets: {
+          CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+          CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
+        },
+      },
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
 
 // Sample simplified market data for testing
 const mockSimplifiedMarket: SimplifiedMarket = {
@@ -97,35 +101,85 @@ const mockSimplifiedMarketsResponse: SimplifiedMarketsResponse = {
 };
 
 describe("getSimplifiedMarketsAction", () => {
-  beforeEach(() => {
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testMemory: Memory;
+  let testState: State;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+
+    testMemory = {
+      id: "test-memory-id" as `${string}-${string}-${string}-${string}-${string}`,
+      userId: "test-user-id" as `${string}-${string}-${string}-${string}-${string}`,
+      agentId: runtime.agentId,
+      roomId: "test-room-id" as `${string}-${string}-${string}-${string}-${string}`,
+      content: {
+        text: "Get simplified market data",
+      },
+      embedding: new Float32Array(),
+      createdAt: Date.now(),
+    } as Memory;
+
+    testState = {
+      userId: "test-user-id",
+      agentId: runtime.agentId,
+      roomId: "test-room-id",
+      agentName: "test-agent",
+      bio: "test bio",
+      lore: "test lore",
+      messageDirections: "test directions",
+      postDirections: "test post directions",
+      actors: "test actors",
+      actorsData: [],
+      goals: "test goals",
+      goalsData: [],
+      recentMessages: "test recent messages",
+      recentMessagesData: [],
+      actionNames: "test action names",
+      actions: "test actions",
+      actionExamples: "test action examples",
+      providers: "test providers",
+      responseData: "test response data",
+      recentInteractionsData: [],
+      recentInteractions: "test recent interactions",
+      formattedConversation: "test formatted conversation",
+      knowledge: "test knowledge",
+      knowledgeData: [],
+    } as State;
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   describe("validation", () => {
     it("should validate successfully when CLOB_API_URL is provided", async () => {
-      const result = await getSimplifiedMarketsAction.validate(
-        mockRuntime as IAgentRuntime,
-        mockMemory,
-        mockState
-      );
+      const result = await getSimplifiedMarketsAction.validate(runtime, testMemory, testState);
 
       expect(result).toBe(true);
-      expect(mockRuntime.getSetting).toHaveBeenCalledWith("CLOB_API_URL");
     });
 
     it("should fail validation when CLOB_API_URL is not provided", async () => {
-      const invalidRuntime = {
-        ...mockRuntime,
-        getSetting: vi.fn(() => undefined),
-      };
+      const resultWithoutUrl = await createTestRuntime({
+        CLOB_API_URL: undefined,
+      });
+
+      vi.spyOn(resultWithoutUrl.runtime, "getSetting").mockReturnValue(undefined);
 
       const result = await getSimplifiedMarketsAction.validate(
-        invalidRuntime as IAgentRuntime,
-        mockMemory,
-        mockState
+        resultWithoutUrl.runtime,
+        testMemory,
+        testState
       );
 
       expect(result).toBe(false);
+
+      await resultWithoutUrl.cleanup();
     });
   });
 
@@ -142,13 +196,9 @@ describe("getSimplifiedMarketsAction", () => {
         error: "No pagination cursor requested. Fetching first page.",
       });
 
-      const result = await getSimplifiedMarketsAction.handler(
-        mockRuntime as IAgentRuntime,
-        mockMemory,
-        mockState
-      );
+      const result = await getSimplifiedMarketsAction.handler(runtime, testMemory, testState);
 
-      expect(mockInitializeClobClient).toHaveBeenCalledWith(mockRuntime);
+      expect(mockInitializeClobClient).toHaveBeenCalledWith(runtime);
       expect(mockClient.getSimplifiedMarkets).toHaveBeenCalledWith("");
       expect(result.text).toContain("Retrieved 1 Simplified Polymarket markets");
       expect(result.text).toContain("Condition ID");
@@ -180,11 +230,7 @@ describe("getSimplifiedMarketsAction", () => {
         error: "No pagination cursor requested. Fetching first page.",
       });
 
-      const result = await getSimplifiedMarketsAction.handler(
-        mockRuntime as IAgentRuntime,
-        mockMemory,
-        mockState
-      );
+      const result = await getSimplifiedMarketsAction.handler(runtime, testMemory, testState);
 
       expect(result.text).toContain("Retrieved 0 Simplified Polymarket markets");
       expect(result.text).toContain("No valid simplified markets found");
@@ -202,7 +248,7 @@ describe("getSimplifiedMarketsAction", () => {
         next_cursor: "test-cursor-123",
       });
 
-      await getSimplifiedMarketsAction.handler(mockRuntime as IAgentRuntime, mockMemory, mockState);
+      await getSimplifiedMarketsAction.handler(runtime, testMemory, testState);
 
       expect(mockClient.getSimplifiedMarkets).toHaveBeenCalledWith("test-cursor-123");
     });
@@ -212,7 +258,7 @@ describe("getSimplifiedMarketsAction", () => {
       mockInitializeClobClient.mockRejectedValue(testError);
 
       await expect(
-        getSimplifiedMarketsAction.handler(mockRuntime as IAgentRuntime, mockMemory, mockState)
+        getSimplifiedMarketsAction.handler(runtime, testMemory, testState)
       ).rejects.toThrow("Failed to initialize CLOB client");
     });
 
@@ -228,7 +274,7 @@ describe("getSimplifiedMarketsAction", () => {
       });
 
       await expect(
-        getSimplifiedMarketsAction.handler(mockRuntime as IAgentRuntime, mockMemory, mockState)
+        getSimplifiedMarketsAction.handler(runtime, testMemory, testState)
       ).rejects.toThrow("CLOB API error: 500 Internal Server Error");
     });
 
@@ -242,19 +288,22 @@ describe("getSimplifiedMarketsAction", () => {
       });
 
       await expect(
-        getSimplifiedMarketsAction.handler(mockRuntime as IAgentRuntime, mockMemory, mockState)
+        getSimplifiedMarketsAction.handler(runtime, testMemory, testState)
       ).rejects.toThrow("Invalid response from CLOB API");
     });
 
     it("should handle missing CLOB_API_URL", async () => {
-      const invalidRuntime = {
-        ...mockRuntime,
-        getSetting: vi.fn(() => undefined),
-      };
+      const resultWithoutUrl = await createTestRuntime({
+        CLOB_API_URL: undefined,
+      });
+
+      vi.spyOn(resultWithoutUrl.runtime, "getSetting").mockReturnValue(undefined);
 
       await expect(
-        getSimplifiedMarketsAction.handler(invalidRuntime as IAgentRuntime, mockMemory, mockState)
+        getSimplifiedMarketsAction.handler(resultWithoutUrl.runtime, testMemory, testState)
       ).rejects.toThrow("CLOB_API_URL is required in configuration.");
+
+      await resultWithoutUrl.cleanup();
     });
 
     it("should handle callback if provided", async () => {
@@ -268,9 +317,9 @@ describe("getSimplifiedMarketsAction", () => {
       });
 
       await getSimplifiedMarketsAction.handler(
-        mockRuntime as IAgentRuntime,
-        mockMemory,
-        mockState,
+        runtime,
+        testMemory,
+        testState,
         {},
         mockCallback
       );
@@ -292,11 +341,7 @@ describe("getSimplifiedMarketsAction", () => {
       // Mock LLM timeout
       mockCallLLMWithTimeout.mockRejectedValue(new Error("LLM timeout"));
 
-      const result = await getSimplifiedMarketsAction.handler(
-        mockRuntime as IAgentRuntime,
-        mockMemory,
-        mockState
-      );
+      const result = await getSimplifiedMarketsAction.handler(runtime, testMemory, testState);
 
       // Should still work with default parameters
       expect(mockClient.getSimplifiedMarkets).toHaveBeenCalledWith("");

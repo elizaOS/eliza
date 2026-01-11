@@ -185,6 +185,7 @@ export async function getRuntime(): Promise<AgentRuntime> {
 // App.tsx
 import { useState, useEffect, useRef } from "react";
 import { getRuntime } from "./eliza-runtime";
+import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 
 interface Message {
@@ -196,7 +197,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [runtime, setRuntime] = useState<any>(null);
+  const [runtime, setRuntime] = useState<AgentRuntime | null>(null);
 
   useEffect(() => {
     getRuntime().then(setRuntime);

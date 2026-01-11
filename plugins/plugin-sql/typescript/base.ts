@@ -172,9 +172,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * Normalizes entity names to ensure they are always a proper array of strings.
    * Handles strings, Sets, Maps, iterables, and non-iterable values.
    * All array elements are converted to strings to prevent database errors.
-   * @param {any} names - The names value to normalize
-   * @returns {string[]} A proper array of string names
-   * @private
+   * @param names - The names value to normalize
+   * @returns A proper array of string names
    */
   private normalizeEntityNames(names: unknown): string[] {
     // Handle null/undefined

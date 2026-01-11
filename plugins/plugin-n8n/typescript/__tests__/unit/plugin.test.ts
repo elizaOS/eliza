@@ -100,12 +100,12 @@ describe("n8nPlugin", () => {
 });
 
 describe("createPluginAction", () => {
-  let runtime: IAgentRuntime;
+  let _runtime: IAgentRuntime;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
     const result = await createTestRuntime();
-    runtime = result.runtime;
+    _runtime = result.runtime;
     cleanup = result.cleanup;
     vi.clearAllMocks();
   });
@@ -131,12 +131,12 @@ describe("createPluginAction", () => {
 });
 
 describe("checkPluginCreationStatusAction", () => {
-  let runtime: IAgentRuntime;
+  let _runtime: IAgentRuntime;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
     const result = await createTestRuntime();
-    runtime = result.runtime;
+    _runtime = result.runtime;
     cleanup = result.cleanup;
     vi.clearAllMocks();
   });
@@ -152,12 +152,12 @@ describe("checkPluginCreationStatusAction", () => {
 });
 
 describe("cancelPluginCreationAction", () => {
-  let runtime: IAgentRuntime;
+  let _runtime: IAgentRuntime;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
     const result = await createTestRuntime();
-    runtime = result.runtime;
+    _runtime = result.runtime;
     cleanup = result.cleanup;
     vi.clearAllMocks();
   });

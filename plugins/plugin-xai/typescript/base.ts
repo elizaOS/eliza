@@ -222,18 +222,6 @@ export class ClientBase {
     throw new Error("Not implemented in base class, please call from subclass");
   }
 
-  /**
-   * Parse the raw tweet data into a standardized Tweet object.
-   */
-  /**
-   * Parses a raw tweet object into a structured Tweet object.
-   *
-   * @param {any} raw - The raw tweet object to parse.
-   * @param {number} [depth=0] - The current depth of parsing nested quotes/retweets.
-   * @param {number} [maxDepth=3] - The maximum depth allowed for parsing nested quotes/retweets.
-   * @returns {Tweet} The parsed Tweet object.
-   */
-
   state: Record<string, unknown>;
 
   constructor(runtime: IAgentRuntime, state: Record<string, unknown>) {

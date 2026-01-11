@@ -1353,8 +1353,8 @@ export class VoiceManager extends EventEmitter {
   /**
    * Asynchronously handles the join channel command in an interaction.
    *
-   * @param {any} interaction - The interaction object representing the user's input.
-   * @returns {Promise<void>} - A promise that resolves once the join channel command is handled.
+   * @param interaction - The interaction object representing the user's input.
+   * @returns A promise that resolves once the join channel command is handled.
    */
   async handleJoinChannelCommand(interaction: {
     deferReply: () => Promise<void>;
@@ -1419,8 +1419,8 @@ export class VoiceManager extends EventEmitter {
   /**
    * Handles the leave channel command by destroying the voice connection if it exists.
    *
-   * @param {any} interaction The interaction object representing the command invocation.
-   * @returns {void}
+   * @param interaction - The interaction object representing the command invocation.
+   * @returns A promise that resolves once the leave channel command is handled.
    */
   async handleLeaveChannelCommand(interaction: {
     guildId: string | null;

@@ -38,6 +38,7 @@ async function generateObjectWithModel(
       temperature: temperature,
     };
 
+    // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
     const { object, usage } = await generateObject(generateParams);
 
     if (usage) {

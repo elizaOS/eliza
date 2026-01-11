@@ -1,35 +1,58 @@
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   analyzeInputAction,
   executeFinalAction,
   processAnalysisAction,
 } from "../actions/chain-example";
 
-// Simplified TestSuite implementation for local use
-class TestSuite {
-  constructor(
-    private name: string,
-    private config: { beforeEach?: () => Record<string, unknown> }
-  ) {}
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(characterOverrides: Record<string, unknown> = {}): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
 
-  addTest(test: { name: string; fn: (context?: Record<string, unknown>) => Promise<void> | void }) {
-    it(test.name, async () => {
-      const context = this.config.beforeEach ? this.config.beforeEach() : {};
-      await test.fn(context);
-    });
-  }
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
 
-  run() {
-    // No-op, vitest handles execution
-  }
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: characterOverrides.name || "Test Agent",
+      bio: ["A test agent"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {},
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+      ...characterOverrides,
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
 }
-
-const createUnitTest = (config: {
-  name: string;
-  fn: (context?: Record<string, unknown>) => Promise<void> | void;
-}) => config;
 
 interface ActionOptions {
   abortSignal?: AbortSignal;
@@ -42,211 +65,165 @@ interface ActionOptions {
 }
 
 describe("Action Chaining", () => {
-  const actionChainingSuite = new TestSuite("Action Chaining", {
-    beforeEach: () => {
-      const mockRuntime = createMockRuntime({
-        character: { name: "Test Agent" },
-      });
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testMessage: Memory;
+  let testState: { values: Record<string, unknown>; data: Record<string, unknown>; text: string };
 
-      const mockMessage = {
-        id: "test-message",
-        entityId: "test-entity",
-        roomId: "test-room",
-        content: {
-          text: "This is a good test message",
-        },
-      };
+  beforeEach(async () => {
+    const result = await createTestRuntime({
+      name: "Test Agent",
+    });
+    runtime = result.runtime;
+    cleanup = result.cleanup;
 
-      const mockState = {
-        values: {},
-        data: {},
-        text: "",
-      };
+    testMessage = {
+      id: "test-message" as `${string}-${string}-${string}-${string}-${string}`,
+      entityId: "test-entity" as `${string}-${string}-${string}-${string}-${string}`,
+      roomId: "test-room" as `${string}-${string}-${string}-${string}-${string}`,
+      agentId: runtime.agentId,
+      content: {
+        text: "This is a good test message",
+      },
+      createdAt: Date.now(),
+    } as Memory;
 
-      return { mockRuntime, mockMessage, mockState };
-    },
+    testState = {
+      values: {},
+      data: {},
+      text: "",
+    };
   });
 
-  actionChainingSuite.addTest(
-    createUnitTest({
-      name: "should pass data between actions",
-      fn: async ({ mockRuntime, mockMessage, mockState }) => {
-        // Execute first action
-        const result1 = await analyzeInputAction.handler(
-          mockRuntime as IAgentRuntime,
-          mockMessage as Memory,
-          mockState,
-          {}
-        );
+  afterEach(async () => {
+    await cleanup();
+  });
 
-        expect(result1).toBeDefined();
-        expect((result1 as ActionResult)?.data).toBeDefined();
-        expect((result1 as ActionResult)?.data.sentiment).toBe("positive");
-        expect((result1 as ActionResult)?.text).toContain("positive sentiment");
+  it("should pass data between actions", async () => {
+    // Execute first action
+    const result1 = await analyzeInputAction.handler(runtime, testMessage, testState, {});
 
-        // Execute second action with previous results
-        const options2 = {
-          previousResults: [result1 as ActionResult],
-        };
+    expect(result1).toBeDefined();
+    expect((result1 as ActionResult)?.data).toBeDefined();
+    expect((result1 as ActionResult)?.data.sentiment).toBe("positive");
+    expect((result1 as ActionResult)?.text).toContain("positive sentiment");
 
-        const result2 = await processAnalysisAction.handler(
-          mockRuntime as IAgentRuntime,
-          mockMessage as Memory,
-          mockState,
-          options2
-        );
+    // Execute second action with previous results
+    const options2 = {
+      previousResults: [result1 as ActionResult],
+    };
 
-        expect((result2 as ActionResult)?.data).toBeDefined();
-        expect((result2 as ActionResult)?.data?.analysis).toEqual((result1 as ActionResult)?.data);
-        expect((result2 as ActionResult)?.data?.decisions.suggestedResponse).toBe(
-          "Thank you for the positive feedback!"
-        );
+    const result2 = await processAnalysisAction.handler(runtime, testMessage, testState, options2);
 
-        // Execute final action with all previous results
-        const options3 = {
-          previousResults: [result1 as ActionResult, result2 as ActionResult],
-          chainContext: {
-            chainId: "test-chain",
-            totalActions: 3,
-            currentIndex: 2,
+    expect((result2 as ActionResult)?.data).toBeDefined();
+    expect((result2 as ActionResult)?.data?.analysis).toEqual((result1 as ActionResult)?.data);
+    expect((result2 as ActionResult)?.data?.decisions.suggestedResponse).toBe(
+      "Thank you for the positive feedback!"
+    );
+
+    // Execute final action with all previous results
+    const options3 = {
+      previousResults: [result1 as ActionResult, result2 as ActionResult],
+      chainContext: {
+        chainId: "test-chain",
+        totalActions: 3,
+        currentIndex: 2,
+      },
+    };
+
+    const mockCallback = vi.fn();
+    const result3 = await executeFinalAction.handler(
+      runtime,
+      testMessage,
+      testState,
+      options3,
+      mockCallback
+    );
+
+    expect(result3).toBeDefined();
+    expect((result3 as ActionResult)?.data).toBeDefined();
+    expect(mockCallback).toHaveBeenCalledWith({
+      text: "Thank you for the positive feedback!",
+      source: "chain_example",
+    });
+  });
+
+  it("should handle abort signals", async () => {
+    const abortController = new AbortController();
+
+    // Abort immediately
+    abortController.abort();
+
+    const options: ActionOptions = {
+      abortSignal: abortController.signal,
+    };
+
+    await expect(
+      analyzeInputAction.handler(runtime, testMessage, testState, options)
+    ).rejects.toThrow("Analysis aborted");
+  });
+
+  it("should stop chain when continueChain is false", async () => {
+    // Create a message that will trigger needsMoreInfo
+    const shortMessage = {
+      id: "test-message" as `${string}-${string}-${string}-${string}-${string}`,
+      entityId: "test-entity" as `${string}-${string}-${string}-${string}-${string}`,
+      roomId: "test-room" as `${string}-${string}-${string}-${string}-${string}`,
+      agentId: runtime.agentId,
+      content: { text: "Hi" },
+      createdAt: Date.now(),
+    } as Memory;
+
+    // First action
+    const result1 = await analyzeInputAction.handler(runtime, shortMessage, testState, {});
+
+    // Second action should return continueChain: false
+    const options2: ActionOptions = {
+      previousResults: [result1 as ActionResult],
+    };
+
+    const result2 = await processAnalysisAction.handler(runtime, shortMessage, testState, options2);
+
+    expect(result2?.continueChain).toBe(false);
+    expect(result2?.data?.decisions.needsMoreInfo).toBe(true);
+  });
+
+  it("should handle missing previous results", async () => {
+    await expect(
+      processAnalysisAction.handler(
+        runtime,
+        testMessage,
+        testState,
+        {} // No previous results
+      )
+    ).rejects.toThrow("No analysis data available");
+  });
+
+  it("should execute cleanup functions", async () => {
+    const _cleanupMock = vi.fn();
+    console.log = vi.fn(); // Mock console.log
+
+    const result = await executeFinalAction.handler(runtime, testMessage, testState, {
+      previousResults: [
+        { success: true, data: { wordCount: 10 } },
+        {
+          success: true,
+          data: {
+            decisions: {
+              requiresAction: true,
+              suggestedResponse: "Test response",
+            },
           },
-        };
+          metadata: { action: "PROCESS_ANALYSIS" },
+        },
+      ],
+    });
 
-        const mockCallback = vi.fn();
-        const result3 = await executeFinalAction.handler(
-          mockRuntime as IAgentRuntime,
-          mockMessage as Memory,
-          mockState,
-          options3,
-          mockCallback
-        );
+    expect(result?.cleanup).toBeDefined();
 
-        expect(result3).toBeDefined();
-        expect((result3 as ActionResult)?.data).toBeDefined();
-        expect(mockCallback).toHaveBeenCalledWith({
-          text: "Thank you for the positive feedback!",
-          source: "chain_example",
-        });
-      },
-    })
-  );
+    // Execute cleanup
+    await result?.cleanup?.();
 
-  actionChainingSuite.addTest(
-    createUnitTest({
-      name: "should handle abort signals",
-      fn: async ({ mockRuntime, mockMessage, mockState }) => {
-        const abortController = new AbortController();
-
-        // Abort immediately
-        abortController.abort();
-
-        const options: ActionOptions = {
-          abortSignal: abortController.signal,
-        };
-
-        await expect(
-          analyzeInputAction.handler(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState,
-            options
-          )
-        ).rejects.toThrow("Analysis aborted");
-      },
-    })
-  );
-
-  actionChainingSuite.addTest(
-    createUnitTest({
-      name: "should stop chain when continueChain is false",
-      fn: async ({ mockRuntime, mockState }) => {
-        // Create a message that will trigger needsMoreInfo
-        const shortMessage = {
-          id: "test-message",
-          entityId: "test-entity",
-          roomId: "test-room",
-          content: { text: "Hi" },
-        };
-
-        // First action
-        const result1 = await analyzeInputAction.handler(
-          mockRuntime as IAgentRuntime,
-          shortMessage as Memory,
-          mockState,
-          {}
-        );
-
-        // Second action should return continueChain: false
-        const options2: ActionOptions = {
-          previousResults: [result1 as ActionResult],
-        };
-
-        const result2 = await processAnalysisAction.handler(
-          mockRuntime as IAgentRuntime,
-          shortMessage as Memory,
-          mockState,
-          options2
-        );
-
-        expect(result2?.continueChain).toBe(false);
-        expect(result2?.data?.decisions.needsMoreInfo).toBe(true);
-      },
-    })
-  );
-
-  actionChainingSuite.addTest(
-    createUnitTest({
-      name: "should handle missing previous results",
-      fn: async ({ mockRuntime, mockMessage, mockState }) => {
-        await expect(
-          processAnalysisAction.handler(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState,
-            {} // No previous results
-          )
-        ).rejects.toThrow("No analysis data available");
-      },
-    })
-  );
-
-  actionChainingSuite.addTest(
-    createUnitTest({
-      name: "should execute cleanup functions",
-      fn: async ({ mockRuntime, mockMessage, mockState }) => {
-        const _cleanupMock = vi.fn();
-        console.log = vi.fn(); // Mock console.log
-
-        const result = await executeFinalAction.handler(
-          mockRuntime as IAgentRuntime,
-          mockMessage as Memory,
-          mockState,
-          {
-            previousResults: [
-              { success: true, data: { wordCount: 10 } },
-              {
-                success: true,
-                data: {
-                  decisions: {
-                    requiresAction: true,
-                    suggestedResponse: "Test response",
-                  },
-                },
-                metadata: { action: "PROCESS_ANALYSIS" },
-              },
-            ],
-          }
-        );
-
-        expect(result?.cleanup).toBeDefined();
-
-        // Execute cleanup
-        await result?.cleanup?.();
-
-        expect(console.log).toHaveBeenCalledWith("[ChainExample] Cleaning up resources...");
-      },
-    })
-  );
-
-  actionChainingSuite.run();
+    expect(console.log).toHaveBeenCalledWith("[ChainExample] Cleaning up resources...");
+  });
 });

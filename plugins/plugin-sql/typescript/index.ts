@@ -99,14 +99,8 @@ export function createDatabaseAdapter(
 }
 
 /**
- * SQL plugin for database adapter using Drizzle ORM with dynamic plugin schema migrations
- *
- * @typedef {Object} Plugin
- * @property {string} name - The name of the plugin
- * @property {string} description - The description of the plugin
- * @property {Function} init - The initialization function for the plugin
- * @param {any} _ - Input parameter
- * @param {IAgentRuntime} runtime - The runtime environment for the agent
+ * SQL plugin for database adapter using Drizzle ORM with dynamic plugin schema migrations.
+ * Provides database access through PGLite (local) or PostgreSQL (remote).
  */
 export const plugin: Plugin = {
   name: "@elizaos/plugin-sql",
