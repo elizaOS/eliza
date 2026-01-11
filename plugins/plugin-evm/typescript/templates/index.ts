@@ -20,13 +20,3 @@ import {
   voteTemplate,
 } from "../generated/prompts/typescript/prompts.js";
 
-// Re-export for backwards compatibility
-export {
-  transferTemplate,
-  bridgeTemplate,
-  swapTemplate,
-  proposeTemplate,
-  voteTemplate,
-  queueProposalTemplate,
-  executeProposalTemplate,
-};

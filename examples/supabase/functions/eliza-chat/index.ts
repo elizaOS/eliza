@@ -10,8 +10,6 @@
 
 import { errorResponse, handleChat, handleHealth } from "./lib/runtime.ts";
 
-// Re-export corsHeaders for this file
-export { corsHeaders } from "./lib/types.ts";
 
 /**
  * Main Edge Function handler

@@ -1,3 +1,20 @@
+import type {
+  TTweetv2Expansion,
+  TTweetv2MediaField,
+  TTweetv2PlaceField,
+  TTweetv2PollField,
+  TTweetv2TweetField,
+  TTweetv2UserField,
+} from "twitter-api-v2";
+
+// Type aliases for X naming convention
+type TPostv2Expansion = TTweetv2Expansion;
+type TPostv2MediaField = TTweetv2MediaField;
+type TPostv2PlaceField = TTweetv2PlaceField;
+type TPostv2PollField = TTweetv2PollField;
+type TPostv2PostField = TTweetv2TweetField;
+type TPostv2UserField = TTweetv2UserField;
+
 import type { FetchTransformOptions, RequestApiResult } from "./api-types";
 import { XAuth } from "./auth";
 import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
@@ -317,12 +334,12 @@ export class Client {
     try {
       const timeline = await client.v2.homeTimeline({
         max_results: Math.min(count, 100),
-        "post.fields": [
+        "tweet.fields": [
           "id",
           "text",
           "created_at",
           "author_id",
-          "referenced_posts",
+          "referenced_tweets",
           "entities",
           "public_metrics",
           "attachments",
@@ -330,7 +347,7 @@ export class Client {
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
-        expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+        expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
       });
 
       const posts: Post[] = [];
@@ -373,12 +390,12 @@ export class Client {
     try {
       const response = await client.v2.userTimeline(userId, {
         max_results: Math.min(maxPosts, 100),
-        "post.fields": [
+        "tweet.fields": [
           "id",
           "text",
           "created_at",
           "author_id",
-          "referenced_posts",
+          "referenced_tweets",
           "entities",
           "public_metrics",
           "attachments",
@@ -386,7 +403,7 @@ export class Client {
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
-        expansions: ["author_id", "attachments.media_keys", "referenced_posts.id"],
+        expansions: ["author_id", "attachments.media_keys", "referenced_tweets.id"],
         pagination_token: cursor,
       });
 

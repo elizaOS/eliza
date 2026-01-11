@@ -43,8 +43,6 @@ import { TodoReminderService } from "./services/reminderService";
 
 // Tests import removed for type checking
 
-// Re-export types for consumers
-export * from "./types";
 
 /**
  * The TodoPlugin provides task management functionality with daily recurring and one-off tasks,

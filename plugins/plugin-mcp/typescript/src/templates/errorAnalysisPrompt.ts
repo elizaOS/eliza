@@ -4,5 +4,5 @@
  * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
  */
 import { errorAnalysisTemplate } from "../generated/prompts/typescript/prompts.js";
-// Re-export for backwards compatibility
+
 export const errorAnalysisPrompt = errorAnalysisTemplate;

@@ -24,14 +24,14 @@ type FaceApiEnv = {
 
 function asCanvasEnv(canvas: typeof import("canvas")): FaceApiEnv {
   return {
-    Canvas: canvas.Canvas as typeof HTMLCanvasElement,
-    Image: canvas.Image as typeof HTMLImageElement,
+    Canvas: canvas.Canvas as unknown as typeof HTMLCanvasElement,
+    Image: canvas.Image as unknown as typeof HTMLImageElement,
     ImageData: canvas.ImageData as typeof ImageData,
   };
 }
 
 function asHTMLCanvasElement(canvas: import("canvas").Canvas): HTMLCanvasElement {
-  return canvas as HTMLCanvasElement;
+  return canvas as unknown as HTMLCanvasElement;
 }
 
 async function initializeCanvas() {

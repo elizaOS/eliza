@@ -44,16 +44,12 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::GoogleGenAIClient;
-pub use config::GoogleGenAIConfig;
-pub use error::{GoogleGenAIError, Result};
-pub use models::{Model, ModelSize};
-pub use types::{
-    EmbeddingParams, EmbeddingResponse, ImageDescriptionParams, ImageDescriptionResponse,
-    ObjectGenerationParams, ObjectGenerationResponse, TextGenerationParams,
-    TextGenerationResponse, TokenUsage,
-};
+// Import directly from submodules:
+// - client::GoogleGenAIClient
+// - config::GoogleGenAIConfig
+// - error::{GoogleGenAIError, Result}
+// - models::{Model, ModelSize}
+// - types::{EmbeddingParams, TextGenerationParams, ObjectGenerationParams, etc.}
 
 /// Create a Google GenAI client from environment variables.
 ///

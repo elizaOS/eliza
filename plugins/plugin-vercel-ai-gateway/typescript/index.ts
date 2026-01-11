@@ -36,8 +36,6 @@ import type { ImageDescriptionResult, ImageGenerationResult } from "./types";
 import { getApiKeyOptional, getBaseUrl } from "./utils/config";
 
 export { GatewayClient } from "./providers/client";
-// Re-export types for consumers
-export * from "./types";
 
 // ============================================================================
 // Plugin Definition

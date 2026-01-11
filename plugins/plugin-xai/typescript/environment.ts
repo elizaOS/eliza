@@ -35,7 +35,7 @@ export const xEnvSchema = z.object({
   X_RETRY_LIMIT: z.string().default("5"),
 });
 
-export type XConfig = z.infer<typeof xEnvSchema>;
+export type TwitterConfig = z.infer<typeof xEnvSchema>;
 
 function parseTargetUsers(str: string): string[] {
   if (!str.trim()) return [];
@@ -57,10 +57,10 @@ export function getTargetUsers(targetConfig: string): string[] {
   return parseTargetUsers(targetConfig).filter((u) => u !== "*");
 }
 
-export async function validateXConfig(runtime: IAgentRuntime): Promise<XConfig> {
+export async function validateXConfig(runtime: IAgentRuntime): Promise<TwitterConfig> {
   const mode = (getXSetting(runtime, "X_AUTH_MODE") || "env").toLowerCase();
 
-  const config: XConfig = {
+  const config: TwitterConfig = {
     X_AUTH_MODE: mode as "env" | "oauth" | "bearer",
     X_API_KEY: getXSetting(runtime, "X_API_KEY"),
     X_API_SECRET: getXSetting(runtime, "X_API_SECRET") || getXSetting(runtime, "X_API_SECRET_KEY"),
@@ -147,7 +147,7 @@ export function getRandomInterval(
   return minVal < maxVal ? Math.random() * (maxVal - minVal) + minVal : defMin;
 }
 
-export function loadConfig(): XConfig {
+export function loadConfig(): TwitterConfig {
   const get = (key: string): string => process.env[key] || "";
   return {
     X_AUTH_MODE: (get("X_AUTH_MODE") || "env") as "env" | "oauth" | "bearer",
@@ -176,10 +176,10 @@ export function loadConfig(): XConfig {
   };
 }
 
-export function validateConfig(config: unknown): XConfig {
+export function validateConfig(config: unknown): TwitterConfig {
   return xEnvSchema.parse(config);
 }
 
-export function loadConfigFromFile(): Partial<XConfig> {
+export function loadConfigFromFile(): Partial<TwitterConfig> {
   return {};
 }

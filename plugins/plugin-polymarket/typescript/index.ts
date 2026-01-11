@@ -16,39 +16,6 @@ import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-// Re-export actions
-export {
-  getBestPriceAction,
-  getMarketDetailsAction,
-  getMidpointPriceAction,
-  getOrderBookDepthAction,
-  getOrderBookSummaryAction,
-  getSamplingMarketsAction,
-  getSimplifiedMarketsAction,
-  getSpreadAction,
-  placeOrderAction,
-  retrieveAllMarketsAction,
-} from "./actions";
-
-// Re-export constants
-export * from "./constants";
-// Re-export providers
-export { polymarketProvider } from "./providers";
-// Re-export services
-export { PolymarketService, type PolymarketWalletData } from "./services";
-// Re-export templates
-export * from "./templates";
-// Re-export all types
-export * from "./types";
-
-// Re-export utilities
-export {
-  callLLMWithTimeout,
-  getWalletAddress,
-  initializeClobClient,
-  initializeClobClientWithCreds,
-  isLLMError,
-} from "./utils";
 
 // Import for plugin definition
 import {

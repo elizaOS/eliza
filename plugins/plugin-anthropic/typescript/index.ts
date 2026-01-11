@@ -38,8 +38,6 @@ import { handleObjectLarge, handleObjectSmall, handleTextLarge, handleTextSmall 
 import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
-// Re-export types for consumers
-export * from "./types";
 
 /**
  * Test suite for the Anthropic plugin.

@@ -12,7 +12,7 @@ interface XV2User {
   public_metrics?: {
     followers_count?: number;
     following_count?: number;
-    post_count?: number;
+    tweet_count?: number;
     like_count?: number;
     listed_count?: number;
   };
@@ -20,7 +20,7 @@ interface XV2User {
   verified?: boolean;
   verified_type?: string;
   location?: string;
-  pinned_post_id?: string;
+  pinned_tweet_id?: string;
   created_at?: string;
   entities?: {
     url?: {
@@ -39,14 +39,14 @@ function parseV2UserToProfile(user: XV2User): Profile {
     followersCount: user.public_metrics?.followers_count,
     followingCount: user.public_metrics?.following_count,
     friendsCount: user.public_metrics?.following_count,
-    postsCount: user.public_metrics?.post_count,
+    postsCount: user.public_metrics?.tweet_count,
     isPrivate: user.protected ?? false,
     isVerified: user.verified ?? false,
     likesCount: user.public_metrics?.like_count,
     listedCount: user.public_metrics?.listed_count,
     location: user.location || "",
     name: user.name,
-    pinnedPostIds: user.pinned_post_id ? [user.pinned_post_id] : [],
+    pinnedPostIds: user.pinned_tweet_id ? [user.pinned_tweet_id] : [],
     url: `https://x.com/${user.username}`,
     userId: user.id,
     username: user.username,
@@ -89,7 +89,7 @@ export async function* getFollowing(
           "description",
           "entities",
           "location",
-          "pinned_post_id",
+          "pinned_tweet_id",
           "profile_image_url",
           "protected",
           "public_metrics",
@@ -151,7 +151,7 @@ export async function* getFollowers(
           "description",
           "entities",
           "location",
-          "pinned_post_id",
+          "pinned_tweet_id",
           "profile_image_url",
           "protected",
           "public_metrics",
@@ -212,7 +212,7 @@ export async function fetchProfileFollowing(
         "description",
         "entities",
         "location",
-        "pinned_post_id",
+        "pinned_tweet_id",
         "profile_image_url",
         "protected",
         "public_metrics",
@@ -267,7 +267,7 @@ export async function fetchProfileFollowers(
         "description",
         "entities",
         "location",
-        "pinned_post_id",
+        "pinned_tweet_id",
         "profile_image_url",
         "protected",
         "public_metrics",

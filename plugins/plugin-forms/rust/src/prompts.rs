@@ -9,12 +9,8 @@
 //!
 //! The generated prompts.rs file should be copied to this location during build.
 
-// Re-export the generated prompts (generated module is declared in lib.rs)
-pub use crate::generated::prompts::*;
-
-// Re-export for backwards compatibility  
-pub use FORM_EXTRACTION_TEMPLATE as FORM_EXTRACTION_PROMPT;
-pub use FORM_CREATION_TEMPLATE as FORM_CREATION_PROMPT;
+// Import directly from crate::generated::prompts for generated prompts
+use crate::generated::prompts::{FORM_EXTRACTION_TEMPLATE, FORM_CREATION_TEMPLATE};
 
 /// Field information for prompt building.
 pub struct FieldInfo<'a> {

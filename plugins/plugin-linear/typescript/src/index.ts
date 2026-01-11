@@ -43,5 +43,3 @@ export const linearPlugin: Plugin = {
 };
 
 export { LinearService } from "./services/linear";
-// Re-export types and service for external use
-export * from "./types";

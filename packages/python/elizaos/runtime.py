@@ -436,7 +436,7 @@ class AgentRuntime(IAgentRuntime):
 
         if isinstance(value, bool):
             return value
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return value
         if isinstance(value, str):
             decrypted = decrypt_secret(value, get_salt())
@@ -700,7 +700,7 @@ class AgentRuntime(IAgentRuntime):
 
             if schema_type == "number":
                 if isinstance(extracted_value, bool) or not isinstance(
-                    extracted_value, (int, float)
+                    extracted_value, int | float
                 ):
                     errors.append(
                         f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"

@@ -18,18 +18,6 @@ import { allActions } from "./actions";
 import { allProviders } from "./providers";
 import { GitHubService } from "./service";
 
-// Re-export actions
-export * from "./actions";
-// Re-export config
-export { GitHubPluginConfig, validateGitHubConfig } from "./config";
-// Re-export errors
-export * from "./error";
-// Re-export providers
-export * from "./providers";
-// Re-export service
-export { GITHUB_SERVICE_NAME, GitHubService } from "./service";
-// Re-export all types
-export * from "./types";
 
 /**
  * GitHub Plugin

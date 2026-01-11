@@ -44,14 +44,11 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use config::PlanningConfig;
-pub use error::{PlanningError, Result};
-pub use service::PlanningService;
-pub use types::{
-    ActionPlan, ActionStep, ExecutionModel, ExecutionResult, MessageClassification,
-    PlanExecutionResult, PlanState, PlanningContext, RetryPolicy,
-};
+// Import directly from submodules:
+// - config::PlanningConfig
+// - error::{PlanningError, Result}
+// - service::PlanningService
+// - types::{ActionPlan, ActionStep, ExecutionModel, etc.}
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "planning";

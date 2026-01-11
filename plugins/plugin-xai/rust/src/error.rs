@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-//! Error types for the xAI plugin.
+//! Error types for the xAI plugin (Grok and Twitter API).
 
 use thiserror::Error;
 
@@ -13,9 +13,9 @@ pub enum XAIError {
     #[error("HTTP error: {0}")]
     HttpError(#[from] reqwest::Error),
 
-    /// X API error with status code and message
-    #[error("X API error ({status}): {message}")]
-    XApiError {
+    /// Twitter API error with status code and message
+    #[error("Twitter API error ({status}): {message}")]
+    TwitterApiError {
         /// HTTP status code
         status: u16,
         /// Error message

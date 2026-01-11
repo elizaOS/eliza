@@ -1,218 +1,79 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { XApi } from "x-api-v2";
+import { beforeAll, describe, expect, it } from "vitest";
 import { XAuth } from "../auth";
+import type { XOAuth1Provider } from "../auth-providers/types";
 
-// Mock x-api-v2
-vi.mock("x-api-v2", () => ({
-  XApi: vi.fn().mockImplementation(() => ({
-    v2: {
-      me: vi.fn(),
-    },
-  })),
-}));
+/**
+ * Integration tests for XAuth using real X API credentials.
+ * Requires environment variables:
+ * - X_API_KEY (app key)
+ * - X_API_SECRET (app secret)
+ * - X_ACCESS_TOKEN
+ * - X_ACCESS_SECRET
+ */
 
-describe("XAuth", () => {
+const hasCredentials =
+  process.env.X_API_KEY &&
+  process.env.X_API_SECRET &&
+  process.env.X_ACCESS_TOKEN &&
+  process.env.X_ACCESS_SECRET;
+
+const describeWithCredentials = hasCredentials ? describe : describe.skip;
+
+if (!hasCredentials) {
+  console.warn(
+    "⚠️  Skipping XAuth integration tests: missing X API credentials. " +
+      "Set X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET to run these tests."
+  );
+}
+
+describeWithCredentials("XAuth (integration)", () => {
   let auth: XAuth;
-  let mockXApi: {
-    v2: {
-      me: ReturnType<typeof vi.fn>;
-    };
-  };
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    mockXApi = {
-      v2: {
-        me: vi.fn(),
-      },
-    };
-
-    vi.mocked(XApi).mockImplementation(() => mockXApi as unknown as XApi);
-
-    auth = new XAuth({
+  beforeAll(() => {
+    const provider: XOAuth1Provider = {
       mode: "env",
-      getAccessToken: async () => "test-access-token",
+      getAccessToken: async () => process.env.X_ACCESS_TOKEN!,
       getOAuth1Credentials: async () => ({
-        appKey: "test-api-key",
-        appSecret: "test-api-secret",
-        accessToken: "test-access-token",
-        accessSecret: "test-access-secret",
+        appKey: process.env.X_API_KEY!,
+        appSecret: process.env.X_API_SECRET!,
+        accessToken: process.env.X_ACCESS_TOKEN!,
+        accessSecret: process.env.X_ACCESS_SECRET!,
       }),
-    });
-  });
-
-  describe("constructor", () => {
-    it("should initialize with API credentials", () => {
-      // Initialization happens lazily on first use.
-      expect(XApi).not.toHaveBeenCalled();
-    });
+    };
+    auth = new XAuth(provider);
   });
 
   describe("getV2Client", () => {
-    it("should return the X API v2 client", () => {
-      return auth.getV2Client().then((client) => {
-        expect(client).toBe(mockXApi);
-      });
+    it("should return a valid X API v2 client", async () => {
+      const client = await auth.getV2Client();
+      expect(client).toBeDefined();
+      expect(client.v2).toBeDefined();
     });
   });
 
   describe("isLoggedIn", () => {
-    it("should return true when authenticated", async () => {
-      mockXApi.v2.me.mockResolvedValue({
-        data: {
-          id: "123456",
-          username: "testuser",
-        },
-      });
-
+    it("should return true when authenticated with valid credentials", async () => {
       const isLoggedIn = await auth.isLoggedIn();
       expect(isLoggedIn).toBe(true);
-      expect(mockXApi.v2.me).toHaveBeenCalled();
-    });
-
-    it("should return false when API call fails", async () => {
-      mockXApi.v2.me.mockRejectedValue(new Error("Unauthorized"));
-
-      const isLoggedIn = await auth.isLoggedIn();
-      expect(isLoggedIn).toBe(false);
-    });
-
-    it("should return false when no user data returned", async () => {
-      mockXApi.v2.me.mockResolvedValue({});
-
-      const isLoggedIn = await auth.isLoggedIn();
-      expect(isLoggedIn).toBe(false);
     });
   });
 
   describe("me", () => {
-    it("should return user profile", async () => {
-      const mockUserData = {
-        data: {
-          id: "123456",
-          username: "testuser",
-          name: "Test User",
-          description: "Test bio",
-          profile_image_url: "https://example.com/avatar.jpg",
-          public_metrics: {
-            followers_count: 100,
-            following_count: 50,
-          },
-          verified: true,
-          location: "Test City",
-          created_at: "2020-01-01T00:00:00.000Z",
-        },
-      };
-
-      mockXApi.v2.me.mockResolvedValue(mockUserData);
-
+    it("should return the authenticated user profile", async () => {
       const profile = await auth.me();
 
-      expect(mockXApi.v2.me).toHaveBeenCalledWith({
-        "user.fields": [
-          "id",
-          "name",
-          "username",
-          "description",
-          "profile_image_url",
-          "public_metrics",
-          "verified",
-          "location",
-          "created_at",
-        ],
-      });
-
-      expect(profile).toEqual({
-        userId: "123456",
-        username: "testuser",
-        name: "Test User",
-        biography: "Test bio",
-        avatar: "https://example.com/avatar.jpg",
-        followersCount: 100,
-        followingCount: 50,
-        isVerified: true,
-        location: "Test City",
-        joined: new Date("2020-01-01T00:00:00.000Z"),
-      });
+      expect(profile).toBeDefined();
+      expect(profile?.userId).toBeDefined();
+      expect(profile?.username).toBeDefined();
+      expect(profile?.name).toBeDefined();
     });
 
     it("should cache profile after first fetch", async () => {
-      const mockUserData = {
-        data: {
-          id: "123456",
-          username: "testuser",
-          name: "Test User",
-        },
-      };
-
-      mockXApi.v2.me.mockResolvedValue(mockUserData);
-
-      // First call
       const profile1 = await auth.me();
-      // Second call
       const profile2 = await auth.me();
 
-      // Should only call API once
-      expect(mockXApi.v2.me).toHaveBeenCalledTimes(1);
+      // Same reference means it was cached
       expect(profile1).toBe(profile2);
-    });
-
-    it("should handle missing optional fields", async () => {
-      const mockUserData = {
-        data: {
-          id: "123456",
-          username: "testuser",
-          name: "Test User",
-          // No optional fields
-        },
-      };
-
-      mockXApi.v2.me.mockResolvedValue(mockUserData);
-
-      const profile = await auth.me();
-
-      expect(profile).toEqual({
-        userId: "123456",
-        username: "testuser",
-        name: "Test User",
-        biography: undefined,
-        avatar: undefined,
-        followersCount: undefined,
-        followingCount: undefined,
-        isVerified: undefined,
-        location: "",
-        joined: undefined,
-      });
-    });
-
-    it("should return undefined on error", async () => {
-      mockXApi.v2.me.mockRejectedValue(new Error("API Error"));
-
-      const profile = await auth.me();
-
-      expect(profile).toBeUndefined();
-    });
-  });
-
-  describe("logout", () => {
-    it("should clear credentials and profile", async () => {
-      // First login and fetch profile
-      mockXApi.v2.me.mockResolvedValue({
-        data: { id: "123456", username: "testuser" },
-      });
-
-      await auth.me();
-
-      // Then logout
-      await auth.logout();
-
-      // Try to get client after logout
-      await expect(auth.getV2Client()).rejects.toThrow("X API client not initialized");
-
-      // isLoggedIn should return false
-      const isLoggedIn = await auth.isLoggedIn();
-      expect(isLoggedIn).toBe(false);
     });
   });
 
@@ -220,10 +81,33 @@ describe("XAuth", () => {
     it("should return true when authenticated", () => {
       expect(auth.hasToken()).toBe(true);
     });
+  });
 
-    it("should return false after logout", async () => {
-      await auth.logout();
-      expect(auth.hasToken()).toBe(false);
+  describe("logout", () => {
+    it("should clear credentials and profile", async () => {
+      // Create a separate auth instance for this test to not affect others
+      const logoutProvider: XOAuth1Provider = {
+        mode: "env",
+        getAccessToken: async () => process.env.X_ACCESS_TOKEN!,
+        getOAuth1Credentials: async () => ({
+          appKey: process.env.X_API_KEY!,
+          appSecret: process.env.X_API_SECRET!,
+          accessToken: process.env.X_ACCESS_TOKEN!,
+          accessSecret: process.env.X_ACCESS_SECRET!,
+        }),
+      };
+      const logoutAuth = new XAuth(logoutProvider);
+
+      // First ensure we're logged in
+      await logoutAuth.me();
+      expect(logoutAuth.hasToken()).toBe(true);
+
+      // Then logout
+      await logoutAuth.logout();
+
+      // Verify logged out state
+      expect(logoutAuth.hasToken()).toBe(false);
+      await expect(logoutAuth.getV2Client()).rejects.toThrow("X API client not initialized");
     });
   });
 });

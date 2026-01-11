@@ -23,8 +23,6 @@ import { leaveChannelTemplate } from "../generated/prompts/typescript/prompts.js
 import type { DiscordService } from "../service";
 import type { VoiceManager } from "../voice";
 
-// Re-export for backwards compatibility
-export { leaveChannelTemplate };
 
 /**
  * Get channel information from the user's request

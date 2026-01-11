@@ -9,8 +9,7 @@
 export type {
   ActionResponse,
   IXClient,
-  IXClient,
   MediaData,
   Post,
-  XConfig,
 } from "./types";
+export type { TwitterConfig } from "./environment";

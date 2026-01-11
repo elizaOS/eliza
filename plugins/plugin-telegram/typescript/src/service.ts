@@ -626,12 +626,12 @@ export class TelegramService extends Service {
     }
 
     // Use the new batch processing method for entities
-    if (generalRoom.id && generalRoom.channelId && generalRoom.serverId) {
+    if (generalRoom.id && generalRoom.channelId && generalRoom.messageServerId) {
       await this.batchProcessEntities(
         entities,
         generalRoom.id,
         generalRoom.channelId,
-        generalRoom.serverId,
+        generalRoom.messageServerId,
         generalRoom.type,
         worldId
       );

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-xai"
 version = "1.0.0"
-description = "elizaOS xAI Plugin - Grok models and X (X) API integration"
+description = "elizaOS xAI Plugin - Grok models and X (formerly Twitter) API integration"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -77,7 +77,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "ANN", "S"]
-ignore = ["E501", "ANN101", "ANN102", "S101"]
+ignore = ["E501", "S101"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["elizaos_plugin_xai"]

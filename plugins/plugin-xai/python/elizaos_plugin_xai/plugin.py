@@ -6,7 +6,7 @@ Plugin definition for elizaOS runtime integration.
 
 from __future__ import annotations
 
-from elizaos_plugin_xai.client import XClient, XConfig
+from elizaos_plugin_xai.client import TwitterClient, TwitterConfig
 from elizaos_plugin_xai.grok import GrokClient, GrokConfig
 
 
@@ -16,22 +16,22 @@ class XAIPlugin:
 
     Provides:
     - xAI Grok model client for text generation and embeddings
-    - X (X) API v2 client for social interactions
+    - X (formerly Twitter) API v2 client for social interactions
     """
 
     name = "xai"
-    description = "xAI Grok models and X (X) API integration"
+    description = "xAI Grok models and X (formerly Twitter) API integration"
 
     def __init__(
         self,
         grok_config: GrokConfig | None = None,
-        x_config: XConfig | None = None,
+        x_config: TwitterConfig | None = None,
     ) -> None:
         """Initialize the plugin."""
         self._grok_config = grok_config or GrokConfig.from_env()
-        self._x_config = x_config or XConfig.from_env()
+        self._x_config = x_config or TwitterConfig.from_env()
         self._grok_client: GrokClient | None = None
-        self._x_client: XClient | None = None
+        self._x_client: TwitterClient | None = None
 
     @property
     def grok(self) -> GrokClient | None:
@@ -43,10 +43,10 @@ class XAIPlugin:
         return self._grok_client
 
     @property
-    def x(self) -> XClient:
+    def x(self) -> TwitterClient:
         """Get the X client."""
         if self._x_client is None:
-            self._x_client = XClient(self._x_config)
+            self._x_client = TwitterClient(self._x_config)
         return self._x_client
 
     def has_grok(self) -> bool:
@@ -71,7 +71,7 @@ class XAIPlugin:
 
 def create_plugin(
     grok_config: GrokConfig | None = None,
-    x_config: XConfig | None = None,
+    x_config: TwitterConfig | None = None,
 ) -> XAIPlugin:
     """Create a new XAIPlugin instance."""
     return XAIPlugin(grok_config, x_config)

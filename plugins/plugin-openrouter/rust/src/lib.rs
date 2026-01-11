@@ -38,14 +38,11 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export main types
-pub use client::OpenRouterClient;
-pub use config::OpenRouterConfig;
-pub use error::{OpenRouterError, Result};
-pub use types::{
-    EmbeddingParams, EmbeddingResponse, ObjectGenerationParams, ObjectGenerationResponse,
-    TextGenerationParams, TextGenerationResponse, TokenUsage,
-};
+// Import directly from submodules:
+// - client::OpenRouterClient
+// - config::OpenRouterConfig
+// - error::{OpenRouterError, Result}
+// - types::{EmbeddingParams, ObjectGenerationParams, TextGenerationParams, etc.}
 
 /// Create an OpenRouter client from environment variables.
 ///

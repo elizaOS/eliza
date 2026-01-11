@@ -19,7 +19,6 @@ import {
   cleanupTestRuntime,
   createTestMemory,
   createTestRuntime,
-  createTestState,
 } from "./test-utils";
 
 // Create the bootstrap plugin for testing

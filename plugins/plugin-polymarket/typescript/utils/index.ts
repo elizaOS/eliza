@@ -1,11 +1,8 @@
 /**
  * @elizaos/plugin-polymarket Utilities
- *
- * Re-export all utility functions.
  */
 
 export {
-  type ClobClient,
   getWalletAddress,
   initializeClobClient,
   initializeClobClientWithCreds,

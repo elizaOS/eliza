@@ -130,7 +130,11 @@ export class ConfigurationManager {
       // Screen capture
       screenCaptureInterval: this.getNumberSetting("SCREEN_CAPTURE_INTERVAL", 2000),
       tileSize: this.getNumberSetting("TILE_SIZE", 256),
-      tileProcessingOrder: (this.getSetting("TILE_PROCESSING_ORDER") as string) || "priority",
+      tileProcessingOrder: this.getEnumSetting<"sequential" | "priority" | "random">(
+        "TILE_PROCESSING_ORDER",
+        "priority",
+        ["sequential", "priority", "random"]
+      ),
       maxConcurrentTiles: this.getNumberSetting("MAX_CONCURRENT_TILES", 3),
 
       // OCR
@@ -140,7 +144,11 @@ export class ConfigurationManager {
 
       // Florence-2
       florence2Enabled: this.getBooleanSetting("FLORENCE2_ENABLED", true),
-      florence2Provider: (this.getSetting("FLORENCE2_PROVIDER") as string) || undefined,
+      florence2Provider: this.getEnumSetting<"local" | "azure" | "huggingface" | "replicate">(
+        "FLORENCE2_PROVIDER",
+        undefined,
+        ["local", "azure", "huggingface", "replicate"]
+      ),
       florence2Endpoint: this.getSetting("FLORENCE2_ENDPOINT"),
       florence2ApiKey: this.getSetting("FLORENCE2_API_KEY"),
       florence2Timeout: this.getNumberSetting("FLORENCE2_TIMEOUT", 30000),
@@ -170,14 +178,14 @@ export class ConfigurationManager {
       logger.info("[ConfigurationManager] Configuration loaded successfully");
 
       if (parsed.debugMode) {
-        logger.debug("[ConfigurationManager] Configuration:", parsed);
+        logger.debug("[ConfigurationManager] Configuration:", JSON.stringify(parsed));
       }
 
       return parsed;
     } catch (error) {
       logger.error("[ConfigurationManager] Invalid configuration:", error);
       if (error instanceof z.ZodError) {
-        logger.error("[ConfigurationManager] Validation errors:", error.errors);
+        logger.error("[ConfigurationManager] Validation errors:", JSON.stringify(error.issues));
       }
 
       // Return default configuration on error
@@ -207,6 +215,21 @@ export class ConfigurationManager {
     }
     const parsed = Number(value);
     return Number.isNaN(parsed) ? defaultValue : parsed;
+  }
+
+  private getEnumSetting<T extends string>(
+    key: string,
+    defaultValue: T | undefined,
+    validValues: readonly T[]
+  ): T | undefined {
+    const value = this.getSetting(key);
+    if (value === undefined) {
+      return defaultValue;
+    }
+    if (validValues.includes(value as T)) {
+      return value as T;
+    }
+    return defaultValue;
   }
 
   // Public API

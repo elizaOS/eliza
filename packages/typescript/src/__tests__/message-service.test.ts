@@ -5,11 +5,7 @@ import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-  createUUID,
-} from "./test-utils";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("DefaultMessageService", () => {
   let messageService: IMessageService;

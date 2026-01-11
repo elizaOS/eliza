@@ -10,92 +10,48 @@
 //! These are the single source of truth for cross-language interoperability.
 //! For new code, prefer using types from `generated` for better compatibility.
 
+//! Core types for elizaOS
+//!
+//! Import directly from submodules:
+//! - agent for Agent, Character, etc.
+//! - components for Action, Provider, Evaluator types
+//! - database for database types
+//! - environment for Channel, Entity, Room types
+//! - events for event types
+//! - knowledge for knowledge types
+//! - memory for Memory types
+//! - messaging for messaging types
+//! - model for model types
+//! - plugin for Plugin types
+//! - primitives for UUID, Content, Media types
+//! - service for Service types
+//! - settings for Settings types
+//! - state for State types
+//! - streaming for streaming types
+//! - task for Task types
+//! - tee for TEE types
+//! - testing for test types
+
 // Proto-generated types (single source of truth)
 pub mod generated;
 
-// Legacy types (for backwards compatibility)
-mod agent;
-mod components;
-mod database;
-mod environment;
-mod events;
-mod knowledge;
-mod memory;
-mod messaging;
-mod model;
-mod plugin;
-mod primitives;
-mod service;
-mod service_interfaces;
-mod settings;
-mod state;
-mod streaming;
-mod task;
-mod tee;
-mod testing;
-
-// Re-export main types explicitly to avoid ambiguity
-pub use agent::{
-    Agent, AgentStatus, Bio, Character, CharacterSecrets, CharacterSettings, KnowledgeItem,
-    MessageExample, StyleConfig, TemplateType,
-};
-pub use components::{
-    ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionParameter,
-    ActionParameterSchema, ActionPlan, ActionPlanStep, ActionResult, ActionStepStatus,
-    EvaluationExample, EvaluatorDefinition, EvaluatorHandler, HandlerCallback, HandlerOptions,
-    ProviderDefinition, ProviderHandler, ProviderResult,
-};
-pub use database::{
-    vector_dims, ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,
-    AgentRunSummaryResult, BaseLogBody, EmbeddingLogBody, EmbeddingSearchResult, EvaluatorLogBody,
-    GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions,
-    ModelActionContext, ModelLogBody, PromptLogEntry, RunStatus as DbRunStatus,
-    SearchMemoriesParams,
-};
-pub use environment::{
-    ChannelType, Component, Entity, Participant, Relationship, Role, Room, World, WorldMetadata,
-    WorldOwnership,
-};
-pub use events::{
-    ActionEventPayload, ChannelClearedPayload, EmbeddingGenerationPayload, EmbeddingPriority,
-    EntityEventMetadata, EntityPayload, EvaluatorEventPayload, EventPayload, EventType,
-    InvokePayload, MessagePayload, ModelEventPayload, PlatformPrefix, RunEventPayload,
-    RunStatus as EventRunStatus, TokenUsage, WorldPayload,
-};
-pub use knowledge::{DirectoryItem, KnowledgeChunk, KnowledgeDocument, KnowledgeSource};
-pub use memory::{
-    BaseMetadata, DescriptionMetadata, DocumentMetadata, FragmentMetadata, Memory, MemoryMetadata,
-    MemoryScope, MemoryType, MessageMemory, MessageMetadata,
-};
-pub use messaging::{
-    ControlMessage, ControlMessageType, MessageQueueItem, MessageQueueStatus, SendHandlerInfo,
-    TargetInfo, TargetType,
-};
-pub use model::{
-    model_settings, model_type, DetokenizeTextParams, GenerateTextOptions, GenerateTextParams,
-    GenerateTextResult, ImageDescriptionParams, ImageDescriptionResult, ImageGenerationParams,
-    LLMMode, ModelHandlerInfo, ObjectGenerationParams, ObjectOutputType, ResponseFormat,
-    ResponseFormatType, TextEmbeddingParams, TextStreamChunk, TextToSpeechParams, TokenUsageInfo,
-    TokenizeTextParams, TranscriptionParams,
-};
-pub use plugin::{
-    ComponentTypeDefinition, HttpMethod, ModelHandlerFn, Plugin, PluginDefinition,
-    ProjectAgentDefinition, ProjectDefinition, RouteDefinition,
-};
-pub use primitives::{
-    as_uuid, string_to_uuid, Content, ContentType, Media, MentionContext, MentionType, Metadata,
-    UUIDError, DEFAULT_UUID_STR, UUID,
-};
-pub use service::{service_type, Service, ServiceDefinition, ServiceError, TypedService};
-pub use service_interfaces::*;
-pub use settings::{EnvironmentConfig, RuntimeSettings, SettingValue};
-pub use state::{State, StateData, WorkingMemoryEntry};
-pub use streaming::IStreamExtractor;
-pub use task::{GetTasksParams, Task, TaskStatus, TaskWorkerDefinition};
-pub use tee::{
-    DeriveKeyAttestationData, RemoteAttestationMessage, RemoteAttestationMessageContent,
-    RemoteAttestationQuote, TeeAgent, TeePluginConfig, TeeType, TEEMode,
-};
-pub use testing::{
-    TestCase, TestCaseDefinition, TestError, TestResults, TestSuite, TestSuiteDefinition,
-};
+// Type modules - import directly from these
+pub mod agent;
+pub mod components;
+pub mod database;
+pub mod environment;
+pub mod events;
+pub mod knowledge;
+pub mod memory;
+pub mod messaging;
+pub mod model;
+pub mod plugin;
+pub mod primitives;
+pub mod service;
+pub mod service_interfaces;
+pub mod settings;
+pub mod state;
+pub mod streaming;
+pub mod task;
+pub mod tee;
+pub mod testing;

@@ -31,15 +31,12 @@ pub mod parser;
 pub mod plugin;
 pub mod types;
 
-// Re-export main types
-pub use client::{extract_urls, format_relative_time, RssClient};
-pub use error::{Result, RssError};
-pub use parser::{create_empty_feed, parse_rss_to_json};
-pub use plugin::{create_plugin, get_rss_plugin, RssPlugin};
-pub use types::{
-    FeedFormat, FeedItemMetadata, FeedSubscriptionMetadata, RssChannel, RssConfig,
-    RssEnclosure, RssFeed, RssImage, RssItem,
-};
+// Import directly from submodules:
+// - client::{extract_urls, format_relative_time, RssClient}
+// - error::{Result, RssError}
+// - parser::{create_empty_feed, parse_rss_to_json}
+// - plugin::{create_plugin, get_rss_plugin, RssPlugin}
+// - types::{FeedFormat, RssFeed, RssItem, etc.}
 
 
 
