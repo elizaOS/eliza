@@ -86,11 +86,15 @@ export const VisionConfigSchema = z.object({
 export type VisionConfigInput = z.input<typeof VisionConfigSchema>;
 export type VisionConfigOutput = z.output<typeof VisionConfigSchema>;
 
+interface RuntimeWithSettings {
+  getSetting(key: string): string | undefined;
+}
+
 export class ConfigurationManager {
   private config: VisionConfigOutput;
-  private runtime: any;
+  private runtime: RuntimeWithSettings;
 
-  constructor(runtime: any) {
+  constructor(runtime: RuntimeWithSettings) {
     this.runtime = runtime;
     this.config = this.loadConfiguration();
   }

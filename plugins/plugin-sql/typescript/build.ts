@@ -7,7 +7,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runBuild } from "../../../build-utils";
+import { generateDts, runBuild } from "../../../build-utils";
 
 async function buildAll() {
   // Node build (server): Postgres + PGlite
@@ -36,10 +36,13 @@ async function buildAll() {
       ],
       sourcemap: true,
       minify: false,
-      // d.ts for node build handled by package-wide tsc; keep true for parity
-      generateDts: true,
+      // d.ts for node build handled separately below
+      generateDts: false,
     },
   });
+
+  // Generate node declarations separately using the node-specific tsconfig
+  await generateDts("./tsconfig.build.node.json", false);
 
   if (!nodeOk) return false;
 
@@ -70,7 +73,7 @@ async function buildAll() {
   if (!browserOk) return false;
 
   // Ensure declaration entry points are present for consumers (keep minimal)
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
   const browserDir = join(distDir, "browser");
   const nodeDir = join(distDir, "node");
   if (!existsSync(browserDir)) {

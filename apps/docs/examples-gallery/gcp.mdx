@@ -30,7 +30,7 @@ gcloud functions deploy eliza-chat \
 
 ```typescript
 import { HttpFunction } from "@google-cloud/functions-framework";
-import { AgentRuntime, bootstrapPlugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 
 let runtime: AgentRuntime | null = null;
@@ -39,7 +39,7 @@ export const elizaChat: HttpFunction = async (req, res) => {
   if (!runtime) {
     runtime = new AgentRuntime({
       character: { name: "Eliza", bio: "A helpful AI." },
-      plugins: [bootstrapPlugin, openaiPlugin],
+      plugins: [openaiPlugin],
     });
     await runtime.initialize();
   }

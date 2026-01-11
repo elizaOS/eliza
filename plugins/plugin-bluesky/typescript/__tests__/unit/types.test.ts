@@ -2,7 +2,7 @@
  * Tests for BlueSky types.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { BlueSkyError, CACHE_SIZES, CACHE_TTLS, ERROR_MESSAGES } from "../../types";
 
 describe("BlueSkyError", () => {

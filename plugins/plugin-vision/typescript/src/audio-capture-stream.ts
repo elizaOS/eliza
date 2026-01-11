@@ -26,7 +26,6 @@ export class StreamingAudioCaptureService extends EventEmitter {
   private isCapturing = false;
   private audioBuffer: AudioChunk[] = [];
   private isSpeaking = false;
-  private lastSpeechTime = 0;
   private silenceTimer: NodeJS.Timeout | null = null;
   private transcriptionInProgress = false;
   private currentTranscription = "";
@@ -164,7 +163,6 @@ export class StreamingAudioCaptureService extends EventEmitter {
       if (!this.isSpeaking) {
         // Speech started
         this.isSpeaking = true;
-        this.lastSpeechTime = timestamp;
         logger.debug("[StreamingAudio] Speech detected, starting recording");
         this.emit("speechStart");
 
@@ -178,7 +176,6 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
       // Add to buffer
       this.audioBuffer.push(audioChunk);
-      this.lastSpeechTime = timestamp;
 
       // Reset silence timer
       if (this.silenceTimer) {

@@ -12,7 +12,9 @@ import { MemoryStorage } from "../storage-memory";
 describe("MemoryStorage Implementation", () => {
   it("should initialize storage", async () => {
     const storage = new MemoryStorage();
-    await expect(storage.init()).resolves.not.toThrow();
+    // Just await - if it throws, the test will fail
+    await storage.init();
+    expect(true).toBe(true);
   });
 
   it("should set and get values", async () => {
@@ -60,7 +62,9 @@ describe("MemoryStorage Implementation", () => {
 describe("EphemeralHNSW Vector Index", () => {
   it("should initialize with dimension", async () => {
     const hnsw = new EphemeralHNSW();
-    await expect(hnsw.init(384)).resolves.not.toThrow();
+    // Just await - if it throws, the test will fail
+    await hnsw.init(384);
+    expect(true).toBe(true);
   });
 
   it("should add vectors", async () => {

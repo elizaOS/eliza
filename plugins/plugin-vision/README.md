@@ -311,7 +311,7 @@ plugin-vision/
 ```bash
 # TypeScript - Run E2E tests
 cd plugins/plugin-vision
-bun test
+npx vitest
 
 # TypeScript - Run local E2E tests
 bun run test:e2e:local

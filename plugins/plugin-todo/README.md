@@ -257,7 +257,7 @@ plugin-todo/
 ```bash
 # TypeScript
 cd typescript
-bun test
+npx vitest
 
 # Rust
 cd rust

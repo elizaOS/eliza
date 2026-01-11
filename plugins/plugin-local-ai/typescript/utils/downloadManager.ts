@@ -382,11 +382,14 @@ export class DownloadManager {
 
         for (const attempt of attempts) {
           try {
-            logger.info("Attempting model download:", {
-              description: attempt.description,
-              url: attempt.url,
-              timestamp: new Date().toISOString(),
-            });
+            logger.info(
+              {
+                description: attempt.description,
+                url: attempt.url,
+                timestamp: new Date().toISOString(),
+              },
+              "Attempting model download"
+            );
 
             // The downloadFile method now handles the progress bar display
             await this.downloadFile(attempt.url, modelPath);
@@ -398,11 +401,14 @@ export class DownloadManager {
             break;
           } catch (error) {
             lastError = error;
-            logger.warn("Model download attempt failed:", {
-              description: attempt.description,
-              error: error instanceof Error ? error.message : String(error),
-              timestamp: new Date().toISOString(),
-            });
+            logger.warn(
+              {
+                description: attempt.description,
+                error: error instanceof Error ? error.message : String(error),
+                timestamp: new Date().toISOString(),
+              },
+              "Model download attempt failed"
+            );
           }
         }
 
@@ -419,11 +425,14 @@ export class DownloadManager {
       // Return false to indicate the model already existed
       return false;
     } catch (error) {
-      logger.error("Model download failed:", {
-        error: error instanceof Error ? error.message : String(error),
-        modelPath: modelPath,
-        model: modelSpec.name,
-      });
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          modelPath: modelPath,
+          model: modelSpec.name,
+        },
+        "Model download failed"
+      );
       throw error;
     }
   }

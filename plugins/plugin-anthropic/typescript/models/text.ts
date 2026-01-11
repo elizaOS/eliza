@@ -143,7 +143,6 @@ async function generateTextWithModel(
     topP: resolved.topP,
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
 
   if (usage) {

@@ -2,7 +2,7 @@
  * Tests for BlueSky configuration.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   BLUESKY_DEFAULT_SERVICE_URL,
   BLUESKY_MAX_POST_LENGTH,

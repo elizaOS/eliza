@@ -2,7 +2,7 @@
  * Integration tests for the Anthropic plugin.
  *
  * These tests require a valid ANTHROPIC_API_KEY environment variable.
- * Run with: ANTHROPIC_API_KEY=your-key bun test typescript/__tests__/integration/
+ * Run with: ANTHROPIC_API_KEY=your-key npx vitest run typescript/__tests__/integration/
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -260,6 +260,6 @@ if (shouldSkip) {
   console.log(
     "⚠️ Skipping Anthropic integration tests: ANTHROPIC_API_KEY not set\n" +
       "To run integration tests, set the environment variable:\n" +
-      "ANTHROPIC_API_KEY=your-key bun test typescript/__tests__/integration/"
+      "ANTHROPIC_API_KEY=your-key npx vitest run typescript/__tests__/integration/"
   );
 }

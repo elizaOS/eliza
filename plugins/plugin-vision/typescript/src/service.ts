@@ -27,6 +27,7 @@ import {
   type PersonInfo,
   type SceneDescription,
   type ScreenCapture,
+  type ScreenTile,
   type TileAnalysis,
   type VisionConfig,
   type VisionFrame,
@@ -103,7 +104,7 @@ export class VisionService extends Service {
     this.visionConfig = this.parseConfig(runtime);
 
     // Initialize vision models
-    this.visionModels = new VisionModels(runtime);
+    this.visionModels = new VisionModels();
 
     // Initialize face recognition
     this.faceRecognition = new FaceRecognition();
@@ -600,9 +601,11 @@ export class VisionService extends Service {
 
       // Determine if we should update VLM description
       const timeSinceVlmUpdate = currentTime - this.lastVlmUpdateTime;
+      const vlmUpdateInterval = this.visionConfig.vlmUpdateInterval ?? 10000;
+      const vlmChangeThreshold = this.visionConfig.vlmChangeThreshold ?? 50;
       const shouldUpdateVlm =
-        timeSinceVlmUpdate >= this.visionConfig.vlmUpdateInterval! || // Time threshold
-        changePercentage >= this.visionConfig.vlmChangeThreshold!; // Change threshold
+        timeSinceVlmUpdate >= vlmUpdateInterval || // Time threshold
+        changePercentage >= vlmChangeThreshold; // Change threshold
 
       let description = this.lastTfDescription;
 
@@ -618,9 +621,11 @@ export class VisionService extends Service {
 
       // Determine if we should update TensorFlow detections
       const timeSinceTfUpdate = currentTime - this.lastTfUpdateTime;
+      const tfUpdateInterval = this.visionConfig.tfUpdateInterval ?? 1000;
+      const tfChangeThreshold = this.visionConfig.tfChangeThreshold ?? 10;
       const shouldUpdateTf =
-        timeSinceTfUpdate >= this.visionConfig.tfUpdateInterval! || // Time threshold
-        changePercentage >= this.visionConfig.tfChangeThreshold!; // Change threshold
+        timeSinceTfUpdate >= tfUpdateInterval || // Time threshold
+        changePercentage >= tfChangeThreshold; // Change threshold
 
       let detectedObjects: DetectedObject[] = [];
       let people: PersonInfo[] = [];
@@ -741,7 +746,9 @@ export class VisionService extends Service {
                       age: face.ageGender?.age.toString(),
                       gender: face.ageGender?.gender,
                       emotion: face.expressions
-                        ? this.getDominantExpression(face.expressions)
+                        ? this.getDominantExpression(
+                            face.expressions as unknown as Record<string, number>
+                          )
                         : undefined,
                     },
                   });
@@ -1146,7 +1153,7 @@ export class VisionService extends Service {
     }
   }
 
-  private async analyzeTile(tile: any): Promise<TileAnalysis> {
+  private async analyzeTile(tile: ScreenTile): Promise<TileAnalysis> {
     const analysis: TileAnalysis = {
       timestamp: Date.now(),
     };
@@ -1206,25 +1213,25 @@ export class VisionService extends Service {
 
     // Aggregate OCR from all processed tiles
     const processedTiles = this.lastScreenCapture.tiles.filter((t) => t.analysis?.ocr);
-    if (processedTiles.length > 0) {
-      enhancedScene.screenAnalysis!.fullScreenOCR = processedTiles
+    if (processedTiles.length > 0 && enhancedScene.screenAnalysis) {
+      enhancedScene.screenAnalysis.fullScreenOCR = processedTiles
         .map((t) => t.analysis?.ocr?.fullText)
         .join("\n");
     }
 
     // Generate grid summary
-    if (this.lastScreenCapture.tiles.length > 0) {
+    if (this.lastScreenCapture.tiles.length > 0 && enhancedScene.screenAnalysis) {
       const tilesWithContent = this.lastScreenCapture.tiles.filter((t) => t.analysis);
-      enhancedScene.screenAnalysis!.gridSummary = `Screen divided into ${this.lastScreenCapture.tiles.length} tiles, ${tilesWithContent.length} analyzed`;
+      enhancedScene.screenAnalysis.gridSummary = `Screen divided into ${this.lastScreenCapture.tiles.length} tiles, ${tilesWithContent.length} analyzed`;
     }
 
     // Detect focused application (heuristic based on UI elements)
     if (enhancedScene.screenAnalysis?.activeTile?.florence2?.objects) {
-      const windows = enhancedScene.screenAnalysis?.activeTile.florence2.objects.filter(
+      const windows = enhancedScene.screenAnalysis.activeTile.florence2.objects.filter(
         (obj) => obj.label === "window"
       );
-      if (windows.length > 0) {
-        enhancedScene.screenAnalysis!.focusedApp = "Desktop Application";
+      if (windows.length > 0 && enhancedScene.screenAnalysis) {
+        enhancedScene.screenAnalysis.focusedApp = "Desktop Application";
       }
     }
 
@@ -1339,7 +1346,7 @@ export class VisionService extends Service {
     return intersection / union;
   }
 
-  private getDominantExpression(expressions: any): string {
+  private getDominantExpression(expressions: Record<string, number>): string {
     let maxValue = 0;
     let dominantExpression = "neutral";
 
@@ -1518,8 +1525,9 @@ export class VisionService extends Service {
             // macOS: Use imagesnap
             try {
               await execAsync(`imagesnap -d "${info.name}" "${tempFile}"`);
-            } catch (error: any) {
-              if (error.message.includes("command not found")) {
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              if (errorMessage.includes("command not found")) {
                 throw new Error("imagesnap not installed. Run: brew install imagesnap");
               }
               throw error;
@@ -1530,8 +1538,9 @@ export class VisionService extends Service {
               await execAsync(
                 `fswebcam -d /dev/video${info.id} -r 1280x720 --jpeg 85 "${tempFile}"`
               );
-            } catch (error: any) {
-              if (error.message.includes("command not found")) {
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              if (errorMessage.includes("command not found")) {
                 throw new Error("fswebcam not installed. Run: sudo apt-get install fswebcam");
               }
               throw error;
@@ -1542,8 +1551,9 @@ export class VisionService extends Service {
               await execAsync(
                 `ffmpeg -f dshow -i video="${info.name}" -frames:v 1 -q:v 2 "${tempFile}" -y`
               );
-            } catch (error: any) {
-              if (error.message.includes("not recognized") || error.message.includes("not found")) {
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              if (errorMessage.includes("not recognized") || errorMessage.includes("not found")) {
                 throw new Error("ffmpeg not installed. Download from ffmpeg.org and add to PATH");
               }
               throw error;

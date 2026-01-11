@@ -8,7 +8,7 @@ console.log("   2. Set up test data in test-data/realm-bench/");
 console.log("   3. Have necessary environment variables configured\n");
 
 console.log("📌 For a quick benchmark demo, you can run:");
-console.log("   bun test benchmarks\n");
+console.log("   npx vitest run benchmarks\n");
 
 console.log("📌 For the full benchmark suite:");
 console.log("   1. Import and configure BenchmarkRunner in your code");

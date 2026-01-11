@@ -2,6 +2,7 @@ import {
   type Action,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -85,7 +86,7 @@ export const searchIssuesAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
@@ -110,8 +111,8 @@ export const searchIssuesAction: Action = {
       let filters: LinearSearchFilters = {};
 
       // Check if we have explicit filters in options
-      if (_options?.filters) {
-        filters = _options.filters as LinearSearchFilters;
+      if (_options?.parameters?.filters) {
+        filters = _options.parameters.filters as LinearSearchFilters;
       } else {
         // Use LLM to extract search filters
         const prompt = searchTemplate.replace("{{userMessage}}", content);
@@ -241,7 +242,7 @@ export const searchIssuesAction: Action = {
         }
       }
 
-      filters.limit = (_options?.limit as number) || filters.limit || 10;
+      filters.limit = (_options?.parameters?.limit as number) || filters.limit || 10;
 
       const issues = await linearService.searchIssues(filters);
 

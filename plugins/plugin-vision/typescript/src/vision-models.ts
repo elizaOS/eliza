@@ -1,6 +1,6 @@
 // Vision models for object detection and pose estimation
 
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import * as tf from "@tensorflow/tfjs-node";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 import * as poseDetection from "@tensorflow-models/pose-detection";
@@ -34,30 +34,12 @@ export class VisionModels {
   private objectDetectionModel: cocoSsd.ObjectDetection | null = null;
   private poseDetector: poseDetection.PoseDetector | null = null;
   private initialized = false;
-  private runtime: IAgentRuntime;
-  private config: VisionModelConfig;
-
-  constructor(runtime: IAgentRuntime, config?: VisionModelConfig) {
-    this.runtime = runtime;
-    this.config = config || {
-      florence2: {
-        baseUrl: "http://localhost:8000",
-        apiKey: undefined,
-      },
-      vlm: {
-        model: "gpt-4o",
-        temperature: 0.7,
-        maxTokens: 500,
-      },
-    };
-  }
 
   async initialize(config: VisionModelConfig): Promise<void> {
     if (this.initialized) {
       return;
     }
 
-    this.config = config;
     logger.info("[VisionModels] Initializing vision models...");
 
     try {

@@ -36,14 +36,14 @@ declare module "pg-protocol/dist/messages" {
 
 // React types for React Router
 declare module "react" {
-  export type FC<P = {}> = (props: P) => ReactElement | null;
+  export type FC<P = object> = (props: P) => ReactElement | null;
 
-  export type ComponentType<P = {}> = (props: P) => ReactElement | null;
+  export type ComponentType<P = object> = (props: P) => ReactElement | null;
 
   export interface ReactElement {
-    type: any;
-    props: any;
-    key: any;
+    type: unknown;
+    props: unknown;
+    key: unknown;
   }
 
   export type ReactNode = ReactElement | string | number | boolean | null | undefined;
@@ -51,6 +51,7 @@ declare module "react" {
 
 // Fix React Router types
 declare module "react-router" {
+  // biome-ignore lint/complexity/noBannedTypes: React Router generic defaults require empty object type
   export interface match<Params = {}> {
     params: Params;
     isExact: boolean;
@@ -58,14 +59,14 @@ declare module "react-router" {
     url: string;
   }
 
-  export interface RouteComponentProps<Params = {}> {
+  export interface RouteComponentProps<Params = object> {
     match: match<Params>;
     location: Location;
     history: History;
   }
 
   export interface SwitchProps {
-    children?: any;
+    children?: ReactNode;
     location?: Location;
   }
 
@@ -83,37 +84,41 @@ declare module "react-router" {
     strict?: boolean;
   }
 
-  export interface RouteChildrenProps<Params = {}> {
+  export interface RouteChildrenProps<Params = object> {
     match: match<Params> | null;
     location: Location;
     history: History;
   }
 
-  export const Prompt: any;
-  export const Switch: any;
-  export const Redirect: any;
-  export const Route: any;
-  export const Router: any;
-  export const withRouter: <_P extends RouteComponentProps>(component: any) => any;
+  export const Prompt: React.ComponentType<PromptProps>;
+  export const Switch: React.ComponentType<SwitchProps>;
+  export const Redirect: React.ComponentType<RedirectProps>;
+  export const Route: React.ComponentType<unknown>;
+  export const Router: React.ComponentType<unknown>;
+  export const withRouter: <P extends RouteComponentProps>(
+    component: React.ComponentType<P>
+  ) => React.ComponentType<Omit<P, keyof RouteComponentProps>>;
   export const useHistory: () => History;
   export const useLocation: () => Location;
+  // biome-ignore lint/complexity/noBannedTypes: React Router generic defaults require empty object type
   export const useParams: <Params = {}>() => Params;
+  // biome-ignore lint/complexity/noBannedTypes: React Router generic defaults require empty object type
   export const useRouteMatch: <Params = {}>() => match<Params>;
 
   export interface Location {
     pathname: string;
     search: string;
     hash: string;
-    state?: any;
+    state?: unknown;
   }
 
   export interface History {
     length: number;
     action: string;
     location: Location;
-    push(path: string, state?: any): void;
+    push(path: string, state?: unknown): void;
     push(location: Location): void;
-    replace(path: string, state?: any): void;
+    replace(path: string, state?: unknown): void;
     replace(location: Location): void;
     go(n: number): void;
     goBack(): void;
@@ -122,13 +127,13 @@ declare module "react-router" {
     listen(listener: (location: Location, action: string) => void): () => void;
   }
 
-  export const RouterChildContext: any;
+  export const RouterChildContext: React.Context<unknown>;
 }
 
 // Fix MDX types
 declare module "mdx" {
   export type MDXComponents = {
-    [key: string]: any;
+    [key: string]: React.ComponentType<unknown>;
   };
 }
 

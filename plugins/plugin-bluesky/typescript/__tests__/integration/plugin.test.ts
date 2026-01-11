@@ -2,7 +2,7 @@
  * Integration tests for BlueSky plugin.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import blueSkyPlugin from "../../index";
 
 describe("BlueSky Plugin", () => {

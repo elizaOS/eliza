@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   basicCapabilities,
-  bootstrapPlugin,
   type CapabilityConfig,
   createBootstrapPlugin,
   extendedCapabilities,
 } from "../index";
+
+// Create a bootstrap plugin instance for testing
+const bootstrapPlugin = createBootstrapPlugin();
 
 describe("Capability System", () => {
   describe("createBootstrapPlugin", () => {

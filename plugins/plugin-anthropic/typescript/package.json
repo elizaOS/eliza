@@ -56,9 +56,9 @@
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun run test:unit && bun run test:integration",
-    "test:unit": "bun test __tests__/unit/",
-    "test:integration": "bun test __tests__/integration/",
-    "test:watch": "bun test --watch",
+    "test:unit": "vitest run __tests__/unit/",
+    "test:integration": "vitest run __tests__/integration/",
+    "test:watch": "vitest",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
   },

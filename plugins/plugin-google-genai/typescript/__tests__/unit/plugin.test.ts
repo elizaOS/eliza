@@ -2,7 +2,7 @@
  * Unit tests for the Google GenAI plugin.
  */
 
-import { describe, expect, it, vi } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
 // Mock @elizaos/core
 vi.mock("@elizaos/core", () => ({

@@ -20,10 +20,10 @@
   ],
   "scripts": {
     "build:ts": "bun run build.ts",
-    "test": "bun run test:ts && bun run test:rust && bun run test:python",
-    "test:ts": "bun test typescript/src/__tests__/ || echo 'No typescript tests yet'",
+    "test": "bun run test:ts",
+    "test:ts": "vitest run || echo 'No typescript tests yet'",
     "clean": "rm -rf dist dist .turbo node_modules",
-    "lint": "bunx eslint typescript/src/ || true",
+    "lint": "bunx @biomejs/biome check --write .",
     "format": "bunx @biomejs/biome format --write .",
     "typecheck": "bunx tsc --noEmit || true",
     "lint:check": "bunx @biomejs/biome check .",

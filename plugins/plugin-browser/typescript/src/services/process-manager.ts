@@ -119,7 +119,6 @@ export class BrowserProcessManager {
       if (isBinary) {
         this.process = spawn(binaryPath, [], { env });
       } else if (isTypeScript) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const tsxPath = require.resolve("tsx/cli", { paths: [process.cwd()] });
         this.process = spawn("node", [tsxPath, binaryPath], { env });
       } else {
@@ -169,7 +168,6 @@ export class BrowserProcessManager {
 
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const ws = require("ws");
         const wsConnection = new ws(`ws://localhost:${this.serverPort}`);
 

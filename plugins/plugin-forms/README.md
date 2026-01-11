@@ -368,7 +368,7 @@ Cancels the current form.
 
 ```bash
 # Run all tests (unit + E2E)
-bun test
+npx vitest
 
 # Run only unit tests
 bun run test:unit
@@ -377,7 +377,7 @@ bun run test:unit
 bun run test:e2e
 
 # Run with coverage
-bun test --coverage
+npx vitest --coverage
 ```
 
 ### Test Coverage

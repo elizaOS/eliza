@@ -40,12 +40,12 @@ export const linearActivityProvider: Provider = {
             resource_id: item.resource_id,
             success: item.success,
             error: item.error,
-            details: JSON.stringify(item.details),
+            details: JSON.stringify(item.details) as string,
             timestamp:
               typeof item.timestamp === "string"
                 ? item.timestamp
                 : new Date(item.timestamp).toISOString(),
-          })),
+          })) as Array<Record<string, string | boolean | undefined>>,
         },
       };
     } catch (_error) {

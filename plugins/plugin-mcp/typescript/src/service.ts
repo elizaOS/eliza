@@ -475,7 +475,6 @@ export class McpService extends Service {
           this.initializeToolCompatibility();
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         processedTool.inputSchema = this.applyToolCompatibility(
           tool.inputSchema as JSONSchema7
         ) as typeof tool.inputSchema;

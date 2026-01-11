@@ -129,7 +129,7 @@ run_batch() {
     echo ""
     echo "📦 Running: $batch_name"
 
-    if ! bun test "${tests[@]}" --timeout=120000 --bail=1; then
+    if ! npx vitest run "${tests[@]}" --timeout=120000 --bail=1; then
         echo "❌ $batch_name failed"
         return 1
     fi
@@ -150,7 +150,7 @@ run_sequential() {
 
     for test_file in "${tests[@]}"; do
         echo "   → $(basename "$test_file")"
-        if ! bun test "$test_file" --timeout=120000; then
+        if ! npx vitest run "$test_file" --timeout=120000; then
             echo "❌ $batch_name failed at $test_file"
             return 1
         fi

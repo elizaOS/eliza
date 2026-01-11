@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -62,7 +63,7 @@ export const handleRealtimeUpdatesAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[handleRealtimeUpdatesAction] Handler called!");
 
     let llmResult: LLMRealtimeResult = {};
@@ -156,17 +157,19 @@ export const handleRealtimeUpdatesAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_HANDLE_REALTIME_UPDATES"],
-        data: {
-          action,
-          channel,
-          assetIds,
-          wsUrl: clobWsUrl,
-          timestamp: new Date().toISOString(),
-        },
       };
 
       if (callback) await callback(responseContent);
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          action,
+          channel: channel ?? "",
+          wsUrl: String(clobWsUrl ?? ""),
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       logger.error("[handleRealtimeUpdatesAction] Error handling realtime updates:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred.";

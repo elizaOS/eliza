@@ -329,9 +329,11 @@ pub struct GetTimelineResponse {
 
 // ============================================================================
 // Internal API Types (for Neynar API responses)
+// These types are scaffolding for future Neynar API integration.
 // ============================================================================
 
 /// Neynar publish cast request.
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub(crate) struct PublishCastRequest {
     pub signer_uuid: String,
@@ -341,36 +343,42 @@ pub(crate) struct PublishCastRequest {
 }
 
 /// Neynar publish cast response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct PublishCastResponse {
     pub cast: PublishCastData,
 }
 
 /// Cast data from publish response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct PublishCastData {
     pub hash: String,
 }
 
 /// Neynar get cast response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct GetCastResponse {
     pub cast: serde_json::Value,
 }
 
 /// Neynar bulk users response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct BulkUsersResponse {
     pub users: Vec<serde_json::Value>,
 }
 
 /// Neynar notifications response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct NotificationsResponse {
     pub notifications: Vec<serde_json::Value>,
 }
 
 /// Neynar feed response.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct FeedResponse {
     pub casts: Vec<serde_json::Value>,
@@ -378,6 +386,7 @@ pub(crate) struct FeedResponse {
 }
 
 /// Next cursor for feed pagination.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub(crate) struct FeedNextCursor {
     pub cursor: Option<String>,

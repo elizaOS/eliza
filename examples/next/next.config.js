@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  swcMinify: false,
-  transpilePackages: ["@electric-sql/pglite-react", "@electric-sql/pglite"],
+  transpilePackages: ["@electric-sql/pglite-react"],
   // Exclude PGLite from server-side bundling to preserve file paths for extensions
   serverExternalPackages: ["@electric-sql/pglite"],
   webpack: (config, { isServer }) => {

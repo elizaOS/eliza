@@ -1,7 +1,6 @@
 import * as readline from "node:readline";
 import {
   AgentRuntime,
-  bootstrapPlugin,
   ChannelType,
   type Character,
   createMessageMemory,
@@ -22,7 +21,7 @@ console.log("🚀 Starting Eliza...\n");
 // Create runtime
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
 });
 await runtime.initialize();
 

@@ -34,14 +34,14 @@ elizaos test
 
 ## Testing
 
-elizaOS uses a dual testing approach that combines Bun's native test runner for component tests with a custom E2E test runner for integration testing within a live elizaOS runtime.
+elizaOS uses a dual testing approach that combines Vitest for component tests with a custom E2E test runner for integration testing within a live elizaOS runtime.
 
 ### Test Structure
 
 ```
 src/
   __tests__/              # All tests live inside src
-    *.test.ts            # Component tests (use Bun test runner)
+    *.test.ts            # Component tests (use Vitest runner)
     e2e/                 # E2E tests (use elizaOS test runner)
       *.ts               # E2E test files
       README.md          # E2E testing documentation
@@ -49,17 +49,17 @@ src/
 
 ### Two Types of Tests
 
-#### 1. Component Tests (Bun Test Runner)
+#### 1. Component Tests (Vitest)
 
 - **Purpose**: Test individual functions/classes in isolation
 - **Location**: `src/__tests__/*.test.ts`
-- **Runner**: Bun's built-in test runner
-- **Command**: `bun test`
+- **Runner**: Vitest
+- **Command**: `npx vitest`
 - **Features**: Fast, isolated, uses mocks
 
 ```typescript
 // Example: src/__tests__/plugin.test.ts
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import { starterPlugin } from "../plugin";
 
 describe("Plugin Configuration", () => {
@@ -106,7 +106,7 @@ export const StarterPluginTestSuite: TestSuite = {
 elizaos test
 
 # Run only component tests (fast, for TDD)
-bun test
+npx vitest
 # or
 elizaos test --type component
 
@@ -118,7 +118,7 @@ elizaos test --type e2e
 
 | Aspect          | Component Tests      | E2E Tests               |
 | --------------- | -------------------- | ----------------------- |
-| **Runner**      | Bun test             | elizaOS TestRunner      |
+| **Runner**      | Vitest               | elizaOS TestRunner      |
 | **Environment** | Mocked               | Real runtime            |
 | **Database**    | Mocked               | Real (PGLite)           |
 | **Speed**       | Fast (ms)            | Slower (seconds)        |

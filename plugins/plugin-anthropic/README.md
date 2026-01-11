@@ -202,10 +202,10 @@ plugin-anthropic/
 ```bash
 # TypeScript
 cd typescript
-bun test
+npx vitest
 
 # With integration tests (requires API key)
-ANTHROPIC_API_KEY=your-key bun test
+ANTHROPIC_API_KEY=your-key npx vitest
 
 # Rust
 cd rust

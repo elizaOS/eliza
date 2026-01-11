@@ -1,7 +1,10 @@
 import { EventType, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { bootstrapPlugin } from "../index";
+import { createBootstrapPlugin } from "../index";
 import { createMockRuntime, type MockRuntime } from "./test-utils";
+
+// Create the bootstrap plugin for testing
+const bootstrapPlugin = createBootstrapPlugin();
 
 // Create a mock function for bootstrapPlugin.init since it might not actually exist on the plugin
 // Define mockInit as a vi.fn() once. Its implementation will be set in beforeEach.

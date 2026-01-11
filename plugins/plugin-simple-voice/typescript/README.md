@@ -27,5 +27,5 @@ const wav = service.createWAVBuffer(audio);
 ## Testing
 
 ```bash
-bun test
+npx vitest
 ```

@@ -59,18 +59,19 @@ Create a project with a plugin inside using CLI commands:
     In `my-eliza-project/src/character.ts`, add the local path to Eliza's plugins array:
     
     ```typescript src/character.ts
-    import { bootstrapPlugin } from '@elizaos/core';
-    
     export const character: Character = {
       name: 'Eliza',
       plugins: [
         '@elizaos/plugin-sql',
         '@elizaos/plugin-openai',
-        bootstrapPlugin,
         './plugin-fal-ai'  // [!code ++]
       ],
     };
     ```
+    
+    <Note>
+    The bootstrap plugin is automatically included - you don't need to add it manually.
+    </Note>
   </Step>
 </Steps>
 
@@ -328,7 +329,7 @@ Plugins come default with component and E2E tests. Let's add custom component te
     Update `plugin-fal-ai/src/__tests__/plugin.test.ts`:
     
     ```typescript src/__tests__/plugin.test.ts
-    import { describe, it, expect } from 'bun:test';
+    import { describe, it, expect } from 'vitest';
     import { falaiPlugin, generateVideoAction } from '../index'; // [!code ++]
 
     describe('FAL AI Plugin', () => {

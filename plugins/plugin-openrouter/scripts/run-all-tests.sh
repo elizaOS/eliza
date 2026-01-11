@@ -4,7 +4,7 @@
 set -e
 
 echo "=== Running TypeScript Tests ==="
-bun test
+npx vitest run
 
 echo ""
 echo "=== Running Python Tests ==="

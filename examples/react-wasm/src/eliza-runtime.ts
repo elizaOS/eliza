@@ -13,7 +13,8 @@ import {
   generateElizaResponse,
   getElizaGreeting,
 } from "@elizaos/plugin-eliza-classic";
-import { BrowserStorage, LocalDatabaseAdapter } from "@elizaos/plugin-localdb";
+import { createDatabaseAdapter } from "@elizaos/plugin-localdb";
+import type { IDatabaseAdapter } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
@@ -92,7 +93,7 @@ async function loadWasmModule(): Promise<WasmExports> {
     const wasmBuffer = await wasmResponse.arrayBuffer();
 
     // Create the imports object that the WASM module expects
-    const imports: Record<string, Record<string, unknown>> = {
+    const imports: WebAssembly.Imports = {
       __wbindgen_placeholder__: {},
     };
 
@@ -191,18 +192,6 @@ async function loadWasmModule(): Promise<WasmExports> {
 
     function isLikeNone(x: unknown): x is null | undefined {
       return x === undefined || x === null;
-    }
-
-    function handleError(
-      f: (...args: unknown[]) => unknown,
-      args: unknown[],
-    ): unknown {
-      try {
-        return f.apply(null, args);
-      } catch (e) {
-        const idx = addToExternrefTable(e);
-        (wasm.__wbindgen_exn_store as (idx: number) => void)(idx);
-      }
     }
 
     function debugString(val: unknown): string {
@@ -338,22 +327,32 @@ async function loadWasmModule(): Promise<WasmExports> {
       arg0._wbg_cb_unref();
     };
 
-    placeholder.__wbg_call_3020136f7a2d6e44 = (...args: unknown[]) =>
-      handleError(
-        (
-          arg0: (this: unknown, arg: unknown) => unknown,
-          arg1: unknown,
-          arg2: unknown,
-        ) => {
-          return arg0.call(arg1, arg2);
-        },
-        args,
-      );
+    placeholder.__wbg_call_3020136f7a2d6e44 = (
+      arg0: (this: unknown, arg: unknown) => unknown,
+      arg1: unknown,
+      arg2: unknown,
+    ) => {
+      try {
+        return arg0.call(arg1, arg2);
+      } catch (e) {
+        const idx = addToExternrefTable(e);
+        (wasm.__wbindgen_exn_store as (idx: number) => void)(idx);
+        return undefined;
+      }
+    };
 
-    placeholder.__wbg_call_abb4ff46ce38be40 = (...args: unknown[]) =>
-      handleError((arg0: (this: unknown) => unknown, arg1: unknown) => {
+    placeholder.__wbg_call_abb4ff46ce38be40 = (
+      arg0: (this: unknown) => unknown,
+      arg1: unknown,
+    ) => {
+      try {
         return arg0.call(arg1);
-      }, args);
+      } catch (e) {
+        const idx = addToExternrefTable(e);
+        (wasm.__wbindgen_exn_store as (idx: number) => void)(idx);
+        return undefined;
+      }
+    };
 
     placeholder.__wbg_error_7534b8e9a36f1ab4 = (arg0: number, arg1: number) => {
       console.error(getStringFromWasm(arg0, arg1));
@@ -366,12 +365,19 @@ async function loadWasmModule(): Promise<WasmExports> {
       )(arg0, arg1, 1);
     };
 
-    placeholder.__wbg_getRandomValues_9b655bdd369112f2 = (...args: unknown[]) =>
-      handleError((arg0: number, arg1: number) => {
+    placeholder.__wbg_getRandomValues_9b655bdd369112f2 = (
+      arg0: number,
+      arg1: number,
+    ) => {
+      try {
         globalThis.crypto.getRandomValues(
           getUint8Memory().subarray(arg0, arg0 + arg1),
         );
-      }, args);
+      } catch (e) {
+        const idx = addToExternrefTable(e);
+        (wasm.__wbindgen_exn_store as (idx: number) => void)(idx);
+      }
+    };
 
     placeholder.__wbg_instanceof_Promise_eca6c43a2610558d = (arg0: unknown) =>
       arg0 instanceof Promise;
@@ -760,8 +766,7 @@ let runtimeInstance: WasmAgentRuntime | null = null;
 let initializationPromise: Promise<WasmAgentRuntime> | null = null;
 
 // Storage for conversation persistence
-let storageInstance: BrowserStorage | null = null;
-let dbAdapter: LocalDatabaseAdapter | null = null;
+let dbAdapter: IDatabaseAdapter | null = null;
 
 // Session identifiers
 const userId = uuidv4();
@@ -801,13 +806,12 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
   console.log(`[elizaOS] Rust WASM Core v${wasm.getVersion()}`);
 
   // Initialize LocalDB storage
-  storageInstance = new BrowserStorage("elizaos-wasm");
-  await storageInstance.init();
-
-  const agentId = wasm.stringToUuid(elizaCharacter.name);
-  dbAdapter = new LocalDatabaseAdapter(
-    storageInstance,
-    agentId as `${string}-${string}-${string}-${string}-${string}`,
+  // Note: In browser, createDatabaseAdapter expects { prefix?: string }
+  // TypeScript resolves to node types which expect { dataDir?: string }
+  const agentId = wasm.stringToUuid(elizaCharacter.name) as `${string}-${string}-${string}-${string}-${string}`;
+  dbAdapter = createDatabaseAdapter(
+    { prefix: "elizaos-wasm" } as { dataDir?: string },
+    agentId,
   );
   await dbAdapter.init();
 
@@ -936,9 +940,5 @@ export async function stopRuntime(): Promise<void> {
   if (dbAdapter) {
     await dbAdapter.close();
     dbAdapter = null;
-  }
-  if (storageInstance) {
-    await storageInstance.close();
-    storageInstance = null;
   }
 }

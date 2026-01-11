@@ -123,7 +123,7 @@ impl InMemoryDatabaseAdapter {
         table_name: &str,
         count: Option<usize>,
         offset: Option<usize>,
-        unique: Option<bool>,
+        _unique: Option<bool>,
     ) -> StorageResult<Vec<serde_json::Value>> {
         let entity_id_owned = entity_id.map(|s| s.to_string());
         let agent_id_owned = agent_id.map(|s| s.to_string());

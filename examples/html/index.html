@@ -554,7 +554,6 @@
         // Create runtime with plugins (browser version)
         // - localdbPlugin instead of sqlPlugin (localStorage for browser)
         // - elizaClassicPlugin instead of openaiPlugin (no API keys needed)
-        // Note: bootstrapPlugin not available in browser build, but not needed for basic chat
         runtime = new AgentRuntime({
           character,
           plugins: [localdbPlugin, elizaClassicPlugin],

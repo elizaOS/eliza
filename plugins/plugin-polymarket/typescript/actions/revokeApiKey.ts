@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -72,7 +73,7 @@ export const revokeApiKeyAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[revokeApiKeyAction] Handler called!");
 
     let llmResult: LLMRevokeResult = {};
@@ -123,14 +124,17 @@ export const revokeApiKeyAction: Action = {
       const warningContent: Content = {
         text: `⚠️ **Warning**: You are attempting to revoke the currently active API key (\`${keyId.substring(0, 8)}...\`).\n\nThis will immediately disable your ability to perform authenticated operations.\n\n**Are you sure?** To confirm, say "confirm revoke ${keyId}"`,
         actions: ["REVOKE_API_KEY"],
-        data: {
-          keyId,
-          isActiveKey: true,
-          requiresConfirmation: true,
-        },
       };
       if (callback) await callback(warningContent);
-      return warningContent;
+      return {
+        success: false,
+        text: warningContent.text,
+        data: {
+          keyId,
+          isActiveKey: "true",
+          requiresConfirmation: "true",
+        },
+      };
     }
 
     logger.info(`[revokeApiKeyAction] Revoking API key: ${keyId}`);
@@ -146,29 +150,35 @@ export const revokeApiKeyAction: Action = {
         const successContent: Content = {
           text: `✅ **API Key Revoked Successfully**\n\n• **Key ID**: \`${keyId}\`\n• **Status**: Revoked\n• **Time**: ${new Date().toISOString()}\n\n⚠️ This key can no longer be used for authentication. Any applications or scripts using this key will stop working.`,
           actions: ["REVOKE_API_KEY"],
-          data: {
-            keyId,
-            revoked: true,
-            timestamp: new Date().toISOString(),
-          },
         };
 
         if (callback) await callback(successContent);
-        return successContent;
+        return {
+          success: true,
+          text: successContent.text,
+          data: {
+            keyId,
+            revoked: "true",
+            timestamp: new Date().toISOString(),
+          },
+        };
       } else {
         // Provide guidance on how to revoke via API directly
         const infoContent: Content = {
           text: `ℹ️ **API Key Revocation**\n\nTo revoke API key \`${keyId.substring(0, 8)}...\`, you may need to:\n\n1. Visit the Polymarket website and manage your API keys\n2. Use the CLOB API directly: \`DELETE /auth/api-key\`\n\n*The current CLOB client version may not support programmatic key revocation.*`,
           actions: ["REVOKE_API_KEY"],
-          data: {
-            keyId,
-            revoked: false,
-            reason: "Method not available in client",
-          },
         };
 
         if (callback) await callback(infoContent);
-        return infoContent;
+        return {
+          success: false,
+          text: infoContent.text,
+          data: {
+            keyId,
+            revoked: "false",
+            reason: "Method not available in client",
+          },
+        };
       }
     } catch (error) {
       logger.error(`[revokeApiKeyAction] Error revoking API key ${keyId}:`, error);

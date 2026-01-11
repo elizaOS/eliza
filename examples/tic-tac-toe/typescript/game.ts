@@ -17,7 +17,6 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
-  bootstrapPlugin,
   type IAgentRuntime,
   ModelType,
   type Plugin,
@@ -396,7 +395,7 @@ async function createSession(): Promise<GameSession> {
   // Uses our custom tic-tac-toe plugin for model handling
   const runtime = new AgentRuntime({
     // No character - uses anonymous Agent-N
-    plugins: [sqlPlugin, bootstrapPlugin, ticTacToePlugin],
+    plugins: [sqlPlugin, ticTacToePlugin],
     settings: {
       PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR || "memory://",
     },

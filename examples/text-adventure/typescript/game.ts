@@ -23,7 +23,6 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
-  bootstrapPlugin,
   ChannelType,
   type Character,
   createMessageMemory,
@@ -588,7 +587,7 @@ class AdventureAgent {
     // which is critical for game scenarios where state changes after each action
     const runtime = new AgentRuntime({
       character,
-      plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+      plugins: [sqlPlugin, openaiPlugin],
       settings: {
         OPENAI_API_KEY: config.openaiApiKey,
         POSTGRES_URL: config.postgresUrl || undefined,

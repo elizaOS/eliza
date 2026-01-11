@@ -26,11 +26,11 @@ import type { KnowledgeConfig, LoadResult } from "./types";
 import type { AddKnowledgeOptions } from "./types.ts";
 import { generateContentBasedId, isBinaryContentType, looksLikeBase64 } from "./utils.ts";
 
-const parseBooleanEnv = (value: string | number | boolean | undefined): boolean => {
+const parseBooleanEnv = (value: string | number | boolean | null | undefined): boolean => {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") return value.toLowerCase() === "true";
   if (typeof value === "number") return value !== 0;
-  return false; // Default to false if undefined
+  return false; // Default to false if undefined or null
 };
 
 /**

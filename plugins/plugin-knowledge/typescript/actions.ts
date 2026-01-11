@@ -1,6 +1,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Action, Content, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  Action,
+  Content,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { logger, stringToUuid } from "@elizaos/core";
 import { KnowledgeService } from "./service.ts";
 import type { AddKnowledgeOptions } from "./types.ts";
@@ -85,7 +93,7 @@ export const processKnowledgeAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ) => {
     try {
@@ -261,7 +269,7 @@ export const searchKnowledgeAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ) => {
     try {

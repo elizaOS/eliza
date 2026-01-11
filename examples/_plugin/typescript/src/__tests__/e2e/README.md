@@ -7,10 +7,10 @@ This directory contains end-to-end tests for the elizaOS plugin starter template
 elizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
-   - Run with Bun's native test runner
+   - Run with Vitest
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic
-   - Command: `bun test`
+   - Command: `npx vitest`
 
 2. **E2E Tests** (`src/__tests__/e2e/*.ts`)
    - Run with elizaOS custom test runner
@@ -56,7 +56,7 @@ elizaos test
 elizaos test --type e2e
 
 # Run only component tests (fast, for TDD)
-bun test
+npx vitest
 # or
 elizaos test --type component
 ```

@@ -22,7 +22,7 @@ const externalDeps = [
 async function build() {
   console.log("🔨 Building @elizaos/plugin-github...\n");
 
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
 
   // Clean dist directory
   if (existsSync(distDir)) {

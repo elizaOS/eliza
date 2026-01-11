@@ -392,12 +392,14 @@ impl PluginCreationClient {
             "scripts": {
                 "build": "tsc",
                 "test": "vitest run",
-                "lint": "eslint src/**/*.ts"
+                "lint": "bunx @biomejs/biome check --write .",
+                "lint:check": "bunx @biomejs/biome check ."
             },
             "devDependencies": {
                 "@types/node": "^20.0.0",
                 "typescript": "^5.0.0",
-                "vitest": "^1.0.0"
+                "vitest": "^1.0.0",
+                "@biomejs/biome": "^2.3.11"
             }
         });
         

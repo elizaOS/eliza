@@ -80,7 +80,7 @@ sam deploy --guided --parameter-overrides RuntimeLanguage=rust OpenAIApiKey=$OPE
   <Tab title="TypeScript">
 ```typescript
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { AgentRuntime, bootstrapPlugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 
 let runtime: AgentRuntime | null = null;
@@ -93,7 +93,7 @@ character: {
 name: process.env.CHARACTER_NAME || "Eliza",
 bio: process.env.CHARACTER_BIO || "A helpful AI assistant.",
 },
-plugins: [bootstrapPlugin, openaiPlugin],
+plugins: [openaiPlugin],
 });
 
 await runtime.initialize();

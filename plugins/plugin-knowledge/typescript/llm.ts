@@ -301,13 +301,14 @@ async function generateAnthropicText(
         `[Document Processor] ${modelName}: ${totalTokens} tokens (${result.usage.inputTokens || 0}→${result.usage.outputTokens || 0})`
       );
 
-      return result as GenerateTextResult<Record<string, never>, unknown>;
-    } catch (error) {
+      return result as unknown as GenerateTextResult<Record<string, never>, unknown>;
+    } catch (error: unknown) {
       // Check if it's a rate limit error (status 429)
+      const errorObj = error as { status?: number; message?: string } | null;
       const isRateLimit =
-        error?.status === 429 ||
-        error?.message?.includes("rate limit") ||
-        error?.message?.includes("429");
+        errorObj?.status === 429 ||
+        errorObj?.message?.includes("rate limit") ||
+        errorObj?.message?.includes("429");
 
       if (isRateLimit && attempt < maxRetries - 1) {
         // Exponential backoff: 2^attempt seconds (2s, 4s, 8s)

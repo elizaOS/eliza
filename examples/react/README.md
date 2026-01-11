@@ -160,22 +160,7 @@ const llmPlugin: Plugin = {
 
 ### Adding Bootstrap Actions
 
-To add the full elizaOS bootstrap plugin with actions and providers:
-
-```typescript
-import { bootstrapPlugin } from "@elizaos/core";
-
-const runtime = new AgentRuntime({
-  character: elizaCharacter,
-  plugins: [
-    sqlPlugin,
-    bootstrapPlugin, // Full action/provider support
-    elizaClassicPlugin,
-  ],
-});
-```
-
-Note: The bootstrap plugin may require Node.js polyfills in the browser.
+The bootstrap plugin (actions, providers, evaluators, services) is now automatically included in the elizaOS core runtime. No need to manually import or configure it - it's built-in and auto-registered during initialization.
 
 ## About Classic ELIZA
 

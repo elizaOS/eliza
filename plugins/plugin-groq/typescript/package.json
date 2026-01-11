@@ -37,7 +37,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist node_modules",
     "format": "bunx @biomejs/biome format --write .",
-    "test": "bun test typescript/",
+    "test": "vitest run typescript/",
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",

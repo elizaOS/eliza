@@ -55,7 +55,7 @@ bun run examples/tic-tac-toe/typescript/game.ts --bench
 ```typescript
 const runtime = new AgentRuntime({
   // No character - uses anonymous Agent-N
-  plugins: [localDbPlugin, bootstrapPlugin, ticTacToePlugin],
+  plugins: [sqlPlugin, ticTacToePlugin],
 });
 ```
 
@@ -87,7 +87,6 @@ The AI uses the classic minimax algorithm with depth-based scoring to find the o
 ├─────────────────────────────────────────────────────────┤
 │  plugins:                                               │
 │  ├── plugin-sql         (persistence)                   │
-│  ├── bootstrap-plugin   (basic capabilities)            │
 │  └── tic-tac-toe-plugin (custom model handlers)         │
 ├─────────────────────────────────────────────────────────┤
 │  runtime.useModel(TEXT_SMALL, { prompt: boardState })   │

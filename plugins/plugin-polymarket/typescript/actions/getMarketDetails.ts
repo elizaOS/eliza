@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,8 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient, Market } from "@polymarket/clob-client";
+import type { ClobClient } from "@polymarket/clob-client";
 import { getMarketTemplate } from "../templates";
+import type { Market } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -47,7 +49,7 @@ export const getMarketDetailsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getMarketDetailsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMMarketDetailsResult>(
@@ -77,7 +79,6 @@ export const getMarketDetailsAction: Action = {
 
     if (market) {
       responseText += `• **Question**: ${market.question || "N/A"}\n`;
-      responseText += `• **Description**: ${market.description || "N/A"}\n`;
       responseText += `• **Condition ID**: \`${market.condition_id}\`\n`;
       responseText += `• **Active**: ${market.active ? "✅ Yes" : "❌ No"}\n`;
       responseText += `• **Closed**: ${market.closed ? "✅ Yes" : "❌ No"}\n`;
@@ -106,14 +107,20 @@ export const getMarketDetailsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["GET_MARKET_DETAILS"],
-      data: {
-        market,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        conditionId: market.condition_id,
+        question: market.question ?? "",
+        active: String(market.active),
+        closed: String(market.closed),
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

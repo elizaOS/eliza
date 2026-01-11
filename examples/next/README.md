@@ -29,7 +29,7 @@ const character: Character = {
 
 const runtime = new AgentRuntime({
   character,
-  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+  plugins: [sqlPlugin, openaiPlugin],
 });
 await runtime.initialize();
 

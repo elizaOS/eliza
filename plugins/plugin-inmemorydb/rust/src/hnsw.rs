@@ -13,7 +13,7 @@ use crate::types::{IVectorStorage, StorageError, StorageResult, VectorSearchResu
 /// Node in the HNSW graph
 #[derive(Clone)]
 struct HNSWNode {
-    id: String,
+    _id: String,
     vector: Vec<f32>,
     level: usize,
     neighbors: HashMap<usize, HashSet<String>>, // level -> neighbor ids
@@ -164,7 +164,7 @@ impl EphemeralHNSW {
         results
     }
 
-    fn select_best_neighbors(
+    fn _select_best_neighbors(
         &self,
         nodes: &HashMap<String, HNSWNode>,
         node_vector: &[f32],
@@ -223,7 +223,7 @@ impl IVectorStorage for EphemeralHNSW {
 
         let level = self.get_random_level();
         let mut new_node = HNSWNode {
-            id: id.to_string(),
+            _id: id.to_string(),
             vector: vector.to_vec(),
             level,
             neighbors: HashMap::new(),

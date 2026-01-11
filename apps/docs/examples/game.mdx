@@ -118,7 +118,7 @@ cargo run --release
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { AgentRuntime, ModelType, bootstrapPlugin } from "@elizaos/core";
+import { AgentRuntime, ModelType } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
@@ -158,7 +158,7 @@ system: `You are playing a text adventure game. Analyze the situation and choose
 Available actions: move [direction], take [item], attack, use [item], look
 Respond with ONLY the action command, nothing else.`,
 },
-plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+plugins: [sqlPlugin, openaiPlugin],
 });
 
 await runtime.initialize();

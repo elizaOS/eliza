@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeBase64 } from "../src/utils";
+import { looksLikeBase64 } from "../utils";
 
 describe("looksLikeBase64", () => {
   it("should return true for valid base64 strings", () => {

@@ -23,7 +23,7 @@ export const buildConfig: BuildConfig = {
     'node:util',
     'node:events',
     'node:url',
-    'bun:test',
+    'vitest',
     'dotenv',
     'zod',
     '@elizaos/core',

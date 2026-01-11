@@ -7,7 +7,6 @@
 
 import {
   AgentRuntime,
-  bootstrapPlugin,
   ChannelType,
   type Character,
   createMessageMemory,
@@ -51,7 +50,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   runtime = new AgentRuntime({
     character: CHARACTER,
-    plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+    plugins: [sqlPlugin, openaiPlugin],
   });
 
   await runtime.initialize();
@@ -75,7 +74,6 @@ function getOrCreateSession(sessionId: string): { roomId: UUID; userId: UUID } {
 async function handleChat(
   message: string,
   sessionId: string,
-  metadata?: Record<string, unknown>,
 ): Promise<string> {
   const rt = await initializeRuntime();
   const { roomId, userId } = getOrCreateSession(sessionId);
@@ -92,25 +90,18 @@ async function handleChat(
     type: ChannelType.DM,
   } as Parameters<typeof rt.ensureConnection>[0]);
 
-  // Create message memory with optional metadata
-  const content: { text: string; metadata?: Record<string, unknown> } = {
-    text: message,
-  };
-  if (metadata) {
-    content.metadata = metadata;
-  }
-
+  // Create message memory
   const messageMemory = createMessageMemory({
     id: uuidv4() as UUID,
     entityId: userId,
     roomId,
-    content,
+    content: { text: message },
   });
 
   // Process message and collect response
   let response = "";
 
-  await rt.messageService.handleMessage(
+  await rt.messageService!.handleMessage(
     rt,
     messageMemory,
     async (responseContent) => {
@@ -211,17 +202,10 @@ app.post(
       return;
     }
 
-    const sessionId =
-      clientSessionId ?? (req.headers["x-session-id"] as string) ?? uuidv4();
-    const agentId = req.headers["x-agent-id"] as string;
+  const sessionId =
+    clientSessionId ?? (req.headers["x-session-id"] as string) ?? uuidv4();
 
-    // Include caller agent ID in metadata if provided
-    const metadata: Record<string, unknown> = { ...context };
-    if (agentId) {
-      metadata.callerAgentId = agentId;
-    }
-
-    const response = await handleChat(message, sessionId, metadata);
+  const response = await handleChat(message, sessionId);
     const rt = await initializeRuntime();
 
     res.json({
@@ -277,8 +261,8 @@ app.post(
       content: { text: message, ...context },
     });
 
-    // Stream response
-    await rt.messageService.handleMessage(
+  // Stream response
+  await rt.messageService!.handleMessage(
       rt,
       messageMemory,
       async (responseContent) => {

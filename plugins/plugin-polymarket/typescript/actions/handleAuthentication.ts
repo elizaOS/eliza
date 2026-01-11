@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,7 +8,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { ethers } from "ethers";
+import { privateKeyToAccount } from "viem/accounts";
 
 interface AuthenticationStatus {
   hasPrivateKey: boolean;
@@ -46,10 +47,10 @@ export const handleAuthenticationAction: Action = {
     _state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[handleAuthenticationAction] Handler called!");
 
-    const privateKey =
+    const privateKeySetting =
       runtime.getSetting("WALLET_PRIVATE_KEY") ||
       runtime.getSetting("PRIVATE_KEY") ||
       runtime.getSetting("POLYMARKET_PRIVATE_KEY");
@@ -61,9 +62,13 @@ export const handleAuthenticationAction: Action = {
     const clobApiUrl = runtime.getSetting("CLOB_API_URL");
 
     let walletAddress: string | undefined;
+    const privateKey = privateKeySetting ? String(privateKeySetting) : null;
     if (privateKey) {
-      const wallet = new ethers.Wallet(privateKey);
-      walletAddress = wallet.address;
+      const keyWithPrefix = (
+        privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`
+      ) as `0x${string}`;
+      const account = privateKeyToAccount(keyWithPrefix);
+      walletAddress = account.address;
     }
 
     const status: AuthenticationStatus = {
@@ -122,13 +127,26 @@ export const handleAuthenticationAction: Action = {
       text: responseText,
       actions: ["POLYMARKET_HANDLE_AUTHENTICATION"],
       data: {
-        status,
+        hasPrivateKey: status.hasPrivateKey,
+        hasApiKey: status.hasApiKey,
+        isFullyAuthenticated: status.isFullyAuthenticated,
+        canTrade: status.canTrade,
         timestamp: new Date().toISOString(),
       },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        hasPrivateKey: status.hasPrivateKey,
+        hasApiKey: status.hasApiKey,
+        isFullyAuthenticated: status.isFullyAuthenticated,
+        canTrade: status.canTrade,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

@@ -91,7 +91,6 @@ export function createKnowledgePlugin(config: KnowledgePluginConfig = {}): Plugi
 
   // Add tests if enabled (lazy import to avoid circular dependency)
   if (enableTests) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { default: knowledgeTestSuite } = require("./tests");
     plugin.tests = [knowledgeTestSuite];
   }

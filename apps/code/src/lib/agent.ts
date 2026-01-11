@@ -1,12 +1,7 @@
 import "dotenv/config";
-import {
-  AgentRuntime,
-  bootstrapPlugin,
-  type Character,
-  type Plugin,
-} from "@elizaos/core";
-import { anthropicPlugin } from "@elizaos/plugin-anthropic";
-import { openaiPlugin } from "@elizaos/plugin-openai";
+import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
+import openaiPlugin from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { elizaCodePlugin } from "../plugin/index.js";
 import { resolveModelProvider } from "./model-provider.js";
@@ -156,17 +151,11 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
   }
 
-  // Note: @elizaos/plugin-anthropic currently depends on an older @elizaos/core
-  // version than this monorepo. At runtime it's compatible, but the types don't
-  // line up across the two packages. We keep the cast narrow and local.
-  const providerPlugin: Plugin =
-    provider === "anthropic"
-      ? (anthropicPlugin as Plugin)
-      : (openaiPlugin as Plugin);
+  const providerPlugin =
+    provider === "anthropic" ? anthropicPlugin : openaiPlugin;
 
   const plugins: Plugin[] = [
     sqlPlugin,
-    bootstrapPlugin,
     providerPlugin,
     elizaCodePlugin,
   ];

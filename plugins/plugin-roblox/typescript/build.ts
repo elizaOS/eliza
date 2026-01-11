@@ -14,7 +14,7 @@ const externalDeps = ["@elizaos/core", "zod"];
 
 async function build() {
   const totalStart = Date.now();
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
 
   // Ensure dist directory exists
   if (!existsSync(distDir)) {

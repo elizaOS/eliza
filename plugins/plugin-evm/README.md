@@ -334,7 +334,7 @@ cd python && pip install -e ".[dev]"
 
 ```bash
 # TypeScript
-bun test
+npx vitest
 
 # Rust
 cd rust && cargo test

@@ -1,25 +1,25 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it, jest, vi } from "vitest";
-import { processKnowledgeAction } from "../src/actions";
-import { KnowledgeService } from "../src/service";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { processKnowledgeAction } from "../actions";
+import { KnowledgeService } from "../service";
 
 // Mock the fs and path modules
 vi.mock("node:fs", () => ({
-  existsSync: jest.fn(),
-  readFileSync: jest.fn(),
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
 }));
 
 vi.mock("node:path", () => ({
-  basename: jest.fn(),
-  extname: jest.fn(),
+  basename: vi.fn(),
+  extname: vi.fn(),
 }));
 
 describe("processKnowledgeAction", () => {
   let mockRuntime: IAgentRuntime;
   let mockKnowledgeService: KnowledgeService;
-  let mockCallback: jest.Mock;
+  let mockCallback: ReturnType<typeof vi.fn>;
   let mockState: State;
 
   const generateMockUuid = (suffix: string | number): UUID =>
@@ -27,29 +27,29 @@ describe("processKnowledgeAction", () => {
 
   beforeEach(() => {
     mockKnowledgeService = {
-      addKnowledge: jest.fn(),
-      getKnowledge: jest.fn(),
+      addKnowledge: vi.fn(),
+      getKnowledge: vi.fn(),
       serviceType: "knowledge-service",
     } as unknown as KnowledgeService;
 
     mockRuntime = {
       agentId: "test-agent" as UUID,
-      getService: jest.fn().mockReturnValue(mockKnowledgeService),
+      getService: vi.fn().mockReturnValue(mockKnowledgeService),
     } as unknown as IAgentRuntime;
 
-    mockCallback = jest.fn();
+    mockCallback = vi.fn();
     mockState = {
       values: {},
       data: {},
       text: "",
     };
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe("handler", () => {
     beforeEach(() => {
       // Reset all mocks for each handler test
-      jest.clearAllMocks();
+      vi.clearAllMocks();
     });
 
     it("should process a file when a valid path is provided", async () => {
@@ -63,13 +63,15 @@ describe("processKnowledgeAction", () => {
       };
 
       // Mock Date.now() for this test to generate predictable clientDocumentId's
-      const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1749491066994);
+      const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1749491066994);
 
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
-      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from("file content"));
-      (path.basename as jest.Mock).mockReturnValue("document.pdf");
-      (path.extname as jest.Mock).mockReturnValue(".pdf");
-      (mockKnowledgeService.addKnowledge as jest.Mock).mockResolvedValue({ fragmentCount: 5 });
+      (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from("file content"));
+      (path.basename as ReturnType<typeof vi.fn>).mockReturnValue("document.pdf");
+      (path.extname as ReturnType<typeof vi.fn>).mockReturnValue(".pdf");
+      (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mockResolvedValue({
+        fragmentCount: 5,
+      });
 
       await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
 
@@ -102,7 +104,7 @@ describe("processKnowledgeAction", () => {
         roomId: generateMockUuid(6),
       };
 
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
       await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
 
@@ -116,7 +118,7 @@ describe("processKnowledgeAction", () => {
 
     it("should process direct text content when no file path is provided", async () => {
       // Mock Date.now() for this test to generate predictable clientDocumentId's
-      const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1749491066994);
+      const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1749491066994);
 
       const message: Memory = {
         id: generateMockUuid(7),
@@ -127,7 +129,9 @@ describe("processKnowledgeAction", () => {
         roomId: generateMockUuid(9),
       };
 
-      (mockKnowledgeService.addKnowledge as jest.Mock).mockResolvedValue({ fragmentCount: 1 });
+      (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mockResolvedValue({
+        fragmentCount: 1,
+      });
 
       await processKnowledgeAction.handler?.(mockRuntime, message, mockState, {}, mockCallback);
 
@@ -178,11 +182,11 @@ describe("processKnowledgeAction", () => {
         roomId: generateMockUuid(15),
       };
 
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
-      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from("error content"));
-      (path.basename as jest.Mock).mockReturnValue("error.txt");
-      (path.extname as jest.Mock).mockReturnValue(".txt");
-      (mockKnowledgeService.addKnowledge as jest.Mock).mockRejectedValue(
+      (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from("error content"));
+      (path.basename as ReturnType<typeof vi.fn>).mockReturnValue("error.txt");
+      (path.extname as ReturnType<typeof vi.fn>).mockReturnValue(".txt");
+      (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error("Service error")
       );
 
@@ -195,7 +199,7 @@ describe("processKnowledgeAction", () => {
 
     it("should generate unique clientDocumentId's for different documents and content", async () => {
       // Mock Date.now() for this test to generate predictable clientDocumentId's
-      const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1749491066994);
+      const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1749491066994);
 
       // Test with two different files
       const fileMessage1: Memory = {
@@ -227,13 +231,19 @@ describe("processKnowledgeAction", () => {
       };
 
       // Setup mocks for file operations
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
-      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from("file content"));
-      (path.basename as jest.Mock).mockReturnValueOnce("doc1.pdf").mockReturnValueOnce("doc2.pdf");
-      (path.extname as jest.Mock).mockReturnValueOnce(".pdf").mockReturnValueOnce(".pdf");
+      (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from("file content"));
+      (path.basename as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce("doc1.pdf")
+        .mockReturnValueOnce("doc2.pdf");
+      (path.extname as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce(".pdf")
+        .mockReturnValueOnce(".pdf");
 
       // Mock addKnowledge to return results with fragment counts
-      (mockKnowledgeService.addKnowledge as jest.Mock).mockResolvedValue({ fragmentCount: 3 });
+      (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mockResolvedValue({
+        fragmentCount: 3,
+      });
 
       // Process all three messages
       await processKnowledgeAction.handler?.(
@@ -253,10 +263,13 @@ describe("processKnowledgeAction", () => {
       await processKnowledgeAction.handler?.(mockRuntime, textMessage, mockState, {}, mockCallback);
 
       // Get all calls to addKnowledge
-      const addKnowledgeCalls = (mockKnowledgeService.addKnowledge as jest.Mock).mock.calls;
+      const addKnowledgeCalls = (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mock
+        .calls;
 
       // Extract clientDocumentId's from the knowledgeOptions objects
-      const clientDocumentIds = addKnowledgeCalls.map((call) => call[0].clientDocumentId);
+      const clientDocumentIds = addKnowledgeCalls.map(
+        (call: unknown[]) => (call[0] as { clientDocumentId: string }).clientDocumentId
+      );
 
       // Verify we have 3 unique IDs
       expect(clientDocumentIds.length).toBe(3);
@@ -283,7 +296,7 @@ describe("processKnowledgeAction", () => {
 
     it("should generate unique clientDocumentId's for same content but different time", async () => {
       // Mock Date.now() for this test to generate predictable clientDocumentId's
-      const dateNowSpy = jest.spyOn(Date, "now").mockReturnValue(1749491066994);
+      const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1749491066994);
 
       // Test with two different files
       const textMessage1: Memory = {
@@ -305,7 +318,9 @@ describe("processKnowledgeAction", () => {
       };
 
       // Mock addKnowledge to return results with fragment counts
-      (mockKnowledgeService.addKnowledge as jest.Mock).mockResolvedValue({ fragmentCount: 1 });
+      (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mockResolvedValue({
+        fragmentCount: 1,
+      });
 
       // Process all three messages
       await processKnowledgeAction.handler?.(
@@ -318,7 +333,7 @@ describe("processKnowledgeAction", () => {
 
       // Change Date.now() mock to generate a different timestamp
       dateNowSpy.mockRestore();
-      const dateNowSpy2 = jest.spyOn(Date, "now").mockReturnValue(1749491066995);
+      const dateNowSpy2 = vi.spyOn(Date, "now").mockReturnValue(1749491066995);
 
       await processKnowledgeAction.handler?.(
         mockRuntime,
@@ -329,10 +344,13 @@ describe("processKnowledgeAction", () => {
       );
 
       // Get all calls to addKnowledge
-      const addKnowledgeCalls = (mockKnowledgeService.addKnowledge as jest.Mock).mock.calls;
+      const addKnowledgeCalls = (mockKnowledgeService.addKnowledge as ReturnType<typeof vi.fn>).mock
+        .calls;
 
       // Extract clientDocumentId's from the knowledgeOptions objects
-      const clientDocumentIds = addKnowledgeCalls.map((call) => call[0].clientDocumentId);
+      const clientDocumentIds = addKnowledgeCalls.map(
+        (call: unknown[]) => (call[0] as { clientDocumentId: string }).clientDocumentId
+      );
 
       // Verify we have 2 unique IDs
       expect(clientDocumentIds.length).toBe(2);
@@ -352,7 +370,7 @@ describe("processKnowledgeAction", () => {
 
   describe("validate", () => {
     beforeEach(() => {
-      (mockRuntime.getService as jest.Mock).mockReturnValue(mockKnowledgeService);
+      (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(mockKnowledgeService);
     });
 
     it("should return true if knowledge keywords are present and service is available", async () => {
@@ -383,7 +401,7 @@ describe("processKnowledgeAction", () => {
     });
 
     it("should return false if service is not available", async () => {
-      (mockRuntime.getService as jest.Mock).mockReturnValue(null);
+      (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
       const message: Memory = {
         id: generateMockUuid(22),
         content: {

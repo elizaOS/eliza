@@ -6,6 +6,7 @@
 
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -13,9 +14,14 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import { Side } from "@polymarket/clob-client";
+import {
+  type ClobClient,
+  OrderType as ClobOrderType,
+  Side,
+  type UserOrder,
+} from "@polymarket/clob-client";
 import { orderTemplate } from "../templates";
-import type { OrderResponse, OrderType } from "../types";
+import type { OrderResponse } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -67,7 +73,7 @@ export const placeOrderAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[placeOrderAction] Handler called");
 
     // Use LLM to extract parameters
@@ -115,9 +121,9 @@ export const placeOrderAction: Action = {
       orderType = "GTC";
     }
 
-    const client = await initializeClobClient(runtime);
+    const client = (await initializeClobClient(runtime)) as ClobClient;
 
-    const orderArgs = {
+    const orderArgs: UserOrder = {
       tokenID: tokenId,
       price,
       side: side === "BUY" ? Side.BUY : Side.SELL,
@@ -125,22 +131,41 @@ export const placeOrderAction: Action = {
       feeRateBps: parseFloat(feeRateBps),
     };
 
-    logger.info("[placeOrderAction] Creating order with args:", orderArgs);
+    logger.info(
+      "[placeOrderAction] Creating and posting order with args:",
+      JSON.stringify(orderArgs)
+    );
 
-    // Create the signed order
-    const signedOrder = await client.createOrder(orderArgs);
-    logger.info("[placeOrderAction] Order created successfully");
+    // Create and post the order - use appropriate method based on order type
+    // createAndPostOrder is for limit orders (GTC, GTD)
+    // createAndPostMarketOrder is for market orders (FOK, FAK)
+    let orderResponse: OrderResponse;
 
-    // Post the order
-    const orderResponse = (await client.postOrder(
-      signedOrder,
-      orderType as OrderType
-    )) as OrderResponse;
+    if (orderType === "FOK" || orderType === "FAK") {
+      // Market orders use createAndPostMarketOrder with UserMarketOrder format
+      const marketOrderType = orderType === "FAK" ? ClobOrderType.FAK : ClobOrderType.FOK;
+      const marketOrderArgs = {
+        tokenID: tokenId,
+        price,
+        amount: size, // Market orders use 'amount' instead of 'size'
+        side: side === "BUY" ? Side.BUY : Side.SELL,
+        feeRateBps: parseFloat(feeRateBps),
+        orderType: marketOrderType as ClobOrderType.FOK | ClobOrderType.FAK,
+      };
+      orderResponse = (await client.createAndPostMarketOrder(marketOrderArgs)) as OrderResponse;
+    } else {
+      // Limit orders (GTC, GTD)
+      const clobOrderType = orderType === "GTD" ? ClobOrderType.GTD : ClobOrderType.GTC;
+      orderResponse = (await client.createAndPostOrder(
+        orderArgs,
+        undefined,
+        clobOrderType
+      )) as OrderResponse;
+    }
     logger.info("[placeOrderAction] Order posted successfully");
 
     // Format response
     let responseText: string;
-    let responseData: Record<string, unknown>;
 
     if (orderResponse.success) {
       const sideText = side.toLowerCase();
@@ -170,21 +195,6 @@ export const placeOrderAction: Action = {
       } else if (orderResponse.status === "delayed") {
         responseText += "\n\n⏳ Your order is subject to a matching delay.";
       }
-
-      responseData = {
-        success: true,
-        orderDetails: {
-          tokenId,
-          side,
-          price,
-          size,
-          orderType,
-          feeRateBps,
-          totalValue,
-        },
-        orderResponse,
-        timestamp: new Date().toISOString(),
-      };
     } else {
       responseText =
         `❌ **Order Placement Failed**\n\n` +
@@ -194,26 +204,30 @@ export const placeOrderAction: Action = {
         `• Side: ${side}\n` +
         `• Price: $${price.toFixed(4)}\n` +
         `• Size: ${size} shares`;
-
-      responseData = {
-        success: false,
-        error: orderResponse.errorMsg,
-        orderDetails: { tokenId, side, price, size, orderType },
-        timestamp: new Date().toISOString(),
-      };
     }
 
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_PLACE_ORDER"],
-      data: responseData,
     };
 
     if (callback) {
       await callback(responseContent);
     }
 
-    return responseContent;
+    return {
+      success: orderResponse.success ?? false,
+      text: responseText,
+      data: {
+        orderId: orderResponse.orderId ?? "",
+        status: orderResponse.status ?? "",
+        tokenId,
+        side,
+        price: String(price),
+        size: String(size),
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

@@ -14,7 +14,7 @@ const externalDeps = ["@google/genai", "@elizaos/core"];
 
 async function build() {
   const totalStart = Date.now();
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
 
   // Node build
   const nodeStart = Date.now();

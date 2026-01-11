@@ -10,7 +10,6 @@ let WebSocket: typeof import("ws").default;
 if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
   WebSocket = window.WebSocket as unknown as typeof import("ws").default;
 } else {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   WebSocket = require("ws");
 }
 

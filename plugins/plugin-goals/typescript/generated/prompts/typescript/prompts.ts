@@ -1,7 +1,7 @@
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../prompts/*.txt
- * 
+ *
  * These prompts use Handlebars-style template syntax:
  * - {{variableName}} for simple substitution
  * - {{#each items}}...{{/each}} for iteration
@@ -201,4 +201,3 @@ Return an XML object with these potential fields (only include fields that shoul
 </response>`;
 
 export const EXTRACT_GOAL_UPDATE_TEMPLATE = extractGoalUpdateTemplate;
-

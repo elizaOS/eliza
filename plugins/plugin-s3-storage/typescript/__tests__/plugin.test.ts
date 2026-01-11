@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 // Simple tests for the plugin structure without deep imports
 describe("Storage S3 Plugin", () => {

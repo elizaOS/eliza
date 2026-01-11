@@ -16,7 +16,6 @@ import {
   type Participant,
   type Relationship,
   type Room,
-  type RoomMetadata,
   type RunStatus,
   type Task,
   type TaskMetadata,

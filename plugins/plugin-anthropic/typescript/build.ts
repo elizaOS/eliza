@@ -14,7 +14,7 @@ const externalDeps = ["@ai-sdk/anthropic", "@elizaos/core", "ai", "jsonrepair"];
 
 async function build() {
   const totalStart = Date.now();
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
 
   // Node build
   const nodeStart = Date.now();

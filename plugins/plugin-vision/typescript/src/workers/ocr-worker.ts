@@ -28,8 +28,6 @@ class OCRWorker {
   private frameCount = 0;
   private lastFPSReport = Date.now();
   private lastFrameId = -1;
-  private sharedBuffer!: SharedArrayBuffer;
-  private resultsBuffer!: SharedArrayBuffer;
 
   // Atomic indices for input buffer
   private readonly FRAME_ID_INDEX = 0;
@@ -49,10 +47,8 @@ class OCRWorker {
     resultsBuffer: SharedArrayBuffer
   ) {
     this.config = config;
-    this.sharedBuffer = sharedBuffer;
     this.dataView = new DataView(sharedBuffer);
     this.atomicState = new Int32Array(sharedBuffer, 0, 6);
-    this.resultsBuffer = resultsBuffer;
     this.resultsView = new DataView(resultsBuffer);
     this.ocrService = new OCRService();
   }

@@ -64,7 +64,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
     "test": "bun run test:ts && bun run test:rust && bun run test:python",
-    "test:ts": "bun test",
+    "test:ts": "vitest run",
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts"

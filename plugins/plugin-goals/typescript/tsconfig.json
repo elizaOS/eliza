@@ -17,8 +17,9 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "jsx": "react-jsx"
   },
-  "include": ["./**/*.ts"],
+  "include": ["./**/*.ts", "./**/*.tsx"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]
 }

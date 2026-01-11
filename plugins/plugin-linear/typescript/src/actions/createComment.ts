@@ -2,6 +2,7 @@ import {
   type Action,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -82,7 +83,7 @@ export const createCommentAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
@@ -108,9 +109,9 @@ export const createCommentAction: Action = {
       let commentBody: string;
 
       // Check if we have explicit options
-      if (_options?.issueId && _options?.body) {
-        issueId = _options.issueId as string;
-        commentBody = _options.body as string;
+      if (_options?.parameters?.issueId && _options?.parameters?.body) {
+        issueId = _options.parameters.issueId as string;
+        commentBody = _options.parameters.body as string;
       } else {
         // Use LLM to extract comment information
         const prompt = createCommentTemplate.replace("{{userMessage}}", content);

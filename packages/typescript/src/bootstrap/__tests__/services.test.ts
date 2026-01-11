@@ -6,7 +6,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskService } from "../../services/task";
-import { bootstrapPlugin } from "../index";
+import { createBootstrapPlugin } from "../index";
 import { type MockRuntime, setupActionTest } from "./test-utils";
 
 // Define service interface for plugin services
@@ -39,6 +39,9 @@ interface ServiceClassConstructor {
   serviceType: string;
   start(runtime: IAgentRuntime): Promise<Service>;
 }
+
+// Create the bootstrap plugin for testing
+const bootstrapPlugin = createBootstrapPlugin();
 
 // Helper to access plugin services with proper typing
 const getPluginServices = (): PluginService[] =>

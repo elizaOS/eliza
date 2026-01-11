@@ -180,7 +180,13 @@ export class DefaultMessageService implements IMessageService {
       const runId = runtime.startRun(message.roomId);
       if (!runId) {
         runtime.logger.error("Failed to start run tracking");
-        return;
+        return {
+          didRespond: false,
+          responseContent: null,
+          responseMessages: [],
+          state: { values: {}, data: {}, text: "" } as State,
+          mode: "none",
+        };
       }
       const startTime = Date.now();
 

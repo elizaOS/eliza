@@ -52,7 +52,7 @@ async function buildAll(): Promise<boolean> {
   if (!nodeOk) return false;
 
   // Ensure dist directory exists and create proper declaration entry points
-  const distDir = join(process.cwd(), "..", "dist");
+  const distDir = join(process.cwd(), "dist");
   if (!existsSync(distDir)) {
     await mkdir(distDir, { recursive: true });
   }

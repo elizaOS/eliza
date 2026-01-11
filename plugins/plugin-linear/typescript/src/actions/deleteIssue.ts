@@ -2,6 +2,7 @@ import {
   type Action,
   type ActionResult,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -82,7 +83,7 @@ export const deleteIssueAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
@@ -107,8 +108,8 @@ export const deleteIssueAction: Action = {
       let issueId: string;
 
       // Check if we have issueId in options
-      if (_options?.issueId) {
-        issueId = _options.issueId as string;
+      if (_options?.parameters?.issueId) {
+        issueId = _options.parameters.issueId as string;
       } else {
         // Use LLM to extract issue ID
         const prompt = deleteIssueTemplate.replace("{{userMessage}}", content);

@@ -215,7 +215,7 @@ The plugin emits the following events for elizaOS integration:
 cd typescript
 bun install
 bun run build
-bun test
+npx vitest
 ```
 
 ### Python

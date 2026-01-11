@@ -6,6 +6,7 @@
 
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -71,7 +72,7 @@ export const getOrderBookSummaryAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getOrderBookSummaryAction] Handler called");
 
     let tokenId = "";
@@ -119,19 +120,23 @@ export const getOrderBookSummaryAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_ORDER_BOOK"],
-        data: {
-          orderBook,
-          tokenId,
-          summary: { topBid, topAsk, spread },
-          timestamp: new Date().toISOString(),
-        },
       };
 
       if (callback) {
         await callback(responseContent);
       }
 
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          tokenId,
+          bestBid: topBid?.price ?? "N/A",
+          bestAsk: topAsk?.price ?? "N/A",
+          spread,
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getOrderBookSummaryAction] Error:", error);
@@ -190,7 +195,7 @@ export const getOrderBookDepthAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getOrderBookDepthAction] Handler called");
 
     let tokenIds: string[] = [];
@@ -210,7 +215,25 @@ export const getOrderBookDepthAction: Action = {
       tokenIds = llmResult.tokenIds;
 
       const clobClient = await initializeClobClient(runtime);
-      const depths = (await clobClient.getOrderBooksDepth(tokenIds)) as Record<string, DepthData>;
+      // Use getOrderBooks and calculate depth from the result
+      // BookParams requires token_id and side, so we need to call for each side
+      const bookParams = tokenIds.flatMap((tid) => [
+        { token_id: tid, side: "BUY" as const },
+        { token_id: tid, side: "SELL" as const },
+      ]);
+      const orderBooks = await clobClient.getOrderBooks(
+        bookParams as Parameters<typeof clobClient.getOrderBooks>[0]
+      );
+      const depths: Record<string, DepthData> = {};
+      // Process results - orderBooks is an array matching bookParams order
+      tokenIds.forEach((tid, idx) => {
+        const buyBook = orderBooks[idx * 2];
+        const sellBook = orderBooks[idx * 2 + 1];
+        depths[tid] = {
+          bids: (buyBook as OrderBook)?.bids?.length ?? 0,
+          asks: (sellBook as OrderBook)?.asks?.length ?? 0,
+        };
+      });
 
       let responseText = `📊 **Order Book Depth**\n\n`;
 
@@ -223,18 +246,20 @@ export const getOrderBookDepthAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_ORDER_BOOK_DEPTH"],
-        data: {
-          depths,
-          tokenIds,
-          timestamp: new Date().toISOString(),
-        },
       };
 
       if (callback) {
         await callback(responseContent);
       }
 
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          tokenCount: String(tokenIds.length),
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getOrderBookDepthAction] Error:", error);
@@ -288,7 +313,7 @@ export const getBestPriceAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getBestPriceAction] Handler called");
 
     let tokenId = "";
@@ -337,6 +362,15 @@ export const getBestPriceAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_BEST_PRICE"],
+      };
+
+      if (callback) {
+        await callback(responseContent);
+      }
+
+      return {
+        success: true,
+        text: responseText,
         data: {
           tokenId,
           side,
@@ -345,12 +379,6 @@ export const getBestPriceAction: Action = {
           timestamp: new Date().toISOString(),
         },
       };
-
-      if (callback) {
-        await callback(responseContent);
-      }
-
-      return responseContent;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getBestPriceAction] Error:", error);
@@ -404,7 +432,7 @@ export const getMidpointPriceAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getMidpointPriceAction] Handler called");
 
     let tokenId = "";
@@ -434,18 +462,21 @@ export const getMidpointPriceAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_MIDPOINT"],
-        data: {
-          tokenId,
-          midpoint: midpointResponse.mid,
-          timestamp: new Date().toISOString(),
-        },
       };
 
       if (callback) {
         await callback(responseContent);
       }
 
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          tokenId,
+          midpoint: midpointResponse.mid,
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getMidpointPriceAction] Error:", error);
@@ -499,7 +530,7 @@ export const getSpreadAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getSpreadAction] Handler called");
 
     let tokenId = "";
@@ -529,18 +560,21 @@ export const getSpreadAction: Action = {
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_SPREAD"],
-        data: {
-          tokenId,
-          spread: spreadResponse.spread,
-          timestamp: new Date().toISOString(),
-        },
       };
 
       if (callback) {
         await callback(responseContent);
       }
 
-      return responseContent;
+      return {
+        success: true,
+        text: responseText,
+        data: {
+          tokenId,
+          spread: spreadResponse.spread,
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("[getSpreadAction] Error:", error);

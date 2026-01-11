@@ -290,11 +290,8 @@ Settings can be accessed through `runtime.getSetting()` which provides a consist
 Plugins are often conditionally loaded based on environment variables:
 
 ```typescript
-import { bootstrapPlugin } from "@elizaos/core";
-
 const plugins = [
-  // Bootstrap is included in core
-  bootstrapPlugin,
+  // Bootstrap is automatically included - no need to add it!
 
   // Conditionally loaded based on API keys
   ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
@@ -310,9 +307,9 @@ const plugins = [
 
 elizaOS includes essential plugins that provide foundational functionality:
 
-### Bootstrap (in @elizaos/core)
+### Bootstrap (Built into @elizaos/core)
 
-The core message handler and event system is built into `@elizaos/core`. Import `bootstrapPlugin` from `@elizaos/core` to use it. It provides essential functionality for message processing, knowledge management, and basic agent operations:
+The bootstrap plugin is built into `@elizaos/core` and automatically registered during runtime initialization. You don't need to import or configure it - it's included automatically when you create an AgentRuntime. It provides essential functionality for message processing, knowledge management, and basic agent operations:
 
 - 13 essential actions (REPLY, SEND_MESSAGE, etc.)
 - Core providers (time, character, recent messages)

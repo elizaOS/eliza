@@ -92,7 +92,7 @@ cd rust && cargo build --release
 
 ```bash
 # TypeScript
-cd typescript && bun test
+cd typescript && npx vitest
 
 # Python
 cd python && pytest

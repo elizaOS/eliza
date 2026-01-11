@@ -63,7 +63,6 @@ const mockLogger: {
 };
 
 // Replace global logger with mock for tests
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (global as { logger?: typeof mockLogger }).logger = mockLogger;
 
 /**

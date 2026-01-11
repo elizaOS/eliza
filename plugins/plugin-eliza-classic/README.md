@@ -110,7 +110,7 @@ No configuration required. The plugin works out of the box.
 
 ```bash
 # TypeScript
-bun test:ts
+npx vitest
 
 # Python
 pytest

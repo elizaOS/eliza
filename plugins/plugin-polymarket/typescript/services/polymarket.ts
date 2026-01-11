@@ -13,7 +13,6 @@ import { polygon } from "viem/chains";
 import {
   CACHE_REFRESH_INTERVAL_MS,
   DEFAULT_CLOB_API_URL,
-  DEFAULT_CLOB_WS_URL,
   POLYGON_CHAIN_ID,
   POLYMARKET_SERVICE_NAME,
   POLYMARKET_WALLET_DATA_CACHE_KEY,
@@ -125,18 +124,19 @@ export class PolymarketService extends Service {
    * Get the private key from runtime settings
    */
   private getPrivateKey(): `0x${string}` {
-    const privateKey =
+    const privateKeySetting =
       this.polymarketRuntime.getSetting("POLYMARKET_PRIVATE_KEY") ||
       this.polymarketRuntime.getSetting("EVM_PRIVATE_KEY") ||
       this.polymarketRuntime.getSetting("WALLET_PRIVATE_KEY");
 
-    if (!privateKey) {
+    if (!privateKeySetting) {
       throw new Error(
         "No private key found. Please set POLYMARKET_PRIVATE_KEY, EVM_PRIVATE_KEY, or WALLET_PRIVATE_KEY"
       );
     }
 
-    // Ensure it has 0x prefix
+    // Convert to string and ensure it has 0x prefix
+    const privateKey = String(privateKeySetting);
     const key = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
     return key as `0x${string}`;
   }
@@ -162,6 +162,7 @@ export class PolymarketService extends Service {
         value: Record<string, unknown>
       ) => {
         return walletClient.signTypedData({
+          account,
           domain: domain as Parameters<typeof walletClient.signTypedData>[0]["domain"],
           types: types as Parameters<typeof walletClient.signTypedData>[0]["types"],
           primaryType: Object.keys(types).find((k) => k !== "EIP712Domain") ?? "",
@@ -175,8 +176,9 @@ export class PolymarketService extends Service {
    * Initialize the basic CLOB client for read operations
    */
   private async initializeClobClient(): Promise<void> {
-    const clobApiUrl = this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
-    const clobWsUrl = this.polymarketRuntime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
+    const clobApiUrlSetting =
+      this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
+    const clobApiUrl = String(clobApiUrlSetting);
 
     const privateKey = this.getPrivateKey();
     const account = privateKeyToAccount(privateKey);
@@ -190,8 +192,7 @@ export class PolymarketService extends Service {
       clobApiUrl,
       POLYGON_CHAIN_ID,
       enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
-      undefined,
-      clobWsUrl
+      undefined
     );
 
     logger.info("CLOB client initialized successfully");
@@ -213,24 +214,24 @@ export class PolymarketService extends Service {
       throw new Error("API credentials not configured");
     }
 
-    const clobApiUrl = this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
-    const clobWsUrl = this.polymarketRuntime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
+    const clobApiUrlSetting =
+      this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
+    const clobApiUrl = String(clobApiUrlSetting);
 
     const privateKey = this.getPrivateKey();
     const enhancedWallet = this.createEnhancedWallet(privateKey);
 
     const creds: ApiKeyCreds = {
-      key: apiKey,
-      secret: apiSecret,
-      passphrase: apiPassphrase,
+      key: String(apiKey),
+      secret: String(apiSecret),
+      passphrase: String(apiPassphrase),
     };
 
     this.authenticatedClient = new ClobClient(
       clobApiUrl,
       POLYGON_CHAIN_ID,
       enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
-      creds,
-      clobWsUrl
+      creds
     );
 
     logger.info("Authenticated CLOB client initialized");

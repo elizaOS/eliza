@@ -69,7 +69,7 @@ This produces:
 ## Testing
 
 ```bash
-bun test
+npx vitest
 ```
 
 ## Exports

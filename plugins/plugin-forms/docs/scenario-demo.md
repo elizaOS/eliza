@@ -221,7 +221,7 @@ To run these scenarios as tests:
 
 ```bash
 # From the plugin-forms directory
-bun test
+npx vitest
 
 # All 43 tests should pass, including:
 # - Form creation tests

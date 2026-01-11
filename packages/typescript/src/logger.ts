@@ -509,7 +509,6 @@ adzeStore.addListener(
  * Creates a sealed Adze logger instance with namespaces and metadata
  */
 function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let chain: ReturnType<typeof adze.ns> | typeof adze = adze as
     | ReturnType<typeof adze.ns>
     | typeof adze;

@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,8 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient, Market, MarketsResponse } from "@polymarket/clob-client";
+import type { ClobClient, PaginationPayload } from "@polymarket/clob-client";
 import { getSamplingMarketsTemplate } from "../templates";
+import type { Market } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -49,7 +51,7 @@ export const getSamplingMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getSamplingMarketsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMSamplingMarketsResult>(
@@ -70,7 +72,7 @@ export const getSamplingMarketsAction: Action = {
     logger.info(`[getSamplingMarketsAction] Fetching sampling markets with limit=${limit}`);
 
     const client = (await initializeClobClient(runtime)) as ClobClient;
-    const marketsResponse: MarketsResponse = await client.getMarkets(nextCursor);
+    const marketsResponse: PaginationPayload = await client.getMarkets(nextCursor);
     const allMarkets: Market[] = marketsResponse.data || [];
 
     // Randomly sample markets
@@ -107,16 +109,19 @@ export const getSamplingMarketsAction: Action = {
     const responseContent: Content = {
       text: responseText,
       actions: ["POLYMARKET_GET_SAMPLING_MARKETS"],
-      data: {
-        markets: sampledMarkets,
-        limit,
-        next_cursor: marketsResponse.next_cursor,
-        timestamp: new Date().toISOString(),
-      },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        count: String(sampledMarkets.length),
+        limit: String(limit),
+        nextCursor: marketsResponse.next_cursor ?? "",
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

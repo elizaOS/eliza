@@ -129,7 +129,7 @@ export const documentsProvider: Provider = {
         error instanceof Error ? error.message : String(error)
       );
       return {
-        data: { documents: [], error: error.message },
+        data: { documents: [], error: error instanceof Error ? error.message : String(error) },
         values: {
           documentsCount: 0,
           documents: "",

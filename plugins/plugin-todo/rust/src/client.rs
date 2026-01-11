@@ -47,6 +47,7 @@ use uuid::Uuid;
 pub struct TodoClient {
     config: TodoConfig,
     data_service: Arc<TodoDataService>,
+    #[allow(dead_code)] // Reserved for future caching implementation
     cache_manager: Arc<CacheManager>,
     notification_manager: Arc<RwLock<NotificationManager>>,
     reminder_service: Option<Arc<ReminderService>>,

@@ -6,7 +6,7 @@ import {
   knowledgePluginCore,
   knowledgePluginHeadless,
   knowledgeProvider,
-} from "../src/index";
+} from "../index";
 
 describe("Knowledge Plugin Exports", () => {
   it("should export the default full plugin", () => {

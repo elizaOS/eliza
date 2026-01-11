@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -7,8 +8,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { ClobClient, Market, MarketsResponse } from "@polymarket/clob-client";
+import type { ClobClient, PaginationPayload } from "@polymarket/clob-client";
 import { retrieveAllMarketsTemplate } from "../templates";
+import type { Market } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
 import { callLLMWithTimeout, isLLMError } from "../utils/llmHelpers";
 
@@ -48,7 +50,7 @@ export const getOpenMarketsAction: Action = {
     state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<Content> => {
+  ): Promise<ActionResult> => {
     logger.info("[getOpenMarketsAction] Handler called!");
 
     const result = await callLLMWithTimeout<LLMOpenMarketsResult>(
@@ -69,8 +71,8 @@ export const getOpenMarketsAction: Action = {
     logger.info(`[getOpenMarketsAction] Fetching open markets with limit=${limit}`);
 
     const client = (await initializeClobClient(runtime)) as ClobClient;
-    const marketsResponse: MarketsResponse = await client.getMarkets(nextCursor);
-    const allMarkets: Market[] = marketsResponse.data || [];
+    const marketsResponse: PaginationPayload = await client.getMarkets(nextCursor);
+    const allMarkets = (marketsResponse.data || []) as Market[];
 
     // Filter for open markets (active = true, closed = false)
     const openMarkets = allMarkets.filter(
@@ -108,16 +110,24 @@ export const getOpenMarketsAction: Action = {
       text: responseText,
       actions: ["POLYMARKET_GET_OPEN_MARKETS"],
       data: {
-        markets: openMarkets.slice(0, limit),
         totalOpenMarkets: openMarkets.length,
-        next_cursor: marketsResponse.next_cursor,
+        next_cursor: marketsResponse.next_cursor || null,
         limit,
         timestamp: new Date().toISOString(),
       },
     };
 
     if (callback) await callback(responseContent);
-    return responseContent;
+    return {
+      success: true,
+      text: responseText,
+      data: {
+        totalOpenMarkets: openMarkets.length,
+        next_cursor: marketsResponse.next_cursor || null,
+        limit,
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
 
   examples: [

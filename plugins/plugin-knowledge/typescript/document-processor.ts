@@ -725,7 +725,7 @@ async function generateEmbeddingsIndividual(
         });
       } else {
         results.push({
-          embedding,
+          embedding: embedding ?? undefined,
           success: true,
           index: chunk.index,
           text: chunk.contextualizedText,

@@ -223,7 +223,7 @@ cd rust && cargo build --release
 
 ```bash
 # TypeScript
-bun test typescript/
+npx vitest typescript/
 
 # Python
 cd python && pytest tests/

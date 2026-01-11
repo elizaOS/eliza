@@ -369,27 +369,24 @@ export enum OrderStatus {
 
 /**
  * Detailed information about an order from the CLOB API.
- * As per documentation: https://docs.polymarket.com/developers/CLOB/orders/get-order
+ * getOrder returns OpenOrder type from @polymarket/clob-client
  */
 export interface DetailedOrder {
-  order_id: string;
-  user_id: string;
-  market_id: string;
-  token_id: string;
-  side: OrderSide; // Reuses existing OrderSide enum: 'BUY' | 'SELL'
-  type: string; // e.g., "LIMIT", API docs don't specify an enum
-  status: OrderStatus;
+  id: string;
+  status: string;
+  owner: string;
+  maker_address: string;
+  market: string;
+  asset_id: string;
+  side: string;
+  original_size: string;
+  size_matched: string;
   price: string;
-  size: string;
-  filled_size: string;
-  fees_paid: string;
-  created_at: string; // ISO datetime string
-  updated_at: string; // ISO datetime string
-  is_cancelled: boolean;
-  is_taker: boolean;
-  is_active_order: boolean;
-  error_code?: string | null; // Can be string or null
-  error_message?: string | null; // Can be string or null
+  associate_trades: string[];
+  outcome: string;
+  created_at: number;
+  expiration: string;
+  order_type: string;
 }
 
 /**
@@ -407,63 +404,71 @@ export type AreOrdersScoringResponse = Record<string, boolean>;
 
 /**
  * Parameters for the getOpenOrders ClobClient method.
+ * Maps to OpenOrderParams from @polymarket/clob-client
  */
 export interface GetOpenOrdersParams {
+  id?: string; // Order ID
   market?: string; // Market condition ID
-  assetId?: string; // Asset ID (token ID)
-  address?: string; // User address
-  nextCursor?: string; // Pagination cursor
+  asset_id?: string; // Asset ID (token ID)
 }
 
 /**
  * Represents an open order from the CLOB API (/orders/open endpoint).
+ * Matches the OpenOrder type from @polymarket/clob-client
  */
 export interface OpenOrder {
-  order_id: string;
-  user_id: string;
-  market_id: string; // This is the condition_id
-  token_id: string;
-  side: OrderSide; // Reuses existing OrderSide enum: 'BUY' | 'SELL'
-  type: string; // e.g., "LIMIT"
-  status: string; // e.g., "OPEN" - could create an enum if more statuses are known for open orders
+  id: string;
+  status: string;
+  owner: string;
+  maker_address: string;
+  market: string;
+  asset_id: string;
+  side: string;
+  original_size: string;
+  size_matched: string;
   price: string;
-  size: string;
-  filled_size: string;
-  fees_paid: string;
-  created_at: string; // ISO datetime string
-  updated_at: string; // ISO datetime string
+  associate_trades: string[];
+  outcome: string;
+  created_at: number;
+  expiration: string;
+  order_type: string;
 }
 
 /**
  * Parameters for the getTrades ClobClient method.
- * Based on https://docs.polymarket.com/developers/CLOB/trades/get-trades
+ * Matches TradeParams from @polymarket/clob-client
  */
 export interface GetTradesParams {
-  user_address?: string;
-  market_id?: string;
-  token_id?: string;
-  from_timestamp?: number; // Unix timestamp (seconds)
-  to_timestamp?: number; // Unix timestamp (seconds)
-  limit?: number;
-  next_cursor?: string;
+  id?: string;
+  maker_address?: string;
+  market?: string;
+  asset_id?: string;
+  before?: string;
+  after?: string;
 }
 
 /**
  * Represents a trade entry from the CLOB API (/trades endpoint).
+ * Matches Trade from @polymarket/clob-client
  */
 export interface TradeEntry {
-  trade_id: string;
-  order_id: string;
-  user_id: string;
-  market_id: string;
-  token_id: string;
-  side: OrderSide; // 'BUY' or 'SELL'
-  type: string; // e.g., "LIMIT_TAKER", "LIMIT_MAKER"
-  price: string;
+  id: string;
+  taker_order_id: string;
+  market: string;
+  asset_id: string;
+  side: OrderSide;
   size: string;
-  fees_paid: string;
-  timestamp: string; // ISO datetime string
-  tx_hash: string;
+  fee_rate_bps: string;
+  price: string;
+  status: string;
+  match_time: string;
+  last_update: string;
+  outcome: string;
+  bucket_index: number;
+  owner: string;
+  maker_address: string;
+  transaction_hash: string;
+  trader_side: "TAKER" | "MAKER";
 }
 
 /**
@@ -489,11 +494,19 @@ export interface ApiKey {
 }
 
 /**
- * Response structure for the /api-keys endpoint.
+ * Response structure for the /api-keys endpoint from our local type.
+ * Note: @polymarket/clob-client returns ApiKeysResponse with apiKeys (camelCase) array of ApiKeyCreds
  */
 export interface ApiKeysResponse {
   api_keys: ApiKey[];
   cert_required: boolean;
+}
+
+/**
+ * Response from clob-client getApiKeys - simpler structure
+ */
+export interface ClobApiKeysResponse {
+  apiKeys: ApiKeyCreds[];
 }
 
 /**

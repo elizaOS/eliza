@@ -195,7 +195,7 @@ export const PROMPT_TEMPLATES: Record<string, PromptTemplate> = {
     system: CODE_GENERATION_SYSTEM_PROMPT,
     defaults: {
       code: "// Paste code here",
-      framework: "bun:test",
+      framework: "vitest",
       coverage: "unit tests for all public functions",
     },
   },

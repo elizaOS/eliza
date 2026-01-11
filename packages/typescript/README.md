@@ -173,7 +173,7 @@ For detailed instructions on creating and registering plugins and actions, refer
 
 ### Running Tests
 
-The `@elizaos/core` package uses **bun:test** for testing.
+The `@elizaos/core` package uses **vitest** for testing.
 
 1.  **Prerequisites**:
     - Ensure `bun` is installed (`npm install -g bun`).
@@ -185,7 +185,7 @@ The `@elizaos/core` package uses **bun:test** for testing.
 
 3.  **Execute Tests**:
     ```bash
-    bun test
+    npx vitest
     ```
     Test results will be displayed in the terminal.
 

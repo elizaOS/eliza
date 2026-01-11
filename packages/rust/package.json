@@ -24,7 +24,7 @@
   "scripts": {
     "build": "./build.sh",
     "build:native": "cargo build --release",
-    "build:wasm": "wasm-pack build --target web --out-dir pkg/web --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --features wasm",
+    "build:wasm": "wasm-pack build --target web --out-dir pkg/web --no-default-features --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --no-default-features --features wasm",
     "test": "cargo test",
     "lint": "cargo clippy --all-targets --features native -- -D warnings",
     "lint:fix": "cargo clippy --all-targets --all-features --fix --allow-dirty",

@@ -26,7 +26,7 @@ The runtime handles configuration, plugin resolution, and message processing aut
 <Tabs>
   <Tab title="TypeScript">
 ```typescript
-import { AgentRuntime, bootstrapPlugin } from '@elizaos/core';
+import { AgentRuntime } from '@elizaos/core';
 import { openaiPlugin } from '@elizaos/plugin-openai';
 import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
@@ -37,7 +37,7 @@ name: 'Assistant',
 bio: 'A helpful AI assistant',
 system: 'You are a helpful assistant.',
 },
-plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+plugins: [sqlPlugin, openaiPlugin],
 });
 
 // Initialize

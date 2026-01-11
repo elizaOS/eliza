@@ -37,7 +37,7 @@ sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
 
 ```typescript
 import { APIGatewayProxyHandler } from "aws-lambda";
-import { AgentRuntime, bootstrapPlugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 
 let runtime: AgentRuntime | null = null;
@@ -46,7 +46,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   if (!runtime) {
     runtime = new AgentRuntime({
       character: { name: "Eliza", bio: "A helpful AI." },
-      plugins: [bootstrapPlugin, openaiPlugin],
+      plugins: [openaiPlugin],
     });
     await runtime.initialize();
   }
