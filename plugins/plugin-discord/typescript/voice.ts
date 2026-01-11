@@ -723,7 +723,9 @@ export class VoiceManager extends EventEmitter {
         );
       }
     });
-    this.streams.set(entityId, opusDecoder as unknown as Readable);
+    // NodeJS.ReadWriteStream extends Readable, but TypeScript can't verify this statically
+    // @ts-expect-error - ReadWriteStream implements Readable interface at runtime
+    this.streams.set(entityId, opusDecoder as Readable);
     this.connections.set(entityId, connection as VoiceConnection);
     opusDecoder.on("error", (err: Error) => {
       this.runtime.logger.debug(

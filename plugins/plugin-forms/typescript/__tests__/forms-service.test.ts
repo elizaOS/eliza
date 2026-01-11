@@ -73,11 +73,11 @@ const createTypedMockRuntime = (): IAgentRuntime => {
 
 describe("FormsService", () => {
   let service: FormsService;
-  let mockRuntime: IAgentRuntime;
+  let agentRuntime: IAgentRuntime;
 
   beforeEach(() => {
-    mockRuntime = createTypedMockRuntime();
-    service = new FormsService(mockRuntime);
+    agentRuntime = createTypedMockRuntime();
+    service = new FormsService(agentRuntime);
   });
 
   describe("Service initialization", () => {
@@ -86,7 +86,7 @@ describe("FormsService", () => {
     });
 
     test("should start properly", async () => {
-      const startedService = await FormsService.start(mockRuntime);
+      const startedService = await FormsService.start(agentRuntime);
       expect(startedService).toBeInstanceOf(FormsService);
     });
 
@@ -108,7 +108,7 @@ describe("FormsService", () => {
 
       expect(form).toBeDefined();
       expect(form.id).toBeDefined();
-      expect(form.agentId).toBe(mockRuntime.agentId);
+      expect(form.agentId).toBe(agentRuntime.agentId);
       expect(form.status).toBe("active");
       expect(form.name).toBe("contact");
       expect(form.steps).toHaveLength(1);
@@ -119,7 +119,7 @@ describe("FormsService", () => {
     test("should create a custom form", async () => {
       const customForm = {
         name: "custom-form",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "step1",
@@ -161,7 +161,7 @@ describe("FormsService", () => {
       const message = createMockMemory("My name is John Doe");
 
       // Mock the LLM to return specific values
-      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"name": "John Doe"}'
       );
 
@@ -179,7 +179,7 @@ describe("FormsService", () => {
       // Create a multi-step form
       const multiStepForm = await service.createForm({
         name: "multi-step",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "step1",
@@ -207,7 +207,7 @@ describe("FormsService", () => {
       });
 
       // Update first step field
-      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"field1": "value1"}'
       );
       const result = await service.updateForm(multiStepForm.id, createMockMemory("value1"));
@@ -222,7 +222,7 @@ describe("FormsService", () => {
 
     test("should mark form as completed when all steps are done", async () => {
       // Fill all fields of contact form
-      (mockRuntime.useModel as ReturnType<typeof mock>)
+      (agentRuntime.useModel as ReturnType<typeof mock>)
         .mockResolvedValueOnce('{"name": "John Doe"}')
         .mockResolvedValueOnce('{"email": "john@example.com"}');
 
@@ -377,7 +377,7 @@ describe("FormsService", () => {
     test("should extract values for secret fields", async () => {
       const formWithSecret = await service.createForm({
         name: "api-form",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "credentials",
@@ -396,7 +396,7 @@ describe("FormsService", () => {
 
       // The service should still set the value even for secret fields
       // but it would be masked in the provider
-      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"apiKey": "sk-12345"}'
       );
 
@@ -406,7 +406,7 @@ describe("FormsService", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(mockRuntime.useModel).toHaveBeenCalled();
+      expect(agentRuntime.useModel).toHaveBeenCalled();
 
       const updatedForm = await service.getForm(formWithSecret.id);
       const apiKeyField = updatedForm?.steps[0].fields.find((f) => f.id === "apiKey");
@@ -499,11 +499,11 @@ describe("FormsService", () => {
 
   describe("Zod validation", () => {
     test("should validate field values according to type", async () => {
-      const service = (await FormsService.start(mockRuntime)) as FormsService;
+      const service = (await FormsService.start(agentRuntime)) as FormsService;
 
       const form = await service.createForm({
         name: "validation-test",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "step1",
@@ -530,7 +530,7 @@ describe("FormsService", () => {
       });
 
       // Test invalid email
-      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"email": "not-an-email"}'
       );
 
@@ -542,10 +542,10 @@ describe("FormsService", () => {
       // The validation might not work as expected with mocked LLM
       // Just check that the form update was attempted
       expect(result1.success).toBe(true);
-      expect(mockRuntime.useModel).toHaveBeenCalled();
+      expect(agentRuntime.useModel).toHaveBeenCalled();
 
       // Test valid values
-      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"email": "test@example.com", "age": 25, "website": "https://example.com"}'
       );
 
@@ -559,11 +559,11 @@ describe("FormsService", () => {
     });
 
     test("should handle falsy values correctly", async () => {
-      const service = (await FormsService.start(mockRuntime)) as FormsService;
+      const service = (await FormsService.start(agentRuntime)) as FormsService;
 
       const form = await service.createForm({
         name: "falsy-test",
-        agentId: mockRuntime.agentId,
+        agentId: agentRuntime.agentId,
         steps: [
           {
             id: "step1",
@@ -591,7 +591,7 @@ describe("FormsService", () => {
       });
 
       // Test falsy values
-      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
+      (agentRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"enabled": false, "count": 0, "message": ""}'
       );
 

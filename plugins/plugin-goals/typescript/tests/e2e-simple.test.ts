@@ -4,7 +4,7 @@ import GoalsPlugin from "../index";
 import { createGoalDataService } from "../services/goalDataService";
 
 // Mock runtime for testing
-const mockRuntime = {
+const agentRuntime = {
   agentId: "test-agent-uuid-1234-5678-abcd" as UUID,
   db: {
     execute: () => Promise.resolve([]),
@@ -28,7 +28,7 @@ const mockRuntime = {
 
 describe("Goals Plugin E2E Simple Tests", () => {
   it("should initialize plugin successfully", async () => {
-    expect(() => GoalsPlugin.init?.({}, mockRuntime)).not.toThrow();
+    expect(() => GoalsPlugin.init?.({}, agentRuntime)).not.toThrow();
   });
 
   it("should have working action validation", () => {
@@ -47,7 +47,7 @@ describe("Goals Plugin E2E Simple Tests", () => {
   });
 
   it("should create goal data service successfully", () => {
-    const dataService = createGoalDataService(mockRuntime);
+    const dataService = createGoalDataService(agentRuntime);
     expect(dataService).toBeDefined();
   });
 });

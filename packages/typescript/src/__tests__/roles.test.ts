@@ -3,14 +3,16 @@ import * as entities from "../entities";
 import * as logger_module from "../logger";
 import { findWorldsForOwner, getUserServerRole } from "../roles";
 import { type IAgentRuntime, Role, type UUID, type World } from "../types";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("roles utilities", () => {
-  let mockRuntime: IAgentRuntime;
-  let getWorldMock: MockFunction<(id: UUID) => Promise<World | null>>;
-  let getAllWorldsMock: MockFunction<() => Promise<World[]>>;
+  let runtime: IAgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Create REAL runtime
+    runtime = await createTestRuntime();
 
     // Set up scoped mocks for this test
     vi.spyOn(entities, "createUniqueUuid").mockImplementation(
@@ -40,29 +42,16 @@ describe("roles utilities", () => {
       });
     }
 
-    getWorldMock = mock<(id: UUID) => Promise<World | null>>();
-    getAllWorldsMock = mock<() => Promise<World[]>>();
-
-    mockRuntime = {
-      agentId: "agent-123" as UUID,
-      character: {
-        id: "agent-123" as UUID,
-        name: "TestAgent",
-        username: "testagent",
-        bio: [],
-        messageExamples: [],
-        postExamples: [],
-        topics: [],
-        style: { all: [], chat: [], post: [] },
-        adjectives: [],
-      },
-      getWorld: getWorldMock,
-      getAllWorlds: getAllWorldsMock,
-    } as Partial<IAgentRuntime> as IAgentRuntime;
+    // Spy on runtime.logger methods
+    vi.spyOn(runtime.logger, "error").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
+    vi.spyOn(runtime.logger, "debug").mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   describe("getUserServerRole", () => {
@@ -70,7 +59,7 @@ describe("roles utilities", () => {
       const mockWorld: World = {
         id: "world-123" as UUID,
         name: "Test World",
-        agentId: "agent-123" as UUID,
+        agentId: runtime.agentId,
         messageServerId: "server-123",
         metadata: {
           roles: {
@@ -79,10 +68,10 @@ describe("roles utilities", () => {
         },
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
       const role = await getUserServerRole(
-        mockRuntime,
+        runtime,
         "user-123-456-789-abc-def012345678",
         "server-123",
       );
@@ -90,13 +79,9 @@ describe("roles utilities", () => {
     });
 
     it("should return Role.NONE when world is null", async () => {
-      getWorldMock.mockResolvedValue(null);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(null);
 
-      const role = await getUserServerRole(
-        mockRuntime,
-        "user-123",
-        "server-123",
-      );
+      const role = await getUserServerRole(runtime, "user-123", "server-123");
       expect(role).toBe(Role.NONE);
     });
 
@@ -104,18 +89,14 @@ describe("roles utilities", () => {
       const mockWorld: World = {
         id: "world-123" as UUID,
         name: "Test World",
-        agentId: "agent-123" as UUID,
+        agentId: runtime.agentId,
         messageServerId: "server-123",
         metadata: {},
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
-      const role = await getUserServerRole(
-        mockRuntime,
-        "user-123",
-        "server-123",
-      );
+      const role = await getUserServerRole(runtime, "user-123", "server-123");
       expect(role).toBe(Role.NONE);
     });
 
@@ -123,20 +104,16 @@ describe("roles utilities", () => {
       const mockWorld: World = {
         id: "world-123" as UUID,
         name: "Test World",
-        agentId: "agent-123" as UUID,
+        agentId: runtime.agentId,
         messageServerId: "server-123",
         metadata: {
           someOtherData: "value",
         },
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
-      const role = await getUserServerRole(
-        mockRuntime,
-        "user-123",
-        "server-123",
-      );
+      const role = await getUserServerRole(runtime, "user-123", "server-123");
       expect(role).toBe(Role.NONE);
     });
 
@@ -144,7 +121,7 @@ describe("roles utilities", () => {
       const mockWorld: World = {
         id: "world-123" as UUID,
         name: "Test World",
-        agentId: "agent-123" as UUID,
+        agentId: runtime.agentId,
         messageServerId: "server-123",
         metadata: {
           roles: {
@@ -153,15 +130,11 @@ describe("roles utilities", () => {
         },
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
       // Even though the code has duplicate checks for entityId, it should return NONE
       // since 'user-123' is not in the roles
-      const role = await getUserServerRole(
-        mockRuntime,
-        "user-123",
-        "server-123",
-      );
+      const role = await getUserServerRole(runtime, "user-123", "server-123");
       expect(role).toBe(Role.NONE);
     });
 
@@ -169,7 +142,7 @@ describe("roles utilities", () => {
       const mockWorld: World = {
         id: "world-123" as UUID,
         name: "Test World",
-        agentId: "agent-123" as UUID,
+        agentId: runtime.agentId,
         messageServerId: "server-123",
         metadata: {
           roles: {
@@ -180,24 +153,24 @@ describe("roles utilities", () => {
         },
       };
 
-      getWorldMock.mockResolvedValue(mockWorld);
+      vi.spyOn(runtime, "getWorld").mockResolvedValue(mockWorld);
 
       const ownerRole = await getUserServerRole(
-        mockRuntime,
+        runtime,
         "owner-user-123-456-789-abcdef0123",
         "server-123",
       );
       expect(ownerRole).toBe(Role.OWNER);
 
       const adminRole = await getUserServerRole(
-        mockRuntime,
+        runtime,
         "admin-user-123-456-789-abcdef0123",
         "server-123",
       );
       expect(adminRole).toBe(Role.ADMIN);
 
       const noneRole = await getUserServerRole(
-        mockRuntime,
+        runtime,
         "none-user-123-456-789-abcdef01234",
         "server-123",
       );
@@ -211,7 +184,7 @@ describe("roles utilities", () => {
         {
           id: "world-1" as UUID,
           name: "World 1",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-1",
           metadata: {
             ownership: {
@@ -222,7 +195,7 @@ describe("roles utilities", () => {
         {
           id: "world-2" as UUID,
           name: "World 2",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-2",
           metadata: {
             ownership: {
@@ -233,7 +206,7 @@ describe("roles utilities", () => {
         {
           id: "world-3" as UUID,
           name: "World 3",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-3",
           metadata: {
             ownership: {
@@ -243,9 +216,9 @@ describe("roles utilities", () => {
         },
       ];
 
-      getAllWorldsMock.mockResolvedValue(mockWorlds);
+      vi.spyOn(runtime, "getAllWorlds").mockResolvedValue(mockWorlds);
 
-      const ownerWorlds = await findWorldsForOwner(mockRuntime, "user-123");
+      const ownerWorlds = await findWorldsForOwner(runtime, "user-123");
 
       expect(ownerWorlds).toBeDefined();
       expect(ownerWorlds?.length).toBe(2);
@@ -258,11 +231,11 @@ describe("roles utilities", () => {
     it("should return null when entityId is empty", async () => {
       const { logger } = await import("../logger");
 
-      const result = await findWorldsForOwner(mockRuntime, "");
+      const result = await findWorldsForOwner(runtime, "");
 
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(
-        { src: "core:roles", agentId: mockRuntime.agentId },
+        { src: "core:roles", agentId: runtime.agentId },
         "User ID is required to find server",
       );
     });
@@ -270,11 +243,11 @@ describe("roles utilities", () => {
     it("should return null when entityId is null", async () => {
       const { logger } = await import("../logger");
 
-      const result = await findWorldsForOwner(mockRuntime, null as string); // Testing with null value
+      const result = await findWorldsForOwner(runtime, null as unknown as string); // Testing with null value
 
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(
-        { src: "core:roles", agentId: mockRuntime.agentId },
+        { src: "core:roles", agentId: runtime.agentId },
         "User ID is required to find server",
       );
     });
@@ -282,13 +255,13 @@ describe("roles utilities", () => {
     it("should return null when no worlds exist", async () => {
       const { logger } = await import("../logger");
 
-      getAllWorldsMock.mockResolvedValue([]);
+      vi.spyOn(runtime, "getAllWorlds").mockResolvedValue([]);
 
-      const result = await findWorldsForOwner(mockRuntime, "user-123");
+      const result = await findWorldsForOwner(runtime, "user-123");
 
       expect(result).toBeNull();
       expect(logger.debug).toHaveBeenCalledWith(
-        { src: "core:roles", agentId: mockRuntime.agentId },
+        { src: "core:roles", agentId: runtime.agentId },
         "No worlds found for agent",
       );
     });
@@ -296,13 +269,13 @@ describe("roles utilities", () => {
     it("should return null when getAllWorlds returns null", async () => {
       const { logger } = await import("../logger");
 
-      getAllWorldsMock.mockResolvedValue([]);
+      vi.spyOn(runtime, "getAllWorlds").mockResolvedValue([]);
 
-      const result = await findWorldsForOwner(mockRuntime, "user-123");
+      const result = await findWorldsForOwner(runtime, "user-123");
 
       expect(result).toBeNull();
       expect(logger.debug).toHaveBeenCalledWith(
-        { src: "core:roles", agentId: mockRuntime.agentId },
+        { src: "core:roles", agentId: runtime.agentId },
         "No worlds found for agent",
       );
     });
@@ -312,7 +285,7 @@ describe("roles utilities", () => {
         {
           id: "world-1" as UUID,
           name: "World 1",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-1",
           metadata: {
             ownership: {
@@ -323,7 +296,7 @@ describe("roles utilities", () => {
         {
           id: "world-2" as UUID,
           name: "World 2",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-2",
           metadata: {
             ownership: {
@@ -333,9 +306,9 @@ describe("roles utilities", () => {
         },
       ];
 
-      getAllWorldsMock.mockResolvedValue(mockWorlds);
+      vi.spyOn(runtime, "getAllWorlds").mockResolvedValue(mockWorlds);
 
-      const result = await findWorldsForOwner(mockRuntime, "user-123");
+      const result = await findWorldsForOwner(runtime, "user-123");
 
       expect(result).toBeNull();
     });
@@ -345,21 +318,21 @@ describe("roles utilities", () => {
         {
           id: "world-1" as UUID,
           name: "World 1",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-1",
           metadata: {},
         },
         {
           id: "world-2" as UUID,
           name: "World 2",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-2",
         } as World,
       ];
 
-      getAllWorldsMock.mockResolvedValue(mockWorlds);
+      vi.spyOn(runtime, "getAllWorlds").mockResolvedValue(mockWorlds);
 
-      const result = await findWorldsForOwner(mockRuntime, "user-123");
+      const result = await findWorldsForOwner(runtime, "user-123");
 
       expect(result).toBeNull();
     });
@@ -369,7 +342,7 @@ describe("roles utilities", () => {
         {
           id: "world-1" as UUID,
           name: "World 1",
-          agentId: "agent-123" as UUID,
+          agentId: runtime.agentId,
           messageServerId: "server-1",
           metadata: {
             someOtherData: "value",
@@ -377,9 +350,9 @@ describe("roles utilities", () => {
         },
       ];
 
-      getAllWorldsMock.mockResolvedValue(mockWorlds);
+      vi.spyOn(runtime, "getAllWorlds").mockResolvedValue(mockWorlds);
 
-      const result = await findWorldsForOwner(mockRuntime, "user-123");
+      const result = await findWorldsForOwner(runtime, "user-123");
 
       expect(result).toBeNull();
     });

@@ -1,5 +1,5 @@
 import type { HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { retrieveAllMarketsAction } from "../actions/retrieveAllMarkets";
 
 // Mock the dependencies
@@ -11,29 +11,80 @@ vi.mock("../utils/clobClient", () => ({
   initializeClobClient: vi.fn(),
 }));
 
+/**
+ * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ */
+async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
+  runtime: IAgentRuntime;
+  cleanup: () => Promise<void>;
+}> {
+  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const { AgentRuntime } = await import("@elizaos/core");
+  const { v4: uuidv4 } = await import("uuid");
+
+  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+  await adapter.init();
+
+  const runtime = new AgentRuntime({
+    agentId,
+    character: {
+      name: "Test Agent",
+      bio: ["A test agent for Polymarket"],
+      system: "You are a helpful assistant.",
+      plugins: [],
+      settings: {
+        secrets: {
+          CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+        },
+      },
+      messageExamples: [],
+      postExamples: [],
+      topics: ["testing"],
+      adjectives: ["helpful"],
+      style: { all: [], chat: [], post: [] },
+    },
+    adapter,
+    plugins: [],
+  });
+
+  await runtime.initialize();
+
+  const cleanup = async () => {
+    try {
+      await runtime.stop();
+      await adapter.close();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+
+  return { runtime, cleanup };
+}
+
 describe("retrieveAllMarketsAction", () => {
-  let mockRuntime: IAgentRuntime;
-  let mockMessage: Memory;
-  let mockState: State;
-  let mockCallback: HandlerCallback | undefined;
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+  let testMessage: Memory;
+  let testState: State;
+  let testCallback: HandlerCallback | undefined;
 
-  beforeEach(() => {
-    mockRuntime = {
-      getSetting: vi.fn(),
-      useModel: vi.fn(),
-    } as Partial<IAgentRuntime>;
+  beforeEach(async () => {
+    const result = await createTestRuntime();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
 
-    mockMessage = {
-      id: "test-id",
+    testMessage = {
+      id: "test-id" as `${string}-${string}-${string}-${string}-${string}`,
       content: { text: "Get all markets" },
-      userId: "test-user",
-      roomId: "test-room",
-      agentId: "test-agent",
+      userId: "test-user" as `${string}-${string}-${string}-${string}-${string}`,
+      roomId: "test-room" as `${string}-${string}-${string}-${string}-${string}`,
+      agentId: runtime.agentId,
       createdAt: Date.now(),
-    };
+    } as Memory;
 
-    mockState = {
-      agentId: "test-agent",
+    testState = {
+      agentId: runtime.agentId,
       bio: "Test bio",
       lore: "Test lore",
       recentMessages: [],
@@ -42,27 +93,38 @@ describe("retrieveAllMarketsAction", () => {
       actions: [],
       evaluators: [],
       responseData: {},
-    };
+    } as State;
 
-    mockCallback = vi.fn();
+    testCallback = vi.fn();
+  });
+
+  afterEach(async () => {
+    await cleanup();
   });
 
   describe("validate", () => {
     it("should return true when CLOB_API_URL is provided", async () => {
-      vi.mocked(mockRuntime.getSetting).mockReturnValue("https://clob.polymarket.com");
-
-      const result = await retrieveAllMarketsAction.validate(mockRuntime, mockMessage, mockState);
+      const result = await retrieveAllMarketsAction.validate(runtime, testMessage, testState);
 
       expect(result).toBe(true);
-      expect(mockRuntime.getSetting).toHaveBeenCalledWith("CLOB_API_URL");
     });
 
     it("should return false when CLOB_API_URL is not provided", async () => {
-      vi.mocked(mockRuntime.getSetting).mockReturnValue(undefined);
+      const resultWithoutUrl = await createTestRuntime({
+        CLOB_API_URL: undefined,
+      });
 
-      const result = await retrieveAllMarketsAction.validate(mockRuntime, mockMessage, mockState);
+      vi.spyOn(resultWithoutUrl.runtime, "getSetting").mockReturnValue(undefined);
+
+      const result = await retrieveAllMarketsAction.validate(
+        resultWithoutUrl.runtime,
+        testMessage,
+        testState
+      );
 
       expect(result).toBe(false);
+
+      await resultWithoutUrl.cleanup();
     });
   });
 
@@ -94,8 +156,6 @@ describe("retrieveAllMarketsAction", () => {
         getMarkets: vi.fn().mockResolvedValue(mockResponse),
       };
 
-      vi.mocked(mockRuntime.getSetting).mockReturnValue("https://clob.polymarket.com");
-
       const { callLLMWithTimeout } = await import("../utils/llmHelpers");
       const { initializeClobClient } = await import("../utils/clobClient");
 
@@ -103,11 +163,11 @@ describe("retrieveAllMarketsAction", () => {
       vi.mocked(initializeClobClient).mockResolvedValue(mockClobClient);
 
       const result = await retrieveAllMarketsAction.handler(
-        mockRuntime,
-        mockMessage,
-        mockState,
+        runtime,
+        testMessage,
+        testState,
         {},
-        mockCallback
+        testCallback
       );
 
       expect(result.text).toContain("Retrieved 2 Polymarket prediction markets");
@@ -116,7 +176,7 @@ describe("retrieveAllMarketsAction", () => {
       expect(result.actions).toContain("GET_ALL_MARKETS");
       expect(result.data.markets).toEqual(mockMarkets);
       expect(result.data.count).toBe(2);
-      expect(mockCallback).toHaveBeenCalledWith(result);
+      expect(testCallback).toHaveBeenCalledWith(result);
     });
 
     it("should handle empty markets response", async () => {
@@ -131,8 +191,6 @@ describe("retrieveAllMarketsAction", () => {
         getMarkets: vi.fn().mockResolvedValue(mockResponse),
       };
 
-      vi.mocked(mockRuntime.getSetting).mockReturnValue("https://clob.polymarket.com");
-
       const { callLLMWithTimeout } = await import("../utils/llmHelpers");
       const { initializeClobClient } = await import("../utils/clobClient");
 
@@ -140,11 +198,11 @@ describe("retrieveAllMarketsAction", () => {
       vi.mocked(initializeClobClient).mockResolvedValue(mockClobClient);
 
       const result = await retrieveAllMarketsAction.handler(
-        mockRuntime,
-        mockMessage,
-        mockState,
+        runtime,
+        testMessage,
+        testState,
         {},
-        mockCallback
+        testCallback
       );
 
       expect(result.text).toContain("Retrieved 0 Polymarket prediction markets");
@@ -159,8 +217,6 @@ describe("retrieveAllMarketsAction", () => {
           .mockRejectedValue(new Error("CLOB API error: 500 Internal Server Error")),
       };
 
-      vi.mocked(mockRuntime.getSetting).mockReturnValue("https://clob.polymarket.com");
-
       const { callLLMWithTimeout } = await import("../utils/llmHelpers");
       const { initializeClobClient } = await import("../utils/clobClient");
 
@@ -168,10 +224,10 @@ describe("retrieveAllMarketsAction", () => {
       vi.mocked(initializeClobClient).mockResolvedValue(mockClobClient);
 
       await expect(
-        retrieveAllMarketsAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback)
+        retrieveAllMarketsAction.handler(runtime, testMessage, testState, {}, testCallback)
       ).rejects.toThrow("CLOB API error: 500 Internal Server Error");
 
-      expect(mockCallback).toHaveBeenCalledWith(
+      expect(testCallback).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.stringContaining("Error retrieving markets"),
           data: expect.objectContaining({
@@ -182,13 +238,23 @@ describe("retrieveAllMarketsAction", () => {
     });
 
     it("should handle missing CLOB_API_URL in handler", async () => {
-      vi.mocked(mockRuntime.getSetting).mockReturnValue(undefined);
+      const resultWithoutUrl = await createTestRuntime({
+        CLOB_API_URL: undefined,
+      });
+
+      vi.spyOn(resultWithoutUrl.runtime, "getSetting").mockReturnValue(undefined);
 
       await expect(
-        retrieveAllMarketsAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback)
+        retrieveAllMarketsAction.handler(
+          resultWithoutUrl.runtime,
+          testMessage,
+          testState,
+          {},
+          testCallback
+        )
       ).rejects.toThrow("CLOB_API_URL is required in configuration.");
 
-      expect(mockCallback).toHaveBeenCalledWith(
+      expect(testCallback).toHaveBeenCalledWith(
         expect.objectContaining({
           text: "CLOB_API_URL is required in configuration.",
           data: expect.objectContaining({
@@ -196,6 +262,8 @@ describe("retrieveAllMarketsAction", () => {
           }),
         })
       );
+
+      await resultWithoutUrl.cleanup();
     });
   });
 

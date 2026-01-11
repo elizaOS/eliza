@@ -40,6 +40,19 @@ interface EnhancedWallet {
 }
 
 /**
+ * Type alias for the ClobClient's signer parameter.
+ * The ClobClient expects a specific signer interface that our EnhancedWallet satisfies.
+ */
+type ClobClientSigner = ConstructorParameters<typeof ClobClient>[2];
+
+/**
+ * Cast EnhancedWallet to ClobClient's signer type.
+ */
+function asClobClientSigner(wallet: EnhancedWallet): ClobClientSigner {
+  return wallet as ClobClientSigner;
+}
+
+/**
  * Polymarket Service for managing CLOB connections and wallet state
  *
  * This service:
@@ -191,7 +204,7 @@ export class PolymarketService extends Service {
     this.clobClient = new ClobClient(
       clobApiUrl,
       POLYGON_CHAIN_ID,
-      enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
+      asClobClientSigner(enhancedWallet),
       undefined
     );
 
@@ -230,7 +243,7 @@ export class PolymarketService extends Service {
     this.authenticatedClient = new ClobClient(
       clobApiUrl,
       POLYGON_CHAIN_ID,
-      enhancedWallet as unknown as ConstructorParameters<typeof ClobClient>[2],
+      asClobClientSigner(enhancedWallet),
       creds
     );
 

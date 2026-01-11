@@ -85,11 +85,12 @@ const KnowledgePanelComponent: React.FC<KnowledgePanelProps> = ({ agentId }) => 
 };
 
 // Export the panel configuration for integration with the agent UI
+// Cast needed because AgentPanel expects generic props but KnowledgePanelComponent has specific props
 export const panels: AgentPanel[] = [
   {
     name: "Knowledge",
     path: "knowledge",
-    component: KnowledgePanelComponent as unknown as React.ComponentType<Record<string, unknown>>,
+    component: KnowledgePanelComponent as React.ComponentType<Record<string, unknown>>,
     icon: "Book",
     public: false,
     shortLabel: "Know",

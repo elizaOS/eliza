@@ -40,11 +40,20 @@ export interface MessageServiceAPI {
 }
 
 /**
+ * Runtime with unified messaging API
+ */
+export interface RuntimeWithUnifiedMessaging extends IAgentRuntime {
+  elizaOS: UnifiedMessagingAPI;
+}
+
+/**
  * Checks if the runtime has the unified messaging API (elizaOS.sendMessage).
  * @param {IAgentRuntime} runtime - The runtime to check
  * @returns {boolean} True if the unified messaging API is available
  */
-export function hasUnifiedMessagingAPI(runtime: IAgentRuntime): boolean {
+export function hasUnifiedMessagingAPI(
+  runtime: IAgentRuntime
+): runtime is RuntimeWithUnifiedMessaging {
   const runtimeAny = runtime as { elizaOS?: { sendMessage?: unknown } };
   return !!(runtimeAny.elizaOS && typeof runtimeAny.elizaOS.sendMessage === "function");
 }
@@ -72,7 +81,7 @@ export function hasMessageService(runtime: IAgentRuntime): boolean {
  */
 export function getUnifiedMessagingAPI(runtime: IAgentRuntime): UnifiedMessagingAPI | null {
   if (hasUnifiedMessagingAPI(runtime)) {
-    return (runtime as unknown as { elizaOS: UnifiedMessagingAPI }).elizaOS;
+    return runtime.elizaOS;
   }
   return null;
 }
@@ -348,6 +357,15 @@ function isDiscordJsComponent(component: unknown): component is DiscordJsCompone
 }
 
 /**
+ * Type guard for arrays of Discord.js components (ActionRowBuilder)
+ */
+function isDiscordJsComponentArray(
+  components: unknown[]
+): components is ActionRowBuilder<MessageActionRowComponentBuilder>[] {
+  return components.length > 0 && components.every(isDiscordJsComponent);
+}
+
+/**
  * Safe JSON stringify that handles BigInt values
  */
 function safeStringify(obj: unknown): string {
@@ -427,14 +445,9 @@ export async function sendMessageInChunks(
               logger.warn("Components is not an array, skipping component processing");
               // Instead of continue, maybe return or handle differently?
               // For now, let's proceed assuming it might be an empty message with components
-            } else if (
-              components.length > 0 &&
-              components[0] &&
-              isDiscordJsComponent(components[0])
-            ) {
+            } else if (isDiscordJsComponentArray(components)) {
               // If it looks like discord.js components, pass them directly
-              options.components =
-                components as unknown as ActionRowBuilder<MessageActionRowComponentBuilder>[];
+              options.components = components;
             } else {
               // Otherwise, build components from the assumed DiscordActionRow[] structure
               const discordComponents = (components as DiscordActionRow[]) // Cast here for building logic

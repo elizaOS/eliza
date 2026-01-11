@@ -279,7 +279,9 @@ export class EntityTracker {
             logger.debug(`[EntityTracker] Updated entity ${entity.id} in runtime`);
           }
         } catch (err) {
-          logger.debug(`[EntityTracker] Could not sync entity ${entity.id}: ${err instanceof Error ? err.message : String(err)}`);
+          logger.debug(
+            `[EntityTracker] Could not sync entity ${entity.id}: ${err instanceof Error ? err.message : String(err)}`
+          );
         }
       }
     } catch (error) {
