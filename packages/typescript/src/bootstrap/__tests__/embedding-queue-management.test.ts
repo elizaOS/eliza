@@ -27,7 +27,7 @@ interface TestableEmbeddingService {
 
 describe("EmbeddingGenerationService - Queue Management", () => {
   let service: EmbeddingGenerationService | null;
-  let mockRuntime: IAgentRuntime;
+  let agentRuntime: IAgentRuntime;
   let registeredHandlers: Map<string, (params: EventPayload) => Promise<void>> =
     new Map();
   let emittedEvents: Array<{ event: string; payload: EventPayload }> = [];
@@ -37,7 +37,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
     registeredHandlers = new Map();
 
     // Create mock runtime
-    mockRuntime = {
+    agentRuntime = {
       agentId: "test-agent" as UUID,
       registerEvent: vi.fn(
         (event: string, handler: (params: EventPayload) => Promise<void>) => {
@@ -79,7 +79,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
   describe("Queue Size Management", () => {
     it("should enforce maxQueueSize by removing low priority items first", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -127,7 +127,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should remove oldest items within same priority when making room", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -178,7 +178,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should calculate removal percentage correctly", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -220,7 +220,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
   describe("Priority-based Insertion", () => {
     it("should maintain correct queue order with mixed priorities", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -262,7 +262,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should insert high priority items at correct position", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -296,7 +296,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should maintain FIFO order within same priority level", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -327,7 +327,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
   describe("Retry Logic", () => {
     it("should re-insert failed items with same priority", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -342,7 +342,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
       // Mock useModel to fail on first call
       let callCount = 0;
-      mockRuntime.useModel = vi.fn().mockImplementation(() => {
+      agentRuntime.useModel = vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           throw new Error("Embedding generation failed");
@@ -378,7 +378,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should respect maxRetries limit", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -392,7 +392,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       }
 
       // Mock useModel to always fail
-      mockRuntime.useModel = vi
+      agentRuntime.useModel = vi
         .fn()
         .mockRejectedValue(new Error("Persistent failure"));
 
@@ -425,7 +425,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
   describe("Queue Statistics", () => {
     it("should provide accurate queue statistics", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -469,7 +469,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should update statistics after processing", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -508,7 +508,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
   describe("Edge Cases", () => {
     it("should handle empty queue gracefully", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
 
       expect(service.getQueueSize()).toBe(0);
@@ -522,7 +522,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should handle clearQueue operation", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
@@ -551,7 +551,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
     it("should handle very large queue efficiently", async () => {
       service = (await EmbeddingGenerationService.start(
-        mockRuntime,
+        agentRuntime,
       )) as EmbeddingGenerationService;
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,

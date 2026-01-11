@@ -32,12 +32,12 @@ vi.mock("@linear/sdk", () => ({
 }));
 
 describe("LinearService", () => {
-  let mockRuntime: IAgentRuntime;
+  let agentRuntime: IAgentRuntime;
   let service: LinearService;
 
   beforeEach(() => {
     // Create a mock runtime
-    mockRuntime = {
+    agentRuntime = {
       getSetting: vi.fn((key: string) => {
         if (key === "LINEAR_API_KEY") return "test-api-key";
         if (key === "LINEAR_WORKSPACE_ID") return "test-workspace";
@@ -47,18 +47,18 @@ describe("LinearService", () => {
   });
 
   it("should initialize successfully with valid API key", async () => {
-    service = await LinearService.start(mockRuntime);
+    service = await LinearService.start(agentRuntime);
     expect(service).toBeInstanceOf(LinearService);
   });
 
   it("should throw error without API key", async () => {
-    mockRuntime.getSetting = vi.fn().mockReturnValue(undefined);
+    agentRuntime.getSetting = vi.fn().mockReturnValue(undefined);
 
-    await expect(LinearService.start(mockRuntime)).rejects.toThrow("Linear API key is required");
+    await expect(LinearService.start(agentRuntime)).rejects.toThrow("Linear API key is required");
   });
 
   it("should get teams", async () => {
-    service = await LinearService.start(mockRuntime);
+    service = await LinearService.start(agentRuntime);
     const teams = await service.getTeams();
 
     expect(teams).toHaveLength(1);
@@ -66,7 +66,7 @@ describe("LinearService", () => {
   });
 
   it("should create an issue", async () => {
-    service = await LinearService.start(mockRuntime);
+    service = await LinearService.start(agentRuntime);
 
     const issue = await service.createIssue({
       title: "Test Issue",
@@ -80,7 +80,7 @@ describe("LinearService", () => {
   });
 
   it("should track activity", async () => {
-    service = await LinearService.start(mockRuntime);
+    service = await LinearService.start(agentRuntime);
 
     // Clear any existing activity
     service.clearActivityLog();

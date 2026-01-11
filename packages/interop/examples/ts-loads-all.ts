@@ -43,7 +43,7 @@ async function loadRustViaWasm(): Promise<void> {
     // Test the action
     if (plugin.actions && plugin.actions.length > 0) {
       const action = plugin.actions[0];
-      const mockRuntime = {} as Parameters<typeof action.handler>[0];
+      const agentRuntime = {} as Parameters<typeof action.handler>[0];
       const mockMemory: Memory = {
         id: "123" as `${string}-${string}-${string}-${string}-${string}`,
         agentId: "456" as `${string}-${string}-${string}-${string}-${string}`,
@@ -56,7 +56,7 @@ async function loadRustViaWasm(): Promise<void> {
 
       console.log('\nInvoking action with: "I am feeling sad today"');
       const result = await action.handler(
-        mockRuntime,
+        agentRuntime,
         mockMemory,
         mockState,
         {},
@@ -93,7 +93,7 @@ async function loadPythonViaIpc(): Promise<void> {
     // Test the action
     if (plugin.actions && plugin.actions.length > 0) {
       const action = plugin.actions[0];
-      const mockRuntime = {} as Parameters<typeof action.handler>[0];
+      const agentRuntime = {} as Parameters<typeof action.handler>[0];
       const mockMemory: Memory = {
         id: "123" as `${string}-${string}-${string}-${string}-${string}`,
         agentId: "456" as `${string}-${string}-${string}-${string}-${string}`,
@@ -106,7 +106,7 @@ async function loadPythonViaIpc(): Promise<void> {
 
       console.log('\nInvoking action with: "I remember my childhood"');
       const result = await action.handler(
-        mockRuntime,
+        agentRuntime,
         mockMemory,
         mockState,
         {},

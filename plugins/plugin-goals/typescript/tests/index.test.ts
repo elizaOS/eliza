@@ -26,7 +26,7 @@ describe("GoalsPlugin", () => {
   });
 
   it("should initialize without errors", async () => {
-    const mockRuntime = {
+    const agentRuntime = {
       agentId: "test-agent-uuid-1234-5678-abcd",
       db: {
         execute: vi.fn(),
@@ -35,7 +35,7 @@ describe("GoalsPlugin", () => {
 
     const config = {};
     if (GoalsPlugin.init) {
-      await expect(GoalsPlugin.init(config, mockRuntime)).resolves.toBeUndefined();
+      await expect(GoalsPlugin.init(config, agentRuntime)).resolves.toBeUndefined();
     }
   });
 });
