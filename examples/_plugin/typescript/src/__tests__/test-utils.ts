@@ -731,6 +731,13 @@ export const testFixtures = {
   userId: "test-user-id" as UUID,
   character: DEFAULT_TEST_CHARACTER,
   timestamp: Date.now(),
+  messagePayload: (overrides?: { content?: Partial<Content> }) => ({
+    runtime: createMockRuntime(),
+    message: createMockMemory(overrides?.content ? { content: overrides.content as Content } : {}),
+    state: createMockState(),
+    source: "test",
+    channel: ChannelType.GROUP,
+  }),
 };
 
 /**
