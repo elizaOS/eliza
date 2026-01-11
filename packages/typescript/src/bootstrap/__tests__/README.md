@@ -4,37 +4,29 @@
 
 This directory contains a comprehensive test suite for the Eliza Bootstrap Plugin. The tests cover all major components of the plugin including actions, providers, evaluators, services, and event handling logic.
 
-**IMPORTANT: There is NO mockRuntime. All tests use REAL AgentRuntime instances with PGLite for database operations.**
-
-## Testing Philosophy
-
-elizaOS follows a "no mock" testing philosophy:
-
-- **All tests use real AgentRuntime instances** - This ensures tests validate actual behavior
-- **PGLite provides in-memory databases** - Fast, isolated test execution without external dependencies
-- **Tests verify real database operations** - State changes are persisted and can be verified
-
 ## Test Utilities
 
 The test suite includes utilities in `test-utils.ts`:
 
 ### Runtime Creation
 
-- `createTestRuntime(options?)`: Creates a real `AgentRuntime` with PGLite database. Use for all tests.
+- `createMockRuntime(overrides?)`: Creates an `IAgentRuntime` with all methods mocked via `vi.fn()`. Use for unit tests.
 
-- `createTestRuntimeWithCleanup(options?)`: Creates runtime with automatic cleanup function.
+- `createTestRuntime(options?)`: Creates a real `AgentRuntime` with a mocked database adapter. Use for integration tests.
 
-- `setupActionTestAsync(options?)`: Async setup for action tests - returns runtime, test data, and cleanup.
+- `setupActionTest(options?)`: Quick setup for action tests - returns runtime, message, state, and callback.
 
 ### Data Creation Utilities
 
-- `createTestMemory(overrides?)`: Creates test Memory objects (data structure, not mock).
+- `createTestMemory(overrides?)` / `createMockMemory(overrides?)`: Creates test Memory objects.
 
-- `createTestState(overrides?)`: Creates test State objects (data structure, not mock).
+- `createTestState(overrides?)` / `createMockState(overrides?)`: Creates test State objects.
 
-- `createTestRoom(overrides?)`: Creates test Room objects (data structure, not mock).
+- `createMockRoom(overrides?)`: Creates test Room objects.
 
 - `createTestCharacter(overrides?)`: Creates test Character configurations.
+
+- `createMockDatabaseAdapter(agentId?)`: Creates an in-memory database adapter for testing.
 
 ### Helper Utilities
 
@@ -42,19 +34,23 @@ The test suite includes utilities in `test-utils.ts`:
 
 - `waitFor(condition, timeout?, interval?)`: Waits for a condition to be true.
 
-- `retry(fn, maxRetries?, baseDelay?)`: Retries a function with exponential backoff.
-
 - `createUUID()`: Creates a UUID for testing.
+
+### Type Aliases
+
+- `MockRuntime`: Type alias for `IAgentRuntime` (for backward compatibility).
 
 ## Best Practices
 
-1. **Use Real Runtimes**: Always use `createTestRuntime()` or `createTestRuntimeWithCleanup()`.
+1. **Use `IAgentRuntime` Type**: Always type your test runtime as `IAgentRuntime`.
 
-2. **Clean Up**: Always call cleanup in `afterEach` to prevent test pollution.
+2. **Choose the Right Utility**:
+   - Unit tests → `createMockRuntime()` or `setupActionTest()`
+   - Integration tests → `createTestRuntime()`
 
-3. **Test Real Behavior**: Verify actual database state changes, not mock method calls.
+3. **Clean Up**: Always call `cleanupTestRuntime()` in `afterEach` for integration tests.
 
-4. **Use vi.spyOn for Verification**: If you need to verify method calls, use `vi.spyOn()` on the real runtime.
+4. **Use vi.spyOn for Verification**: If you need to verify method calls, use `vi.spyOn()` on the runtime.
 
 ## Usage
 
@@ -78,150 +74,201 @@ npx vitest --watch packages/typescript/src/bootstrap/__tests__
 
 ## Common Test Patterns
 
-### Basic Action Test with Real Runtime
+### Quick Action Test with setupActionTest
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createTestRuntimeWithCleanup, createTestMemory, createTestState } from "./test-utils";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { setupActionTest } from "./test-utils";
 import { myAction } from "../actions";
-import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
 
 describe("My Action", () => {
-  let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
-  let testRoomId: UUID;
-
-  beforeEach(async () => {
-    const result = await createTestRuntimeWithCleanup();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
-
-    // Create test room in the database
-    testRoomId = await runtime.createRoom({
-      name: "Test Room",
-      source: "test",
-      type: ChannelType.GROUP,
-    });
-  });
-
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   it("should validate correctly", async () => {
-    const message = createTestMemory({ roomId: testRoomId });
-    const state = createTestState();
+    const { mockRuntime, mockMessage, mockState } = setupActionTest();
 
-    const isValid = await myAction.validate(runtime, message, state);
+    const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
 
     expect(isValid).toBe(true);
   });
 
-  it("should handle action and persist data", async () => {
-    const message = createTestMemory({
-      roomId: testRoomId,
-      content: { text: "test message" },
+  it("should handle action with custom overrides", async () => {
+    const { mockRuntime, mockMessage, mockState, callbackFn } = setupActionTest({
+      runtimeOverrides: {
+        getSetting: vi.fn().mockReturnValue("custom-value"),
+      },
+      messageOverrides: {
+        content: { text: "custom message" },
+      },
     });
-    const state = createTestState();
-    const callback = vi.fn();
 
-    const result = await myAction.handler(runtime, message, state, {}, callback);
+    const result = await myAction.handler(
+      mockRuntime,
+      mockMessage,
+      mockState,
+      {},
+      callbackFn
+    );
 
     expect(result.success).toBe(true);
+    expect(callbackFn).toHaveBeenCalled();
+  });
+});
+```
 
-    // Verify data was actually persisted
+### Unit Testing with createMockRuntime
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createMockRuntime, createTestMemory, createTestState } from "./test-utils";
+import { myAction } from "../actions";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+
+describe("My Action", () => {
+  let runtime: IAgentRuntime;
+  let message: Memory;
+  let state: State;
+
+  beforeEach(() => {
+    runtime = createMockRuntime({
+      getSetting: vi.fn().mockReturnValue("test-api-key"),
+    });
+    message = createTestMemory({ content: { text: "test message" } });
+    state = createTestState();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should validate correctly", async () => {
+    const isValid = await myAction.validate(runtime, message, state);
+    expect(isValid).toBe(true);
+  });
+
+  it("should call runtime methods", async () => {
+    await myAction.handler(runtime, message, state);
+
+    expect(runtime.createMemory).toHaveBeenCalled();
+  });
+});
+```
+
+### Integration Testing with createTestRuntime
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createTestRuntime, cleanupTestRuntime, createTestMemory } from "./test-utils";
+import type { IAgentRuntime } from "@elizaos/core";
+
+describe("My Provider Integration", () => {
+  let runtime: IAgentRuntime;
+
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+  });
+
+  afterEach(async () => {
+    await cleanupTestRuntime(runtime);
+  });
+
+  it("should work with real runtime", async () => {
+    const roomId = await runtime.createRoom({
+      name: "test-room",
+      source: "test",
+      type: "GROUP",
+    });
+
+    await runtime.createMemory({
+      roomId,
+      entityId: "test-entity-id",
+      agentId: runtime.agentId,
+      content: { text: "test message" },
+    }, "messages");
+
     const memories = await runtime.getMemories({
-      roomId: testRoomId,
+      roomId,
+      tableName: "messages",
       count: 10,
     });
+
     expect(memories.length).toBeGreaterThan(0);
   });
 });
 ```
 
-### Testing Providers with Real Runtime
+### Testing Providers
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestRuntimeWithCleanup, createTestMemory, createTestState } from "./test-utils";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createMockRuntime, createTestMemory, createTestState } from "./test-utils";
 import { myProvider } from "../providers/myProvider";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
 describe("My Provider", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
-  let testRoomId: UUID;
+  let message: Memory;
+  let state: State;
 
-  beforeEach(async () => {
-    const result = await createTestRuntimeWithCleanup();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
-
-    testRoomId = await runtime.createRoom({
-      name: "Test Room",
-      source: "test",
-      type: ChannelType.GROUP,
-    });
-
-    // Create test data in the database
-    await runtime.createMemory({
-      roomId: testRoomId,
-      entityId: "test-entity-id",
-      agentId: runtime.agentId,
-      content: { text: "stored data" },
-    }, "messages");
+  beforeEach(() => {
+    runtime = createMockRuntime();
+    message = createTestMemory();
+    state = createTestState();
   });
 
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("should return provider result from real data", async () => {
-    const message = createTestMemory({ roomId: testRoomId });
-    const state = createTestState();
-
+  it("should return provider result", async () => {
     const result = await myProvider.get(runtime, message, state);
 
     expect(result).toBeDefined();
+    expect(result.text).toBeDefined();
+  });
+
+  it("should handle custom data", async () => {
+    runtime.getMemories = vi.fn().mockResolvedValue([
+      createTestMemory({ content: { text: "stored data" } }),
+    ]);
+
+    const result = await myProvider.get(runtime, message, state);
+
     expect(result.text).toContain("stored data");
   });
 });
 ```
 
-### Testing Services with Real Runtime
+### Testing Services
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestRuntimeWithCleanup } from "./test-utils";
+import { createTestRuntime, cleanupTestRuntime } from "./test-utils";
 import { MyService } from "../services/myService";
 import type { IAgentRuntime } from "@elizaos/core";
 
 describe("My Service", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
   let service: MyService;
 
   beforeEach(async () => {
-    const result = await createTestRuntimeWithCleanup();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
-
+    runtime = await createTestRuntime();
     service = new MyService();
     await service.start(runtime);
   });
 
   afterEach(async () => {
     await service.stop();
-    await cleanup();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should initialize correctly", () => {
     expect(service.capabilityDescription).toBeDefined();
   });
 
-  it("should process data with real runtime", async () => {
+  it("should process data", async () => {
     const result = await service.processData("test input");
     expect(result).toBeDefined();
   });
@@ -230,11 +277,8 @@ describe("My Service", () => {
 
 ### Using vi.spyOn for Method Verification
 
-If you need to verify that specific runtime methods were called:
-
 ```typescript
 it("should call useModel with correct parameters", async () => {
-  // Spy on the real runtime method
   const useModelSpy = vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
 
   const message = createTestMemory({ roomId: testRoomId });
@@ -246,53 +290,5 @@ it("should call useModel with correct parameters", async () => {
     ModelType.TEXT_SMALL,
     expect.objectContaining({ prompt: expect.any(String) })
   );
-});
-```
-
-## Migration from Mock Tests
-
-If you have existing tests using `createMockRuntime()`, migrate them as follows:
-
-### Before (with mocks - DEPRECATED):
-
-```typescript
-// ❌ DON'T: Use mock runtime
-const mockRuntime = createMockRuntime({
-  getSetting: vi.fn().mockReturnValue("value"),
-});
-```
-
-### After (with real runtime):
-
-```typescript
-// ✅ DO: Use real runtime with spies
-const { runtime, cleanup } = await createTestRuntimeWithCleanup();
-vi.spyOn(runtime, "getSetting").mockReturnValue("value");
-// ... test ...
-await cleanup();
-```
-
-## Skipping Tests Without Database
-
-If `@elizaos/plugin-sql` is not available, tests should be skipped:
-
-```typescript
-beforeEach(async () => {
-  try {
-    const result = await createTestRuntimeWithCleanup();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
-  } catch {
-    // plugin-sql not available
-    runtime = null;
-  }
-});
-
-it("should work with real runtime", async () => {
-  if (!runtime) {
-    console.warn("Skipping test - @elizaos/plugin-sql not available");
-    return;
-  }
-  // ... test code ...
 });
 ```

@@ -109,7 +109,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
  * @param {IAgentRuntime} runtime - The runtime environment.
  * @param {Memory} message - The message data.
  * @param {State} state - The current state.
- * @param {any} _options - Additional options.
+ * @param {HandlerOptions} _options - Additional options.
  * @param {HandlerCallback} callback - The callback function.
  * @param {Memory[]} responses - Array of responses.
  * @returns {Promise<void>} Promise that resolves after handling the update entity action.

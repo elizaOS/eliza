@@ -52,13 +52,13 @@ export class TransferAction {
     }
 
     const hash = // @ts-expect-error - viem type narrowing issue
-    await walletClient.sendTransaction({
-      account: walletClient.account,
-      to: params.toAddress,
-      value: parseEther(params.amount),
-      data,
-      chain: walletClient.chain,
-    });
+      await walletClient.sendTransaction({
+        account: walletClient.account,
+        to: params.toAddress,
+        value: parseEther(params.amount),
+        data,
+        chain: walletClient.chain,
+      });
 
     return {
       hash,

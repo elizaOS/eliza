@@ -797,8 +797,7 @@ const postGeneratedHandler = async ({
  *
  * @param {UUID} entityId - The unique identifier for the entity.
  * @param {IAgentRuntime} runtime - The runtime environment for the agent.
- * @param {any} user - The user object to sync.
- * @param {string} serverId - The unique identifier for the server.
+ * @param {UUID} messageServerId - The unique identifier for the message server.
  * @param {string} channelId - The unique identifier for the channel.
  * @param {ChannelType} type - The type of channel.
  * @param {string} source - The source of the user data.

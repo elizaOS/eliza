@@ -82,7 +82,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   return runtime!;
 }
 
-function jsonResponse<T extends Record<string, unknown>>(
+function jsonResponse<T extends object>(
   statusCode: number,
   body: T,
 ): Response {

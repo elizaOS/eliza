@@ -60,13 +60,13 @@ export const tokenBalanceProvider: Provider = {
     const publicClient = walletProvider.getPublicClient(chain as SupportedChain);
     const balanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-    const balance = (// @ts-expect-error - viem type narrowing issue
-    await publicClient.readContract({
-      address: tokenData.address as Address,
-      abi: balanceAbi,
-      functionName: "balanceOf",
-      args: [address],
-    })) as bigint;
+    const balance = // @ts-expect-error - viem type narrowing issue
+      (await publicClient.readContract({
+        address: tokenData.address as Address,
+        abi: balanceAbi,
+        functionName: "balanceOf",
+        args: [address],
+      })) as bigint;
 
     const formattedBalance = formatUnits(balance, tokenData.decimals);
     const hasBalance = parseFloat(formattedBalance) > 0;

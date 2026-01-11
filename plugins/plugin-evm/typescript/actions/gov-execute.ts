@@ -34,13 +34,13 @@ export class ExecuteAction {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
       const hash = // @ts-expect-error - viem type narrowing issue
-    await walletClient.sendTransaction({
-        account: walletClient.account,
-        to: params.governor,
-        value: BigInt(0),
-        data: txData as Hex,
-        chain: chainConfig,
-      });
+        await walletClient.sendTransaction({
+          account: walletClient.account,
+          to: params.governor,
+          value: BigInt(0),
+          data: txData as Hex,
+          chain: chainConfig,
+        });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,

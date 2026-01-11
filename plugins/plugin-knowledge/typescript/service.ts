@@ -1,7 +1,7 @@
 import {
   type Content,
-  createUniqueUuid,
   type CustomMetadata,
+  createUniqueUuid,
   type FragmentMetadata,
   type IAgentRuntime,
   type KnowledgeItem,

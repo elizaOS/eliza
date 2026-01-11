@@ -40,6 +40,7 @@ export async function handleImageDescription(
       ],
     };
 
+    // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
     const response = await generateText(generateParams);
 
     if (response.usage) {
@@ -72,6 +73,7 @@ export async function handleImageGeneration(
       prompt: `Generate an image: ${params.prompt}`,
     };
 
+    // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
     const response = await generateText(generateParams);
 
     if (response.usage) {

@@ -3,17 +3,15 @@ import { google } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import {
-  generateText as aiGenerateText,
-  type CoreMessage,
-  embed,
-} from "ai";
+import { generateText as aiGenerateText, type CoreMessage, embed } from "ai";
 
 // Use a flexible type derived from generateText to handle AI SDK version differences
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 
 // Infer GenerateTextResult from the function's return type - parameterized for compatibility
-type GenerateTextResult<_T = Record<string, never>, _U = unknown> = Awaited<ReturnType<typeof aiGenerateText>>;
+type GenerateTextResult<_T = Record<string, never>, _U = unknown> = Awaited<
+  ReturnType<typeof aiGenerateText>
+>;
 
 // Alias for code using LanguageModel
 type LanguageModel = AIModel;
@@ -35,6 +33,7 @@ interface TextGenerationResult {
     modelId?: string;
   };
 }
+
 import { validateModelConfig } from "./config";
 import type { ModelConfig, TextGenerationOptions } from "./types";
 

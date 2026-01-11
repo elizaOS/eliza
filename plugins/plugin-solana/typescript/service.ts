@@ -452,8 +452,8 @@ export class SolanaService extends Service {
 
   /**
    * Registers a swap provider to execute swaps
-   * @param {any} provider - The provider to register
-   * @returns {Promise<number>} The ID assigned to the registered provider
+   * @param provider - The provider to register
+   * @returns The ID assigned to the registered provider
    */
   async registerExchange(provider: ExchangeProvider) {
     const id = Object.values(this.exchangeRegistry).length + 1;
