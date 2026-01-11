@@ -9,7 +9,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createXAuthProvider, getXAuthMode } from "./client/auth-providers/factory";
-import { Client, type QueryPostsResponse, SearchMode, type Post } from "./client/index";
+import { Client, type Post, type QueryPostsResponse, SearchMode } from "./client/index";
 import type { XInteractionPayload } from "./types";
 import { createMemorySafe } from "./utils/memory";
 import { getSetting } from "./utils/settings";
@@ -232,16 +232,16 @@ export class ClientBase {
     const mode = getXAuthMode(runtime, state);
     const reuseKey =
       mode === "env"
-        ? typeof state?.TWITTER_API_KEY === "string"
-          ? state.TWITTER_API_KEY
-          : getSetting(runtime, "TWITTER_API_KEY")
+        ? typeof state?.X_API_KEY === "string"
+          ? state.X_API_KEY
+          : getSetting(runtime, "X_API_KEY")
         : mode === "oauth"
-          ? typeof state?.TWITTER_CLIENT_ID === "string"
-            ? state.TWITTER_CLIENT_ID
-            : getSetting(runtime, "TWITTER_CLIENT_ID")
-          : typeof state?.TWITTER_BROKER_URL === "string"
-            ? state.TWITTER_BROKER_URL
-            : getSetting(runtime, "TWITTER_BROKER_URL");
+          ? typeof state?.X_CLIENT_ID === "string"
+            ? state.X_CLIENT_ID
+            : getSetting(runtime, "X_CLIENT_ID")
+          : typeof state?.X_BROKER_URL === "string"
+            ? state.X_BROKER_URL
+            : getSetting(runtime, "X_BROKER_URL");
 
     if (typeof reuseKey === "string" && reuseKey && ClientBase._xClients[reuseKey]) {
       this.xClient = ClientBase._xClients[reuseKey];
@@ -301,16 +301,9 @@ export class ClientBase {
 
       const entity = await this.runtime.getEntityById(agentId);
       const entityMetadata = entity?.metadata;
-      const xMetadata = entityMetadata?.x as
-        | { userName?: string; name?: string }
-        | undefined;
+      const xMetadata = entityMetadata?.x as { userName?: string; name?: string } | undefined;
       if (xMetadata?.userName !== profile.username) {
-        logger.log(
-          "Updating Agents known X handle",
-          profile.username,
-          "was",
-          entityMetadata?.x
-        );
+        logger.log("Updating Agents known X handle", profile.username, "was", entityMetadata?.x);
         const names = [profile.name, profile.username].filter((n): n is string => !!n);
         if (!entity) {
           throw new Error("Entity not found");
@@ -689,9 +682,7 @@ export class ClientBase {
     if (!this.profile?.username) {
       return undefined;
     }
-    const cached = await this.runtime.getCache<Post[]>(
-      `x/${this.profile.username}/timeline`
-    );
+    const cached = await this.runtime.getCache<Post[]>(`x/${this.profile.username}/timeline`);
 
     if (!cached) {
       return undefined;

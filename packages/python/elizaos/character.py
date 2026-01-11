@@ -211,10 +211,10 @@ def build_character_plugins(env: dict[str, str | None] | None = None) -> list[st
     if all(
         get_env(key)
         for key in [
-            "TWITTER_API_KEY",
-            "TWITTER_API_SECRET_KEY",
-            "TWITTER_ACCESS_TOKEN",
-            "TWITTER_ACCESS_TOKEN_SECRET",
+            "X_API_KEY",
+            "X_API_SECRET",
+            "X_ACCESS_TOKEN",
+            "X_ACCESS_TOKEN_SECRET",
         ]
     ):
         plugins.append("@elizaos/plugin-x")

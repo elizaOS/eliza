@@ -1,5 +1,5 @@
-import { XApi } from "x-api-v2";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { XApi } from "x-api-v2";
 import { XAuth } from "../auth";
 
 // Mock x-api-v2

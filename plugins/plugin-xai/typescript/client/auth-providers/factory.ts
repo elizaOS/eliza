@@ -8,18 +8,14 @@ import type { XAuthMode, XAuthProvider } from "./types";
 function normalizeMode(v: string | undefined | null): XAuthMode {
   const mode = (v ?? "env").toLowerCase();
   if (mode === "env" || mode === "oauth" || mode === "broker") return mode;
-  throw new Error(`Invalid TWITTER_AUTH_MODE=${v}. Expected env|oauth|broker.`);
+  throw new Error(`Invalid X_AUTH_MODE=${v}. Expected env|oauth|broker.`);
 }
 
-export function getXAuthMode(
-  runtime?: IAgentRuntime,
-  state?: Record<string, unknown>
-): XAuthMode {
-  const modeRaw = state?.TWITTER_AUTH_MODE ?? getSetting(runtime ?? null, "TWITTER_AUTH_MODE");
+export function getXAuthMode(runtime?: IAgentRuntime, state?: Record<string, unknown>): XAuthMode {
+  const modeRaw = state?.X_AUTH_MODE ?? getSetting(runtime ?? null, "X_AUTH_MODE");
   const mode = typeof modeRaw === "string" ? modeRaw : undefined;
   return normalizeMode(mode ?? "env");
 }
-
 
 export function createXAuthProvider(
   runtime: IAgentRuntime,
@@ -35,4 +31,3 @@ export function createXAuthProvider(
       return new BrokerAuthProvider(runtime);
   }
 }
-

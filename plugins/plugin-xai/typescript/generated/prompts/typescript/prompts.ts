@@ -104,7 +104,7 @@ Actions (respond only with tags):
 [QUOTE] - You can add meaningful commentary (7.5/10 or higher)
 [REPLY] - You can contribute helpful insights (7/10 or higher)`;
 
-export const TWITTER_ACTION_TEMPLATE = xActionTemplate;
+export const X_ACTION_TEMPLATE = xActionTemplate;
 
 export const xMessageHandlerTemplate = `# Task: Generate dialog and actions for {{agentName}}.
 {{providers}}
@@ -120,4 +120,4 @@ Response format should be formatted in a valid JSON block like this:
 
 The "action" field should be one of the options in [Available Actions] and the "text" field should be the response you want to send. Do not including any thinking or internal reflection in the "text" field. "thought" should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response.`;
 
-export const TWITTER_MESSAGE_HANDLER_TEMPLATE = xMessageHandlerTemplate;
+export const X_MESSAGE_HANDLER_TEMPLATE = xMessageHandlerTemplate;

@@ -68,8 +68,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
           },
         },
       ],
-      outcome:
-        "Extracts X handle and creates entity with platform identity",
+      outcome: "Extracts X handle and creates entity with platform identity",
     },
   ],
 

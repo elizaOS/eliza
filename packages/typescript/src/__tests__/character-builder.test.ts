@@ -255,10 +255,10 @@ describe("buildCharacterPlugins", () => {
     it("should handle X plugin with all required tokens", () => {
       testEnv.ANTHROPIC_API_KEY = "anthropic-key";
       testEnv.OPENAI_API_KEY = "openai-key";
-      testEnv.TWITTER_API_KEY = "x-key";
-      testEnv.TWITTER_API_SECRET_KEY = "x-secret";
-      testEnv.TWITTER_ACCESS_TOKEN = "x-token";
-      testEnv.TWITTER_ACCESS_TOKEN_SECRET = "x-token-secret";
+      testEnv.X_API_KEY = "x-key";
+      testEnv.X_API_SECRET = "x-secret";
+      testEnv.X_ACCESS_TOKEN = "x-token";
+      testEnv.X_ACCESS_TOKEN_SECRET = "x-token-secret";
 
       const plugins = buildCharacterPlugins(testEnv);
 
@@ -273,7 +273,7 @@ describe("buildCharacterPlugins", () => {
     });
 
     it("should NOT include X plugin with incomplete tokens", () => {
-      testEnv.TWITTER_API_KEY = "x-key";
+      testEnv.X_API_KEY = "x-key";
       // Missing other required X tokens
 
       const plugins = buildCharacterPlugins(testEnv);
@@ -313,8 +313,8 @@ describe("buildCharacterPlugins", () => {
     });
 
     it("should handle malformed X credentials", () => {
-      testEnv.TWITTER_API_KEY = "malformed";
-      testEnv.TWITTER_API_SECRET_KEY = "";
+      testEnv.X_API_KEY = "malformed";
+      testEnv.X_API_SECRET = "";
 
       const plugins = buildCharacterPlugins(testEnv);
       expect(plugins).not.toContain(PLUGINS.X);

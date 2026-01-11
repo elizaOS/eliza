@@ -232,7 +232,7 @@ describe("Discord MessageManager", () => {
       if (discordSettings) {
         discordSettings.shouldRespondOnlyToMentions = false;
       }
-      messageManager = new MessageManager(mockDiscordClient);
+      messageManager = new MessageManager(mockDiscordService, agentRuntime);
       vi.spyOn(
         messageManager as unknown as { getChannelType: () => Promise<ChannelType> },
         "getChannelType"
@@ -277,7 +277,7 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       expect(agentRuntime.ensureConnection).toHaveBeenCalled();
-      expect(agentRuntime.messageService.handleMessage).toHaveBeenCalled();
+      expect(agentRuntime.messageService?.handleMessage).toHaveBeenCalled();
     });
 
     it("should process replies to bot in strict mode", async () => {
@@ -288,7 +288,7 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       expect(agentRuntime.ensureConnection).toHaveBeenCalled();
-      expect(agentRuntime.messageService.handleMessage).toHaveBeenCalled();
+      expect(agentRuntime.messageService?.handleMessage).toHaveBeenCalled();
     });
 
     it("should always process DMs regardless of strict mode", async () => {
@@ -298,7 +298,7 @@ describe("Discord MessageManager", () => {
       if (discordSettings) {
         discordSettings.shouldIgnoreDirectMessages = false;
       }
-      messageManager = new MessageManager(mockDiscordClient);
+      messageManager = new MessageManager(mockDiscordService, agentRuntime);
       vi.spyOn(
         messageManager as unknown as { getChannelType: () => Promise<ChannelType> },
         "getChannelType"
@@ -312,7 +312,7 @@ describe("Discord MessageManager", () => {
       await messageManager.handleMessage(mockMessage);
 
       expect(agentRuntime.ensureConnection).toHaveBeenCalled();
-      expect(agentRuntime.messageService.handleMessage).toHaveBeenCalled();
+      expect(agentRuntime.messageService?.handleMessage).toHaveBeenCalled();
     });
   });
 
@@ -323,7 +323,7 @@ describe("Discord MessageManager", () => {
       if (discordSettings) {
         discordSettings.shouldRespondOnlyToMentions = false;
       }
-      messageManager = new MessageManager(mockDiscordClient);
+      messageManager = new MessageManager(mockDiscordService, agentRuntime);
       vi.spyOn(
         messageManager as unknown as { getChannelType: () => Promise<ChannelType> },
         "getChannelType"

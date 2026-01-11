@@ -3,13 +3,13 @@ import type {
   MediaObjectV2,
   PlaceV2,
   PollV2,
+  PostV2,
   TPostv2Expansion,
   TPostv2MediaField,
   TPostv2PlaceField,
   TPostv2PollField,
   TPostv2PostField,
   TPostv2UserField,
-  PostV2,
   UserV2,
 } from "x-api-v2";
 import type { XAuth } from "./auth";
@@ -457,9 +457,7 @@ export function parsePostV2ToV1(postV2: PostV2, includes?: ApiV2Includes): Post 
     username: "",
     name: "",
     thread: [],
-    timestamp: postV2.created_at
-      ? new Date(postV2.created_at).getTime() / 1000
-      : Date.now() / 1000,
+    timestamp: postV2.created_at ? new Date(postV2.created_at).getTime() / 1000 : Date.now() / 1000,
     permanentUrl: `https://x.com/i/status/${postV2.id}`,
     // Check for referenced posts
     isReply: postV2.referenced_posts?.some((ref) => ref.type === "replied_to") ?? false,
@@ -819,10 +817,7 @@ export async function getPostWhere(
   return null;
 }
 
-export async function getPostsWhere(
-  posts: AsyncIterable<Post>,
-  query: PostQuery
-): Promise<Post[]> {
+export async function getPostsWhere(posts: AsyncIterable<Post>, query: PostQuery): Promise<Post[]> {
   const isCallback = typeof query === "function";
   const filtered = [];
 
@@ -986,11 +981,7 @@ export async function getPostAnonymous(id: string, auth: XAuth): Promise<Post | 
   return getPost(id, auth);
 }
 
-async function _uploadMedia(
-  _mediaData: Buffer,
-  _auth: XAuth,
-  _mediaType: string
-): Promise<string> {
+async function _uploadMedia(_mediaData: Buffer, _auth: XAuth, _mediaType: string): Promise<string> {
   // X API v2 media upload is not yet fully implemented in x-api-v2 library
   // This would require using the v1.1 media upload endpoint with proper OAuth
   console.warn("Media upload not yet implemented for X API v2");

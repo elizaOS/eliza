@@ -243,7 +243,10 @@ describe("roles utilities", () => {
     it("should return null when entityId is null", async () => {
       const { logger } = await import("../logger");
 
-      const result = await findWorldsForOwner(runtime, null as unknown as string); // Testing with null value
+      const result = await findWorldsForOwner(
+        runtime,
+        null as unknown as string,
+      ); // Testing with null value
 
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(

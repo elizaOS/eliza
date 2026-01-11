@@ -5,7 +5,11 @@ import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
-import { cleanupTestRuntime, createTestRuntime, createUUID } from "./test-utils";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+  createUUID,
+} from "./test-utils";
 
 describe("DefaultMessageService", () => {
   let messageService: IMessageService;
@@ -441,9 +445,8 @@ describe("DefaultMessageService", () => {
       await messageService.handleMessage(runtime, message, mockCallback);
 
       // Check that RUN_ENDED was called
-      const emitEventCalls = (
-        runtime.emitEvent as ReturnType<typeof vi.fn>
-      ).mock.calls;
+      const emitEventCalls = (runtime.emitEvent as ReturnType<typeof vi.fn>)
+        .mock.calls;
       const runEndedCall = emitEventCalls.find(
         (call: unknown[]) =>
           Array.isArray(call) && call[0] === EventType.RUN_ENDED,

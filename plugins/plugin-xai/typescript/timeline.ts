@@ -40,17 +40,14 @@ export class XTimelineClient {
     this.state = state;
 
     const dryRunSetting =
-      this.state?.TWITTER_DRY_RUN ??
-      getSetting(this.runtime, "TWITTER_DRY_RUN") ??
-      process.env.TWITTER_DRY_RUN;
+      this.state?.X_DRY_RUN ?? getSetting(this.runtime, "X_DRY_RUN") ?? process.env.X_DRY_RUN;
     this.isDryRun =
       dryRunSetting === true ||
       dryRunSetting === "true" ||
       (typeof dryRunSetting === "string" && dryRunSetting.toLowerCase() === "true");
 
     // Load timeline mode from runtime settings or use default
-    const timelineMode =
-      getSetting(this.runtime, "TWITTER_TIMELINE_MODE") ?? process.env.TWITTER_TIMELINE_MODE;
+    const timelineMode = getSetting(this.runtime, "X_TIMELINE_MODE") ?? process.env.X_TIMELINE_MODE;
     this.timelineType =
       timelineMode === TIMELINE_TYPE.Following ? TIMELINE_TYPE.Following : TIMELINE_TYPE.ForYou;
   }
@@ -67,11 +64,11 @@ export class XTimelineClient {
 
       // Use unified engagement interval
       const engagementIntervalMinutes = parseInt(
-        (typeof this.state?.TWITTER_ENGAGEMENT_INTERVAL === "string"
-          ? this.state.TWITTER_ENGAGEMENT_INTERVAL
+        (typeof this.state?.X_ENGAGEMENT_INTERVAL === "string"
+          ? this.state.X_ENGAGEMENT_INTERVAL
           : null) ||
-          (getSetting(this.runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string) ||
-          process.env.TWITTER_ENGAGEMENT_INTERVAL ||
+          (getSetting(this.runtime, "X_ENGAGEMENT_INTERVAL") as string) ||
+          process.env.X_ENGAGEMENT_INTERVAL ||
           "30",
         10
       );
@@ -150,8 +147,8 @@ export class XTimelineClient {
 
     // Use max engagements per run from environment
     const maxActionsPerCycle = parseInt(
-      (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ||
-        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
+      (getSetting(this.runtime, "X_MAX_ENGAGEMENTS_PER_RUN") as string) ||
+        process.env.X_MAX_ENGAGEMENTS_PER_RUN ||
         "10",
       10
     );
@@ -188,8 +185,7 @@ export class XTimelineClient {
         const actionRespondPrompt =
           composePromptFromState({
             state,
-            template:
-              this.runtime.character.templates?.xActionTemplate || xActionTemplate,
+            template: this.runtime.character.templates?.xActionTemplate || xActionTemplate,
           }) +
           `
 Post:
@@ -376,12 +372,7 @@ Choose any combination of [LIKE], [REPOST], [QUOTE], and [REPLY] that are approp
     return results;
   }
 
-  private async ensurePostWorldContext(
-    post: Post,
-    _roomId: UUID,
-    _worldId: UUID,
-    _entityId: UUID
-  ) {
+  private async ensurePostWorldContext(post: Post, _roomId: UUID, _worldId: UUID, _entityId: UUID) {
     try {
       // Use the utility function for consistency
       if (!post.userId || !post.username || !post.conversationId) {
@@ -581,4 +572,3 @@ ${post.text}`;
     }
   }
 }
-

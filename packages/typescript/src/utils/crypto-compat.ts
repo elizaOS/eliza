@@ -426,4 +426,3 @@ export async function decryptAsync(
 
   return webCryptoDecrypt(key, iv, data);
 }
-

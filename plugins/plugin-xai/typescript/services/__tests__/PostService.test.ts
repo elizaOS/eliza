@@ -163,10 +163,7 @@ describe("XPostService", () => {
 
       const post = await service.createPost(options);
 
-      expect(mockClient.xClient.sendPost).toHaveBeenCalledWith(
-        "This is a reply",
-        "post-789"
-      );
+      expect(mockClient.xClient.sendPost).toHaveBeenCalledWith("This is a reply", "post-789");
 
       expect(post.inReplyTo).toBe("post-789");
     });
@@ -187,9 +184,7 @@ describe("XPostService", () => {
 
       await service.createPost(options);
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        "Media upload not currently supported with X API v2"
-      );
+      expect(warnSpy).toHaveBeenCalledWith("Media upload not currently supported with X API v2");
 
       warnSpy.mockRestore();
     });
@@ -308,11 +303,7 @@ describe("XPostService", () => {
 
       const posts = await service.getPosts(options);
 
-      expect(mockClient.xClient.getUserPosts).toHaveBeenCalledWith(
-        "user-456",
-        10,
-        undefined
-      );
+      expect(mockClient.xClient.getUserPosts).toHaveBeenCalledWith("user-456", 10, undefined);
 
       expect(posts).toHaveLength(2);
       expect(posts[0].id).toBe("post-1");

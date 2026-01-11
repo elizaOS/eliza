@@ -36,4 +36,3 @@ message Task {
   optional int64 updated_at = 11;
   optional int64 due_at = 12;
 }
-

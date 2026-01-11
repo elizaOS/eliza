@@ -4,8 +4,8 @@
  * Profile and Post interfaces are defined in profile.ts and posts.ts.
  */
 
-import type { Profile } from "./profile";
 import type { Post } from "./posts";
+import type { Profile } from "./profile";
 
 /**
  * Response for paginated posts queries

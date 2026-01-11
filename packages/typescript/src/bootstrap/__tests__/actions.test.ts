@@ -1,4 +1,3 @@
-
 import {
   ChannelType,
   type HandlerCallback,
@@ -799,11 +798,7 @@ describe("Generate Image Action", () => {
     message = setup.message;
     state = setup.state;
 
-    const isValid = await generateImageAction.validate(
-      runtime,
-      message,
-      state,
-    );
+    const isValid = await generateImageAction.validate(runtime, message, state);
 
     expect(isValid).toBe(true);
   });
@@ -1058,15 +1053,21 @@ describe("Choice Action (Extended)", () => {
     ];
 
     vi.spyOn(runtime, "getTasks").mockResolvedValue(tasks);
-    vi.spyOn(runtime, "useModel").mockImplementation(async (_modelType, params) => {
-      if ((params as Record<string, unknown>)?.prompt?.toString().includes("Extract selected task and option")) {
-        return `<response>
+    vi.spyOn(runtime, "useModel").mockImplementation(
+      async (_modelType, params) => {
+        if (
+          (params as Record<string, unknown>)?.prompt
+            ?.toString()
+            .includes("Extract selected task and option")
+        ) {
+          return `<response>
   <taskId>task-1234</taskId>
   <selectedOption>OPTION_A</selectedOption>
 </response>`;
-      }
-      return "default response";
-    });
+        }
+        return "default response";
+      },
+    );
 
     // Create a custom handler that mimics the actual choice action
     const customChoiceHandler = async (
@@ -1091,7 +1092,11 @@ describe("Choice Action (Extended)", () => {
       // Format options for display
       const optionsText = foundTasks
         .map((task) => {
-          const options = (task.metadata?.options as Array<{ name: string; description?: string }>) || [];
+          const options =
+            (task.metadata?.options as Array<{
+              name: string;
+              description?: string;
+            }>) || [];
           return `${task.name}:\n${options
             .map(
               (o) =>
@@ -1171,12 +1176,10 @@ describe("Choice Action (Extended)", () => {
       }
 
       // Check for tasks with options using explicit checks
-      const tasksWithOptions = foundTasks.filter(
-        (t) => {
-          const options = t.metadata?.options as Array<unknown> | undefined;
-          return options && options.length > 0;
-        },
-      );
+      const tasksWithOptions = foundTasks.filter((t) => {
+        const options = t.metadata?.options as Array<unknown> | undefined;
+        return options && options.length > 0;
+      });
 
       if (tasksWithOptions.length === 0) {
         return cb({
@@ -1267,7 +1270,9 @@ describe("Send Message Action (Extended)", () => {
         if (targetDetails.targetType === "room") {
           // Look up room by name
           const stateData = st.data;
-          const stateDataRoom = stateData?.room as { worldId?: UUID } | undefined;
+          const stateDataRoom = stateData?.room as
+            | { worldId?: UUID }
+            | undefined;
           const worldId = (stateDataRoom?.worldId || "") as UUID;
           const rooms = await rt.getRooms(worldId);
 
@@ -1370,7 +1375,9 @@ describe("Send Message Action (Extended)", () => {
         if (targetDetails.targetType === "room") {
           // Look up room by name
           const stateData = st.data;
-          const stateDataRoom = stateData?.room as { worldId?: UUID } | undefined;
+          const stateDataRoom = stateData?.room as
+            | { worldId?: UUID }
+            | undefined;
           const rooms = await rt.getRooms(
             (stateDataRoom?.worldId || "") as UUID,
           );

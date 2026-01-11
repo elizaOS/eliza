@@ -1,96 +1,44 @@
-import type { IAgentRuntime, IDatabaseAdapter, UUID } from "@elizaos/core";
-// Import the real runtime
-import { AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { MAX_MESSAGE_LENGTH, needsSmartSplit, smartSplitMessage, splitMessage } from "../utils";
 
-// We need a database adapter for tests - use PGLite
-let sqlPlugin: {
-  createDatabaseAdapter: (config: { dataDir: string }, agentId: UUID) => IDatabaseAdapter;
-};
-
-beforeAll(async () => {
-  try {
-    sqlPlugin = await import("@elizaos/plugin-sql");
-  } catch {
-    console.warn("@elizaos/plugin-sql not available, some tests will be skipped");
-  }
-});
-
-// Helper to create a UUID
-function createUUID(): UUID {
-  return crypto.randomUUID() as UUID;
-}
-
 /**
- * Helper to create a real test runtime with PGLite database
+ * Create a mock runtime for testing
  */
-async function createTestRuntime(): Promise<{
-  runtime: IAgentRuntime;
-  cleanup: () => Promise<void>;
-}> {
-  if (!sqlPlugin) {
-    throw new Error("@elizaos/plugin-sql is required for these tests");
-  }
-
-  const agentId = createUUID();
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
-    agentId,
+function createMockRuntime(): IAgentRuntime {
+  return {
+    useModel: vi.fn(),
+    getSetting: vi.fn(),
     character: {
       name: "Test Agent",
-      bio: "A test agent for discord utils tests",
-      system: "You are a helpful test assistant.",
-      plugins: [],
-      settings: {},
     },
-    adapter,
-  });
-
-  await runtime.initialize();
-
-  return {
-    runtime,
-    cleanup: async () => {
-      await runtime.stop();
-      await adapter.close();
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
     },
-  };
+  } as unknown as IAgentRuntime;
 }
 
 describe("Discord Utils - Smart Split Message", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
 
-  beforeEach(async () => {
-    if (sqlPlugin) {
-      const result = await createTestRuntime();
-      runtime = result.runtime;
-      cleanup = result.cleanup;
-    }
-
+  beforeEach(() => {
+    runtime = createMockRuntime();
     vi.spyOn(logger, "debug").mockImplementation(() => {});
     vi.spyOn(logger, "info").mockImplementation(() => {});
     vi.spyOn(logger, "warn").mockImplementation(() => {});
     vi.spyOn(logger, "error").mockImplementation(() => {});
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.clearAllMocks();
-    if (cleanup) {
-      await cleanup();
-    }
   });
 
   describe("parseJSONArrayFromText (via smartSplitMessage)", () => {
     it("should successfully parse JSON array from LLM response", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
       const expectedChunks = ["chunk1", "chunk2", "chunk3"];
 
@@ -107,11 +55,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should parse JSON array wrapped in code blocks", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
       const expectedChunks = ["chunk1", "chunk2"];
 
@@ -125,11 +68,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should parse JSON array with extra text around it", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
       const expectedChunks = ["chunk1", "chunk2"];
 
@@ -143,11 +81,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should validate chunk lengths and fallback if too long", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
       const tooLongChunks = ["a".repeat(MAX_MESSAGE_LENGTH + 100)];
 
@@ -163,11 +96,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback to simple split when LLM returns invalid JSON", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
 
       // Spy on useModel to return invalid JSON
@@ -181,11 +109,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback to simple split when LLM returns object instead of array", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
 
       // Spy on useModel to return a JSON object (wrong type)
@@ -199,11 +122,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback to simple split when LLM returns empty array", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
 
       // Spy on useModel to return empty array
@@ -217,11 +135,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should fallback when array contains non-string values", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
 
       // Spy on useModel to return array with non-string values
@@ -235,11 +148,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should return single chunk when content fits in one message", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const shortContent = "Short message";
 
       vi.spyOn(runtime, "useModel");
@@ -252,11 +160,6 @@ describe("Discord Utils - Smart Split Message", () => {
     });
 
     it("should handle LLM errors gracefully", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const longContent = "a".repeat(3000);
 
       // Spy on useModel to throw an error
@@ -323,11 +226,6 @@ describe("Discord Utils - Smart Split Message", () => {
 
   describe("Integration: smartSplitMessage with realistic content", () => {
     it("should handle code-heavy content correctly", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const codeContent = `
 Here's a Python example:
 \`\`\`python
@@ -361,11 +259,6 @@ function test() {
     });
 
     it("should handle markdown lists correctly", async () => {
-      if (!sqlPlugin) {
-        console.warn("Skipping test - plugin-sql not available");
-        return;
-      }
-
       const listContent = `
 # My List
 1. First item with lots of text to make it longer

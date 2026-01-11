@@ -49,10 +49,10 @@ message ComponentTypeDefinition {
 message PluginManifest {
   string name = 1;
   string description = 2;
-  
+
   // Plugin configuration
   map<string, string> config = 3;
-  
+
   // Component definitions
   repeated ActionManifest actions = 4;
   repeated ProviderManifest providers = 5;
@@ -60,17 +60,17 @@ message PluginManifest {
   repeated ServiceManifest services = 7;
   repeated RouteManifest routes = 8;
   repeated ComponentTypeDefinition component_types = 9;
-  
+
   // Event handlers keyed by event type
   map<string, EventHandlerList> events = 10;
-  
+
   // Dependencies
   repeated string dependencies = 11;
   repeated string test_dependencies = 12;
-  
+
   // Priority for plugin ordering
   optional int32 priority = 13;
-  
+
   // Custom schema for plugin-specific configuration
   google.protobuf.Struct schema = 14;
 }
@@ -90,4 +90,3 @@ message ProjectAgentManifest {
 message ProjectManifest {
   repeated ProjectAgentManifest agents = 1;
 }
-

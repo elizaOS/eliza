@@ -31,27 +31,6 @@ interface SqlToQueryConfig {
   casing?: Record<string, string>;
 }
 
-interface PgColumnWithConfig extends PgColumn {
-  isUnique?: boolean;
-  config?: {
-    uniqueName?: string;
-    notNull?: boolean;
-    default?: unknown;
-  };
-}
-
-interface DrizzleIndex {
-  config: {
-    name: string;
-    columns: (PgColumn | SQL)[];
-    unique: boolean;
-    where?: SQL;
-    concurrently?: boolean;
-    method?: string;
-    using?: string;
-  };
-}
-
 /**
  * Utility functions from Drizzle's code
  */
@@ -103,9 +82,9 @@ const sqlToStr = (sql: SQL, casing: string | undefined) => {
     escapeString: () => {
       throw new Error("we don't support params for `sql` default values");
     },
-    casing: casing ? (casing as Record<string, string>) : undefined,
+    casing: casing ? (casing as unknown as Record<string, string>) : undefined,
   };
-  return sql.toQuery(config as Parameters<SQL["toQuery"]>[0]).sql;
+  return sql.toQuery(config as unknown as Parameters<SQL["toQuery"]>[0]).sql;
 };
 
 /**
@@ -224,7 +203,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       // Handle column-level unique constraints
       // IMPORTANT: Check isUnique, not just uniqueName presence!
       // Drizzle sets uniqueName for all columns but only unique ones should have constraints
-      const columnWithConfig = column as PgColumnWithConfig;
+      const columnWithConfig = column as unknown as PgColumnWithConfig;
       const columnConfig = columnWithConfig.config;
       if (columnWithConfig.isUnique && columnConfig && columnConfig.uniqueName) {
         uniqueConstraintObject[columnConfig.uniqueName] = {
