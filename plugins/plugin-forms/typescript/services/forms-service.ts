@@ -61,6 +61,9 @@ const FormStepSchema = z.object({
   completed: z.boolean().optional().default(false),
 });
 
+/** Database step type without fields (fields are stored separately) */
+type DatabaseFormStep = z.infer<typeof FormStepSchema>;
+
 const DatabaseFormRowSchema = z.object({
   id: z.string().uuid(),
   agent_id: z.string().uuid(),
@@ -1200,11 +1203,11 @@ export class FormsService extends Service {
 
   private validateAndSanitizeFormData(
     formRow: Record<string, unknown>
-  ): (Omit<Form, "steps"> & { steps: FormStep[] }) | null {
+  ): (Omit<Form, "steps"> & { steps: DatabaseFormStep[] }) | null {
     const result = DatabaseFormRowSchema.safeParse(formRow);
 
     if (!result.success) {
-      logger.warn(`Invalid form data for ${formRow.id}:`, result.error.format());
+      logger.warn(`Invalid form data for ${formRow.id}:`, JSON.stringify(result.error.format()));
       return null;
     }
 

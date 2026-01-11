@@ -11,15 +11,11 @@ function normalizeMode(v: string | undefined | null): XAuthMode {
   throw new Error(`Invalid X_AUTH_MODE=${v}. Expected env|oauth|broker.`);
 }
 
-export function getXAuthMode(
-  runtime?: IAgentRuntime,
-  state?: Record<string, unknown>
-): XAuthMode {
+export function getXAuthMode(runtime?: IAgentRuntime, state?: Record<string, unknown>): XAuthMode {
   const modeRaw = state?.X_AUTH_MODE ?? getSetting(runtime ?? null, "X_AUTH_MODE");
   const mode = typeof modeRaw === "string" ? modeRaw : undefined;
   return normalizeMode(mode ?? "env");
 }
-
 
 export function createXAuthProvider(
   runtime: IAgentRuntime,

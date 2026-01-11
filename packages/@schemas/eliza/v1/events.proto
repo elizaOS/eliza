@@ -3,68 +3,68 @@ syntax = "proto3";
 
 package eliza.v1;
 
-import "eliza/v1/primitives.proto";
-import "eliza/v1/memory.proto";
 import "eliza/v1/environment.proto";
+import "eliza/v1/memory.proto";
 import "eliza/v1/model.proto";
+import "eliza/v1/primitives.proto";
 import "google/protobuf/struct.proto";
 
 // Standard event types across all platforms
 enum EventType {
   EVENT_TYPE_UNSPECIFIED = 0;
-  
+
   // World events
   EVENT_TYPE_WORLD_JOINED = 1;
   EVENT_TYPE_WORLD_CONNECTED = 2;
   EVENT_TYPE_WORLD_LEFT = 3;
-  
+
   // Entity events
   EVENT_TYPE_ENTITY_JOINED = 4;
   EVENT_TYPE_ENTITY_LEFT = 5;
   EVENT_TYPE_ENTITY_UPDATED = 6;
-  
+
   // Room events
   EVENT_TYPE_ROOM_JOINED = 7;
   EVENT_TYPE_ROOM_LEFT = 8;
-  
+
   // Message events
   EVENT_TYPE_MESSAGE_RECEIVED = 9;
   EVENT_TYPE_MESSAGE_SENT = 10;
   EVENT_TYPE_MESSAGE_DELETED = 11;
-  
+
   // Channel events
   EVENT_TYPE_CHANNEL_CLEARED = 12;
-  
+
   // Voice events
   EVENT_TYPE_VOICE_MESSAGE_RECEIVED = 13;
   EVENT_TYPE_VOICE_MESSAGE_SENT = 14;
-  
+
   // Interaction events
   EVENT_TYPE_REACTION_RECEIVED = 15;
   EVENT_TYPE_POST_GENERATED = 16;
   EVENT_TYPE_INTERACTION_RECEIVED = 17;
-  
+
   // Run events
   EVENT_TYPE_RUN_STARTED = 18;
   EVENT_TYPE_RUN_ENDED = 19;
   EVENT_TYPE_RUN_TIMEOUT = 20;
-  
+
   // Action events
   EVENT_TYPE_ACTION_STARTED = 21;
   EVENT_TYPE_ACTION_COMPLETED = 22;
-  
+
   // Evaluator events
   EVENT_TYPE_EVALUATOR_STARTED = 23;
   EVENT_TYPE_EVALUATOR_COMPLETED = 24;
-  
+
   // Model events
   EVENT_TYPE_MODEL_USED = 25;
-  
+
   // Embedding events
   EVENT_TYPE_EMBEDDING_GENERATION_REQUESTED = 26;
   EVENT_TYPE_EMBEDDING_GENERATION_COMPLETED = 27;
   EVENT_TYPE_EMBEDDING_GENERATION_FAILED = 28;
-  
+
   // Control events
   EVENT_TYPE_CONTROL_MESSAGE = 29;
 }
@@ -233,4 +233,3 @@ message ControlMessagePayload {
   string source = 1;
   ControlMessage message = 2;
 }
-

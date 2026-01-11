@@ -100,4 +100,3 @@ message State {
   // Dynamic properties for template expansion
   google.protobuf.Struct extra = 4;
 }
-

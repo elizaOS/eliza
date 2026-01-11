@@ -48,7 +48,7 @@ const configSchema = z.object({
     .string()
     .transform((val: string) => val === "true")
     .optional()
-    .default("true"),
+    .default(true),
   CAPSOLVER_API_KEY: z.string().optional(),
   BROWSER_SERVER_PORT: z.string().optional().default("3456"),
 });

@@ -117,7 +117,10 @@ describe("Facts Provider", () => {
         metadata: { type: MemoryType.FACT },
       }),
       createTestMemory({
-        content: { text: "User is a developer", channelType: ChannelType.GROUP },
+        content: {
+          text: "User is a developer",
+          channelType: ChannelType.GROUP,
+        },
         metadata: { type: MemoryType.FACT },
       }),
     ];
@@ -176,8 +179,12 @@ describe("Recent Messages Provider", () => {
 
   it("should retrieve recent messages from database", async () => {
     const recentMessages = [
-      createTestMemory({ content: { text: "Hello", channelType: ChannelType.GROUP } }),
-      createTestMemory({ content: { text: "How are you?", channelType: ChannelType.GROUP } }),
+      createTestMemory({
+        content: { text: "Hello", channelType: ChannelType.GROUP },
+      }),
+      createTestMemory({
+        content: { text: "How are you?", channelType: ChannelType.GROUP },
+      }),
     ];
 
     vi.spyOn(runtime, "getMemories").mockResolvedValue(recentMessages);

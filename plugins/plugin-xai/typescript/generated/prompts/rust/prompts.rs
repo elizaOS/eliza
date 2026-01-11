@@ -71,7 +71,7 @@ Your reply should be:
 
 Your output must ONLY contain the XML block."#;
 
-pub const TWITTER_ACTION_TEMPLATE: &str = r#"# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
+pub const X_ACTION_TEMPLATE: &str = r#"# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
 {{bio}}
 {{postDirections}}
 
@@ -94,7 +94,7 @@ Actions (respond only with tags):
 [QUOTE] - You can add meaningful commentary (7.5/10 or higher)
 [REPLY] - You can contribute helpful insights (7/10 or higher)"#;
 
-pub const TWITTER_MESSAGE_HANDLER_TEMPLATE: &str = r#"# Task: Generate dialog and actions for {{agentName}}.
+pub const X_MESSAGE_HANDLER_TEMPLATE: &str = r#"# Task: Generate dialog and actions for {{agentName}}.
 {{providers}}
 Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
 {{currentPost}}

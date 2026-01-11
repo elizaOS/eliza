@@ -380,13 +380,15 @@ export class MemoryService extends Service {
   async deleteLongTermMemory(id: UUID, entityId: UUID): Promise<void> {
     const db = this.getDb();
 
-    await db.delete(longTermMemories).where(
-      and(
-        eq(longTermMemories.id, id),
-        eq(longTermMemories.agentId, this.runtime.agentId),
-        eq(longTermMemories.entityId, entityId)
-      )
-    );
+    await db
+      .delete(longTermMemories)
+      .where(
+        and(
+          eq(longTermMemories.id, id),
+          eq(longTermMemories.agentId, this.runtime.agentId),
+          eq(longTermMemories.entityId, entityId)
+        )
+      );
 
     logger.info(`Deleted long-term memory: ${id} for entity ${entityId}`);
   }

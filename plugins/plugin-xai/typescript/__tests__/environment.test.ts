@@ -1,6 +1,6 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { shouldTargetUser, xEnvSchema, validateXConfig } from "../environment";
+import { shouldTargetUser, validateXConfig, xEnvSchema } from "../environment";
 
 // Mock runtime for testing
 function createMockRuntime(): IAgentRuntime {
@@ -89,9 +89,7 @@ describe("Environment Configuration", () => {
     it("should throw error when required credentials are missing", async () => {
       vi.spyOn(mockRuntime, "getSetting").mockReturnValue(undefined);
 
-      await expect(validateXConfig(mockRuntime)).rejects.toThrow(
-        "X env auth requires"
-      );
+      await expect(validateXConfig(mockRuntime)).rejects.toThrow("X env auth requires");
     });
 
     it("should validate oauth mode without legacy env credentials", async () => {
@@ -131,9 +129,7 @@ describe("Environment Configuration", () => {
         return settings[key];
       });
 
-      await expect(validateXConfig(mockRuntime)).rejects.toThrow(
-        "X bearer auth requires"
-      );
+      await expect(validateXConfig(mockRuntime)).rejects.toThrow("X bearer auth requires");
     });
 
     it("should use default values for optional settings", async () => {

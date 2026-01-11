@@ -102,4 +102,3 @@ message Relationship {
   google.protobuf.Struct metadata = 6;
   optional string created_at = 7;
 }
-
