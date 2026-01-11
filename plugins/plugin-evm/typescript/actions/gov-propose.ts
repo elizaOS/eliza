@@ -134,6 +134,24 @@ export const proposeAction = {
         },
       },
     ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Create a new proposal to update the fee structure on governor 0xabcdef1234567890abcdef1234567890abcdef12 on Base",
+          action: "PROPOSE",
+        },
+      },
+    ],
+    [
+      {
+        name: "user",
+        content: {
+          text: "Submit a governance proposal for treasury allocation on the DAO at 0x9876543210987654321098765432109876543210 on Arbitrum",
+          action: "PROPOSE",
+        },
+      },
+    ],
   ],
   similes: ["PROPOSE", "GOVERNANCE_PROPOSE"],
-}; // TODO: add more examples
+};

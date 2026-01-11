@@ -2,6 +2,8 @@
  * Version command
  */
 
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - Lines 21-36: External resource loading with fallback path (package.json) - KEEP
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";

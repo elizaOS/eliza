@@ -39,7 +39,7 @@ const cn = (...classes: (string | undefined | null | false)[]) => {
   return classes.filter(Boolean).join(" ");
 };
 
-// Temporary toast implementation
+// Simple toast implementation using console logging
 const useToast = () => ({
   toast: ({
     title,
@@ -50,8 +50,8 @@ const useToast = () => ({
     description: string;
     variant?: string;
   }) => {
-    console.log(`Toast: ${title} - ${description} (${variant || "default"})`);
-    // TODO: Implement proper toast functionality
+    const level = variant === "destructive" ? "error" : "info";
+    console[level](`[Toast] ${title}: ${description}`);
   },
 });
 

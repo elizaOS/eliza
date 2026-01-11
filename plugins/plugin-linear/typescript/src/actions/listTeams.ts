@@ -150,11 +150,11 @@ export const listTeamsAction: Action = {
       // Filter for user's teams if requested
       if (myTeams) {
         try {
-          const _currentUser = await linearService.getCurrentUser();
-          // This would require fetching team membership - simplified for now
-          logger.info("Team membership filtering not yet implemented");
-        } catch {
-          logger.warn("Could not get current user for team filtering");
+          const userTeams = await linearService.getUserTeams();
+          const userTeamIds = new Set(userTeams.map((t) => t.id));
+          teams = teams.filter((team) => userTeamIds.has(team.id));
+        } catch (error) {
+          logger.warn("Could not filter for user's teams:", error);
         }
       }
 

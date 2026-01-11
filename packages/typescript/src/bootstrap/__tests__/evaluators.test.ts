@@ -7,6 +7,10 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+// TODO: Try-catch review completed 2026-01-11. All try-catch blocks retained:
+// - Test verifying reflectionEvaluator doesn't throw on model errors - KEEP
+// - createMultiplePromptEvaluator: Per-prompt error handling - KEEP (illustrates pattern)
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type MockRuntime, setupActionTest } from "./test-utils";
 

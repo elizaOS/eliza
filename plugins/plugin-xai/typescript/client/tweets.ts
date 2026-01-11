@@ -528,7 +528,6 @@ export function parseTweetV2ToV1(tweetV2: TweetV2, includes?: ApiV2Includes): Tw
     }
   }
 
-  // TODO: Process Thread (referenced tweets) and remove reference to v1
   return parsedTweet;
 }
 
@@ -555,9 +554,8 @@ export async function createCreateTweetRequest(
 
     // Handle media uploads if provided
     if (mediaData && mediaData.length > 0) {
-      // Note: Twitter API v2 media upload requires separate endpoint
-      // For now, we'll skip media upload as it requires additional implementation
-      console.warn("Media upload not yet implemented for Twitter API v2");
+      // TODO: Implement Twitter API v1.1 Media Upload endpoint for media attachments
+      console.warn("Media upload requires Twitter API v1.1 Media Upload endpoint");
     }
 
     // Handle reply

@@ -700,11 +700,7 @@ export type MockRuntime = IAgentRuntime;
 export async function cleanupTestRuntime(
   runtime: IAgentRuntime,
 ): Promise<void> {
-  try {
-    await runtime.stop();
-  } catch {
-    // Ignore cleanup errors
-  }
+  await runtime.stop();
 }
 
 /**

@@ -935,13 +935,10 @@ export class TelegramService extends Service {
       if (!chatId)
         throw new Error(`Could not resolve Telegram chat ID from roomId ${target.roomId}`);
     } else if (target.entityId) {
-      // TODO: Need robust way to map entityId (runtime UUID) to Telegram User ID (number)
-      // This might involve checking entity metadata.
-      // For now, this part is non-functional without that mapping.
+      // Sending DMs via entityId requires looking up the entity's Telegram metadata
+      // which contains their Telegram User ID. This is not yet implemented.
       logger.error("[Telegram SendHandler] Sending DMs via entityId not implemented yet.");
-      throw new Error("Sending DMs via entityId is not yet supported for Telegram.");
-      // Example placeholder: const telegramUserId = await getTelegramIdFromEntity(runtime, target.entityId);
-      // chatId = telegramUserId;
+      throw new Error("Sending DMs via entityId is not yet supported for Telegram. Use channelId or roomId instead.");
     } else {
       throw new Error("Telegram SendHandler requires channelId, roomId, or entityId.");
     }
