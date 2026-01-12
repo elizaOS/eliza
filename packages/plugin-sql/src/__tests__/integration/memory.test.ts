@@ -168,6 +168,49 @@ describe('Memory Integration Tests', () => {
       expect(createdMemory?.embedding?.length).toBe(384);
     });
 
+    it('should be idempotent - calling createMemory with existing ID does not modify embedding', async () => {
+      const memoryId = v4() as UUID;
+      // Use values that won't lose precision at 6 decimal places (toFixed(6) used in upsertEmbedding)
+      const originalEmbedding = Array.from({ length: 384 }, (_, i) => Number((i / 384).toFixed(6)));
+
+      // Create initial memory with embedding
+      const originalMemory: Memory = {
+        id: memoryId,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: 'original content' },
+        createdAt: new Date().getTime(),
+        embedding: originalEmbedding,
+      };
+      await adapter.createMemory(originalMemory, 'memories');
+
+      // Verify original embedding was stored (precision-safe comparison)
+      const afterFirst = await adapter.getMemoryById(memoryId);
+      expect(afterFirst?.embedding?.length).toBe(384);
+      expect(afterFirst?.embedding?.[0]).toBe(0);
+      expect(afterFirst?.embedding?.[100]).toBeCloseTo(originalEmbedding[100], 5);
+
+      // Try to create again with different embedding (should be ignored due to ON CONFLICT DO NOTHING)
+      const differentEmbedding = Array.from({ length: 384 }, () => 0.999999);
+      const duplicateMemory: Memory = {
+        id: memoryId,
+        agentId: testAgentId,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        content: { text: 'different content' },
+        createdAt: new Date().getTime(),
+        embedding: differentEmbedding,
+      };
+      await adapter.createMemory(duplicateMemory, 'memories');
+
+      // Verify embedding was NOT changed (still matches original, not the different one)
+      const afterSecond = await adapter.getMemoryById(memoryId);
+      expect(afterSecond?.embedding?.[100]).toBeCloseTo(originalEmbedding[100], 5);
+      expect(afterSecond?.embedding?.[100]).not.toBeCloseTo(0.999999, 5);
+      expect(afterSecond?.content.text).toBe('original content');
+    });
+
     it('should perform partial updates without affecting other fields', async () => {
       // Create a complete memory first with content, metadata and embedding
       const memory = {

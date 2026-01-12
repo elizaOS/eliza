@@ -1,4 +1,4 @@
-import type { ElizaOS, Room, UUID } from '@elizaos/core';
+import type { ElizaOS, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -115,20 +115,12 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      const worlds = await runtime.getAllWorlds();
+      // Optimized: 2 queries instead of N+1
       const participantRoomIds = await runtime.getRoomsForParticipant(agentId);
-      const agentRooms: Room[] = [];
-
-      for (const world of worlds) {
-        const worldRooms = await runtime.getRooms(world.id);
-        for (const room of worldRooms) {
-          if (participantRoomIds.includes(room.id)) {
-            agentRooms.push({
-              ...room,
-            });
-          }
-        }
-      }
+      const agentRooms =
+        participantRoomIds.length > 0
+          ? ((await runtime.getRoomsByIds(participantRoomIds)) ?? [])
+          : [];
 
       sendSuccess(res, { rooms: agentRooms });
     } catch (error) {

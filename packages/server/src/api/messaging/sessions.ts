@@ -684,7 +684,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.get(
     '/sessions/:sessionId',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session || !isValidSession(session)) {
@@ -714,7 +714,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.post(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const body: SendMessageRequest & { transport?: TransportType; mode?: string } = req.body;
 
       // Validate transport parameter (supports both 'transport' and legacy 'mode')
@@ -874,7 +874,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.get(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       // Parse query parameters with proper type handling
       const query: GetMessagesQuery = {
         limit: req.query.limit as string | undefined,
@@ -1061,7 +1061,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.post(
     '/sessions/:sessionId/renew',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session) {
@@ -1103,7 +1103,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.patch(
     '/sessions/:sessionId/timeout',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const newConfig: SessionTimeoutConfig = req.body;
 
       const session = sessions.get(sessionId);
@@ -1172,7 +1172,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.post(
     '/sessions/:sessionId/heartbeat',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session || !isValidSession(session)) {
@@ -1210,7 +1210,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.delete(
     '/sessions/:sessionId',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session) {

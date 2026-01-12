@@ -199,21 +199,34 @@ describe('Entity CRUD Operations', () => {
       expect((retrieved![0].metadata?.nested as any)?.array).toEqual([1, 2, 3]);
     });
 
-    it('should handle duplicate entity creation', async () => {
-      const entity: Entity = {
-        id: uuidv4() as UUID,
+    it('should handle duplicate entity creation (idempotent upsert)', async () => {
+      const entityId = uuidv4() as UUID;
+      const entity1: Entity = {
+        id: entityId,
         agentId: testAgentId,
-        names: ['Duplicate Test'],
-        metadata: {},
+        names: ['Original Name'],
+        metadata: { version: 1 },
+      };
+      const entity2: Entity = {
+        id: entityId,
+        agentId: testAgentId,
+        names: ['Updated Name'],
+        metadata: { version: 2 },
       };
 
       // First creation should succeed
-      const firstResult = await adapter.createEntities([entity]);
+      const firstResult = await adapter.createEntities([entity1]);
       expect(firstResult).toBe(true);
 
-      // Second creation should fail
-      const secondResult = await adapter.createEntities([entity]);
-      expect(secondResult).toBe(false);
+      // Second creation should succeed silently (onConflictDoNothing)
+      const secondResult = await adapter.createEntities([entity2]);
+      expect(secondResult).toBe(true);
+
+      // Original entity should remain unchanged (not updated by second insert)
+      const retrieved = await adapter.getEntitiesByIds([entityId]);
+      expect(retrieved).toHaveLength(1);
+      expect(retrieved![0].names).toEqual(['Original Name']);
+      expect(retrieved![0].metadata).toEqual({ version: 1 });
     });
 
     it('should handle batch entity operations', async () => {
