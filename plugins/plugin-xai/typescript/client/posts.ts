@@ -16,8 +16,9 @@ import type {
   TweetV2,
   UserV2,
 } from "twitter-api-v2";
-
 import type { XAuth } from "./auth";
+import { getEntityIdByScreenName } from "./profile";
+import type { QueryPostsResponse } from "./types";
 
 // Type aliases for X naming convention
 type PostV2 = TweetV2;
@@ -27,9 +28,6 @@ type TPostv2PlaceField = TTweetv2PlaceField;
 type TPostv2PollField = TTweetv2PollField;
 type TPostv2PostField = TTweetv2TweetField;
 type TPostv2UserField = TTweetv2UserField;
-
-import { getEntityIdByScreenName } from "./profile";
-import type { QueryPostsResponse } from "./types";
 
 /**
  * Default options for X API v2 request parameters.

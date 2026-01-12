@@ -1,4 +1,4 @@
-import TwitterApi from "twitter-api-v2";
+import { TwitterApi } from "twitter-api-v2";
 import type { XAuthProvider, XOAuth1Provider } from "./auth-providers/types";
 import type { Profile } from "./profile";
 

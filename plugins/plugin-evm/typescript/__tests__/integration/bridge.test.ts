@@ -30,8 +30,8 @@ const TESTNET_TOKENS = {
   OP_USDC: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7" as `0x${string}`,
 };
 
-// Create a mock runtime for testing
-function createMockRuntime(): IAgentRuntime {
+// Create a test runtime for testing
+function createTestRuntime(): IAgentRuntime {
   return {
     agentId: "test-agent-id" as IAgentRuntime["agentId"],
     getCache: vi.fn().mockResolvedValue(null),

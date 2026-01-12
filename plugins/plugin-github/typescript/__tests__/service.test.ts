@@ -1,20 +1,5 @@
-import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { GitHubService } from "../src/service";
-
-// Mock IAgentRuntime
-const _mockRuntime: Partial<IAgentRuntime> = {
-  getSetting: vi.fn((key: string) => {
-    const settings: Record<string, string> = {
-      GITHUB_API_TOKEN: "test_token",
-      GITHUB_OWNER: "test_owner",
-      GITHUB_REPO: "test_repo",
-      GITHUB_BRANCH: "main",
-    };
-    return settings[key] ?? null;
-  }),
-  agentId: "test-agent-id" as never,
-};
 
 describe("GitHubService", () => {
   let service: GitHubService;

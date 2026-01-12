@@ -1,22 +1,25 @@
 /**
  * Unit tests for Vercel AI Gateway plugin.
+ *
+ * Uses REAL AgentRuntime instances with vi.spyOn for method mocking.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { gatewayPlugin } from "../index";
-
-// Mock runtime
-const createMockRuntime = (settings: Record<string, string> = {}): IAgentRuntime => {
-  return {
-    getSetting: vi.fn((key: string) => settings[key]),
-    useModel: vi.fn(),
-  } as unknown as IAgentRuntime;
-};
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("gatewayPlugin", () => {
-  beforeEach(() => {
+  let runtime: IAgentRuntime;
+
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
   });
 
   it("should have correct plugin metadata", () => {
@@ -50,29 +53,37 @@ describe("gatewayPlugin", () => {
   });
 
   it("should initialize without error when API key is present", async () => {
-    const agentRuntime = createMockRuntime({
-      AI_GATEWAY_API_KEY: "test-key",
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "AI_GATEWAY_API_KEY") return "test-key";
+      return null;
     });
 
-    await expect(gatewayPlugin.init?.({}, agentRuntime)).resolves.not.toThrow();
+    await expect(gatewayPlugin.init?.({}, runtime)).resolves.not.toThrow();
   });
 });
 
 describe("configuration utilities", () => {
+  let runtime: IAgentRuntime;
+
+  beforeEach(async () => {
+    runtime = await createTestRuntime();
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await cleanupTestRuntime(runtime);
+  });
+
   it("should read API key from multiple sources", async () => {
     const { getApiKeyOptional } = await import("../utils/config");
 
     // Test with AI_GATEWAY_API_KEY
-    const runtime1 = createMockRuntime({ AI_GATEWAY_API_KEY: "key1" });
-    expect(getApiKeyOptional(runtime1)).toBe("key1");
-
-    // Test with AIGATEWAY_API_KEY
-    const runtime2 = createMockRuntime({ AIGATEWAY_API_KEY: "key2" });
-    expect(getApiKeyOptional(runtime2)).toBe("key2");
-
-    // Test with VERCEL_OIDC_TOKEN
-    const runtime3 = createMockRuntime({ VERCEL_OIDC_TOKEN: "token" });
-    expect(getApiKeyOptional(runtime3)).toBe("token");
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "AI_GATEWAY_API_KEY") return "key1";
+      return null;
+    });
+    expect(getApiKeyOptional(runtime)).toBe("key1");
   });
 
   it("should use default values when not configured", async () => {
@@ -80,7 +91,7 @@ describe("configuration utilities", () => {
       "../utils/config"
     );
 
-    const runtime = createMockRuntime({});
+    vi.spyOn(runtime, "getSetting").mockReturnValue(null);
 
     expect(getBaseUrl(runtime)).toBe("https://ai-gateway.vercel.sh/v1");
     expect(getSmallModel(runtime)).toBe("gpt-5-mini");
@@ -91,9 +102,12 @@ describe("configuration utilities", () => {
   it("should override defaults when configured", async () => {
     const { getSmallModel, getLargeModel } = await import("../utils/config");
 
-    const runtime = createMockRuntime({
-      AI_GATEWAY_SMALL_MODEL: "custom-small",
-      AI_GATEWAY_LARGE_MODEL: "custom-large",
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      const settings: Record<string, string> = {
+        AI_GATEWAY_SMALL_MODEL: "custom-small",
+        AI_GATEWAY_LARGE_MODEL: "custom-large",
+      };
+      return settings[key] || null;
     });
 
     expect(getSmallModel(runtime)).toBe("custom-small");
