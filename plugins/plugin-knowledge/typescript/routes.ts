@@ -1429,7 +1429,7 @@ function asRouteHandler(handler: ExtendedRouteHandler): Route["handler"] {
   // The cast is necessary because Route uses abstract interfaces while
   // this module uses Node.js HTTP primitives for multer and streaming support.
   // ExtendedRouteHandler is structurally compatible with Route["handler"] at runtime.
-  return handler as Route["handler"];
+  return handler as unknown as Route["handler"];
 }
 
 export const knowledgeRoutes: Route[] = [

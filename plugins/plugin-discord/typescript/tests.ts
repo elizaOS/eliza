@@ -337,8 +337,8 @@ export class DiscordTestSuite implements TestSuite {
       if (!this.discordClient.messageManager) {
         throw new Error("MessageManager is not available on the Discord client.");
       }
-      // Type assertion is safe here because MockMessage has all required properties
-      await this.discordClient.messageManager.handleMessage(fakeMessage as Message<boolean>);
+      // Type assertion through unknown is needed because MockMessage is a minimal test stub
+      await this.discordClient.messageManager.handleMessage(fakeMessage as unknown as Message<boolean>);
     } catch (error) {
       throw new Error(`Error in handling message test: ${error}`);
     }

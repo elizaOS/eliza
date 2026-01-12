@@ -16,7 +16,7 @@ let WebSocket: typeof import("ws").default;
 if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
   // Browser WebSocket is runtime-compatible with ws but has different types
   // Create adapter that preserves the interface
-  WebSocket = window.WebSocket as WebSocketLike;
+  WebSocket = window.WebSocket as unknown as WebSocketLike;
 } else {
   WebSocket = require("ws");
 }

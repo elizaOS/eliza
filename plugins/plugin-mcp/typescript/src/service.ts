@@ -146,7 +146,7 @@ export class McpService extends Service {
     if (rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)) {
       const parsed = rawSettings as Record<string, unknown>;
       if ("servers" in parsed && typeof parsed.servers === "object" && parsed.servers !== null) {
-        settings = parsed as McpSettings;
+        settings = parsed as unknown as McpSettings;
       }
     }
 
@@ -155,28 +155,18 @@ export class McpService extends Service {
     );
 
     // Fallback to character.settings.mcp
-    if ((!settings || !settings.servers) && hasCharacterMcpSettings(this.runtime)) {
-      const characterMcpSettings = this.runtime.character.settings?.mcp;
-      if (
-        characterMcpSettings &&
-        typeof characterMcpSettings === "object" &&
-        "servers" in characterMcpSettings
-      ) {
-        logger.info("[McpService] Found MCP settings in character.settings.mcp (fallback)");
-        settings = characterMcpSettings;
-      }
-    }
-
-    // Fallback to runtime.settings.mcp
-    if ((!settings || !settings.servers) && hasRuntimeMcpSettings(this.runtime)) {
-      const runtimeMcpSettings = this.runtime.settings?.mcp;
-      if (
-        runtimeMcpSettings &&
-        typeof runtimeMcpSettings === "object" &&
-        "servers" in runtimeMcpSettings
-      ) {
-        logger.info("[McpService] Found MCP settings in runtime.settings.mcp (fallback)");
-        settings = runtimeMcpSettings;
+    if (!settings || !settings.servers) {
+      const characterSettings = this.runtime.character.settings;
+      if (characterSettings && typeof characterSettings === "object" && "mcp" in characterSettings) {
+        const characterMcpSettings = characterSettings.mcp;
+        if (
+          characterMcpSettings &&
+          typeof characterMcpSettings === "object" &&
+          "servers" in characterMcpSettings
+        ) {
+          logger.info("[McpService] Found MCP settings in character.settings.mcp (fallback)");
+          settings = characterMcpSettings as unknown as McpSettings;
+        }
       }
     }
 
