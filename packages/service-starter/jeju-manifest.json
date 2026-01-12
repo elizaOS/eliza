@@ -1,0 +1,39 @@
+{
+  "name": "my-service",
+  "displayName": "My MCP + A2A Service",
+  "version": "1.0.0",
+  "type": "service",
+  "description": "A monetized service accessible via MCP and A2A protocols with x402 payments",
+  "commands": {
+    "dev": "bun run dev",
+    "build": "bun run build",
+    "start": "bun run start",
+    "test": "bun run test",
+    "deploy": "elizaos deploy",
+    "register": "bun run src/register.ts"
+  },
+  "ports": {
+    "main": 3000
+  },
+  "dependencies": [],
+  "optional": false,
+  "enabled": true,
+  "autoStart": true,
+  "tags": ["service", "mcp", "a2a", "x402", "agent"],
+  "healthCheck": {
+    "url": "http://localhost:3000/health",
+    "interval": 30000
+  },
+  "agent": {
+    "enabled": true,
+    "a2aEndpoint": "/a2a",
+    "mcpEndpoint": "/mcp",
+    "tags": ["service", "mcp", "a2a"],
+    "metadata": {
+      "category": "service",
+      "provider": "elizaos"
+    },
+    "trustModels": ["open"],
+    "x402Support": true
+  }
+}

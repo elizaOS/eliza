@@ -16,24 +16,30 @@ const avatar = fs.existsSync(imagePath)
   ? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString('base64')}`
   : '';
 
+// Check if ElizaOS Cloud is configured (provides AI + database)
+const useElizaCloud = !!(
+  process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+  process.env.ELIZAOS_CLOUD_DATABASE === 'true'
+);
+
 export const mrTeeCharacter: Character = {
   name: 'Mr. TEE',
   plugins: [
-    // Core plugins first
-    '@elizaos/plugin-sql',
+    // Core plugins - elizaOS Cloud provides both AI and database when configured
+    ...(useElizaCloud ? ['@elizaos/plugin-elizacloud'] : ['@elizaos/plugin-sql']),
     '@elizaos/plugin-bootstrap',
 
-    // LLM provider
-    '@elizaos/plugin-redpill',
+    // LLM providers (skip if using elizaOS Cloud which provides AI)
+    ...(!useElizaCloud ? ['@elizaos/plugin-redpill'] : []),
 
     // Voice Provider
     '@elizaos/plugin-elevenlabs',
 
-    // Embedding-capable plugins after other AI plugins
-    '@elizaos/plugin-openai',
+    // Embedding-capable plugins (skip if using elizaOS Cloud)
+    ...(!useElizaCloud ? ['@elizaos/plugin-openai'] : []),
 
-    // Ollama as universal fallback (always included for local AI capabilities)
-    '@elizaos/plugin-ollama',
+    // Ollama as universal fallback (skip if using elizaOS Cloud)
+    ...(!useElizaCloud ? ['@elizaos/plugin-ollama'] : []),
 
     // Specialized Plugins
     '@elizaos/plugin-tee',

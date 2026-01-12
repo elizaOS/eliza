@@ -9,22 +9,29 @@ import { type Character } from '@elizaos/core';
  * Note: This character does not have a pre-defined ID. The loader will generate one.
  * If you want a stable agent across restarts, add an "id" field with a specific UUID.
  */
+// Check if ElizaOS Cloud is configured (provides AI + database)
+const useElizaCloud = !!(
+  process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+  process.env.ELIZAOS_CLOUD_DATABASE === 'true'
+);
+
 export const character: Character = {
   name: 'Eliza',
   plugins: [
-    // Core plugins first
-    '@elizaos/plugin-sql',
+    // Core plugins - elizaOS Cloud provides both AI and database when configured
+    // Otherwise fall back to plugin-sql for database
+    ...(useElizaCloud ? ['@elizaos/plugin-elizacloud'] : ['@elizaos/plugin-sql']),
 
-    // Text-only plugins (no embedding support)
-    ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
+    // Text-only plugins (no embedding support) - skip if using elizaOS Cloud
+    ...(!useElizaCloud && process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
+    ...(!useElizaCloud && process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
 
-    // Embedding-capable plugins (optional, based on available credentials)
-    ...(process.env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
+    // Embedding-capable plugins (optional, based on available credentials) - skip if using elizaOS Cloud
+    ...(!useElizaCloud && process.env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
+    ...(!useElizaCloud && process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
 
-    // Ollama as fallback (only if no main LLM providers are configured)
-    ...(process.env.OLLAMA_API_ENDPOINT?.trim() ? ['@elizaos/plugin-ollama'] : []),
+    // Ollama as fallback (only if no main LLM providers are configured and not using elizaOS Cloud)
+    ...(!useElizaCloud && process.env.OLLAMA_API_ENDPOINT?.trim() ? ['@elizaos/plugin-ollama'] : []),
 
     // Platform plugins
     ...(process.env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),

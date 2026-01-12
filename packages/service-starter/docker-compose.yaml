@@ -1,0 +1,33 @@
+# Docker Compose for local development and testing
+# 
+# Usage:
+#   docker compose up --build        # Build and run
+#   docker compose up -d             # Run in background
+#   docker compose logs -f           # Follow logs
+#   docker compose down              # Stop and remove
+
+version: '3.8'
+
+services:
+  service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVICE_NAME=${SERVICE_NAME:-My Service}
+      - SERVICE_DESCRIPTION=${SERVICE_DESCRIPTION:-MCP + A2A Service}
+      - X402_ENABLED=${X402_ENABLED:-true}
+      - ERC8004_ENABLED=${ERC8004_ENABLED:-false}
+      - JEJU_NETWORK=${JEJU_NETWORK:-testnet}
+      - PAYMENT_RECIPIENT=${PAYMENT_RECIPIENT:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

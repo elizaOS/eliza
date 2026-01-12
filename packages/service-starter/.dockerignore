@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Build output (we build in Docker)
+dist/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files (never include secrets in image)
+.env
+.env.*
+env.example
+
+# Testing
+coverage/
+.nyc_output/
+**/__tests__/
+*.test.ts
+*.spec.ts
+
+# Misc
+*.md
+!README.md
+*.log
+.DS_Store
+
+# Note: build.ts and tsconfig.json are needed for build stage
+# They won't be in the final image

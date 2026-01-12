@@ -1,0 +1,54 @@
+{
+  "protocolVersion": "0.3.0",
+  "name": "My MCP + A2A Service",
+  "description": "A monetized service accessible via MCP and A2A protocols with x402 payments",
+  "url": "/a2a",
+  "preferredTransport": "http",
+  "provider": {
+    "organization": "elizaOS",
+    "url": "https://elizaos.ai"
+  },
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": true,
+    "tasks": true
+  },
+  "defaultInputModes": ["text", "data"],
+  "defaultOutputModes": ["text", "data"],
+  "authentication": {
+    "schemes": ["x402", "bearer"]
+  },
+  "skills": [
+    {
+      "id": "get-info",
+      "name": "Get Service Info",
+      "description": "Get information about this service and its capabilities",
+      "tags": ["query", "info", "free"],
+      "examples": ["What can you do?", "Tell me about yourself"]
+    },
+    {
+      "id": "echo",
+      "name": "Echo Message",
+      "description": "Echo back a message (useful for testing)",
+      "tags": ["query", "test", "free"],
+      "examples": ["Echo hello", "Test connection"]
+    },
+    {
+      "id": "get-status",
+      "name": "Get Service Status",
+      "description": "Check service health and status",
+      "tags": ["query", "health", "free"],
+      "examples": ["Are you healthy?", "Service status"]
+    }
+  ],
+  "supportedMethods": [
+    "message/send",
+    "tasks/send",
+    "tasks/get",
+    "tasks/cancel",
+    "agent/describe",
+    "skills/list"
+  ]
+}

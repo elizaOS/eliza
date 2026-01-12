@@ -305,6 +305,63 @@ export async function createTEEProject(
 }
 
 /**
+ * Creates a new MCP + A2A service with the specified name.
+ */
+export async function createService(
+  serviceName: string,
+  targetDir: string,
+  isNonInteractive = false
+): Promise<void> {
+  const serviceTargetDir = join(targetDir, serviceName);
+
+  // Validate target directory
+  const dirResult = await validateTargetDirectory(serviceTargetDir);
+  if (!dirResult.isValid) {
+    throw new Error(dirResult.error || 'Invalid target directory');
+  }
+
+  if (!isNonInteractive) {
+    const displayDir = getDisplayDirectory(targetDir);
+    const confirmCreate = await clack.confirm({
+      message: `Create MCP + A2A service "${serviceName}" in ${displayDir}?`,
+    });
+
+    if (clack.isCancel(confirmCreate) || !confirmCreate) {
+      clack.cancel('Service creation cancelled.');
+      process.exit(0);
+    }
+  }
+
+  await withCleanupOnInterrupt(serviceTargetDir, serviceName, async () => {
+    await runTasks([
+      createTask('Copying service template', () =>
+        copyTemplateUtil('service', serviceTargetDir)
+      ),
+      createTask('Installing dependencies', () => installDependenciesWithSpinner(serviceTargetDir)),
+      createTask('Building service', () => buildProjectWithSpinner(serviceTargetDir, false)),
+    ]);
+
+    console.info(`\n${colors.green('✓')} Service "${serviceName}" created successfully!`);
+    console.info(`\nNext steps:`);
+    console.info(`  cd ${serviceName}`);
+    console.info(`  cp env.example .env`);
+    console.info(`  # Edit .env with your configuration`);
+    console.info(`\n  Common commands:`);
+    console.info(`  bun run dev     # Start development mode`);
+    console.info(`  bun run start   # Start in production mode`);
+    console.info(`  elizaos deploy  # Deploy to elizaOS cloud`);
+    console.info(`\n  Endpoints:`);
+    console.info(`  http://localhost:3000/a2a   # A2A protocol`);
+    console.info(`  http://localhost:3000/mcp   # MCP protocol`);
+    console.info(`  http://localhost:3000/.well-known/agent-card.json # Discovery\n`);
+    console.info(`${colors.yellow('⚠️')}  Security reminder:`);
+    console.info(`  - Check .gitignore is present before committing`);
+    console.info(`  - Never commit .env files or private keys`);
+    console.info(`  - Set PAYMENT_RECIPIENT to your wallet address for x402 payments\n`);
+  });
+}
+
+/**
  * Creates a new regular project with the specified name and configuration.
  */
 export async function createProject(

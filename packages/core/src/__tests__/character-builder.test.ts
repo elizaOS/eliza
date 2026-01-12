@@ -351,8 +351,8 @@ describe('buildCharacterPlugins', () => {
       expect(plugins1).toEqual(plugins2);
     });
 
-    it('should ensure SQL is always first', () => {
-      // Test with various combinations
+    it('should ensure SQL is always first when not using cloud', () => {
+      // Test with various combinations (no cloud keys)
       const testCases = [
         { OPENAI_API_KEY: 'key' },
         { ANTHROPIC_API_KEY: 'key' },
@@ -364,6 +364,98 @@ describe('buildCharacterPlugins', () => {
         const plugins = buildCharacterPlugins(envVars);
         expect(plugins[0]).toBe(PLUGINS.SQL);
       });
+    });
+  });
+
+  describe('ElizaOS Cloud Integration', () => {
+    const ELIZACLOUD = '@elizaos/plugin-elizacloud';
+
+    it('should use elizacloud plugin when ELIZAOS_CLOUD_API_KEY is set', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins[0]).toBe(ELIZACLOUD);
+      expect(plugins).not.toContain(PLUGINS.SQL);
+    });
+
+    it('should use elizacloud plugin when ELIZAOS_CLOUD_DATABASE is true', () => {
+      testEnv.ELIZAOS_CLOUD_DATABASE = 'true';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins[0]).toBe(ELIZACLOUD);
+      expect(plugins).not.toContain(PLUGINS.SQL);
+    });
+
+    it('should skip other AI providers when using elizaOS Cloud', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+      testEnv.OPENAI_API_KEY = 'openai_key';
+      testEnv.ANTHROPIC_API_KEY = 'anthropic_key';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins[0]).toBe(ELIZACLOUD);
+      expect(plugins).not.toContain(PLUGINS.OPENAI);
+      expect(plugins).not.toContain(PLUGINS.ANTHROPIC);
+      expect(plugins).not.toContain(PLUGINS.OLLAMA);
+    });
+
+    it('should still include platform plugins when using elizaOS Cloud', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+      testEnv.DISCORD_API_TOKEN = 'discord_token';
+      testEnv.TELEGRAM_BOT_TOKEN = 'telegram_token';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins[0]).toBe(ELIZACLOUD);
+      expect(plugins).toContain(PLUGINS.DISCORD);
+      expect(plugins).toContain(PLUGINS.TELEGRAM);
+    });
+
+    it('should include bootstrap when using elizaOS Cloud', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should skip Ollama fallback when using elizaOS Cloud', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+      // No other AI providers configured
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins).not.toContain(PLUGINS.OLLAMA);
+    });
+
+    it('should use SQL when cloud API key is empty/whitespace', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = '   ';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins[0]).toBe(PLUGINS.SQL);
+      expect(plugins).not.toContain(ELIZACLOUD);
+    });
+
+    it('should handle elizaOS Cloud with IGNORE_BOOTSTRAP', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+      testEnv.IGNORE_BOOTSTRAP = 'true';
+
+      const plugins = buildCharacterPlugins(testEnv);
+
+      expect(plugins[0]).toBe(ELIZACLOUD);
+      expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should have minimal plugins with elizaOS Cloud (just cloud, bootstrap)', () => {
+      testEnv.ELIZAOS_CLOUD_API_KEY = 'eliza_test_key_12345';
+
+      const plugins = buildCharacterPlugins(testEnv);
+      const expectedPlugins = [ELIZACLOUD, PLUGINS.BOOTSTRAP];
+
+      expect(plugins).toEqual(expectedPlugins);
     });
   });
 });

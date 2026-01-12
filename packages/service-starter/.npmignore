@@ -1,0 +1,22 @@
+# Source files
+src/
+
+# Tests
+**/__tests__/
+*.test.ts
+*.spec.ts
+
+# Development
+.env
+.env.example
+.gitignore
+tsconfig.json
+build.ts
+
+# IDE
+.idea/
+.vscode/
+
+# Misc
+*.md
+!README.md

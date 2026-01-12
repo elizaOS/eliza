@@ -1,0 +1,63 @@
+{
+  "name": "@elizaos/service-starter",
+  "description": "MCP + A2A Service Starter for elizaOS - Deploy monetized agent services to the cloud",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "service",
+    "mcp",
+    "a2a",
+    "elizaos",
+    "x402",
+    "agent",
+    "erc-8004"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "dependencies": {
+    "hono": "^4.7.10",
+    "ethers": "^6.13.4",
+    "viem": "^2.21.19",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun run build.ts",
+    "test": "bun test",
+    "type-check": "tsc --noEmit",
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "deploy": "elizaos deploy",
+    "register": "bun run src/register.ts",
+    "manage": "bun run src/manage.ts",
+    "publish": "bun run src/manage.ts publish",
+    "unpublish": "bun run src/manage.ts unpublish",
+    "status": "bun run src/manage.ts status"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

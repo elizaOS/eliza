@@ -94,6 +94,9 @@ function getPackageName(templateType: string): string {
   switch (templateType) {
     case 'project-tee-starter':
       return 'project-tee-starter';
+    case 'service':
+    case 'service-starter':
+      return 'service-starter';
     case 'plugin':
       return 'plugin-starter';
     case 'plugin-quick':
@@ -108,8 +111,10 @@ function getPackageName(templateType: string): string {
 /**
  * Copy a project or plugin template to target directory
  */
+type TemplateType = 'project' | 'project-starter' | 'project-tee-starter' | 'service' | 'service-starter' | 'plugin' | 'plugin-quick';
+
 export async function copyTemplate(
-  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin' | 'plugin-quick',
+  templateType: TemplateType,
   targetDir: string
 ) {
   const packageName = getPackageName(templateType);

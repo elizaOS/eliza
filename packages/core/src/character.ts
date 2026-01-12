@@ -84,12 +84,12 @@ export function mergeCharacterDefaults(char: Partial<Character>): Character {
  * Build ordered plugin list based on available environment variables
  *
  * Plugin loading order:
- * 1. Core plugins (@elizaos/plugin-sql)
- * 2. Text-only LLM plugins (no embedding support)
- * 3. Embedding-capable LLM plugins
+ * 1. Core plugins (@elizaos/plugin-elizacloud OR @elizaos/plugin-sql)
+ * 2. Text-only LLM plugins (no embedding support) - skipped if using elizaOS Cloud
+ * 3. Embedding-capable LLM plugins - skipped if using elizaOS Cloud
  * 4. Platform plugins (Discord, Twitter, Telegram)
  * 5. Bootstrap plugin (unless IGNORE_BOOTSTRAP is set)
- * 6. Ollama fallback (only if no other LLM providers configured)
+ * 6. Ollama fallback (only if no other LLM providers configured and not using elizaOS Cloud)
  *
  * @param env - Environment object to check for API keys (defaults to process.env)
  * @returns Ordered array of plugin names
@@ -97,17 +97,23 @@ export function mergeCharacterDefaults(char: Partial<Character>): Character {
 export function buildCharacterPlugins(
   env: Record<string, string | undefined> = process.env
 ): string[] {
+  // Check if ElizaOS Cloud is configured (provides AI + database)
+  const useElizaCloud = !!(
+    env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+    env.ELIZAOS_CLOUD_DATABASE === 'true'
+  );
+
   const plugins = [
-    // Core plugins first
-    '@elizaos/plugin-sql',
+    // Core plugins - elizaOS Cloud provides both AI and database when configured
+    ...(useElizaCloud ? ['@elizaos/plugin-elizacloud'] : ['@elizaos/plugin-sql']),
 
-    // Text-only plugins (no embedding support)
-    ...(env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
-    ...(env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
+    // Text-only plugins (no embedding support) - skip if using elizaOS Cloud
+    ...(!useElizaCloud && env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
+    ...(!useElizaCloud && env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
 
-    // Embedding-capable plugins (before platform plugins per documented order)
-    ...(env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
-    ...(env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
+    // Embedding-capable plugins (before platform plugins per documented order) - skip if using elizaOS Cloud
+    ...(!useElizaCloud && env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
+    ...(!useElizaCloud && env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
 
     // Platform plugins
     ...(env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),
@@ -126,8 +132,9 @@ export function buildCharacterPlugins(
       return shouldIgnore ? [] : ['@elizaos/plugin-bootstrap'];
     })(),
 
-    // Only include Ollama as fallback if no other LLM providers are configured
-    ...(!env.ANTHROPIC_API_KEY?.trim() &&
+    // Only include Ollama as fallback if no other LLM providers are configured and not using elizaOS Cloud
+    ...(!useElizaCloud &&
+    !env.ANTHROPIC_API_KEY?.trim() &&
     !env.OPENROUTER_API_KEY?.trim() &&
     !env.OPENAI_API_KEY?.trim() &&
     !env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()

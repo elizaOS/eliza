@@ -1,11 +1,15 @@
 /**
  * Deploy Command Types
- * Types for deploying ElizaOS projects to AWS ECS
+ * Types for deploying ElizaOS projects to ElizaOS Cloud or AWS ECS
  */
+
+/** Deployment target options */
+export type DeployTarget = 'cloud' | 'aws-ecs';
 
 export interface DeployOptions {
   name?: string;
   projectName?: string; // Project name for multi-project support
+  target?: DeployTarget; // Deployment target: cloud or aws-ecs
   port?: number;
   desiredCount?: number; // Replaces maxInstances
   cpu?: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t4g.small)
@@ -25,6 +29,7 @@ export interface DeploymentResult {
   taskDefinitionArn?: string; // ECS task definition ARN
   url?: string; // Load balancer URL
   error?: string;
+  agentId?: string; // ERC-8004 agent ID (for MCP+A2A services)
 }
 
 export interface ContainerConfig {

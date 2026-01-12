@@ -33,6 +33,8 @@ export async function setupAIModelConfig(
     switch (aiModel) {
       case 'elizacloud': {
         // Configure elizaOS Cloud for multi-model AI
+        const modelTier = process.env.ELIZAOS_CLOUD_MODEL_TIER || 'pro';
+
         if (isNonInteractive) {
           let content = '';
           if (existsSync(envFilePath)) {
@@ -47,15 +49,26 @@ export async function setupAIModelConfig(
           content += '# Get your API key by running: elizaos login\n';
           content += '# Or visit: https://www.elizacloud.ai/dashboard/api-keys\n';
           content += 'ELIZAOS_CLOUD_API_KEY=your_elizaos_cloud_api_key_here\n';
-          content +=
-            '# Available models: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash\n';
-          content += '# ELIZAOS_CLOUD_SMALL_MODEL=gpt-4o-mini\n';
-          content += '# ELIZAOS_CLOUD_LARGE_MODEL=gpt-4o\n';
+          content += '# Model tier: fast ($), pro ($$, recommended), ultra ($$$)\n';
+          content += `ELIZAOS_CLOUD_MODEL_TIER=${modelTier}\n`;
 
           await fs.writeFile(envFilePath, content, 'utf8');
         } else {
           // Interactive mode - prompt for elizaOS Cloud API key or login
           await promptAndStoreElizaCloudKey(envFilePath);
+
+          // Write model tier to .env file
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+          if (!content.includes('ELIZAOS_CLOUD_MODEL_TIER=')) {
+            if (content && !content.endsWith('\n')) {
+              content += '\n';
+            }
+            content += `ELIZAOS_CLOUD_MODEL_TIER=${modelTier}\n`;
+            await fs.writeFile(envFilePath, content, 'utf8');
+          }
         }
         break;
       }
@@ -427,6 +440,30 @@ async function installModelPlugin(
 // installDependencies is now imported from spinner-utils and handles this automatically
 
 /**
+ * Sets up cloud database configuration in the .env file.
+ * Cloud database is automatically provisioned by ElizaOS Cloud.
+ */
+async function setupCloudDatabase(envFilePath: string): Promise<void> {
+  let content = '';
+  if (existsSync(envFilePath)) {
+    content = await fs.readFile(envFilePath, 'utf8');
+  }
+
+  if (content && !content.endsWith('\n')) {
+    content += '\n';
+  }
+
+  // Add cloud database configuration
+  if (!content.includes('ELIZAOS_CLOUD_DATABASE=')) {
+    content += '\n# Cloud Database Configuration\n';
+    content += '# Database is automatically provisioned by ElizaOS Cloud\n';
+    content += 'ELIZAOS_CLOUD_DATABASE=true\n';
+  }
+
+  await fs.writeFile(envFilePath, content, 'utf8');
+}
+
+/**
  * Sets up the project environment including database and AI model configuration.
  */
 export async function setupProjectEnvironment(
@@ -441,7 +478,11 @@ export async function setupProjectEnvironment(
 
   // Set up database configuration
   const envFilePath = `${targetDir}/.env`;
-  if (database === 'postgres') {
+  if (database === 'cloud') {
+    // Cloud database is provisioned automatically by ElizaOS Cloud
+    // Just enable it in the .env file
+    await setupCloudDatabase(envFilePath);
+  } else if (database === 'postgres') {
     // PostgreSQL configuration is handled before spinner tasks in interactive mode
     // Skip configuration here when called from spinner tasks (isNonInteractive=true)
     if (!isNonInteractive) {
