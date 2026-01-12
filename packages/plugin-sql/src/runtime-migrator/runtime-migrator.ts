@@ -385,12 +385,12 @@ export class RuntimeMigrator {
         );
       }
 
-      // Install required extensions (same as old migrator)
-      await this.extensionManager.installRequiredExtensions([
-        'vector',
-        'fuzzystrmatch',
-        'pgcrypto',
-      ]);
+      // Install required extensions
+      // pgcrypto is only needed for real PostgreSQL (PGLite uses native gen_random_uuid)
+      const extensions = isRealPostgres
+        ? ['vector', 'fuzzystrmatch', 'pgcrypto']
+        : ['vector', 'fuzzystrmatch'];
+      await this.extensionManager.installRequiredExtensions(extensions);
 
       // Generate current snapshot from schema
       const currentSnapshot = await generateSnapshot(schema);

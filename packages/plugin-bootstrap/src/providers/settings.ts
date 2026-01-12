@@ -319,7 +319,11 @@ export const settingsProvider: Provider = {
 
       if (!worldSettings) {
         logger.info(
-          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, serverId },
+          {
+            src: 'plugin:bootstrap:provider:settings',
+            agentId: runtime.agentId,
+            messageServerId: serverId,
+          },
           'No settings state found for server'
         );
         return isOnboarding

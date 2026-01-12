@@ -2,13 +2,13 @@
 /// <reference path="../../cypress/support/types.d.ts" />
 
 import React from 'react';
-import type { AgentWithStatus } from '@/types';
+import type { Agent } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 
 // Create a minimal test component that represents AgentCard functionality
 const TestAgentCard: React.FC<{
-  agent: Partial<AgentWithStatus>;
-  onChat: (agent: Partial<AgentWithStatus>) => void;
+  agent: Partial<Agent>;
+  onChat: (agent: Partial<Agent>) => void;
 }> = ({ agent, onChat }) => {
   if (!agent || !agent.id) {
     return <div data-testid="agent-card-error">Agent data not available.</div>;
@@ -58,7 +58,7 @@ const TestAgentCard: React.FC<{
 };
 
 describe('AgentCard Component', () => {
-  const mockAgent: Partial<AgentWithStatus> = {
+  const mockAgent: Partial<Agent> = {
     id: '12345678-1234-1234-1234-123456789012',
     name: 'Test Agent',
     username: 'testagent',
@@ -72,7 +72,7 @@ describe('AgentCard Component', () => {
     updatedAt: Date.now(),
   };
 
-  const activeAgent: Partial<AgentWithStatus> = {
+  const activeAgent: Partial<Agent> = {
     ...mockAgent,
     status: AgentStatus.ACTIVE,
   };

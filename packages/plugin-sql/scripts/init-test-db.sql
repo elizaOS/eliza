@@ -3,6 +3,15 @@
 -- non-superusers cannot create extensions - they get a permission denied error
 CREATE EXTENSION IF NOT EXISTS "vector";
 
+-- Clean up RLS functions that may exist from previous test runs
+-- This is required because CREATE OR REPLACE FUNCTION requires ownership
+-- Without this, tests fail with "must be owner of function current_server_id"
+DROP FUNCTION IF EXISTS current_server_id() CASCADE;
+DROP FUNCTION IF EXISTS current_entity_id() CASCADE;
+DROP FUNCTION IF EXISTS add_server_isolation(text, text) CASCADE;
+DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE;
+DROP FUNCTION IF EXISTS apply_entity_rls_to_all_tables() CASCADE;
+
 -- Create non-admin user for RLS testing (superusers bypass RLS!)
 -- Password must match what RLS tests expect (they use test123)
 CREATE USER eliza_test WITH PASSWORD 'test123';

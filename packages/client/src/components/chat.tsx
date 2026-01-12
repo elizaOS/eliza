@@ -28,7 +28,7 @@ import {
   useDeleteChannelMessage,
   type UiMessage,
 } from '@/hooks/use-query-hooks';
-import { useSocketChat } from '@/hooks/use-socket-chat';
+import { useElizaChat } from '@/hooks/use-eliza-chat';
 import { useToast } from '@/hooks/use-toast';
 import { getElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
@@ -206,9 +206,6 @@ export function MessageContent({
   onDelete,
   onRetry,
   isUser,
-  getAgentInMessage,
-  agentAvatarMap,
-  chatType,
 }: {
   message: UiMessage;
   agentForTts?: Agent | Partial<Agent> | null;
@@ -387,14 +384,7 @@ export default function Chat({
     { enabled: chatType === ChannelType.DM }
   );
 
-  // Convert AgentWithStatus to Agent, ensuring required fields have defaults
-  const targetAgentData: Agent | undefined = agentDataResponse?.data
-    ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
-    : undefined;
+  const targetAgentData: Agent | undefined = agentDataResponse?.data;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
     targetAgentData || ({} as Agent) // Provide safe default if undefined
@@ -437,13 +427,26 @@ export default function Chat({
     useChannelMessages(latestChannel?.id, finalMessageServerIdForHooks);
 
   const {
-    data: messages = [],
+    messages,
     isLoading: isLoadingMessages,
     addMessage,
     updateMessage,
     removeMessage,
-    clearMessages,
-  } = useChannelMessages(finalChannelIdForHooks, finalMessageServerIdForHooks);
+    sendMessage,
+  } = useElizaChat({
+    channelId: finalChannelIdForHooks,
+    serverId: finalMessageServerIdForHooks,
+    agentId: chatType === ChannelType.DM ? contextId : undefined,
+    chatType,
+    onMessageAdded: (message: UiMessage) => {
+      updateChatTitle();
+      if (message.isAgent) safeScrollToBottom();
+    },
+    onMessageUpdated: (_id: UUID, updates: Partial<UiMessage>) => {
+      if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
+    },
+    onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
+  });
 
   // Get agents in the current group
   const groupAgents = useMemo(() => {
@@ -940,32 +943,6 @@ export default function Chat({
     }
   };
 
-  const { sendMessage } = useSocketChat({
-    channelId: finalChannelIdForHooks,
-    currentUserId: currentClientEntityId,
-    contextId,
-    chatType,
-    allAgents,
-    messages,
-    onAddMessage: (message: UiMessage) => {
-      addMessage(message);
-      updateChatTitle();
-      if (message.isAgent) safeScrollToBottom();
-    },
-    onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
-      updateMessage(messageId as UUID, updates);
-      if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
-    },
-    onDeleteMessage: (messageId: string) => {
-      removeMessage(messageId as UUID);
-    },
-    onClearMessages: () => {
-      // Clear the local message list immediately for instant UI response
-      clearMessages();
-    },
-    onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
-  });
-
   const {
     selectedFiles,
     handleFileChange,
@@ -1100,15 +1077,13 @@ export default function Chat({
         removeMessage(tempMessageId);
         return;
       }
-      await sendMessage(
-        finalTextContent,
-        finalMessageServerIdForHooks,
-        chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
-        finalAttachments.length > 0 ? finalAttachments : undefined,
-        tempMessageId,
-        undefined,
-        channelIdToUse
-      );
+      await sendMessage(finalTextContent, {
+        attachments: finalAttachments.length > 0 ? finalAttachments : undefined,
+        messageId: tempMessageId,
+        source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+        skipOptimisticUpdate: true,
+        overrideChannelId: channelIdToUse,
+      });
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
       toast({
@@ -1180,15 +1155,13 @@ export default function Chat({
     }
 
     try {
-      await sendMessage(
-        finalTextContent,
-        finalMessageServerIdForHooks,
-        chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
-        message.attachments,
-        retryMessageId,
-        undefined,
-        finalChannelIdForHooks
-      );
+      await sendMessage(finalTextContent, {
+        attachments: message.attachments,
+        messageId: retryMessageId,
+        source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+        skipOptimisticUpdate: true,
+        overrideChannelId: finalChannelIdForHooks,
+      });
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
       toast({

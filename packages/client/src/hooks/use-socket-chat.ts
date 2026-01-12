@@ -22,7 +22,7 @@ const STREAM_TIMEOUT_MS = 30000;
 interface UseSocketChatProps {
   channelId: UUID | undefined;
   currentUserId: string;
-  contextId: UUID; // agentId for DM, channelId for GROUP
+  contextId: UUID | undefined; // agentId for DM, channelId for GROUP - undefined is safe, hook early-returns without channelId
   chatType: ChannelType.DM | ChannelType.GROUP;
   allAgents: Agent[];
   messages: UiMessage[];

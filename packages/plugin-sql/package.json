@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.7.1-beta.0",
+  "version": "1.7.1-alpha.18",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -53,11 +53,13 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
     "@elizaos/core": "workspace:*",
+    "@neondatabase/serverless": "^1.0.2",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.45.0",
     "pg": "^8.13.3",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@elizaos/config": "workspace:*",

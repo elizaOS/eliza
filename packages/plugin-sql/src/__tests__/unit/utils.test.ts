@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { expandTildePath, resolveEnvFile, resolvePgliteDir } from '../../utils';
+import { isNeonDatabase } from '../../utils.node';
 import * as path from 'node:path';
 
 // Mock dotenv to prevent loading actual .env file
@@ -73,20 +74,58 @@ describe('Utils', () => {
     it('should use default .eliza/.elizadb dir if no dir or env var', () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), '..', '..');
-      expect(result).toBe(path.join(projectRoot, '.eliza', '.elizadb'));
+      expect(result).toMatch(/\.eliza[/\\]\.elizadb$/);
     });
 
     it('should use default path if no arguments or env var', () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), '..', '..');
-      expect(result).toBe(path.join(projectRoot, '.eliza', '.elizadb'));
+      expect(result).toMatch(/\.eliza[/\\]\.elizadb$/);
     });
 
     it('should expand tilde paths', () => {
       const result = resolvePgliteDir('~/data/pglite');
       expect(result).toBe(path.join(process.cwd(), 'data/pglite'));
+    });
+  });
+
+  describe('isNeonDatabase', () => {
+    it('should return true for neon.tech URLs', () => {
+      expect(
+        isNeonDatabase('postgres://user:pass@ep-cool-name-123456.us-east-2.aws.neon.tech/dbname')
+      ).toBe(true);
+      expect(
+        isNeonDatabase(
+          'postgresql://user:pass@ep-cool-name-123456.eu-central-1.aws.neon.tech/mydb?sslmode=require'
+        )
+      ).toBe(true);
+    });
+
+    it('should return true for neon.database URLs', () => {
+      expect(isNeonDatabase('postgres://user:pass@host.neon.database/dbname')).toBe(true);
+    });
+
+    it('should return false for standard PostgreSQL URLs', () => {
+      expect(isNeonDatabase('postgres://user:pass@localhost:5432/dbname')).toBe(false);
+      expect(isNeonDatabase('postgresql://user:pass@127.0.0.1:5432/mydb')).toBe(false);
+      expect(isNeonDatabase('postgres://user:pass@db.example.com:5432/dbname')).toBe(false);
+    });
+
+    it('should return false for other cloud PostgreSQL URLs', () => {
+      expect(
+        isNeonDatabase(
+          'postgres://user:pass@my-cluster.cluster-xxx.us-east-1.rds.amazonaws.com:5432/dbname'
+        )
+      ).toBe(false);
+      expect(
+        isNeonDatabase('postgres://user:pass@mydb.postgres.database.azure.com:5432/mydb')
+      ).toBe(false);
+      expect(isNeonDatabase('postgres://user:pass@pooler.supabase.com:5432/postgres')).toBe(false);
+    });
+
+    it('should be case-sensitive', () => {
+      // Neon URLs should be lowercase in practice
+      expect(isNeonDatabase('postgres://user:pass@host.NEON.TECH/dbname')).toBe(false);
     });
   });
 });

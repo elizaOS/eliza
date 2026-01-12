@@ -123,4 +123,79 @@ describe('PgDatabaseAdapter', () => {
       expect(db.transaction).toBeDefined();
     });
   });
+
+  describe('withDatabase pool-based connection', () => {
+    it('should use shared pool-based db instance without acquiring individual clients', async () => {
+      const mockDb = {
+        select: mock().mockReturnThis(),
+        from: mock().mockReturnThis(),
+        where: mock().mockReturnThis(),
+        limit: mock().mockResolvedValue([]),
+        transaction: mock(),
+      };
+
+      const getClientMock = mock();
+
+      const poolManager = {
+        getDatabase: mock().mockReturnValue(mockDb),
+        getConnection: mock().mockReturnValue({}),
+        getClient: getClientMock,
+        testConnection: mock().mockResolvedValue(true),
+        close: mock().mockResolvedValue(undefined),
+        withIsolationContext: mock(),
+      } as any;
+
+      const poolAdapter = new PgDatabaseAdapter(agentId, poolManager);
+
+      // Execute an operation
+      await poolAdapter.getAgent(agentId);
+
+      // Verify getClient was NOT called (we use pool-based db now)
+      expect(getClientMock).not.toHaveBeenCalled();
+    });
+
+    it('should handle concurrent operations without race conditions', async () => {
+      const results: string[] = [];
+      const mockDb = {
+        select: mock().mockImplementation(() => {
+          return {
+            from: mock().mockReturnThis(),
+            where: mock().mockReturnThis(),
+            limit: mock().mockImplementation(async () => {
+              // Simulate async delay
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              return [];
+            }),
+          };
+        }),
+        transaction: mock(),
+      };
+
+      const concurrentManager = {
+        getDatabase: mock().mockReturnValue(mockDb),
+        getConnection: mock().mockReturnValue({}),
+        getClient: mock(),
+        testConnection: mock().mockResolvedValue(true),
+        close: mock().mockResolvedValue(undefined),
+        withIsolationContext: mock(),
+      } as any;
+
+      const concurrentAdapter = new PgDatabaseAdapter(agentId, concurrentManager);
+
+      // Run multiple concurrent operations
+      const operations = [
+        concurrentAdapter.getAgent(agentId).then(() => results.push('op1')),
+        concurrentAdapter.getAgent(agentId).then(() => results.push('op2')),
+        concurrentAdapter.getAgent(agentId).then(() => results.push('op3')),
+      ];
+
+      await Promise.all(operations);
+
+      // All operations should complete
+      expect(results).toHaveLength(3);
+      expect(results).toContain('op1');
+      expect(results).toContain('op2');
+      expect(results).toContain('op3');
+    });
+  });
 });

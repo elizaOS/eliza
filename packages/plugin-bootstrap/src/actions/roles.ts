@@ -87,17 +87,22 @@ export const updateRoleAction: Action = {
   similes: ['CHANGE_ROLE', 'SET_PERMISSIONS', 'ASSIGN_ROLE', 'MAKE_ADMIN'],
   description: 'Assigns a role (Admin, Owner, None) to a user or list of users in a channel.',
 
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     // Only activate in group chats where the feature is enabled
     const channelType = message.content.channelType as ChannelType;
-    const serverId = message.content.serverId as string;
 
-    return (
-      // First, check if this is a supported channel type
-      (channelType === ChannelType.GROUP || channelType === ChannelType.WORLD) &&
-      // Then, check if we have a server ID
-      !!serverId
-    );
+    // First, check if this is a supported channel type
+    if (channelType !== ChannelType.GROUP && channelType !== ChannelType.WORLD) {
+      return false;
+    }
+
+    // Then, check if we have a server/world context
+    const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
+    if (!room || !room.messageServerId) {
+      return false;
+    }
+
+    return true;
   },
 
   handler: async (
@@ -129,7 +134,6 @@ export const updateRoleAction: Action = {
 
     // Extract needed values from message and state
     const { roomId } = message;
-    const serverId = message.content.serverId as string;
     const worldId = runtime.getSetting('WORLD_ID');
 
     // First, get the world for this server
@@ -314,7 +318,11 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       try {
         await runtime.updateWorld(world);
         logger.info(
-          { src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, serverId },
+          {
+            src: 'plugin:bootstrap:action:update_role',
+            agentId: runtime.agentId,
+            messageServerId: world.messageServerId,
+          },
           'Updated roles in world metadata'
         );
       } catch (error) {
@@ -357,7 +365,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         successfulUpdates,
         failedUpdates,
         worldId: world.id,
-        serverId,
+        messageServerId: world.messageServerId,
       },
       success: true,
     };

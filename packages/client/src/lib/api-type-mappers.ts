@@ -8,23 +8,20 @@ import {
 } from '@elizaos/api-client';
 import { Agent, AgentStatus, UUID, ChannelType, Memory, Media } from '@elizaos/core';
 import type {
-  AgentWithStatus,
   MessageChannel as ClientMessageChannel,
   MessageServer as ClientMessageServer,
-  ServerMessage,
 } from '../types';
 import type { UiMessage } from '../hooks/use-query-hooks';
 
-// Convert API Agent to client AgentWithStatus
+// Convert API Agent to core Agent type
 // ApiAgent is now the core Agent type (re-exported from @elizaos/api-client)
-export function mapApiAgentToClient(apiAgent: ApiAgent): AgentWithStatus {
+export function mapApiAgentToClient(apiAgent: ApiAgent): Agent {
   return {
     ...apiAgent,
     id: apiAgent.id as UUID,
-    status: apiAgent.status ?? AgentStatus.INACTIVE,
     createdAt: apiAgent.createdAt,
     updatedAt: apiAgent.updatedAt,
-  } as AgentWithStatus;
+  };
 }
 
 // Convert Date to string for API

@@ -8,9 +8,12 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { RESPONSE_MODES, DEFAULT_RESPONSE_MODE, type ResponseMode } from '../shared/constants';
-import { handleResponseMode } from '../shared/response-handlers';
+import { type TransportType } from '../shared/constants';
+import { handleTransport } from '../shared/response-handlers';
+import { validateTransport } from '../shared/validation';
 import type { AgentServer, CentralRootMessage } from '../../index';
+import internalMessageBus from '../../services/message-bus';
+import type { MessageServiceStructure } from '../../types/server';
 import { transformMessageAttachments } from '../../utils';
 import type {
   Session,
@@ -681,7 +684,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.get(
     '/sessions/:sessionId',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session || !isValidSession(session)) {
@@ -702,25 +705,24 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   /**
    * Send a message in a session
    * POST /api/messaging/sessions/:sessionId/messages
-   * Supports multiple response modes via the 'mode' parameter:
-   * - "sync": Wait for complete agent response (default in future)
-   * - "stream": SSE streaming response
-   * - "websocket": Return immediately, agent response via WebSocket (current default)
+   * Supports multiple transport types via the 'transport' parameter:
+   * - "http": Wait for complete agent response (sync)
+   * - "sse": SSE streaming response
+   * - "websocket": Return immediately, agent response via WebSocket (default)
+   * Also accepts legacy 'mode' parameter (sync, stream, websocket) for backward compatibility
    */
   router.post(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
-      const body: SendMessageRequest & { mode?: ResponseMode } = req.body;
-      const mode: ResponseMode = body.mode || DEFAULT_RESPONSE_MODE;
+      const sessionId = String(req.params.sessionId);
+      const body: SendMessageRequest & { transport?: TransportType; mode?: string } = req.body;
 
-      // Validate mode parameter
-      if (!RESPONSE_MODES.includes(mode)) {
-        throw new InvalidContentError(
-          `Invalid mode "${mode}". Must be one of: ${RESPONSE_MODES.join(', ')}`,
-          body
-        );
+      // Validate transport parameter (supports both 'transport' and legacy 'mode')
+      const transportValidation = validateTransport(body.transport ?? body.mode);
+      if (!transportValidation.isValid) {
+        throw new InvalidContentError(transportValidation.error!, body);
       }
+      const transport = transportValidation.transport;
 
       // Validate request structure
       if (!isSendMessageRequest(body)) {
@@ -820,13 +822,18 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         content: { text: body.content },
       };
 
-      // User message response object
-      const userMessage = {
+      // Build messageForBus for WebSocket transport (MessageServiceStructure format)
+      const messageForBus: MessageServiceStructure = {
         id: message.id,
+        channel_id: message.channelId,
+        message_server_id: serverInstance.messageServerId,
+        author_id: message.authorId,
         content: message.content,
-        authorId: message.authorId,
-        createdAt: message.createdAt,
+        created_at: new Date(message.createdAt).getTime(),
+        source_type: message.sourceType,
+        raw_message: message.rawMessage,
         metadata: message.metadata,
+        in_reply_to_message_id: message.inReplyToRootMessageId,
       };
 
       // Session-specific additional data
@@ -840,14 +847,22 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
       };
 
       // Handle response using shared handler
-      await handleResponseMode({
+      await handleTransport({
         res,
-        mode,
+        transport,
         elizaOS,
         agentId: session.agentId,
         messageMemory,
-        userMessage,
+        userMessage: messageForBus,
         additionalResponseData: sessionStatus,
+        onWebSocketTransport: () => {
+          // Emit to internal bus for agent processing
+          internalMessageBus.emit('new_message', messageForBus);
+          logger.debug(
+            { src: 'http', messageId: messageForBus.id, sessionId, transport },
+            'Session message published to internal bus'
+          );
+        },
       });
     })
   );
@@ -859,7 +874,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.get(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       // Parse query parameters with proper type handling
       const query: GetMessagesQuery = {
         limit: req.query.limit as string | undefined,
@@ -1046,7 +1061,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.post(
     '/sessions/:sessionId/renew',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session) {
@@ -1088,7 +1103,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.patch(
     '/sessions/:sessionId/timeout',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const newConfig: SessionTimeoutConfig = req.body;
 
       const session = sessions.get(sessionId);
@@ -1157,7 +1172,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.post(
     '/sessions/:sessionId/heartbeat',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session || !isValidSession(session)) {
@@ -1195,7 +1210,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   router.delete(
     '/sessions/:sessionId',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const { sessionId } = req.params;
+      const sessionId = String(req.params.sessionId);
       const session = sessions.get(sessionId);
 
       if (!session) {

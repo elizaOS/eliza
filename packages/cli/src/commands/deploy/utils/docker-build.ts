@@ -6,7 +6,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExec } from '../../../utils/bun-exec';
 import crypto from 'node:crypto';
 import ora from 'ora';
 
@@ -49,9 +49,10 @@ export interface DockerPushResult {
  */
 export async function checkDockerAvailable(): Promise<boolean> {
   try {
-    await execa('docker', ['--version']);
-    await execa('docker', ['info']);
-    return true;
+    const versionResult = await bunExec('docker', ['--version']);
+    if (!versionResult.success) return false;
+    const infoResult = await bunExec('docker', ['info']);
+    return infoResult.success;
   } catch {
     return false;
   }
@@ -196,13 +197,22 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Execute Docker build
     const startTime = Date.now();
-    const { stdout } = await execa('docker', buildArgs, {
+    const buildResult = await bunExec('docker', buildArgs, {
       env: {
-        ...process.env,
         DOCKER_DEFAULT_PLATFORM: platform,
         DOCKER_BUILDKIT: '1',
       },
     });
+
+    if (!buildResult.success) {
+      return {
+        success: false,
+        imageTag: options.imageTag,
+        error: buildResult.stderr || 'Docker build failed',
+      };
+    }
+
+    const stdout = buildResult.stdout;
     const buildTime = Date.now() - startTime;
 
     logger.debug(
@@ -216,11 +226,19 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     }
 
     // Get image info
-    const inspectResult = await execa('docker', [
+    const inspectResult = await bunExec('docker', [
       'inspect',
       options.imageTag,
       '--format={{.Id}}|{{.Size}}',
     ]);
+
+    if (!inspectResult.success) {
+      return {
+        success: false,
+        imageTag: options.imageTag,
+        error: inspectResult.stderr || 'Failed to inspect Docker image',
+      };
+    }
 
     const [imageId, sizeStr] = inspectResult.stdout.split('|');
     const size = parseInt(sizeStr, 10);
@@ -272,10 +290,28 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
     'Logging in to ECR registry'
   );
 
-  // Docker login
-  await execa('docker', ['login', '--username', username, '--password-stdin', cleanRegistryUrl], {
-    input: password,
-  });
+  // Docker login - use Bun.spawn directly for stdin input
+  const proc = Bun.spawn(
+    ['docker', 'login', '--username', username, '--password-stdin', cleanRegistryUrl],
+    {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    }
+  );
+
+  // Write password to stdin using FileSink API
+  if (proc.stdin) {
+    proc.stdin.write(password);
+    proc.stdin.end();
+  }
+
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(`Docker login failed: ${stderr}`);
+  }
 
   logger.info({ src: 'cli', util: 'docker-build' }, 'Logged in to ECR');
 }
@@ -286,7 +322,11 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
 async function tagImageForECR(localTag: string, ecrImageUri: string): Promise<void> {
   logger.info({ src: 'cli', util: 'docker-build', ecrImageUri }, 'Tagging image for ECR');
 
-  await execa('docker', ['tag', localTag, ecrImageUri]);
+  const result = await bunExec('docker', ['tag', localTag, ecrImageUri]);
+
+  if (!result.success) {
+    throw new Error(`Failed to tag image: ${result.stderr}`);
+  }
 
   logger.debug({ src: 'cli', util: 'docker-build', localTag, ecrImageUri }, 'Image tagged for ECR');
 }
@@ -338,65 +378,89 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
     let completedLayers = 0;
     const layerProgress = new Map<string, { current: number; total: number }>();
 
-    const pushProcess = execa('docker', ['push', ecrImageUri]);
+    // Use Bun.spawn for the push process with streaming stderr
+    const pushProcess = Bun.spawn(['docker', 'push', ecrImageUri], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
 
-    // Track progress from stderr (Docker outputs progress to stderr)
-    if (pushProcess.stderr) {
-      pushProcess.stderr.on('data', (data: Buffer) => {
-        const output = data.toString();
+    // Process stderr stream for progress tracking
+    const processStderr = async () => {
+      if (!pushProcess.stderr) return;
 
-        // Parse Docker layer progress
-        // Format: "layer-id: Pushing [==>     ] 15.5MB/100MB"
-        const lines = output.split('\n');
+      const reader = pushProcess.stderr.getReader();
+      const decoder = new TextDecoder();
 
-        for (const line of lines) {
-          const layerMatch = line.match(
-            /^([a-f0-9]+):\s*(\w+)\s*\[([=>]+)\s*\]\s+([\d.]+)([KMGT]?B)\/([\d.]+)([KMGT]?B)/
-          );
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-          if (layerMatch) {
-            const [, layerId, , , currentStr, currentUnit, totalStr, totalUnit] = layerMatch;
+          const output = decoder.decode(value, { stream: true });
 
-            // Convert to bytes for accurate progress
-            const current = parseSize(currentStr, currentUnit);
-            const total = parseSize(totalStr, totalUnit);
+          // Parse Docker layer progress
+          // Format: "layer-id: Pushing [==>     ] 15.5MB/100MB"
+          const lines = output.split('\n');
 
-            layerProgress.set(layerId, { current, total });
+          for (const line of lines) {
+            const layerMatch = line.match(
+              /^([a-f0-9]+):\s*(\w+)\s*\[([=>]+)\s*\]\s+([\d.]+)([KMGT]?B)\/([\d.]+)([KMGT]?B)/
+            );
 
-            // Calculate overall progress
-            let totalBytes = 0;
-            let uploadedBytes = 0;
+            if (layerMatch) {
+              const [, layerId, , , currentStr, currentUnit, totalStr, totalUnit] = layerMatch;
 
-            for (const [, progress] of layerProgress) {
-              totalBytes += progress.total;
-              uploadedBytes += progress.current;
+              // Convert to bytes for accurate progress
+              const current = parseSize(currentStr, currentUnit);
+              const total = parseSize(totalStr, totalUnit);
+
+              layerProgress.set(layerId, { current, total });
+
+              // Calculate overall progress
+              let totalBytes = 0;
+              let uploadedBytes = 0;
+
+              for (const [, progress] of layerProgress) {
+                totalBytes += progress.total;
+                uploadedBytes += progress.current;
+              }
+
+              const overallPercent =
+                totalBytes > 0 ? Math.floor((uploadedBytes / totalBytes) * 100) : 0;
+              const uploadedMB = (uploadedBytes / 1024 / 1024).toFixed(1);
+              const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+
+              spinner.text = `Pushing to ECR... ${overallPercent}% (${uploadedMB}/${totalMB} MB, ${layerProgress.size} layers)`;
             }
 
-            const overallPercent =
-              totalBytes > 0 ? Math.floor((uploadedBytes / totalBytes) * 100) : 0;
-            const uploadedMB = (uploadedBytes / 1024 / 1024).toFixed(1);
-            const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+            // Check for pushed layers
+            if (line.includes(': Pushed')) {
+              completedLayers++;
+            }
 
-            spinner.text = `Pushing to ECR... ${overallPercent}% (${uploadedMB}/${totalMB} MB, ${layerProgress.size} layers)`;
-          }
-
-          // Check for pushed layers
-          if (line.includes(': Pushed')) {
-            completedLayers++;
-          }
-
-          // Check for completion digest
-          const digestMatch = line.match(/digest: (sha256:[a-f0-9]+)/);
-          if (digestMatch) {
-            imageDigest = digestMatch[1];
+            // Check for completion digest
+            const digestMatch = line.match(/digest: (sha256:[a-f0-9]+)/);
+            if (digestMatch) {
+              imageDigest = digestMatch[1];
+            }
           }
         }
-      });
-    }
+      } catch {
+        // Ignore stream errors during processing
+      }
+    };
 
     try {
-      await pushProcess;
+      // Process stderr in parallel with waiting for exit
+      await Promise.all([processStderr(), pushProcess.exited]);
+
+      const exitCode = pushProcess.exitCode;
       const pushTime = Date.now() - startTime;
+
+      if (exitCode !== 0) {
+        spinner.fail('Failed to push image to ECR');
+        throw new Error('Docker push failed');
+      }
 
       spinner.succeed(
         `Image pushed in ${(pushTime / 1000).toFixed(1)}s (${completedLayers} layers)`
@@ -477,8 +541,15 @@ export async function cleanupLocalImages(imageTags: string[]): Promise<void> {
   );
 
   try {
-    await execa('docker', ['rmi', ...imageTags, '--force']);
-    logger.info({ src: 'cli', util: 'docker-build' }, 'Local images cleaned up');
+    const result = await bunExec('docker', ['rmi', ...imageTags, '--force']);
+    if (result.success) {
+      logger.info({ src: 'cli', util: 'docker-build' }, 'Local images cleaned up');
+    } else {
+      logger.warn(
+        { src: 'cli', util: 'docker-build', error: result.stderr },
+        'Failed to clean up some images'
+      );
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.warn(

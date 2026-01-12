@@ -441,95 +441,55 @@ export class AgentRuntime implements IAgentRuntime {
     // Initialize message service
     this.messageService = new DefaultMessageService();
 
-    // Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
     const skipMigrations = options?.skipMigrations ?? false;
-    if (skipMigrations) {
-      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Skipping plugin migrations');
-    } else {
-      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
-      await this.runPluginMigrations();
-      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Plugin migrations completed');
-    }
 
-    // Ensure character has the agent ID set before calling ensureAgentExists
-    // We create a new object with the ID to avoid mutating the original character
     const existingAgent = await this.ensureAgentExists({
       ...this.character,
       id: this.agentId,
     } as Partial<Agent>);
+
     if (!existingAgent) {
-      const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
-      throw new Error(errorMsg);
+      throw new Error(`Agent ${this.agentId} does not exist in database after ensureAgentExists`);
     }
 
-    // Merge DB-persisted settings back into runtime character
-    // This ensures settings from previous runs are available
-    if (existingAgent.settings) {
-      this.character.settings = {
-        ...existingAgent.settings,
-        ...this.character.settings, // Character file overrides DB
-      };
+    this.mergeAgentSettings(existingAgent);
 
-      // Merge secrets from both character.secrets and settings.secrets
-      // getSetting() checks character.secrets first, so we need to merge there too
-      const dbSecrets =
-        existingAgent.settings.secrets && typeof existingAgent.settings.secrets === 'object'
-          ? existingAgent.settings.secrets
-          : {};
-      const settingsSecrets =
-        this.character.settings.secrets && typeof this.character.settings.secrets === 'object'
-          ? this.character.settings.secrets
-          : {};
-      const characterSecrets =
-        this.character.secrets && typeof this.character.secrets === 'object'
-          ? this.character.secrets
-          : {};
+    await Promise.all([
+      this.ensureWorldExists({
+        id: this.agentId,
+        name: `${this.character.name}'s World`,
+        agentId: this.agentId,
+        messageServerId: this.agentId,
+      }),
 
-      // Merge into both locations that getSetting() checks
-      const mergedSecrets = {
-        ...dbSecrets,
-        ...characterSecrets,
-        ...settingsSecrets, // settings.secrets has priority
-      };
+      skipMigrations
+        ? Promise.resolve()
+        : (async () => {
+            this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
+            await this.runPluginMigrations();
+            this.logger.debug(
+              { src: 'agent', agentId: this.agentId },
+              'Plugin migrations completed'
+            );
+          })(),
+    ]);
 
-      if (Object.keys(mergedSecrets).length > 0) {
-        const filteredSecrets: Record<string, string | boolean | number> = {};
-        for (const [key, value] of Object.entries(mergedSecrets)) {
-          if (value !== null && value !== undefined) {
-            filteredSecrets[key] = value as string | boolean | number;
-          }
-        }
-        if (Object.keys(filteredSecrets).length > 0) {
-          this.character.secrets = filteredSecrets;
-          this.character.settings.secrets = filteredSecrets;
-        }
-      }
-    }
-
-    // No need to transform agent's own ID
-    let agentEntity = await this.getEntityById(this.agentId);
-
-    if (!agentEntity) {
-      const created = await this.createEntity({
+    const [agentEntity, existingRoom, participants] = await Promise.all([
+      this.ensureEntity({
         id: this.agentId,
         names: [this.character.name],
         metadata: {},
         agentId: existingAgent.id!,
-      });
-      if (!created) {
-        const errorMsg = `Failed to create entity for agent ${this.agentId}`;
-        throw new Error(errorMsg);
-      }
+      }),
+      this.getRoom(this.agentId),
+      this.adapter.getParticipantsForRoom(this.agentId),
+    ]);
 
-      agentEntity = await this.getEntityById(this.agentId);
-      if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
-
-      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent entity created');
+    if (!agentEntity) {
+      throw new Error(`Failed to ensure entity for agent ${this.agentId}`);
     }
 
-    // Room creation and participant setup
-    const room = await this.getRoom(this.agentId);
-    if (!room) {
+    if (!existingRoom) {
       await this.createRoom({
         id: this.agentId,
         name: this.character.name,
@@ -539,8 +499,9 @@ export class AgentRuntime implements IAgentRuntime {
         messageServerId: this.agentId,
         worldId: this.agentId,
       });
+      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent room created');
     }
-    const participants = await this.adapter.getParticipantsForRoom(this.agentId);
+
     if (!participants.includes(this.agentId)) {
       const added = await this.addParticipant(this.agentId, this.agentId);
       if (!added) {
@@ -563,6 +524,47 @@ export class AgentRuntime implements IAgentRuntime {
     if (this.initResolver) {
       this.initResolver();
       this.initResolver = undefined;
+    }
+  }
+
+  private mergeAgentSettings(existingAgent: Agent): void {
+    if (!existingAgent.settings) return;
+
+    this.character.settings = {
+      ...existingAgent.settings,
+      ...this.character.settings,
+    };
+
+    const dbSecrets =
+      existingAgent.settings.secrets && typeof existingAgent.settings.secrets === 'object'
+        ? existingAgent.settings.secrets
+        : {};
+    const settingsSecrets =
+      this.character.settings.secrets && typeof this.character.settings.secrets === 'object'
+        ? this.character.settings.secrets
+        : {};
+    const characterSecrets =
+      this.character.secrets && typeof this.character.secrets === 'object'
+        ? this.character.secrets
+        : {};
+
+    const mergedSecrets = {
+      ...dbSecrets,
+      ...characterSecrets,
+      ...settingsSecrets,
+    };
+
+    if (Object.keys(mergedSecrets).length > 0) {
+      const filteredSecrets: Record<string, string | boolean | number> = {};
+      for (const [key, value] of Object.entries(mergedSecrets)) {
+        if (value !== null && value !== undefined) {
+          filteredSecrets[key] = value as string | boolean | number;
+        }
+      }
+      if (Object.keys(filteredSecrets).length > 0) {
+        this.character.secrets = filteredSecrets;
+        this.character.settings.secrets = filteredSecrets;
+      }
     }
   }
 
@@ -1390,43 +1392,32 @@ export class AgentRuntime implements IAgentRuntime {
       await this.createRooms(roomObjsToCreate);
     }
 
-    // Step 2: Create all entities
+    // Step 2: Create all entities (ON CONFLICT DO NOTHING handles duplicates)
     const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
-    const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
-    const entitiesToUpdate =
-      entityExistsCheck?.map((e) => e.id).filter((id): id is UUID => id !== undefined) || [];
-    const entitiesToCreate = entities.filter(
-      (e) => e.id !== undefined && !entitiesToUpdate.includes(e.id)
-    );
 
-    const r = {
-      roomId: firstRoom.id,
-      channelId: firstRoom.channelId,
-      type: firstRoom.type,
-    };
-    const wf = {
-      worldId: world.id,
-      messageServerId: world.messageServerId,
-    };
-
-    if (entitiesToCreate.length) {
+    if (entities.length) {
       this.logger.debug(
-        { src: 'agent', agentId: this.agentId, count: entitiesToCreate.length },
+        { src: 'agent', agentId: this.agentId, count: entities.length },
         'Creating entities'
       );
-      const ef = {
-        ...r,
-        ...wf,
+      const entityFields = {
+        roomId: firstRoom.id,
+        channelId: firstRoom.channelId,
+        type: firstRoom.type,
+        worldId: world.id,
+        messageServerId: world.messageServerId,
         source,
         agentId: this.agentId,
       };
-      const entitiesToCreateWFields: Entity[] = entitiesToCreate.map((e) => ({
-        ...e,
-        ...ef,
-        metadata: e.metadata || {},
-      }));
+      const entitiesWithFields: Entity[] = entities
+        .filter((e) => e.id !== undefined)
+        .map((e) => ({
+          ...e,
+          ...entityFields,
+          metadata: e.metadata || {},
+        }));
       // pglite doesn't like over 10k records
-      const batches = chunkArray(entitiesToCreateWFields, 5000);
+      const batches = chunkArray(entitiesWithFields, 5000);
       for (const batch of batches) {
         await this.createEntities(batch);
       }
@@ -1636,24 +1627,17 @@ export class AgentRuntime implements IAgentRuntime {
    * Ensure the existence of a world.
    */
   async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
-    const world = await this.getWorld(id);
-    if (!world) {
-      this.logger.debug(
-        { src: 'agent', agentId: this.agentId, worldId: id, name, messageServerId },
-        'Creating world'
-      );
-      await this.adapter.createWorld({
-        id,
-        name,
-        agentId: this.agentId,
-        messageServerId,
-        metadata,
-      });
-      this.logger.debug(
-        { src: 'agent', agentId: this.agentId, worldId: id, messageServerId },
-        'World created'
-      );
-    }
+    this.logger.debug(
+      { src: 'agent', agentId: this.agentId, worldId: id, name, messageServerId },
+      'Ensuring world exists'
+    );
+    await this.adapter.createWorld({
+      id,
+      name,
+      agentId: this.agentId,
+      messageServerId,
+      metadata,
+    });
   }
 
   async ensureRoomExists({
@@ -2166,6 +2150,61 @@ export class AgentRuntime implements IAgentRuntime {
     return Object.keys(modelSettings).length > 0 ? modelSettings : null;
   }
 
+  /**
+   * Helper to log model calls to the database (used by both streaming and non-streaming paths)
+   */
+  private logModelCall(
+    modelType: string,
+    modelKey: string,
+    params: unknown,
+    promptContent: string | null,
+    elapsedTime: number,
+    provider: string | undefined,
+    response: unknown
+  ): void {
+    // Log prompts to action context (except embeddings)
+    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      if (this.currentActionContext) {
+        this.currentActionContext.prompts.push({
+          modelType: modelKey,
+          prompt: promptContent,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Log to database
+    this.adapter.log({
+      entityId: this.agentId,
+      roomId: this.currentRoomId ?? this.agentId,
+      body: {
+        modelType,
+        modelKey,
+        params: {
+          ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+          prompt: promptContent,
+        },
+        prompt: promptContent,
+        systemPrompt: this.character?.system || null,
+        runId: this.getCurrentRunId(),
+        timestamp: Date.now(),
+        executionTime: elapsedTime,
+        provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+        actionContext: this.currentActionContext
+          ? {
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
+          : undefined,
+        response:
+          Array.isArray(response) && response.every((x) => typeof x === 'number')
+            ? '[array]'
+            : response,
+      },
+      type: `useModel:${modelKey}`,
+    });
+  }
+
   async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
     params: ModelParamsMap[T],
@@ -2332,6 +2371,15 @@ export class AgentRuntime implements IAgentRuntime {
         'Model output (stream with callback complete)'
       );
 
+      this.logModelCall(
+        modelType,
+        modelKey,
+        params,
+        promptContent,
+        elapsedTime,
+        provider,
+        fullText
+      );
       return fullText as R;
     }
 
@@ -2351,49 +2399,7 @@ export class AgentRuntime implements IAgentRuntime {
       'Model output'
     );
 
-    // Log all prompts except TEXT_EMBEDDING to track agent behavior
-    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-      // If we're in an action context, collect the prompt
-      if (this.currentActionContext) {
-        this.currentActionContext.prompts.push({
-          modelType: modelKey,
-          prompt: promptContent,
-          timestamp: Date.now(),
-        });
-      }
-    }
-
-    // Keep the existing model logging for backward compatibility
-    this.adapter.log({
-      entityId: this.agentId,
-      roomId: this.currentRoomId ?? this.agentId,
-      body: {
-        modelType,
-        modelKey,
-        params: {
-          ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
-          prompt: promptContent,
-        },
-        prompt: promptContent,
-        systemPrompt: this.character?.system || null,
-        runId: this.getCurrentRunId(),
-        timestamp: Date.now(),
-        executionTime: elapsedTime,
-        provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-        actionContext: this.currentActionContext
-          ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
-          : undefined,
-        response:
-          Array.isArray(response) && response.every((x) => typeof x === 'number')
-            ? '[array]'
-            : response,
-      },
-      type: `useModel:${modelKey}`,
-    });
-
+    this.logModelCall(modelType, modelKey, params, promptContent, elapsedTime, provider, response);
     return response as R;
   }
 
@@ -2466,11 +2472,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
-  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
-  registerEvent(
+  registerEvent<P extends EventPayload = EventPayload>(
     event: string,
-    handler: ((params: EventPayload) => Promise<void>) | ((params: unknown) => Promise<void>)
-  ): void {
+    handler: (params: P) => Promise<void>
+  ): void;
+  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
@@ -2503,24 +2509,33 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  async ensureEmbeddingDimension() {
+  async ensureEmbeddingDimension(): Promise<void> {
     if (!this.adapter) {
       throw new Error('Database adapter not initialized before ensureEmbeddingDimension');
     }
-    const model = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!model) {
+    if (!this.getModel(ModelType.TEXT_EMBEDDING)) {
       throw new Error('No TEXT_EMBEDDING model registered');
     }
 
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' });
-    if (!embedding || !embedding.length) {
-      throw new Error('Invalid embedding received');
+    // Check if dimension is provided via settings (skips expensive ~500ms API call)
+    const providedDimension = this.getSetting('EMBEDDING_DIMENSION');
+    const parsedDimension = Number(providedDimension);
+    const useProvidedDimension = parsedDimension > 0;
+
+    const dimension = useProvidedDimension
+      ? parsedDimension
+      : (await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' }))?.length;
+
+    if (!dimension) {
+      throw new Error('Invalid embedding dimension');
     }
 
-    await this.adapter.ensureEmbeddingDimension(embedding.length);
+    await this.adapter.ensureEmbeddingDimension(dimension);
     this.logger.debug(
-      { src: 'agent', agentId: this.agentId, dimension: embedding.length },
-      'Embedding dimension set'
+      { src: 'agent', agentId: this.agentId, dimension },
+      useProvidedDimension
+        ? 'Embedding dimension set from config'
+        : 'Embedding dimension set via API call'
     );
   }
 
@@ -2646,6 +2661,20 @@ export class AgentRuntime implements IAgentRuntime {
       entity.agentId = this.agentId;
     }
     return await this.createEntities([entity]);
+  }
+
+  /**
+   * Ensures entity exists, creating if needed.
+   * @param entity - The entity to ensure exists
+   * @returns Input entity on success (not re-fetched to avoid extra query), null on failure
+   */
+  async ensureEntity(entity: Entity): Promise<Entity | null> {
+    if (!entity.id) return null;
+
+    const created = await this.createEntity(entity);
+    if (!created) return null;
+
+    return entity;
   }
 
   async createEntities(entities: Entity[]): Promise<boolean> {

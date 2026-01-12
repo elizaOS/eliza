@@ -17,6 +17,7 @@ export const character: Character = {
 
     // Text-only plugins (no embedding support)
     ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.ELIZAOS_CLOUD_API_KEY?.trim() ? ['@elizaos/plugin-elizacloud'] : []),
     ...(process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
 
     // Embedding-capable plugins (optional, based on available credentials)

@@ -152,18 +152,28 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       id: 'room-id',
       name: 'Test Room',
       worldId: 'test-world-id',
-      serverId: 'test-server-id',
+      messageServerId: 'test-server-id',
     }),
     getRooms: mock().mockResolvedValue([
-      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+      {
+        id: 'room-id',
+        name: 'Test Room',
+        worldId: 'test-world-id',
+        messageServerId: 'test-server-id',
+      },
     ]),
     getRoomsByIds: mock().mockResolvedValue([
-      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+      {
+        id: 'room-id',
+        name: 'Test Room',
+        worldId: 'test-world-id',
+        messageServerId: 'test-server-id',
+      },
     ]),
     getWorld: mock().mockResolvedValue({
       id: 'test-world-id',
       name: 'Test World',
-      serverId: 'test-server-id',
+      messageServerId: 'test-server-id',
       metadata: {
         roles: {
           'test-entity-id': 'ADMIN',
@@ -357,7 +367,7 @@ export function createMockState(overrides: Partial<State> = {}): Partial<State> 
         id: 'test-room-id',
         type: ChannelType.GROUP,
         worldId: 'test-world-id',
-        serverId: 'test-server-id',
+        messageServerId: 'test-server-id',
       },
       ...overrides.data,
     },

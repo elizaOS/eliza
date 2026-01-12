@@ -690,20 +690,33 @@ describe('Base Adapter Methods Integration Tests', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle duplicate entity creation gracefully', async () => {
-      const entity: Entity = {
-        id: uuidv4() as UUID,
+    it('should handle duplicate entity creation gracefully (idempotent upsert)', async () => {
+      const entityId = uuidv4() as UUID;
+      const entity1: Entity = {
+        id: entityId,
         agentId: testAgentId,
-        names: ['Test Entity'],
-        metadata: { type: 'test' },
+        names: ['Original Entity'],
+        metadata: { type: 'original' },
+      };
+      const entity2: Entity = {
+        id: entityId,
+        agentId: testAgentId,
+        names: ['Updated Entity'],
+        metadata: { type: 'updated' },
       };
 
       // Create entity
-      await adapter.createEntities([entity]);
+      await adapter.createEntities([entity1]);
 
-      // Try to create duplicate - createEntities returns false on duplicate
-      const result = await adapter.createEntities([entity]);
-      expect(result).toBe(false);
+      // Duplicate creation succeeds silently (onConflictDoNothing)
+      const result = await adapter.createEntities([entity2]);
+      expect(result).toBe(true);
+
+      // Original entity should remain unchanged
+      const retrieved = await adapter.getEntitiesByIds([entityId]);
+      expect(retrieved).toHaveLength(1);
+      expect(retrieved![0].names).toEqual(['Original Entity']);
+      expect(retrieved![0].metadata).toEqual({ type: 'original' });
     });
 
     it('should handle updating non-existent entity', async () => {

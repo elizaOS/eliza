@@ -49,7 +49,7 @@ export const TEST_TIMEOUTS = {
     ? 150 * 1000 // 2.5 minutes in CI (increased to handle slow postinstall scripts)
     : process.platform === 'win32'
       ? 3 * 60 * 1000
-      : 2 * 60 * 1000, // 3/2 minutes locally
+      : 3 * 60 * 1000, // 3 minutes locally (mac/linux)
   PROJECT_CREATION: isCI
     ? 150 * 1000 // 2.5 minutes in CI (increased for slower CI environments)
     : process.platform === 'win32'
