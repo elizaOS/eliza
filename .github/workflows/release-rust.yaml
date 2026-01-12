@@ -3,13 +3,13 @@ name: Rust Release
 # Publish Rust crates to crates.io on release
 # Crates:
 #   - elizaos (packages/rust) - core library
-#   - elizaos-plugin-sql (packages/plugin-sql/rust)
-#   - elizaos-plugin-anthropic (packages/plugin-anthropic/rust)
-#   - elizaos-plugin-discord (packages/plugin-discord/rust)
-#   - elizaos-plugin-evm (packages/plugin-evm/rust)
-#   - elizaos-plugin-mcp (packages/plugin-mcp/rust)
-#   - elizaos-plugin-openai (packages/plugin-openai/rust)
-#   - elizaos-plugin-solana (packages/plugin-solana/rust)
+#   - elizaos-plugin-sql (plugins/plugin-sql/rust)
+#   - elizaos-plugin-anthropic (plugins/plugin-anthropic/rust)
+#   - elizaos-plugin-discord (plugins/plugin-discord/rust)
+#   - elizaos-plugin-evm (plugins/plugin-evm/rust)
+#   - elizaos-plugin-mcp (plugins/plugin-mcp/rust)
+#   - elizaos-plugin-openai (plugins/plugin-openai/rust)
+#   - elizaos-plugin-solana (plugins/plugin-solana/rust)
 
 on:
   release:
@@ -238,8 +238,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/plugin-sql/rust/target
-          key: ${{ runner.os }}-cargo-plugin-sql-${{ hashFiles('packages/plugin-sql/rust/Cargo.lock') }}
+            plugins/plugin-sql/rust/target
+          key: ${{ runner.os }}-cargo-plugin-sql-${{ hashFiles('plugins/plugin-sql/rust/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-plugin-sql-
 
@@ -259,7 +259,7 @@ jobs:
 
       - name: Update crate version
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
@@ -267,7 +267,7 @@ jobs:
 
       - name: Update dependency version
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           # Update the elizaos dependency to use the published version
@@ -276,39 +276,39 @@ jobs:
 
       - name: Check formatting
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo fmt --all -- --check
 
       - name: Run clippy
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo clippy --features native -- -D warnings
 
       - name: Run tests (native)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo test --features native
 
       - name: Build release (native)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo build --release --features native
 
       - name: Build WASM (web target)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: |
           wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
 
       - name: Build WASM (nodejs target)
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: |
           wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
 
       - name: Package WASM artifacts
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: |
           mkdir -p artifacts
           tar -czvf artifacts/elizaos-plugin-sql-wasm-web.tar.gz -C pkg/web .
@@ -319,7 +319,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: elizaos-plugin-sql-wasm
-          path: packages/plugin-sql/rust/artifacts/
+          path: plugins/plugin-sql/rust/artifacts/
           retention-days: 7
 
       - name: Upload WASM to release
@@ -327,19 +327,19 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            packages/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-web.tar.gz
-            packages/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-node.tar.gz
+            plugins/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-web.tar.gz
+            plugins/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-node.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify publishable
         if: steps.check.outputs.should_publish == 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo publish --dry-run --allow-dirty
 
       - name: Publish to crates.io
         if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: cargo publish --allow-dirty
@@ -378,17 +378,17 @@ jobs:
       matrix:
         include:
           - name: elizaos-plugin-anthropic
-            path: packages/plugin-anthropic/rust
+            path: plugins/plugin-anthropic/rust
           - name: elizaos-plugin-discord
-            path: packages/plugin-discord/rust
+            path: plugins/plugin-discord/rust
           - name: elizaos-plugin-evm
-            path: packages/plugin-evm/rust
+            path: plugins/plugin-evm/rust
           - name: elizaos-plugin-mcp
-            path: packages/plugin-mcp/rust
+            path: plugins/plugin-mcp/rust
           - name: elizaos-plugin-openai
-            path: packages/plugin-openai/rust
+            path: plugins/plugin-openai/rust
           - name: elizaos-plugin-solana
-            path: packages/plugin-solana/rust
+            path: plugins/plugin-solana/rust
 
     steps:
       - name: Check if plugin should be built

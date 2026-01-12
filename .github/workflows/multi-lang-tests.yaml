@@ -9,8 +9,8 @@ on:
     paths:
       - "packages/rust/**"
       - "packages/python/**"
-      - "packages/plugin-sql/rust/**"
-      - "packages/plugin-sql/python/**"
+      - "plugins/plugin-sql/rust/**"
+      - "plugins/plugin-sql/python/**"
       - "packages/interop/**"
       - ".github/workflows/multi-lang-tests.yaml"
   pull_request:
@@ -18,8 +18,8 @@ on:
     paths:
       - "packages/rust/**"
       - "packages/python/**"
-      - "packages/plugin-sql/rust/**"
-      - "packages/plugin-sql/python/**"
+      - "plugins/plugin-sql/rust/**"
+      - "plugins/plugin-sql/python/**"
       - "packages/interop/**"
       - ".github/workflows/multi-lang-tests.yaml"
 
@@ -113,29 +113,29 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/plugin-sql/rust/target
-          key: ${{ runner.os }}-cargo-elizaos-plugin-sql-${{ hashFiles('packages/plugin-sql/rust/Cargo.lock') }}
+            plugins/plugin-sql/rust/target
+          key: ${{ runner.os }}-cargo-elizaos-plugin-sql-${{ hashFiles('plugins/plugin-sql/rust/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-elizaos-plugin-sql-
 
       - name: Check formatting
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo clippy --all-targets -- -D warnings
         continue-on-error: true
 
       - name: Run all tests with PostgreSQL (serial to avoid race conditions)
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         env:
           DATABASE_URL: postgres://test:test@localhost:5432/eliza_test
           RUST_TEST_THREADS: 1
         run: cargo test --features native
 
       - name: Build release
-        working-directory: packages/plugin-sql/rust
+        working-directory: plugins/plugin-sql/rust
         run: cargo build --release
 
   # ============================================
@@ -172,18 +172,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          pip install pytest pytest-asyncio pytest-cov ruff
 
       - name: Run ruff (linting)
         working-directory: packages/python
-        run: |
-          pip install ruff
-          ruff check .
+        run: ruff check .
         continue-on-error: true
 
       - name: Run tests
         working-directory: packages/python
-        run: |
-          python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short
 
   # ============================================
   # Python SQL Plugin Tests (with PostgreSQL)
@@ -225,7 +223,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-elizaos-plugin-sql-${{ matrix.python-version }}-${{ hashFiles('packages/plugin-sql/python/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-elizaos-plugin-sql-${{ matrix.python-version }}-${{ hashFiles('plugins/plugin-sql/python/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-elizaos-plugin-sql-${{ matrix.python-version }}-
 
@@ -236,19 +234,19 @@ jobs:
           pip install -e .
 
       - name: Install plugin-sql dependencies
-        working-directory: packages/plugin-sql/python
+        working-directory: plugins/plugin-sql/python
         run: |
           pip install -e ".[dev]"
 
       - name: Run ruff (linting)
-        working-directory: packages/plugin-sql/python
+        working-directory: plugins/plugin-sql/python
         run: |
           pip install ruff
           ruff check .
         continue-on-error: true
 
       - name: Run tests with PostgreSQL
-        working-directory: packages/plugin-sql/python
+        working-directory: plugins/plugin-sql/python
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/testdb
         run: |
@@ -269,7 +267,7 @@ jobs:
           - name: elizaos-core
             path: packages/rust
           - name: elizaos-plugin-sql
-            path: packages/plugin-sql/rust
+            path: plugins/plugin-sql/rust
 
     steps:
       - uses: actions/checkout@v4

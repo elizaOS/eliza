@@ -375,7 +375,7 @@ mod tests {
         let dir = tempdir().unwrap();
         ShellConfig {
             enabled: true,
-            allowed_directory: dir.keep().unwrap(),
+            allowed_directory: dir.keep(),
             timeout_ms: 30000,
             forbidden_commands: vec!["rm".to_string(), "rmdir".to_string()],
         }
