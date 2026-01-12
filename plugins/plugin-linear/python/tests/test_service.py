@@ -9,7 +9,9 @@ from elizaos_plugin_linear.types import (
 )
 
 
-class TestRuntime:
+class MockRuntime:
+    """Mock runtime for testing purposes."""
+
     def __init__(self, settings: dict[str, str | None] | None = None) -> None:
         self._settings = settings or {}
 
@@ -18,8 +20,8 @@ class TestRuntime:
 
 
 @pytest.fixture
-def test_runtime() -> TestRuntime:
-    return TestRuntime(
+def test_runtime() -> MockRuntime:
+    return MockRuntime(
         {
             "LINEAR_API_KEY": "test-api-key",
             "LINEAR_WORKSPACE_ID": "test-workspace",
@@ -29,26 +31,26 @@ def test_runtime() -> TestRuntime:
 
 class TestLinearService:
     def test_init_without_api_key_raises_error(self) -> None:
-        runtime = TestRuntime()
+        runtime = MockRuntime()
 
         with pytest.raises(LinearAuthenticationError, match="Linear API key is required"):
             LinearService(runtime)
 
-    def test_init_with_api_key_succeeds(self, test_runtime: TestRuntime) -> None:
+    def test_init_with_api_key_succeeds(self, test_runtime: MockRuntime) -> None:
         service = LinearService(test_runtime)
 
         assert service.config.api_key == "test-api-key"
         assert service.config.workspace_id == "test-workspace"
 
     @pytest.mark.asyncio
-    async def test_start_validates_connection(self, test_runtime: TestRuntime) -> None:
+    async def test_start_validates_connection(self, test_runtime: MockRuntime) -> None:
         with patch.object(LinearService, "_validate_connection", new_callable=AsyncMock):
             service = await LinearService.start(test_runtime)
 
             assert service is not None
             service._validate_connection.assert_called_once()  # type: ignore
 
-    def test_activity_log_operations(self, test_runtime: TestRuntime) -> None:
+    def test_activity_log_operations(self, test_runtime: MockRuntime) -> None:
         service = LinearService(test_runtime)
 
         service.clear_activity_log()
@@ -65,7 +67,7 @@ class TestLinearService:
         service.clear_activity_log()
         assert len(service.get_activity_log()) == 0
 
-    def test_activity_log_limit(self, test_runtime: TestRuntime) -> None:
+    def test_activity_log_limit(self, test_runtime: MockRuntime) -> None:
         service = LinearService(test_runtime)
         service.clear_activity_log()
 
@@ -75,7 +77,7 @@ class TestLinearService:
         activity = service.get_activity_log(limit=5)
         assert len(activity) == 5
 
-    def test_activity_log_filter(self, test_runtime: TestRuntime) -> None:
+    def test_activity_log_filter(self, test_runtime: MockRuntime) -> None:
         service = LinearService(test_runtime)
         service.clear_activity_log()
 
@@ -90,7 +92,7 @@ class TestLinearService:
         assert len(failed) == 1
 
     @pytest.mark.asyncio
-    async def test_get_teams(self, test_runtime: TestRuntime) -> None:
+    async def test_get_teams(self, test_runtime: MockRuntime) -> None:
         service = LinearService(test_runtime)
 
         mock_response = {
@@ -119,7 +121,7 @@ class TestLinearService:
             assert teams[1]["key"] == "DES"
 
     @pytest.mark.asyncio
-    async def test_create_issue(self, test_runtime: TestRuntime) -> None:
+    async def test_create_issue(self, test_runtime: MockRuntime) -> None:
         service = LinearService(test_runtime)
 
         mock_response = {

@@ -14,6 +14,7 @@ pub use client::BlueSkyClient;
 pub use config::BlueSkyConfig;
 pub use error::{BlueSkyError, Result};
 pub use service::BlueSkyService;
+pub use types::{CreatePostRequest, PostReference, TimelineRequest};
 
 pub fn create_client_from_env() -> Result<BlueSkyClient> {
     let config = BlueSkyConfig::from_env()?;

@@ -1,30 +1,32 @@
 //! Integration tests for OpenAI plugin against live API.
 //!
 //! These tests require a valid OPENAI_API_KEY environment variable.
+//! Run with: cargo test -- --ignored
 
 use elizaos_plugin_openai::{
     count_tokens, detokenize, tokenize, truncate_to_token_limit, EmbeddingParams,
     ImageDescriptionParams, OpenAIClient, OpenAIConfig, TextGenerationParams, TextToSpeechParams,
 };
 
-fn get_config() -> Option<OpenAIConfig> {
+/// Create a test client from environment.
+fn create_test_client() -> OpenAIClient {
     dotenvy::dotenv().ok();
-    std::env::var("OPENAI_API_KEY")
-        .ok()
-        .map(|key| OpenAIConfig::new(&key))
+
+    let api_key = std::env::var("OPENAI_API_KEY").expect(
+        "OPENAI_API_KEY must be set. Create a .env file with OPENAI_API_KEY=your-key",
+    );
+
+    let config = OpenAIConfig::new(&api_key);
+    OpenAIClient::new(config).expect("Failed to create client")
 }
 
 mod text_generation {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_generate_text() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
         let params = TextGenerationParams::new("Say hello in exactly 3 words.").temperature(0.0);
 
         let response = client
@@ -39,13 +41,9 @@ mod text_generation {
     }
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_generate_text_with_system() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
         let params = TextGenerationParams::new("What is 2 + 2?")
             .system("You are a math teacher. Answer with just the number.")
             .temperature(0.0);
@@ -67,13 +65,9 @@ mod embeddings {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_create_embedding() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
         let params = EmbeddingParams::new("Hello, world!");
 
         let embedding = client
@@ -93,13 +87,9 @@ mod embeddings {
     }
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_embedding_consistency() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
         let text = "Test embedding consistency";
 
         let params1 = EmbeddingParams::new(text);
@@ -165,13 +155,9 @@ mod image_description {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_describe_image() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
         // Use a more reliable image URL that OpenAI can access
         let params = ImageDescriptionParams::new(
             "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=400",
@@ -191,13 +177,9 @@ mod structured_output {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_generate_object() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
 
         let result = client
             .generate_object(
@@ -226,13 +208,9 @@ mod audio {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_text_to_speech() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
         let params = TextToSpeechParams::new("Hello, this is a test.");
 
         let audio_data = client
@@ -255,13 +233,9 @@ mod audio {
     }
 
     #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
     async fn test_transcription() {
-        let Some(config) = get_config() else {
-            eprintln!("Skipping test: OPENAI_API_KEY not set");
-            return;
-        };
-
-        let client = OpenAIClient::new(config).expect("Failed to create client");
+        let client = create_test_client();
 
         // First, generate some audio using TTS that we'll then transcribe
         // This ensures we have a valid audio format

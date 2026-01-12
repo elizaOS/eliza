@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-tic-tac-toe",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Tic-tac-toe game with perfect AI using minimax algorithm - no LLM required",
   "type": "module",
   "private": true,

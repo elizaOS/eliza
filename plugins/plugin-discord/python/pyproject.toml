@@ -36,6 +36,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
+    "pytest-xprocess>=1.0.0",
     "mypy>=1.8.0",
     "ruff>=0.3.0",
 ]
@@ -53,10 +54,12 @@ Issues = "https://github.com/elizaos/eliza/issues"
 packages = ["elizaos_plugin_discord"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.mypy]
 python_version = "3.11"

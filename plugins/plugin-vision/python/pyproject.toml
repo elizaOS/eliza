@@ -41,6 +41,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-xprocess>=0.23.0,<1.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
@@ -74,6 +75,8 @@ warn_return_any = true
 warn_unused_configs = true
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 

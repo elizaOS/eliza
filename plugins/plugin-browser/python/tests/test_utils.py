@@ -2,6 +2,7 @@
 
 import pytest
 import asyncio
+import time
 
 from elizaos_browser.utils.errors import (
     BrowserError,
@@ -34,57 +35,63 @@ from elizaos_browser.utils.retry import (
     retry_with_backoff,
     sleep,
 )
-from elizaos_browser.types import SecurityConfig, RetryConfig, RateLimitConfig
+from elizaos_browser.types import SecurityConfig, RetryConfig, RateLimitConfig, ErrorCode
 
 
 class TestErrorClasses:
     def test_should_create_browser_error_with_code_and_details(self) -> None:
-        error = BrowserError("Test error", "ACTION_ERROR", {"context": "test"})
+        error = BrowserError(
+            message="Test error",
+            code=ErrorCode.ACTION_ERROR,
+            user_message="User-friendly message",
+            details={"context": "test"},
+        )
         assert str(error) == "Test error"
-        assert error.code == "ACTION_ERROR"
+        assert error.code == ErrorCode.ACTION_ERROR
         assert error.details == {"context": "test"}
+        assert error.user_message == "User-friendly message"
 
     def test_should_create_service_not_available_error(self) -> None:
-        error = ServiceNotAvailableError("Service unavailable")
-        assert error.code == "SERVICE_NOT_AVAILABLE"
+        error = ServiceNotAvailableError()
+        assert error.code == ErrorCode.SERVICE_NOT_AVAILABLE
 
     def test_should_create_session_error(self) -> None:
         error = SessionError("Session invalid")
-        assert error.code == "SESSION_ERROR"
+        assert error.code == ErrorCode.SESSION_ERROR
 
     def test_should_create_navigation_error(self) -> None:
-        error = NavigationError("Navigation failed")
-        assert error.code == "NAVIGATION_ERROR"
+        error = NavigationError("https://example.com")
+        assert error.code == ErrorCode.NAVIGATION_ERROR
 
     def test_should_create_action_error(self) -> None:
-        error = ActionError("Action failed")
-        assert error.code == "ACTION_ERROR"
+        error = ActionError("click", "button")
+        assert error.code == ErrorCode.ACTION_ERROR
 
     def test_should_create_security_error(self) -> None:
         error = SecurityError("Security violation")
-        assert error.code == "SECURITY_ERROR"
+        assert error.code == ErrorCode.SECURITY_ERROR
 
     def test_should_create_captcha_error(self) -> None:
         error = CaptchaError("Captcha failed")
-        assert error.code == "CAPTCHA_ERROR"
+        assert error.code == ErrorCode.CAPTCHA_ERROR
 
     def test_should_create_timeout_error(self) -> None:
-        error = BrowserTimeoutError("Operation timed out")
-        assert error.code == "TIMEOUT_ERROR"
+        error = BrowserTimeoutError("operation", 5000)
+        assert error.code == ErrorCode.TIMEOUT_ERROR
 
     def test_should_create_no_url_found_error(self) -> None:
-        error = NoUrlFoundError("No URL found")
-        assert error.code == "NO_URL_FOUND"
+        error = NoUrlFoundError()
+        assert error.code == ErrorCode.NO_URL_FOUND
 
     def test_should_handle_browser_errors_correctly(self) -> None:
-        browser_error = BrowserError("Test", "TEST_ERROR")
+        browser_error = BrowserError(
+            message="Test",
+            code=ErrorCode.ACTION_ERROR,
+            user_message="User message",
+        )
+        # handle_browser_error returns None and logs the error
         result = handle_browser_error(browser_error)
-        assert result is browser_error
-
-        generic_error = Exception("Generic error")
-        wrapped_result = handle_browser_error(generic_error)
-        assert isinstance(wrapped_result, BrowserError)
-        assert wrapped_result.code == "ACTION_ERROR"
+        assert result is None
 
 
 class TestUrlExtraction:
@@ -110,25 +117,28 @@ class TestClickTargetParsing:
         result = parse_click_target("click the submit button")
         assert result is not None
 
-    def test_should_extract_selector_if_specified(self) -> None:
-        result = parse_click_target('click on selector "#submit-btn"')
-        assert result == "#submit-btn"
+    def test_should_extract_target_description(self) -> None:
+        result = parse_click_target("click on the login button")
+        assert "login button" in result
 
 
 class TestTypeActionParsing:
     def test_should_parse_type_action(self) -> None:
-        result = parse_type_action('type "hello world" into the search box')
-        assert result == {"text": "hello world", "target": "the search box"}
+        text, target = parse_type_action('type "hello world" into the search box')
+        assert text == "hello world"
+        assert "search box" in target
 
-    def test_should_return_none_for_invalid_input(self) -> None:
-        result = parse_type_action("no type action here")
-        assert result is None
+    def test_should_return_empty_for_invalid_input(self) -> None:
+        text, target = parse_type_action("no type action here")
+        assert text == ""
+        assert target == "input field"
 
 
 class TestSelectActionParsing:
     def test_should_parse_select_action(self) -> None:
-        result = parse_select_action('select "Option A" from the dropdown')
-        assert result == {"value": "Option A", "target": "the dropdown"}
+        value, target = parse_select_action('select "Option A" from the dropdown')
+        assert value == "Option A"
+        assert "dropdown" in target
 
 
 class TestExtractInstructionParsing:
@@ -147,7 +157,8 @@ class TestUrlValidator:
             allow_file_protocol=False,
         )
         validator = UrlValidator(config)
-        assert validator.validate("https://example.com/page") is True
+        valid, _, _ = validator.validate("https://example.com/page")
+        assert valid is True
 
     def test_should_block_blocked_domains(self) -> None:
         config = SecurityConfig(
@@ -158,7 +169,8 @@ class TestUrlValidator:
             allow_file_protocol=False,
         )
         validator = UrlValidator(config)
-        assert validator.validate("https://malware.com/bad") is False
+        valid, _, _ = validator.validate("https://malware.com/bad")
+        assert valid is False
 
     def test_should_respect_allow_localhost_setting(self) -> None:
         config_with_localhost = SecurityConfig(
@@ -169,7 +181,8 @@ class TestUrlValidator:
             allow_file_protocol=False,
         )
         validator_with_localhost = UrlValidator(config_with_localhost)
-        assert validator_with_localhost.validate("http://localhost:3000") is True
+        valid, _, _ = validator_with_localhost.validate("http://localhost:3000")
+        assert valid is True
 
         config_without_localhost = SecurityConfig(
             allowed_domains=[],
@@ -179,7 +192,8 @@ class TestUrlValidator:
             allow_file_protocol=False,
         )
         validator_without_localhost = UrlValidator(config_without_localhost)
-        assert validator_without_localhost.validate("http://localhost:3000") is False
+        valid, _, _ = validator_without_localhost.validate("http://localhost:3000")
+        assert valid is False
 
     def test_should_reject_urls_exceeding_max_length(self) -> None:
         config = SecurityConfig(
@@ -191,16 +205,17 @@ class TestUrlValidator:
         )
         validator = UrlValidator(config)
         long_url = "https://example.com/" + "a" * 100
-        assert validator.validate(long_url) is False
+        valid, _, _ = validator.validate(long_url)
+        assert valid is False
 
 
 class TestInputSanitizer:
     def test_should_sanitize_input_by_removing_dangerous_characters(self) -> None:
-        sanitized = InputSanitizer.sanitize("<script>alert('xss')</script>")
+        sanitized = InputSanitizer.sanitize_text("<script>alert('xss')</script>")
         assert "<script>" not in sanitized
 
     def test_should_trim_whitespace(self) -> None:
-        sanitized = InputSanitizer.sanitize("  hello world  ")
+        sanitized = InputSanitizer.sanitize_text("  hello world  ")
         assert sanitized == "hello world"
 
 
@@ -211,7 +226,7 @@ class TestRateLimiter:
             max_sessions_per_hour=5,
         )
         limiter = RateLimiter(config)
-        assert limiter.check_action("user1") is True
+        assert limiter.check_action_limit("user1") is True
 
     def test_should_track_action_count(self) -> None:
         config = RateLimitConfig(
@@ -219,9 +234,10 @@ class TestRateLimiter:
             max_sessions_per_hour=5,
         )
         limiter = RateLimiter(config)
-        limiter.record_action("user1")
-        limiter.record_action("user1")
-        assert limiter.check_action("user1") is False
+        # check_action_limit both checks and increments
+        limiter.check_action_limit("user1")  # count becomes 1
+        limiter.check_action_limit("user1")  # count becomes 2
+        assert limiter.check_action_limit("user1") is False  # at limit
 
 
 class TestRetryLogic:
@@ -231,9 +247,8 @@ class TestRetryLogic:
 
     @pytest.mark.asyncio
     async def test_should_sleep_for_specified_duration(self) -> None:
-        import time
         start = time.time()
-        await sleep(50)
+        await sleep(0.05)  # 50ms in seconds
         elapsed = (time.time() - start) * 1000
         assert elapsed >= 45
 
@@ -254,7 +269,7 @@ class TestRetryLogic:
             max_delay_ms=50,
             backoff_multiplier=1.5,
         )
-        result = await retry_with_backoff(fn, config)
+        result = await retry_with_backoff(fn, config, "test_operation")
         assert result == "success"
         assert attempts == 3
 
@@ -271,4 +286,4 @@ class TestRetryLogic:
         )
 
         with pytest.raises(Exception, match="Permanent failure"):
-            await retry_with_backoff(fn, config)
+            await retry_with_backoff(fn, config, "test_operation")

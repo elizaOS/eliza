@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("anthropic", reason="anthropic not installed")
+
 from elizaos_plugin_n8n import N8nConfig
 from elizaos_plugin_n8n.errors import ApiKeyError
 from elizaos_plugin_n8n.models import ClaudeModel

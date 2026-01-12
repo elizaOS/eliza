@@ -8,7 +8,7 @@ import type {
   PullRequest,
   Repository,
   User,
-} from "../src/types";
+} from "../types";
 
 describe("GitHub Types", () => {
   it("should define GitHubConfig correctly", () => {

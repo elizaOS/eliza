@@ -110,6 +110,7 @@ export const processAnalysisAction: Action = {
         processedAt: Date.now(),
       },
       text: decisions.suggestedResponse,
+      continueChain: !decisions.needsMoreInfo, // Stop chain if more info is needed
     };
   },
 };
@@ -175,6 +176,9 @@ export const executeFinalAction: Action = {
         },
       },
       text: execution.message,
+      cleanup: async () => {
+        console.log("[ChainExample] Cleaning up resources...");
+      },
     };
   },
 };

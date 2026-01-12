@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-evm-root",
-  "version": "2.0.0-alpha.0",
+  "version": "2.0.0",
   "type": "module",
   "main": "typescript/dist/index.js",
   "module": "typescript/dist/index.js",
@@ -57,7 +57,7 @@
     "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web",
     "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
     "lint:rust": "cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
-    "test:python": "test -d python && cd python && pytest || echo 'Python tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
     "lint:python": "cd python && ruff check --fix . && ruff format .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
     "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_evm",

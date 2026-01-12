@@ -29,6 +29,8 @@ jobs:
 
       - name: Set status
         if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh pr comment ${{ github.event.pull_request.number }} --body "❌ PR title does not match the required pattern. Please use one of these formats:
           - 'type: description' (e.g., 'feat: add new feature')

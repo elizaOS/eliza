@@ -73,9 +73,7 @@ impl IStorage for MemoryStorage {
 
     async fn set(&self, collection: &str, id: &str, data: serde_json::Value) -> StorageResult<()> {
         let mut collections = self.collections.write();
-        let col = collections
-            .entry(collection.to_string())
-            .or_default();
+        let col = collections.entry(collection.to_string()).or_default();
         col.insert(id.to_string(), data);
         Ok(())
     }
@@ -98,11 +96,7 @@ impl IStorage for MemoryStorage {
         Ok(())
     }
 
-    async fn delete_where(
-        &self,
-        collection: &str,
-        predicate: PredicateFn,
-    ) -> StorageResult<()> {
+    async fn delete_where(&self, collection: &str, predicate: PredicateFn) -> StorageResult<()> {
         let to_delete: Vec<String> = {
             let collections = self.collections.read();
             collections
@@ -201,4 +195,3 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 }
-

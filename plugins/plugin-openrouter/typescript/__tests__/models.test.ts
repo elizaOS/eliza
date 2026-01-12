@@ -1,38 +1,61 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { openrouterPlugin } from "../index";
 
 async function createTestRuntime(settings: Record<string, string> = {}): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
 }> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPluginInstance,
+  } = await import("@elizaos/plugin-sql");
   const { AgentRuntime } = await import("@elizaos/core");
   const { v4: uuidv4 } = await import("uuid");
 
   const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
+
+  // Create the adapter using the exported function with unique memory path
+  const adapter = createDatabaseAdapter({ dataDir: `:memory:${agentId}` }, agentId);
   await adapter.init();
+
+  // Run migrations to create the schema
+  const migrationService = new DatabaseMigrationService();
+  const db = (adapter as { getDatabase(): () => unknown }).getDatabase();
+  await migrationService.initializeWithDatabase(db);
+  migrationService.discoverAndRegisterPluginSchemas([sqlPluginInstance]);
+  await migrationService.runAllPluginMigrations();
+
+  const character = {
+    name: "Test Assistant",
+    bio: ["A test assistant for testing purposes"],
+    system: "You are a helpful assistant.",
+    plugins: [],
+    settings: {
+      secrets: {
+        ...settings,
+        OPENROUTER_API_KEY: settings.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
+      },
+    },
+    messageExamples: [],
+    postExamples: [],
+    topics: ["testing"],
+    adjectives: ["helpful"],
+    style: { all: [], chat: [], post: [] },
+  };
+
+  // Create the agent in the database first
+  await adapter.createAgent({
+    id: agentId,
+    ...character,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
 
   const runtime = new AgentRuntime({
     agentId,
-    character: {
-      name: "Test Assistant",
-      bio: ["A test assistant for testing purposes"],
-      system: "You are a helpful assistant.",
-      plugins: [],
-      settings: {
-        secrets: {
-          ...settings,
-          OPENROUTER_API_KEY: settings.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
-        },
-      },
-      messageExamples: [],
-      postExamples: [],
-      topics: ["testing"],
-      adjectives: ["helpful"],
-      style: { all: [], chat: [], post: [] },
-    },
+    character,
     adapter,
     plugins: [],
   });

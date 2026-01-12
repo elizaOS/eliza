@@ -240,7 +240,13 @@ impl IVectorStorage for EphemeralHNSW {
         }
 
         for l in (0..=std::cmp::min(level, max_level)).rev() {
-            let neighbors = self.search_layer(&nodes, vector, &current_node, self.config.ef_construction, l);
+            let neighbors = self.search_layer(
+                &nodes,
+                vector,
+                &current_node,
+                self.config.ef_construction,
+                l,
+            );
             let m = self.config.m;
             let selected: Vec<_> = neighbors.iter().take(m).cloned().collect();
 
@@ -252,23 +258,27 @@ impl IVectorStorage for EphemeralHNSW {
                     .insert(neighbor_id.clone());
 
                 if let Some(neighbor_node) = nodes.get_mut(neighbor_id) {
-                    let neighbor_set = neighbor_node.neighbors.entry(l).or_insert_with(HashSet::new);
+                    let neighbor_set = neighbor_node
+                        .neighbors
+                        .entry(l)
+                        .or_insert_with(HashSet::new);
                     neighbor_set.insert(id.to_string());
 
                     if neighbor_set.len() > m {
                         let neighbor_vector = neighbor_node.vector.clone();
                         let neighbor_ids = neighbor_set.clone();
-                        
+
                         let mut neighbors_with_dist: Vec<_> = neighbor_ids
                             .iter()
                             .filter_map(|nid| {
-                                nodes.get(nid)
-                                    .map(|n| (nid.clone(), cosine_distance(&neighbor_vector, &n.vector)))
+                                nodes.get(nid).map(|n| {
+                                    (nid.clone(), cosine_distance(&neighbor_vector, &n.vector))
+                                })
                             })
                             .collect();
                         neighbors_with_dist.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
                         neighbors_with_dist.truncate(m);
-                        
+
                         if let Some(neighbor_node) = nodes.get_mut(neighbor_id) {
                             if let Some(ns) = neighbor_node.neighbors.get_mut(&l) {
                                 *ns = neighbors_with_dist.into_iter().map(|(id, _)| id).collect();
@@ -425,4 +435,3 @@ mod tests {
         assert_eq!(hnsw.size(), 1);
     }
 }
-

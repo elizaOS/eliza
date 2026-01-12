@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-planning-root",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Comprehensive planning and execution plugin for elizaOS with benchmarking capabilities",
   "type": "module",
   "main": "typescript/dist/index.js",
@@ -35,7 +35,7 @@
     "test": "bun run test:ts && bun run test:rust && bun run test:python",
     "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
     "test:rust": "cd rust && cargo test",
-    "test:python": "cd python && pytest || echo 'Python tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
     "benchmark": "bun run benchmark:ts && bun run benchmark:python",
     "benchmark:ts": "bun run typescript/src/benchmarks/benchmark-runner.ts || echo 'Benchmarks require runtime setup'",
     "benchmark:python": "cd python && python3 -m elizaos_plugin_planning.benchmarks.cli --all || echo 'Python benchmarks require dependencies'",
@@ -105,4 +105,3 @@
     }
   }
 }
-

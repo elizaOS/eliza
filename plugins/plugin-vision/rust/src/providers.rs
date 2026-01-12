@@ -160,9 +160,10 @@ impl VisionProvider for VisionStateProvider {
 pub struct VisionPerceptionProvider;
 
 impl VisionPerceptionProvider {
-    /// Provider name constant
+    /// The provider name used for TS-parity routing/registration.
     pub const NAME: &'static str = "VISION_PERCEPTION";
-    /// Provider description
+
+    /// A human-readable description of what this provider returns.
     pub const DESCRIPTION: &'static str =
         "Provides current visual perception data including scene description, detected objects, people, and entity tracking.";
 }

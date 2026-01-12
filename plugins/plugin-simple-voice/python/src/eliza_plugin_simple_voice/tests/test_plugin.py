@@ -8,7 +8,9 @@ from eliza_plugin_simple_voice import (
 )
 
 
-class TestMemory:
+class MockMemory:
+    """Mock memory class for testing."""
+
     def __init__(self, text: str):
         self._content = {"text": text}
 
@@ -17,8 +19,10 @@ class TestMemory:
         return self._content
 
 
-class TestRuntime:
-    def __init__(self):
+class MockRuntime:
+    """Mock runtime class for testing."""
+
+    def __init__(self) -> None:
         self._services: dict[str, object] = {}
 
     def get_service(self, service_type: str) -> object | None:
@@ -41,18 +45,18 @@ class TestPlugin:
 
 class TestSayAloudAction:
     @pytest.mark.asyncio
-    async def test_validates_triggers(self):
-        runtime = TestRuntime()
+    async def test_validates_triggers(self) -> None:
+        runtime = MockRuntime()
 
         for text in ["say aloud hello", "speak this", "voice command"]:
-            assert await say_aloud_action.validate(runtime, TestMemory(text))
+            assert await say_aloud_action.validate(runtime, MockMemory(text))
 
     @pytest.mark.asyncio
-    async def test_rejects_non_triggers(self):
-        runtime = TestRuntime()
+    async def test_rejects_non_triggers(self) -> None:
+        runtime = MockRuntime()
 
         for text in ["hello world", "what is the weather"]:
-            assert not await say_aloud_action.validate(runtime, TestMemory(text))
+            assert not await say_aloud_action.validate(runtime, MockMemory(text))
 
 
 class TestSamTTSService:

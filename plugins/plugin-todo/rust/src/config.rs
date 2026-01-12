@@ -41,7 +41,6 @@ pub struct TodoConfig {
     pub enable_rolodex_integration: bool,
 }
 
-
 impl Default for TodoConfig {
     fn default() -> Self {
         Self {
@@ -181,10 +180,3 @@ impl TodoConfig {
         self
     }
 }
-
-
-
-
-
-
-

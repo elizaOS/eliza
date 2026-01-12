@@ -122,7 +122,11 @@ impl TodosProvider {
         // Build text summary
         let mut text_parts = Vec::new();
         if !daily_todos.is_empty() {
-            text_parts.push(format!("Daily Tasks ({}):\n{}", daily_todos.len(), formatted_daily));
+            text_parts.push(format!(
+                "Daily Tasks ({}):\n{}",
+                daily_todos.len(),
+                formatted_daily
+            ));
         }
         if !one_off_todos.is_empty() {
             text_parts.push(format!(
@@ -155,12 +159,18 @@ impl TodosProvider {
         // Build values map
         let mut values = HashMap::new();
         values.insert("dailyTasks".to_string(), serde_json::json!(formatted_daily));
-        values.insert("oneOffTasks".to_string(), serde_json::json!(formatted_one_off));
+        values.insert(
+            "oneOffTasks".to_string(),
+            serde_json::json!(formatted_one_off),
+        );
         values.insert(
             "aspirationalTasks".to_string(),
             serde_json::json!(formatted_aspirational),
         );
-        values.insert("completedTasks".to_string(), serde_json::json!(formatted_completed));
+        values.insert(
+            "completedTasks".to_string(),
+            serde_json::json!(formatted_completed),
+        );
 
         // Build data map with structured todo arrays
         let mut data = HashMap::new();
@@ -174,7 +184,10 @@ impl TodosProvider {
         );
         data.insert(
             "aspirationalTodos".to_string(),
-            serde_json::json!(aspirational_todos.iter().map(todo_to_json).collect::<Vec<_>>()),
+            serde_json::json!(aspirational_todos
+                .iter()
+                .map(todo_to_json)
+                .collect::<Vec<_>>()),
         );
         data.insert(
             "completedTodos".to_string(),

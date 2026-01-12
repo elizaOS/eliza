@@ -20,7 +20,7 @@ The Node plugin serves as a foundational component of Eliza OS, bridging core No
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/plugin-node
+npm install @elizaos/plugin-node
 ```
 
 ## Configuration
@@ -62,7 +62,7 @@ AWS_S3_FORCE_PATH_STYLE=boolean(true|false)
 ## Usage
 
 ```typescript
-import { createNodePlugin } from "@elizaos-plugins/plugin-node";
+import { createNodePlugin } from "@elizaos/plugin-node";
 
 // Initialize the plugin
 const nodePlugin = createNodePlugin();

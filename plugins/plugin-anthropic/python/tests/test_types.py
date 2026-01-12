@@ -10,8 +10,6 @@ import pytest
 from elizaos_plugin_anthropic.types import (
     ContentBlock,
     Message,
-    Model,
-    ModelSize,
     ObjectGenerationParams,
     ObjectGenerationResponse,
     Role,
@@ -21,6 +19,7 @@ from elizaos_plugin_anthropic.types import (
     TextGenerationResponse,
     TokenUsage,
 )
+from elizaos_plugin_anthropic.models import Model, ModelSize
 
 
 class TestModelSize:

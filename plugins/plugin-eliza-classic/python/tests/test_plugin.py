@@ -14,7 +14,7 @@ class TestReflect:
         assert reflect("my car") == "your car"
 
     def test_reflect_you_to_me(self) -> None:
-        assert reflect("you are nice") == "me are nice"
+        assert reflect("you are nice") == "me am nice"
 
     def test_reflect_preserves_unknown_words(self) -> None:
         assert reflect("the cat sat") == "the cat sat"

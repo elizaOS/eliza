@@ -1,0 +1,226 @@
+name: Docs CI
+
+# Consolidated workflow for documentation quality checks
+# Combines dead link checking and quality improvements
+
+concurrency:
+  group: docs-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+    paths:
+      - "packages/docs/**/*.mdx"
+      - "packages/docs/**/*.md"
+      - "packages/docs/docs.json"
+      - "packages/docs/mint.json"
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      check_type:
+        description: "Type of check to run"
+        required: true
+        type: choice
+        options:
+          - all
+          - links
+          - quality
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  # ===========================================
+  # Check Dead Links
+  # ===========================================
+  check-links:
+    if: |
+      github.event.pull_request.draft != true &&
+      (github.event.inputs.check_type == 'all' || github.event.inputs.check_type == 'links' || github.event.inputs.check_type == '')
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check and Fix Dead Links with Claude
+        id: claude-fix-links
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          direct_prompt: |
+            Check all links in the packages/docs/ directory for broken or dead links.
+
+            **Instructions:**
+            1. Scan all MDX and MD files in packages/docs/
+            2. Check for internal relative links, external links, and anchor links
+            3. For each broken link found:
+               - Typos: Correct the spelling/path
+               - Moved files: Update to new location
+               - Missing anchors: Remove or update to valid anchor
+               - External 404s: Comment out with explanation
+
+            **Link Checking Rules:**
+            - Internal links should point to existing files in packages/docs/
+            - Skip checking localhost and example.com links
+            - Use fuzzy matching (85% threshold) for path corrections
+
+            **Output:** Report findings but only make high-confidence fixes.
+
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --allowedTools "Bash(find packages/docs -name '*.mdx' -o -name '*.md'),Bash(grep -n),Bash(curl -s -o /dev/null -w '%{http_code}'),Read,EditFile(packages/docs/*)"
+
+      - name: Check for Changes
+        id: check-link-changes
+        run: |
+          if [ -n "$(git status --porcelain packages/docs/)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit Link Fixes
+        if: steps.check-link-changes.outputs.changes == 'true'
+        run: |
+          git add packages/docs/
+          git commit -m "fix(docs): automated broken link fixes [skip ci]" || true
+
+  # ===========================================
+  # Check Documentation Quality
+  # ===========================================
+  check-quality:
+    if: |
+      github.event.pull_request.draft != true &&
+      (github.event.inputs.check_type == 'all' || github.event.inputs.check_type == 'quality' || github.event.inputs.check_type == '')
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check and Fix Quality Issues with Claude
+        id: claude-fix-quality
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          direct_prompt: |
+            Check all MDX files in packages/docs/ for quality issues.
+
+            **Quality Checks:**
+            1. Double Header Issues - MDX files with frontmatter title AND H1 heading
+            2. Missing frontmatter fields (title or description)
+            3. Inconsistent heading hierarchy (H3 following H1 without H2)
+            4. Code blocks without language tags
+
+            **For Double Headers:**
+            - Remove the H1 heading from content (keep only frontmatter title)
+            - Mintlify auto-generates H1 from frontmatter
+
+            **Fix Application Rules:**
+            - Make minimal, precise changes
+            - Preserve all content except what needs fixing
+            - Maintain proper MDX formatting
+
+            **Output:** Report findings and apply fixes.
+
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --allowedTools "Bash(find packages/docs -name '*.mdx'),Bash(grep -n),Read,EditFile(packages/docs/*)"
+
+      - name: Check for Changes
+        id: check-quality-changes
+        run: |
+          if [ -n "$(git status --porcelain packages/docs/)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit Quality Fixes
+        if: steps.check-quality-changes.outputs.changes == 'true'
+        run: |
+          git add packages/docs/
+          git commit -m "fix(docs): automated documentation quality improvements [skip ci]" || true
+
+  # ===========================================
+  # Create PR with all fixes
+  # ===========================================
+  create-pr:
+    needs: [check-links, check-quality]
+    if: always() && (needs.check-links.result == 'success' || needs.check-quality.result == 'success')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for any uncommitted changes
+        id: final-check
+        run: |
+          git fetch origin
+          if [ -n "$(git status --porcelain packages/docs/)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Fix Branch and PR
+        if: steps.final-check.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME="fix/docs-ci-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          git add packages/docs/
+          git commit -m "fix(docs): automated documentation fixes" \
+                     -m "- Fixed broken links" \
+                     -m "- Fixed quality issues" || exit 0
+
+          git push origin "$BRANCH_NAME"
+
+          gh pr create \
+            --title "fix(docs): automated documentation fixes" \
+            --body "## Automated Documentation Fixes
+
+          This PR contains automated fixes for documentation issues.
+
+          ### Changes Made:
+          - 🔗 Fixed broken links
+          - 📝 Fixed quality issues (double headers, missing frontmatter, etc.)
+
+          ### Review Instructions:
+          Please verify all changes are correct before merging.
+
+          ---
+          *Generated by docs-ci workflow*" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --label "documentation" \
+            --label "automated"

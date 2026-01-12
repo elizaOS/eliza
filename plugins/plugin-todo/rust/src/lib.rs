@@ -35,27 +35,29 @@
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
-pub mod types;
-pub mod error;
+pub mod actions;
+pub mod cache_manager;
+pub mod client;
 pub mod config;
 pub mod data_service;
-pub mod cache_manager;
-pub mod notification_manager;
-pub mod reminder_service;
+pub mod error;
 pub mod integration_bridge;
-pub mod client;
-pub mod actions;
+pub mod notification_manager;
 pub mod providers;
+pub mod reminder_service;
+pub mod types;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
 // Re-export commonly used types for convenience
+pub use cache_manager::CacheManager;
 pub use client::TodoClient;
 pub use config::TodoConfig;
 pub use data_service::{create_todo_data_service, TodoDataService};
 pub use error::{Result, TodoError};
 pub use reminder_service::{ReminderService, TodoReminderService};
+pub use types::{CreateTodoParams, Priority, TaskType, TodoFilters, UpdateTodoParams};
 
 /// Create a TodoClient from environment variables.
 ///
@@ -70,14 +72,6 @@ pub fn create_client_from_env() -> Result<TodoClient> {
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "todo";
 /// Plugin description
-pub const PLUGIN_DESCRIPTION: &str =
-    "Todo task management with daily recurring and one-off tasks";
+pub const PLUGIN_DESCRIPTION: &str = "Todo task management with daily recurring and one-off tasks";
 /// Plugin version
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-
-
-
-
-
-

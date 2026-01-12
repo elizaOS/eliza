@@ -321,7 +321,8 @@
     "test": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
-      "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*"]
+      "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*", "package.json", "tests/**/*", "python/tests/**/*"],
+      "cache": false
     },
     "@elizaos/rust#test": {
       "outputs": [],

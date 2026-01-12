@@ -18,7 +18,7 @@ class TestIPCProtocol:
         manifest = {
             "name": "python-plugin",
             "description": "Test Python plugin",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "language": "python",
             "actions": [{"name": "TEST_ACTION", "description": "Test"}],
         }
@@ -240,7 +240,7 @@ class TestManifestGeneration:
         plugin = {
             "name": "test-plugin",
             "description": "Test description",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "actions": [
                 {"name": "ACTION_1", "description": "First action"},
                 {"name": "ACTION_2", "description": "Second action", "similes": ["A2"]},
@@ -285,7 +285,7 @@ class TestManifestGeneration:
         manifest = {
             "name": plugin["name"],
             "description": plugin["description"],
-            "version": "1.0.0",
+            "version": "2.0.0",
             "language": "python",
             "providers": [
                 {

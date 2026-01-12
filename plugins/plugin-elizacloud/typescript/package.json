@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elizacloud",
-  "version": "1.7.4",
+  "version": "2.0.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

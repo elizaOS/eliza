@@ -83,7 +83,9 @@ impl CompleteTodoAction {
             None => {
                 return CompleteTodoResult {
                     success: false,
-                    text: "I couldn't find the task you want to complete. Could you be more specific?".to_string(),
+                    text:
+                        "I couldn't find the task you want to complete. Could you be more specific?"
+                            .to_string(),
                 };
             }
         };

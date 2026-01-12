@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-discord-root",
-  "version": "1.3.6",
+  "version": "2.0.0",
   "type": "module",
   "main": "typescript/dist/index.js",
   "module": "typescript/dist/index.js",
@@ -71,7 +71,7 @@
     "typecheck:rust": "cd rust && cargo check --all-targets --all-features",
     "lint:python": "cd python && ruff check --fix . && ruff format .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
-    "test:python": "test -d python && cd python && pytest || echo 'Python tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
     "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_discord || echo 'mypy not installed, skipping typecheck'"
   },
   "peerDependencies": {

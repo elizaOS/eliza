@@ -296,19 +296,18 @@ class TestCancelGoalAction:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_validate_without_goals(self):
-        """Test validation fails when user has no goals."""
+    async def test_validate_without_cancel_intent(self):
+        """Test validation fails without cancel intent keywords."""
         action = CancelGoalAction()
         runtime = MockRuntime()
-        service = MockGoalService()
 
         message = {
             "roomId": "room-1",
             "entityId": "user-456",
-            "content": {"text": "Cancel my goal"},
+            "content": {"text": "What is my goal?"},
         }
 
-        result = await action.validate(runtime, message, service)
+        result = await action.validate(runtime, message)
         assert result is False
 
 
@@ -322,28 +321,18 @@ class TestUpdateGoalAction:
         assert "EDIT_GOAL" in action.similes
 
     @pytest.mark.asyncio
-    async def test_validate_with_goals(self):
-        """Test validation passes when goals exist."""
+    async def test_validate_with_update_intent(self):
+        """Test validation passes with update intent keywords."""
         action = UpdateGoalAction()
         runtime = MockRuntime()
-        service = MockGoalService()
-
-        # Create a goal first
-        await service.create_goal(
-            CreateGoalParams(
-                agent_id="agent-123",
-                owner_type=GoalOwnerType.ENTITY,
-                owner_id="user-456",
-                name="Learn Python",
-            )
-        )
 
         message = {
+            "roomId": "room-1",
             "entityId": "user-456",
             "content": {"text": "Update my goal"},
         }
 
-        result = await action.validate(runtime, message, service)
+        result = await action.validate(runtime, message)
         assert result is True
 
 

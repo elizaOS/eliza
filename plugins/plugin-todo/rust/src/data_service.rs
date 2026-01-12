@@ -20,7 +20,6 @@ pub struct TodoDataService {
     tags: Arc<RwLock<HashMap<Uuid, Vec<String>>>>,
 }
 
-
 impl Default for TodoDataService {
     fn default() -> Self {
         Self::new()
@@ -392,10 +391,3 @@ impl TodoDataService {
 pub fn create_todo_data_service() -> TodoDataService {
     TodoDataService::new()
 }
-
-
-
-
-
-
-

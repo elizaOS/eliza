@@ -64,7 +64,7 @@ def info() -> Response:
         {
             "name": CHARACTER_NAME,
             "bio": CHARACTER_BIO,
-            "version": "1.0.0",
+            "version": "2.0.0",
             "powered_by": "elizaOS",
             "framework": "Flask",
             "endpoints": {

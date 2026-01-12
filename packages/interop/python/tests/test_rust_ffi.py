@@ -19,7 +19,7 @@ class TestFFIProtocol:
         manifest = {
             "name": "test-rust-plugin",
             "description": "A test plugin from Rust",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "language": "rust",
             "actions": [
                 {
@@ -50,7 +50,7 @@ class TestFFIProtocol:
         result = {
             "success": True,
             "text": "Hello from Rust! 🦀",
-            "data": {"language": "rust", "version": "1.0.0"},
+            "data": {"language": "rust", "version": "2.0.0"},
             "values": {"key": "value"},
         }
 
@@ -122,7 +122,7 @@ class TestFFIFunctionSignatures:
         """Test elizaos_get_manifest expected return format."""
         # Simulate what the Rust function would return
         manifest_json = json.dumps(
-            {"name": "test", "description": "Test", "version": "1.0.0", "language": "rust"}
+            {"name": "test", "description": "Test", "version": "2.0.0", "language": "rust"}
         )
 
         # Should return a valid JSON string

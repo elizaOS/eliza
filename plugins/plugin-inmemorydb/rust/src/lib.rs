@@ -25,7 +25,8 @@ pub struct InMemoryDbPlugin;
 
 impl InMemoryDbPlugin {
     pub const NAME: &'static str = "@elizaos/plugin-inmemorydb";
-    pub const DESCRIPTION: &'static str = "Pure in-memory, ephemeral database storage for elizaOS - no persistence";
+    pub const DESCRIPTION: &'static str =
+        "Pure in-memory, ephemeral database storage for elizaOS - no persistence";
 }
 
 #[cfg(test)]
@@ -39,4 +40,3 @@ mod tests {
         assert!(adapter.is_ready().await);
     }
 }
-

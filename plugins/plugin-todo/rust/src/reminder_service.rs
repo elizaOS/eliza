@@ -172,10 +172,7 @@ impl ReminderService {
         if todo.task_type == crate::types::TaskType::Daily {
             let hour = now.hour();
             if hour == 9 || hour == 18 {
-                let today_start = now
-                    .date_naive()
-                    .and_hms_opt(0, 0, 0)
-                    .map(|dt| dt.and_utc());
+                let today_start = now.date_naive().and_hms_opt(0, 0, 0).map(|dt| dt.and_utc());
 
                 let completed_today = match (todo.completed_at, today_start) {
                     (Some(completed), Some(start)) => completed >= start,
@@ -281,10 +278,3 @@ pub async fn create_reminder_service(config: TodoConfig) -> ReminderService {
     service.start().await;
     service
 }
-
-
-
-
-
-
-

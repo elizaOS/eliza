@@ -63,7 +63,10 @@ impl InMemoryDatabaseAdapter {
     }
 
     pub async fn create_agent(&self, agent: serde_json::Value) -> StorageResult<bool> {
-        let id = agent.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let id = agent
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         match id {
             Some(id) => {
                 self.storage.set(COLLECTIONS::AGENTS, &id, agent).await?;
@@ -189,7 +192,10 @@ impl InMemoryDatabaseAdapter {
         let threshold = match_threshold.unwrap_or(0.5);
         let k = count.unwrap_or(10);
 
-        let results = self.vector_index.search(embedding, k * 2, threshold).await?;
+        let results = self
+            .vector_index
+            .search(embedding, k * 2, threshold)
+            .await?;
 
         let mut memories = Vec::new();
         for result in results {
@@ -260,13 +266,13 @@ impl InMemoryDatabaseAdapter {
         );
         obj.insert(
             "createdAt".to_string(),
-            memory.get("createdAt").cloned().unwrap_or_else(|| json!(now)),
+            memory
+                .get("createdAt")
+                .cloned()
+                .unwrap_or_else(|| json!(now)),
         );
 
-        let mut metadata = memory
-            .get("metadata")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let mut metadata = memory.get("metadata").cloned().unwrap_or_else(|| json!({}));
         metadata
             .as_object_mut()
             .unwrap()
@@ -291,7 +297,9 @@ impl InMemoryDatabaseAdapter {
     }
 
     pub async fn delete_memory(&self, memory_id: &str) -> StorageResult<()> {
-        self.storage.delete(COLLECTIONS::MEMORIES, memory_id).await?;
+        self.storage
+            .delete(COLLECTIONS::MEMORIES, memory_id)
+            .await?;
         self.vector_index.remove(memory_id).await?;
         Ok(())
     }
@@ -309,9 +317,7 @@ impl InMemoryDatabaseAdapter {
             .unwrap()
             .insert("id".to_string(), json!(id));
 
-        self.storage
-            .set(COLLECTIONS::WORLDS, &id, stored)
-            .await?;
+        self.storage.set(COLLECTIONS::WORLDS, &id, stored).await?;
         Ok(id)
     }
 
@@ -323,10 +329,7 @@ impl InMemoryDatabaseAdapter {
         self.storage.get_all(COLLECTIONS::WORLDS).await
     }
 
-    pub async fn create_rooms(
-        &self,
-        rooms: Vec<serde_json::Value>,
-    ) -> StorageResult<Vec<String>> {
+    pub async fn create_rooms(&self, rooms: Vec<serde_json::Value>) -> StorageResult<Vec<String>> {
         let mut ids = Vec::new();
         for room in rooms {
             let id = room
@@ -371,9 +374,7 @@ impl InMemoryDatabaseAdapter {
         self.storage
             .delete_where(
                 COLLECTIONS::PARTICIPANTS,
-                Box::new(move |p| {
-                    p.get("roomId").and_then(|v| v.as_str()) == Some(&room_id_owned)
-                }),
+                Box::new(move |p| p.get("roomId").and_then(|v| v.as_str()) == Some(&room_id_owned)),
             )
             .await?;
 
@@ -381,9 +382,7 @@ impl InMemoryDatabaseAdapter {
         self.storage
             .delete_where(
                 COLLECTIONS::MEMORIES,
-                Box::new(move |m| {
-                    m.get("roomId").and_then(|v| v.as_str()) == Some(&room_id_owned)
-                }),
+                Box::new(move |m| m.get("roomId").and_then(|v| v.as_str()) == Some(&room_id_owned)),
             )
             .await?;
 
@@ -446,4 +445,3 @@ mod tests {
         assert!(adapter.get_agent("agent1").await.unwrap().is_none());
     }
 }
-

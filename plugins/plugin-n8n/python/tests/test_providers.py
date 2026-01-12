@@ -1,6 +1,9 @@
 """Tests for N8n providers."""
 
 import pytest
+
+pytest.importorskip("anthropic", reason="anthropic not installed")
+
 from elizaos_plugin_n8n.providers.status import (
     PluginCreationStatusProvider,
     ProviderContext,

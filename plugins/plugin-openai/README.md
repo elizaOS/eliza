@@ -7,7 +7,7 @@ This plugin provides integration with OpenAI's models through the elizaOS platfo
 Add the plugin to your character configuration:
 
 ```json
-"plugins": ["@elizaos-plugins/plugin-openai"]
+"plugins": ["@elizaos/plugin-openai"]
 ```
 
 ## Configuration
