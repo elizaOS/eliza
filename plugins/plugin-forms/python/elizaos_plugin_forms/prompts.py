@@ -61,16 +61,22 @@ Return your response in XML format:
 </response>"""
 
 
+def _format_field_xml(field: dict[str, str]) -> str:
+    """Format a field as XML for extraction prompt."""
+    field_id = field["id"]
+    field_type = field["type"]
+    label = field["label"]
+    criteria = field.get("criteria")
+    description = field.get("description", "")
+    criteria_attr = f' criteria="{criteria}"' if criteria else ""
+    return f'  <field id="{field_id}" type="{field_type}" label="{label}"{criteria_attr}>{description}</field>'
+
+
 def build_extraction_prompt(
     user_message: str,
     fields: list[dict[str, str]],
 ) -> str:
-    field_descriptions = "\n".join(
-        f'  <field id="{f["id"]}" type="{f["type"]}" label="{f["label"]}"'
-        f"{' criteria="' + f['criteria'] + '"' if f.get('criteria') else ''}>"
-        f"{f.get('description', '')}</field>"
-        for f in fields
-    )
+    field_descriptions = "\n".join(_format_field_xml(f) for f in fields)
 
     field_templates = "\n".join(
         f"  <{f['id']}>extracted value or omit if not found</{f['id']}>" for f in fields

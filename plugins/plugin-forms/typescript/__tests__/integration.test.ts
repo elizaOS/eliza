@@ -1,5 +1,6 @@
 import {
   asUUID,
+  logger,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
@@ -12,6 +13,12 @@ import { cancelFormAction, createFormAction, updateFormAction } from "../index";
 import { formsProvider } from "../providers/forms-provider";
 import { FormsService } from "../services/forms-service";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+
+// Mock the global logger to suppress warnings during tests
+vi.spyOn(logger, "warn").mockImplementation(() => {});
+vi.spyOn(logger, "info").mockImplementation(() => {});
+vi.spyOn(logger, "debug").mockImplementation(() => {});
+vi.spyOn(logger, "error").mockImplementation(() => {});
 
 const createTestMemory = (text: string, agentId?: string): Memory => ({
   id: asUUID(uuidv4()),

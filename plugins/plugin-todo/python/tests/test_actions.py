@@ -45,13 +45,16 @@ class MockRuntime:
         return MockRoom()
 
 
+_UNSET = object()
+
+
 class MockMessage:
     """Mock message for testing."""
 
-    def __init__(self, text="", room_id=None, entity_id=None) -> None:
+    def __init__(self, text="", room_id=_UNSET, entity_id=_UNSET) -> None:
         self.id = uuid4()
-        self.room_id = room_id or uuid4()
-        self.entity_id = entity_id or uuid4()
+        self.room_id = uuid4() if room_id is _UNSET else room_id
+        self.entity_id = uuid4() if entity_id is _UNSET else entity_id
         self.world_id = uuid4()
         self.content = MockContent(text)
 

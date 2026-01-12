@@ -3,6 +3,7 @@
 import pytest
 
 from elizaos_plugin_github.config import GitHubConfig
+from elizaos_plugin_github.error import ConfigError, MissingSettingError
 
 
 class TestGitHubConfig:
@@ -46,7 +47,7 @@ class TestGitHubConfig:
         """Test that missing token raises error."""
         monkeypatch.delenv("GITHUB_API_TOKEN", raising=False)
 
-        with pytest.raises(ValueError, match="GITHUB_API_TOKEN"):
+        with pytest.raises(MissingSettingError, match="GITHUB_API_TOKEN"):
             GitHubConfig.from_env()
 
     def test_from_env_default_branch(self, monkeypatch):
@@ -88,22 +89,15 @@ class TestGitHubConfig:
         """Test error when no repository configured."""
         config = GitHubConfig(api_token="token")
 
-        with pytest.raises(ValueError, match="owner"):
+        with pytest.raises(MissingSettingError, match="owner"):
             config.get_repository_ref()
 
-    def test_validate_success(self):
+    def test_validate_all_success(self):
         """Test successful validation."""
         config = GitHubConfig(api_token="valid_token")
-        config.validate()  # Should not raise
+        config.validate_all()  # Should not raise
 
     def test_validate_empty_token(self):
-        """Test validation fails with empty token."""
-        config = GitHubConfig(api_token="")
-
-        with pytest.raises(ValueError, match="empty"):
-            config.validate()
-
-
-
-
-
+        """Test validation fails with empty token during construction."""
+        with pytest.raises(ConfigError, match="empty"):
+            GitHubConfig(api_token="")

@@ -1,4 +1,8 @@
-import { type IAgentRuntime, type ModelTypeName, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  type ModelTypeName,
+} from "@elizaos/core";
 import type {
   CodeTask,
   JsonValue,

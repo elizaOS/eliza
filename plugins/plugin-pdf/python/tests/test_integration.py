@@ -1,3 +1,6 @@
+import pytest
+
+pypdf = pytest.importorskip("pypdf", reason="pypdf not installed")
 
 
 class TestPdfPluginStructure:

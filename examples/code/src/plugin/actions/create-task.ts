@@ -308,7 +308,9 @@ IMPORTANT:
       };
     }
     // Fallback if no JSON found in response
-    return parseTaskRequest(stripTaskContext(currentMessage).trim() || conversationContext.trim());
+    return parseTaskRequest(
+      stripTaskContext(currentMessage).trim() || conversationContext.trim(),
+    );
   } catch {
     // Fallback to simple parsing if LLM fails
     const context = conversationContext.trim();
@@ -386,15 +388,23 @@ INPUTS:
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: HandlerOptions | undefined,
+    options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const service = runtime.getService("CODE_TASK") as CodeTaskService | null;
     if (!service) {
       const error = "CodeTaskService not available";
-      if (callback) await callback({ text: error });
+      if (callback) await callback({ content: { text: error } });
       return { success: false, text: error };
     }
+
+    // Check for options-provided title and steps (useful for programmatic calls and tests)
+    const opts = options as
+      | { title?: string; steps?: string[]; description?: string }
+      | undefined;
+    const optTitle = opts?.title;
+    const optSteps = opts?.steps;
+    const optDescription = opts?.description;
 
     const rawText = message.content.text ?? "";
     const stripped = stripTaskContext(rawText);
@@ -408,23 +418,42 @@ INPUTS:
       /(?:^|\n)\s*(?:steps?|plan)\s*[:-]/i.test(stripped) ||
       parsed.steps.length > 0;
 
-    const { name, description, steps } = hasStructuredFields
-      ? parsed
-      : await generateTaskFromConversation(
-          runtime,
-          await getConversationContext(runtime, message),
-          rawText,
-        );
+    // Use options-provided values if available, otherwise parse/generate
+    let name: string;
+    let description: string;
+    let steps: string[];
+
+    if (optTitle) {
+      // Options take precedence
+      name = optTitle;
+      description = optDescription ?? parsed.description;
+      steps = optSteps ?? parsed.steps;
+    } else if (hasStructuredFields) {
+      ({ name, description, steps } = parsed);
+    } else {
+      ({ name, description, steps } = await generateTaskFromConversation(
+        runtime,
+        await getConversationContext(runtime, message),
+        rawText,
+      ));
+    }
+
+    // Override steps if provided via options
+    if (optSteps && optSteps.length > 0) {
+      steps = optSteps;
+    }
 
     try {
       // Create task using service (persisted via core runtime)
       const roomId = message.roomId as UUID | undefined;
       const task = await service.createCodeTask(name, description, roomId);
 
-      // If user didn't provide steps, generate a high-quality plan using a reasoning model.
+      // If user didn't provide steps via options or parsing, generate a plan using a model.
+      // When steps are explicitly provided (optSteps), skip model generation.
       const taskId = task.id ?? "";
       let finalSteps = steps;
-      if (finalSteps.length === 0) {
+      const hasProvidedSteps = (optSteps && optSteps.length > 0) || steps.length > 0;
+      if (!hasProvidedSteps) {
         finalSteps = await generatePlanSteps(runtime, {
           taskName: name,
           description,
@@ -465,7 +494,7 @@ INPUTS:
         }
         lines.push("Execution disabled (ELIZA_CODE_DISABLE_TASK_EXECUTION=1).");
         const disabledResult = lines.join("\n");
-        if (callback) await callback({ text: disabledResult });
+        if (callback) await callback({ content: { text: disabledResult } });
         const stableTaskId = task.id ?? taskId;
         return {
           success: true,
@@ -494,7 +523,7 @@ INPUTS:
       lines.push("Starting execution…");
       const result = lines.join("\n");
 
-      if (callback) await callback({ text: result });
+      if (callback) await callback({ content: { text: result } });
 
       // Start execution in background
       service.startTaskExecution(taskId).catch((err) => {
@@ -515,7 +544,7 @@ INPUTS:
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`CREATE_TASK error: ${error}`);
-      if (callback) await callback({ text: `Failed to create task: ${error}` });
+      if (callback) await callback({ content: { text: `Failed to create task: ${error}` } });
       return { success: false, text: error };
     }
   },

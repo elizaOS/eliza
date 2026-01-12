@@ -389,7 +389,7 @@ export function parseToolCalls(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
   const pattern = /TOOL:\s*(\w+)\s*\(/g;
 
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     const name = match[1];
     const start = match.index + match[0].length;
@@ -446,7 +446,7 @@ function parseArgs(argsStr: string): Record<string, string> {
   const args: Record<string, string> = {};
   const pattern = /(\w+)\s*=\s*["'`]([^"'`]*)["'`]/g;
 
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = pattern.exec(argsStr)) !== null) {
     args[match[1]] = match[2].replace(/\\n/g, "\n").replace(/\\"/g, '"');
   }

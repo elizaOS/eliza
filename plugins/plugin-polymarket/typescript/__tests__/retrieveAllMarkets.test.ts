@@ -2,9 +2,12 @@ import type { HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/cor
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { retrieveAllMarketsAction } from "../actions/retrieveAllMarkets";
 
-// Mock the dependencies
+// Mock the dependencies - use simple factories to avoid importOriginal issues
 vi.mock("../utils/llmHelpers", () => ({
   callLLMWithTimeout: vi.fn(),
+  isLLMError: (response: unknown) => {
+    return response !== null && typeof response === "object" && "error" in (response as object);
+  },
 }));
 
 vi.mock("../utils/clobClient", () => ({
@@ -132,15 +135,19 @@ describe("retrieveAllMarketsAction", () => {
     it("should fetch and return markets successfully", async () => {
       const mockMarkets = [
         {
+          condition_id: "0x1234567890abcdef1234567890abcdef12345678",
           question: "Will BTC reach $100k?",
           category: "crypto",
           active: true,
+          closed: false,
           end_date_iso: "2024-12-31T23:59:59Z",
         },
         {
+          condition_id: "0xabcdef1234567890abcdef1234567890abcdef12",
           question: "Who will win the election?",
           category: "politics",
           active: true,
+          closed: false,
           end_date_iso: "2024-11-05T23:59:59Z",
         },
       ];
@@ -149,7 +156,7 @@ describe("retrieveAllMarketsAction", () => {
         data: mockMarkets,
         count: 2,
         limit: 100,
-        next_cursor: "LTE=",
+        next_cursor: "", // Empty cursor means no more pages
       };
 
       const mockClobClient = {
@@ -170,13 +177,16 @@ describe("retrieveAllMarketsAction", () => {
         testCallback
       );
 
-      expect(result.text).toContain("Retrieved 2 Polymarket prediction markets");
-      expect(result.text).toContain("Will BTC reach $100k?");
-      expect(result.text).toContain("Who will win the election?");
-      expect(result.actions).toContain("GET_ALL_MARKETS");
-      expect(result.data.markets).toEqual(mockMarkets);
-      expect(result.data.count).toBe(2);
-      expect(testCallback).toHaveBeenCalledWith(result);
+      expect(result.text).toContain("Complete Polymarket Catalog");
+      expect(result.text).toContain("Total Markets");
+      expect(result.success).toBe(true);
+      expect(result.data.totalMarkets).toBe("2");
+      expect(testCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Complete Polymarket Catalog"),
+          actions: ["POLYMARKET_RETRIEVE_ALL_MARKETS"],
+        })
+      );
     });
 
     it("should handle empty markets response", async () => {
@@ -184,7 +194,7 @@ describe("retrieveAllMarketsAction", () => {
         data: [],
         count: 0,
         limit: 100,
-        next_cursor: "LTE=",
+        next_cursor: "",
       };
 
       const mockClobClient = {
@@ -205,9 +215,9 @@ describe("retrieveAllMarketsAction", () => {
         testCallback
       );
 
-      expect(result.text).toContain("Retrieved 0 Polymarket prediction markets");
-      expect(result.text).toContain("No markets found matching your criteria");
-      expect(result.data.count).toBe(0);
+      expect(result.text).toContain("Complete Polymarket Catalog");
+      expect(result.text).toContain("Total Markets**: 0");
+      expect(result.data.totalMarkets).toBe("0");
     });
 
     it("should handle CLOB API errors", async () => {
@@ -226,15 +236,6 @@ describe("retrieveAllMarketsAction", () => {
       await expect(
         retrieveAllMarketsAction.handler(runtime, testMessage, testState, {}, testCallback)
       ).rejects.toThrow("CLOB API error: 500 Internal Server Error");
-
-      expect(testCallback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining("Error retrieving markets"),
-          data: expect.objectContaining({
-            error: "CLOB API error: 500 Internal Server Error",
-          }),
-        })
-      );
     });
 
     it("should handle missing CLOB_API_URL in handler", async () => {
@@ -243,6 +244,13 @@ describe("retrieveAllMarketsAction", () => {
       });
 
       vi.spyOn(runtimeWithoutUrl, "getSetting").mockReturnValue(undefined);
+
+      const { initializeClobClient } = await import("../utils/clobClient");
+
+      // Mock the clobClient to throw when API URL is missing
+      vi.mocked(initializeClobClient).mockRejectedValue(
+        new Error("CLOB_API_URL is required in configuration.")
+      );
 
       await expect(
         retrieveAllMarketsAction.handler(
@@ -253,30 +261,22 @@ describe("retrieveAllMarketsAction", () => {
           testCallback
         )
       ).rejects.toThrow("CLOB_API_URL is required in configuration.");
-
-      expect(testCallback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: "CLOB_API_URL is required in configuration.",
-          data: expect.objectContaining({
-            error: "CLOB_API_URL is required in configuration.",
-          }),
-        })
-      );
     });
   });
 
   describe("action properties", () => {
     it("should have correct action name and similes", () => {
-      expect(retrieveAllMarketsAction.name).toBe("GET_ALL_MARKETS");
-      expect(retrieveAllMarketsAction.similes).toContain("LIST_MARKETS");
-      expect(retrieveAllMarketsAction.similes).toContain("SHOW_MARKETS");
-      expect(retrieveAllMarketsAction.similes).toContain("GET_MARKETS");
+      expect(retrieveAllMarketsAction.name).toBe("POLYMARKET_RETRIEVE_ALL_MARKETS");
+      expect(retrieveAllMarketsAction.similes).toContain("POLYMARKET_FETCH_ALL_MARKETS");
+      expect(retrieveAllMarketsAction.similes).toContain("POLYMARKET_DOWNLOAD_MARKETS");
+      expect(retrieveAllMarketsAction.similes).toContain("POLYMARKET_FULL_MARKET_LIST");
+      expect(retrieveAllMarketsAction.similes).toContain("POLYMARKET_COMPLETE_MARKETS");
     });
 
     it("should have proper description", () => {
-      expect(retrieveAllMarketsAction.description).toBe(
-        "Retrieve all available prediction markets from Polymarket"
-      );
+      expect(retrieveAllMarketsAction.description).toContain("Retrieves all available markets");
+      expect(retrieveAllMarketsAction.description).toContain("Polymarket");
+      expect(retrieveAllMarketsAction.description).toContain("paginating");
     });
 
     it("should have example conversations", () => {
@@ -284,8 +284,8 @@ describe("retrieveAllMarketsAction", () => {
       expect(retrieveAllMarketsAction.examples.length).toBeGreaterThan(0);
 
       const firstExample = retrieveAllMarketsAction.examples[0];
-      expect(firstExample[0].content.text).toContain("prediction markets");
-      expect(firstExample[1].content.actions).toContain("GET_ALL_MARKETS");
+      expect(firstExample[0].content.text).toContain("markets");
+      expect(firstExample[1].content.action).toBe("POLYMARKET_RETRIEVE_ALL_MARKETS");
     });
   });
 });

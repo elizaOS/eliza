@@ -298,6 +298,12 @@ export interface ActionResult {
 
   /** Error information if the action failed */
   error?: string | Error;
+
+  /** Whether to continue the action chain (for chained actions) */
+  continueChain?: boolean;
+
+  /** Optional cleanup function to execute after action completion */
+  cleanup?: () => void | Promise<void>;
 }
 
 /**

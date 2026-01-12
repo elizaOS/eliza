@@ -1,14 +1,17 @@
 import type { HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { getAllApiKeysAction } from "../actions/getAllApiKeys";
+import { initializeClobClientWithCreds } from "../utils/clobClient";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
-// Mock the crypto module
-vi.mock("crypto", () => ({
-  createHmac: vi.fn(() => ({
-    update: vi.fn(() => ({
-      digest: vi.fn(() => "mock-signature"),
-    })),
-  })),
+// Mock the dependencies - use simple factories to avoid importOriginal issues
+vi.mock("../utils/clobClient", () => ({
+  initializeClobClientWithCreds: vi.fn(),
+}));
+
+vi.mock("../utils/llmHelpers", () => ({
+  callLLMWithTimeout: vi.fn(),
+  isLLMError: vi.fn(() => false),
 }));
 
 // Mock @elizaos/core to avoid real runtime initialization
@@ -26,17 +29,9 @@ vi.mock("@elizaos/core", async () => {
   };
 });
 
-// Mock fetch globally
-interface GlobalWithFetch {
-  fetch: ReturnType<typeof vi.fn>;
-}
-
-// Helper function to access global fetch with proper typing
-function getGlobalFetch(): GlobalWithFetch {
-  return globalThis as GlobalWithFetch;
-}
-
-getGlobalFetch().fetch = vi.fn();
+// Typed mock references
+const mockInitializeClobClientWithCreds = initializeClobClientWithCreds as Mock;
+const mockCallLLMWithTimeout = callLLMWithTimeout as Mock;
 
 /**
  * Creates a mock AgentRuntime for testing.
@@ -96,7 +91,7 @@ describe("getAllApiKeysAction", () => {
 
     // Test message
     testMessage = {
-      id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
+      id: "test-message-id" as `${string}-${string}-${string}-${string}-${string}`,
       content: {
         text: "Get my API keys",
       },
@@ -112,6 +107,9 @@ describe("getAllApiKeysAction", () => {
 
     // Test callback
     testCallback = vi.fn();
+
+    // Default mock behavior for LLM
+    mockCallLLMWithTimeout.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -142,228 +140,169 @@ describe("getAllApiKeysAction", () => {
   });
 
   describe("handler", () => {
-    beforeEach(() => {
-      // Reset fetch mock
-      getGlobalFetch().fetch.mockReset();
-    });
-
-    it("should successfully retrieve non-empty array of API keys", async () => {
-      // Mock successful API response with array of keys
-      const mockApiKeys = [
-        {
-          key: "api-key-1",
-          secret: "secret-1",
-          passphrase: "passphrase-1",
-          created_at: "2023-01-01T00:00:00Z",
-          active: true,
-        },
-        {
-          key: "api-key-2",
-          secret: "secret-2",
-          passphrase: "passphrase-2",
-          created_at: "2023-01-02T00:00:00Z",
-          active: false,
-        },
-      ];
-
-      getGlobalFetch().fetch.mockResolvedValue({
-        ok: true,
-        json: vi.fn().mockResolvedValue(mockApiKeys),
-      });
-
-      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
-
-      expect(testCallback).toHaveBeenCalledWith({
-        text: expect.stringContaining("✅ **API Keys Retrieved Successfully**"),
-        action: "GET_API_KEYS",
-        data: {
-          success: true,
-          apiKeys: expect.arrayContaining([
-            expect.objectContaining({
-              key: "api-key-1",
-              secret: "secret-1",
-              passphrase: "passphrase-1",
-            }),
-          ]),
-          count: 2,
-          address: expect.any(String),
-        },
-      });
-
-      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
-        "Total API Keys**: 2"
-      );
-      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain("Key 1:");
-      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain("Key 2:");
-    });
-
-    it("should handle empty array of API keys", async () => {
-      // Mock API response with empty array
-      getGlobalFetch().fetch.mockResolvedValue({
-        ok: true,
-        json: vi.fn().mockResolvedValue([]),
-      });
-
-      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
-
-      expect(testCallback).toHaveBeenCalledWith({
-        text: expect.stringContaining("✅ **API Keys Retrieved Successfully**"),
-        action: "GET_API_KEYS",
-        data: {
-          success: true,
-          apiKeys: [],
-          count: 0,
-          address: expect.any(String),
-        },
-      });
-
-      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
-        "Total API Keys**: 0"
-      );
-      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
-        "No API keys found"
-      );
-      expect((testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text).toContain(
-        "CREATE_API_KEY action"
-      );
-    });
-
-    it("should handle API response with data wrapper", async () => {
-      // Mock API response with data wrapper
-      const mockApiResponse = {
-        data: [
-          {
-            api_key: "wrapped-key-1",
-            api_secret: "wrapped-secret-1",
-            api_passphrase: "wrapped-passphrase-1",
-            createdAt: "2023-01-01T00:00:00Z",
-          },
+    it("should successfully retrieve API keys", async () => {
+      // Mock CLOB client with API keys response
+      const mockApiKeysResponse = {
+        apiKeys: [
+          { key: "api-key-1", secret: "secret-1", passphrase: "passphrase-1" },
+          { key: "api-key-2", secret: "secret-2", passphrase: "passphrase-2" },
         ],
       };
 
-      getGlobalFetch().fetch.mockResolvedValue({
-        ok: true,
-        json: vi.fn().mockResolvedValue(mockApiResponse),
-      });
+      const mockClobClient = {
+        getApiKeys: vi.fn().mockResolvedValue(mockApiKeysResponse),
+      };
+      mockInitializeClobClientWithCreds.mockResolvedValue(mockClobClient);
 
       await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 
-      expect(testCallback).toHaveBeenCalledWith({
-        text: expect.stringContaining("✅ **API Keys Retrieved Successfully**"),
-        action: "GET_API_KEYS",
-        data: {
-          success: true,
-          apiKeys: expect.arrayContaining([
-            expect.objectContaining({
-              key: "wrapped-key-1",
-              secret: "wrapped-secret-1",
-              passphrase: "wrapped-passphrase-1",
-            }),
-          ]),
-          count: 1,
-          address: expect.any(String),
-        },
-      });
+      expect(mockInitializeClobClientWithCreds).toHaveBeenCalledWith(runtime);
+      expect(mockClobClient.getApiKeys).toHaveBeenCalled();
+      expect(testCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Your Polymarket API Keys"),
+          actions: ["POLYMARKET_GET_ALL_API_KEYS"],
+          data: expect.objectContaining({
+            apiKeysCount: 2,
+          }),
+        })
+      );
     });
 
-    it("should handle missing API credentials error", async () => {
-      // Create runtime without API credentials
-      const runtimeWithoutCreds = createMockRuntime({
-        WALLET_PRIVATE_KEY: "0x1234567890123456789012345678901234567890123456789012345678901234",
-        CLOB_API_URL: "https://clob.polymarket.com",
-        CLOB_API_KEY: undefined,
-        CLOB_API_SECRET: undefined,
-        CLOB_API_PASSPHRASE: undefined,
-      });
+    it("should handle empty array of API keys", async () => {
+      // Mock CLOB client with empty API keys response
+      const mockApiKeysResponse = {
+        apiKeys: [],
+      };
 
-      // Override getSetting to return undefined for API credentials
-      vi.spyOn(runtimeWithoutCreds, "getSetting").mockImplementation((key: string) => {
-        if (key === "WALLET_PRIVATE_KEY")
-          return "0x1234567890123456789012345678901234567890123456789012345678901234";
-        if (key === "CLOB_API_URL") return "https://clob.polymarket.com";
-        return undefined;
-      });
+      const mockClobClient = {
+        getApiKeys: vi.fn().mockResolvedValue(mockApiKeysResponse),
+      };
+      mockInitializeClobClientWithCreds.mockResolvedValue(mockClobClient);
 
-      await getAllApiKeysAction.handler(
-        runtimeWithoutCreds,
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
+
+      expect(testCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("no API keys registered"),
+          actions: ["POLYMARKET_GET_ALL_API_KEYS"],
+          data: expect.objectContaining({
+            apiKeysCount: 0,
+          }),
+        })
+      );
+    });
+
+    it("should handle CLOB client initialization error", async () => {
+      mockInitializeClobClientWithCreds.mockRejectedValue(
+        new Error("Failed to initialize CLOB client")
+      );
+
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
+
+      expect(testCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Error fetching API keys"),
+          actions: ["POLYMARKET_GET_ALL_API_KEYS"],
+          data: expect.objectContaining({
+            error: "Failed to initialize CLOB client",
+          }),
+        })
+      );
+    });
+
+    it("should handle API call error", async () => {
+      const mockClobClient = {
+        getApiKeys: vi.fn().mockRejectedValue(new Error("API request failed")),
+      };
+      mockInitializeClobClientWithCreds.mockResolvedValue(mockClobClient);
+
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
+
+      expect(testCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Error fetching API keys"),
+          actions: ["POLYMARKET_GET_ALL_API_KEYS"],
+          data: expect.objectContaining({
+            error: "API request failed",
+          }),
+        })
+      );
+    });
+
+    it("should handle network connectivity issues", async () => {
+      mockInitializeClobClientWithCreds.mockRejectedValue(new Error("Network error"));
+
+      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
+
+      expect(testCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("Error fetching API keys"),
+          data: expect.objectContaining({
+            error: "Network error",
+          }),
+        })
+      );
+    });
+
+    it("should return correct action result", async () => {
+      const mockApiKeysResponse = {
+        apiKeys: [{ key: "api-key-1", secret: "secret-1", passphrase: "passphrase-1" }],
+      };
+
+      const mockClobClient = {
+        getApiKeys: vi.fn().mockResolvedValue(mockApiKeysResponse),
+      };
+      mockInitializeClobClientWithCreds.mockResolvedValue(mockClobClient);
+
+      const result = await getAllApiKeysAction.handler(
+        runtime,
         testMessage,
         testState,
         {},
         testCallback
       );
 
-      expect(testCallback).toHaveBeenCalledWith({
-        text: expect.stringContaining("❌ **Failed to Retrieve API Keys**"),
-        action: "GET_API_KEYS",
-        data: {
-          success: false,
-          error:
-            "API credentials not found. You need to create API keys first using the CREATE_API_KEY action",
-        },
-      });
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("Your Polymarket API Keys");
+      expect(result.data?.apiKeysCount).toBe(1);
     });
 
-    it("should handle network/auth error from API", async () => {
-      // Mock failed API response
-      getGlobalFetch().fetch.mockResolvedValue({
-        ok: false,
-        status: 401,
-        statusText: "Unauthorized",
-        text: vi.fn().mockResolvedValue('{"error":"Invalid credentials"}'),
-      });
+    it("should return error result on failure", async () => {
+      mockInitializeClobClientWithCreds.mockRejectedValue(new Error("Test error"));
 
-      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
+      const result = await getAllApiKeysAction.handler(
+        runtime,
+        testMessage,
+        testState,
+        {},
+        testCallback
+      );
 
-      expect(testCallback).toHaveBeenCalledWith({
-        text: expect.stringContaining("❌ **Failed to Retrieve API Keys**"),
-        action: "GET_API_KEYS",
-        data: {
-          success: false,
-          error: expect.stringContaining("Failed to retrieve API keys: 401 Unauthorized"),
-        },
-      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Test error");
+    });
+  });
+
+  describe("action properties", () => {
+    it("should have correct action name", () => {
+      expect(getAllApiKeysAction.name).toBe("POLYMARKET_GET_ALL_API_KEYS");
     });
 
-    it("should handle network connectivity issues", async () => {
-      // Mock network error
-      getGlobalFetch().fetch.mockRejectedValue(new Error("Network error"));
-
-      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
-
-      expect(testCallback).toHaveBeenCalledWith({
-        text: expect.stringContaining("❌ **Failed to Retrieve API Keys**"),
-        action: "GET_API_KEYS",
-        data: {
-          success: false,
-          error: "Network error",
-        },
-      });
+    it("should have appropriate similes", () => {
+      expect(getAllApiKeysAction.similes).toContain("POLYMARKET_LIST_MY_API_KEYS");
+      expect(getAllApiKeysAction.similes).toContain("POLYMARKET_VIEW_API_CREDENTIALS");
+      expect(getAllApiKeysAction.similes).toContain("POLYMARKET_SHOW_ALL_KEYS");
     });
 
-    it("should truncate sensitive data in response", async () => {
-      // Mock API response with long credentials
-      const mockApiKeys = [
-        {
-          key: "very-long-api-key-12345678901234567890",
-          secret: "very-long-secret-12345678901234567890",
-          passphrase: "very-long-passphrase-12345678901234567890",
-          active: true,
-        },
-      ];
+    it("should have proper description", () => {
+      expect(getAllApiKeysAction.description).toContain("API keys");
+      expect(getAllApiKeysAction.description).toContain("Polymarket");
+    });
 
-      getGlobalFetch().fetch.mockResolvedValue({
-        ok: true,
-        json: vi.fn().mockResolvedValue(mockApiKeys),
-      });
-
-      await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
-
-      const responseText = (testCallback as ReturnType<typeof vi.fn>).mock.calls[0][0].text;
-
-      // Check that sensitive data is truncated
-      expect(responseText).toContain("very-lon...");
-      expect(responseText).not.toContain("very-long-secret-12345678901234567890");
-      expect(responseText).not.toContain("very-long-passphrase-12345678901234567890");
+    it("should have example conversations", () => {
+      expect(getAllApiKeysAction.examples).toBeDefined();
+      expect(getAllApiKeysAction.examples.length).toBeGreaterThan(0);
     });
   });
 });

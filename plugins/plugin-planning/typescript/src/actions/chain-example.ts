@@ -110,9 +110,9 @@ export const processAnalysisAction: Action = {
         processedAt: Date.now(),
         // Chain control flags stored in data for downstream access
         shouldContinue: !decisions.needsMoreInfo,
-        continueChain: !decisions.needsMoreInfo,
       },
       text: decisions.suggestedResponse,
+      continueChain: !decisions.needsMoreInfo,
     };
   },
 };
@@ -178,6 +178,9 @@ export const executeFinalAction: Action = {
         },
       },
       text: execution.message,
+      cleanup: () => {
+        console.log("[ChainExample] Cleaning up resources...");
+      },
     };
   },
 };

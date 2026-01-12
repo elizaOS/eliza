@@ -155,11 +155,12 @@ async def handler(
 
             details_str = ", ".join(f"{k}: {v}" for k, v in item.details.items() if k != "filters")
 
+            error_line = f"\n   Error: {item.error}" if item.error else ""
+            details_line = f"Details: {details_str}" if details_str else ""
             activity_text.append(
                 f"{i + 1}. {status} {item.action} on {item.resource_type} {item.resource_id}\n"
                 f"   Time: {time_str}\n"
-                f"   {f'Details: {details_str}' if details_str else ''}"
-                f"{f'\\n   Error: {item.error}' if item.error else ''}"
+                f"   {details_line}{error_line}"
             )
 
         header_text = (

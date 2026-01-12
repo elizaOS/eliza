@@ -68,7 +68,7 @@ OUTPUT: Tasks grouped by status (running, pending, paused, completed, failed, ca
 
       if (tasks.length === 0) {
         const msg = "No tasks.";
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: true, text: msg };
       }
 
@@ -96,12 +96,12 @@ OUTPUT: Tasks grouped by status (running, pending, paused, completed, failed, ca
       }
 
       const result = lines.join("\n");
-      await callback?.({ text: result });
+      await callback?.({ content: { text: result } });
       return { success: true, text: result, data: { count: tasks.length } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`LIST_TASKS error: ${error}`);
-      await callback?.({ text: `Error: ${error}` });
+      await callback?.({ content: { text: `Error: ${error}` } });
       return { success: false, text: error };
     }
   },
@@ -178,7 +178,7 @@ BEHAVIOR:
       const query = extractTaskQuery(text);
       if (!query) {
         const msg = "Please specify which task to switch to (by name or ID).";
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
@@ -186,7 +186,7 @@ BEHAVIOR:
 
       if (matches.length === 0) {
         const msg = `No task found matching: "${query}"`;
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
@@ -195,13 +195,13 @@ BEHAVIOR:
         const taskId = task.id;
         if (!taskId) {
           const msg = `Task "${task.name}" has no id and cannot be selected.`;
-          await callback?.({ text: msg });
+          await callback?.({ content: { text: msg } });
           return { success: false, text: msg };
         }
 
         service.setCurrentTask(taskId);
         const msg = `Switched to task: ${task.name} (${task.metadata.status}, ${task.metadata.progress}%)`;
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: true, text: msg, data: { taskId } };
       }
 
@@ -211,12 +211,12 @@ BEHAVIOR:
         .map((t, i) => `${i + 1}. ${t.name} (${t.metadata.status})`)
         .join("\n");
       const msg = `Found ${matches.length} matching tasks:\n${list}\n\nWhich one?`;
-      await callback?.({ text: msg });
+      await callback?.({ content: { text: msg } });
       return { success: true, text: msg, data: { matches: matches.length } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`SWITCH_TASK error: ${error}`);
-      await callback?.({ text: `Error: ${error}` });
+      await callback?.({ content: { text: `Error: ${error}` } });
       return { success: false, text: error };
     }
   },
@@ -282,7 +282,7 @@ OUTPUT: List of matching tasks with status and progress.`,
 
       if (!query) {
         const msg = "What would you like to search for?";
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
@@ -290,7 +290,7 @@ OUTPUT: List of matching tasks with status and progress.`,
 
       if (matches.length === 0) {
         const msg = `No tasks found matching: "${query}"`;
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: true, text: msg };
       }
 
@@ -303,12 +303,12 @@ OUTPUT: List of matching tasks with status and progress.`,
       }
 
       const result = lines.join("\n");
-      await callback?.({ text: result });
+      await callback?.({ content: { text: result } });
       return { success: true, text: result, data: { count: matches.length } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`SEARCH_TASKS error: ${error}`);
-      await callback?.({ text: `Error: ${error}` });
+      await callback?.({ content: { text: `Error: ${error}` } });
       return { success: false, text: error };
     }
   },
@@ -382,31 +382,31 @@ BEHAVIOR:
 
       if (!task) {
         const msg = "No task to pause. Specify a task or select one first.";
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
       if (task.metadata.status !== "running") {
         const msg = `Task "${task.name}" is not running (status: ${task.metadata.status})`;
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
       const taskId = task.id;
       if (!taskId) {
         const msg = `Task "${task.name}" has no id and cannot be paused.`;
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
       await service.pauseTask(taskId);
       const msg = `Paused task: ${task.name}`;
-      await callback?.({ text: msg });
+      await callback?.({ content: { text: msg } });
       return { success: true, text: msg, data: { taskId } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`PAUSE_TASK error: ${error}`);
-      await callback?.({ text: `Error: ${error}` });
+      await callback?.({ content: { text: `Error: ${error}` } });
       return { success: false, text: error };
     }
   },
@@ -505,14 +505,14 @@ BEHAVIOR:
 
       if (!task) {
         const msg = "No task to resume. Create one first!";
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
       const taskId = task.id ?? "";
       if (!taskId) {
         const msg = "Task has no id and cannot be resumed.";
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
@@ -523,12 +523,12 @@ BEHAVIOR:
       service.startTaskExecution(taskId).catch(() => {});
 
       const msg = `Resumed task: ${task.name}`;
-      await callback?.({ text: msg });
+      await callback?.({ content: { text: msg } });
       return { success: true, text: msg, data: { taskId } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`RESUME_TASK error: ${error}`);
-      await callback?.({ text: `Error: ${error}` });
+      await callback?.({ content: { text: `Error: ${error}` } });
       return { success: false, text: error };
     }
   },
@@ -592,35 +592,32 @@ BEHAVIOR:
       const service = getTaskService(runtime);
       const query = extractTaskQuery(message.content.text ?? "");
 
-      if (!query) {
-        const msg = "Please specify which task to cancel.";
-        await callback?.({ text: msg });
+      // If no query, cancel current task
+      const task = query
+        ? (await service.searchTasks(query))[0]
+        : await service.getCurrentTask();
+
+      if (!task) {
+        const msg = "No task to cancel. Specify a task or select one first.";
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
-      const matches = await service.searchTasks(query);
-      if (matches.length === 0) {
-        const msg = `No task found matching: "${query}"`;
-        await callback?.({ text: msg });
-        return { success: false, text: msg };
-      }
-
-      const task = matches[0];
       const taskId = task.id;
       if (!taskId) {
         const msg = `Task "${task.name}" has no id and cannot be cancelled.`;
-        await callback?.({ text: msg });
+        await callback?.({ content: { text: msg } });
         return { success: false, text: msg };
       }
 
       await service.cancelTask(taskId);
       const msg = `Cancelled task: ${task.name}`;
-      await callback?.({ text: msg });
+      await callback?.({ content: { text: msg } });
       return { success: true, text: msg, data: { taskId } };
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`CANCEL_TASK error: ${error}`);
-      await callback?.({ text: `Error: ${error}` });
+      await callback?.({ content: { text: `Error: ${error}` } });
       return { success: false, text: error };
     }
   },
@@ -652,6 +649,8 @@ function extractTaskQuery(text: string): string {
     // Common filler words in natural language queries
     .replace(/\b(about|for|named|called|with)\b/g, "")
     .replace(/\bto\b/g, "")
+    // Possessive pronouns that indicate "my current task" etc.
+    .replace(/\b(my|your|our|this|current)\b/g, "")
     .replace(/\b(task|tasks|the|a|an)\b/g, "")
     .replace(/\s+/g, " ")
     .trim();

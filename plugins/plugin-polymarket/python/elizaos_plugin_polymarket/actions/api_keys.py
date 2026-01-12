@@ -6,7 +6,7 @@ import time
 from typing import Protocol
 
 from eth_account import Account
-from eth_account.messages import encode_defunct, encode_structured_data
+from eth_account.messages import encode_defunct, encode_typed_data
 
 from elizaos_plugin_polymarket.error import PolymarketError, PolymarketErrorCode
 from elizaos_plugin_polymarket.providers import get_authenticated_clob_client
@@ -82,31 +82,37 @@ async def create_api_key(
         message_text = "This message attests that I control the given wallet"
 
         # Create typed data signature (EIP-712)
-        domain = {
-            "name": "ClobAuthDomain",
-            "version": "1",
-            "chainId": 137,  # Polygon
-        }
-
-        types = {
-            "ClobAuth": [
-                {"name": "address", "type": "address"},
-                {"name": "timestamp", "type": "string"},
-                {"name": "nonce", "type": "uint256"},
-                {"name": "message", "type": "string"},
-            ]
-        }
-
-        value = {
-            "address": address,
-            "timestamp": timestamp,
-            "nonce": nonce,
-            "message": message_text,
+        typed_data = {
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                ],
+                "ClobAuth": [
+                    {"name": "address", "type": "address"},
+                    {"name": "timestamp", "type": "string"},
+                    {"name": "nonce", "type": "uint256"},
+                    {"name": "message", "type": "string"},
+                ],
+            },
+            "primaryType": "ClobAuth",
+            "domain": {
+                "name": "ClobAuthDomain",
+                "version": "1",
+                "chainId": 137,  # Polygon
+            },
+            "message": {
+                "address": address,
+                "timestamp": timestamp,
+                "nonce": nonce,
+                "message": message_text,
+            },
         }
 
         # Sign typed data using eth_account (EIP-712)
         try:
-            structured_msg = encode_structured_data({"domain": domain, "types": types, "message": value})
+            structured_msg = encode_typed_data(full_message=typed_data)
             signed_message = account.sign_message(structured_msg)
             signature = signed_message.signature.hex()
         except Exception:

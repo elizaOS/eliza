@@ -3,17 +3,34 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
-from elizaos.types import as_uuid
 
 if TYPE_CHECKING:
     from elizaos_plugin_sql.adapters.postgres import PostgresAdapter
     from elizaos_plugin_sql.migration_service import MigrationService
+
+# UUID validation pattern
+_UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def as_uuid(id_str: str | uuid.UUID) -> str:
+    """Convert string or UUID to validated UUID string."""
+    if isinstance(id_str, uuid.UUID):
+        return str(id_str)
+    if isinstance(id_str, str):
+        if not _UUID_PATTERN.match(id_str):
+            raise ValueError(f"Invalid UUID format: {id_str}")
+        return id_str
+    raise TypeError(f"Expected str or UUID, got {type(id_str).__name__}")
 
 
 @pytest.fixture

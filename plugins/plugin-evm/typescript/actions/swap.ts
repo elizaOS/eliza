@@ -144,6 +144,26 @@ export class SwapAction {
   }
 
   async swap(params: SwapParams): Promise<Transaction> {
+    // Validate inputs early to fail fast
+    const amount = parseFloat(params.amount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      throw new EVMError(EVMErrorCode.INVALID_PARAMS, "Amount must be a positive number");
+    }
+
+    if (
+      !params.fromToken.startsWith("0x") ||
+      (params.fromToken.length !== 42 && params.fromToken !== NATIVE_TOKEN_ADDRESS)
+    ) {
+      throw new EVMError(EVMErrorCode.INVALID_PARAMS, `Invalid fromToken address: ${params.fromToken}`);
+    }
+
+    if (
+      !params.toToken.startsWith("0x") ||
+      (params.toToken.length !== 42 && params.toToken !== NATIVE_TOKEN_ADDRESS)
+    ) {
+      throw new EVMError(EVMErrorCode.INVALID_PARAMS, `Invalid toToken address: ${params.toToken}`);
+    }
+
     const walletClient = this.walletProvider.getWalletClient(params.chain);
     const [fromAddress] = await walletClient.getAddresses();
     const chainConfig = this.walletProvider.getChainConfigs(params.chain);

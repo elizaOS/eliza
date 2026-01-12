@@ -46,9 +46,9 @@ describe("plugin actions: exec + git", () => {
       runtime,
       createMemory("$ echo hello"),
     );
-    expect(result!.success).toBe(true);
-    expect(result!.text).toContain("$ echo hello");
-    expect(result!.text).toContain("hello");
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain("$ echo hello");
+    expect(result?.text).toContain("hello");
   });
 
   test("EXECUTE_SHELL returns a formatted error when command fails", async () => {
@@ -56,8 +56,8 @@ describe("plugin actions: exec + git", () => {
       runtime,
       createMemory("run `this_command_does_not_exist_12345`"),
     );
-    expect(result!.success).toBe(false);
-    expect(result!.text!.length).toBeGreaterThan(0);
+    expect(result?.success).toBe(false);
+    expect(result?.text?.length).toBeGreaterThan(0);
   });
 
   test("GIT runs git status inside a repo", async () => {
@@ -73,7 +73,7 @@ describe("plugin actions: exec + git", () => {
     });
 
     const result = await gitAction.handler(runtime, createMemory("git status"));
-    expect(result!.success).toBe(true);
-    expect(result!.text).toContain("$ git status");
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain("$ git status");
   });
 });

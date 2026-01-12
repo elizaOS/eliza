@@ -154,11 +154,7 @@ export async function initializeAgent(): Promise<AgentRuntime> {
   const providerPlugin =
     provider === "anthropic" ? anthropicPlugin : openaiPlugin;
 
-  const plugins: Plugin[] = [
-    sqlPlugin,
-    providerPlugin,
-    elizaCodePlugin,
-  ];
+  const plugins: Plugin[] = [sqlPlugin, providerPlugin, elizaCodePlugin];
 
   const runtime = new AgentRuntime({
     character: elizaCodeCharacter,

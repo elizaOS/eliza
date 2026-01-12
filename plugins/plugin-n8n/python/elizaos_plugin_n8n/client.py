@@ -459,12 +459,16 @@ Please fix all the errors and provide updated code with file paths marked."""
         try:
             code_files = await self._collect_code_files(Path(job.output_path))
 
+            def format_code_file(f: dict[str, str]) -> str:
+                return f"File: {f['path']}\n```typescript\n{f['content']}\n```"
+
+            code_section = "\n".join(format_code_file(f) for f in code_files)
             validation_prompt = f"""Review this ElizaOS plugin:
 
 Plugin: {job.specification.name}
 
 Generated Code:
-{chr(10).join(f"File: {f['path']}\n```typescript\n{f['content']}\n```" for f in code_files)}
+{code_section}
 
 Respond with JSON:
 {{"score": 0-100, "production_ready": boolean, "issues": [], "suggestions": []}}"""

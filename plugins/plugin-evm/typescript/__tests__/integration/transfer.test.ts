@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { Account, Chain } from "viem";
-import { formatEther, parseEther, createPublicClient, http } from "viem";
+import { createPublicClient, formatEther, http, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
