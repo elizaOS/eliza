@@ -11,6 +11,21 @@ vi.mock("crypto", () => ({
   })),
 }));
 
+// Mock @elizaos/core to avoid real runtime initialization
+vi.mock("@elizaos/core", async () => {
+  const actual = await vi.importActual("@elizaos/core");
+  return {
+    ...actual,
+    logger: {
+      log: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
+
 // Mock fetch globally
 interface GlobalWithFetch {
   fetch: ReturnType<typeof vi.fn>;
@@ -24,37 +39,28 @@ function getGlobalFetch(): GlobalWithFetch {
 getGlobalFetch().fetch = vi.fn();
 
 /**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ * Creates a mock AgentRuntime for testing.
  */
-async function createTestRuntime(settings: Record<string, string | undefined> = {}): Promise<{
-  runtime: IAgentRuntime;
-  cleanup: () => Promise<void>;
-}> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
+function createMockRuntime(settings: Record<string, string | undefined> = {}): IAgentRuntime {
+  const secrets: Record<string, string | undefined> = {
+    WALLET_PRIVATE_KEY:
+      settings.WALLET_PRIVATE_KEY ??
+      "0x1234567890123456789012345678901234567890123456789012345678901234",
+    CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+    CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
+    CLOB_API_SECRET: settings.CLOB_API_SECRET ?? "test-api-secret",
+    CLOB_API_PASSPHRASE: settings.CLOB_API_PASSPHRASE ?? "test-passphrase",
+  };
 
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
-    agentId,
+  return {
+    agentId: "test-agent-id" as `${string}-${string}-${string}-${string}-${string}`,
     character: {
       name: "Test Agent",
       bio: ["A test agent for Polymarket"],
       system: "You are a helpful assistant.",
       plugins: [],
       settings: {
-        secrets: {
-          WALLET_PRIVATE_KEY:
-            settings.WALLET_PRIVATE_KEY ??
-            "0x1234567890123456789012345678901234567890123456789012345678901234",
-          CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
-          CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
-          CLOB_API_SECRET: settings.CLOB_API_SECRET ?? "test-api-secret",
-          CLOB_API_PASSPHRASE: settings.CLOB_API_PASSPHRASE ?? "test-passphrase",
-        },
+        secrets,
       },
       messageExamples: [],
       postExamples: [],
@@ -62,39 +68,31 @@ async function createTestRuntime(settings: Record<string, string | undefined> = 
       adjectives: ["helpful"],
       style: { all: [], chat: [], post: [] },
     },
-    adapter,
-    plugins: [],
-  });
-
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    try {
-      await runtime.stop();
-      await adapter.close();
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
-
-  return { runtime, cleanup };
+    getSetting: vi.fn((key: string) => secrets[key]),
+    setSetting: vi.fn((key: string, value: string) => {
+      secrets[key] = value;
+    }),
+    getService: vi.fn(),
+    registerService: vi.fn(),
+    useModel: vi.fn(),
+    emitEvent: vi.fn(),
+    composeState: vi.fn().mockResolvedValue({}),
+    updateRecentMessageState: vi.fn().mockResolvedValue({}),
+  } as unknown as IAgentRuntime;
 }
 
 describe("getAllApiKeysAction", () => {
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
   let testMessage: Memory;
   let testState: State;
   let testCallback: HandlerCallback;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    // Create real runtime
-    const result = await createTestRuntime();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
+    // Create mock runtime
+    runtime = createMockRuntime();
 
     // Test message
     testMessage = {
@@ -116,8 +114,8 @@ describe("getAllApiKeysAction", () => {
     testCallback = vi.fn();
   });
 
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   describe("validate", () => {
@@ -128,7 +126,7 @@ describe("getAllApiKeysAction", () => {
 
     it("should return false when no private key is available", async () => {
       // Create runtime without private key
-      const resultWithoutKey = await createTestRuntime({
+      const runtimeWithoutKey = createMockRuntime({
         WALLET_PRIVATE_KEY: undefined,
         CLOB_API_KEY: undefined,
         CLOB_API_SECRET: undefined,
@@ -136,12 +134,10 @@ describe("getAllApiKeysAction", () => {
       });
 
       // Override getSetting to return undefined for WALLET_PRIVATE_KEY
-      vi.spyOn(resultWithoutKey.runtime, "getSetting").mockReturnValue(undefined);
+      vi.spyOn(runtimeWithoutKey, "getSetting").mockReturnValue(undefined);
 
-      const result = await getAllApiKeysAction.validate(resultWithoutKey.runtime, testMessage);
+      const result = await getAllApiKeysAction.validate(runtimeWithoutKey, testMessage);
       expect(result).toBe(false);
-
-      await resultWithoutKey.cleanup();
     });
   });
 
@@ -272,7 +268,7 @@ describe("getAllApiKeysAction", () => {
 
     it("should handle missing API credentials error", async () => {
       // Create runtime without API credentials
-      const resultWithoutCreds = await createTestRuntime({
+      const runtimeWithoutCreds = createMockRuntime({
         WALLET_PRIVATE_KEY: "0x1234567890123456789012345678901234567890123456789012345678901234",
         CLOB_API_URL: "https://clob.polymarket.com",
         CLOB_API_KEY: undefined,
@@ -281,7 +277,7 @@ describe("getAllApiKeysAction", () => {
       });
 
       // Override getSetting to return undefined for API credentials
-      vi.spyOn(resultWithoutCreds.runtime, "getSetting").mockImplementation((key: string) => {
+      vi.spyOn(runtimeWithoutCreds, "getSetting").mockImplementation((key: string) => {
         if (key === "WALLET_PRIVATE_KEY")
           return "0x1234567890123456789012345678901234567890123456789012345678901234";
         if (key === "CLOB_API_URL") return "https://clob.polymarket.com";
@@ -289,7 +285,7 @@ describe("getAllApiKeysAction", () => {
       });
 
       await getAllApiKeysAction.handler(
-        resultWithoutCreds.runtime,
+        runtimeWithoutCreds,
         testMessage,
         testState,
         {},
@@ -305,8 +301,6 @@ describe("getAllApiKeysAction", () => {
             "API credentials not found. You need to create API keys first using the CREATE_API_KEY action",
         },
       });
-
-      await resultWithoutCreds.cleanup();
     });
 
     it("should handle network/auth error from API", async () => {
@@ -332,9 +326,7 @@ describe("getAllApiKeysAction", () => {
 
     it("should handle network connectivity issues", async () => {
       // Mock network error
-      getGlobalFetch().fetch.mockRejectedValue(
-        new Error("Network error")
-      );
+      getGlobalFetch().fetch.mockRejectedValue(new Error("Network error"));
 
       await getAllApiKeysAction.handler(runtime, testMessage, testState, {}, testCallback);
 

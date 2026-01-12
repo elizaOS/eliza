@@ -1,20 +1,10 @@
 #!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-pdf TypeScript package
- *
- * Produces:
- * - dist/node/index.node.js (ESM for Node.js)
- * - dist/browser/index.browser.js (ESM for browsers)
- * - dist/cjs/index.node.cjs (CommonJS for Node.js)
- * - dist/*.d.ts (TypeScript declarations)
- */
 
 const externalDeps = ["@elizaos/core", "pdfjs-dist"];
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
 
-  // Node ESM build
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-pdf for Node (ESM)...");
 
@@ -35,7 +25,6 @@ async function build(): Promise<void> {
 
   console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
-  // Browser ESM build
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-pdf for Browser...");
 
@@ -56,7 +45,6 @@ async function build(): Promise<void> {
 
   console.log(`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
 
-  // Node CJS build
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-pdf for Node (CJS)...");
 
@@ -75,7 +63,6 @@ async function build(): Promise<void> {
     throw new Error("Node CJS build failed");
   }
 
-  // Rename .js to .cjs for correct module resolution
   const { rename, access } = await import("node:fs/promises");
   try {
     await access("dist/cjs/index.node.js");
@@ -86,7 +73,6 @@ async function build(): Promise<void> {
 
   console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
-  // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
 
@@ -95,12 +81,10 @@ async function build(): Promise<void> {
 
   await $`tsc --project tsconfig.build.json`;
 
-  // Create output directories
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });
 
-  // Create re-export declaration files for each entry point
   const reexportDeclaration = `export * from '../index';
 export { default } from '../index';
 `;

@@ -1,10 +1,3 @@
-/**
- * In-memory database adapter for elizaOS
- *
- * A simple, ephemeral in-memory implementation for testing and development.
- * All data is lost when the process ends or when close() is called.
- */
-
 import {
   type Agent,
   type Component,
@@ -27,7 +20,6 @@ import {
 import { EphemeralHNSW } from "./hnsw";
 import { COLLECTIONS, type IStorage } from "./types";
 
-// Internal storage types (different from core types for storage purposes)
 interface StoredParticipant {
   id: string;
   entityId: string;
@@ -77,9 +69,6 @@ function toMemory(stored: StoredMemory): Memory {
   };
 }
 
-/**
- * Convert array of StoredMemory to Memory array
- */
 function toMemories(stored: StoredMemory[]): Memory[] {
   return stored.map(toMemory);
 }
@@ -93,12 +82,6 @@ interface StoredRelationship {
   createdAt?: string;
 }
 
-/**
- * In-memory database adapter
- *
- * Completely ephemeral - all data is lost on restart.
- * Perfect for testing, development, and stateless deployments.
- */
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private storage: IStorage;
   private vectorIndex: EphemeralHNSW;
@@ -122,14 +105,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.init();
     await this.vectorIndex.init(this.embeddingDimension);
     this.ready = true;
-    logger.info({ src: "plugin:inmemorydb" }, "In-memory database initialized (ephemeral)");
+    logger.info({ src: "plugin:inmemorydb" }, "In-memory database initialized");
   }
 
   async runPluginMigrations(
     _plugins: Array<{ name: string; schema?: Record<string, unknown> }>,
     _options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
   ): Promise<void> {
-    // No migrations needed for in-memory storage
     logger.debug(
       { src: "plugin:inmemorydb" },
       "Plugin migrations not needed for in-memory storage"
@@ -144,7 +126,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.vectorIndex.clear();
     await this.storage.close();
     this.ready = false;
-    logger.info({ src: "plugin:inmemorydb" }, "In-memory database closed (all data cleared)");
+    logger.info({ src: "plugin:inmemorydb" }, "In-memory database closed");
   }
 
   async getConnection(): Promise<IStorage> {
@@ -187,8 +169,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       await this.vectorIndex.init(dimension);
     }
   }
-
-  // ==================== Entity Methods ====================
 
   async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     const entities: Entity[] = [];
@@ -235,8 +215,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     if (!entity.id) return;
     await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
   }
-
-  // ==================== Component Methods ====================
 
   async getComponent(
     entityId: UUID,
@@ -306,10 +284,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       return true;
     });
 
-    // Sort by createdAt descending
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
-    // Apply offset and count
     if (params.offset) {
       memories = memories.slice(params.offset);
     }

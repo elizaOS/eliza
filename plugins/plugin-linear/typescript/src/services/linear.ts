@@ -69,7 +69,6 @@ export class LinearService extends Service {
     logger.info("Linear service stopped");
   }
 
-  // Validate the API connection
   private async validateConnection(): Promise<void> {
     try {
       const viewer = await this.client.viewer;
@@ -107,7 +106,6 @@ export class LinearService extends Service {
     }
   }
 
-  // Get activity log
   getActivityLog(limit?: number, filter?: Partial<LinearActivityItem>): LinearActivityItem[] {
     let filtered = [...this.activityLog];
 
@@ -122,7 +120,6 @@ export class LinearService extends Service {
     return filtered.slice(-(limit || 100));
   }
 
-  // Clear activity log
   clearActivityLog(): void {
     this.activityLog = [];
     logger.info("Linear activity log cleared");
@@ -143,7 +140,6 @@ export class LinearService extends Service {
     return team;
   }
 
-  // Issue operations
   async createIssue(input: LinearIssueInput): Promise<Issue> {
     const issuePayload = await this.client.createIssue({
       title: input.title,
@@ -215,7 +211,6 @@ export class LinearService extends Service {
   }
 
   async deleteIssue(issueId: string): Promise<void> {
-    // In Linear, we archive issues rather than delete them
     const archivePayload = await this.client.archiveIssue(issueId);
 
     const success = await archivePayload.success;
@@ -227,10 +222,8 @@ export class LinearService extends Service {
   }
 
   async searchIssues(filters: LinearSearchFilters): Promise<Issue[]> {
-    // Build the filter object based on provided filters
     const filterObject: Record<string, unknown> = {};
 
-    // Add text search filter
     if (filters.query) {
       filterObject.or = [
         { title: { containsIgnoreCase: filters.query } },
@@ -253,7 +246,6 @@ export class LinearService extends Service {
       }
     }
 
-    // Add assignee filter
     if (filters.assignee && filters.assignee.length > 0) {
       const users = await this.getUsers();
       const assigneeIds = filters.assignee
@@ -314,7 +306,6 @@ export class LinearService extends Service {
     return issueList;
   }
 
-  // Comment operations
   async createComment(input: LinearCommentInput): Promise<Comment> {
     const commentPayload = await this.client.createComment({
       body: input.body,
@@ -340,9 +331,7 @@ export class LinearService extends Service {
     return comment;
   }
 
-  // Project operations
   async getProjects(teamId?: string): Promise<Project[]> {
-    // Linear SDK v51 requires manual team filtering on projects
     const query = this.client.projects({
       first: 100,
     });
@@ -391,7 +380,6 @@ export class LinearService extends Service {
     return project;
   }
 
-  // User operations
   async getUsers(): Promise<User[]> {
     const users = await this.client.users();
     const userList = await users.nodes;

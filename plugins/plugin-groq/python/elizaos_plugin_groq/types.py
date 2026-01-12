@@ -1,28 +1,20 @@
-"""Type definitions for the Groq plugin."""
-
 from enum import Enum
 
 from pydantic import BaseModel, Field
 
 
 class MessageRole(str, Enum):
-    """Chat message role."""
-
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
 
 
 class ChatMessage(BaseModel):
-    """A chat message."""
-
     role: MessageRole
     content: str
 
 
 class GenerateTextParams(BaseModel):
-    """Parameters for text generation."""
-
     prompt: str
     system: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -33,22 +25,16 @@ class GenerateTextParams(BaseModel):
 
 
 class GenerateObjectParams(BaseModel):
-    """Parameters for object generation."""
-
     prompt: str
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
 
 
 class TranscriptionParams(BaseModel):
-    """Parameters for audio transcription."""
-
     audio: bytes
     format: str = "mp3"
 
 
 class TextToSpeechParams(BaseModel):
-    """Parameters for text-to-speech."""
-
     text: str
     voice: str | None = None
 
@@ -66,8 +52,6 @@ class GroqConfig(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    """Chat completion request."""
-
     model: str
     messages: list[ChatMessage]
     temperature: float | None = None
@@ -94,8 +78,6 @@ class ChatCompletionResponse(BaseModel):
 
 
 class TranscriptionResponse(BaseModel):
-    """Transcription response."""
-
     text: str
 
 
@@ -107,6 +89,4 @@ class ModelInfo(BaseModel):
 
 
 class ModelsResponse(BaseModel):
-    """Models list response."""
-
     data: list[ModelInfo]

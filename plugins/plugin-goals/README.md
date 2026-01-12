@@ -396,5 +396,3 @@ MIT License - see LICENSE file for details.
 - **Enterprise**: Professional support available for production deployments
 
 ---
-
-**Built with ❤️ for the Eliza ecosystem - Making AI agents more productive, one goal at a time!**

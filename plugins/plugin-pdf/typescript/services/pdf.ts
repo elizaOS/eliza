@@ -1,9 +1,3 @@
-/**
- * PDF Service
- *
- * Provides PDF reading and text extraction functionality.
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service, ServiceType } from "@elizaos/core";
 import pkg from "pdfjs-dist";
@@ -20,33 +14,19 @@ import type {
   PdfPageInfo,
 } from "../types";
 
-/**
- * Type guard for TextItem.
- */
 function isTextItem(item: TextItem | TextMarkedContent): item is TextItem {
   return "str" in item;
 }
 
-/**
- * PDF Service for elizaOS.
- *
- * Provides PDF reading and text extraction capabilities.
- */
 export class PdfService extends Service {
   static serviceType = ServiceType.PDF;
   capabilityDescription = "The agent is able to convert PDF files to text";
 
-  /**
-   * Initialize the PDF service.
-   */
   static async start(runtime: IAgentRuntime): Promise<PdfService> {
     const service = new PdfService(runtime);
     return service;
   }
 
-  /**
-   * Stop the PDF service.
-   */
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(ServiceType.PDF);
     if (service) {
@@ -54,16 +34,8 @@ export class PdfService extends Service {
     }
   }
 
-  /**
-   * Stop the service.
-   */
-  async stop(): Promise<void> {
-    // Nothing to clean up
-  }
+  async stop(): Promise<void> {}
 
-  /**
-   * Convert a PDF buffer to text.
-   */
   async convertPdfToText(pdfBuffer: Buffer): Promise<string> {
     try {
       const uint8Array = new Uint8Array(pdfBuffer);
@@ -92,9 +64,6 @@ export class PdfService extends Service {
     }
   }
 
-  /**
-   * Convert a PDF buffer to text with options.
-   */
   async convertPdfToTextWithOptions(
     pdfBuffer: Buffer,
     options: PdfExtractionOptions = {}
@@ -138,15 +107,11 @@ export class PdfService extends Service {
     }
   }
 
-  /**
-   * Get full document information including per-page text.
-   */
   async getDocumentInfo(pdfBuffer: Buffer): Promise<PdfDocumentInfo> {
     const uint8Array = new Uint8Array(pdfBuffer);
     const pdf = await getDocument({ data: uint8Array }).promise;
     const numPages = pdf.numPages;
 
-    // Get metadata
     const metadataResult = await pdf.getMetadata();
     const info = metadataResult.info as Record<string, string | Date | undefined>;
 
@@ -192,18 +157,12 @@ export class PdfService extends Service {
     };
   }
 
-  /**
-   * Clean up PDF text content by removing problematic characters.
-   */
   cleanUpContent(content: string): string {
     try {
-      // Filter out null characters and other problematic control characters
       const filtered = content
         .split("")
         .filter((char) => {
           const charCode = char.charCodeAt(0);
-          // Keep all characters except control characters (0-31 and 127)
-          // but preserve tab (9), newline (10), and carriage return (13)
           return !(
             charCode === 0 ||
             (charCode >= 1 && charCode <= 8) ||
@@ -215,11 +174,8 @@ export class PdfService extends Service {
         .join("");
 
       const cleaned = filtered
-        // Collapse spaces and tabs but preserve newlines
         .replace(/[^\S\r\n]+/g, " ")
-        // Trim trailing spaces at end of lines
         .replace(/[ \t]+(\r?\n)/g, "$1")
-        // Trim whitespace from start and end
         .trim();
 
       return cleaned;
@@ -227,7 +183,6 @@ export class PdfService extends Service {
       logger.error(
         `PdfService: Failed to clean up content - error: ${error}, contentLength: ${content.length}`
       );
-      // Return original content if cleanup fails
       return content;
     }
   }

@@ -63,6 +63,9 @@ describe("plugin actions: task management", () => {
     // Spy on runtime methods
     vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
 
+    // Mock getMemories to return empty array (avoids database queries)
+    vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
+
     vi.spyOn(runtime, "getService").mockImplementation(<T>(type: string): T | null => {
       if (type === "CODE_TASK") return serviceRef as T;
       return null;

@@ -43,39 +43,28 @@ export interface LinearSearchFilters {
   limit?: number;
 }
 
-/**
- * Action-specific parameter types for type-safe handler options
- */
-
-/** Parameters for CREATE_LINEAR_COMMENT action */
 export interface CreateCommentParameters {
   issueId?: string;
   body?: string;
 }
 
-/** Parameters for CREATE_LINEAR_ISSUE action */
 export interface CreateIssueParameters {
   issueData?: Partial<LinearIssueInput>;
 }
 
-/** Parameters for DELETE_LINEAR_ISSUE action */
 export interface DeleteIssueParameters {
   issueId?: string;
 }
 
-/** Parameters for SEARCH_LINEAR_ISSUES action */
 export interface SearchIssuesParameters {
   filters?: LinearSearchFilters;
   limit?: number;
 }
 
-/** Error response structure from Linear API */
 export interface LinearErrorResponse {
   message?: string;
   errors?: Array<{ message: string; path?: string[] }>;
 }
-
-// Error classes specific to Linear
 export class LinearAPIError extends Error {
   constructor(
     message: string,

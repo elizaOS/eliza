@@ -1,28 +1,5 @@
 /**
  * BlueSky Plugin for elizaOS
- *
- * Provides BlueSky (AT Protocol) integration for posting, messaging, and notifications.
- *
- * ## Features
- *
- * - Post creation and management
- * - Direct messaging
- * - Notification polling and processing
- * - Profile management
- * - Timeline access
- *
- * ## Configuration
- *
- * Required:
- * - BLUESKY_HANDLE: Your BlueSky handle (e.g., user.bsky.social)
- * - BLUESKY_PASSWORD: Your app password
- *
- * Optional:
- * - BLUESKY_SERVICE: BlueSky service URL (default: https://bsky.social)
- * - BLUESKY_DRY_RUN: Simulate operations without executing (default: false)
- * - BLUESKY_POLL_INTERVAL: Notification polling interval in seconds (default: 60)
- * - BLUESKY_ENABLE_POSTING: Enable automated posting (default: true)
- * - BLUESKY_ENABLE_DMS: Enable direct messaging (default: true)
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
@@ -33,9 +10,6 @@ import { getApiKeyOptional } from "./utils/config";
 export { BlueSkyClient } from "./client";
 export { BlueSkyService } from "./services/bluesky";
 
-/**
- * Plugin configuration object structure
- */
 export interface PluginConfig {
   readonly BLUESKY_HANDLE?: string;
   readonly BLUESKY_PASSWORD?: string;

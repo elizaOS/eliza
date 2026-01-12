@@ -23,14 +23,9 @@ import type {
 } from "./types";
 import { BLUESKY_CHAT_SERVICE_DID, BlueSkyError, CACHE_SIZE, CACHE_TTL } from "./types";
 
-/**
- * Type guard to check if a reply reference item is a valid PostView.
- * Filters out NotFoundPost, BlockedPost, and other non-PostView types.
- */
 function isPostView(
   item: AppBskyFeedDefs.PostView | AppBskyFeedDefs.NotFoundPost | AppBskyFeedDefs.BlockedPost | { $type: string; [k: string]: unknown }
 ): item is AppBskyFeedDefs.PostView {
-  // PostView has required properties: uri, cid, author, record, indexedAt
   return (
     typeof item === "object" &&
     item !== null &&
@@ -44,16 +39,8 @@ function isPostView(
   );
 }
 
-/**
- * Converts an AT Protocol post view to our internal BlueSkyPost type.
- * This adapter handles the conversion from @atproto/api types to our internal representation.
- */
 function adaptPostView(postView: AppBskyFeedDefs.PostView): BlueSkyPost {
-  // Cast author to extended profile type to access optional properties
-  // The AT Protocol types have an index signature [k: string]: unknown for extensibility
   const author = postView.author as ATProtocolProfileViewExtended;
-  
-  // Cast record to our known post record type
   const record = postView.record as ATProtocolPostRecord;
   
   return {

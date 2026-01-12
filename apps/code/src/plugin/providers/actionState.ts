@@ -120,7 +120,7 @@ function extractActionResults(
   const results = stateData?.actionResults;
   if (!results) return [];
   if (!Array.isArray(results)) return [];
-  return results.filter(isActionResultEntry);
+  return results.flatMap((item) => (isActionResultEntry(item) ? [item] : []));
 }
 
 /**

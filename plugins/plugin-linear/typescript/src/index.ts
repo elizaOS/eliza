@@ -1,7 +1,6 @@
 import type { Plugin } from "@elizaos/core";
 import { clearActivityAction } from "./actions/clearActivity";
 import { createCommentAction } from "./actions/createComment";
-// Import all actions
 import { createIssueAction } from "./actions/createIssue";
 import { deleteIssueAction } from "./actions/deleteIssue";
 import { getActivityAction } from "./actions/getActivity";
@@ -11,8 +10,6 @@ import { listTeamsAction } from "./actions/listTeams";
 import { searchIssuesAction } from "./actions/searchIssues";
 import { updateIssueAction } from "./actions/updateIssue";
 import { linearActivityProvider } from "./providers/activity";
-
-// Import all providers
 import { linearIssuesProvider } from "./providers/issues";
 import { linearProjectsProvider } from "./providers/projects";
 import { linearTeamsProvider } from "./providers/teams";

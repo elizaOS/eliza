@@ -1,28 +1,3 @@
-/**
- * Google Generative AI Plugin for elizaOS
- *
- * Provides text generation, embeddings, and image analysis using Google's Gemini models.
- *
- * ## Supported Models
- *
- * - TEXT_SMALL: gemini-2.0-flash (fast, efficient)
- * - TEXT_LARGE: gemini-2.5-pro (most capable)
- * - TEXT_EMBEDDING: text-embedding-004
- * - IMAGE_DESCRIPTION: gemini-2.5-pro (multimodal)
- * - OBJECT_SMALL: JSON generation with small model
- * - OBJECT_LARGE: JSON generation with large model
- *
- * ## Configuration
- *
- * Required:
- * - GOOGLE_GENERATIVE_AI_API_KEY: Your Google AI API key
- *
- * Optional:
- * - GOOGLE_SMALL_MODEL: Override small model (default: gemini-2.0-flash-001)
- * - GOOGLE_LARGE_MODEL: Override large model (default: gemini-2.5-pro-preview-03-25)
- * - GOOGLE_IMAGE_MODEL: Override image model
- * - GOOGLE_EMBEDDING_MODEL: Override embedding model (default: text-embedding-004)
- */
 
 import type {
   GenerateTextParams,
@@ -48,9 +23,6 @@ import { getApiKey } from "./utils/config";
 export type { PluginConfig } from "./init";
 export * from "./types";
 
-/**
- * Test suite for the Google GenAI plugin.
- */
 const pluginTests = [
   {
     name: "google_genai_plugin_tests",
@@ -186,12 +158,6 @@ const pluginTests = [
   },
 ];
 
-/**
- * Google Generative AI plugin for elizaOS.
- *
- * Provides text generation, embeddings, image analysis, and JSON object generation
- * using Google's Gemini models.
- */
 export const googleGenAIPlugin: Plugin = {
   name: "google-genai",
   description: "Google Generative AI plugin for Gemini models",

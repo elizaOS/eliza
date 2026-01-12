@@ -1,5 +1,3 @@
-"""Tests for type definitions."""
-
 import pytest
 from pydantic import ValidationError
 
