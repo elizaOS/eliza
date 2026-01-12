@@ -11,8 +11,8 @@ from elizaos_plugin_linear.types import (
 )
 
 
-class MockRuntime:
-    """Mock runtime for testing."""
+class TestRuntime:
+    """Test runtime for testing."""
 
     def __init__(self, settings: dict[str, str | None] | None = None) -> None:
         self._settings = settings or {}
@@ -22,9 +22,9 @@ class MockRuntime:
 
 
 @pytest.fixture
-def mock_runtime() -> MockRuntime:
-    """Create a mock runtime with test settings."""
-    return MockRuntime(
+def test_runtime() -> TestRuntime:
+    """Create a test runtime with test settings."""
+    return TestRuntime(
         {
             "LINEAR_API_KEY": "test-api-key",
             "LINEAR_WORKSPACE_ID": "test-workspace",
@@ -37,30 +37,30 @@ class TestLinearService:
 
     def test_init_without_api_key_raises_error(self) -> None:
         """Test that initialization without API key raises error."""
-        runtime = MockRuntime()
+        runtime = TestRuntime()
 
         with pytest.raises(LinearAuthenticationError, match="Linear API key is required"):
             LinearService(runtime)
 
-    def test_init_with_api_key_succeeds(self, mock_runtime: MockRuntime) -> None:
+    def test_init_with_api_key_succeeds(self, test_runtime: TestRuntime) -> None:
         """Test that initialization with API key succeeds."""
-        service = LinearService(mock_runtime)
+        service = LinearService(test_runtime)
 
         assert service.config.api_key == "test-api-key"
         assert service.config.workspace_id == "test-workspace"
 
     @pytest.mark.asyncio
-    async def test_start_validates_connection(self, mock_runtime: MockRuntime) -> None:
+    async def test_start_validates_connection(self, test_runtime: TestRuntime) -> None:
         """Test that start validates the API connection."""
         with patch.object(LinearService, "_validate_connection", new_callable=AsyncMock):
-            service = await LinearService.start(mock_runtime)
+            service = await LinearService.start(test_runtime)
 
             assert service is not None
             service._validate_connection.assert_called_once()  # type: ignore
 
-    def test_activity_log_operations(self, mock_runtime: MockRuntime) -> None:
+    def test_activity_log_operations(self, test_runtime: TestRuntime) -> None:
         """Test activity log operations."""
-        service = LinearService(mock_runtime)
+        service = LinearService(test_runtime)
 
         # Clear log
         service.clear_activity_log()
@@ -79,9 +79,9 @@ class TestLinearService:
         service.clear_activity_log()
         assert len(service.get_activity_log()) == 0
 
-    def test_activity_log_limit(self, mock_runtime: MockRuntime) -> None:
+    def test_activity_log_limit(self, test_runtime: TestRuntime) -> None:
         """Test activity log respects limit."""
-        service = LinearService(mock_runtime)
+        service = LinearService(test_runtime)
         service.clear_activity_log()
 
         # Add more than limit
@@ -92,9 +92,9 @@ class TestLinearService:
         activity = service.get_activity_log(limit=5)
         assert len(activity) == 5
 
-    def test_activity_log_filter(self, mock_runtime: MockRuntime) -> None:
+    def test_activity_log_filter(self, test_runtime: TestRuntime) -> None:
         """Test activity log filtering."""
-        service = LinearService(mock_runtime)
+        service = LinearService(test_runtime)
         service.clear_activity_log()
 
         service._log_activity("create_issue", "issue", "id-1", {}, True)
@@ -109,9 +109,9 @@ class TestLinearService:
         assert len(failed) == 1
 
     @pytest.mark.asyncio
-    async def test_get_teams(self, mock_runtime: MockRuntime) -> None:
+    async def test_get_teams(self, test_runtime: TestRuntime) -> None:
         """Test get teams."""
-        service = LinearService(mock_runtime)
+        service = LinearService(test_runtime)
 
         mock_response = {
             "data": {
@@ -139,9 +139,9 @@ class TestLinearService:
             assert teams[1]["key"] == "DES"
 
     @pytest.mark.asyncio
-    async def test_create_issue(self, mock_runtime: MockRuntime) -> None:
+    async def test_create_issue(self, test_runtime: TestRuntime) -> None:
         """Test create issue."""
-        service = LinearService(mock_runtime)
+        service = LinearService(test_runtime)
 
         mock_response = {
             "data": {
