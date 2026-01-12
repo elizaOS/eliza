@@ -18,7 +18,9 @@ type SpawnResult = { exited: Promise<number> };
 type SpawnFn = (args: string[]) => SpawnResult;
 
 /** Type-safe access to mutable Bun global for testing */
-const BunGlobal = globalThis.Bun as { spawn: SpawnFn };
+const BunGlobal = (globalThis.Bun ?? { spawn: undefined }) as {
+  spawn: SpawnFn | undefined;
+};
 
 /** Shape of an invalid plugin for testing error handling */
 interface InvalidPlugin {
