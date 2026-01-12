@@ -3242,15 +3242,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         updatedAt: now,
       };
 
-      logger.info(
-        { src: 'plugin:sql', method: 'ensureMessageServer', serverId: serverToInsert.id },
-        '[DEBUG] BEFORE onConflictDoNothing'
-      );
-      await this.db.insert(messageServerTable).values(serverToInsert).onConflictDoNothing(); // In case the ID already exists
-      logger.info(
-        { src: 'plugin:sql', method: 'ensureMessageServer' },
-        '[DEBUG] AFTER onConflictDoNothing'
-      );
+      await this.db.insert(messageServerTable).values(serverToInsert).onConflictDoNothing();
 
       // If server already existed, fetch it
       if (data.id) {
@@ -3782,18 +3774,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         entityId: entityId,
       }));
 
-      logger.info(
-        { src: 'plugin:sql', method: 'addChannelParticipants', channelId, count: entityIds.length },
-        '[DEBUG] BEFORE onConflictDoNothing'
-      );
       await this.db
         .insert(channelParticipantsTable)
         .values(participantValues)
         .onConflictDoNothing();
-      logger.info(
-        { src: 'plugin:sql', method: 'addChannelParticipants' },
-        '[DEBUG] AFTER onConflictDoNothing'
-      );
     });
   }
 
@@ -3839,10 +3823,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   async addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      logger.info(
-        { src: 'plugin:sql', method: 'addAgentToMessageServer', messageServerId, agentId },
-        '[DEBUG] BEFORE onConflictDoNothing'
-      );
       await this.db
         .insert(messageServerAgentsTable)
         .values({
@@ -3850,10 +3830,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           agentId,
         })
         .onConflictDoNothing();
-      logger.info(
-        { src: 'plugin:sql', method: 'addAgentToMessageServer' },
-        '[DEBUG] AFTER onConflictDoNothing'
-      );
     });
   }
 
