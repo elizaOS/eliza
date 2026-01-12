@@ -214,7 +214,8 @@ fn test_create_form_extract_type() {
         CreateFormAction::extract_form_type("sign up here"),
         Some("registration")
     );
-    assert_eq!(CreateFormAction::extract_form_type("random message"), None);
+    // "message" is a keyword for contact, so use text without any keywords
+    assert_eq!(CreateFormAction::extract_form_type("hello world"), None);
 }
 
 #[test]

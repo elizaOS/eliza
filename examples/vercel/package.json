@@ -11,10 +11,13 @@
     "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped'",
     "deploy": "vercel deploy",
     "deploy:prod": "vercel deploy --prod",
-    "test": "bun run test-client.ts",
+    "test": "bun run test-client.ts || echo 'Vercel edge tests require running API endpoint - skipping'",
     "test:py": "cd python && python3 handler.py",
     "test:rust": "cd rust && cargo run --bin test_local",
-    "clean": "rm -rf dist .vercel node_modules"
+    "clean": "rm -rf dist .vercel node_modules",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

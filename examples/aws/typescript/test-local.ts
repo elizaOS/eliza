@@ -64,7 +64,10 @@ function createEvent(
 }
 
 // Helper to get statusCode and body from API Gateway result
-function getResultData(result: Awaited<ReturnType<typeof handler>>): { statusCode: number; body: string } {
+function getResultData(result: Awaited<ReturnType<typeof handler>>): {
+  statusCode: number;
+  body: string;
+} {
   if (typeof result === "string") {
     return { statusCode: 200, body: result };
   }
@@ -131,7 +134,9 @@ async function runTests(): Promise<void> {
   // Test 4: 404 for unknown path
   console.log("4️⃣  Testing 404 response...");
   const notFoundEvent = createEvent("GET", "/unknown");
-  const notFoundResult = getResultData(await handler(notFoundEvent, mockContext));
+  const notFoundResult = getResultData(
+    await handler(notFoundEvent, mockContext),
+  );
   console.log(`   Status: ${notFoundResult.statusCode}`);
 
   if (notFoundResult.statusCode !== 404) {

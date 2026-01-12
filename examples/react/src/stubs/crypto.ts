@@ -58,4 +58,3 @@ export default {
   pbkdf2Sync,
   webcrypto,
 };
-

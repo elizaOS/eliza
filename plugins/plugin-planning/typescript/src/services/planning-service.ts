@@ -826,7 +826,7 @@ Focus on:
     runtime: IAgentRuntime,
     step: ActionStep,
     message: Memory,
-    _workingMemory: WorkingMemory,
+    workingMemory: WorkingMemory,
     previousResults: ActionResult[],
     callback?: HandlerCallback,
     _abortSignal?: AbortSignal
@@ -858,6 +858,9 @@ Focus on:
           {
             ...step.parameters,
             actionContext,
+            context: {
+              workingMemory,
+            },
           } as HandlerOptions,
           callback
         );

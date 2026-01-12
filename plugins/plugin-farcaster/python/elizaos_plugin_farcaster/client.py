@@ -145,12 +145,23 @@ def _split_paragraph(paragraph: str, max_length: int) -> list[str]:
                     else:
                         if current_chunk:
                             chunks.append(current_chunk)
-                        current_chunk = word
+                        # Handle words longer than max_length by splitting by character
+                        if len(word) > max_length:
+                            word_chunks = _split_by_length(word, max_length)
+                            chunks.extend(word_chunks[:-1])
+                            current_chunk = word_chunks[-1] if word_chunks else ""
+                        else:
+                            current_chunk = word
 
     if current_chunk:
         chunks.append(current_chunk)
 
     return chunks
+
+
+def _split_by_length(text: str, max_length: int) -> list[str]:
+    """Split text into chunks of max_length characters."""
+    return [text[i : i + max_length] for i in range(0, len(text), max_length)]
 
 
 class FarcasterClient:

@@ -55,10 +55,10 @@ class TestAnthropicConfig:
 
     def test_config_messages_url(self) -> None:
         config = AnthropicConfig("test-key")
-        assert config.messages_url() == "https://api.anthropic.com/v1/messages"
+        assert config.messages_url == "https://api.anthropic.com/v1/messages"
 
         custom_config = AnthropicConfig("test-key").with_base_url("https://custom.api.com")
-        assert custom_config.messages_url() == "https://custom.api.com/v1/messages"
+        assert custom_config.messages_url == "https://custom.api.com/v1/messages"
 
 
 class TestAnthropicConfigFromEnv:

@@ -47,7 +47,7 @@ class AnthropicConfig:
                 "Please set it to your Anthropic API key."
             )
 
-        base_url = os.environ.get("ANTHROPIC_BASE_URL", DEFAULT_BASE_URL)
+        base_url = os.environ.get("ANTHROPIC_BASE_URL") or DEFAULT_BASE_URL
 
         small_model_id = os.environ.get("ANTHROPIC_SMALL_MODEL")
         small_model = Model(small_model_id) if small_model_id else None
@@ -112,4 +112,24 @@ class AnthropicConfig:
             small_model=self._small_model,
             large_model=self._large_model,
             timeout_seconds=seconds,
+        )
+
+    def with_small_model(self, model: Model) -> AnthropicConfig:
+        return AnthropicConfig(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            api_version=self._api_version,
+            small_model=model,
+            large_model=self._large_model,
+            timeout_seconds=self._timeout_seconds,
+        )
+
+    def with_large_model(self, model: Model) -> AnthropicConfig:
+        return AnthropicConfig(
+            api_key=self._api_key,
+            base_url=self._base_url,
+            api_version=self._api_version,
+            small_model=self._small_model,
+            large_model=model,
+            timeout_seconds=self._timeout_seconds,
         )

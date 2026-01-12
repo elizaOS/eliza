@@ -58,3 +58,4 @@ Return your response in XML format:
 Be precise and extract only what is explicitly stated.`;
 
 export const FORM_EXTRACTION_TEMPLATE = formExtractionTemplate;
+

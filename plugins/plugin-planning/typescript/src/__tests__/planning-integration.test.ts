@@ -130,6 +130,66 @@ describe("Planning Integration Tests", () => {
     runtime = result.runtime;
     cleanup = result.cleanup;
     planningService = new PlanningService(runtime);
+
+    // Mock useModel to return valid planning XML response
+    vi.spyOn(runtime, "useModel").mockImplementation(async (_modelType, options) => {
+      const prompt = (options as { prompt: string }).prompt || "";
+
+      // Check if this is a comprehensive planning request
+      if (prompt.includes("Create a detailed plan") || prompt.includes("expert AI planning system")) {
+        const goal = prompt.match(/GOAL: (.*)/)?.[1] || "Default goal";
+        const executionModel = prompt.match(/EXECUTION MODEL: (\w+)/)?.[1] || "sequential";
+
+        return `<plan>
+<goal>${goal}</goal>
+<execution_model>${executionModel}</execution_model>
+<steps>
+<step>
+<id>step_1</id>
+<action>ANALYZE_INPUT</action>
+<parameters>{"goal": "${goal}"}</parameters>
+<dependencies>[]</dependencies>
+<description>Analyze the request</description>
+</step>
+<step>
+<id>step_2</id>
+<action>PROCESS_ANALYSIS</action>
+<parameters>{"type": "planning"}</parameters>
+<dependencies>["step_1"]</dependencies>
+<description>Process the analysis</description>
+</step>
+<step>
+<id>step_3</id>
+<action>EXECUTE_FINAL</action>
+<parameters>{"deliverable": "timeline"}</parameters>
+<dependencies>["step_2"]</dependencies>
+<description>Create final timeline</description>
+</step>
+</steps>
+<estimated_duration>30000</estimated_duration>
+</plan>`;
+      }
+
+      // Check if this is an adaptation request
+      if (prompt.includes("expert AI adaptation system") || prompt.includes("plan execution has encountered")) {
+        return `<plan>
+<goal>Adapted plan</goal>
+<execution_model>sequential</execution_model>
+<steps>
+<step>
+<id>adapted_step_1</id>
+<action>REPLY</action>
+<parameters>{"text": "Adapted response"}</parameters>
+<dependencies>[]</dependencies>
+<description>Send adapted reply</description>
+</step>
+</steps>
+<estimated_duration>5000</estimated_duration>
+</plan>`;
+      }
+
+      return "Default model response";
+    });
   });
 
   afterEach(async () => {
@@ -788,6 +848,26 @@ describe("Planning Integration Tests", () => {
 
   describe("Performance and Scalability", () => {
     it("should handle large plans efficiently", async () => {
+      // Add REPLY action to runtime for this test
+      runtime.actions = [
+        {
+          name: "REPLY",
+          similes: [],
+          description: "Send a reply",
+          handler: vi.fn().mockImplementation(async (_runtime, _message, _state, options, callback) => {
+            if (callback) {
+              await callback({
+                text: options.text || "Reply sent",
+                source: "test",
+              });
+            }
+            return { text: options.text || "Reply sent", success: true };
+          }),
+          validate: vi.fn().mockResolvedValue(true),
+          examples: [],
+        },
+      ];
+
       const largePlan: ActionPlan = {
         id: asUUID(uuidv4()),
         goal: "Large scale plan",

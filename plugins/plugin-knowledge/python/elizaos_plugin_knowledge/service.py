@@ -6,7 +6,6 @@ import os
 import uuid
 from typing import Protocol
 
-from elizaos.types import MemoryType
 from elizaos_plugin_knowledge.types import (
     AddKnowledgeOptions,
     ChunkResult,
@@ -15,6 +14,7 @@ from elizaos_plugin_knowledge.types import (
     KnowledgeDocument,
     KnowledgeFragment,
     KnowledgeItem,
+    MemoryType,
     ProcessingResult,
     SearchResult,
 )
@@ -145,10 +145,17 @@ class KnowledgeService:
             if chunk:
                 chunks.append(chunk)
 
-            # Move start with overlap
-            start = end - char_overlap
-            if start >= text_len:
+            # Break if we've reached the end of the text
+            if end >= text_len:
                 break
+
+            # Move start with overlap, ensuring forward progress
+            new_start = end - char_overlap
+            if new_start <= start:
+                # Ensure we always make forward progress
+                start = end
+            else:
+                start = new_start
 
         return ChunkResult(
             chunks=chunks,

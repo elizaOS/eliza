@@ -361,4 +361,3 @@ export const EvolutionGlow: React.FC = () => (
     </defs>
   </g>
 );
-

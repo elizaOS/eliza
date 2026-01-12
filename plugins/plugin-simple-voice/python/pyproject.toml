@@ -54,7 +54,9 @@ Repository = "https://github.com/ai16z/eliza/tree/main/plugins/plugin-simple-voi
 packages = ["src/eliza_plugin_simple_voice"]
 
 [tool.pytest.ini_options]
-testpaths = ["src/eliza_plugin_simple_voice/tests"]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
 addopts = "-v -p no:anchorpy"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

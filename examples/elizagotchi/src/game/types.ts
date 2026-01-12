@@ -158,4 +158,3 @@ export interface GameCommand {
   action: Action | "status" | "help" | "reset" | "name";
   parameter?: string;
 }
-

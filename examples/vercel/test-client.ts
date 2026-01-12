@@ -121,7 +121,7 @@ async function runTests(): Promise<void> {
   // Check if server is available
   const serverAvailable = await isServerAvailable();
   if (!serverAvailable) {
-    console.log("⚠️  Server not available at " + baseUrl);
+    console.log(`⚠️  Server not available at ${baseUrl}`);
     console.log("   Skipping integration tests (server must be running)");
     console.log("\n   To run these tests:");
     console.log("   1. Start the server: bun run dev");

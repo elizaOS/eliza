@@ -67,11 +67,13 @@ class TestModel:
         assert opus.is_large()
 
     def test_max_tokens_by_model(self) -> None:
-        haiku = Model(Model.CLAUDE_3_5_HAIKU)
+        # Claude 3 Haiku has 4096 max tokens
+        haiku_3 = Model(Model.CLAUDE_3_HAIKU)
+        # Claude 3.5+ models have 8192 max tokens
         sonnet = Model(Model.CLAUDE_SONNET_4)
 
-        # Haiku has smaller context
-        assert haiku.max_tokens() < sonnet.max_tokens()
+        # Claude 3 models have smaller max tokens than 3.5+ models
+        assert haiku_3.max_tokens() < sonnet.max_tokens()
 
     def test_model_string_representation(self) -> None:
         model = Model(Model.CLAUDE_3_5_HAIKU)
@@ -99,9 +101,9 @@ class TestContentBlock:
     """Tests for ContentBlock classes."""
 
     def test_text_content_block(self) -> None:
-        block = TextContentBlock(type="text", text="Hello, world!")
+        block = TextContentBlock(type="text", text_content="Hello, world!")
         assert block.type == "text"
-        assert block.text == "Hello, world!"
+        assert block.text_content == "Hello, world!"
 
 
 class TestMessage:
@@ -111,13 +113,13 @@ class TestMessage:
         message = Message.user("Hello!")
         assert message.role == Role.USER
         assert len(message.content) == 1
-        assert message.content[0].text == "Hello!"
+        assert message.content[0].get_text() == "Hello!"
 
     def test_assistant_message(self) -> None:
         message = Message.assistant("Hi there!")
         assert message.role == Role.ASSISTANT
         assert len(message.content) == 1
-        assert message.content[0].text == "Hi there!"
+        assert message.content[0].get_text() == "Hi there!"
 
 
 class TestTokenUsage:
@@ -212,8 +214,8 @@ class TestObjectGenerationParams:
             },
             "required": ["name", "age"],
         }
-        params = ObjectGenerationParams(prompt="Create a user", schema=schema)
-        assert params.schema == schema
+        params = ObjectGenerationParams(prompt="Create a user", json_schema=schema)
+        assert params.json_schema == schema
 
 
 class TestObjectGenerationResponse:

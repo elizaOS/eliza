@@ -21,30 +21,51 @@ pub trait Runtime: Send + Sync {
 }
 
 pub fn parse_key_value_xml(text: &str) -> Option<HashMap<String, String>> {
+    // Try to extract content from <response>...</response> first
     let response_re = Regex::new(r"<response>([\s\S]*?)</response>").ok()?;
     let xml_content = if let Some(caps) = response_re.captures(text) {
         caps.get(1)?.as_str()
     } else {
-        let root_re = Regex::new(r"<(\w+)>([\s\S]*?)</\1>").ok()?;
+        // Fall back to finding any root element
+        // Note: Rust's regex crate doesn't support backreferences (\1), so we match
+        // opening tag, content, and closing tag separately
+        let root_re = Regex::new(r"<(\w+)>([\s\S]*?)</(\w+)>").ok()?;
         let caps = root_re.captures(text)?;
+        // Verify opening and closing tags match
+        let open_tag = caps.get(1)?.as_str();
+        let close_tag = caps.get(3)?.as_str();
+        if open_tag != close_tag {
+            return None;
+        }
         caps.get(2)?.as_str()
     };
 
-    let child_re = Regex::new(r"<(\w+)>([^<]*)</\1>").ok()?;
+    // Match simple XML elements: <tag>content</tag>
+    // Note: We capture both opening and closing tag names and verify they match
+    let child_re = Regex::new(r"<(\w+)>([^<]*)</(\w+)>").ok()?;
     let mut result = HashMap::new();
 
     for caps in child_re.captures_iter(xml_content) {
-        let key = caps.get(1)?.as_str().to_string();
-        let mut value = caps.get(2)?.as_str().trim().to_string();
+        if let (Some(open_match), Some(value_match), Some(close_match)) =
+            (caps.get(1), caps.get(2), caps.get(3))
+        {
+            // Only accept if opening and closing tags match
+            if open_match.as_str() != close_match.as_str() {
+                continue;
+            }
 
-        value = value
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&amp;", "&")
-            .replace("&quot;", "\"")
-            .replace("&apos;", "'");
+            let key = open_match.as_str().to_string();
+            let mut value = value_match.as_str().trim().to_string();
 
-        result.insert(key, value);
+            value = value
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'");
+
+            result.insert(key, value);
+        }
     }
 
     if result.is_empty() {

@@ -15,7 +15,10 @@
     "deploy:rust": "npm run build:rust && sam deploy --parameter-overrides RuntimeLanguage=rust",
     "local": "sam local start-api",
     "logs": "sam logs --tail",
-    "delete": "sam delete"
+    "delete": "sam delete",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {},
   "devDependencies": {
@@ -24,4 +27,3 @@
     "typescript": "^5.9.3"
   }
 }
-

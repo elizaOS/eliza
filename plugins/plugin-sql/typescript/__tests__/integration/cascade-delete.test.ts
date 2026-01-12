@@ -1,4 +1,4 @@
-import type { UUID } from "@elizaos/core";
+import { ChannelType, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -49,7 +49,7 @@ describe("Cascade Delete Tests", () => {
         serverId: uuidv4() as UUID,
         worldId: worldId,
         channelId: uuidv4() as UUID,
-        type: ChannelType.PUBLIC,
+        type: ChannelType.GROUP,
         source: "test",
       },
     ]);

@@ -202,11 +202,6 @@ impl KnowledgePlugin {
     }
 }
 
-pub(crate) fn create_knowledge_plugin(config: Option<KnowledgeConfig>) -> KnowledgePlugin {
-    KnowledgePlugin::new(config.unwrap_or_default())
-}
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,14 +301,14 @@ mod tests {
 
     #[test]
     fn test_create_knowledge_plugin() {
-        let _plugin = create_knowledge_plugin(None);
+        let _plugin = KnowledgePlugin::default();
         assert_eq!(KnowledgePlugin::NAME, "knowledge");
 
         let config = KnowledgeConfig {
             chunk_size: 300,
             ..Default::default()
         };
-        let plugin2 = create_knowledge_plugin(Some(config));
+        let plugin2 = KnowledgePlugin::new(config);
         assert!(!plugin2.initialized);
     }
 }

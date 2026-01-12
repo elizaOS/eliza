@@ -741,4 +741,3 @@ export function getHelp(): string {
 // ============================================================================
 
 export const CONFIG = DEFAULT_CONFIG;
-

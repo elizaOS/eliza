@@ -25,6 +25,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   },

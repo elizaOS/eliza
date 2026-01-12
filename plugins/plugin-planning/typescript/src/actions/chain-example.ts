@@ -112,6 +112,8 @@ export const processAnalysisAction: Action = {
         shouldContinue: !decisions.needsMoreInfo,
       },
       text: decisions.suggestedResponse,
+      // Top-level chain control flag
+      continueChain: !decisions.needsMoreInfo,
     };
   },
 };
@@ -177,6 +179,9 @@ export const executeFinalAction: Action = {
         },
       },
       text: execution.message,
+      cleanup: async () => {
+        console.log("[ChainExample] Cleaning up resources...");
+      },
     };
   },
 };

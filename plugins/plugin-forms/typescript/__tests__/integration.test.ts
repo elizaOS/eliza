@@ -38,7 +38,8 @@ describe("Forms Plugin Integration Tests", () => {
   beforeEach(async () => {
     runtime = await createTestRuntime();
 
-    vi.spyOn(runtime, "useModel").mockResolvedValue('{"name": "Test User"}');
+    // Default mock returns XML format (the service expects XML responses)
+    vi.spyOn(runtime, "useModel").mockResolvedValue("<response><name>Test User</name></response>");
 
     vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
     vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
@@ -101,7 +102,9 @@ describe("Forms Plugin Integration Tests", () => {
         return [];
       };
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "John Doe"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><name>John Doe</name></response>"
+      );
 
       await updateFormAction.handler(
         runtime,
@@ -150,13 +153,15 @@ describe("Forms Plugin Integration Tests", () => {
       const result = await formsProvider.get(runtime, message, state);
 
       expect(result).toBeDefined();
-      expect(result.text).toContain("Active forms");
+      expect(result.text).toContain("Active Form:");
     });
 
     test("should reflect form state changes", async () => {
       const form = await formsService.createForm("contact");
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "Jane Doe"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><name>Jane Doe</name></response>"
+      );
       await formsService.updateForm(form.id, createTestMemory("My name is Jane Doe"));
 
       const message = createTestMemory("Show forms");
@@ -173,11 +178,15 @@ describe("Forms Plugin Integration Tests", () => {
       const form = await formsService.createForm("contact");
       expect(form.status).toBe("active");
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "John Doe"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><name>John Doe</name></response>"
+      );
       let result = await formsService.updateForm(form.id, createTestMemory("My name is John Doe"));
       expect(result.success).toBe(true);
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"email": "john@example.com"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><email>john@example.com</email></response>"
+      );
       result = await formsService.updateForm(
         form.id,
         createTestMemory("My email is john@example.com")
@@ -191,13 +200,17 @@ describe("Forms Plugin Integration Tests", () => {
     test("should handle form cancellation mid-workflow", async () => {
       const form = await formsService.createForm("contact");
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "John Doe"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><name>John Doe</name></response>"
+      );
       await formsService.updateForm(form.id, createTestMemory("My name is John Doe"));
 
       const cancelled = await formsService.cancelForm(form.id);
       expect(cancelled).toBe(true);
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"email": "john@example.com"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><email>john@example.com</email></response>"
+      );
       const result = await formsService.updateForm(form.id, createTestMemory("john@example.com"));
       expect(result.success).toBe(false);
       expect(result.message).toBe("Form is not active");
@@ -210,10 +223,12 @@ describe("Forms Plugin Integration Tests", () => {
       const form1 = await formsService.createForm("contact");
       const form2 = await formsService.createForm("contact");
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "Alice"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><name>Alice</name></response>"
+      );
       await formsService.updateForm(form1.id, createTestMemory("I am Alice"));
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "Bob"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce("<response><name>Bob</name></response>");
       await formsService.updateForm(form2.id, createTestMemory("I am Bob"));
 
       // Verify each form has correct data

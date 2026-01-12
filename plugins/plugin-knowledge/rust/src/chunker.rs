@@ -42,10 +42,12 @@ impl TextChunker {
 
             if end < text_len {
                 let search_start = start + (char_chunk_size * 4 / 5);
-                let search_region = &text[search_start..end];
+                if search_start < end {
+                    let search_region = &text[search_start..end];
 
-                if let Some(pos) = search_region.rfind(|c| c == '.' || c == '!' || c == '?' || c == '\n') {
-                    end = search_start + pos + 1;
+                    if let Some(pos) = search_region.rfind(|c| c == '.' || c == '!' || c == '?' || c == '\n') {
+                        end = search_start + pos + 1;
+                    }
                 }
             }
 
@@ -54,14 +56,23 @@ impl TextChunker {
                 chunks.push(chunk);
             }
 
-            start = if end > char_overlap {
+            // If we've reached the end of the text, break
+            if end >= text_len {
+                break;
+            }
+
+            // Calculate next start position, ensuring we always make forward progress
+            let next_start = if end > char_overlap {
                 end - char_overlap
             } else {
                 end
             };
 
-            if start >= text_len {
-                break;
+            // Ensure we always make forward progress to avoid infinite loops
+            if next_start <= start {
+                start = end;
+            } else {
+                start = next_start;
             }
         }
 

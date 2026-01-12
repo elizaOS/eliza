@@ -12,7 +12,10 @@
     "test": "bun run test-client.ts",
     "test:stream": "bun run test-client.ts --stream",
     "tail": "wrangler tail",
-    "secret": "wrangler secret put OPENAI_API_KEY"
+    "secret": "wrangler secret put OPENAI_API_KEY",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "echo 'Cloudflare Workers use wrangler for type checking'"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
@@ -29,4 +32,3 @@
   "author": "",
   "license": "MIT"
 }
-

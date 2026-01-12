@@ -34,11 +34,6 @@ interface ChatResponse {
   timestamp: string;
 }
 
-interface ErrorResponse {
-  error: string;
-  code: string;
-}
-
 // Character configuration
 function getCharacter(): Character {
   const secrets: Record<string, string> = {};
@@ -82,10 +77,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   return runtime!;
 }
 
-function jsonResponse<T extends object>(
-  statusCode: number,
-  body: T,
-): Response {
+function jsonResponse<T extends object>(statusCode: number, body: T): Response {
   return new Response(JSON.stringify(body), {
     status: statusCode,
     headers: {

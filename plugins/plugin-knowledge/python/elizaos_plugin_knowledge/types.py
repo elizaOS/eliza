@@ -4,6 +4,16 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+class MemoryType(str, Enum):
+    """Type of memory for knowledge fragments and documents."""
+
+    DOCUMENT = "document"
+    FRAGMENT = "fragment"
+    MESSAGE = "message"
+    DESCRIPTION = "description"
+    CUSTOM = "custom"
+
+
 class EmbeddingProvider(str, Enum):
     OPENAI = "openai"
     GOOGLE = "google"
