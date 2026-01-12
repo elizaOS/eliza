@@ -1392,43 +1392,32 @@ export class AgentRuntime implements IAgentRuntime {
       await this.createRooms(roomObjsToCreate);
     }
 
-    // Step 2: Create all entities
+    // Step 2: Create all entities (ON CONFLICT DO NOTHING handles duplicates)
     const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
-    const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
-    const entitiesToUpdate =
-      entityExistsCheck?.map((e) => e.id).filter((id): id is UUID => id !== undefined) || [];
-    const entitiesToCreate = entities.filter(
-      (e) => e.id !== undefined && !entitiesToUpdate.includes(e.id)
-    );
 
-    const r = {
-      roomId: firstRoom.id,
-      channelId: firstRoom.channelId,
-      type: firstRoom.type,
-    };
-    const wf = {
-      worldId: world.id,
-      messageServerId: world.messageServerId,
-    };
-
-    if (entitiesToCreate.length) {
+    if (entities.length) {
       this.logger.debug(
-        { src: 'agent', agentId: this.agentId, count: entitiesToCreate.length },
+        { src: 'agent', agentId: this.agentId, count: entities.length },
         'Creating entities'
       );
-      const ef = {
-        ...r,
-        ...wf,
+      const entityFields = {
+        roomId: firstRoom.id,
+        channelId: firstRoom.channelId,
+        type: firstRoom.type,
+        worldId: world.id,
+        messageServerId: world.messageServerId,
         source,
         agentId: this.agentId,
       };
-      const entitiesToCreateWFields: Entity[] = entitiesToCreate.map((e) => ({
-        ...e,
-        ...ef,
-        metadata: e.metadata || {},
-      }));
+      const entitiesWithFields: Entity[] = entities
+        .filter((e) => e.id !== undefined)
+        .map((e) => ({
+          ...e,
+          ...entityFields,
+          metadata: e.metadata || {},
+        }));
       // pglite doesn't like over 10k records
-      const batches = chunkArray(entitiesToCreateWFields, 5000);
+      const batches = chunkArray(entitiesWithFields, 5000);
       for (const batch of batches) {
         await this.createEntities(batch);
       }
