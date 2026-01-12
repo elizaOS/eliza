@@ -5,10 +5,12 @@
 #[cfg(feature = "native")]
 mod native_tests {
     use elizaos::{Bio, Character, Content, Memory, UUID};
-    use elizaos_plugin_sql::{DatabaseAdapter, PostgresAdapter};
+    use elizaos_plugin_sql::base::DatabaseAdapter;
+    use elizaos_plugin_sql::postgres::PostgresAdapter;
 
     /// Test creating and retrieving an agent
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database connection"]
     async fn test_agent_crud() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());
@@ -124,6 +126,7 @@ mod native_tests {
 
     /// Test memory CRUD operations
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database connection"]
     async fn test_memory_crud() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());
@@ -190,6 +193,7 @@ mod native_tests {
 
     /// Test counting memories
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database connection"]
     async fn test_count_memories() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());
@@ -262,6 +266,7 @@ mod native_tests {
 
     /// Test cache operations
     #[tokio::test]
+    #[ignore = "Requires PostgreSQL database connection"]
     async fn test_cache() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());

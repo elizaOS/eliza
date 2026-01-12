@@ -49,11 +49,6 @@ interface InfoResponse {
   endpoints: Record<string, string>;
 }
 
-interface ErrorResponse {
-  error: string;
-  code: string;
-}
-
 // Character configuration from environment
 function getCharacter(): Character {
   return {
@@ -138,11 +133,7 @@ function validateChatRequest(body: Record<string, unknown>): ChatRequest {
 /**
  * Send JSON response
  */
-function sendJson(
-  res: ServerResponse,
-  statusCode: number,
-  body: object,
-): void {
+function sendJson(res: ServerResponse, statusCode: number, body: object): void {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
@@ -221,7 +212,9 @@ function handleHealth(): HealthResponse {
 function handleInfo(): InfoResponse {
   const character = getCharacter();
   const bio = character.bio;
-  const bioStr = Array.isArray(bio) ? bio.join(" ") : (bio ?? "A helpful AI assistant.");
+  const bioStr = Array.isArray(bio)
+    ? bio.join(" ")
+    : (bio ?? "A helpful AI assistant.");
   return {
     name: character.name,
     bio: bioStr,

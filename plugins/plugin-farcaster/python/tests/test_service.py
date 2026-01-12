@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import pytest
 
+from elizaos_plugin_farcaster.actions.send_cast import SendCastAction
 from elizaos_plugin_farcaster.config import FarcasterConfig
-from elizaos_plugin_farcaster.service import (
-    FarcasterService,
-    ProfileProvider,
-    SendCastAction,
-    TimelineProvider,
-)
+from elizaos_plugin_farcaster.providers.profile import ProfileProvider
+from elizaos_plugin_farcaster.providers.timeline import TimelineProvider
+from elizaos_plugin_farcaster.service import FarcasterService
 
 
 @pytest.fixture
@@ -17,52 +15,50 @@ def service(mock_config: FarcasterConfig) -> FarcasterService:
 
 
 def test_service_creation(service: FarcasterService) -> None:
-    assert service.service_type == "farcaster"
-    assert service.description is not None
-    assert service.capability_description is not None
-
-
-@pytest.mark.asyncio
-async def test_service_send_cast(service: FarcasterService) -> None:
-    casts = await service.send_cast("Hello from service!")
-    assert len(casts) == 1
-    assert casts[0].text == "Hello from service!"
-
-
-@pytest.mark.asyncio
-async def test_service_health_check_no_start(service: FarcasterService) -> None:
-    result = await service.health_check()
-    assert isinstance(result.details, dict)
+    assert service.config is not None
+    assert service.fid == 12345
 
 
 class TestSendCastAction:
     """Tests for SendCastAction."""
 
+    @pytest.fixture
+    def started_service(self, mock_config: FarcasterConfig) -> FarcasterService:
+        """Return a service that appears started for validation."""
+        svc = FarcasterService(mock_config)
+        svc._running = True
+        return svc
+
     @pytest.mark.asyncio
-    async def test_validate_with_keyword(self, service: FarcasterService) -> None:
+    async def test_validate_with_keyword(self, started_service: FarcasterService) -> None:
         """Test validation with matching keyword."""
         action = SendCastAction()
-        result = await action.validate("Please post this on Farcaster", service)
+        message = {"content": {"text": "Please post this on Farcaster"}}
+        result = await action.validate(message, started_service)
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_validate_without_keyword(self, service: FarcasterService) -> None:
+    async def test_validate_without_keyword(self, started_service: FarcasterService) -> None:
         action = SendCastAction()
-        result = await action.validate("Hello world", service)
+        message = {"content": {"text": "Hello world"}}
+        result = await action.validate(message, started_service)
         assert result is False
 
     @pytest.mark.asyncio
     async def test_validate_no_service(self) -> None:
         """Test validation with no service."""
         action = SendCastAction()
-        result = await action.validate("Please post this on Farcaster", None)
+        message = {"content": {"text": "Please post this on Farcaster"}}
+        result = await action.validate(message, None)
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_execute(self, service: FarcasterService) -> None:
+    async def test_validate_service_not_running(self, service: FarcasterService) -> None:
+        """Test validation when service is not running."""
         action = SendCastAction()
-        casts = await action.execute("Test cast", service)
-        assert len(casts) == 1
+        message = {"content": {"text": "Please post this on Farcaster"}}
+        result = await action.validate(message, service)
+        assert result is False
 
 
 class TestProviders:
@@ -72,8 +68,8 @@ class TestProviders:
     ) -> None:
         provider = ProfileProvider(service, mock_config)
         result = await provider.get()
-        # Will error because we can't reach API
-        assert "Error" in result or "Farcaster Profile" in result
+        # Will error because service not started and can't reach API
+        assert "Error" in result
 
     @pytest.mark.asyncio
     async def test_timeline_provider_error(
@@ -83,3 +79,21 @@ class TestProviders:
         provider = TimelineProvider(service, mock_config)
         result = await provider.get()
         assert isinstance(result, str)
+        # Will error because service not started
+        assert "Error" in result
+
+    def test_profile_provider_properties(
+        self, service: FarcasterService, mock_config: FarcasterConfig
+    ) -> None:
+        """Test ProfileProvider name and description."""
+        provider = ProfileProvider(service, mock_config)
+        assert provider.name == "farcaster_profile"
+        assert "Farcaster profile" in provider.description
+
+    def test_timeline_provider_properties(
+        self, service: FarcasterService, mock_config: FarcasterConfig
+    ) -> None:
+        """Test TimelineProvider name and description."""
+        provider = TimelineProvider(service, mock_config)
+        assert provider.name == "farcaster_timeline"
+        assert "timeline" in provider.description

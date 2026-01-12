@@ -62,6 +62,7 @@ fn test_plugin_creation_with_models() {
 }
 
 #[tokio::test]
+#[ignore = "Requires local model files to be present"]
 async fn test_async_plugin_methods() {
     println!("\n🧪 Testing Rust Async Plugin Methods...");
     

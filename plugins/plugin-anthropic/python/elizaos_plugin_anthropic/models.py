@@ -56,6 +56,9 @@ class Model:
     def is_large(self) -> bool:
         return self._size == ModelSize.LARGE
 
+    def max_tokens(self) -> int:
+        return self._default_max_tokens
+
     @staticmethod
     def _infer_size(model_id: str) -> ModelSize:
         if "haiku" in model_id.lower():

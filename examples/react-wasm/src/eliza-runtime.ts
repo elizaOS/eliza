@@ -9,12 +9,12 @@
  * delegating model inference to JavaScript (where we use plugin-eliza-classic).
  */
 
+import type { IDatabaseAdapter } from "@elizaos/core";
 import {
   generateElizaResponse,
   getElizaGreeting,
 } from "@elizaos/plugin-eliza-classic";
 import { createDatabaseAdapter } from "@elizaos/plugin-localdb";
-import type { IDatabaseAdapter } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
@@ -808,7 +808,9 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
   // Initialize LocalDB storage
   // In browser, createDatabaseAdapter expects { prefix?: string }
   // TypeScript resolves to node types expecting { dataDir?: string }
-  const agentId = wasm.stringToUuid(elizaCharacter.name) as `${string}-${string}-${string}-${string}-${string}`;
+  const agentId = wasm.stringToUuid(
+    elizaCharacter.name,
+  ) as `${string}-${string}-${string}-${string}-${string}`;
   dbAdapter = createDatabaseAdapter(
     { prefix: "elizaos-wasm" } as { dataDir?: string },
     agentId,

@@ -800,7 +800,7 @@ describe("Agent Integration Tests", () => {
               serverId: uuidv4() as UUID,
               worldId: worldId,
               channelId: uuidv4() as UUID,
-              type: ChannelType.PUBLIC,
+              type: ChannelType.GROUP,
               source: "test",
             },
             {
@@ -810,7 +810,7 @@ describe("Agent Integration Tests", () => {
               serverId: uuidv4() as UUID,
               worldId: worldId,
               channelId: uuidv4() as UUID,
-              type: ChannelType.PRIVATE,
+              type: ChannelType.DM,
               source: "test",
             },
           ]);
@@ -911,10 +911,10 @@ describe("Agent Integration Tests", () => {
 
           // Verify all data was created
           expect(await cascadeAdapter.getWorld(worldId)).not.toBeNull();
-          const _rooms = await cascadeAdapter.getRoomsByIds([roomId1, roomId2]);
-          expect(rooms?.length).toBe(2);
-          const _entities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
-          expect(entities?.length).toBe(2);
+          const createdRooms = await cascadeAdapter.getRoomsByIds([roomId1, roomId2]);
+          expect(createdRooms?.length).toBe(2);
+          const createdEntities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
+          expect(createdEntities?.length).toBe(2);
           expect(await cascadeAdapter.getMemoryById(memoryId1)).not.toBeNull();
           expect(await cascadeAdapter.getMemoryById(memoryId2)).not.toBeNull();
           expect(await cascadeAdapter.getTask(taskId)).not.toBeNull();

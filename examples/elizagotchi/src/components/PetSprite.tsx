@@ -889,4 +889,3 @@ export const PetSprite: React.FC<PetSpriteProps> = ({
 };
 
 export default PetSprite;
-

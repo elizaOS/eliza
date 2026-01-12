@@ -35,7 +35,8 @@ describe("FormsService", () => {
   beforeEach(async () => {
     runtime = await createTestRuntime();
 
-    vi.spyOn(runtime, "useModel").mockResolvedValue("{}");
+    // Default mock returns empty XML response
+    vi.spyOn(runtime, "useModel").mockResolvedValue("<response></response>");
 
     vi.spyOn(runtime.logger, "info").mockImplementation(() => {});
     vi.spyOn(runtime.logger, "warn").mockImplementation(() => {});
@@ -130,8 +131,10 @@ describe("FormsService", () => {
     test("should update form fields with extracted values", async () => {
       const message = createTestMemory("My name is John Doe");
 
-      // Mock the LLM to return specific values
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"name": "John Doe"}');
+      // Mock the LLM to return specific values in XML format
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><name>John Doe</name></response>"
+      );
 
       const result = await service.updateForm(testForm.id, message);
 
@@ -173,8 +176,10 @@ describe("FormsService", () => {
         ],
       });
 
-      // Update first step field
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"field1": "value1"}');
+      // Update first step field with XML format
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><field1>value1</field1></response>"
+      );
       const result = await service.updateForm(multiStepForm.id, createTestMemory("value1"));
 
       expect(result.success).toBe(true);
@@ -185,9 +190,10 @@ describe("FormsService", () => {
     });
 
     test("should mark form as completed when all steps are done", async () => {
+      // Mock LLM to return XML formatted responses
       vi.spyOn(runtime, "useModel")
-        .mockResolvedValueOnce('{"name": "John Doe"}')
-        .mockResolvedValueOnce('{"email": "john@example.com"}');
+        .mockResolvedValueOnce("<response><name>John Doe</name></response>")
+        .mockResolvedValueOnce("<response><email>john@example.com</email></response>");
 
       await service.updateForm(testForm.id, createTestMemory("John Doe"));
       await service.updateForm(testForm.id, createTestMemory("john@example.com"));
@@ -347,7 +353,9 @@ describe("FormsService", () => {
         ],
       });
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"apiKey": "sk-12345"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><apiKey>sk-12345</apiKey></response>"
+      );
 
       const result = await service.updateForm(
         formWithSecret.id,
@@ -396,7 +404,9 @@ describe("FormsService", () => {
         ],
       });
 
-      vi.spyOn(runtime, "useModel").mockResolvedValueOnce('{"email": "not-an-email"}');
+      vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+        "<response><email>not-an-email</email></response>"
+      );
 
       const result1 = await service.updateForm(
         form.id,
@@ -407,7 +417,7 @@ describe("FormsService", () => {
       expect(runtime.useModel).toHaveBeenCalled();
 
       vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
-        '{"email": "test@example.com", "age": 25, "website": "https://example.com"}'
+        "<response><email>test@example.com</email><age>25</age><website>https://example.com</website></response>"
       );
 
       const result2 = await service.updateForm(
@@ -450,7 +460,7 @@ describe("FormsService", () => {
       });
 
       vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
-        '{"enabled": false, "count": 0, "message": ""}'
+        "<response><enabled>false</enabled><count>0</count><message></message></response>"
       );
 
       const result = await service.updateForm(
@@ -459,7 +469,8 @@ describe("FormsService", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.updatedFields).toHaveLength(3);
+      // Note: empty strings are intentionally skipped, so only 'enabled' and 'count' are updated
+      expect(result.updatedFields).toHaveLength(2);
 
       const updatedForm = await service.getForm(form.id);
       const enabledField = updatedForm?.steps[0].fields.find((f) => f.id === "enabled");
@@ -468,7 +479,8 @@ describe("FormsService", () => {
 
       expect(enabledField?.value).toBe(false);
       expect(countField?.value).toBe(0);
-      expect(messageField?.value).toBe("");
+      // Empty strings are intentionally skipped, so messageField remains undefined
+      expect(messageField?.value).toBeUndefined();
     });
   });
 });

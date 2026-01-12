@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ButtonKind(str, Enum):
@@ -59,6 +59,8 @@ class TelegramChat(BaseModel):
 
 
 class TelegramMessagePayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     message_id: int
     chat: TelegramChat
     from_user: TelegramUser | None = Field(default=None, alias="from")
@@ -66,19 +68,15 @@ class TelegramMessagePayload(BaseModel):
     date: int
     thread_id: int | None = None
 
-    class Config:
-        populate_by_name = True
-
 
 class TelegramReactionPayload(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     message_id: int
     chat: TelegramChat
     from_user: TelegramUser | None = Field(default=None, alias="from")
     reaction: str
     date: int
-
-    class Config:
-        populate_by_name = True
 
 
 class TelegramWorldPayload(BaseModel):

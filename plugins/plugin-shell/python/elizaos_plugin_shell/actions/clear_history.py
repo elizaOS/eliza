@@ -20,8 +20,8 @@ class ActionResult:
 
 class ClearHistoryAction:
 
-    CLEAR_KEYWORDS = ["clear", "reset", "delete", "remove", "clean"]
-    HISTORY_KEYWORDS = ["history", "terminal", "shell", "command"]
+    CLEAR_KEYWORDS = ["clear", "reset", "delete", "remove", "clean", "wipe", "forget"]
+    HISTORY_KEYWORDS = ["history", "terminal", "shell", "command", "commands"]
 
     @property
     def name(self) -> str:

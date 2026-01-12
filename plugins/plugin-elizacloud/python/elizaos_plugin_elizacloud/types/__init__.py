@@ -44,6 +44,7 @@ class ObjectGenerationParams:
 class TextEmbeddingParams:
     text: str | None = None
     texts: list[str] | None = None
+    model: str | None = None
 
 
 @dataclass

@@ -6,12 +6,13 @@ from elizaos_plugin_github.types import (
     CreateIssueParams,
     CreatePullRequestParams,
     GitHubBranch,
+    GitHubBranchRef,
     GitHubComment,
     GitHubIssue,
     GitHubPullRequest,
     GitHubUser,
     IssueState,
-    MergeMethod,
+    MergePullRequestParams,
     PullRequestState,
     ReviewEvent,
 )
@@ -30,11 +31,31 @@ class TestEnums:
         assert PullRequestState.OPEN.value == "open"
         assert PullRequestState.CLOSED.value == "closed"
 
-    def test_merge_method(self):
-        """Test MergeMethod enum."""
-        assert MergeMethod.MERGE.value == "merge"
-        assert MergeMethod.SQUASH.value == "squash"
-        assert MergeMethod.REBASE.value == "rebase"
+    def test_merge_pull_request_params(self):
+        """Test MergePullRequestParams model with merge_method literal."""
+        params = MergePullRequestParams(
+            owner="owner",
+            repo="repo",
+            pull_number=42,
+            merge_method="merge",
+        )
+        assert params.merge_method == "merge"
+        
+        params_squash = MergePullRequestParams(
+            owner="owner",
+            repo="repo",
+            pull_number=42,
+            merge_method="squash",
+        )
+        assert params_squash.merge_method == "squash"
+        
+        params_rebase = MergePullRequestParams(
+            owner="owner",
+            repo="repo",
+            pull_number=42,
+            merge_method="rebase",
+        )
+        assert params_rebase.merge_method == "rebase"
 
     def test_review_event(self):
         """Test ReviewEvent enum."""
@@ -99,10 +120,16 @@ class TestModels:
                 html_url="https://github.com/testuser",
                 type="User",
             ),
-            head_ref="feature-branch",
-            head_sha="abc123",
-            base_ref="main",
-            base_sha="def456",
+            head=GitHubBranchRef(
+                ref="feature-branch",
+                label="owner:feature-branch",
+                sha="abc123",
+            ),
+            base=GitHubBranchRef(
+                ref="main",
+                label="owner:main",
+                sha="def456",
+            ),
             labels=[],
             assignees=[],
             requested_reviewers=[],
@@ -112,7 +139,7 @@ class TestModels:
         )
         assert pr.number == 42
         assert pr.draft is False
-        assert pr.head_ref == "feature-branch"
+        assert pr.head.ref == "feature-branch"
 
     def test_github_branch(self):
         """Test GitHubBranch model."""

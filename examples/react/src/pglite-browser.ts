@@ -78,4 +78,3 @@ export async function createBrowserPGlite(
     },
   });
 }
-
