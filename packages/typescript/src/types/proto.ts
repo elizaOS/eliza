@@ -1,17 +1,13 @@
 /**
- * Proto-generated Types Compatibility Layer
+ * Proto-generated Types
  *
- * This module provides a compatibility layer between the proto-generated types
- * and the legacy TypeScript interfaces. It re-exports the generated types
- * and provides type aliases for backwards compatibility.
+ * This module provides the proto-generated types for elizaOS.
+ * Types are generated from /packages/@schemas/eliza/v1/*.proto using @bufbuild/protoc-gen-es
  *
- * ## Migration Guide
+ * ## Type Structure
  *
- * The proto-generated types use a slightly different structure:
- *
- * 1. **Enums**: Use `ENUM_NAME_VALUE` format instead of `EnumName.Value`
- *    - Old: `MemoryType.MESSAGE`
- *    - New: `MEMORY_TYPE_MESSAGE` (or use `MemoryType.MESSAGE` re-export)
+ * 1. **Enums**: Use `ENUM_NAME_VALUE` format
+ *    - Example: `MEMORY_TYPE_MESSAGE`
  *
  * 2. **Optional fields**: Explicitly typed as `T | undefined`
  *
@@ -30,11 +26,12 @@
 export type JsonObject = Record<string, unknown>;
 
 /**
- * Helper to convert a proto message to a plain JSON object
+ * Helper to convert a proto message to a plain JSON object.
+ * Uses a properly constrained type to avoid unsafe casts.
  */
-export function toJson<T extends object>(message: T): Record<string, unknown> {
+export function toJson<T extends Record<string, unknown>>(message: T): Record<string, unknown> {
   // The @bufbuild/protobuf types are already plain objects
-  return message as unknown as Record<string, unknown>;
+  return message;
 }
 
 /**

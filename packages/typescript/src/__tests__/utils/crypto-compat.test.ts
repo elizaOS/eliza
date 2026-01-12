@@ -12,7 +12,6 @@ import {
   createHashAsync,
   decryptAsync,
   encryptAsync,
-  webCrypto,
 } from "../../utils/crypto-compat";
 
 describe("crypto-compat", () => {
@@ -295,31 +294,6 @@ describe("crypto-compat", () => {
       expect(() => {
         createDecipheriv("aes-128-cbc" as string, key, iv);
       }).toThrow(/unsupported algorithm/i);
-    });
-  });
-
-  describe("webCrypto (legacy API)", () => {
-    it("should have hash function", () => {
-      expect(webCrypto.hash).toBeDefined();
-      expect(typeof webCrypto.hash).toBe("function");
-    });
-
-    it("should have encrypt function", () => {
-      expect(webCrypto.encrypt).toBeDefined();
-      expect(typeof webCrypto.encrypt).toBe("function");
-    });
-
-    it("should have decrypt function", () => {
-      expect(webCrypto.decrypt).toBeDefined();
-      expect(typeof webCrypto.decrypt).toBe("function");
-    });
-
-    it("should work for hashing", async () => {
-      const data = new TextEncoder().encode("test");
-      const hash = await webCrypto.hash("sha256", data);
-
-      expect(hash).toBeInstanceOf(Uint8Array);
-      expect(hash.length).toBe(32);
     });
   });
 

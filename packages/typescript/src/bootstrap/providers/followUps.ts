@@ -1,11 +1,11 @@
+import type { FollowUpService } from "../../services/followUp.ts";
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core";
-import type { FollowUpService } from "../../services/followUp.ts";
+} from "../../types/index.ts";
 
 export const followUpsProvider: Provider = {
   name: "FOLLOW_UPS",

@@ -1,6 +1,6 @@
 /**
  * Browser and Node.js compatible crypto abstraction
- * Provides unified interface for cryptographic operations
+ * Provides cross-platform interface for cryptographic operations
  *
  * @module crypto-compat
  *
@@ -426,27 +426,3 @@ export async function decryptAsync(
 
   return webCryptoDecrypt(key, iv, data);
 }
-
-/**
- * Legacy webCrypto API for backwards compatibility
- * @deprecated Use createHashAsync, encryptAsync, decryptAsync instead
- */
-export const webCrypto = {
-  hash: async (algorithm: string, data: Uint8Array): Promise<Uint8Array> => {
-    return createHashAsync(algorithm, data);
-  },
-  encrypt: async (
-    key: Uint8Array,
-    iv: Uint8Array,
-    data: Uint8Array,
-  ): Promise<Uint8Array> => {
-    return encryptAsync(key, iv, data);
-  },
-  decrypt: async (
-    key: Uint8Array,
-    iv: Uint8Array,
-    data: Uint8Array,
-  ): Promise<Uint8Array> => {
-    return decryptAsync(key, iv, data);
-  },
-};

@@ -1,6 +1,6 @@
 /**
  * Browser and Node.js compatible environment variable abstraction
- * This module provides a unified interface for accessing environment variables
+ * This module provides a cross-platform interface for accessing environment variables
  * that works in both browser and Node.js environments.
  */
 

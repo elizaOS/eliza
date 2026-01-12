@@ -1,21 +1,18 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  ChannelType,
-  composePrompt,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  Role,
-  type State,
-  type UUID,
-  type World,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+  World,
+} from "../../types/index.ts";
+import { ChannelType, ModelType, Role } from "../../types/index.ts";
+import { composePrompt, parseKeyValueXml } from "../../utils.ts";
 
 /** Shape of individual assignment in XML response */
 interface RoleAssignmentXml {

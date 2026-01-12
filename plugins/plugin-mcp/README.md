@@ -69,8 +69,8 @@ MCP supports multiple transport types for connecting to servers. Each type has i
 
 ### Transport Types
 
-- **`streamable-http`** or **`http`** - Modern Streamable HTTP transport (recommended)
-- **`sse`** - Legacy Server-Sent Events transport (deprecated, use `streamable-http` instead)
+- **`streamable-http`** or **`http`** - Streamable HTTP transport (recommended)
+- **`sse`** - Server-Sent Events transport
 - **`stdio`** - Process-based transport using standard input/output
 
 ### HTTP Transport Options (streamable-http, http, sse)
@@ -98,7 +98,7 @@ MCP supports multiple transport types for connecting to servers. Each type has i
 {
   "mcp": {
     "servers": {
-      "my-modern-server": {
+      "my-http-server": {
         "type": "streamable-http",
         "url": "https://example.com/mcp"
       },
@@ -107,7 +107,7 @@ MCP supports multiple transport types for connecting to servers. Each type has i
         "url": "http://localhost:3000",
         "timeout": 30
       },
-      "my-legacy-server": {
+      "my-sse-server": {
         "type": "sse",
         "url": "http://localhost:8080"
       },

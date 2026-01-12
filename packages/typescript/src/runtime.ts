@@ -1522,29 +1522,23 @@ export class AgentRuntime implements IAgentRuntime {
               success: "success" in result ? result.success : true, // Default to true if not specified
             } as ActionResult;
           } else {
-            // For legacy results, serialize to string if not a primitive type
-            let legacyValue: string | number | boolean | null;
-            if (
-              typeof result === "string" ||
-              typeof result === "number" ||
-              typeof result === "boolean" ||
-              result === null
-            ) {
-              // TypeScript's type narrowing doesn't fully eliminate ActionResult here
-              // due to the complex conditional logic above, so we use explicit assertion
-              legacyValue = result as unknown as
-                | string
-                | number
-                | boolean
-                | null;
-            } else {
-              legacyValue = JSON.stringify(result);
-            }
+            // For non-ActionResult returns, serialize the result
+            // Type narrowing: after the above checks, result is a primitive or unknown object
+            const resultValue: string | number | boolean | null =
+              typeof result === "string"
+                ? result
+                : typeof result === "number"
+                  ? result
+                  : typeof result === "boolean"
+                    ? result
+                    : result === null
+                      ? null
+                      : JSON.stringify(result);
             actionResult = {
-              success: true, // Default success for legacy results
+              success: true,
               data: {
                 actionName: action.name,
-                legacyResult: legacyValue,
+                result: resultValue,
               },
             };
           }

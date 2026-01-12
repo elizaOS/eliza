@@ -33,19 +33,6 @@ import {
 } from "./types";
 import { buildMcpProviderData } from "./utils/mcp";
 
-interface RuntimeCharacter {
-  settings?: {
-    mcp?: McpSettings;
-  };
-}
-
-interface RuntimeWithSettings {
-  character?: RuntimeCharacter;
-  settings?: {
-    mcp?: McpSettings;
-  };
-}
-
 export class McpService extends Service {
   static serviceType: string = MCP_SERVICE_NAME;
   capabilityDescription = "Enables the agent to interact with MCP (Model Context Protocol) servers";
@@ -153,25 +140,43 @@ export class McpService extends Service {
 
   private getMcpSettings(): McpSettings | undefined {
     const rawSettings = this.runtime.getSetting("mcp");
-    let settings = rawSettings as unknown as McpSettings | null | undefined;
+    let settings: McpSettings | null | undefined = null;
+
+    // Try to parse settings from getSetting result
+    if (rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)) {
+      const parsed = rawSettings as Record<string, unknown>;
+      if ("servers" in parsed && typeof parsed.servers === "object" && parsed.servers !== null) {
+        settings = parsed as McpSettings;
+      }
+    }
+
     logger.info(
       `[McpService] getSetting("mcp") result: type=${typeof rawSettings} isNull=${rawSettings === null} hasServers=${!!(settings?.servers)}`
     );
 
-    if (!settings || !settings.servers) {
-      const runtimeWithSettings = this.runtime as unknown as RuntimeWithSettings;
-      const characterSettings = runtimeWithSettings.character?.settings;
-      if (characterSettings?.mcp) {
+    // Fallback to character.settings.mcp
+    if ((!settings || !settings.servers) && hasCharacterMcpSettings(this.runtime)) {
+      const characterMcpSettings = this.runtime.character.settings?.mcp;
+      if (
+        characterMcpSettings &&
+        typeof characterMcpSettings === "object" &&
+        "servers" in characterMcpSettings
+      ) {
         logger.info("[McpService] Found MCP settings in character.settings.mcp (fallback)");
-        settings = characterSettings.mcp;
+        settings = characterMcpSettings;
       }
     }
 
-    if (!settings || !settings.servers) {
-      const runtimeWithSettings = this.runtime as unknown as RuntimeWithSettings;
-      if (runtimeWithSettings.settings?.mcp) {
+    // Fallback to runtime.settings.mcp
+    if ((!settings || !settings.servers) && hasRuntimeMcpSettings(this.runtime)) {
+      const runtimeMcpSettings = this.runtime.settings?.mcp;
+      if (
+        runtimeMcpSettings &&
+        typeof runtimeMcpSettings === "object" &&
+        "servers" in runtimeMcpSettings
+      ) {
         logger.info("[McpService] Found MCP settings in runtime.settings.mcp (fallback)");
-        settings = runtimeWithSettings.settings.mcp;
+        settings = runtimeMcpSettings;
       }
     }
 
@@ -443,12 +448,6 @@ export class McpService extends Service {
   ): Promise<SSEClientTransport> {
     if (!config.url) {
       throw new Error(`Missing URL for HTTP MCP server ${name}`);
-    }
-
-    if (config.type === "sse") {
-      logger.warn(
-        `Server "${name}": "sse" transport type is deprecated. Use "streamable-http" or "http" instead for the modern Streamable HTTP transport.`
-      );
     }
 
     return new SSEClientTransport(new URL(config.url));

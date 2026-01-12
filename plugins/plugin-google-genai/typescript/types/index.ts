@@ -65,10 +65,12 @@ export interface ImageDescriptionResponse {
 }
 
 /**
- * Alias for backwards compatibility.
- * @deprecated Use ImageDescriptionResponse instead.
+ * Result type for Google GenAI image description.
  */
-export type GoogleGenAIImageDescriptionResult = ImageDescriptionResponse;
+export interface GoogleGenAIImageDescriptionResult {
+  title: string;
+  description: string;
+}
 
 /**
  * Parameters for object generation.

@@ -1,12 +1,11 @@
-import {
-  ChannelType,
-  type HandlerCallback,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  type State,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import type {
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ChannelType, ModelType } from "../../types/index.ts";
 // Test assertions use expect().rejects.toThrow() and try-catch within custom handlers.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

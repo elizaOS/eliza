@@ -220,7 +220,7 @@ export const TransferParamsSchema = z.object({
  * @throws ZodError if validation fails
  */
 export function parseTransferParams(input: unknown): TransferParams {
-  return TransferParamsSchema.parse(input);
+  return TransferParamsSchema.parse(input) as TransferParams;
 }
 
 /**
@@ -465,7 +465,7 @@ export const VoteParamsSchema = z.object({
  * @throws ZodError if validation fails
  */
 export function parseVoteParams(input: unknown): VoteParams {
-  return VoteParamsSchema.parse(input);
+  return VoteParamsSchema.parse(input) as VoteParams;
 }
 
 /**

@@ -40,7 +40,6 @@ class ActionLogBody(BaseLogBody):
     responses: Any | None = None
     content: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
-    is_legacy_return: bool | None = Field(default=None, alias="isLegacyReturn")
     prompts: list[dict[str, Any]] | None = None
     prompt_count: int | None = Field(default=None, alias="promptCount")
     plan_step: str | None = Field(default=None, alias="planStep")

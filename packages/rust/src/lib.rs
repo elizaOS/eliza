@@ -45,8 +45,27 @@ pub use character::{
     build_character_plugins, merge_character_defaults, parse_character, validate_character,
 };
 pub use runtime::AgentRuntime;
+
+// Re-export agent types
 pub use types::agent::{Agent, AgentStatus, Bio, Character};
-pub use types::primitives::UUID;
+
+// Re-export primitive types
+pub use types::primitives::{Content, Metadata, UUID};
+
+// Re-export environment types (entities, rooms, worlds, etc.)
+pub use types::environment::{ChannelType, Component, Entity, Relationship, Room, World, WorldMetadata};
+
+// Re-export memory types
+pub use types::memory::{Memory, MemoryMetadata};
+
+// Re-export database types (logs, query params, etc.)
+pub use types::database::{GetMemoriesParams, Log, LogBody, SearchMemoriesParams};
+
+// Re-export task types
+pub use types::task::{Task, TaskStatus};
+
+// Re-export plugin types
+pub use types::plugin::Plugin;
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)
 pub fn init() {

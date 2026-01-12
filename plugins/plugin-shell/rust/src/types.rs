@@ -247,7 +247,3 @@ impl ShellConfigBuilder {
         })
     }
 }
-
-
-
-

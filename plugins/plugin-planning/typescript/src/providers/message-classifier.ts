@@ -78,21 +78,21 @@ export const messageClassifierProvider: Provider = {
 
       const planningRequired = planningType !== "direct_action" && complexity !== "simple";
 
-      let legacyClassification = "general";
+      let messageClassification = "general";
       if (text.toLowerCase().includes("strategic") || planningType === "strategic_planning") {
-        legacyClassification = "strategic";
+        messageClassification = "strategic";
       } else if (text.toLowerCase().includes("analyz")) {
-        legacyClassification = "analysis";
+        messageClassification = "analysis";
       } else if (text.toLowerCase().includes("process")) {
-        legacyClassification = "processing";
+        messageClassification = "processing";
       } else if (text.toLowerCase().includes("execute")) {
-        legacyClassification = "execution";
+        messageClassification = "execution";
       }
 
       return {
-        text: `Message classified as: ${legacyClassification} (${complexity} complexity, ${planningType}) with confidence: ${confidence}`,
+        text: `Message classified as: ${messageClassification} (${complexity} complexity, ${planningType}) with confidence: ${confidence}`,
         data: {
-          classification: legacyClassification,
+          classification: messageClassification,
           confidence,
           originalText: text,
           complexity,

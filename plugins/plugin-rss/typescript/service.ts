@@ -414,5 +414,5 @@ export class RssService extends Service {
   }
 }
 
-// Legacy export for backwards compatibility
+// Class export alias
 export const rssService = RssService;

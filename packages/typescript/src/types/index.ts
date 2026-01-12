@@ -1,4 +1,4 @@
-// Legacy types (for backwards compatibility)
+// Core types
 export * from "./agent";
 export * from "./components";
 export * from "./database";

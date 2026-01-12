@@ -46,11 +46,6 @@ class ModelType(str, Enum):
     Values match the TypeScript implementation for cross-language compatibility.
     """
 
-    # Legacy aliases (kept for backwards compatibility)
-    SMALL = "TEXT_SMALL"
-    MEDIUM = "TEXT_LARGE"
-    LARGE = "TEXT_LARGE"
-
     # Text generation models
     TEXT_SMALL = "TEXT_SMALL"
     TEXT_LARGE = "TEXT_LARGE"

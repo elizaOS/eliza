@@ -8,5 +8,5 @@
     "outDir": "./dist"
   },
   "include": ["*.ts", "*.tsx"],
-  "exclude": ["node_modules", "dist", "__tests__", "frontend", "build.ts"]
+  "exclude": ["node_modules", "dist", "__tests__", "frontend", "build.ts", "tests.ts"]
 }

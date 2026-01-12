@@ -1,21 +1,20 @@
 // File: /swarm/shared/settings/provider.ts
 // Updated to use world metadata instead of cache
 
-import {
-  ChannelType,
-  findWorldsForOwner,
-  getSalt,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type Setting,
-  type State,
-  unsaltWorldSettings,
-  type World,
-  type WorldSettings,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import { findWorldsForOwner } from "../../roles.ts";
+import { getSalt, unsaltWorldSettings } from "../../settings.ts";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  Setting,
+  State,
+  World,
+  WorldSettings,
+} from "../../types/index.ts";
+import { ChannelType } from "../../types/index.ts";
 
 /**
  * Formats a setting value for display, respecting privacy flags

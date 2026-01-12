@@ -1,13 +1,12 @@
-import {
-  type EventPayload,
-  EventType,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type UUID,
-} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
+import type {
+  EventPayload,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "../../types/index.ts";
+import { EventType, ModelType } from "../../types/index.ts";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.ts";
 
 describe("EmbeddingGenerationService", () => {

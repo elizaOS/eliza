@@ -4,8 +4,8 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
 
 /**
  * Knowledge Provider - Provides relevant knowledge from the agent's knowledge base.

@@ -43,11 +43,10 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - client::BlueSkyClient
-// - config::BlueSkyConfig
-// - error::{BlueSkyError, Result}
-// - types::{BlueSkyConversation, BlueSkyMessage, BlueSkyNotification, BlueSkyPost, etc.}
+// Re-export commonly used types for convenience
+pub use client::BlueSkyClient;
+pub use config::BlueSkyConfig;
+pub use error::{BlueSkyError, Result};
 
 /// Create a BlueSky client from environment variables.
 ///

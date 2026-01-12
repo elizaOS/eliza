@@ -678,7 +678,7 @@ export const aggregateProvider: Provider = {
    }
    ```
 
-5. **Maintain Backward Compatibility**: The runtime handles legacy action returns (void, boolean) but new actions should use `ActionResult`.
+5. **Use ActionResult**: All actions must return `ActionResult` with a `success` field.
 
 ## Example: Multi-Step Workflow
 

@@ -319,7 +319,7 @@ export class Client {
 
   /**
    * Fetches the home timeline for the current user using X API v2.
-   * X API v2 returns a unified feed (no separate "For You" vs "Following").
+   * X API v2 returns a combined feed (no separate "For You" vs "Following").
    * @param count The number of posts to fetch.
    * @param seenPostIds An array of post IDs that have already been seen (not used in v2).
    * @returns A promise that resolves to an array of posts.

@@ -5,7 +5,7 @@ import type {
   Provider,
   Relationship,
   UUID,
-} from "@elizaos/core";
+} from "../../types/index.ts";
 
 /**
  * Formats the provided relationships based on interaction strength and returns a string.

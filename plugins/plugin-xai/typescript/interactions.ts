@@ -90,7 +90,7 @@ export class XInteractionClient {
 
   /**
    * Asynchronously starts the process of handling X interactions on a loop.
-   * Uses the unified X_ENGAGEMENT_INTERVAL setting.
+   * Uses the X_ENGAGEMENT_INTERVAL setting.
    */
   async start() {
     this.isRunning = true;

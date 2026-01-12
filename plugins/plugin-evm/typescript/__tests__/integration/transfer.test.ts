@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { Account, Chain } from "viem";
 import { formatEther, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TransferAction } from "../../actions/transfer";
 import { WalletProvider } from "../../providers/wallet";
@@ -14,40 +14,20 @@ import {
   getAnvilChain,
   getTestChains,
 } from "../custom-chain";
+import { cleanupTestRuntime, createTestRuntime } from "../test-utils";
 
 // Test environment - use a funded wallet private key for real testing
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
 
-// Create a test runtime for testing
-function createTestRuntime(): IAgentRuntime {
-  return {
-    agentId: "test-agent-id" as IAgentRuntime["agentId"],
-    getCache: vi.fn().mockResolvedValue(null),
-    setCache: vi.fn().mockResolvedValue(undefined),
-    getSetting: vi.fn().mockReturnValue(null),
-    setSetting: vi.fn(),
-    getService: vi.fn().mockReturnValue(null),
-    registerService: vi.fn(),
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      log: vi.fn(),
-    },
-  } as IAgentRuntime;
-}
-
 describe("Transfer Action", () => {
   let wp: WalletProvider;
   let testChains: Record<string, Chain>;
+  let runtime: IAgentRuntime;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-
+    runtime = await createTestRuntime();
     testChains = getTestChains();
     const pk = TEST_PRIVATE_KEY as `0x${string}`;
-    const agentRuntime = createMockRuntime();
 
     // Initialize with Sepolia and Base Sepolia testnets
     const customChains = {
@@ -55,11 +35,13 @@ describe("Transfer Action", () => {
       baseSepolia: testChains.baseSepolia,
     };
 
-    wp = new WalletProvider(pk, agentRuntime, customChains);
+    wp = new WalletProvider(pk, runtime, customChains);
   });
 
-  afterEach(() => {
-    // Remove vi.clearAllTimers() as it's not needed in Bun test runner
+  afterEach(async () => {
+    if (runtime) {
+      await cleanupTestRuntime(runtime);
+    }
   });
 
   describe("Constructor", () => {
@@ -167,8 +149,8 @@ describe("Transfer Action", () => {
     let anvilWp: WalletProvider;
     let anvilTa: TransferAction;
 
-    beforeEach(() => {
-      anvilWp = new WalletProvider(ANVIL_PRIVATE_KEY, createMockRuntime(), getAnvilChain());
+    beforeEach(async () => {
+      anvilWp = new WalletProvider(ANVIL_PRIVATE_KEY, runtime, getAnvilChain());
       anvilTa = new TransferAction(anvilWp);
     });
 

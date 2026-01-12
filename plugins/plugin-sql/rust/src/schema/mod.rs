@@ -16,19 +16,18 @@ pub mod room;
 pub mod task;
 pub mod world;
 
-// Import directly from submodules:
-// - agent::* for agent schemas
-// - cache::* for cache schemas
-// - component::* for component schemas
-// - embedding::* for embedding schemas
-// - entity::* for entity schemas
-// - log::* for log schemas
-// - memory::* for memory schemas
-// - participant::* for participant schemas
-// - relationship::* for relationship schemas
-// - room::* for room schemas
-// - task::* for task schemas
-// - world::* for world schemas
+// Re-export record types for convenience
+pub use agent::AgentRecord;
+pub use component::ComponentRecord;
+pub use embedding::DEFAULT_DIMENSION;
+pub use entity::EntityRecord;
+pub use log::LogRecord;
+pub use memory::MemoryRecord;
+pub use participant::ParticipantRecord;
+pub use relationship::RelationshipRecord;
+pub use room::RoomRecord;
+pub use task::TaskRecord;
+pub use world::WorldRecord;
 
 /// Table names used in the database
 pub mod table_names {

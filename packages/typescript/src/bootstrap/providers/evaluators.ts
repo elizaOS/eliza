@@ -1,3 +1,4 @@
+import { names, uniqueNamesGenerator } from "unique-names-generator";
 import type {
   ActionExample,
   Evaluator,
@@ -5,9 +6,8 @@ import type {
   Memory,
   Provider,
   State,
-} from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
-import { names, uniqueNamesGenerator } from "unique-names-generator";
+} from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Formats the names of evaluators into a comma-separated list, each enclosed in single quotes.

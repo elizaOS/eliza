@@ -10,29 +10,84 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
+/**
+ * Minimal mock runtime for testing model detection.
+ * Extends IAgentRuntime with model information properties.
+ */
+interface MockRuntime extends IAgentRuntime {
+  modelProvider?: string;
+  model?: string;
+}
+
+/**
+ * Creates a minimal mock runtime with model information for testing.
+ * This is a test utility that creates a runtime-like object with only
+ * the properties needed for model detection testing.
+ */
+function createMockRuntime(modelProvider: string, model: string): MockRuntime {
+  // Create a minimal object that satisfies the type checker
+  // In tests, we only need modelProvider/model, so we cast after adding those properties
+  const base: Partial<IAgentRuntime> = {
+    agentId: "test-agent-id" as IAgentRuntime["agentId"],
+    character: {
+      name: "Test Agent",
+      bio: "Test",
+      settings: {
+        MODEL_PROVIDER: modelProvider,
+        MODEL: model,
+      },
+    } as IAgentRuntime["character"],
+    providers: [],
+    actions: [],
+    evaluators: [],
+    plugins: [],
+    services: new Map(),
+    events: {},
+    routes: [],
+    logger: {
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+    } as IAgentRuntime["logger"],
+    stateCache: new Map(),
+    messageService: null,
+    initPromise: Promise.resolve(),
+    getSetting: () => null,
+    setSetting: () => {},
+    getConversationLength: () => 0,
+    registerPlugin: async () => {},
+    initialize: async () => {},
+    getConnection: async () => ({}),
+    getService: () => null,
+    getServicesByType: () => [],
+    getAllServices: () => new Map(),
+    registerService: async () => {},
+    getServiceLoadPromise: async () => {
+      throw new Error("Not implemented in mock");
+    },
+    getRegisteredServiceTypes: () => [],
+    hasService: () => false,
+    registerDatabaseAdapter: () => {},
+  };
+
+  return {
+    ...base,
+    modelProvider,
+    model,
+  } as MockRuntime;
+}
+
 // Minimal runtime objects for testing model detection
 // These are intentionally minimal - they only need modelProvider and model properties
 const testRuntimes = {
-  openai: {
-    modelProvider: "openai",
-    model: "gpt-4",
-  } as unknown as IAgentRuntime,
-  openaiReasoning: {
-    modelProvider: "openai",
-    model: "o3-mini",
-  } as unknown as IAgentRuntime,
-  anthropic: {
-    modelProvider: "anthropic",
-    model: "claude-3",
-  } as unknown as IAgentRuntime,
-  google: {
-    modelProvider: "google",
-    model: "gemini-pro",
-  } as unknown as IAgentRuntime,
-  unknown: {
-    modelProvider: "unknown",
-    model: "custom-model",
-  } as unknown as IAgentRuntime,
+  openai: createMockRuntime("openai", "gpt-4"),
+  openaiReasoning: createMockRuntime("openai", "o3-mini"),
+  anthropic: createMockRuntime("anthropic", "claude-3"),
+  google: createMockRuntime("google", "gemini-pro"),
+  unknown: createMockRuntime("unknown", "custom-model"),
 };
 
 // Test schema that has problematic constraints
@@ -66,8 +121,9 @@ async function testIntegration() {
   console.log("🧪 Testing MCP Tool Compatibility Integration\n");
 
   for (const [providerName, runtime] of Object.entries(testRuntimes)) {
-    const runtimeAny = runtime as unknown as Record<string, string>;
-    console.log(`📋 Testing ${providerName} (${runtimeAny.model})`);
+    const mockRuntime = runtime as MockRuntime;
+    const runtimeModelInfo = mockRuntime.model ?? mockRuntime.modelProvider ?? "unknown";
+    console.log(`📋 Testing ${providerName} (${runtimeModelInfo})`);
     console.log("-".repeat(40));
 
     // Test model detection
@@ -149,8 +205,9 @@ async function testServiceIntegration() {
     inputSchema: JSONSchema7;
   }
   async function simulateFetchToolsList(runtime: IAgentRuntime, tools: MockTool[]) {
-    const runtimeRecord = runtime as unknown as Record<string, string>;
-    console.log(`📡 Simulating fetchToolsList for ${runtimeRecord.modelProvider}...`);
+    const mockRuntime = runtime as MockRuntime;
+    const modelProvider = mockRuntime.modelProvider ?? mockRuntime.model ?? "unknown";
+    console.log(`📡 Simulating fetchToolsList for ${modelProvider}...`);
 
     const compatibility = await createMcpToolCompatibility(runtime);
 

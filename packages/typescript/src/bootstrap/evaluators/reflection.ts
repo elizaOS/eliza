@@ -1,20 +1,18 @@
-import {
-  type ActionResult,
-  asUUID,
-  composePrompt,
-  type Entity,
-  type Evaluator,
-  getEntityDetails,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  parseKeyValueXml,
-  type State,
-  type UUID,
-} from "@elizaos/core";
 import { v4 } from "uuid";
 import { z } from "zod";
-import { reflectionEvaluatorTemplate } from "../../prompts";
+import { getEntityDetails } from "../../entities.ts";
+import { reflectionEvaluatorTemplate } from "../../prompts.ts";
+import type {
+  ActionResult,
+  Entity,
+  Evaluator,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { asUUID, ModelType } from "../../types/index.ts";
+import { composePrompt, parseKeyValueXml } from "../../utils.ts";
 
 /** Shape of a single fact in the XML response */
 interface FactXml {

@@ -456,8 +456,6 @@ export interface DiscordSlashCommand {
  */
 export interface DiscordRegisterCommandsPayload extends EventPayload {
   commands: DiscordSlashCommand[];
-  /** @deprecated Use bypassChannelWhitelist on DiscordSlashCommand instead */
-  allowAllChannels?: Record<string, boolean>;
 }
 
 /**

@@ -6,26 +6,25 @@
 // We should include the prior component data if it exists, and have the LLM output an update to the component.
 // sourceEntityId represents who is making the update, entityId is who they are talking about
 
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  type Component,
-  composePromptFromState,
-  findEntityByName,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type Metadata,
-  ModelType,
-  type ProviderValue,
-  parseKeyValueXml,
-  type State,
-  type UUID,
-} from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { findEntityByName } from "../../entities.ts";
+import { logger } from "../../logger.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  Component,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  Metadata,
+  ProviderValue,
+  State,
+  UUID,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 /** Shape of the component extraction XML response */
 interface ComponentExtractionResult {

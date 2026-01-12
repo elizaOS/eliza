@@ -90,7 +90,7 @@ describe("Environment Configuration", () => {
       await expect(validateXConfig(runtime)).rejects.toThrow("X env auth requires");
     });
 
-    it("should validate oauth mode without legacy env credentials", async () => {
+    it("should validate oauth mode without env credentials", async () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           X_AUTH_MODE: "oauth",

@@ -137,7 +137,7 @@ function deserializeRoom(data: SerializedRoom): ChatRoom {
     typeof data.elizaRoomId === "string" ? data.elizaRoomId : "";
   const elizaRoomId: UUID = isUuidString(elizaRoomIdRaw)
     ? elizaRoomIdRaw
-    : stringToUuid(`eliza-code:room:legacy:${id}`);
+    : stringToUuid(`eliza-code:room:${id}`);
 
   return {
     id,

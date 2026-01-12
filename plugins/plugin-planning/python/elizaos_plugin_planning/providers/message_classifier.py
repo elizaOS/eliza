@@ -126,21 +126,21 @@ CONFIDENCE: [0.0-1.0]"""
 
             planning_required = planning_type != "direct_action" and complexity != "simple"
 
-            # Map to legacy classification
+            # Map to message classification
             text_lower = text.lower()
             if "strategic" in text_lower or planning_type == "strategic_planning":
-                legacy_classification = "strategic"
+                message_classification = "strategic"
             elif "analyz" in text_lower:
-                legacy_classification = "analysis"
+                message_classification = "analysis"
             elif "process" in text_lower:
-                legacy_classification = "processing"
+                message_classification = "processing"
             elif "execute" in text_lower:
-                legacy_classification = "execution"
+                message_classification = "execution"
             else:
-                legacy_classification = "general"
+                message_classification = "general"
 
             result = ClassificationResult(
-                classification=legacy_classification,
+                classification=message_classification,
                 confidence=confidence,
                 complexity=complexity,
                 planning_type=planning_type,
@@ -153,7 +153,7 @@ CONFIDENCE: [0.0-1.0]"""
 
             return {
                 "text": (
-                    f"Message classified as: {legacy_classification} "
+                    f"Message classified as: {message_classification} "
                     f"({complexity} complexity, {planning_type}) "
                     f"with confidence: {confidence}"
                 ),

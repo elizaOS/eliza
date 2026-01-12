@@ -45,8 +45,6 @@ impl<'a> ProfileProvider<'a> {
 /// Provider for Farcaster timeline.
 pub struct TimelineProvider<'a> {
     service: &'a FarcasterService,
-    #[allow(dead_code)]
-    config: &'a FarcasterConfig,
 }
 
 impl<'a> TimelineProvider<'a> {
@@ -56,8 +54,8 @@ impl<'a> TimelineProvider<'a> {
     pub const DESCRIPTION: &'static str = "Provides the agent's recent Farcaster timeline";
 
     /// Create a new timeline provider.
-    pub fn new(service: &'a FarcasterService, config: &'a FarcasterConfig) -> Self {
-        Self { service, config }
+    pub fn new(service: &'a FarcasterService, _config: &'a FarcasterConfig) -> Self {
+        Self { service }
     }
 
     /// Get the timeline as a string.

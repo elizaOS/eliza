@@ -32,7 +32,7 @@ class PlanningPlugin:
     """Planning Plugin for elizaOS."""
 
     name = "planning"
-    description = "Comprehensive planning and execution plugin with unified planning service"
+    description = "Comprehensive planning and execution plugin with integrated planning service"
     version = __version__
 
     def __init__(self) -> None:

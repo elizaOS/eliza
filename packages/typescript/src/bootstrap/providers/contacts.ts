@@ -1,11 +1,11 @@
+import type { RolodexService } from "../../services/rolodex.ts";
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core";
-import type { RolodexService } from "../../services/rolodex.ts";
+} from "../../types/index.ts";
 
 export const contactsProvider: Provider = {
   name: "CONTACTS",

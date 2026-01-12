@@ -96,8 +96,9 @@ export const routes: Route[] = [
       // Check if the file exists and serve it
       if (fs.existsSync(filePath)) {
         // Let express handle MIME types based on file extension
-        if (res.sendFile) {
-          res.sendFile(filePath);
+        const sendFile = res.sendFile;
+        if (sendFile) {
+          sendFile.call(res, filePath);
         } else {
           const content = fs.readFileSync(filePath);
           res.send(content);
@@ -195,7 +196,10 @@ export const routes: Route[] = [
     path: "/api/goals",
     handler: async (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => {
       try {
-        const { name, description, tags } = req.body;
+        const body = req.body ?? {};
+        const name = body.name as string | undefined;
+        const description = body.description as string | undefined;
+        const tags = body.tags as string[] | undefined;
 
         if (!name || typeof name !== "string") {
           res.status(400).send("Missing or invalid name");

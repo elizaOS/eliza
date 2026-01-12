@@ -196,10 +196,6 @@ export const DiscordPermissionTiers = {
   ADMIN: Number(PERMISSIONS_ADMIN),
   /** Admin + voice permissions (full permissions) */
   ADMIN_VOICE: Number(PERMISSIONS_ADMIN_VOICE),
-
-  // Alias for backwards compatibility
-  /** @deprecated Use MODERATOR_VOICE instead */
-  FULL: Number(PERMISSIONS_MODERATOR_VOICE),
 } as const;
 
 // Type for tier names

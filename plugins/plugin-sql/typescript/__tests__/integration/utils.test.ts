@@ -132,16 +132,13 @@ describe("Utils Integration Tests", () => {
       expect(result).toBe(path.join(tempDir, "data/pglite"));
     });
 
-    it("should migrate legacy path to new location", () => {
-      // Set up to trigger legacy path
-      const legacyPath = path.join(tempDir, ".elizadb");
+    it("should use provided path directly", () => {
+      const customPath = path.join(tempDir, ".elizadb");
 
-      const result = resolvePgliteDir(legacyPath);
+      const result = resolvePgliteDir(customPath);
 
-      // Should return new path
-      expect(result).toBe(path.join(tempDir, ".eliza", ".elizadb"));
-      // Should update env var
-      expect(process.env.PGLITE_DATA_DIR).toBe(path.join(tempDir, ".eliza", ".elizadb"));
+      // Should return the provided path as-is
+      expect(result).toBe(customPath);
     });
   });
 });

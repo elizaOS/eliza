@@ -7,7 +7,11 @@
     "emitDeclarationOnly": true,
     "outDir": "../dist",
     "rootDir": ".",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist/node"]
+    }
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]

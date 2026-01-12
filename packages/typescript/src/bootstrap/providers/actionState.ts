@@ -1,11 +1,11 @@
-import {
-  type ActionResult,
-  addHeader,
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type State,
-} from "@elizaos/core";
+import type {
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "../../types/index.ts";
+import { addHeader } from "../../utils.ts";
 
 /**
  * Provider for sharing action execution state and plan between actions

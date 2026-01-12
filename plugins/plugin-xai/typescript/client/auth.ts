@@ -14,8 +14,7 @@ export class XAuth {
   private lastAccessToken?: string;
 
   constructor(private readonly provider: XAuthProvider) {
-    // Backward-compatible behavior: legacy OAuth1 provider is considered authenticated immediately,
-    // matching previous eager client initialization semantics.
+    // OAuth1 provider is considered authenticated immediately
     if ("getOAuth1Credentials" in provider && typeof provider.getOAuth1Credentials === "function") {
       this.authenticated = true;
     }

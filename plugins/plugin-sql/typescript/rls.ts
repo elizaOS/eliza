@@ -220,7 +220,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
 
   logger.info({ src: "plugin:sql" }, "RLS PostgreSQL functions installed");
 
-  // Install Entity RLS functions as well (part of unified RLS system)
+  // Install Entity RLS functions as well (part of the RLS system)
   await installEntityRLS(adapter);
 }
 

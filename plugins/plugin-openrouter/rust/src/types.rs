@@ -272,21 +272,13 @@ pub(crate) struct ResponseFormat {
 
 /// Chat completion choice.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct ChatCompletionChoice {
-    pub index: u32,
     pub message: ChatMessage,
-    #[serde(default)]
-    pub finish_reason: Option<String>,
 }
 
 /// Response from chat completions.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct ChatCompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
     pub model: String,
     pub choices: Vec<ChatCompletionChoice>,
     #[serde(default)]
@@ -302,22 +294,15 @@ pub(crate) struct EmbeddingsRequest {
 
 /// Embedding data in response.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct EmbeddingData {
-    pub object: String,
     pub embedding: Vec<f64>,
-    pub index: u32,
 }
 
 /// Response from embeddings API.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(crate) struct EmbeddingsResponseBody {
-    pub object: String,
     pub data: Vec<EmbeddingData>,
     pub model: String,
-    #[serde(default)]
-    pub usage: Option<TokenUsage>,
 }
 
 /// Models list response.
@@ -325,8 +310,4 @@ pub(crate) struct EmbeddingsResponseBody {
 pub(crate) struct ModelsResponse {
     pub data: Vec<ModelInfo>,
 }
-
-
-
-
 

@@ -80,19 +80,53 @@ function createErrorVector(dimension: number, marker: number): number[] {
 }
 
 /**
+ * Batch embedding params type for batch mode
+ */
+export interface BatchEmbeddingParams {
+  texts: string[];
+}
+
+/**
+ * Type guard to check if params is batch mode
+ */
+function isBatchParams(params: TextEmbeddingParams | BatchEmbeddingParams | string | null): params is BatchEmbeddingParams {
+  return (
+    typeof params === "object" &&
+    params !== null &&
+    "texts" in params &&
+    Array.isArray(params.texts)
+  );
+}
+
+/**
  * TEXT_EMBEDDING model handler (registered with ElizaOS runtime)
  *
- * Supports both single text and batch mode at runtime:
+ * Supports both single text and batch mode:
  * - Single: { text: "..." } or "string" → returns number[]
- * - Batch: { texts: ["...", "..."] } → returns number[][] (cast to any at runtime)
+ * - Batch: { texts: ["...", "..."] } → returns number[][]
  *
- * The return type is number[] for TypeScript compatibility with ElizaOS core,
- * but batch mode returns number[][] at runtime.
+ * @overload Single text mode
  */
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
-): Promise<number[]> {
+): Promise<number[]>;
+
+/**
+ * @overload Batch mode - returns array of embeddings
+ */
+export async function handleTextEmbedding(
+  runtime: IAgentRuntime,
+  params: BatchEmbeddingParams,
+): Promise<number[][]>;
+
+/**
+ * Implementation supporting both single and batch modes
+ */
+export async function handleTextEmbedding(
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | BatchEmbeddingParams | string | null,
+): Promise<number[] | number[][]> {
   const { embeddingDimension } = getEmbeddingConfig(runtime);
 
   if (params === null) {
@@ -101,21 +135,9 @@ export async function handleTextEmbedding(
   }
 
   // Check for batch mode: { texts: string[] }
-  // This works at runtime even though TypeScript doesn't know about it
-  if (
-    typeof params === "object" &&
-    params !== null &&
-    "texts" in params &&
-    Array.isArray((params as { texts: string[] }).texts)
-  ) {
-    const batchParams = params as { texts: string[] };
-    logger.debug(`[Embeddings] Batch mode: ${batchParams.texts.length} texts`);
-    // Return batch result - caller expects number[][] at runtime
-    // Batch mode returns number[][] but signature is number[]
-    return (await handleBatchTextEmbedding(
-      runtime,
-      batchParams.texts,
-    )) as unknown as number[];
+  if (isBatchParams(params)) {
+    logger.debug(`[Embeddings] Batch mode: ${params.texts.length} texts`);
+    return handleBatchTextEmbedding(runtime, params.texts);
   }
 
   // Single text mode

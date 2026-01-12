@@ -3,22 +3,30 @@
  */
 
 import { TEEMode } from "@elizaos/core";
-import { TappdClient } from "@phala/dstack-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PhalaDeriveKeyProvider } from "../providers/deriveKey";
 
 // Mock dependencies
-vi.mock("@phala/dstack-sdk", () => ({
-  TappdClient: vi.fn().mockImplementation(() => ({
-    deriveKey: vi.fn().mockResolvedValue({
-      asUint8Array: () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
-    }),
-    tdxQuote: vi.fn().mockResolvedValue({
-      quote: "mock-quote-data",
-      replayRtmrs: () => ["rtmr0", "rtmr1", "rtmr2", "rtmr3"],
-    }),
-  })),
-}));
+const mockDeriveKey = vi.fn().mockResolvedValue({
+  asUint8Array: () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+});
+const mockTdxQuote = vi.fn().mockResolvedValue({
+  quote: "mock-quote-data",
+  replayRtmrs: () => ["rtmr0", "rtmr1", "rtmr2", "rtmr3"],
+});
+const mockConstructorCalls: Array<string | undefined> = [];
+
+vi.mock("@phala/dstack-sdk", () => {
+  return {
+    TappdClient: class MockTappdClient {
+      deriveKey = mockDeriveKey;
+      tdxQuote = mockTdxQuote;
+      constructor(endpoint?: string) {
+        mockConstructorCalls.push(endpoint);
+      }
+    },
+  };
+});
 
 vi.mock("@solana/web3.js", () => ({
   Keypair: {
@@ -43,22 +51,23 @@ vi.mock("viem", () => ({
 describe("PhalaDeriveKeyProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConstructorCalls.length = 0;
   });
 
   describe("constructor", () => {
     it("should initialize with LOCAL mode", () => {
       const _provider = new PhalaDeriveKeyProvider(TEEMode.LOCAL);
-      expect(TappdClient).toHaveBeenCalledWith("http://localhost:8090");
+      expect(mockConstructorCalls).toContain("http://localhost:8090");
     });
 
     it("should initialize with DOCKER mode", () => {
       const _provider = new PhalaDeriveKeyProvider(TEEMode.DOCKER);
-      expect(TappdClient).toHaveBeenCalledWith("http://host.docker.internal:8090");
+      expect(mockConstructorCalls).toContain("http://host.docker.internal:8090");
     });
 
     it("should initialize with PRODUCTION mode", () => {
       const _provider = new PhalaDeriveKeyProvider(TEEMode.PRODUCTION);
-      expect(TappdClient).toHaveBeenCalledWith();
+      expect(mockConstructorCalls).toContain(undefined);
     });
 
     it("should throw error for invalid mode", () => {
@@ -78,8 +87,7 @@ describe("PhalaDeriveKeyProvider", () => {
       const subject = "test-subject";
       const result = await provider.rawDeriveKey(path, subject);
 
-      const client = vi.mocked(TappdClient).mock.results[0].value;
-      expect(client.deriveKey).toHaveBeenCalledWith(path, subject);
+      expect(mockDeriveKey).toHaveBeenCalledWith(path, subject);
       expect(result.key).toBeInstanceOf(Uint8Array);
     });
 
@@ -108,8 +116,7 @@ describe("PhalaDeriveKeyProvider", () => {
       const subject = "solana";
       const result = await provider.deriveEd25519Keypair(path, subject, "test-agent-id");
 
-      const client = vi.mocked(TappdClient).mock.results[0].value;
-      expect(client.deriveKey).toHaveBeenCalledWith(path, subject);
+      expect(mockDeriveKey).toHaveBeenCalledWith(path, subject);
       expect(result.keypair.publicKey.toBase58()).toBe("mock-solana-public-key");
       expect(result.attestation.quote).toBe("mock-quote-data");
     });
@@ -127,8 +134,7 @@ describe("PhalaDeriveKeyProvider", () => {
       const subject = "evm";
       const result = await provider.deriveEcdsaKeypair(path, subject, "test-agent-id");
 
-      const client = vi.mocked(TappdClient).mock.results[0].value;
-      expect(client.deriveKey).toHaveBeenCalledWith(path, subject);
+      expect(mockDeriveKey).toHaveBeenCalledWith(path, subject);
       expect(result.keypair.address).toBe("0xmock-evm-address");
       expect(result.attestation.quote).toBe("mock-quote-data");
     });

@@ -1,6 +1,6 @@
 /**
  * Browser and Node.js compatible buffer abstraction
- * This module provides a unified interface for buffer operations
+ * This module provides a cross-platform interface for buffer operations
  * that works in both browser and Node.js environments.
  *
  * In browsers, we use Uint8Array as a Buffer replacement.

@@ -2,7 +2,7 @@
  * BlueSky API client using AT Protocol.
  */
 
-import { BskyAgent, RichText } from "@atproto/api";
+import { type AppBskyFeedDefs, BskyAgent, RichText } from "@atproto/api";
 import { logger } from "@elizaos/core";
 import { LRUCache } from "lru-cache";
 import type {
@@ -18,6 +18,43 @@ import type {
   TimelineResponse,
 } from "./types";
 import { BLUESKY_CHAT_SERVICE_DID, BlueSkyError, CACHE_SIZE, CACHE_TTL } from "./types";
+
+/**
+ * Converts an AT Protocol post view to our internal BlueSkyPost type.
+ * This adapter handles the conversion from @atproto/api types to our internal representation.
+ */
+function adaptPostView(postView: AppBskyFeedDefs.PostView): BlueSkyPost {
+  return {
+    uri: postView.uri,
+    cid: postView.cid,
+    author: {
+      did: postView.author.did,
+      handle: postView.author.handle,
+      displayName: postView.author.displayName,
+      description: postView.author.description,
+      avatar: postView.author.avatar,
+      banner: postView.author.banner,
+      followersCount: postView.author.followersCount,
+      followsCount: postView.author.followsCount,
+      postsCount: postView.author.postsCount,
+      indexedAt: postView.author.indexedAt,
+      createdAt: postView.author.createdAt,
+    },
+    record: {
+      $type: postView.record.$type,
+      text: (postView.record as { text?: string }).text ?? "",
+      facets: (postView.record as { facets?: unknown[] }).facets,
+      embed: (postView.record as { embed?: unknown }).embed,
+      createdAt: (postView.record as { createdAt?: string }).createdAt ?? "",
+    },
+    embed: postView.embed as { $type: string; [key: string]: unknown } | undefined,
+    replyCount: postView.replyCount,
+    repostCount: postView.repostCount,
+    likeCount: postView.likeCount,
+    quoteCount: postView.quoteCount,
+    indexedAt: postView.indexedAt,
+  };
+}
 
 export interface BlueSkyClientConfig {
   service: string;
@@ -98,11 +135,11 @@ export class BlueSkyClient {
     return {
       cursor: response.data.cursor,
       feed: response.data.feed.map((item) => ({
-        post: item.post as unknown as BlueSkyPost,
+        post: adaptPostView(item.post),
         reply: item.reply
           ? {
-              root: item.reply.root as unknown as BlueSkyPost,
-              parent: item.reply.parent as unknown as BlueSkyPost,
+              root: adaptPostView(item.reply.root),
+              parent: adaptPostView(item.reply.parent),
             }
           : undefined,
         reason: item.reason as Record<string, unknown>,
@@ -144,7 +181,8 @@ export class BlueSkyClient {
       throw new BlueSkyError("Failed to retrieve created post", "POST_CREATE_FAILED");
     }
 
-    return (thread.data.thread as unknown as { post: BlueSkyPost }).post;
+    const threadViewPost = thread.data.thread as AppBskyFeedDefs.ThreadViewPost;
+    return adaptPostView(threadViewPost.post);
   }
 
   async deletePost(uri: string): Promise<void> {

@@ -3,12 +3,12 @@
  * Uses the generated prompts and shared types from @elizaos/core.
  */
 
-import type { PromptFieldInfo } from "@elizaos/core";
 import { composePrompt } from "@elizaos/core";
 import {
   FORM_CREATION_TEMPLATE,
   FORM_EXTRACTION_TEMPLATE,
 } from "../generated/prompts/typescript/prompts.js";
+import type { PromptFieldInfo } from "../types.js";
 
 /**
  * Build the form extraction prompt with the given user message and fields.

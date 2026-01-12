@@ -43,26 +43,54 @@ export { bridgeTemplate };
 /**
  * Type helpers for LiFi SDK callbacks.
  * The SDK has strict callback types that don't always align with our implementations.
+ * These adapters properly convert between our WalletProvider types and LiFi SDK expectations.
  */
 type LiFiGetWalletClient = Parameters<typeof EVM>[0]["getWalletClient"];
 type LiFiSwitchChain = Parameters<typeof EVM>[0]["switchChain"];
 
-function _asLiFiGetWalletClient(
-  fn: () => Promise<ReturnType<WalletProvider["getWalletClient"]>>
+/**
+ * Type adapter for LiFi SDK getWalletClient callback.
+ * Our WalletProvider.getWalletClient returns a WalletClient synchronously,
+ * but LiFi expects an async function that returns a Promise<WalletClient>.
+ */
+function createLiFiGetWalletClientAdapter(
+  walletProvider: WalletProvider,
+  getFirstChain: () => string
 ): LiFiGetWalletClient {
-  return fn as LiFiGetWalletClient;
+  return (async () => {
+    const firstChain = getFirstChain();
+    return walletProvider.getWalletClient(firstChain as SupportedChain);
+  }) as LiFiGetWalletClient;
 }
 
-function _asLiFiSwitchChain(
-  fn: (chainId: number) => Promise<ReturnType<WalletProvider["getWalletClient"]>>
+/**
+ * Type adapter for LiFi SDK switchChain callback.
+ * Converts our chain name-based API to LiFi's chainId-based API.
+ */
+function createLiFiSwitchChainAdapter(
+  walletProvider: WalletProvider,
+  getChainNameById: (chainId: number) => string
 ): LiFiSwitchChain {
-  return fn as LiFiSwitchChain;
+  return (async (chainId: number) => {
+    logger.debug(`LiFi requesting chain switch to ${chainId}...`);
+    const chainName = getChainNameById(chainId);
+    return walletProvider.getWalletClient(chainName as SupportedChain);
+  }) as LiFiSwitchChain;
 }
 
-function _asExecutionSwitchChainHook(
-  fn: (chainId: number) => Promise<ReturnType<WalletProvider["getWalletClient"]>>
+/**
+ * Type adapter for ExecutionOptions switchChainHook.
+ * Similar to switchChain but used during route execution.
+ */
+function createExecutionSwitchChainHookAdapter(
+  walletProvider: WalletProvider,
+  getChainNameById: (chainId: number) => string
 ): ExecutionOptions["switchChainHook"] {
-  return fn as ExecutionOptions["switchChainHook"];
+  return (async (chainId: number) => {
+    logger.debug(`Switching to chain ${chainId}...`);
+    const chainName = getChainNameById(chainId);
+    return walletProvider.getWalletClient(chainName as SupportedChain);
+  }) as ExecutionOptions["switchChainHook"];
 }
 
 /**
@@ -86,15 +114,14 @@ export class BridgeAction {
   constructor(private readonly walletProvider: WalletProvider) {
     // Create EVM provider configuration for LiFi SDK
     const evmProvider = EVM({
-      getWalletClient: (async () => {
-        const firstChain = Object.keys(this.walletProvider.chains)[0];
-        return this.walletProvider.getWalletClient(firstChain as SupportedChain);
-      }) as unknown as Parameters<typeof EVM>[0]["getWalletClient"],
-      switchChain: (async (chainId: number) => {
-        logger.debug(`LiFi requesting chain switch to ${chainId}...`);
-        const chainName = this.getChainNameById(chainId);
-        return this.walletProvider.getWalletClient(chainName as SupportedChain);
-      }) as unknown as Parameters<typeof EVM>[0]["switchChain"],
+      getWalletClient: createLiFiGetWalletClientAdapter(
+        this.walletProvider,
+        () => Object.keys(this.walletProvider.chains)[0]
+      ),
+      switchChain: createLiFiSwitchChainAdapter(
+        this.walletProvider,
+        (chainId: number) => this.getChainNameById(chainId)
+      ),
     });
 
     // Initialize LiFi SDK config (used globally by the SDK)
@@ -209,11 +236,10 @@ export class BridgeAction {
         this.updateRouteStatus(routeId, updatedRoute);
       },
 
-      switchChainHook: (async (chainId: number) => {
-        logger.debug(`Switching to chain ${chainId}...`);
-        const chainName = this.getChainNameById(chainId);
-        return this.walletProvider.getWalletClient(chainName as SupportedChain);
-      }) as unknown as ExecutionOptions["switchChainHook"],
+      switchChainHook: createExecutionSwitchChainHookAdapter(
+        this.walletProvider,
+        (chainId: number) => this.getChainNameById(chainId)
+      ),
 
       executeInBackground: false,
       disableMessageSigning: false,

@@ -1,10 +1,10 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type Provider,
-  type State,
-} from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
 
 /**
  * Formats an array of memories into a single string with each memory content text separated by a new line.

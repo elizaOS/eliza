@@ -712,6 +712,19 @@
         "typescript": "^5.9.3",
       },
     },
+    "plugins/plugin-instagram": {
+      "name": "@elizaos/plugin-instagram-root",
+      "version": "1.0.0",
+      "devDependencies": {
+        "@biomejs/biome": "^2.3.11",
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "typescript": "^5.9.3",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-knowledge": {
       "name": "@elizaos/plugin-knowledge-root",
       "version": "1.6.1",
@@ -1518,6 +1531,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "twitter-api-v2": "^1.17.2",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
@@ -1903,6 +1917,8 @@
     "@elizaos/plugin-inmemorydb": ["@elizaos/plugin-inmemorydb@workspace:plugins/plugin-inmemorydb/typescript"],
 
     "@elizaos/plugin-inmemorydb-root": ["@elizaos/plugin-inmemorydb-root@workspace:plugins/plugin-inmemorydb"],
+
+    "@elizaos/plugin-instagram-root": ["@elizaos/plugin-instagram-root@workspace:plugins/plugin-instagram"],
 
     "@elizaos/plugin-knowledge": ["@elizaos/plugin-knowledge@workspace:plugins/plugin-knowledge/typescript"],
 

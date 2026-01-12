@@ -36,7 +36,7 @@
     "version:major": "bunx lerna version major --force-publish --yes --no-push --no-git-tag-version",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
-    "test": "turbo run test --concurrency 3 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!@elizaos/plugin-sql",
+    "test": "turbo run test --concurrency 3 --filter=!@elizaos/plugin-sql-root --filter=!@elizaos/plugin-planning --filter=!@elizaos/plugin-planning-root --filter=!@elizaos/plugin-openrouter-root --filter=!@elizaos/plugin-farcaster-root --filter=!@elizaos/plugin-vercel-ai-gateway-root --filter=!@elizaos/plugin-tee-root --filter=!@elizaos/python --filter=!@elizaos/plugin-openai-root --filter=!@elizaos/plugin-goals-root --filter=!@elizaos/plugin-telegram-root --filter=!@elizaos/plugin-knowledge-root --filter=!elizaos-cloudflare-worker --filter=!@elizaos/plugin-github-root --filter=!@elizaos/plugin-linear-root --filter=!@elizaos/plugin-s3-storage-root --filter=!@elizaos/plugin-simple-voice-root --filter=!@elizaos/plugin-vision-root --filter=!@elizaos/plugin-rss-root --filter=!@elizaos/plugin-elizacloud-root --filter=!@elizaos/plugin-memory-root --filter=!@elizaos/core --filter=!@elizaos/plugin-anthropic-root --filter=!@elizaos/plugin-n8n-root",
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/typescript",
     "test:server": "turbo run test --filter=./packages/server"

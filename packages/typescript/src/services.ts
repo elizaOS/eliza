@@ -1,6 +1,20 @@
 import type { IAgentRuntime, ServiceTypeName } from "./types";
 import { Service } from "./types";
 
+// ServiceClass is exported from ./types/plugin.ts - don't re-define here
+// to avoid duplicate export errors. The generic version is defined below.
+
+/**
+ * Type for the service class returned by the builder.
+ * This provides the expected interface for dynamically created service classes.
+ * This is a more specific generic version of the base ServiceClass from types/plugin.ts
+ */
+export interface TypedServiceBuilder<TService extends Service = Service> {
+  new (runtime?: IAgentRuntime): TService;
+  serviceType: ServiceTypeName;
+  start(runtime: IAgentRuntime): Promise<TService>;
+}
+
 /**
  * Service builder class that provides type-safe service creation
  * with automatic type inference
@@ -41,46 +55,54 @@ export class ServiceBuilder<TService extends Service = Service> {
   }
 
   /**
-   * Build the service class with all configured properties
+   * Build the service class with all configured properties.
+   * Returns a properly typed service class constructor.
    */
-  build(): {
-    new (runtime?: IAgentRuntime): TService;
-    serviceType: string;
-    start(runtime: IAgentRuntime): Promise<TService>;
-  } {
+  build(): TypedServiceBuilder<TService> {
     const serviceType = this.serviceType;
     const description = this.description;
     const startFn = this.startFn;
     const stopFn = this.stopFn;
 
-    // Create a dynamic class with the configured properties
-    class ServiceClass extends Service {
-      static serviceType = serviceType as ServiceTypeName;
+    // Build the service class using Object.assign to properly set static properties
+    // This avoids the need for 'as unknown as' by structuring the class correctly
+    const ServiceClassImpl = class extends Service {
       capabilityDescription = description;
-
-      static async start(runtime: IAgentRuntime): Promise<Service> {
-        if (!startFn) {
-          throw new Error(
-            `Start function not defined for service ${serviceType}`,
-          );
-        }
-        return startFn(runtime);
-      }
 
       async stop(): Promise<void> {
         if (stopFn) {
           await stopFn();
         }
       }
-    }
-
-    // TypeScript needs help here because we're creating a dynamic class
-    // The class already matches the interface, so this cast is safe
-    return ServiceClass as unknown as {
-      new (runtime?: IAgentRuntime): TService;
-      serviceType: ServiceTypeName;
-      start(runtime: IAgentRuntime): Promise<TService>;
     };
+
+    // Define static properties on the class
+    Object.defineProperty(ServiceClassImpl, "serviceType", {
+      value: serviceType,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+
+    // Define the static start method that returns the correct type
+    const startMethod = async (runtime: IAgentRuntime): Promise<TService> => {
+      if (!startFn) {
+        throw new Error(`Start function not defined for service ${serviceType}`);
+      }
+      return startFn(runtime);
+    };
+
+    Object.defineProperty(ServiceClassImpl, "start", {
+      value: startMethod,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+
+    // The class now conforms to ServiceClass<TService> interface
+    // We use a type assertion here that is safe because we've explicitly
+    // set up the class to match the interface requirements
+    return ServiceClassImpl as ServiceClass<TService>;
   }
 }
 
@@ -106,20 +128,15 @@ export interface ServiceDefinition<T extends Service = Service> {
 }
 
 /**
- * Define a service with type safety
+ * Define a service with type safety.
+ * Returns a ServiceClass that can be instantiated and started.
  */
 export function defineService<T extends Service = Service>(
   definition: ServiceDefinition<T>,
-): {
-  new (runtime?: IAgentRuntime): T;
-  serviceType: ServiceTypeName;
-  start(runtime: IAgentRuntime): Promise<T>;
-} {
-  const builtService = createService<T>(definition.serviceType)
+): ServiceClass<T> {
+  return createService<T>(definition.serviceType)
     .withDescription(definition.description)
     .withStart(definition.start)
     .withStop(definition.stop || (() => Promise.resolve()))
     .build();
-  // TypeScript needs help here - ensure serviceType is ServiceTypeName
-  return builtService as typeof builtService & { serviceType: ServiceTypeName };
 }

@@ -1,7 +1,6 @@
 #![allow(missing_docs)]
 //! High-level client for the Todo Plugin.
 
-use crate::cache_manager::CacheManager;
 use crate::config::TodoConfig;
 use crate::data_service::{create_todo_data_service, TodoDataService};
 use crate::error::{Result, TodoError};
@@ -47,8 +46,6 @@ use uuid::Uuid;
 pub struct TodoClient {
     config: TodoConfig,
     data_service: Arc<TodoDataService>,
-    #[allow(dead_code)] // Reserved for future caching implementation
-    cache_manager: Arc<CacheManager>,
     notification_manager: Arc<RwLock<NotificationManager>>,
     reminder_service: Option<Arc<ReminderService>>,
     started: Arc<RwLock<bool>>,
@@ -70,7 +67,6 @@ impl TodoClient {
         Ok(Self {
             config,
             data_service: Arc::new(create_todo_data_service()),
-            cache_manager: Arc::new(CacheManager::default()),
             notification_manager: Arc::new(RwLock::new(NotificationManager::new())),
             reminder_service: None,
             started: Arc::new(RwLock::new(false)),

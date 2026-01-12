@@ -96,7 +96,7 @@ function createTestPlanningContext(): PlanningContext {
 }
 
 /**
- * Integration tests for the unified planning system
+ * Integration tests for the planning system
  * Tests the complete workflow from planning to execution
  */
 describe("Planning Integration Tests", () => {

@@ -45,6 +45,10 @@ pub mod types;
 
 use anyhow::Result as AnyhowResult;
 
+use crate::client::TwitterClient;
+use crate::grok::{GrokClient, GrokConfig};
+use crate::types::TwitterConfig;
+
 /// Create a Twitter API client for X from environment variables.
 ///
 /// Required environment variables:

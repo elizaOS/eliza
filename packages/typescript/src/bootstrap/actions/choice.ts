@@ -1,19 +1,18 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  composePrompt,
-  getUserServerRole,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  ModelType,
-  optionExtractionTemplate,
-  parseKeyValueXml,
-  type State,
-} from "@elizaos/core";
+import { logger } from "../../logger.ts";
+import { optionExtractionTemplate } from "../../prompts.ts";
+import { getUserServerRole } from "../../roles.ts";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "../../types/index.ts";
+import { ModelType } from "../../types/index.ts";
+import { composePrompt, parseKeyValueXml } from "../../utils.ts";
 
 /**
  * Represents an action that allows selecting an option for a pending task that has multiple options.

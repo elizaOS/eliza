@@ -1,6 +1,6 @@
 name: NPM Release
 
-# Unified workflow for all NPM releases:
+# Consolidated workflow for all NPM releases:
 # - Alpha: On merge to develop branch
 # - Beta: On merge to main branch
 # - Production: On GitHub release creation

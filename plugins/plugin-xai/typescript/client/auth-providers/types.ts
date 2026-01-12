@@ -6,7 +6,7 @@ export type XAuthMode = "env" | "oauth" | "broker";
  * Primary abstraction: obtain a valid access token for X API calls.
  *
  * - For OAuth2 PKCE mode, this is the OAuth2 user access token (Bearer).
- * - For env mode (legacy OAuth1.0a), this returns the OAuth1 access token string
+ * - For env mode (OAuth1.0a), this returns the OAuth1 access token string
  *   (and the provider may expose additional fields via `getOAuth1Credentials()`).
  */
 export interface XAuthProvider {

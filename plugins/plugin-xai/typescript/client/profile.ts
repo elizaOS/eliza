@@ -3,8 +3,8 @@ import type { XAuth } from "./auth";
 import type { XApiErrorRaw } from "./errors";
 
 /**
- * Interface representing a raw user object from a legacy system.
- * @typedef {Object} LegacyUserRaw
+ * Interface representing a raw user object from the X API.
+ * @typedef {Object} XUserRaw
  * @property {string} [created_at] - The date the user was created.
  * @property {string} [description] - The user's description.
  * @property {Object} [entities] - Additional entities associated with the user.
@@ -33,7 +33,7 @@ import type { XApiErrorRaw } from "./errors";
  * @property {string} [url] - The user's URL.
  * @property {boolean} [can_dm] - Indicates if direct messages are enabled for the user.
  */
-export interface LegacyUserRaw {
+export interface XUserRaw {
   created_at?: string;
   description?: string;
   entities?: {
@@ -130,7 +130,7 @@ export interface UserRaw {
       result: {
         rest_id?: string;
         is_blue_verified?: boolean;
-        legacy: LegacyUserRaw;
+        legacy: XUserRaw;
       };
     };
   };
@@ -141,7 +141,7 @@ function getAvatarOriginalSizeUrl(avatarUrl: string | undefined) {
   return avatarUrl ? avatarUrl.replace("_normal", "") : undefined;
 }
 
-export function parseProfile(user: LegacyUserRaw, isBlueVerified?: boolean): Profile {
+export function parseProfile(user: XUserRaw, isBlueVerified?: boolean): Profile {
   const profile: Profile = {
     avatar: getAvatarOriginalSizeUrl(user.profile_image_url_https),
     banner: user.profile_banner_url,

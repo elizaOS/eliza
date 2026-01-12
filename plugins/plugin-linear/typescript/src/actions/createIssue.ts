@@ -11,7 +11,7 @@ import {
 } from "@elizaos/core";
 import { createIssueTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
-import type { LinearIssueInput } from "../types";
+import type { CreateIssueParameters, LinearIssueInput } from "../types/index.js";
 
 export const createIssueAction: Action = {
   name: "CREATE_LINEAR_ISSUE",
@@ -82,13 +82,9 @@ export const createIssueAction: Action = {
         };
       }
 
-      // Check if the message already has structured data
-      const params = _options?.parameters;
-      const paramIssueData = params?.issueData;
-      const structuredData =
-        paramIssueData && typeof paramIssueData === "object"
-          ? (paramIssueData as Partial<LinearIssueInput>)
-          : undefined;
+      // Check if the message already has structured data with type-safe access
+      const params = _options?.parameters as CreateIssueParameters | undefined;
+      const structuredData = params?.issueData;
 
       let issueData: Partial<LinearIssueInput>;
 

@@ -22,9 +22,9 @@ import {
 import type { DiscordActionRow, DiscordComponentOptions, JsonValue } from "./types";
 
 /**
- * Type definition for the unified messaging API available on some runtime versions.
+ * Type definition for the messaging API available on some runtime versions.
  */
-export interface UnifiedMessagingAPI {
+export interface MessagingAPI {
   sendMessage: (
     agentId: string,
     message: unknown,
@@ -40,47 +40,55 @@ export interface MessageServiceAPI {
 }
 
 /**
- * Runtime with unified messaging API
+ * Runtime with optional elizaOS messaging API
  */
-export interface RuntimeWithUnifiedMessaging extends IAgentRuntime {
-  elizaOS: UnifiedMessagingAPI;
+interface RuntimeWithMessagingAPI extends IAgentRuntime {
+  elizaOS: MessagingAPI;
 }
 
 /**
- * Checks if the runtime has the unified messaging API (elizaOS.sendMessage).
- * @param {IAgentRuntime} runtime - The runtime to check
- * @returns {boolean} True if the unified messaging API is available
+ * Runtime with optional message service
  */
-export function hasUnifiedMessagingAPI(
-  runtime: IAgentRuntime
-): runtime is RuntimeWithUnifiedMessaging {
-  const runtimeAny = runtime as { elizaOS?: { sendMessage?: unknown } };
-  return !!(runtimeAny.elizaOS && typeof runtimeAny.elizaOS.sendMessage === "function");
+interface RuntimeWithMessageService extends IAgentRuntime {
+  messageService: MessageServiceAPI;
 }
 
 /**
- * Checks if the runtime has the message service API (messageService.handleMessage).
+ * Type guard to check if runtime has the messaging API (elizaOS.sendMessage).
  * @param {IAgentRuntime} runtime - The runtime to check
- * @returns {boolean} True if the message service API is available
+ * @returns {runtime is RuntimeWithMessagingAPI} True if the messaging API is available
  */
-export function hasMessageService(runtime: IAgentRuntime): boolean {
-  const runtimeAny = runtime as {
-    messageService?: { handleMessage?: unknown };
-  };
-  return !!(
-    typeof runtimeAny.messageService === "object" &&
-    runtimeAny.messageService &&
-    typeof runtimeAny.messageService.handleMessage === "function"
+export function hasMessagingAPI(runtime: IAgentRuntime): runtime is RuntimeWithMessagingAPI {
+  return (
+    "elizaOS" in runtime &&
+    typeof (runtime as { elizaOS?: { sendMessage?: unknown } }).elizaOS === "object" &&
+    runtime.elizaOS !== null &&
+    typeof (runtime.elizaOS as { sendMessage?: unknown }).sendMessage === "function"
   );
 }
 
 /**
- * Gets the unified messaging API if available.
- * @param {IAgentRuntime} runtime - The runtime to get the API from
- * @returns {UnifiedMessagingAPI | null} The unified messaging API or null if not available
+ * Type guard to check if the runtime has the message service API (messageService.handleMessage).
+ * @param {IAgentRuntime} runtime - The runtime to check
+ * @returns {runtime is RuntimeWithMessageService} True if the message service API is available
  */
-export function getUnifiedMessagingAPI(runtime: IAgentRuntime): UnifiedMessagingAPI | null {
-  if (hasUnifiedMessagingAPI(runtime)) {
+export function hasMessageService(runtime: IAgentRuntime): runtime is RuntimeWithMessageService {
+  return (
+    "messageService" in runtime &&
+    typeof (runtime as { messageService?: { handleMessage?: unknown } }).messageService ===
+      "object" &&
+    runtime.messageService !== null &&
+    typeof (runtime.messageService as { handleMessage?: unknown }).handleMessage === "function"
+  );
+}
+
+/**
+ * Gets the messaging API if available.
+ * @param {IAgentRuntime} runtime - The runtime to get the API from
+ * @returns {MessagingAPI | null} The messaging API or null if not available
+ */
+export function getMessagingAPI(runtime: IAgentRuntime): MessagingAPI | null {
+  if (hasMessagingAPI(runtime)) {
     return runtime.elizaOS;
   }
   return null;
@@ -93,7 +101,7 @@ export function getUnifiedMessagingAPI(runtime: IAgentRuntime): UnifiedMessaging
  */
 export function getMessageService(runtime: IAgentRuntime): MessageServiceAPI | null {
   if (hasMessageService(runtime)) {
-    return (runtime as { messageService: MessageServiceAPI }).messageService;
+    return runtime.messageService;
   }
   return null;
 }

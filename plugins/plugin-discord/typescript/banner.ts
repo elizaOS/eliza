@@ -38,8 +38,6 @@ export interface BannerOptions {
   applicationId?: string;
   /** Permission values for the 3x2 tier matrix */
   discordPermissions?: DiscordPermissionValues;
-  /** @deprecated Use applicationId + discordPermissions instead */
-  discordInviteLink?: string;
 }
 
 function mask(v: string): string {
@@ -128,12 +126,10 @@ function line(content: string): string {
  * Render a framed ANSI banner that displays plugin settings and, when available, tiered Discord invite URLs.
  *
  * The banner lists each setting with masked or truncated values, a status (custom/default/unset/required),
- * and an optional Discord invite section generated from `applicationId` and `discordPermissions`. For backwards
- * compatibility, a legacy `discordInviteLink` may be used when the permissions-based info is unavailable.
+ * and an optional Discord invite section generated from `applicationId` and `discordPermissions`.
  *
  * @param options - Configuration for the banner, including `settings`, the `runtime` used to emit the banner,
- *                  and optional Discord invite data (`applicationId`, `discordPermissions`). `discordInviteLink`
- *                  is deprecated and retained only for backwards compatibility.
+ *                  and optional Discord invite data (`applicationId`, `discordPermissions`).
  */
 export function printBanner(options: BannerOptions): void {
   const { settings, runtime } = options;
@@ -221,10 +217,6 @@ export function printBanner(options: BannerOptions): void {
     lines.push(`   ${ANSI.brightCyan}○ Basic${R}      ${baseUrl}${p.basic}`);
     lines.push(`   ${ANSI.brightMagenta}○ Moderator${R}  ${baseUrl}${p.moderator}`);
     lines.push(`   ${ANSI.brightBlue}○ Admin${R}      ${baseUrl}${p.admin}`);
-  } else if (options.discordInviteLink) {
-    // Backwards compatibility
-    lines.push("");
-    lines.push(`${B}${ANSI.brightCyan}🔗 Discord Bot Invite:${R} ${options.discordInviteLink}`);
   }
 
   lines.push("");
@@ -233,8 +225,7 @@ export function printBanner(options: BannerOptions): void {
 }
 
 /**
- * Simple banner for backwards compatibility
- * @deprecated Use printBanner with BannerOptions instead
+ * Print the Discord plugin banner with current settings.
  */
 export function printDiscordBanner(runtime: IAgentRuntime): void {
   // Get settings

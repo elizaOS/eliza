@@ -180,26 +180,10 @@ pub(crate) struct GenerateRequest {
 
 /// Response body from the Ollama generate API.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)] // Fields are part of API response but not all are currently used
 pub(crate) struct GenerateResponse {
     pub model: String,
-    pub created_at: String,
     pub response: String,
     pub done: bool,
-    #[serde(default)]
-    pub context: Option<Vec<i64>>,
-    #[serde(default)]
-    pub total_duration: Option<u64>,
-    #[serde(default)]
-    pub load_duration: Option<u64>,
-    #[serde(default)]
-    pub prompt_eval_count: Option<u32>,
-    #[serde(default)]
-    pub prompt_eval_duration: Option<u64>,
-    #[serde(default)]
-    pub eval_count: Option<u32>,
-    #[serde(default)]
-    pub eval_duration: Option<u64>,
 }
 
 /// Request body for the Ollama embeddings API.
@@ -233,7 +217,3 @@ pub(crate) struct PullRequest {
     pub model: String,
     pub stream: bool,
 }
-
-
-
-

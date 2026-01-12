@@ -1,7 +1,7 @@
 /**
  * @elizaos/plugin-xai
  *
- * Unified xAI integration for elizaOS agents:
+ * xAI integration for elizaOS agents:
  * - xAI Grok models for text generation and embeddings
  * - X (formerly Twitter) API v2 for social interactions
  */

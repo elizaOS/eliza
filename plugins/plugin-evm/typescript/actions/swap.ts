@@ -51,9 +51,10 @@ export { swapTemplate };
 
 /**
  * Build send transaction parameters for viem.
- * Viem's type system is strict about transaction parameters.
+ * Viem's SendTransactionParameters is a union type that requires specific combinations.
+ * This function ensures type safety by constructing a properly typed transaction request.
  */
-function _buildSendTxParams(params: {
+function buildSendTxParams(params: {
   account: Account;
   to: Address;
   value?: bigint;
@@ -62,18 +63,30 @@ function _buildSendTxParams(params: {
   gas?: bigint;
   gasPrice?: bigint;
 }): SendTransactionParameters {
-  return params as SendTransactionParameters;
-}
+  // Construct the transaction parameters object with explicit typing
+  const txParams: SendTransactionParameters = {
+    account: params.account,
+    to: params.to,
+  };
 
-/**
- * Build read contract parameters for viem.
- */
-function buildReadContractParams<TAbi extends readonly unknown[]>(params: {
-  address: Address;
-  abi: TAbi;
-  functionName: string;
-}) {
-  return params;
+  // Add optional parameters only if they are defined
+  if (params.value !== undefined) {
+    txParams.value = params.value;
+  }
+  if (params.data !== undefined) {
+    txParams.data = params.data;
+  }
+  if (params.chain !== undefined) {
+    txParams.chain = params.chain;
+  }
+  if (params.gas !== undefined) {
+    txParams.gas = params.gas;
+  }
+  if (params.gasPrice !== undefined) {
+    txParams.gasPrice = params.gasPrice;
+  }
+
+  return txParams;
 }
 
 /**
@@ -255,15 +268,13 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      fromTokenDecimals = Number(
-        await publicClient.readContract(
-          buildReadContractParams({
-            address: params.fromToken as Address,
-            abi: decimalsAbi,
-            functionName: "decimals",
-          })
-        )
-      );
+      // Type-safe readContract call - viem's type system requires explicit typing
+      const readContractParams = {
+        address: params.fromToken as Address,
+        abi: decimalsAbi,
+        functionName: "decimals" as const,
+      } as const;
+      fromTokenDecimals = Number(await publicClient.readContract(readContractParams));
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [

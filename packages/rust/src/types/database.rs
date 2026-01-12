@@ -63,9 +63,6 @@ pub struct ActionLogBody {
     /// Result
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<ActionLogResult>,
-    /// Whether using legacy return format
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_legacy_return: Option<bool>,
     /// Prompts used
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompts: Option<Vec<PromptLogEntry>>,
