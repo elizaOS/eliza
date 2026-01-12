@@ -1970,22 +1970,40 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
       // Only insert embedding if memory was actually created (not a duplicate)
       if (inserted.length > 0 && memory.embedding && Array.isArray(memory.embedding)) {
-        const cleanVector = memory.embedding.map((n) =>
-          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-        );
-
-        const embeddingValues: Record<string, unknown> = {
-          id: v4(),
-          memoryId: memoryId,
-          createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
-        };
-        embeddingValues[this.embeddingDimension] = cleanVector;
-
-        await tx.insert(embeddingTable).values([embeddingValues]);
+        await this.upsertEmbedding(tx, memoryId, memory.embedding);
       }
     });
 
     return memoryId;
+  }
+
+  /**
+   * Upserts embedding for a memory (insert or update).
+   */
+  protected async upsertEmbedding(tx: any, memoryId: UUID, embedding: number[]): Promise<void> {
+    const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
+
+    const existingEmbedding = await tx
+      .select({ id: embeddingTable.id })
+      .from(embeddingTable)
+      .where(eq(embeddingTable.memoryId, memoryId))
+      .limit(1);
+
+    if (existingEmbedding.length > 0) {
+      const updateValues: Record<string, unknown> = {};
+      updateValues[this.embeddingDimension] = cleanVector;
+      await tx
+        .update(embeddingTable)
+        .set(updateValues)
+        .where(eq(embeddingTable.memoryId, memoryId));
+    } else {
+      const embeddingValues: Record<string, unknown> = {
+        id: v4(),
+        memoryId,
+      };
+      embeddingValues[this.embeddingDimension] = cleanVector;
+      await tx.insert(embeddingTable).values([embeddingValues]);
+    }
   }
 
   /**
@@ -2035,36 +2053,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
           // Update embedding if provided
           if (memory.embedding && Array.isArray(memory.embedding)) {
-            const cleanVector = memory.embedding.map((n) =>
-              Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-            );
-
-            // Check if embedding exists
-            const existingEmbedding = await tx
-              .select({ id: embeddingTable.id })
-              .from(embeddingTable)
-              .where(eq(embeddingTable.memoryId, memory.id))
-              .limit(1);
-
-            if (existingEmbedding.length > 0) {
-              // Update existing embedding
-              const updateValues: Record<string, unknown> = {};
-              updateValues[this.embeddingDimension] = cleanVector;
-
-              await tx
-                .update(embeddingTable)
-                .set(updateValues)
-                .where(eq(embeddingTable.memoryId, memory.id));
-            } else {
-              // Create new embedding
-              const embeddingValues: Record<string, unknown> = {
-                id: v4(),
-                memoryId: memory.id,
-              };
-              embeddingValues[this.embeddingDimension] = cleanVector;
-
-              await tx.insert(embeddingTable).values([embeddingValues]);
-            }
+            await this.upsertEmbedding(tx, memory.id, memory.embedding);
           }
         });
 

@@ -113,6 +113,57 @@ describe('PgliteDatabaseAdapter', () => {
     });
   });
 
+  describe('upsertEmbedding retry logic', () => {
+    it('should retry embedding upsert on failure', async () => {
+      let attempts = 0;
+      const mockDb = {
+        select: mock().mockReturnValue({
+          from: mock().mockReturnValue({
+            where: mock().mockReturnValue({
+              limit: mock().mockImplementation(() => {
+                attempts++;
+                if (attempts < 3) {
+                  return Promise.reject(new Error('Transient error'));
+                }
+                return Promise.resolve([]);
+              }),
+            }),
+          }),
+        }),
+        insert: mock().mockReturnValue({
+          values: mock().mockResolvedValue(undefined),
+        }),
+      };
+
+      (adapter as any).db = mockDb;
+      const embedding = [0.1, 0.2, 0.3];
+
+      await (adapter as any).upsertEmbedding(mockDb, agentId, embedding);
+
+      expect(attempts).toBe(3);
+    });
+
+    it('should throw after max retries', async () => {
+      const mockDb = {
+        select: mock().mockReturnValue({
+          from: mock().mockReturnValue({
+            where: mock().mockReturnValue({
+              limit: mock().mockRejectedValue(new Error('Persistent error')),
+            }),
+          }),
+        }),
+      };
+
+      (adapter as any).db = mockDb;
+      const embedding = [0.1, 0.2, 0.3];
+
+      await expect((adapter as any).upsertEmbedding(mockDb, agentId, embedding)).rejects.toThrow(
+        'Persistent error'
+      );
+      expect(logger.error).toHaveBeenCalled();
+    });
+  });
+
   describe('withDatabase shutdown handling', () => {
     it('should throw error instead of returning null when database is shutting down', async () => {
       // Create adapter with manager that is shutting down
