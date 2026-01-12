@@ -61,15 +61,19 @@ describe("plugin actions: task management", () => {
     });
 
     // Spy on runtime methods
-    vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
+    vi.spyOn(runtime, "getRoom").mockImplementation(
+      async (id: UUID) => rooms.get(id) ?? null,
+    );
 
     // Mock getMemories to return empty array (avoids database queries)
     vi.spyOn(runtime, "getMemories").mockResolvedValue([]);
 
-    vi.spyOn(runtime, "getService").mockImplementation(<T>(type: string): T | null => {
-      if (type === "CODE_TASK") return serviceRef as T;
-      return null;
-    });
+    vi.spyOn(runtime, "getService").mockImplementation(
+      <T>(type: string): T | null => {
+        if (type === "CODE_TASK") return serviceRef as T;
+        return null;
+      },
+    );
 
     vi.spyOn(runtime, "createTask").mockImplementation(async (task: Task) => {
       taskCounter += 1;
@@ -89,28 +93,39 @@ describe("plugin actions: task management", () => {
       return id;
     });
 
-    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
+    vi.spyOn(runtime, "getTask").mockImplementation(
+      async (id: UUID) => tasks.get(id) ?? null,
+    );
 
-    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
-      const allTasks = Array.from(tasks.values());
-      if (!tags || tags.length === 0) return allTasks;
-      return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    });
+    vi.spyOn(runtime, "getTasks").mockImplementation(
+      async ({ tags }: { tags?: string[] }) => {
+        const allTasks = Array.from(tasks.values());
+        if (!tags || tags.length === 0) return allTasks;
+        return allTasks.filter((t) =>
+          tags.some((tag) => t.tags?.includes(tag)),
+        );
+      },
+    );
 
-    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
-      const task = tasks.get(id);
-      if (!task) return;
+    vi.spyOn(runtime, "updateTask").mockImplementation(
+      async (id: UUID, updates: Partial<Task>) => {
+        const task = tasks.get(id);
+        if (!task) return;
 
-      if (typeof updates.name === "string") task.name = updates.name;
-      if (typeof updates.description === "string")
-        task.description = updates.description;
-      if (Array.isArray(updates.tags)) task.tags = updates.tags;
-      if (updates.roomId) task.roomId = updates.roomId;
-      if (updates.worldId) task.worldId = updates.worldId;
-      if (updates.metadata) {
-        task.metadata = { ...task.metadata, ...updates.metadata } as CodeTaskMetadata;
-      }
-    });
+        if (typeof updates.name === "string") task.name = updates.name;
+        if (typeof updates.description === "string")
+          task.description = updates.description;
+        if (Array.isArray(updates.tags)) task.tags = updates.tags;
+        if (updates.roomId) task.roomId = updates.roomId;
+        if (updates.worldId) task.worldId = updates.worldId;
+        if (updates.metadata) {
+          task.metadata = {
+            ...task.metadata,
+            ...updates.metadata,
+          } as CodeTaskMetadata;
+        }
+      },
+    );
 
     vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);
@@ -152,10 +167,7 @@ describe("plugin actions: task management", () => {
   });
 
   test("CREATE_TASK handler creates a task with initial steps from options", async () => {
-    const msg = createMemory(
-      "Build a Tetris game with high scores",
-      roomId,
-    );
+    const msg = createMemory("Build a Tetris game with high scores", roomId);
 
     const responses: Memory[] = [];
     await createTaskAction.handler(
@@ -169,14 +181,19 @@ describe("plugin actions: task management", () => {
       },
     );
 
-    const allTasks = await service.getAllTasks();
+    const allTasks = await service.getTasks();
     expect(allTasks.length).toBeGreaterThan(0);
     const task = allTasks[0];
     expect(task.name).toBe("Build Tetris");
-    expect(task.metadata.steps).toEqual([
-      { text: "step 1", completed: false },
-      { text: "step 2", completed: false },
-    ]);
+    expect(task.metadata.steps).toHaveLength(2);
+    expect(task.metadata.steps[0]).toMatchObject({
+      description: "step 1",
+      status: "pending",
+    });
+    expect(task.metadata.steps[1]).toMatchObject({
+      description: "step 2",
+      status: "pending",
+    });
   });
 
   test("PAUSE_TASK pauses a running task", async () => {
@@ -236,15 +253,25 @@ describe("plugin actions: task management", () => {
   });
 
   test("SEARCH_TASKS finds tasks by query", async () => {
-    await service.createCodeTask("Build Tetris", "Tetris game with high scores", roomId);
+    await service.createCodeTask(
+      "Build Tetris",
+      "Tetris game with high scores",
+      roomId,
+    );
     await service.createCodeTask("Fix Bug", "Address login bug", roomId);
 
     const msg = createMemory("search tasks for tetris", roomId);
     const responses: Memory[] = [];
-    await searchTasksAction.handler(runtime, msg, undefined, { query: "tetris" }, (m) => {
-      responses.push(m);
-      return Promise.resolve([]);
-    });
+    await searchTasksAction.handler(
+      runtime,
+      msg,
+      undefined,
+      { query: "tetris" },
+      (m) => {
+        responses.push(m);
+        return Promise.resolve([]);
+      },
+    );
 
     expect(responses[0].content.text).toContain("Tetris");
     expect(responses[0].content.text).not.toContain("Fix Bug");
@@ -256,8 +283,12 @@ describe("plugin actions: task management", () => {
     service.setCurrentTask(task1.id ?? null);
 
     const msg = createMemory("switch to task two", roomId);
-    await switchTaskAction.handler(runtime, msg, undefined, { taskId: task2.id }, () =>
-      Promise.resolve([]),
+    await switchTaskAction.handler(
+      runtime,
+      msg,
+      undefined,
+      { taskId: task2.id },
+      () => Promise.resolve([]),
     );
 
     expect(service.getCurrentTaskId()).toBe(task2.id);

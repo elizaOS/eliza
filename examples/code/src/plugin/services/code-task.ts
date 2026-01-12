@@ -26,7 +26,11 @@ function toJsonValue(value: unknown): JsonValue {
   if (value === null || value === undefined) {
     return null;
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return value;
   }
   if (Array.isArray(value)) {
@@ -309,7 +313,10 @@ export class CodeTaskService extends Service {
     metadata.progress = Math.round((completed / metadata.steps.length) * 100);
 
     await this.runtime.updateTask(taskId as UUID, { metadata });
-    this.emit("task:progress", taskId, { step: toJsonValue(step), progress: metadata.progress });
+    this.emit("task:progress", taskId, {
+      step: toJsonValue(step),
+      progress: metadata.progress,
+    });
   }
 
   async setTaskResult(taskId: string, result: TaskResult): Promise<void> {

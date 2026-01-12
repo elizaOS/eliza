@@ -63,8 +63,12 @@ class TodoDataService:
             todo.tags = self._tags.get(todo_id, [])
         return todo
 
-    async def get_todos(self, filters: TodoFilters | None = None) -> list[Todo]:
+    async def get_todos(self, filters: TodoFilters | dict | None = None) -> list[Todo]:
         todos = list(self._todos.values())
+
+        # Convert dict to TodoFilters if necessary
+        if isinstance(filters, dict):
+            filters = TodoFilters(**filters)
 
         if filters:
             if filters.agent_id:
@@ -189,6 +193,9 @@ class TodoDataService:
 
 
 def create_todo_data_service(db_connection: object | None = None) -> TodoDataService:
+    # If db_connection is already a TodoDataService, return it directly
+    if isinstance(db_connection, TodoDataService):
+        return db_connection
     return TodoDataService(db_connection)
 
 

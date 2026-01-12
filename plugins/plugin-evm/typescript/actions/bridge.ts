@@ -317,6 +317,29 @@ export class BridgeAction {
   }
 
   async bridge(params: BridgeParams): Promise<Transaction> {
+    // Validate inputs early to fail fast
+    const amount = parseFloat(params.amount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      throw new EVMError(EVMErrorCode.INVALID_PARAMS, "Amount must be a positive number");
+    }
+
+    if (params.fromChain === params.toChain) {
+      throw new EVMError(
+        EVMErrorCode.INVALID_PARAMS,
+        "Source and destination chains must be different for bridging"
+      );
+    }
+
+    if (
+      params.toAddress &&
+      (!params.toAddress.startsWith("0x") || params.toAddress.length !== 42)
+    ) {
+      throw new EVMError(
+        EVMErrorCode.INVALID_PARAMS,
+        `Invalid recipient address: ${params.toAddress}`
+      );
+    }
+
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
     const [fromAddress] = await walletClient.getAddresses();
 

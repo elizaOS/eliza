@@ -100,7 +100,10 @@ async function checkHealth(baseEndpoint: string): Promise<boolean> {
   });
 
   if (response.ok) {
-    const data = (await response.json()) as { runtime: string; version: string };
+    const data = (await response.json()) as {
+      runtime: string;
+      version: string;
+    };
     console.log(`✅ Connected to ${data.runtime} runtime (v${data.version})\n`);
     return true;
   }

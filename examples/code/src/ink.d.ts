@@ -76,7 +76,12 @@ declare module "ink" {
     underline?: boolean;
     strikethrough?: boolean;
     inverse?: boolean;
-    wrap?: "wrap" | "truncate" | "truncate-start" | "truncate-middle" | "truncate-end";
+    wrap?:
+      | "wrap"
+      | "truncate"
+      | "truncate-start"
+      | "truncate-middle"
+      | "truncate-end";
   }
 
   export const Text: FC<TextProps>;
@@ -91,7 +96,7 @@ declare module "ink" {
 
   export function useInput(
     inputHandler: (input: string, key: Key) => void,
-    options?: { isActive?: boolean }
+    options?: { isActive?: boolean },
   ): void;
 
   export function useApp(): { exit: (error?: Error) => void };
@@ -107,7 +112,11 @@ declare module "ink" {
     isRawModeSupported: boolean;
   };
 
-  export function useFocus(options?: { autoFocus?: boolean; isActive?: boolean; id?: string }): {
+  export function useFocus(options?: {
+    autoFocus?: boolean;
+    isActive?: boolean;
+    id?: string;
+  }): {
     isFocused: boolean;
   };
 
@@ -160,7 +169,9 @@ declare module "ink" {
     height: number;
   }
 
-  export function measureElement(ref: { current: DOMElement | null }): MeasureLayoutEvent | undefined;
+  export function measureElement(ref: {
+    current: DOMElement | null;
+  }): MeasureLayoutEvent | undefined;
 
   export interface DOMElement {
     nodeName: string;

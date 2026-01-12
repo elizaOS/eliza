@@ -1,11 +1,6 @@
-"""Pytest configuration for Polymarket plugin tests."""
+"""Conftest for plugin-polymarket tests."""
 
 import pytest
 
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Configure pytest markers."""
-    config.addinivalue_line(
-        "markers",
-        "asyncio: mark test as async",
-    )
+# Skip all tests in this module if py_clob_client is not installed
+py_clob_client = pytest.importorskip("py_clob_client", reason="py_clob_client not installed")

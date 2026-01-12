@@ -27,7 +27,7 @@ class PdfError(Exception):
 
 class PdfClient:
     def __init__(self) -> None:
-        self._loop = asyncio.get_event_loop()
+        pass
 
     def _clean_content(self, content: str) -> str:
         try:
@@ -89,7 +89,8 @@ class PdfClient:
         options: PdfExtractionOptions | None = None,
     ) -> str:
         opts = options or PdfExtractionOptions()
-        result = await self._loop.run_in_executor(
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
             None, partial(self._extract_text_sync, pdf_bytes, opts)
         )
 
@@ -118,7 +119,8 @@ class PdfClient:
         options: PdfExtractionOptions | None = None,
     ) -> PdfConversionResult:
         opts = options or PdfExtractionOptions()
-        return await self._loop.run_in_executor(
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
             None, partial(self._extract_text_sync, pdf_bytes, opts)
         )
 
@@ -192,7 +194,8 @@ class PdfClient:
 
     async def get_document_info(self, pdf_bytes: bytes) -> PdfDocumentInfo:
         try:
-            return await self._loop.run_in_executor(
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
                 None, partial(self._get_document_info_sync, pdf_bytes)
             )
         except Exception as e:
@@ -213,4 +216,5 @@ class PdfClient:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             return len(reader.pages)
 
-        return await self._loop.run_in_executor(None, _count_pages)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _count_pages)

@@ -164,10 +164,7 @@ INTELLIGENT PARSING:
       return { success: true, text: result, data: { command, operation } };
     } catch (err) {
       const error = err as Error & { code?: number; stderr?: string };
-      const gitError = createGitError(
-        command,
-        error.stderr ?? error.message,
-      );
+      const gitError = createGitError(command, error.stderr ?? error.message);
       const errorMsg = formatErrorForDisplay(gitError);
 
       logger.error(`GIT error: ${error.message}`);

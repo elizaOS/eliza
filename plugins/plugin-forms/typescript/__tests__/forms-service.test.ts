@@ -1,9 +1,15 @@
-import { asUUID, type IAgentRuntime, type Memory } from "@elizaos/core";
+import { asUUID, logger, type IAgentRuntime, type Memory } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FormsService } from "../services/forms-service";
 import type { Form, FormTemplate } from "../types";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
+
+// Mock the global logger to suppress warnings during tests
+vi.spyOn(logger, "warn").mockImplementation(() => {});
+vi.spyOn(logger, "info").mockImplementation(() => {});
+vi.spyOn(logger, "debug").mockImplementation(() => {});
+vi.spyOn(logger, "error").mockImplementation(() => {});
 
 // Helper interface for accessing private properties
 interface TestableFormsService {

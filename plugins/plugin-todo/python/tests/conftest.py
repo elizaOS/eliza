@@ -6,7 +6,10 @@ from uuid import uuid4
 
 import pytest
 
-from elizaos_plugin_todo import TodoClient, TodoConfig
+# Skip all tests if elizaos is not installed
+elizaos = pytest.importorskip("elizaos", reason="elizaos not installed")
+
+from elizaos_plugin_todo import TodoClient, TodoConfig  # noqa: E402
 
 
 @pytest.fixture

@@ -12,23 +12,9 @@ Example:
     >>> result = await grok.generate_text(TextGenerationParams(prompt="Hello"))
 """
 
-from elizaos_plugin_xai.actions import POST_ACTION
+# Standalone modules (no elizaos dependency)
 from elizaos_plugin_xai.client import TwitterClient, XClientError
 from elizaos_plugin_xai.grok import GrokClient, GrokConfig, GrokError
-from elizaos_plugin_xai.models import (
-    TEXT_EMBEDDING_HANDLER,
-    TEXT_LARGE_HANDLER,
-    TEXT_SMALL_HANDLER,
-    handle_text_embedding,
-    handle_text_large,
-    handle_text_small,
-)
-from elizaos_plugin_xai.plugin import (
-    XAIPlugin,
-    create_plugin,
-    get_xai_elizaos_plugin,
-    get_xai_plugin,
-)
 from elizaos_plugin_xai.types import (
     AuthMode,
     Mention,
@@ -44,21 +30,8 @@ from elizaos_plugin_xai.types import (
 
 __version__ = "1.0.0"
 
+# Base exports (always available)
 __all__ = [
-    # Main plugin
-    "XAIPlugin",
-    "create_plugin",
-    "get_xai_plugin",
-    "get_xai_elizaos_plugin",
-    # Actions
-    "POST_ACTION",
-    # Model handlers
-    "TEXT_SMALL_HANDLER",
-    "TEXT_LARGE_HANDLER",
-    "TEXT_EMBEDDING_HANDLER",
-    "handle_text_small",
-    "handle_text_large",
-    "handle_text_embedding",
     # Grok Client
     "GrokClient",
     "GrokConfig",
@@ -81,3 +54,42 @@ __all__ = [
     # Types - Config
     "AuthMode",
 ]
+
+# elizaOS-dependent modules (optional - only available when elizaos is installed)
+try:
+    from elizaos_plugin_xai.actions import POST_ACTION  # noqa: F401
+    from elizaos_plugin_xai.models import (  # noqa: F401
+        TEXT_EMBEDDING_HANDLER,
+        TEXT_LARGE_HANDLER,
+        TEXT_SMALL_HANDLER,
+        handle_text_embedding,
+        handle_text_large,
+        handle_text_small,
+    )
+    from elizaos_plugin_xai.plugin import (  # noqa: F401
+        XAIPlugin,
+        create_plugin,
+        get_xai_elizaos_plugin,
+        get_xai_plugin,
+    )
+
+    __all__.extend([
+        # Main plugin
+        "XAIPlugin",
+        "create_plugin",
+        "get_xai_plugin",
+        "get_xai_elizaos_plugin",
+        # Actions
+        "POST_ACTION",
+        # Model handlers
+        "TEXT_SMALL_HANDLER",
+        "TEXT_LARGE_HANDLER",
+        "TEXT_EMBEDDING_HANDLER",
+        "handle_text_small",
+        "handle_text_large",
+        "handle_text_embedding",
+    ])
+except ImportError:
+    # elizaos not installed - plugin/action/model features not available
+    # Standalone Grok and X clients are still usable
+    pass

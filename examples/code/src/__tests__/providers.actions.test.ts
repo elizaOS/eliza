@@ -52,7 +52,9 @@ describe("ACTIONS provider includes task control actions", () => {
     });
 
     // Spy on runtime methods
-    vi.spyOn(runtime, "getRoom").mockImplementation(async (id: UUID) => rooms.get(id) ?? null);
+    vi.spyOn(runtime, "getRoom").mockImplementation(
+      async (id: UUID) => rooms.get(id) ?? null,
+    );
 
     vi.spyOn(runtime, "getService").mockImplementation((type: string) => {
       if (type === "CODE_TASK") return serviceRef;
@@ -75,20 +77,28 @@ describe("ACTIONS provider includes task control actions", () => {
       return id;
     });
 
-    vi.spyOn(runtime, "getTask").mockImplementation(async (id: UUID) => tasks.get(id) ?? null);
+    vi.spyOn(runtime, "getTask").mockImplementation(
+      async (id: UUID) => tasks.get(id) ?? null,
+    );
 
-    vi.spyOn(runtime, "getTasks").mockImplementation(async ({ tags }: { tags?: string[] }) => {
-      const allTasks = Array.from(tasks.values());
-      if (!tags || tags.length === 0) return allTasks;
-      return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
-    });
+    vi.spyOn(runtime, "getTasks").mockImplementation(
+      async ({ tags }: { tags?: string[] }) => {
+        const allTasks = Array.from(tasks.values());
+        if (!tags || tags.length === 0) return allTasks;
+        return allTasks.filter((t) =>
+          tags.some((tag) => t.tags?.includes(tag)),
+        );
+      },
+    );
 
-    vi.spyOn(runtime, "updateTask").mockImplementation(async (id: UUID, updates: Partial<Task>) => {
-      const task = tasks.get(id);
-      if (!task) return;
-      if (updates.metadata)
-        task.metadata = { ...task.metadata, ...updates.metadata };
-    });
+    vi.spyOn(runtime, "updateTask").mockImplementation(
+      async (id: UUID, updates: Partial<Task>) => {
+        const task = tasks.get(id);
+        if (!task) return;
+        if (updates.metadata)
+          task.metadata = { ...task.metadata, ...updates.metadata };
+      },
+    );
 
     vi.spyOn(runtime, "deleteTask").mockImplementation(async (id: UUID) => {
       tasks.delete(id);

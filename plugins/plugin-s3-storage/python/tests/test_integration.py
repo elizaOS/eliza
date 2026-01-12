@@ -2,6 +2,14 @@ import os
 
 import pytest
 
+# Check if boto3 is available (required for full plugin functionality)
+try:
+    import boto3  # noqa: F401
+
+    HAS_BOTO3 = True
+except ImportError:
+    HAS_BOTO3 = False
+
 HAS_AWS_CREDS = bool(
     os.environ.get("AWS_ACCESS_KEY_ID")
     and os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -10,12 +18,16 @@ HAS_AWS_CREDS = bool(
 
 
 class TestS3PluginStructure:
+    @pytest.mark.skipif(not HAS_BOTO3, reason="boto3 not installed")
     def test_import_plugin(self) -> None:
         from elizaos_plugin_s3_storage import S3StoragePlugin
+
         assert S3StoragePlugin is not None
 
+    @pytest.mark.skipif(not HAS_BOTO3, reason="boto3 not installed")
     def test_import_client(self) -> None:
         from elizaos_plugin_s3_storage import S3StorageClient
+
         assert S3StorageClient is not None
 
     def test_import_types(self) -> None:
@@ -67,7 +79,10 @@ class TestS3Types:
         assert result.key == "data.json"
 
 
-@pytest.mark.skipif(not HAS_AWS_CREDS, reason="AWS credentials not set")
+@pytest.mark.skipif(
+    not HAS_BOTO3 or not HAS_AWS_CREDS,
+    reason="boto3 not installed or AWS credentials not set",
+)
 class TestS3APIIntegration:
     @pytest.mark.asyncio
     async def test_plugin_initialization(self) -> None:

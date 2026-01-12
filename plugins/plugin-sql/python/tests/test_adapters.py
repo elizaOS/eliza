@@ -6,7 +6,8 @@ import uuid
 from typing import TYPE_CHECKING
 
 import pytest
-from elizaos.types import as_uuid
+
+from tests.conftest import as_uuid
 
 if TYPE_CHECKING:
     from elizaos_plugin_sql.adapters.postgres import PostgresAdapter

@@ -66,4 +66,3 @@ export interface SubAgent {
   /** Cancel execution */
   cancel(): void;
 }
-
