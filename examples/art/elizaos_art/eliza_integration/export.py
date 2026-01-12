@@ -261,3 +261,52 @@ def _extract_shared_prefix(trajectories: list[dict]) -> list[dict]:
             break
 
     return shared
+
+
+async def export_trajectories_art_format(
+    trajectories: list[dict],
+    output_path: str | Path,
+) -> str:
+    """
+    Export trajectories to ART-compatible JSONL format.
+    
+    Args:
+        trajectories: List of trajectories to export
+        output_path: Output file path
+        
+    Returns:
+        Path to output file
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_path, "w") as f:
+        for traj in trajectories:
+            art_traj = _convert_to_art_format(traj)
+            f.write(json.dumps(art_traj) + "\n")
+    
+    return str(output_path)
+
+
+async def export_trajectories_jsonl(
+    trajectories: list[dict],
+    output_path: str | Path,
+) -> str:
+    """
+    Export trajectories to JSONL format.
+    
+    Args:
+        trajectories: List of trajectories to export
+        output_path: Output file path
+        
+    Returns:
+        Path to output file
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_path, "w") as f:
+        for traj in trajectories:
+            f.write(json.dumps(traj) + "\n")
+    
+    return str(output_path)

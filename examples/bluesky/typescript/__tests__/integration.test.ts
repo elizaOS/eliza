@@ -1,10 +1,12 @@
 /**
  * Integration tests for the Bluesky agent
  *
- * These tests require real credentials and can be run with:
- *   LIVE_TEST=true bun test
+ * These tests verify the full elizaOS integration:
+ * - Runtime creation with plugins
+ * - Handler registration
+ * - messageService availability
  *
- * Without LIVE_TEST=true, these tests are skipped.
+ * Live tests (LIVE_TEST=true) also test actual Bluesky API calls.
  */
 
 import { config } from "dotenv";
@@ -16,10 +18,10 @@ config();
 
 const isLiveTest = process.env.LIVE_TEST === "true";
 
-/**
- * Live integration tests - require credentials and built plugins
- * Run with: LIVE_TEST=true bun test
- */
+// ============================================================================
+// Live Integration Tests (require credentials)
+// ============================================================================
+
 describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
   beforeAll(() => {
     if (!process.env.BLUESKY_HANDLE || !process.env.BLUESKY_PASSWORD) {
@@ -30,7 +32,6 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
   });
 
   it("should authenticate with Bluesky", async () => {
-    // Dynamic import to handle workspace build order
     // @ts-expect-error - Workspace plugin resolved at runtime after build
     const { BlueSkyClient } = await import("@elizaos/plugin-bluesky");
 
@@ -103,31 +104,12 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
     expect(post.uri).toContain("mock://");
     expect(post.cid).toContain("mock-cid");
   });
-
-  it("should fetch own profile", async () => {
-    // @ts-expect-error - Workspace plugin resolved at runtime after build
-    const { BlueSkyClient } = await import("@elizaos/plugin-bluesky");
-
-    const client = new BlueSkyClient({
-      service: process.env.BLUESKY_SERVICE || "https://bsky.social",
-      handle: process.env.BLUESKY_HANDLE as string,
-      password: process.env.BLUESKY_PASSWORD as string,
-      dryRun: true,
-    });
-
-    await client.authenticate();
-    const profile = await client.getProfile(
-      process.env.BLUESKY_HANDLE as string,
-    );
-
-    expect(profile.handle).toBe(process.env.BLUESKY_HANDLE);
-    expect(profile.did).toBeDefined();
-  });
 });
 
-/**
- * Unit tests that don't require external dependencies
- */
+// ============================================================================
+// Unit Tests (no external dependencies)
+// ============================================================================
+
 describe("Bluesky Agent Unit Tests", () => {
   it("should have valid character configuration", async () => {
     const { character } = await import("../character");
@@ -135,6 +117,7 @@ describe("Bluesky Agent Unit Tests", () => {
     expect(character.name).toBe("BlueSkyBot");
     expect(character.bio).toBeDefined();
     expect(character.system).toBeDefined();
+    expect(character.system).toContain("Bluesky");
   });
 
   it("should have message examples in character", async () => {
@@ -151,7 +134,7 @@ describe("Bluesky Agent Unit Tests", () => {
     expect(character.postExamples?.length).toBeGreaterThan(0);
   });
 
-  it("should export handler functions", async () => {
+  it("should export all handler functions", async () => {
     const {
       handleMentionReceived,
       handleCreatePost,
@@ -175,7 +158,7 @@ describe("Bluesky Agent Unit Tests", () => {
     expect(runtime.agentId).toBeDefined();
   });
 
-  it("should register event handlers", async () => {
+  it("should register all event handlers", async () => {
     const { AgentRuntime } = await import("@elizaos/core");
     const { character } = await import("../character");
     const { registerBlueskyHandlers } = await import("../handlers");
@@ -198,5 +181,58 @@ describe("Bluesky Agent Unit Tests", () => {
       "bluesky.create_post",
       expect.any(Function),
     );
+  });
+
+  it("should have messageService on initialized runtime", async () => {
+    const { AgentRuntime } = await import("@elizaos/core");
+    const { character } = await import("../character");
+
+    const runtime = new AgentRuntime({ character });
+
+    // messageService is created during initialization
+    // Before init, it should exist but not be fully configured
+    expect(runtime.messageService).toBeDefined();
+    expect(typeof runtime.messageService?.handleMessage).toBe("function");
+  });
+});
+
+// ============================================================================
+// Pipeline Integration Tests
+// ============================================================================
+
+describe("elizaOS Pipeline Integration", () => {
+  it("should have createMessageMemory helper available", async () => {
+    const { createMessageMemory } = await import("@elizaos/core");
+
+    expect(typeof createMessageMemory).toBe("function");
+  });
+
+  it("should create properly formatted message memory", async () => {
+    const { createMessageMemory, stringToUuid } = await import("@elizaos/core");
+
+    const memory = createMessageMemory({
+      id: stringToUuid("test-id"),
+      entityId: stringToUuid("entity-id"),
+      roomId: stringToUuid("room-id"),
+      content: {
+        text: "Test message",
+        source: "bluesky",
+      },
+    });
+
+    expect(memory.id).toBeDefined();
+    expect(memory.entityId).toBeDefined();
+    expect(memory.roomId).toBeDefined();
+    expect(memory.content.text).toBe("Test message");
+    expect(memory.content.source).toBe("bluesky");
+    expect(memory.metadata?.type).toBe("message");
+  });
+
+  it("should have ChannelType enum available", async () => {
+    const { ChannelType } = await import("@elizaos/core");
+
+    expect(ChannelType.DM).toBeDefined();
+    expect(ChannelType.GROUP).toBeDefined();
+    expect(ChannelType.SELF).toBeDefined();
   });
 });

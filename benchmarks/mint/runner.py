@@ -233,6 +233,9 @@ class MINTRunner:
                     f"[MINTRunner] [{name}] Task {i + 1}/{len(tasks)}: {task.id}"
                 )
 
+                # Reset agent session for each task (canonical Eliza: new room per task)
+                self.agent.reset_session()
+
                 # Solve the task
                 trajectory = await asyncio.wait_for(
                     self.agent.solve_task(
