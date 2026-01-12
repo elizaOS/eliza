@@ -37,14 +37,14 @@ export class TransferAction {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
 
-    const hash = // @ts-expect-error - viem type narrowing issue
-      await walletClient.sendTransaction({
-        account: walletClient.account,
-        to: params.toAddress,
-        value: parseEther(params.amount),
-        data,
-        chain: walletClient.chain,
-      });
+    // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
+    const hash = await walletClient.sendTransaction({
+      account: walletClient.account,
+      to: params.toAddress,
+      value: parseEther(params.amount),
+      data,
+      chain: walletClient.chain,
+    });
 
     return {
       hash,
@@ -56,9 +56,6 @@ export class TransferAction {
   }
 }
 
-/**
- * Build transfer details from LLM response
- */
 async function buildTransferDetails(
   state: State,
   message: Memory,
@@ -66,8 +63,6 @@ async function buildTransferDetails(
   wp: WalletProvider
 ): Promise<TransferParams> {
   const chains = wp.getSupportedChains();
-
-  // Add balances to state for better context in template
   const balances = await wp.getWalletBalances();
   state.chainBalances = Object.entries(balances)
     .map(([chain, balance]) => {
@@ -97,7 +92,6 @@ async function buildTransferDetails(
     );
   }
 
-  // Normalize chain name to lowercase
   const rawParams = {
     fromChain: String(parsedXml.fromChain ?? "").toLowerCase(),
     toAddress: String(parsedXml.toAddress ?? ""),
@@ -106,10 +100,7 @@ async function buildTransferDetails(
     token: parsedXml.token ? String(parsedXml.token) : undefined,
   };
 
-  // Validate and parse the parameters
   const transferDetails = parseTransferParams(rawParams);
-
-  // Check if the chain exists
   const existingChain = wp.chains[transferDetails.fromChain];
   if (!existingChain) {
     throw new EVMError(
@@ -121,9 +112,6 @@ async function buildTransferDetails(
   return transferDetails;
 }
 
-/**
- * Transfer action definition
- */
 export const transferAction: Action = {
   name: "EVM_TRANSFER_TOKENS",
   description: "Transfer tokens between addresses on the same chain",
@@ -141,8 +129,6 @@ export const transferAction: Action = {
 
     const walletProvider = await initWalletProvider(runtime);
     const action = new TransferAction(walletProvider);
-
-    // Compose transfer context
     const paramOptions = await buildTransferDetails(state, message, runtime, walletProvider);
 
     const transferResp = await action.transfer(paramOptions);

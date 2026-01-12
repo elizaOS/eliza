@@ -33,9 +33,7 @@ interface MockConsole {
 /**
  * Mock Document type for browser environment testing
  */
-interface MockDocument {
-  // Minimal document interface - can be extended as needed
-}
+type MockDocument = Record<string, never>;
 
 /**
  * Mock Location type for browser environment testing
@@ -425,8 +423,7 @@ describe("Logger - Cross-Environment Tests", () => {
 
       // Restore Node.js environment
       globalThis.process =
-        originalProcess ||
-        (createMockProcess() as typeof process);
+        originalProcess || (createMockProcess() as typeof process);
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.window;
       // @ts-expect-error - Intentionally removing for test cleanup
@@ -529,8 +526,7 @@ describe("Logger - Cross-Environment Tests", () => {
 
       // Test in Node.js
       globalThis.process =
-        originalProcess ||
-        (createMockProcess() as typeof process);
+        originalProcess || (createMockProcess() as typeof process);
       const nodeLogger = createLogger();
       expect(() => nodeLogger.info(testData, "Complex object")).not.toThrow();
 
@@ -554,8 +550,7 @@ describe("Logger - Cross-Environment Tests", () => {
 
       // Node.js
       globalThis.process =
-        originalProcess ||
-        (createMockProcess() as typeof process);
+        originalProcess || (createMockProcess() as typeof process);
       const nodeLogger = createLogger();
       expect(() => nodeLogger.error(error)).not.toThrow();
       expect(() => nodeLogger.error({ error }, "Error occurred")).not.toThrow();
@@ -700,8 +695,7 @@ describe("Logger - Cross-Environment Tests", () => {
 
       // Node.js
       globalThis.process =
-        originalProcess ||
-        (createMockProcess() as typeof process);
+        originalProcess || (createMockProcess() as typeof process);
       // @ts-expect-error - Intentionally removing for test cleanup
       delete globalThis.window;
       const nodeLogger = createLogger();
@@ -1047,7 +1041,8 @@ describe("Logger - Cross-Environment Tests", () => {
         const globalThisWindow = globalThis.window as MockWindow;
         globalThis.window = createMockWindow({
           document: createMockDocument(),
-          console: (globalThisWindow?.console || createMockConsole()) as MockConsole,
+          console: (globalThisWindow?.console ||
+            createMockConsole()) as MockConsole,
         }) as Window & typeof globalThis;
 
         expect(() => {

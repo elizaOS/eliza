@@ -1,7 +1,3 @@
-/**
- * @elizaos/plugin-polymarket Utilities
- */
-
 export {
   getWalletAddress,
   initializeClobClient,

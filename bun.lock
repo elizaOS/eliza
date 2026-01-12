@@ -725,6 +725,19 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-instagram/typescript": {
+      "name": "@elizaos/plugin-instagram",
+      "version": "1.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@types/node": "^25.0.3",
+        "typescript": "^5.9.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.3.11",
+        "vitest": "^4.0.0",
+      },
+    },
     "plugins/plugin-knowledge": {
       "name": "@elizaos/plugin-knowledge-root",
       "version": "1.6.1",
@@ -1917,6 +1930,8 @@
     "@elizaos/plugin-inmemorydb": ["@elizaos/plugin-inmemorydb@workspace:plugins/plugin-inmemorydb/typescript"],
 
     "@elizaos/plugin-inmemorydb-root": ["@elizaos/plugin-inmemorydb-root@workspace:plugins/plugin-inmemorydb"],
+
+    "@elizaos/plugin-instagram": ["@elizaos/plugin-instagram@workspace:plugins/plugin-instagram/typescript"],
 
     "@elizaos/plugin-instagram-root": ["@elizaos/plugin-instagram-root@workspace:plugins/plugin-instagram"],
 

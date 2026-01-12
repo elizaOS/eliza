@@ -1,10 +1,8 @@
 #![allow(missing_docs)]
-//! Default ELIZA patterns.
 
 use crate::types::{ElizaPattern, ElizaRule};
 use regex::Regex;
 
-/// Get the default ELIZA patterns.
 pub fn get_default_patterns() -> Vec<ElizaPattern> {
     vec![
         ElizaPattern {
@@ -58,6 +56,19 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
             }],
         },
         ElizaPattern {
+            keyword: "dreamed".to_string(),
+            weight: 4,
+            rules: vec![ElizaRule {
+                pattern: Regex::new(r"(?i)i dreamed (.*)").unwrap(),
+                responses: vec![
+                    "Really, $1?".to_string(),
+                    "Have you ever fantasized $1 while you were awake?".to_string(),
+                    "Have you ever dreamed $1 before?".to_string(),
+                    "What does that dream suggest to you?".to_string(),
+                ],
+            }],
+        },
+        ElizaPattern {
             keyword: "dream".to_string(),
             weight: 3,
             rules: vec![ElizaRule {
@@ -68,6 +79,31 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
                     "What persons appear in your dreams?".to_string(),
                     "Do you believe that dreams have something to do with your problems?"
                         .to_string(),
+                ],
+            }],
+        },
+        ElizaPattern {
+            keyword: "perhaps".to_string(),
+            weight: 0,
+            rules: vec![ElizaRule {
+                pattern: Regex::new(r".*").unwrap(),
+                responses: vec![
+                    "You don't seem quite certain.".to_string(),
+                    "Why the uncertain tone?".to_string(),
+                    "Can't you be more positive?".to_string(),
+                    "You aren't sure?".to_string(),
+                    "Don't you know?".to_string(),
+                ],
+            }],
+        },
+        ElizaPattern {
+            keyword: "name".to_string(),
+            weight: 15,
+            rules: vec![ElizaRule {
+                pattern: Regex::new(r".*").unwrap(),
+                responses: vec![
+                    "I am not interested in names.".to_string(),
+                    "I've told you before, I don't care about names -- please continue.".to_string(),
                 ],
             }],
         },
@@ -135,6 +171,66 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
             ],
         },
         ElizaPattern {
+            keyword: "are".to_string(),
+            weight: 0,
+            rules: vec![
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)are you (.*)").unwrap(),
+                    responses: vec![
+                        "Why are you interested in whether I am $1 or not?".to_string(),
+                        "Would you prefer if I weren't $1?".to_string(),
+                        "Perhaps I am $1 in your fantasies.".to_string(),
+                        "Do you sometimes think I am $1?".to_string(),
+                    ],
+                },
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)(.*) are (.*)").unwrap(),
+                    responses: vec![
+                        "Did you think they might not be $2?".to_string(),
+                        "Would you like it if they were not $2?".to_string(),
+                        "What if they were not $2?".to_string(),
+                        "Possibly they are $2.".to_string(),
+                    ],
+                },
+            ],
+        },
+        ElizaPattern {
+            keyword: "your".to_string(),
+            weight: 0,
+            rules: vec![ElizaRule {
+                pattern: Regex::new(r"(?i)your (.*)").unwrap(),
+                responses: vec![
+                    "Why are you concerned over my $1?".to_string(),
+                    "What about your own $1?".to_string(),
+                    "Are you worried about someone else's $1?".to_string(),
+                    "Really, my $1?".to_string(),
+                ],
+            }],
+        },
+        ElizaPattern {
+            keyword: "was".to_string(),
+            weight: 2,
+            rules: vec![
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)was i (.*)").unwrap(),
+                    responses: vec![
+                        "What if you were $1?".to_string(),
+                        "Do you think you were $1?".to_string(),
+                        "Were you $1?".to_string(),
+                        "What would it mean if you were $1?".to_string(),
+                    ],
+                },
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)i was (.*)").unwrap(),
+                    responses: vec![
+                        "Were you really?".to_string(),
+                        "Why do you tell me you were $1 now?".to_string(),
+                        "Perhaps I already know you were $1.".to_string(),
+                    ],
+                },
+            ],
+        },
+        ElizaPattern {
             keyword: "i".to_string(),
             weight: 0,
             rules: vec![
@@ -191,12 +287,30 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
                         "Do you really want to be able to $1?".to_string(),
                     ],
                 },
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)i don'?t (.*)").unwrap(),
+                    responses: vec![
+                        "Don't you really $1?".to_string(),
+                        "Why don't you $1?".to_string(),
+                        "Do you wish to be able to $1?".to_string(),
+                        "Does that trouble you?".to_string(),
+                    ],
+                },
             ],
         },
         ElizaPattern {
             keyword: "you".to_string(),
             weight: 0,
             rules: vec![
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)you remind me of (.*)").unwrap(),
+                    responses: vec![
+                        "What makes you think of $1?".to_string(),
+                        "What resemblance do you see?".to_string(),
+                        "What does that similarity suggest to you?".to_string(),
+                        "What other connections do you see?".to_string(),
+                    ],
+                },
                 ElizaRule {
                     pattern: Regex::new(r"(?i)you are (.*)").unwrap(),
                     responses: vec![
@@ -213,6 +327,37 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
                         "You like to think I $1 you -- don't you?".to_string(),
                         "What makes you think I $1 you?".to_string(),
                         "Really, I $1 you?".to_string(),
+                    ],
+                },
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)you (.*)").unwrap(),
+                    responses: vec![
+                        "We were discussing you -- not me.".to_string(),
+                        "Oh, I $1?".to_string(),
+                        "You're not really talking about me -- are you?".to_string(),
+                        "What are your feelings now?".to_string(),
+                    ],
+                },
+            ],
+        },
+        ElizaPattern {
+            keyword: "can".to_string(),
+            weight: 0,
+            rules: vec![
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)can you (.*)").unwrap(),
+                    responses: vec![
+                        "You believe I can $1 don't you?".to_string(),
+                        "You want me to be able to $1.".to_string(),
+                        "Perhaps you would like to be able to $1 yourself.".to_string(),
+                    ],
+                },
+                ElizaRule {
+                    pattern: Regex::new(r"(?i)can i (.*)").unwrap(),
+                    responses: vec![
+                        "Whether or not you can $1 depends on you more than on me.".to_string(),
+                        "Do you want to be able to $1?".to_string(),
+                        "Perhaps you don't want to $1.".to_string(),
                     ],
                 },
             ],
@@ -356,15 +501,35 @@ pub fn get_default_patterns() -> Vec<ElizaPattern> {
                 ],
             }],
         },
+        ElizaPattern {
+            keyword: "alike".to_string(),
+            weight: 10,
+            rules: vec![ElizaRule {
+                pattern: Regex::new(r".*").unwrap(),
+                responses: vec![
+                    "In what way?".to_string(),
+                    "What resemblance do you see?".to_string(),
+                    "What does that similarity suggest to you?".to_string(),
+                    "What other connections do you see?".to_string(),
+                    "How?".to_string(),
+                ],
+            }],
+        },
+        ElizaPattern {
+            keyword: "like".to_string(),
+            weight: 10,
+            rules: vec![ElizaRule {
+                pattern: Regex::new(r"(?i).*(?:am|is|are|was) like.*").unwrap(),
+                responses: vec![
+                    "In what way?".to_string(),
+                    "What resemblance do you see?".to_string(),
+                    "What does that similarity suggest to you?".to_string(),
+                    "What other connections do you see?".to_string(),
+                    "How?".to_string(),
+                ],
+            }],
+        },
     ]
 }
-
-
-
-
-
-
-
-
 
 

@@ -1,9 +1,3 @@
-/**
- * Create Branch Action
- *
- * Creates a new branch in a GitHub repository.
- */
-
 import {
   type Action,
   type ActionExample,

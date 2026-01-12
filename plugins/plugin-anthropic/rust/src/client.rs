@@ -1,8 +1,3 @@
-//! Anthropic API client implementation.
-//!
-//! The client handles HTTP communication with the Anthropic API,
-//! including authentication, request/response handling, and error processing.
-
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use std::time::Duration;
 use tracing::{debug, error};
@@ -16,20 +11,22 @@ use crate::types::{
     TextGenerationResponse,
 };
 
-/// Anthropic API client.
+/// HTTP client for interacting with the Anthropic Claude API.
 ///
-/// Provides methods for text and object generation using Claude models.
+/// Provides methods for text generation and structured JSON object generation
+/// using various Claude models.
 pub struct AnthropicClient {
     config: AnthropicConfig,
     http_client: reqwest::Client,
 }
 
 impl AnthropicClient {
-    /// Create a new Anthropic client with the given configuration.
+    /// Creates a new Anthropic client with the given configuration.
     ///
     /// # Errors
     ///
-    /// Returns an error if the HTTP client cannot be built.
+    /// Returns an error if the HTTP client cannot be built or if the
+    /// configuration contains invalid values.
     pub fn new(config: AnthropicConfig) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -58,16 +55,16 @@ impl AnthropicClient {
         })
     }
 
-    /// Get the client configuration.
+    /// Returns a reference to the client's configuration.
     pub fn config(&self) -> &AnthropicConfig {
         &self.config
     }
 
-    /// Generate text using the small model.
+    /// Generates text using the configured small model (typically Haiku).
     ///
     /// # Errors
     ///
-    /// Returns an error if the API request fails or returns an error response.
+    /// Returns an error if the API request fails or the response cannot be parsed.
     pub async fn generate_text_small(
         &self,
         params: TextGenerationParams,
@@ -76,11 +73,11 @@ impl AnthropicClient {
             .await
     }
 
-    /// Generate text using the large model.
+    /// Generates text using the configured large model (typically Sonnet).
     ///
     /// # Errors
     ///
-    /// Returns an error if the API request fails or returns an error response.
+    /// Returns an error if the API request fails or the response cannot be parsed.
     pub async fn generate_text_large(
         &self,
         params: TextGenerationParams,
@@ -89,20 +86,17 @@ impl AnthropicClient {
             .await
     }
 
-    /// Generate text using a specific model.
+    /// Generates text using a specific model.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - Both temperature and top_p are specified
-    /// - The API request fails
-    /// - The API returns an error response
+    /// Returns an error if both temperature and top_p are specified,
+    /// if the API request fails, or if the response cannot be parsed.
     pub async fn generate_text_with_model(
         &self,
         params: TextGenerationParams,
         model: &Model,
     ) -> Result<TextGenerationResponse> {
-        // Validate params
         if params.temperature.is_some() && params.top_p.is_some() {
             return Err(AnthropicError::invalid_parameter(
                 "temperature/top_p",
@@ -112,7 +106,6 @@ impl AnthropicClient {
 
         debug!(model = %model, "Generating text");
 
-        // Build messages
         let messages = if let Some(msgs) = params.messages {
             msgs
         } else {
@@ -134,7 +127,6 @@ impl AnthropicClient {
 
         let response = self.send_request(&request).await?;
 
-        // Extract text and thinking from content blocks
         let mut text_parts: Vec<String> = Vec::new();
         let mut thinking_parts: Vec<String> = Vec::new();
 
@@ -162,11 +154,14 @@ impl AnthropicClient {
         })
     }
 
-    /// Generate a JSON object using the small model.
+    /// Generates a JSON object using the configured small model.
+    ///
+    /// The model is instructed to return valid JSON only.
     ///
     /// # Errors
     ///
-    /// Returns an error if the API request fails or JSON cannot be extracted.
+    /// Returns an error if the API request fails or the response
+    /// cannot be parsed as valid JSON.
     pub async fn generate_object_small(
         &self,
         params: ObjectGenerationParams,
@@ -175,11 +170,14 @@ impl AnthropicClient {
             .await
     }
 
-    /// Generate a JSON object using the large model.
+    /// Generates a JSON object using the configured large model.
+    ///
+    /// The model is instructed to return valid JSON only.
     ///
     /// # Errors
     ///
-    /// Returns an error if the API request fails or JSON cannot be extracted.
+    /// Returns an error if the API request fails or the response
+    /// cannot be parsed as valid JSON.
     pub async fn generate_object_large(
         &self,
         params: ObjectGenerationParams,
@@ -188,13 +186,15 @@ impl AnthropicClient {
             .await
     }
 
-    /// Generate a JSON object using a specific model.
+    /// Generates a JSON object using a specific model.
+    ///
+    /// The model is instructed to return valid JSON only. The response
+    /// text is parsed and validated as JSON before being returned.
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The API request fails
-    /// - Valid JSON cannot be extracted from the response
+    /// Returns an error if the API request fails or the response
+    /// cannot be parsed as valid JSON.
     pub async fn generate_object_with_model(
         &self,
         params: ObjectGenerationParams,
@@ -202,7 +202,6 @@ impl AnthropicClient {
     ) -> Result<ObjectGenerationResponse> {
         debug!(model = %model, "Generating JSON object");
 
-        // Build a JSON-focused prompt
         let json_prompt = if params.prompt.contains("```json")
             || params.prompt.contains("respond with valid JSON")
         {
@@ -215,7 +214,6 @@ impl AnthropicClient {
             )
         };
 
-        // Build system prompt
         let system = if let Some(user_system) = params.system {
             format!("{}\nYou must respond with valid JSON only.", user_system)
         } else {
@@ -238,7 +236,6 @@ impl AnthropicClient {
 
         let response = self.send_request(&request).await?;
 
-        // Extract text from response
         let text = response
             .content
             .iter()
@@ -246,7 +243,6 @@ impl AnthropicClient {
             .collect::<Vec<_>>()
             .join("");
 
-        // Parse JSON from response
         let object = self.extract_json(&text)?;
 
         Ok(ObjectGenerationResponse {
@@ -256,7 +252,6 @@ impl AnthropicClient {
         })
     }
 
-    /// Send a request to the messages API.
     async fn send_request(&self, request: &MessagesRequest) -> Result<MessagesResponse> {
         let url = self.config.messages_url();
 
@@ -275,7 +270,6 @@ impl AnthropicClient {
         } else {
             let error_body = response.text().await.unwrap_or_default();
 
-            // Try to parse as API error
             if let Ok(error_response) = serde_json::from_str::<ErrorResponse>(&error_body) {
                 if status.as_u16() == 429 {
                     return Err(AnthropicError::RateLimitError {
@@ -289,7 +283,6 @@ impl AnthropicClient {
                 });
             }
 
-            // Generic HTTP error
             Err(AnthropicError::http(
                 format!("API request failed: {} - {}", status, error_body),
                 Some(status.as_u16()),
@@ -297,21 +290,17 @@ impl AnthropicClient {
         }
     }
 
-    /// Extract JSON from text response.
     fn extract_json(&self, text: &str) -> Result<serde_json::Value> {
-        // Try direct parsing first
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
             return Ok(value);
         }
 
-        // Try extracting from code blocks
         if let Some(json_str) = self.extract_from_code_block(text) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
                 return Ok(value);
             }
         }
 
-        // Try finding JSON object in text
         if let Some(json_str) = self.find_json_object(text) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
                 return Ok(value);
@@ -324,15 +313,12 @@ impl AnthropicClient {
         ))
     }
 
-    /// Extract JSON from a code block.
     fn extract_from_code_block(&self, text: &str) -> Option<String> {
-        // Try ```json block first
         let json_block_re = regex::Regex::new(r"```json\s*([\s\S]*?)\s*```").ok()?;
         if let Some(caps) = json_block_re.captures(text) {
             return caps.get(1).map(|m| m.as_str().trim().to_string());
         }
 
-        // Try any code block with JSON-like content
         let any_block_re = regex::Regex::new(r"```(?:\w*)\s*([\s\S]*?)\s*```").ok()?;
         for caps in any_block_re.captures_iter(text) {
             if let Some(content) = caps.get(1) {
@@ -346,14 +332,12 @@ impl AnthropicClient {
         None
     }
 
-    /// Find a JSON object in text.
     fn find_json_object(&self, text: &str) -> Option<String> {
         let trimmed = text.trim();
         if trimmed.starts_with('{') && trimmed.ends_with('}') {
             return Some(trimmed.to_string());
         }
 
-        // Find the largest {...} pattern
         let mut best: Option<&str> = None;
         let mut depth = 0;
         let mut start = None;
@@ -385,9 +369,8 @@ impl AnthropicClient {
     }
 }
 
-// Add regex dependency for JSON extraction
 impl AnthropicClient {
-    /// Check if the client is properly configured.
+    /// Returns true if the client has a non-empty API key configured.
     pub fn is_configured(&self) -> bool {
         !self.config.api_key().is_empty()
     }
@@ -436,5 +419,3 @@ mod tests {
         assert_eq!(result.unwrap()["message"], "hello");
     }
 }
-
-

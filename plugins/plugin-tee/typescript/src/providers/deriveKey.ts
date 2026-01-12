@@ -1,7 +1,3 @@
-/**
- * Key Derivation Provider for Phala TEE.
- */
-
 import crypto from "node:crypto";
 import { type IAgentRuntime, logger, type Memory, type Provider } from "@elizaos/core";
 import { type DeriveKeyResponse, TappdClient } from "@phala/dstack-sdk";
@@ -18,11 +14,6 @@ import { getTeeEndpoint } from "../utils";
 import { DeriveKeyProvider } from "./base";
 import { PhalaRemoteAttestationProvider } from "./remoteAttestation";
 
-/**
- * Phala Network Key Derivation Provider.
- *
- * Derives cryptographic keys within the TEE using Phala's DStack SDK.
- */
 export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
   private readonly client: TappdClient;
   private readonly raProvider: PhalaRemoteAttestationProvider;
@@ -41,9 +32,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     this.raProvider = new PhalaRemoteAttestationProvider(teeMode);
   }
 
-  /**
-   * Generate attestation for derived key.
-   */
   private async generateDeriveKeyAttestation(
     agentId: string,
     publicKey: string,
@@ -61,13 +49,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     return quote;
   }
 
-  /**
-   * Derive a raw key from the TEE.
-   *
-   * @param path - The derivation path.
-   * @param subject - The subject for the certificate chain.
-   * @returns The derived key response.
-   */
   async rawDeriveKey(path: string, subject: string): Promise<DeriveKeyResult> {
     if (!path || !subject) {
       throw new Error("Path and subject are required for key derivation");
@@ -80,7 +61,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
       logger.info("Raw key derived successfully");
       return {
         key: response.asUint8Array(),
-        certificateChain: [], // DStack SDK doesn't expose certificate chain directly
+        certificateChain: [],
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -89,13 +70,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
   }
 
-  /**
-   * Derive the raw DeriveKeyResponse for advanced use cases.
-   *
-   * @param path - The derivation path.
-   * @param subject - The subject for the certificate chain.
-   * @returns The raw DeriveKeyResponse from DStack SDK.
-   */
   async rawDeriveKeyResponse(path: string, subject: string): Promise<DeriveKeyResponse> {
     if (!path || !subject) {
       throw new Error("Path and subject are required for key derivation");
@@ -107,14 +81,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     return response;
   }
 
-  /**
-   * Derive an Ed25519 keypair (for Solana).
-   *
-   * @param path - The derivation path.
-   * @param subject - The subject for the certificate chain.
-   * @param agentId - The agent ID for attestation.
-   * @returns The keypair and attestation.
-   */
   async deriveEd25519Keypair(
     path: string,
     subject: string,
@@ -130,14 +96,12 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
       const derivedKey = await this.client.deriveKey(path, subject);
       const uint8ArrayDerivedKey = derivedKey.asUint8Array();
 
-      // Hash the derived key to get a proper 32-byte seed
       const hash = crypto.createHash("sha256");
       hash.update(uint8ArrayDerivedKey);
       const seed = new Uint8Array(hash.digest());
 
       const keypair = Keypair.fromSeed(seed.slice(0, 32));
 
-      // Generate attestation for the derived public key
       const attestation = await this.generateDeriveKeyAttestation(
         agentId,
         keypair.publicKey.toBase58(),
@@ -153,14 +117,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
   }
 
-  /**
-   * Derive an ECDSA keypair (for EVM).
-   *
-   * @param path - The derivation path.
-   * @param subject - The subject for the certificate chain.
-   * @param agentId - The agent ID for attestation.
-   * @returns The keypair and attestation.
-   */
   async deriveEcdsaKeypair(
     path: string,
     subject: string,
@@ -180,7 +136,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
       const hex = keccak256(derivedKey.asUint8Array());
       const keypair: PrivateKeyAccount = privateKeyToAccount(hex);
 
-      // Generate attestation for the derived address
       const attestation = await this.generateDeriveKeyAttestation(
         agentId,
         keypair.address,
@@ -197,11 +152,6 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
   }
 }
 
-/**
- * elizaOS Provider for key derivation.
- *
- * This provider derives Solana and EVM keypairs for the agent.
- */
 export const phalaDeriveKeyProvider: Provider = {
   name: "phala-derive-key",
 

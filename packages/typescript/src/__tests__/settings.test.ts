@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import {
@@ -30,10 +34,6 @@ import type {
   WorldSettings,
 } from "../types";
 import { getEnvironment } from "../utils/environment";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
 
 // Remove global module mocks - they interfere with other tests
 

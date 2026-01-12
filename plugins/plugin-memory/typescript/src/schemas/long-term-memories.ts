@@ -10,10 +10,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-/**
- * Long-term memory storage table
- * Stores persistent facts about users across all conversations
- */
 export const longTermMemories = pgTable(
   "long_term_memories",
   {

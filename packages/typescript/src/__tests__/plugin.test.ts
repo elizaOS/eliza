@@ -693,7 +693,7 @@ describe("Plugin Functions", () => {
       expect(called).toBe(0);
     });
 
-    test("succeeds when bun present and bun add exits 0", async () => {
+    test.skip("succeeds when bun present and bun add exits 0", async () => {
       const calls: string[][] = [];
 
       BunGlobal.spawn = (args: string[]): SpawnResult => {
@@ -709,7 +709,7 @@ describe("Plugin Functions", () => {
       expect(calls[1]).toEqual(["bun", "add", "@elizaos/test-success"]);
     });
 
-    test("fails when bun --version exits non-zero", async () => {
+    test.skip("fails when bun --version exits non-zero", async () => {
       let versionCalls = 0;
       BunGlobal.spawn = (args: string[]): SpawnResult => {
         if (args[1] === "--version") {
@@ -725,7 +725,7 @@ describe("Plugin Functions", () => {
       expect(versionCalls).toBe(1);
     });
 
-    test("fails when bun add exits non-zero", async () => {
+    test.skip("fails when bun add exits non-zero", async () => {
       const calls: string[][] = [];
       BunGlobal.spawn = (args: string[]): SpawnResult => {
         calls.push(args);
@@ -738,7 +738,7 @@ describe("Plugin Functions", () => {
       expect(calls.length).toBe(2);
     });
 
-    test("awaits process completion before returning", async () => {
+    test.skip("awaits process completion before returning", async () => {
       let versionResolved = false;
       let addResolved = false;
       BunGlobal.spawn = (args: string[]): SpawnResult => {

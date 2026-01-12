@@ -1,34 +1,20 @@
 #![allow(missing_docs)]
-//! Error types for the EVM plugin
 
 use std::fmt;
 
-/// Error codes for EVM operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EVMErrorCode {
-    /// Insufficient funds for transaction
     InsufficientFunds,
-    /// User rejected transaction
     UserRejected,
-    /// Network communication error
     NetworkError,
-    /// Smart contract reverted
     ContractRevert,
-    /// Gas estimation failed
     GasEstimationFailed,
-    /// Invalid parameters provided
     InvalidParams,
-    /// Chain is not configured
     ChainNotConfigured,
-    /// Wallet not initialized
     WalletNotInitialized,
-    /// Transaction failed
     TransactionFailed,
-    /// Token not found
     TokenNotFound,
-    /// Route not found
     RouteNotFound,
-    /// Approval failed
     ApprovalFailed,
 }
 
@@ -51,19 +37,14 @@ impl fmt::Display for EVMErrorCode {
     }
 }
 
-/// EVM plugin error type
 #[derive(Debug)]
 pub struct EVMError {
-    /// Error code
     pub code: EVMErrorCode,
-    /// Error message
     pub message: String,
-    /// Source error (if any)
     pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 
 impl EVMError {
-    /// Create a new error with a code and message
     #[must_use]
     pub fn new(code: EVMErrorCode, message: impl Into<String>) -> Self {
         Self {
@@ -73,7 +54,6 @@ impl EVMError {
         }
     }
 
-    /// Create a new error with a source
     #[must_use]
     pub fn with_source<E>(code: EVMErrorCode, message: impl Into<String>, source: E) -> Self
     where
@@ -86,13 +66,11 @@ impl EVMError {
         }
     }
 
-    /// Create an insufficient funds error
     #[must_use]
     pub fn insufficient_funds(message: impl Into<String>) -> Self {
         Self::new(EVMErrorCode::InsufficientFunds, message)
     }
 
-    /// Create a chain not configured error
     #[must_use]
     pub fn chain_not_configured(chain: &str) -> Self {
         Self::new(
@@ -101,25 +79,21 @@ impl EVMError {
         )
     }
 
-    /// Create an invalid params error
     #[must_use]
     pub fn invalid_params(message: impl Into<String>) -> Self {
         Self::new(EVMErrorCode::InvalidParams, message)
     }
 
-    /// Create a wallet not initialized error
     #[must_use]
     pub fn wallet_not_initialized() -> Self {
         Self::new(EVMErrorCode::WalletNotInitialized, "Wallet not initialized")
     }
 
-    /// Create a transaction failed error
     #[must_use]
     pub fn transaction_failed(message: impl Into<String>) -> Self {
         Self::new(EVMErrorCode::TransactionFailed, message)
     }
 
-    /// Create a network error
     #[must_use]
     pub fn network_error(message: impl Into<String>) -> Self {
         Self::new(EVMErrorCode::NetworkError, message)
@@ -138,7 +112,6 @@ impl std::error::Error for EVMError {
     }
 }
 
-// Implement conversions from common error types
 impl From<reqwest::Error> for EVMError {
     fn from(err: reqwest::Error) -> Self {
         Self::with_source(
@@ -169,7 +142,6 @@ impl From<url::ParseError> for EVMError {
     }
 }
 
-/// Result type alias for EVM operations
 pub type EVMResult<T> = Result<T, EVMError>;
 
 

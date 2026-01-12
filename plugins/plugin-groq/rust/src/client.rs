@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Groq API client.
 
 use crate::error::{GroqError, GroqErrorCode};
 use crate::types::{
@@ -9,9 +8,8 @@ use crate::types::{
 };
 use crate::DEFAULT_BASE_URL;
 use reqwest::{header, Client, multipart};
-use tracing::{debug, warn};
+use tracing::warn;
 
-/// Groq API client
 #[derive(Debug, Clone)]
 pub struct GroqClient {
     client: Client,
@@ -19,7 +17,6 @@ pub struct GroqClient {
 }
 
 impl GroqClient {
-    /// Create a new client
     pub fn new(api_key: impl Into<String>, base_url: Option<String>) -> Result<Self, GroqError> {
         let api_key = api_key.into();
         if api_key.is_empty() {
@@ -51,7 +48,6 @@ impl GroqClient {
         Ok(Self { client, config })
     }
 
-    /// Create with full config
     pub fn with_config(config: GroqConfig) -> Result<Self, GroqError> {
         if config.api_key.is_empty() {
             return Err(GroqError::Config("API key is required".into()));
@@ -76,19 +72,15 @@ impl GroqClient {
         Ok(Self { client, config })
     }
 
-    /// Generate text with small model
     pub async fn generate_text_small(&self, params: GenerateTextParams) -> Result<String, GroqError> {
         self.generate_text(&self.config.small_model, params).await
     }
 
-    /// Generate text with large model
     pub async fn generate_text_large(&self, params: GenerateTextParams) -> Result<String, GroqError> {
         self.generate_text(&self.config.large_model, params).await
     }
 
-    /// Generate text with specified model
     async fn generate_text(&self, model: &str, params: GenerateTextParams) -> Result<String, GroqError> {
-        debug!("Generating text with model: {}", model);
 
         let mut messages: Vec<ChatMessage> = Vec::new();
         if let Some(ref system_str) = params.system {
@@ -136,9 +128,20 @@ impl GroqClient {
             })
     }
 
-    /// Generate JSON object
+    pub async fn generate_object_small(&self, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
+        self.generate_object_with_model(&self.config.small_model, params).await
+    }
+
+    pub async fn generate_object_large(&self, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
+        self.generate_object_with_model(&self.config.large_model, params).await
+    }
+
     pub async fn generate_object(&self, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
-        let text = self.generate_text(&self.config.large_model, GenerateTextParams {
+        self.generate_object_large(params).await
+    }
+
+    async fn generate_object_with_model(&self, model: &str, params: GenerateObjectParams) -> Result<serde_json::Value, GroqError> {
+        let text = self.generate_text(model, GenerateTextParams {
             prompt: params.prompt,
             temperature: params.temperature,
             ..Default::default()
@@ -148,7 +151,6 @@ impl GroqClient {
         serde_json::from_str(&json_str).map_err(GroqError::from)
     }
 
-    /// Transcribe audio
     pub async fn transcribe(&self, params: TranscriptionParams) -> Result<String, GroqError> {
         let file_part = multipart::Part::bytes(params.audio)
             .file_name(format!("audio.{}", params.format))
@@ -174,7 +176,6 @@ impl GroqClient {
         Ok(result.text)
     }
 
-    /// Text to speech
     pub async fn text_to_speech(&self, params: TextToSpeechParams) -> Result<Vec<u8>, GroqError> {
         let voice = params.voice.unwrap_or_else(|| self.config.tts_voice.clone());
 
@@ -198,7 +199,6 @@ impl GroqClient {
         Ok(response.bytes().await?.to_vec())
     }
 
-    /// List available models
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, GroqError> {
         let response = self.client
             .get(format!("{}/models", self.config.base_url))
@@ -236,14 +236,12 @@ impl GroqClient {
         }
     }
 
-    /// Get config
     pub fn config(&self) -> &GroqConfig {
         &self.config
     }
 }
 
 fn extract_json(text: &str) -> String {
-    // Try code blocks first
     if let Some(start) = text.find("```json") {
         if let Some(end) = text[start + 7..].find("```") {
             return text[start + 7..start + 7 + end].trim().to_string();
@@ -256,7 +254,6 @@ fn extract_json(text: &str) -> String {
             return after[content_start..content_start + end].trim().to_string();
         }
     }
-    // Try direct JSON
     if let Some(start) = text.find('{') {
         if let Some(end) = text.rfind('}') {
             return text[start..=end].to_string();

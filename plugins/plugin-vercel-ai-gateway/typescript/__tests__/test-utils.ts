@@ -11,4 +11,4 @@ export {
   createTestRuntime,
   createTestState,
   createUUID,
-} from "../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
+} from "../../../../packages/typescript/src/bootstrap/__tests__/test-utils";

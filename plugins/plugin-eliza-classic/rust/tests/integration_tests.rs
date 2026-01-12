@@ -1,5 +1,3 @@
-//! Integration tests for ELIZA Classic Plugin.
-
 use elizaos_plugin_eliza_classic::{reflect, ElizaClassicPlugin};
 
 #[test]
@@ -56,17 +54,9 @@ fn test_reset_history() {
     plugin.generate_response("hello");
     plugin.generate_response("how are you");
     plugin.reset_history();
-    // Should still work after reset
     let response = plugin.generate_response("hello");
     assert!(!response.is_empty());
 }
-
-
-
-
-
-
-
 
 
 

@@ -15,18 +15,15 @@ export const clearHistory: Action = {
   similes: ["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"],
   description: "Clears the recorded history of shell commands for the current conversation",
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
-    // Check if shell service is available
     const shellService = runtime.getService<ShellService>("shell");
     if (!shellService) {
       return false;
     }
 
-    // Check if message contains clear history intent
     const text = message.content.text?.toLowerCase() || "";
     const clearKeywords = ["clear", "reset", "delete", "remove", "clean"];
     const historyKeywords = ["history", "terminal", "shell", "command"];
 
-    // Must have at least one clear keyword and one history keyword
     const hasClearKeyword = clearKeywords.some((keyword) => text.includes(keyword));
     const hasHistoryKeyword = historyKeywords.some((keyword) => text.includes(keyword));
 
@@ -49,10 +46,7 @@ export const clearHistory: Action = {
       return { success: false, error: "Shell service is not available." };
     }
 
-    // Get conversation ID
     const conversationId = message.roomId || message.agentId;
-
-    // Clear the history
     shellService.clearCommandHistory(conversationId);
 
     logger.info(`Cleared shell history for conversation: ${conversationId}`);

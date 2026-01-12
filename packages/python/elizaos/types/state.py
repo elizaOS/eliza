@@ -1,9 +1,3 @@
-"""
-State types for elizaOS.
-
-This module defines types for agent state and action plans.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -14,8 +8,6 @@ from elizaos.types.components import ActionResult
 
 
 class ActionPlanStep(BaseModel):
-    """Single step in an action plan."""
-
     action: str = Field(..., description="Action name")
     status: str = Field(..., description="Step status: 'pending', 'completed', or 'failed'")
     error: str | None = Field(default=None, description="Error message if failed")
@@ -25,8 +17,6 @@ class ActionPlanStep(BaseModel):
 
 
 class ActionPlan(BaseModel):
-    """Multi-step action plan."""
-
     thought: str = Field(..., description="AI's reasoning for this plan")
     total_steps: int = Field(..., alias="totalSteps", description="Total number of steps")
     current_step: int = Field(..., alias="currentStep", description="Current step being executed")
@@ -36,8 +26,6 @@ class ActionPlan(BaseModel):
 
 
 class WorkingMemoryEntry(BaseModel):
-    """Working memory entry for multi-step action execution."""
-
     action_name: str = Field(
         ..., alias="actionName", description="Name of action that created entry"
     )
@@ -48,11 +36,6 @@ class WorkingMemoryEntry(BaseModel):
 
 
 class StateData(BaseModel):
-    """
-    Structured data cached in state by providers and actions.
-    Common properties are typed for better DX while allowing dynamic extension.
-    """
-
     room: dict[str, Any] | None = Field(default=None, description="Cached room data from providers")
     world: dict[str, Any] | None = Field(
         default=None, description="Cached world data from providers"
@@ -83,10 +66,6 @@ class StateData(BaseModel):
 
 
 class State(BaseModel):
-    """
-    Represents the current state or context of a conversation or agent interaction.
-    """
-
     values: dict[str, Any] = Field(
         default_factory=dict,
         description="Key-value store for general state variables",

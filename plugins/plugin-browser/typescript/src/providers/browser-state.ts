@@ -1,7 +1,3 @@
-/**
- * Browser state provider
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { logger, ServiceType } from "@elizaos/core";
 import type { BrowserService } from "../services/browser-service.js";

@@ -103,7 +103,6 @@ export const updateIssueAction: Action = {
         };
       }
 
-      // Use LLM to extract update information
       const prompt = updateIssueTemplate.replace("{{userMessage}}", content);
 
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -118,7 +117,6 @@ export const updateIssueAction: Action = {
       const updates: Partial<LinearIssueInput> = {};
 
       try {
-        // Strip markdown code blocks if present
         const cleanedResponse = response
           .replace(/^```(?:json)?\n?/, "")
           .replace(/\n?```$/, "")
@@ -130,22 +128,18 @@ export const updateIssueAction: Action = {
           throw new Error("Issue ID not found in parsed response");
         }
 
-        // Handle title update
         if (parsed.updates?.title) {
           updates.title = parsed.updates.title;
         }
 
-        // Handle description update
         if (parsed.updates?.description) {
           updates.description = parsed.updates.description;
         }
 
-        // Handle priority update
         if (parsed.updates?.priority) {
           updates.priority = Number(parsed.updates.priority);
         }
 
-        // Handle team change
         if (parsed.updates?.teamKey) {
           const teams = await linearService.getTeams();
           const team = teams.find(
@@ -159,7 +153,6 @@ export const updateIssueAction: Action = {
           }
         }
 
-        // Handle assignee update
         if (parsed.updates?.assignee) {
           const cleanAssignee = parsed.updates.assignee.replace(/^@/, "");
           const users = await linearService.getUsers();
@@ -175,9 +168,7 @@ export const updateIssueAction: Action = {
           }
         }
 
-        // Handle status update
         if (parsed.updates?.status) {
-          // Get the workflow states for the target team (or current team if not changing)
           const issue = await linearService.getIssue(issueId);
           const issueTeam = await issue.team;
           const teamId = updates.teamId || issueTeam?.id;
@@ -201,7 +192,6 @@ export const updateIssueAction: Action = {
           }
         }
 
-        // Handle labels update
         if (parsed.updates?.labels && Array.isArray(parsed.updates.labels)) {
           const teamId = updates.teamId;
           const labels = await linearService.getLabels(teamId);
@@ -219,7 +209,6 @@ export const updateIssueAction: Action = {
           updates.labelIds = labelIds;
         }
       } catch (parseError) {
-        // Fallback to regex parsing for simple cases
         logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
 
         const issueMatch = content.match(/(\w+-\d+)/);
@@ -237,7 +226,6 @@ export const updateIssueAction: Action = {
 
         issueId = issueMatch[1];
 
-        // Simple regex patterns for common updates
         const titleMatch = content.match(/title to ["'](.+?)["']/i);
         if (titleMatch) {
           updates.title = titleMatch[1];

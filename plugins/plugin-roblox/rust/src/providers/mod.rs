@@ -4,7 +4,31 @@
 //! This module provides context providers that supply information about
 //! Roblox game state to elizaOS agents.
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+
+/// Provider trait for elizaOS compatibility.
+#[async_trait]
+pub trait Provider: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn description(&self) -> &'static str;
+    fn position(&self) -> i32;
+    async fn get(&self, params: ProviderParams) -> ProviderResult;
+}
+
+pub struct ProviderParams {
+    pub conversation_id: String,
+    pub agent_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderResult {
+    pub values: HashMap<String, String>,
+    pub text: String,
+    pub data: Value,
+}
 
 /// Game state information provided to agents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +91,46 @@ impl GameStateInfo {
     }
 }
 
+/// Game state provider for Roblox.
+pub struct GameStateProvider;
+
+#[async_trait]
+impl Provider for GameStateProvider {
+    fn name(&self) -> &'static str {
+        "roblox-game-state"
+    }
+
+    fn description(&self) -> &'static str {
+        "Provides information about the connected Roblox game/experience"
+    }
+
+    fn position(&self) -> i32 {
+        50
+    }
+
+    async fn get(&self, _params: ProviderParams) -> ProviderResult {
+        // Note: In actual elizaOS integration, this would use the runtime's RobloxService.
+        let values = HashMap::from([
+            ("universeId".to_string(), "N/A".to_string()),
+            ("placeId".to_string(), "N/A".to_string()),
+            ("experienceName".to_string(), "N/A".to_string()),
+        ]);
+
+        let text = "Roblox service not connected. Configure ROBLOX_API_KEY and ROBLOX_UNIVERSE_ID to enable.".to_string();
+
+        let data = serde_json::json!({
+            "connected": false,
+        });
+
+        ProviderResult { values, text, data }
+    }
+}
+
+/// Get all Roblox plugin provider names.
+pub fn get_roblox_provider_names() -> Vec<&'static str> {
+    vec!["roblox-game-state"]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +152,25 @@ mod tests {
         assert!(context.contains("Universe ID"));
         assert!(context.contains("12345"));
         assert!(context.contains("Test Game"));
+    }
+
+    #[test]
+    fn test_provider_metadata() {
+        let provider = GameStateProvider;
+        assert_eq!(provider.name(), "roblox-game-state");
+        assert_eq!(provider.position(), 50);
+    }
+
+    #[tokio::test]
+    async fn test_provider_get() {
+        let provider = GameStateProvider;
+        let params = ProviderParams {
+            conversation_id: "test".to_string(),
+            agent_id: "test".to_string(),
+        };
+        
+        let result = provider.get(params).await;
+        assert!(result.text.contains("Roblox"));
     }
 }
 

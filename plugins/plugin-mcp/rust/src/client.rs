@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! MCP Client implementation.
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,7 +10,6 @@ use crate::types::{
     McpResourceContent, McpResourceTemplate, McpTool, McpToolResult,
 };
 
-/// Client for communicating with MCP servers.
 pub struct McpClient {
     transport: Box<dyn Transport>,
     request_id: AtomicU64,
@@ -20,7 +18,6 @@ pub struct McpClient {
 }
 
 impl McpClient {
-    /// Create a new MCP client.
     pub fn new(transport: Box<dyn Transport>) -> Self {
         Self {
             transport,
@@ -30,29 +27,23 @@ impl McpClient {
         }
     }
 
-    /// Get the current connection status.
     pub fn status(&self) -> ConnectionStatus {
         self.status
     }
 
-    /// Get the server info received during initialization.
     pub fn server_info(&self) -> Option<&Value> {
         self.server_info.as_ref()
     }
 
-    /// Generate the next request ID.
     fn next_id(&self) -> u64 {
         self.request_id.fetch_add(1, Ordering::SeqCst)
     }
 
-    /// Connect to the MCP server and perform initialization.
     pub async fn connect(&mut self) -> McpResult<()> {
         self.status = ConnectionStatus::Connecting;
 
-        // Connect the transport
         self.transport.connect().await?;
 
-        // Send initialize request
         let init_request = JsonRpcRequest::new(
             self.next_id(),
             "initialize",
@@ -79,7 +70,6 @@ impl McpClient {
 
         self.server_info = response.result;
 
-        // Send initialized notification
         let initialized_notification = JsonRpcNotification::new("notifications/initialized", None);
         self.transport
             .send(&serde_json::to_value(&initialized_notification)?)
@@ -89,14 +79,12 @@ impl McpClient {
         Ok(())
     }
 
-    /// Close the connection to the MCP server.
     pub async fn close(&mut self) -> McpResult<()> {
         self.transport.close().await?;
         self.status = ConnectionStatus::Disconnected;
         Ok(())
     }
 
-    /// List all available tools from the server.
     pub async fn list_tools(&mut self) -> McpResult<Vec<McpTool>> {
         if self.status != ConnectionStatus::Connected {
             return Err(McpError::NotConnected);
@@ -122,7 +110,6 @@ impl McpClient {
         Ok(tools)
     }
 
-    /// Call a tool on the MCP server.
     pub async fn call_tool(
         &mut self,
         name: &str,
@@ -156,7 +143,6 @@ impl McpClient {
         Ok(serde_json::from_value(result)?)
     }
 
-    /// List all available resources from the server.
     pub async fn list_resources(&mut self) -> McpResult<Vec<McpResource>> {
         if self.status != ConnectionStatus::Connected {
             return Err(McpError::NotConnected);
@@ -182,7 +168,6 @@ impl McpClient {
         Ok(resources)
     }
 
-    /// Read a resource from the MCP server.
     pub async fn read_resource(&mut self, uri: &str) -> McpResult<Vec<McpResourceContent>> {
         if self.status != ConnectionStatus::Connected {
             return Err(McpError::NotConnected);
@@ -218,7 +203,6 @@ impl McpClient {
         Ok(contents)
     }
 
-    /// List all available resource templates from the server.
     pub async fn list_resource_templates(&mut self) -> McpResult<Vec<McpResourceTemplate>> {
         if self.status != ConnectionStatus::Connected {
             return Err(McpError::NotConnected);

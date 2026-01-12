@@ -1,33 +1,8 @@
-/**
- * @elizaos/plugin-github
- *
- * GitHub integration for elizaOS agents.
- *
- * Provides comprehensive GitHub API access including:
- * - Repository management
- * - Issue tracking
- * - Pull request workflows
- * - Code reviews
- * - Branch management
- * - File operations
- * - Commit creation
- */
-
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { allActions } from "./actions";
 import { allProviders } from "./providers";
 import { GitHubService } from "./service";
 
-/**
- * GitHub Plugin
- *
- * Integrates GitHub functionality into elizaOS agents, allowing them to:
- * - Create and manage issues
- * - Create and review pull requests
- * - Push code changes
- * - Manage branches
- * - Comment on issues and PRs
- */
 const githubPlugin: Plugin = {
   name: "github",
   description:
@@ -37,13 +12,11 @@ const githubPlugin: Plugin = {
   providers: allProviders,
 
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    // Get settings for banner display
     const token = runtime.getSetting("GITHUB_API_TOKEN");
     const owner = runtime.getSetting("GITHUB_OWNER");
     const repo = runtime.getSetting("GITHUB_REPO");
     const branch = runtime.getSetting("GITHUB_BRANCH") ?? "main";
 
-    // Log initialization status
     logger.info("╔══════════════════════════════════════════════════════════╗");
     logger.info("║                    GitHub Plugin                         ║");
     logger.info("╠══════════════════════════════════════════════════════════╣");

@@ -106,12 +106,10 @@ export const searchIssuesAction: Action = {
 
       let filters: LinearSearchFilters = {};
 
-      // Check if we have explicit filters in options with type-safe access
       const params = _options?.parameters as SearchIssuesParameters | undefined;
       if (params?.filters) {
         filters = params.filters;
       } else {
-        // Use LLM to extract search filters
         const prompt = searchTemplate.replace("{{userMessage}}", content);
 
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -119,40 +117,32 @@ export const searchIssuesAction: Action = {
         });
 
         if (!response) {
-          // Fallback to simple keyword search
           filters = { query: content };
         } else {
           try {
-            // Strip markdown code blocks if present
             const cleanedResponse = response
               .replace(/^```(?:json)?\n?/, "")
               .replace(/\n?```$/, "")
               .trim();
             const parsed = JSON.parse(cleanedResponse);
 
-            // Build filters object
             filters = {
               query: parsed.query,
               limit: parsed.limit || 10,
             };
 
-            // Handle states
             if (parsed.states && parsed.states.length > 0) {
               filters.state = parsed.states;
             }
 
-            // Handle assignees
             if (parsed.assignees && parsed.assignees.length > 0) {
-              // Replace "me" with current user if we can get it
               const processedAssignees = [];
               for (const assignee of parsed.assignees) {
                 if (assignee.toLowerCase() === "me") {
-                  // Try to get current user
                   try {
                     const currentUser = await linearService.getCurrentUser();
                     processedAssignees.push(currentUser.email);
                   } catch {
-                    // If we can't get current user, skip "me"
                     logger.warn('Could not resolve "me" to current user');
                   }
                 } else {
@@ -164,14 +154,10 @@ export const searchIssuesAction: Action = {
               }
             }
 
-            // Handle unassigned filter
             if (parsed.hasAssignee === false) {
-              // This would need special handling in the service layer
-              // For now, we'll note it in the query
               filters.query = filters.query ? `${filters.query} unassigned` : "unassigned";
             }
 
-            // Handle priorities
             if (parsed.priorities && parsed.priorities.length > 0) {
               const priorityMap: Record<string, number> = {
                 urgent: 1,
@@ -191,21 +177,14 @@ export const searchIssuesAction: Action = {
               }
             }
 
-            // Handle teams
             if (parsed.teams && parsed.teams.length > 0) {
-              // For now, take the first team since our interface supports single team
               filters.team = parsed.teams[0];
             }
 
-            // Handle labels
             if (parsed.labels && parsed.labels.length > 0) {
               filters.label = parsed.labels;
             }
 
-            // Date range and sort filters are captured for future API enhancement
-            // Currently, Linear SDK filtering is applied server-side without date range support
-
-            // Clean up undefined values
             Object.keys(filters).forEach((key) => {
               if (filters[key as keyof LinearSearchFilters] === undefined) {
                 delete filters[key as keyof LinearSearchFilters];
@@ -219,11 +198,9 @@ export const searchIssuesAction: Action = {
         }
       }
 
-      // Apply default team filter if configured and no team filter was specified
       if (!filters.team) {
         const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
         if (defaultTeamKey) {
-          // Check if the user explicitly asked for "all" issues
           const searchingAllIssues =
             content.toLowerCase().includes("all") &&
             (content.toLowerCase().includes("issue") ||

@@ -1,4 +1,3 @@
-"""List projects action for Linear plugin."""
 
 import json
 import logging
@@ -37,7 +36,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -52,7 +50,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the list projects action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -63,7 +60,6 @@ async def handler(
         show_all = False
         state_filter: str | None = None
 
-        # Use LLM to parse the request
         if content:
             prompt = LIST_PROJECTS_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
@@ -74,7 +70,6 @@ async def handler(
                     cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                     parsed = json.loads(cleaned)
 
-                    # Handle team filter
                     if parsed.get("teamFilter"):
                         teams = await linear_service.get_teams()
                         team = next(
@@ -98,7 +93,6 @@ async def handler(
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse project filters")
 
-                    # Fallback to basic parsing
                     team_match = re.search(
                         r"(?:for|in|of)\s+(?:the\s+)?(\w+)\s+team", content, re.IGNORECASE
                     )
@@ -118,7 +112,6 @@ async def handler(
 
                     show_all = "all" in content.lower() and "project" in content.lower()
 
-        # Apply default team filter if configured and not showing all
         if not team_id and not show_all:
             default_team_key = runtime.get_setting("LINEAR_DEFAULT_TEAM_KEY")
             if default_team_key:
@@ -134,7 +127,6 @@ async def handler(
 
         projects = await linear_service.get_projects(team_id)
 
-        # Client-side filtering by state
         if state_filter and state_filter != "all":
             filtered = []
             for project in projects:
@@ -162,7 +154,6 @@ async def handler(
                 )
             return {"text": no_projects_msg, "success": True, "data": {"projects": []}}
 
-        # Format project list
         project_list = []
         for i, project in enumerate(projects):
             teams_data = project.get("teams", {}).get("nodes", [])
@@ -251,8 +242,3 @@ list_projects_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

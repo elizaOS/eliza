@@ -1,20 +1,13 @@
 #![allow(missing_docs)]
-//! Error types for the Groq plugin.
 
 use thiserror::Error;
 
-/// Error codes for Groq operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroqErrorCode {
-    /// Invalid API key
     InvalidApiKey,
-    /// Rate limit exceeded
     RateLimitExceeded,
-    /// Invalid request
     InvalidRequest,
-    /// Server error
     ServerError,
-    /// Parse error
     ParseError,
 }
 
@@ -30,53 +23,38 @@ impl std::fmt::Display for GroqErrorCode {
     }
 }
 
-/// Main error type for Groq operations
 #[derive(Error, Debug)]
 pub enum GroqError {
-    /// Authentication failed
     #[error("Authentication failed: {message}")]
     Authentication {
-        /// Error message
         message: String,
-        /// Error code
         code: GroqErrorCode,
     },
 
-    /// Rate limit exceeded
     #[error("Rate limit exceeded, retry after {retry_after:?}s")]
     RateLimit {
-        /// Suggested retry delay in seconds
         retry_after: Option<f64>,
-        /// Error code
         code: GroqErrorCode,
     },
 
-    /// Request error
     #[error("Request error: {message}")]
     Request {
-        /// Error message
         message: String,
-        /// HTTP status code
         status_code: u16,
-        /// Error code
         code: GroqErrorCode,
     },
 
-    /// Network error
     #[error("Network error: {0}")]
     Network(#[from] reqwest::Error),
 
-    /// Parse error
     #[error("Parse error: {0}")]
     Parse(#[from] serde_json::Error),
 
-    /// Configuration error
     #[error("Config error: {0}")]
     Config(String),
 }
 
 impl GroqError {
-    /// Get the error code
     pub fn code(&self) -> GroqErrorCode {
         match self {
             Self::Authentication { code, .. } => *code,
@@ -88,12 +66,10 @@ impl GroqError {
         }
     }
 
-    /// Check if retryable
     pub fn is_retryable(&self) -> bool {
         matches!(self, Self::RateLimit { .. } | Self::Network(_))
     }
 
-    /// Get retry delay in milliseconds
     pub fn retry_delay_ms(&self) -> Option<u64> {
         match self {
             Self::RateLimit { retry_after: Some(secs), .. } => Some((*secs * 1000.0) as u64 + 1000),

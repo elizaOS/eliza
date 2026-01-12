@@ -21,7 +21,6 @@ export async function handleTextSmall(
   const modelName = getSmallModel(runtime);
 
   logger.log(`[TEXT_SMALL] Using model: ${modelName}`);
-  logger.debug(`[TEXT_SMALL] Prompt: ${prompt}`);
 
   try {
     const systemInstruction = runtime.character.system || undefined;
@@ -41,7 +40,6 @@ export async function handleTextSmall(
 
     const text = response.text || "";
 
-    // Count tokens for usage tracking
     const promptTokens = await countTokens(prompt);
     const completionTokens = await countTokens(text);
 
@@ -52,9 +50,8 @@ export async function handleTextSmall(
     });
 
     return text;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`[TEXT_SMALL] Error: ${message}`);
+  } catch (error) {
+    logger.error(`[TEXT_SMALL] Error: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -71,7 +68,6 @@ export async function handleTextLarge(
   const modelName = getLargeModel(runtime);
 
   logger.log(`[TEXT_LARGE] Using model: ${modelName}`);
-  logger.debug(`[TEXT_LARGE] Prompt: ${prompt}`);
 
   try {
     const systemInstruction = runtime.character.system || undefined;
@@ -91,7 +87,6 @@ export async function handleTextLarge(
 
     const text = response.text || "";
 
-    // Count tokens for usage tracking
     const promptTokens = await countTokens(prompt);
     const completionTokens = await countTokens(text);
 
@@ -102,9 +97,8 @@ export async function handleTextLarge(
     });
 
     return text;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`[TEXT_LARGE] Error: ${message}`);
+  } catch (error) {
+    logger.error(`[TEXT_LARGE] Error: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }

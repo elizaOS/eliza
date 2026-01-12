@@ -1,7 +1,3 @@
-//! Integration tests for S3 Storage Plugin
-//!
-//! These tests require AWS credentials to be set in environment variables.
-
 use elizaos_plugin_s3_storage::types::{get_content_type, JsonUploadResult, S3StorageConfig, UploadResult};
 
 #[test]
@@ -58,10 +54,6 @@ fn test_content_type_detection() {
     assert_eq!(get_content_type("data.json"), "application/json");
     assert_eq!(get_content_type("file.unknown"), "application/octet-stream");
 }
-
-
-
-
 
 
 

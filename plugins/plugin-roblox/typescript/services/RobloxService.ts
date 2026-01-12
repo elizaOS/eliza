@@ -1,20 +1,8 @@
-/**
- * Main Roblox service implementation.
- *
- * Provides Roblox integration for elizaOS agents including:
- * - Game communication via Messaging Service
- * - DataStore operations for persistent storage
- * - Player event handling
- */
-
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { RobloxClient } from "../client/RobloxClient";
 import { ROBLOX_SERVICE_NAME, type RobloxConfig } from "../types";
 import { hasRobloxEnabled, validateRobloxConfig } from "../utils/config";
 
-/**
- * Agent manager for handling Roblox interactions
- */
 class RobloxAgentManager {
   public runtime: IAgentRuntime;
   public client: RobloxClient;
@@ -28,9 +16,6 @@ class RobloxAgentManager {
     this.client = new RobloxClient(config);
   }
 
-  /**
-   * Start the agent manager
-   */
   async start(): Promise<void> {
     if (this.isRunning) {
       return;
@@ -42,24 +27,17 @@ class RobloxAgentManager {
       "Roblox agent manager started"
     );
 
-    // Start polling if enabled
     if (this.config.pollInterval > 0) {
       this.startPolling();
     }
   }
 
-  /**
-   * Stop the agent manager
-   */
   async stop(): Promise<void> {
     this.isRunning = false;
     this.stopPolling();
     this.runtime.logger.info("Roblox agent manager stopped");
   }
 
-  /**
-   * Start polling for game data
-   */
   private startPolling(): void {
     if (this.pollTimer) {
       return;
@@ -78,9 +56,6 @@ class RobloxAgentManager {
     );
   }
 
-  /**
-   * Stop polling
-   */
   private stopPolling(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
@@ -89,18 +64,10 @@ class RobloxAgentManager {
     }
   }
 
-  /**
-   * Poll for game data updates
-   */
   private async poll(): Promise<void> {
-    // This would check for pending messages, game events, etc.
-    // Implementation depends on your specific game communication protocol
     this.runtime.logger.debug("Polling Roblox for updates...");
   }
 
-  /**
-   * Send a message to the game
-   */
   async sendMessage(content: string, targetPlayerIds?: number[]): Promise<void> {
     await this.client.sendAgentMessage({
       topic: this.config.messagingTopic,
@@ -117,9 +84,6 @@ class RobloxAgentManager {
     });
   }
 
-  /**
-   * Execute an action in the game
-   */
   async executeAction(
     actionName: string,
     parameters: Record<string, unknown>,
@@ -142,11 +106,6 @@ class RobloxAgentManager {
   }
 }
 
-/**
- * Main Roblox service for elizaOS.
- *
- * Manages Roblox agent connections and game communication.
- */
 export class RobloxService extends Service {
   private static instance?: RobloxService;
   private managers = new Map<UUID, RobloxAgentManager>();
@@ -222,23 +181,14 @@ export class RobloxService extends Service {
     }
   }
 
-  /**
-   * Get the agent manager for a specific agent
-   */
   getManager(agentId: UUID): RobloxAgentManager | undefined {
     return this.managers.get(agentId);
   }
 
-  /**
-   * Get the Roblox client for a specific agent
-   */
   getClient(agentId: UUID): RobloxClient | undefined {
     return this.managers.get(agentId)?.client;
   }
 
-  /**
-   * Send a message to a game
-   */
   async sendMessage(agentId: UUID, content: string, targetPlayerIds?: number[]): Promise<void> {
     const manager = this.managers.get(agentId);
     if (!manager) {
@@ -247,9 +197,6 @@ export class RobloxService extends Service {
     await manager.sendMessage(content, targetPlayerIds);
   }
 
-  /**
-   * Execute an action in a game
-   */
   async executeAction(
     agentId: UUID,
     actionName: string,
@@ -263,9 +210,6 @@ export class RobloxService extends Service {
     await manager.executeAction(actionName, parameters, targetPlayerIds);
   }
 
-  /**
-   * Health check for the service
-   */
   async healthCheck(): Promise<{
     healthy: boolean;
     details: Record<string, unknown>;
@@ -300,9 +244,6 @@ export class RobloxService extends Service {
     };
   }
 
-  /**
-   * Get all active managers
-   */
   getActiveManagers(): Map<UUID, RobloxAgentManager> {
     return new Map(this.managers);
   }

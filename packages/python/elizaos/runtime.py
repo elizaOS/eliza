@@ -1,9 +1,3 @@
-"""
-AgentRuntime implementation for elizaOS.
-
-This module provides the main runtime for elizaOS agents.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -38,12 +32,10 @@ from elizaos.types.task import TaskWorker
 from elizaos.utils import compose_prompt_from_state as _compose_prompt_from_state
 from elizaos.utils import get_current_time_ms as _get_current_time_ms
 
-# Import message service (lazy to avoid circular imports)
 _message_service_class: type | None = None
 
 
 def _get_message_service_class() -> type:
-    """Lazy load DefaultMessageService to avoid circular imports."""
     global _message_service_class
     if _message_service_class is None:
         from elizaos.services.message_service import DefaultMessageService
@@ -53,8 +45,6 @@ def _get_message_service_class() -> type:
 
 
 class ModelHandler:
-    """Represents a registered model handler."""
-
     def __init__(
         self,
         handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
@@ -66,37 +56,10 @@ class ModelHandler:
         self.priority = priority
 
 
-# Static counter for anonymous agent naming
 _anonymous_agent_counter = 0
 
 
 class AgentRuntime(IAgentRuntime):
-    """
-    Main runtime for elizaOS agents.
-
-    This class implements the IAgentRuntime interface and provides
-    the core functionality for running AI agents.
-
-    Example:
-        ```python
-        from elizaos import AgentRuntime, Character, DEFAULT_UUID
-
-        # With a character
-        runtime = AgentRuntime(
-            character=Character(name="MyAgent", bio="..."),
-            log_level="info",  # defaults to "error"
-        )
-
-        # Or without a character (anonymous agent)
-        runtime = AgentRuntime(log_level="info")
-
-        await runtime.initialize()
-
-        # For memory creation, use DEFAULT_UUID if no specific room/world needed
-        await runtime.create_memory(memory, "messages")
-        ```
-    """
-
     def __init__(
         self,
         character: Character | None = None,
@@ -113,37 +76,7 @@ class AgentRuntime(IAgentRuntime):
         check_should_respond: bool | None = None,
         enable_autonomy: bool = False,
     ) -> None:
-        """
-        Initialize the AgentRuntime.
-
-        Args:
-            character: Optional character configuration. If not provided, an anonymous character is created.
-            agent_id: Optional agent ID (generated if not provided)
-            adapter: Optional database adapter
-            plugins: Optional list of plugins to register
-            settings: Optional runtime settings
-            conversation_length: Number of messages to keep in context
-            log_level: Log level for this runtime (DEBUG, INFO, WARNING, ERROR).
-                       Defaults to "ERROR".
-            disable_basic_capabilities: Disable basic bootstrap capabilities (reply, ignore, none)
-            enable_extended_capabilities: Enable extended bootstrap capabilities (facts, roles, etc.)
-            action_planning: Enable action planning mode for multi-action execution.
-                When True (default), agent can plan and execute multiple actions per response.
-                When False, agent executes only a single action per response (performance
-                optimization useful for game situations where state updates with every action).
-            llm_mode: LLM mode for overriding model selection.
-                LLMMode.DEFAULT (default): Use the model type specified in the use_model call.
-                LLMMode.SMALL: Override all text generation model calls to use TEXT_SMALL.
-                LLMMode.LARGE: Override all text generation model calls to use TEXT_LARGE.
-            check_should_respond: Enable or disable the shouldRespond evaluation.
-                When True (default), the agent evaluates whether to respond to each message.
-                When False, the agent always responds (ChatGPT mode).
-            enable_autonomy: Enable autonomy capabilities for autonomous agent operation.
-                When True, the agent can operate autonomously with its own thinking loop.
-        """
         global _anonymous_agent_counter
-
-        # Create default anonymous character if none provided
         if character is not None:
             resolved_character = character
             is_anonymous = False
@@ -155,20 +88,13 @@ class AgentRuntime(IAgentRuntime):
             )
             is_anonymous = True
 
-        # Store capability options
         self._capability_disable_basic = disable_basic_capabilities
         self._capability_enable_extended = enable_extended_capabilities
         self._capability_enable_autonomy = enable_autonomy
-        # Flag to track if the character was auto-generated (no character provided)
         self._is_anonymous_character = is_anonymous
-        # Store action planning option (None means check settings at runtime)
         self._action_planning_option = action_planning
-        # Store LLM mode option (None means check settings at runtime)
         self._llm_mode_option = llm_mode
-        # Store check_should_respond option (None means check settings at runtime)
         self._check_should_respond_option = check_should_respond
-        # Generate deterministic agent ID from character name for cross-language compatibility.
-        # Matches TypeScript behavior: character.id ?? opts.agentId ?? stringToUuid(character.name).
         self._agent_id = (
             agent_id or resolved_character.id or string_to_uuid(resolved_character.name)
         )
@@ -177,7 +103,6 @@ class AgentRuntime(IAgentRuntime):
         self._conversation_length = conversation_length
         self._settings: RuntimeSettings = settings or {}
 
-        # Initialize collections
         self._providers: list[Provider] = []
         self._actions: list[Action] = []
         self._evaluators: list[Evaluator] = []
@@ -189,36 +114,21 @@ class AgentRuntime(IAgentRuntime):
         self._task_workers: dict[str, TaskWorker] = {}
         self._send_handlers: dict[str, SendHandlerFunction] = {}
         self._state_cache: dict[str, State] = {}
-
-        # Run tracking
         self._current_run_id: UUID | None = None
         self._current_room_id: UUID | None = None
-
-        # Action results cache
         self._action_results: dict[str, list[ActionResult]] = {}
-
-        # Logger with configurable log level (defaults to ERROR)
         self._logger = create_logger(namespace=resolved_character.name, level=log_level.upper())
-
-        # Store initial plugins for later registration
         self._initial_plugins = plugins or []
-
-        # Initialization promise tracking
         self._init_complete = False
         self._init_event = asyncio.Event()
-
-        # Message service (initialized lazily)
         self._message_service: Any = None
 
-    # Properties
     @property
     def logger(self) -> Logger:
-        """Get the runtime logger."""
         return self._logger
 
     @property
     def message_service(self) -> Any:
-        """Get the message service for handling incoming messages."""
         if self._message_service is None:
             service_class = _get_message_service_class()
             self._message_service = service_class()
@@ -263,11 +173,9 @@ class AgentRuntime(IAgentRuntime):
 
     @property
     def state_cache(self) -> dict[str, State]:
-        """Get the state cache."""
         return self._state_cache
 
     def register_database_adapter(self, adapter: IDatabaseAdapter) -> None:
-        """Register a database adapter."""
         self._adapter = adapter
 
     @property
@@ -276,26 +184,20 @@ class AgentRuntime(IAgentRuntime):
             raise RuntimeError("Database adapter not set")
         return self._adapter.db
 
-    # Initialization
     async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
-        """Initialize the runtime."""
-        _ = config  # Config handled during construction
+        _ = config
         self.logger.info("Initializing AgentRuntime...")
 
-        # Initialize database adapter if present
         if self._adapter:
             await self._adapter.initialize()
             self.logger.debug("Database adapter initialized")
 
-        # Auto-include bootstrapPlugin unless already present
         has_bootstrap = any(p.name == "bootstrap" for p in self._initial_plugins)
         if not has_bootstrap:
             from elizaos.bootstrap import bootstrap_plugin
 
-            # Insert bootstrap at the beginning
             self._initial_plugins.insert(0, bootstrap_plugin)
 
-        # Register initial plugins
         for plugin in self._initial_plugins:
             await self.register_plugin(plugin)
 
@@ -304,14 +206,11 @@ class AgentRuntime(IAgentRuntime):
         self.logger.info("AgentRuntime initialized successfully")
 
     async def register_plugin(self, plugin: Plugin) -> None:
-        """Register a plugin with the runtime."""
         from elizaos.plugin import register_plugin
 
         plugin_to_register = plugin
 
-        # Handle capability-aware registration for bootstrap plugin
         if plugin.name == "bootstrap":
-            # Check character settings for capability flags
             settings = self._character.settings or {}
             disable_basic = self._capability_disable_basic or (
                 settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
@@ -339,7 +238,6 @@ class AgentRuntime(IAgentRuntime):
         await register_plugin(self, plugin_to_register)
         self._plugins.append(plugin_to_register)
 
-    # Service management
     def get_service(self, service: str) -> Service | None:
         services = self._services.get(service)
         return services[0] if services else None
@@ -361,7 +259,6 @@ class AgentRuntime(IAgentRuntime):
         self.logger.debug(f"Service registered: {service_type}")
 
     async def get_service_load_promise(self, service_type: str) -> Service:
-        # Wait for initialization if not complete
         if not self._init_complete:
             await self._init_event.wait()
 
@@ -376,18 +273,9 @@ class AgentRuntime(IAgentRuntime):
     def has_service(self, service_type: str) -> bool:
         return service_type in self._services and len(self._services[service_type]) > 0
 
-    # Settings
     def set_setting(
         self, key: str, value: str | bool | int | float | None, secret: bool = False
     ) -> None:
-        """
-        Set a runtime setting.
-
-        Mirrors TypeScript behavior:
-        - secret=True stores into character.secrets
-        - secret=False stores into character.settings
-        """
-
         if value is None:
             return
 
@@ -402,16 +290,6 @@ class AgentRuntime(IAgentRuntime):
         self._character.settings[key] = value  # type: ignore[assignment]
 
     def get_setting(self, key: str) -> str | bool | int | float | None:
-        """
-        Get a runtime setting.
-
-        Mirrors TypeScript priority:
-        1) character.secrets
-        2) character.settings
-        3) character.settings.secrets (nested secrets)
-        4) runtime constructor settings (`self._settings`)
-        """
-
         settings = self._character.settings
         secrets = self._character.secrets
 
@@ -450,8 +328,6 @@ class AgentRuntime(IAgentRuntime):
         return None
 
     def get_all_settings(self) -> dict[str, str | bool | int | float | None]:
-        """Return a merged view of all known setting keys with their resolved values."""
-
         keys: set[str] = set(self._settings.keys())
         if isinstance(self._character.settings, dict):
             keys.update(self._character.settings.keys())
@@ -464,38 +340,21 @@ class AgentRuntime(IAgentRuntime):
         return {k: self.get_setting(k) for k in keys}
 
     def compose_prompt(self, *, state: State, template: TemplateType) -> str:
-        """Compose a prompt from a `State` (TS parity: composePromptFromState)."""
-
         return _compose_prompt_from_state(state=state, template=template)
 
     def compose_prompt_from_state(self, *, state: State, template: TemplateType) -> str:
-        """Compose a prompt from a `State` (explicit form)."""
-
         return _compose_prompt_from_state(state=state, template=template)
 
     def get_current_time_ms(self) -> int:
-        """Get current time in ms (used by bootstrap actions)."""
-
         return _get_current_time_ms()
 
     def get_conversation_length(self) -> int:
         return self._conversation_length
 
     def is_action_planning_enabled(self) -> bool:
-        """
-        Check if action planning mode is enabled.
-
-        When enabled (default), the agent can plan and execute multiple actions per response.
-        When disabled, the agent executes only a single action per response - a performance
-        optimization useful for game situations where state updates with every action.
-
-        Priority: constructor option > character setting ACTION_PLANNING > default (True)
-        """
-        # Constructor option takes precedence
         if self._action_planning_option is not None:
             return self._action_planning_option
 
-        # Check character settings
         setting = self.get_setting("ACTION_PLANNING")
         if setting is not None:
             if isinstance(setting, bool):
@@ -503,24 +362,12 @@ class AgentRuntime(IAgentRuntime):
             if isinstance(setting, str):
                 return setting.lower() == "true"
 
-        # Default to True (action planning enabled)
         return True
 
     def get_llm_mode(self) -> LLMMode:
-        """
-        Get the LLM mode for model selection override.
-
-        - LLMMode.DEFAULT: Use the model type specified in the use_model call (no override)
-        - LLMMode.SMALL: Override all text generation model calls to use TEXT_SMALL
-        - LLMMode.LARGE: Override all text generation model calls to use TEXT_LARGE
-
-        Priority: constructor option > character setting LLM_MODE > default (DEFAULT)
-        """
-        # Constructor option takes precedence
         if self._llm_mode_option is not None:
             return self._llm_mode_option
 
-        # Check character settings
         setting = self.get_setting("LLM_MODE")
         if setting is not None and isinstance(setting, str):
             upper = setting.upper()
@@ -547,7 +394,6 @@ class AgentRuntime(IAgentRuntime):
         if self._check_should_respond_option is not None:
             return self._check_should_respond_option
 
-        # Check character settings
         setting = self.get_setting("CHECK_SHOULD_RESPOND")
         if setting is not None:
             if isinstance(setting, bool):
@@ -568,7 +414,6 @@ class AgentRuntime(IAgentRuntime):
     def register_evaluator(self, evaluator: Evaluator) -> None:
         self._evaluators.append(evaluator)
 
-    # Action processing
     @staticmethod
     def _parse_param_value(value: str) -> str | int | float | bool | None:
         raw = value.strip()
@@ -588,7 +433,6 @@ class AgentRuntime(IAgentRuntime):
             if re.fullmatch(r"-?\d+\.\d+", raw):
                 return float(raw)
         except Exception:
-            # Fallback to string
             return raw
         return raw
 
@@ -602,7 +446,6 @@ class AgentRuntime(IAgentRuntime):
             return {}
 
         if isinstance(params_raw, str):
-            # Wrap if needed so ElementTree can parse
             xml_text = params_raw if "<params" in params_raw else f"<params>{params_raw}</params>"
             try:
                 root = ET.fromstring(xml_text)
@@ -617,8 +460,7 @@ class AgentRuntime(IAgentRuntime):
                 action_name = action_elem.tag.upper()
                 action_params: dict[str, object] = {}
                 for param_elem in list(action_elem):
-                    text = param_elem.text or ""
-                    action_params[param_elem.tag] = self._parse_param_value(text)
+                    action_params[param_elem.tag] = self._parse_param_value(param_elem.text or "")
                 if action_params:
                     result[action_name] = action_params
             return result
@@ -750,7 +592,6 @@ class AgentRuntime(IAgentRuntime):
                 validated[param_def.name] = extracted_value
                 continue
 
-            # Unknown schema type: treat as pass-through
             validated[param_def.name] = extracted_value
 
         return (len(errors) == 0, validated if validated else None, errors)
@@ -767,7 +608,6 @@ class AgentRuntime(IAgentRuntime):
         if not responses:
             return
 
-        # Collect actions from response messages (mirrors TypeScript behavior)
         actions_to_process: list[str] = []
         if self.is_action_planning_enabled():
             for response in responses:
@@ -806,7 +646,6 @@ class AgentRuntime(IAgentRuntime):
 
                 options_obj = HandlerOptions()
 
-                # Parse and validate optional action parameters
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
                     params_by_action = self._parse_action_params(params_raw)
@@ -824,26 +663,22 @@ class AgentRuntime(IAgentRuntime):
                     if validated_params:
                         options_obj.parameters = validated_params
 
-                try:
-                    result = await action.handler(
-                        self,
-                        message,
-                        state,
-                        options_obj,
-                        callback,
-                        responses,
-                    )
+                result = await action.handler(
+                    self,
+                    message,
+                    state,
+                    options_obj,
+                    callback,
+                    responses,
+                )
 
-                    # Store result
-                    if message.id:
-                        message_id = str(message.id)
-                        if message_id not in self._action_results:
-                            self._action_results[message_id] = []
-                        if result:
-                            self._action_results[message_id].append(result)
-
-                except Exception as e:
-                    self.logger.error(f"Action {response_action} failed: {e}")
+                # Store result
+                if message.id:
+                    message_id = str(message.id)
+                    if message_id not in self._action_results:
+                        self._action_results[message_id] = []
+                    if result:
+                        self._action_results[message_id].append(result)
 
     def _get_action_by_name(self, name: str) -> Action | None:
         for action in self._actions:
@@ -854,7 +689,6 @@ class AgentRuntime(IAgentRuntime):
     def get_action_results(self, message_id: UUID) -> list[ActionResult]:
         return self._action_results.get(str(message_id), [])
 
-    # Evaluation
     async def evaluate(
         self,
         message: Memory,
@@ -887,7 +721,6 @@ class AgentRuntime(IAgentRuntime):
 
         return ran_evaluators if ran_evaluators else None
 
-    # Connection management
     async def ensure_connections(
         self,
         entities: list[Entity],
@@ -903,7 +736,6 @@ class AgentRuntime(IAgentRuntime):
         for room in rooms:
             await self.ensure_room_exists(room)
 
-        # Ensure entities exist and are participants
         for entity in entities:
             if entity.id:
                 await self.create_entities([entity])
@@ -937,7 +769,6 @@ class AgentRuntime(IAgentRuntime):
                 await self._adapter.add_participants_room([entity_id], room_id)
 
     async def ensure_world_exists(self, world: World) -> None:
-        """Ensure a world exists."""
         if self._adapter:
             existing = await self._adapter.get_world(world.id)
             if not existing:
@@ -950,7 +781,6 @@ class AgentRuntime(IAgentRuntime):
             if not rooms or len(rooms) == 0:
                 await self._adapter.create_rooms([room])
 
-    # State composition
     async def compose_state(
         self,
         message: Memory,
@@ -958,10 +788,8 @@ class AgentRuntime(IAgentRuntime):
         only_include: bool = False,
         skip_cache: bool = False,
     ) -> State:
-        """Compose state for a message."""
         cache_key = str(message.room_id)
 
-        # Check cache
         if not skip_cache and cache_key in self._state_cache:
             return self._state_cache[cache_key]
 
@@ -972,7 +800,6 @@ class AgentRuntime(IAgentRuntime):
             text="",
         )
 
-        # Run providers
         providers_to_run = self._providers
         if include_list and only_include:
             providers_to_run = [p for p in self._providers if p.name in include_list]
@@ -989,22 +816,18 @@ class AgentRuntime(IAgentRuntime):
             if provider.private:
                 continue
 
-            try:
-                result = await provider.get(self, message, state)
-                if result.text:
-                    text_parts.append(result.text)
-                if result.values:
-                    state.values.update(result.values)
-                if result.data:
-                    if not state.data.providers:
-                        state.data.providers = {}
-                    state.data.providers[provider.name] = result.data
-            except Exception as e:
-                self.logger.error(f"Provider {provider.name} failed: {e}")
+            result = await provider.get(self, message, state)
+            if result.text:
+                text_parts.append(result.text)
+            if result.values:
+                state.values.update(result.values)
+            if result.data:
+                if not state.data.providers:
+                    state.data.providers = {}
+                state.data.providers[provider.name] = result.data
 
         state.text = "\n".join(text_parts)
 
-        # Cache state
         if not skip_cache:
             self._state_cache[cache_key] = state
 
@@ -1025,7 +848,6 @@ class AgentRuntime(IAgentRuntime):
         provider: str | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Use a model for inference."""
         effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
         if params is None:
             params = dict(kwargs)
@@ -1043,7 +865,6 @@ class AgentRuntime(IAgentRuntime):
                 ModelType.TEXT_REASONING_LARGE.value,
                 ModelType.TEXT_COMPLETION.value,
             ]
-
             if effective_model_type in text_generation_models:
                 override_model_type = (
                     ModelType.TEXT_SMALL.value
@@ -1061,10 +882,8 @@ class AgentRuntime(IAgentRuntime):
         if not handlers:
             raise RuntimeError(f"No model handler registered for: {effective_model_type}")
 
-        # Sort by priority and get highest
         handlers.sort(key=lambda h: h.priority, reverse=True)
 
-        # Filter by provider if specified
         if provider:
             handlers = [h for h in handlers if h.provider == provider]
             if not handlers:
@@ -1078,7 +897,6 @@ class AgentRuntime(IAgentRuntime):
         input_text: str,
         options: GenerateTextOptions | None = None,
     ) -> GenerateTextResult:
-        """Generate text using an LLM."""
         model_type: str | ModelType = ModelType.TEXT_LARGE
         if options and options.model_type:
             model_type = options.model_type
@@ -1091,7 +909,6 @@ class AgentRuntime(IAgentRuntime):
                 params["temperature"] = options.temperature
             if options.max_tokens is not None:
                 params["maxTokens"] = options.max_tokens
-            # System prompt handled separately via character config
 
         result = await self.use_model(model_type, params)
         return GenerateTextResult(text=str(result))
@@ -1103,7 +920,6 @@ class AgentRuntime(IAgentRuntime):
         provider: str,
         priority: int = 0,
     ) -> None:
-        """Register a model handler."""
         key = model_type.value if isinstance(model_type, ModelType) else model_type
         if key not in self._models:
             self._models[key] = []
@@ -1115,7 +931,6 @@ class AgentRuntime(IAgentRuntime):
     def get_model(
         self, model_type: str
     ) -> Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]] | None:
-        """Get a model handler."""
         handlers = self._models.get(model_type, [])
         if handlers:
             handlers.sort(key=lambda h: h.priority, reverse=True)
@@ -1128,7 +943,6 @@ class AgentRuntime(IAgentRuntime):
         event: str,
         handler: Callable[[Any], Awaitable[None]],
     ) -> None:
-        """Register an event handler."""
         if event not in self._events:
             self._events[event] = []
         self._events[event].append(handler)
@@ -1142,16 +956,12 @@ class AgentRuntime(IAgentRuntime):
         event: str | list[str],
         params: Any,
     ) -> None:
-        """Emit an event."""
         events = [event] if isinstance(event, str) else event
 
         for evt in events:
             handlers = self._events.get(evt, [])
             for handler in handlers:
-                try:
-                    await handler(params)
-                except Exception as e:
-                    self.logger.error(f"Event handler failed for {evt}: {e}")
+                await handler(params)
 
     # Task management
     def register_task_worker(self, task_handler: TaskWorker) -> None:
@@ -1175,28 +985,21 @@ class AgentRuntime(IAgentRuntime):
                 except Exception as e:
                     self.logger.error(f"Failed to stop service {service_type}: {e}")
 
-        # Close database adapter
         if self._adapter:
             await self._adapter.close()
 
         self.logger.info("AgentRuntime stopped")
 
-    # Memory/embedding helpers
     async def add_embedding_to_memory(self, memory: Memory) -> Memory:
-        """Add embedding to a memory."""
-        # This would use an embedding model
-        # For now, return the memory as-is
         return memory
 
     async def queue_embedding_generation(self, memory: Memory, priority: str = "normal") -> None:
-        """Queue a memory for async embedding generation."""
         await self.emit_event(
             EventType.EMBEDDING_GENERATION_REQUESTED.value,
             {"runtime": self, "memory": memory, "priority": priority, "source": "runtime"},
         )
 
     async def get_all_memories(self) -> list[Memory]:
-        """Get all memories."""
         if not self._adapter:
             return []
         return await self._adapter.get_memories(
@@ -1204,82 +1007,65 @@ class AgentRuntime(IAgentRuntime):
         )
 
     async def clear_all_agent_memories(self) -> None:
-        """Clear all agent memories."""
-        # Implementation depends on database adapter
         pass
 
-    # Run tracking
     def create_run_id(self) -> UUID:
-        """Create a new run ID."""
         return as_uuid(str(uuid.uuid4()))
 
     def start_run(self, room_id: UUID | None = None) -> UUID:
-        """Start a new run."""
         self._current_run_id = self.create_run_id()
         self._current_room_id = room_id
         return self._current_run_id
 
     def end_run(self) -> None:
-        """End the current run."""
         self._current_run_id = None
         self._current_room_id = None
 
     def get_current_run_id(self) -> UUID:
-        """Get the current run ID."""
         if not self._current_run_id:
             return self.start_run()
         return self._current_run_id
 
-    # Convenience wrappers
     async def get_entity_by_id(self, entity_id: UUID) -> Entity | None:
-        """Get entity by ID."""
         if not self._adapter:
             return None
         entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
 
     async def get_room(self, room_id: UUID) -> Room | None:
-        """Get room by ID."""
         if not self._adapter:
             return None
         rooms = await self._adapter.get_rooms_by_ids([room_id])
         return rooms[0] if rooms else None
 
     async def create_entity(self, entity: Entity) -> bool:
-        """Create an entity."""
         if not self._adapter:
             return False
         return await self._adapter.create_entities([entity])
 
     async def create_room(self, room: Room) -> UUID:
-        """Create a room."""
         if not self._adapter:
             raise RuntimeError("Database adapter not set")
         ids = await self._adapter.create_rooms([room])
         return ids[0]
 
     async def add_participant(self, entity_id: UUID, room_id: UUID) -> bool:
-        """Add a participant to a room."""
         if not self._adapter:
             return False
         return await self._adapter.add_participants_room([entity_id], room_id)
 
     async def get_rooms(self, world_id: UUID) -> list[Room]:
-        """Get rooms for a world."""
         if not self._adapter:
             return []
         return await self._adapter.get_rooms_by_world(world_id)
 
     def register_send_handler(self, source: str, handler: SendHandlerFunction) -> None:
-        """Register a send handler."""
         self._send_handlers[source] = handler
 
     async def send_message_to_target(self, target: TargetInfo, content: Content) -> None:
-        """Send a message to a target."""
         if target.source and target.source in self._send_handlers:
             await self._send_handlers[target.source](target, content)
 
-    # Database adapter delegation methods
     async def init(self) -> None:
         if self._adapter:
             await self._adapter.init()

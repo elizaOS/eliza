@@ -104,12 +104,10 @@ export const deleteIssueAction: Action = {
 
       let issueId: string;
 
-      // Check if we have issueId in options with type-safe access
       const params = _options?.parameters as DeleteIssueParameters | undefined;
       if (params?.issueId) {
         issueId = params.issueId;
       } else {
-        // Use LLM to extract issue ID
         const prompt = deleteIssueTemplate.replace("{{userMessage}}", content);
 
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -121,7 +119,6 @@ export const deleteIssueAction: Action = {
         }
 
         try {
-          // Strip markdown code blocks if present
           const cleanedResponse = response
             .replace(/^```(?:json)?\n?/, "")
             .replace(/\n?```$/, "")
@@ -133,7 +130,6 @@ export const deleteIssueAction: Action = {
             throw new Error("Issue ID not found in parsed response");
           }
         } catch (parseError) {
-          // Fallback to regex parsing
           logger.warn("Failed to parse LLM response, falling back to regex parsing:", parseError);
 
           const issueMatch = content.match(/(\w+-\d+)/);
@@ -153,15 +149,12 @@ export const deleteIssueAction: Action = {
         }
       }
 
-      // Get issue details before deletion to confirm and show title
       const issue = await linearService.getIssue(issueId);
       const issueTitle = issue.title;
       const issueIdentifier = issue.identifier;
 
-      // Confirm deletion with user-friendly message
       logger.info(`Archiving issue ${issueIdentifier}: ${issueTitle}`);
 
-      // Archive the issue (Linear doesn't support hard deletion)
       await linearService.deleteIssue(issueId);
 
       const successMessage = `✅ Successfully archived issue ${issueIdentifier}: "${issueTitle}"\n\nThe issue has been moved to the archived state and will no longer appear in active views.`;

@@ -14,7 +14,6 @@ export const linearIssuesProvider: Provider = {
         };
       }
 
-      // Get recent issues
       const issues = await linearService.searchIssues({ limit: 10 });
 
       if (issues.length === 0) {
@@ -23,7 +22,6 @@ export const linearIssuesProvider: Provider = {
         };
       }
 
-      // Format issues for context
       const issuesList = await Promise.all(
         issues.map(async (issue: Issue) => {
           const [assignee, state] = await Promise.all([issue.assignee, issue.state]);

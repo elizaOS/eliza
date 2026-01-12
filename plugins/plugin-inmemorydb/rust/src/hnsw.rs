@@ -1,8 +1,3 @@
-//! Simple HNSW (Hierarchical Navigable Small World) implementation
-//!
-//! Pure in-memory, ephemeral vector index.
-//! All data is lost on restart - no persistence.
-
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use rand::Rng;
@@ -10,21 +5,19 @@ use std::collections::{HashMap, HashSet};
 
 use crate::types::{IVectorStorage, StorageError, StorageResult, VectorSearchResult};
 
-/// Node in the HNSW graph
 #[derive(Clone)]
 struct HNSWNode {
     _id: String,
     vector: Vec<f32>,
     level: usize,
-    neighbors: HashMap<usize, HashSet<String>>, // level -> neighbor ids
+    neighbors: HashMap<usize, HashSet<String>>,
 }
 
-/// HNSW configuration parameters
 struct HNSWConfig {
-    m: usize,              // Max connections per layer
-    ef_construction: usize, // Size of dynamic candidate list during construction
-    ef_search: usize,      // Size of dynamic candidate list during search
-    ml: f32,               // Level multiplier (1/ln(M))
+    m: usize,
+    ef_construction: usize,
+    ef_search: usize,
+    ml: f32,
 }
 
 impl Default for HNSWConfig {
@@ -39,7 +32,6 @@ impl Default for HNSWConfig {
     }
 }
 
-/// Calculate cosine distance between two vectors
 fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 1.0;
@@ -63,9 +55,6 @@ fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     1.0 - (dot_product / magnitude)
 }
 
-/// Simple HNSW implementation for vector similarity search
-///
-/// Completely ephemeral - no persistence, all data lost on close/restart
 pub struct EphemeralHNSW {
     nodes: RwLock<HashMap<String, HNSWNode>>,
     entry_point: RwLock<Option<String>>,
@@ -185,7 +174,6 @@ impl EphemeralHNSW {
         neighbors
     }
 
-    /// Get count of vectors in the index
     pub fn size(&self) -> usize {
         self.nodes.read().len()
     }
@@ -215,7 +203,6 @@ impl IVectorStorage for EphemeralHNSW {
 
         let mut nodes = self.nodes.write();
 
-        // Update existing node
         if let Some(node) = nodes.get_mut(id) {
             node.vector = vector.to_vec();
             return Ok(());
@@ -236,7 +223,6 @@ impl IVectorStorage for EphemeralHNSW {
         let entry_point = self.entry_point.read().clone();
 
         if entry_point.is_none() {
-            // First node
             *self.entry_point.write() = Some(id.to_string());
             *self.max_level.write() = level;
             nodes.insert(id.to_string(), new_node);
@@ -246,7 +232,6 @@ impl IVectorStorage for EphemeralHNSW {
         let mut current_node = entry_point.clone().unwrap();
         let max_level = *self.max_level.read();
 
-        // Search from top level down to level+1
         for l in (level + 1..=max_level).rev() {
             let results = self.search_layer(&nodes, vector, &current_node, 1, l);
             if !results.is_empty() {
@@ -254,7 +239,6 @@ impl IVectorStorage for EphemeralHNSW {
             }
         }
 
-        // Insert at each level
         for l in (0..=std::cmp::min(level, max_level)).rev() {
             let neighbors = self.search_layer(&nodes, vector, &current_node, self.config.ef_construction, l);
             let m = self.config.m;
@@ -272,11 +256,9 @@ impl IVectorStorage for EphemeralHNSW {
                     neighbor_set.insert(id.to_string());
 
                     if neighbor_set.len() > m {
-                        // Clone what we need to avoid borrow issues
                         let neighbor_vector = neighbor_node.vector.clone();
                         let neighbor_ids = neighbor_set.clone();
                         
-                        // Calculate best neighbors
                         let mut neighbors_with_dist: Vec<_> = neighbor_ids
                             .iter()
                             .filter_map(|nid| {
@@ -287,7 +269,6 @@ impl IVectorStorage for EphemeralHNSW {
                         neighbors_with_dist.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
                         neighbors_with_dist.truncate(m);
                         
-                        // Get the neighbor_set again after our calculations
                         if let Some(neighbor_node) = nodes.get_mut(neighbor_id) {
                             if let Some(ns) = neighbor_node.neighbors.get_mut(&l) {
                                 *ns = neighbors_with_dist.into_iter().map(|(id, _)| id).collect();
@@ -304,7 +285,6 @@ impl IVectorStorage for EphemeralHNSW {
 
         nodes.insert(id.to_string(), new_node);
 
-        // Update entry point if higher level
         if level > max_level {
             *self.max_level.write() = level;
             *self.entry_point.write() = Some(id.to_string());
@@ -321,7 +301,6 @@ impl IVectorStorage for EphemeralHNSW {
             None => return Ok(()),
         };
 
-        // Remove from all neighbors
         for (level, neighbors) in &node.neighbors {
             for neighbor_id in neighbors {
                 if let Some(neighbor_node) = nodes.get_mut(neighbor_id) {
@@ -334,7 +313,6 @@ impl IVectorStorage for EphemeralHNSW {
 
         nodes.remove(id);
 
-        // Update entry point
         let entry_point = self.entry_point.read().clone();
         if entry_point.as_deref() == Some(id) {
             if nodes.is_empty() {
@@ -381,7 +359,6 @@ impl IVectorStorage for EphemeralHNSW {
         let mut current_node = entry_point.unwrap();
         let max_level = *self.max_level.read();
 
-        // Search from top to level 1
         for l in (1..=max_level).rev() {
             let closest = self.search_layer(&nodes, query, &current_node, 1, l);
             if !closest.is_empty() {
@@ -389,7 +366,6 @@ impl IVectorStorage for EphemeralHNSW {
             }
         }
 
-        // Search at level 0
         let results = self.search_layer(
             &nodes,
             query,

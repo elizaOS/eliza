@@ -327,11 +327,11 @@ async function handleRequest(request, plugin, actions, providers, evaluators) {
                 if not line_str:
                     continue
 
-                try:
-                    message = json.loads(line_str)
-                    self._handle_message(message)
-                except json.JSONDecodeError:
-                    pass
+                message = json.loads(line_str)
+                self._handle_message(message)
+            except json.JSONDecodeError:
+                # Invalid JSON from subprocess - skip malformed messages
+                continue
             except Exception:
                 break
 

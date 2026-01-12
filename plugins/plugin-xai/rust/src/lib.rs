@@ -32,22 +32,29 @@
 
 #![warn(missing_docs)]
 
+pub mod actions;
 pub mod client;
 pub mod error;
 pub mod grok;
+pub mod models;
 pub mod types;
 
 // Import directly from submodules:
+// - actions::{PostAction, PostActionResult}
 // - client::TwitterClient
 // - error::{XAIError, Result}
 // - grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingParams}
+// - models::{TextSmallHandler, TextLargeHandler, TextEmbeddingHandler}
 // - types::* for all types
 
 use anyhow::Result as AnyhowResult;
 
-use crate::client::TwitterClient;
-use crate::grok::{GrokClient, GrokConfig};
-use crate::types::TwitterConfig;
+// Re-export commonly used types
+pub use crate::actions::{PostAction, PostActionResult};
+pub use crate::client::TwitterClient;
+pub use crate::grok::{GrokClient, GrokConfig, TextGenerationParams, EmbeddingParams};
+pub use crate::models::{TextSmallHandler, TextLargeHandler, TextEmbeddingHandler};
+pub use crate::types::TwitterConfig;
 
 /// Create a Twitter API client for X from environment variables.
 ///

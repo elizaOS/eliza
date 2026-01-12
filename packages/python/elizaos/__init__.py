@@ -1,10 +1,3 @@
-"""
-elizaOS Core - The Python runtime and types for elizaOS AI agents.
-
-This package provides the core functionality for building AI agents with elizaOS,
-including the AgentRuntime, plugin system, and all core types.
-"""
-
 from elizaos.character import parse_character, validate_character_config
 from elizaos.logger import Logger, create_logger
 from elizaos.plugin import load_plugin, register_plugin
@@ -89,8 +82,6 @@ from elizaos.types import (
     string_to_uuid,
 )
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
-
-# Rebuild models with forward references
 from elizaos.types.runtime import IAgentRuntime  # noqa: E402
 from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 

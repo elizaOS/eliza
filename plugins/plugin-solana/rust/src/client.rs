@@ -6,17 +6,14 @@ use crate::{
     keypair::WalletConfig,
     types::*,
 };
-use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 use solana_rpc_client::nonblocking::rpc_client::RpcClient;
 #[allow(deprecated)]
 use solana_sdk::system_instruction;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    message::VersionedMessage,
-    pubkey::Pubkey,
-    signature::Signer,
-    transaction::VersionedTransaction,
+    commitment_config::CommitmentConfig, message::VersionedMessage, pubkey::Pubkey,
+    signature::Signer, transaction::VersionedTransaction,
 };
 use spl_associated_token_account::get_associated_token_address;
 use spl_token::instruction as token_instruction;
@@ -48,10 +45,8 @@ impl SolanaClient {
     /// # Errors
     /// Returns an error if the configuration is invalid.
     pub fn new(config: WalletConfig) -> SolanaResult<Self> {
-        let rpc = RpcClient::new_with_commitment(
-            config.rpc_url.clone(),
-            CommitmentConfig::confirmed(),
-        );
+        let rpc =
+            RpcClient::new_with_commitment(config.rpc_url.clone(), CommitmentConfig::confirmed());
 
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -150,16 +145,13 @@ impl SolanaClient {
                         .unwrap_or_default();
 
                     // Parse amount (u64 at offset 64)
-                    let amount = u64::from_le_bytes(
-                        data[64..72]
-                            .try_into()
-                            .unwrap_or([0u8; 8]),
-                    );
+                    let amount = u64::from_le_bytes(data[64..72].try_into().unwrap_or([0u8; 8]));
 
                     // Get decimals from mint (would need separate call in production)
                     // For now, assume 9 decimals (SOL standard)
                     let decimals = 9u8;
-                    let ui_amount = Decimal::from(amount) / Decimal::from(10u64.pow(u32::from(decimals)));
+                    let ui_amount =
+                        Decimal::from(amount) / Decimal::from(10u64.pow(u32::from(decimals)));
 
                     result.push(TokenAccountInfo {
                         mint,
@@ -423,8 +415,9 @@ impl SolanaClient {
             .into_vec()
             .or_else(|_| {
                 // Try base64 if base58 fails
-                base64_decode(&swap_tx.swap_transaction)
-                    .map_err(|_| SolanaError::SwapExecution("Invalid transaction encoding".to_string()))
+                base64_decode(&swap_tx.swap_transaction).map_err(|_| {
+                    SolanaError::SwapExecution("Invalid transaction encoding".to_string())
+                })
             })?;
 
         let mut transaction: VersionedTransaction = bincode::deserialize(&tx_bytes)
@@ -571,4 +564,3 @@ mod tests {
         assert!(!SolanaClient::is_valid_address("invalid"));
     }
 }
-

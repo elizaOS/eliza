@@ -1,14 +1,8 @@
-/**
- * Browser Automation Plugin for elizaOS
- * Provides browser automation capabilities using Stagehand
- */
-
 import type { IAgentRuntime, Memory, Plugin, Provider, ProviderResult, State } from "@elizaos/core";
 import { logger, ServiceType } from "@elizaos/core";
 import { z } from "zod";
 import { browserClickAction } from "./actions/click.js";
 import { browserExtractAction } from "./actions/extract.js";
-// Import actions
 import { browserNavigateAction } from "./actions/navigate.js";
 import { browserScreenshotAction } from "./actions/screenshot.js";
 import { browserSelectAction } from "./actions/select.js";
@@ -17,16 +11,9 @@ import { BrowserService, Session } from "./services/browser-service.js";
 import { BrowserProcessManager } from "./services/process-manager.js";
 import { BrowserWebSocketClient } from "./services/websocket-client.js";
 
-// Export types
 export * from "./types.js";
-
-// Export utilities
 export * from "./utils/index.js";
-
-// Export services
 export { BrowserService, Session, BrowserWebSocketClient, BrowserProcessManager };
-
-// Export actions
 export {
   browserNavigateAction,
   browserClickAction,
@@ -35,8 +22,6 @@ export {
   browserExtractAction,
   browserScreenshotAction,
 };
-
-// Configuration schema
 const configSchema = z.object({
   BROWSERBASE_API_KEY: z.string().optional(),
   BROWSERBASE_PROJECT_ID: z.string().optional(),
@@ -53,7 +38,6 @@ const configSchema = z.object({
   BROWSER_SERVER_PORT: z.string().optional().default("3456"),
 });
 
-// Browser state provider
 const browserStateProvider: Provider = {
   name: "BROWSER_STATE",
   description:
@@ -108,7 +92,6 @@ const browserStateProvider: Provider = {
   },
 };
 
-// Main plugin definition
 export const browserPlugin: Plugin = {
   name: "plugin-browser",
   description: "Browser automation plugin using Stagehand for web interactions",
@@ -156,5 +139,4 @@ export const browserPlugin: Plugin = {
   providers: [browserStateProvider],
 };
 
-// Default export
 export default browserPlugin;

@@ -1,5 +1,3 @@
-//! Browser Click Action
-
 use crate::services::BrowserService;
 use crate::types::ActionResult;
 use crate::utils::{action_error, parse_click_target, session_error};
@@ -7,12 +5,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Action metadata
 pub const CLICK_ACTION_NAME: &str = "BROWSER_CLICK";
 pub const CLICK_SIMILES: &[&str] = &["CLICK_ELEMENT", "TAP", "PRESS_BUTTON"];
 pub const CLICK_DESCRIPTION: &str = "Click on an element on the webpage";
 
-/// Click on an element on the webpage
 pub async fn browser_click(
     service: Arc<BrowserService>,
     message: &str,
@@ -51,10 +47,5 @@ pub async fn browser_click(
         }
     }
 }
-
-
-
-
-
 
 

@@ -1,9 +1,3 @@
-/**
- * @elizaos/plugin-evm Token Balance Provider
- *
- * Provides token balance information for transfer/swap/bridge operations.
- */
-
 import {
   type IAgentRuntime,
   type Memory,
@@ -18,9 +12,6 @@ import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js
 import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
 import { initWalletProvider } from "./wallet";
 
-/**
- * Token balance provider
- */
 export const tokenBalanceProvider: Provider = {
   name: "TOKEN_BALANCE",
   description: "Token balance for ERC20 tokens when onchain actions are requested",
@@ -45,28 +36,23 @@ export const tokenBalanceProvider: Provider = {
 
     const walletProvider = await initWalletProvider(runtime);
 
-    // Validate chain is configured
     if (!walletProvider.chains[chain]) {
       throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, `Chain ${chain} is not configured`);
     }
 
     const chainConfig = walletProvider.getChainConfigs(chain as SupportedChain);
     const address = walletProvider.getAddress();
-
-    // Get token info from LiFi
     const tokenData = await getToken(chainConfig.id, token);
-
-    // Get balance
     const publicClient = walletProvider.getPublicClient(chain as SupportedChain);
     const balanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-    const balance = // @ts-expect-error - viem type narrowing issue
-      (await publicClient.readContract({
-        address: tokenData.address as Address,
-        abi: balanceAbi,
-        functionName: "balanceOf",
-        args: [address],
-      })) as bigint;
+    // @ts-expect-error - viem type narrowing issue with readContract parameters
+    const balance = (await publicClient.readContract({
+      address: tokenData.address as Address,
+      abi: balanceAbi,
+      functionName: "balanceOf",
+      args: [address],
+    })) as bigint;
 
     const formattedBalance = formatUnits(balance, tokenData.decimals);
     const hasBalance = parseFloat(formattedBalance) > 0;

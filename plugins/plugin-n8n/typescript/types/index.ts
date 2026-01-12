@@ -1,10 +1,3 @@
-/**
- * Type definitions for the N8n Plugin.
- */
-
-/**
- * Claude model identifiers.
- */
 export const ClaudeModel = {
   SONNET_3_5: "claude-3-5-sonnet-20241022",
   OPUS_3: "claude-3-opus-20240229",
@@ -18,39 +11,27 @@ export type ClaudeModel = (typeof ClaudeModel)[keyof typeof ClaudeModel];
 export interface ActionSpecification {
   name: string;
   description: string;
-  parameters?: Record<string, unknown>;
+  parameters?: Record<string, string>;
 }
 
-/**
- * Specification for a plugin provider.
- */
 export interface ProviderSpecification {
   name: string;
   description: string;
-  dataStructure?: Record<string, unknown>;
+  dataStructure?: Record<string, string>;
 }
 
-/**
- * Specification for a plugin service.
- */
 export interface ServiceSpecification {
   name: string;
   description: string;
   methods?: string[];
 }
 
-/**
- * Specification for a plugin evaluator.
- */
 export interface EvaluatorSpecification {
   name: string;
   description: string;
   triggers?: string[];
 }
 
-/**
- * Environment variable specification.
- */
 export interface EnvironmentVariableSpec {
   name: string;
   description: string;
@@ -58,9 +39,6 @@ export interface EnvironmentVariableSpec {
   sensitive: boolean;
 }
 
-/**
- * Complete specification for creating a plugin.
- */
 export interface PluginSpecification {
   name: string;
   description: string;
@@ -88,18 +66,12 @@ export interface JobError {
   timestamp: Date;
 }
 
-/**
- * Test results from plugin validation.
- */
 export interface TestResults {
   passed: number;
   failed: number;
   duration: number;
 }
 
-/**
- * A plugin creation job tracking object.
- */
 export interface PluginCreationJob {
   id: string;
   specification: PluginSpecification;
@@ -120,17 +92,11 @@ export interface PluginCreationJob {
   modelUsed?: ClaudeModel;
 }
 
-/**
- * Options for creating a plugin.
- */
 export interface CreatePluginOptions {
   useTemplate?: boolean;
   model?: ClaudeModel;
 }
 
-/**
- * Plugin registry data.
- */
 export interface PluginRegistryData {
   totalCreated: number;
   plugins: Array<{

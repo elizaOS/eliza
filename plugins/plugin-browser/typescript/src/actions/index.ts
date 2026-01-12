@@ -1,7 +1,3 @@
-/**
- * Action exports
- */
-
 export { browserClickAction } from "./click.js";
 export { browserExtractAction } from "./extract.js";
 export { browserNavigateAction } from "./navigate.js";

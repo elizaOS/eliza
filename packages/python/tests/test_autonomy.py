@@ -1,12 +1,3 @@
-"""
-Tests for Autonomy Module - Python implementation.
-
-Tests the autonomous operation capabilities including:
-- AutonomyService lifecycle and loop management
-- send_to_admin_action validation
-- admin_chat_provider and autonomy_status_provider
-"""
-
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -24,7 +15,6 @@ from elizaos.bootstrap.autonomy.types import AutonomyStatus
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content, as_uuid
 
-# Test UUIDs
 TEST_AGENT_ID = "00000000-0000-0000-0000-000000000001"
 TEST_ROOM_ID = "00000000-0000-0000-0000-000000000002"
 TEST_ENTITY_ID = "00000000-0000-0000-0000-000000000003"
@@ -35,13 +25,11 @@ AUTONOMOUS_ROOM_ID = "00000000-0000-0000-0000-000000000006"
 
 @pytest.fixture
 def test_runtime():
-    """Create a test runtime for testing."""
     runtime = MagicMock()
     runtime.agent_id = as_uuid(TEST_AGENT_ID)
     runtime.character = MagicMock()
     runtime.character.name = "Test Agent"
 
-    # Setup async mocks
     runtime.ensure_world_exists = AsyncMock()
     runtime.ensure_room_exists = AsyncMock()
     runtime.add_participant = AsyncMock()
@@ -50,11 +38,9 @@ def test_runtime():
     runtime.emit_event = AsyncMock()
     runtime.create_memory = AsyncMock(return_value="memory-id")
 
-    # Settings
     runtime.get_setting = MagicMock(return_value=None)
     runtime.set_setting = MagicMock()
 
-    # Logger
     runtime.logger = MagicMock()
     runtime.logger.info = MagicMock()
     runtime.logger.debug = MagicMock()
@@ -66,7 +52,6 @@ def test_runtime():
 
 @pytest.fixture
 def test_memory():
-    """Create a test memory for testing."""
     return Memory(
         id=as_uuid(TEST_MESSAGE_ID),
         room_id=as_uuid(TEST_ROOM_ID),
@@ -78,16 +63,12 @@ def test_memory():
 
 
 class TestAutonomyService:
-    """Tests for AutonomyService."""
-
     def test_service_type(self):
-        """Should have correct service type."""
         assert AutonomyService.service_type == AUTONOMY_SERVICE_TYPE
         assert AutonomyService.service_type == "AUTONOMY"
 
     @pytest.mark.asyncio
     async def test_start_creates_service(self, test_runtime):
-        """Should create service instance with default values."""
         service = await AutonomyService.start(test_runtime)
 
         assert service is not None
@@ -98,7 +79,6 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_auto_start_when_enabled(self, test_runtime):
-        """Should auto-start loop when AUTONOMY_ENABLED is true."""
         test_runtime.get_setting = MagicMock(return_value=True)
 
         service = await AutonomyService.start(test_runtime)
@@ -106,62 +86,51 @@ class TestAutonomyService:
         assert service.is_loop_running() is True
         test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", True)
 
-        # Cleanup
         await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_auto_start_when_enabled_string(self, test_runtime):
-        """Should auto-start loop when AUTONOMY_ENABLED is 'true' string."""
         test_runtime.get_setting = MagicMock(return_value="true")
 
         service = await AutonomyService.start(test_runtime)
 
         assert service.is_loop_running() is True
 
-        # Cleanup
         await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_ensure_context_on_initialization(self, test_runtime):
-        """Should ensure world and room exist on initialization."""
         _ = await AutonomyService.start(test_runtime)
 
         test_runtime.ensure_world_exists.assert_called_once()
         test_runtime.ensure_room_exists.assert_called_once()
         test_runtime.add_participant.assert_called_once()
 
-        # Verify world call
         world_call = test_runtime.ensure_world_exists.call_args[0][0]
         assert world_call.name == "Autonomy World"
         assert world_call.metadata is not None
         assert world_call.metadata.model_dump().get("type") == "autonomy"
 
-        # Verify room call
         room_call = test_runtime.ensure_room_exists.call_args[0][0]
         assert room_call.name == "Autonomous Thoughts"
         assert room_call.source == "autonomy-service"
 
     @pytest.mark.asyncio
     async def test_start_stop_loop(self, test_runtime):
-        """Should start and stop loop correctly."""
         service = await AutonomyService.start(test_runtime)
 
-        # Initially not running
         assert service.is_loop_running() is False
 
-        # Start loop
         await service.start_loop()
         assert service.is_loop_running() is True
         test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", True)
 
-        # Stop loop
         await service.stop_loop()
         assert service.is_loop_running() is False
         test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", False)
 
     @pytest.mark.asyncio
     async def test_no_double_start(self, test_runtime):
-        """Should not start loop if already running."""
         service = await AutonomyService.start(test_runtime)
 
         await service.start_loop()
@@ -170,12 +139,10 @@ class TestAutonomyService:
         await service.start_loop()
         assert test_runtime.set_setting.call_count == call_count
 
-        # Cleanup
         await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_no_double_stop(self, test_runtime):
-        """Should not attempt stop if loop not running."""
         service = await AutonomyService.start(test_runtime)
 
         call_count = test_runtime.set_setting.call_count
@@ -184,7 +151,6 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_interval_configuration(self, test_runtime):
-        """Should set and get loop interval."""
         service = await AutonomyService.start(test_runtime)
 
         service.set_loop_interval(60000)
@@ -192,7 +158,6 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_interval_minimum_enforced(self, test_runtime):
-        """Should enforce minimum interval of 5000ms."""
         service = await AutonomyService.start(test_runtime)
 
         service.set_loop_interval(1000)
@@ -200,7 +165,6 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_interval_maximum_enforced(self, test_runtime):
-        """Should enforce maximum interval of 600000ms."""
         service = await AutonomyService.start(test_runtime)
 
         service.set_loop_interval(1000000)
@@ -208,7 +172,6 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_enable_autonomy(self, test_runtime):
-        """Should enable autonomy via enable_autonomy()."""
         service = await AutonomyService.start(test_runtime)
 
         await service.enable_autonomy()
@@ -216,12 +179,10 @@ class TestAutonomyService:
         test_runtime.set_setting.assert_called_with("AUTONOMY_ENABLED", True)
         assert service.is_loop_running() is True
 
-        # Cleanup
         await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_disable_autonomy(self, test_runtime):
-        """Should disable autonomy via disable_autonomy()."""
         service = await AutonomyService.start(test_runtime)
 
         await service.enable_autonomy()
@@ -232,7 +193,6 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_get_status(self, test_runtime):
-        """Should return correct status via get_status()."""
         test_runtime.get_setting = MagicMock(return_value=True)
         service = await AutonomyService.start(test_runtime)
 
@@ -241,16 +201,14 @@ class TestAutonomyService:
         assert isinstance(status, AutonomyStatus)
         assert status.enabled is True
         assert status.running is True
-        assert status.thinking is False  # Initially not thinking
+        assert status.thinking is False
         assert status.interval == 30000
         assert status.autonomous_room_id is not None
 
-        # Cleanup
         await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_thinking_guard_initial_state(self, test_runtime):
-        """Should initially not be thinking."""
         service = await AutonomyService.start(test_runtime)
 
         assert service.is_thinking_in_progress() is False
@@ -258,26 +216,19 @@ class TestAutonomyService:
 
     @pytest.mark.asyncio
     async def test_thinking_guard_prevents_overlap(self, test_runtime):
-        """Should skip iteration if previous is still running."""
         service = await AutonomyService.start(test_runtime)
 
-        # Manually set thinking flag to simulate in-progress thought
         service._is_thinking = True
 
-        # Verify thinking state is tracked
         assert service.is_thinking_in_progress() is True
         assert service.get_status().thinking is True
 
-        # Reset thinking flag
         service._is_thinking = False
         assert service.is_thinking_in_progress() is False
 
 
 class TestSendToAdminAction:
-    """Tests for send_to_admin_action."""
-
     def test_action_metadata(self):
-        """Should have correct action metadata."""
         assert send_to_admin_action.name == "SEND_TO_ADMIN"
         assert send_to_admin_action.description is not None
         assert send_to_admin_action.examples is not None
@@ -285,13 +236,11 @@ class TestSendToAdminAction:
 
     @pytest.mark.asyncio
     async def test_validate_in_autonomous_room(self, test_runtime, test_memory):
-        """Should validate only in autonomous room."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=test_memory.room_id)
         test_runtime.get_service = MagicMock(return_value=mock_service)
         test_runtime.get_setting = MagicMock(return_value="admin-user-id")
 
-        # Update message to contain admin-related keywords
         test_memory.content = Content(text="Tell admin about this update")
 
         is_valid = await send_to_admin_action.validate_fn(test_runtime, test_memory)
@@ -299,7 +248,6 @@ class TestSendToAdminAction:
 
     @pytest.mark.asyncio
     async def test_validate_not_in_autonomous_room(self, test_runtime, test_memory):
-        """Should not validate when not in autonomous room."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=as_uuid(OTHER_ROOM_ID))
         test_runtime.get_service = MagicMock(return_value=mock_service)
@@ -310,7 +258,6 @@ class TestSendToAdminAction:
 
     @pytest.mark.asyncio
     async def test_validate_no_admin_configured(self, test_runtime, test_memory):
-        """Should not validate when ADMIN_USER_ID is not configured."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=test_memory.room_id)
         test_runtime.get_service = MagicMock(return_value=mock_service)
@@ -321,16 +268,12 @@ class TestSendToAdminAction:
 
 
 class TestAdminChatProvider:
-    """Tests for admin_chat_provider."""
-
     def test_provider_metadata(self):
-        """Should have correct provider metadata."""
         assert admin_chat_provider.name == "ADMIN_CHAT_HISTORY"
         assert admin_chat_provider.description is not None
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_service(self, test_runtime, test_memory):
-        """Should return empty result when autonomy service not available."""
         test_runtime.get_service = MagicMock(return_value=None)
 
         result = await admin_chat_provider.get(test_runtime, test_memory, {})
@@ -339,7 +282,6 @@ class TestAdminChatProvider:
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_not_in_autonomous_room(self, test_runtime, test_memory):
-        """Should return empty result when not in autonomous room."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=as_uuid(OTHER_ROOM_ID))
         test_runtime.get_service = MagicMock(return_value=mock_service)
@@ -350,7 +292,6 @@ class TestAdminChatProvider:
 
     @pytest.mark.asyncio
     async def test_indicates_no_admin_configured(self, test_runtime, test_memory):
-        """Should indicate when no admin is configured."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=test_memory.room_id)
         test_runtime.get_service = MagicMock(return_value=mock_service)
@@ -363,16 +304,12 @@ class TestAdminChatProvider:
 
 
 class TestAutonomyStatusProvider:
-    """Tests for autonomy_status_provider."""
-
     def test_provider_metadata(self):
-        """Should have correct provider metadata."""
         assert autonomy_status_provider.name == "AUTONOMY_STATUS"
         assert autonomy_status_provider.description is not None
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_service(self, test_runtime, test_memory):
-        """Should return empty result when autonomy service not available."""
         test_runtime.get_service = MagicMock(return_value=None)
 
         result = await autonomy_status_provider.get(test_runtime, test_memory, {})
@@ -381,7 +318,6 @@ class TestAutonomyStatusProvider:
 
     @pytest.mark.asyncio
     async def test_returns_empty_in_autonomous_room(self, test_runtime, test_memory):
-        """Should not show status in autonomous room."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=test_memory.room_id)
         test_runtime.get_service = MagicMock(return_value=mock_service)
@@ -392,7 +328,6 @@ class TestAutonomyStatusProvider:
 
     @pytest.mark.asyncio
     async def test_shows_running_status(self, test_runtime, test_memory):
-        """Should show running status correctly."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=as_uuid(AUTONOMOUS_ROOM_ID))
         mock_service.is_loop_running = MagicMock(return_value=True)
@@ -409,7 +344,6 @@ class TestAutonomyStatusProvider:
 
     @pytest.mark.asyncio
     async def test_shows_disabled_status(self, test_runtime, test_memory):
-        """Should show disabled status correctly."""
         mock_service = MagicMock(spec=AutonomyService)
         mock_service.get_autonomous_room_id = MagicMock(return_value=as_uuid(AUTONOMOUS_ROOM_ID))
         mock_service.is_loop_running = MagicMock(return_value=False)
@@ -424,10 +358,7 @@ class TestAutonomyStatusProvider:
 
 
 class TestAutonomyIntegration:
-    """Integration tests for autonomy module."""
-
     def test_exports_all_components(self):
-        """Should export all components from autonomy module."""
         from elizaos.bootstrap.autonomy import (
             AUTONOMY_SERVICE_TYPE,
             AutonomyService,

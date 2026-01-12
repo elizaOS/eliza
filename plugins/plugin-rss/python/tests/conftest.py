@@ -1,11 +1,8 @@
-"""Pytest configuration and fixtures."""
-
 import pytest
 
 
 @pytest.fixture
 def sample_rss_xml() -> str:
-    """Provide sample RSS XML for testing."""
     return """<?xml version="1.0"?>
     <rss version="2.0">
         <channel>
@@ -35,7 +32,6 @@ def sample_rss_xml() -> str:
 
 @pytest.fixture
 def sample_atom_xml() -> str:
-    """Provide sample Atom XML for testing."""
     return """<?xml version="1.0" encoding="utf-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom">
         <title>Sample Atom Feed</title>
@@ -54,8 +50,3 @@ def sample_atom_xml() -> str:
             </author>
         </entry>
     </feed>"""
-
-
-
-
-

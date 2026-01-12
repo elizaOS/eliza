@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Actions for the Linear plugin.
-//!
-//! This module provides all action handlers for the Linear plugin.
 
 use serde_json::{json, Value};
 
@@ -9,10 +6,8 @@ use crate::error::{LinearError, Result};
 use crate::service::LinearService;
 use crate::types::*;
 
-/// Action handler result
 pub type ActionHandler = fn(&LinearService, Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ActionResult>> + Send + '_>>;
 
-/// Create issue action
 pub async fn create_issue(service: &LinearService, params: Value) -> Result<ActionResult> {
     let title = params
         .get("title")
@@ -53,7 +48,6 @@ pub async fn create_issue(service: &LinearService, params: Value) -> Result<Acti
     ))
 }
 
-/// Get issue action
 pub async fn get_issue(service: &LinearService, params: Value) -> Result<ActionResult> {
     let issue_id = params
         .get("issueId")
@@ -103,7 +97,6 @@ pub async fn get_issue(service: &LinearService, params: Value) -> Result<ActionR
     ))
 }
 
-/// Update issue action
 pub async fn update_issue(service: &LinearService, params: Value) -> Result<ActionResult> {
     let issue_id = params
         .get("issueId")
@@ -127,14 +120,12 @@ pub async fn update_issue(service: &LinearService, params: Value) -> Result<Acti
     ))
 }
 
-/// Delete (archive) issue action
 pub async fn delete_issue(service: &LinearService, params: Value) -> Result<ActionResult> {
     let issue_id = params
         .get("issueId")
         .and_then(|i| i.as_str())
         .ok_or_else(|| LinearError::InvalidInput("Issue ID is required".to_string()))?;
 
-    // Get issue details first
     let issue = service.get_issue(issue_id).await?;
     let identifier = issue.identifier.clone();
     let title = issue.title.clone();
@@ -152,7 +143,6 @@ pub async fn delete_issue(service: &LinearService, params: Value) -> Result<Acti
     ))
 }
 
-/// Search issues action
 pub async fn search_issues(service: &LinearService, params: Value) -> Result<ActionResult> {
     let filters = SearchFilters {
         query: params.get("query").and_then(|q| q.as_str()).map(String::from),
@@ -233,7 +223,6 @@ pub async fn search_issues(service: &LinearService, params: Value) -> Result<Act
     ))
 }
 
-/// Create comment action
 pub async fn create_comment(service: &LinearService, params: Value) -> Result<ActionResult> {
     let issue_id = params
         .get("issueId")
@@ -245,7 +234,6 @@ pub async fn create_comment(service: &LinearService, params: Value) -> Result<Ac
         .and_then(|b| b.as_str())
         .ok_or_else(|| LinearError::InvalidInput("Comment body is required".to_string()))?;
 
-    // Get issue first to get identifier
     let issue = service.get_issue(issue_id).await?;
 
     let input = CommentInput {
@@ -267,7 +255,6 @@ pub async fn create_comment(service: &LinearService, params: Value) -> Result<Ac
     ))
 }
 
-/// List teams action
 pub async fn list_teams(service: &LinearService, _params: Value) -> Result<ActionResult> {
     let teams = service.get_teams().await?;
 
@@ -303,7 +290,6 @@ pub async fn list_teams(service: &LinearService, _params: Value) -> Result<Actio
     ))
 }
 
-/// List projects action
 pub async fn list_projects(service: &LinearService, params: Value) -> Result<ActionResult> {
     let team_id = params.get("teamId").and_then(|t| t.as_str());
 
@@ -366,7 +352,6 @@ pub async fn list_projects(service: &LinearService, params: Value) -> Result<Act
     ))
 }
 
-/// Get activity action
 pub async fn get_activity(service: &LinearService, params: Value) -> Result<ActionResult> {
     let limit = params
         .get("limit")
@@ -419,15 +404,9 @@ pub async fn get_activity(service: &LinearService, params: Value) -> Result<Acti
     ))
 }
 
-/// Clear activity action
 pub async fn clear_activity(service: &LinearService, _params: Value) -> Result<ActionResult> {
     service.clear_activity_log();
     Ok(ActionResult::success("✅ Linear activity log has been cleared."))
 }
-
-
-
-
-
 
 

@@ -1,8 +1,3 @@
-//! Integration tests for the OpenRouter client.
-//!
-//! These tests require a valid API key.
-//! Run with: OPENROUTER_INTEGRATION_TESTS=1 OPENROUTER_API_KEY=your-key cargo test
-
 use elizaos_plugin_openrouter::{
     EmbeddingParams, ObjectGenerationParams, OpenRouterClient, OpenRouterConfig,
     TextGenerationParams,
@@ -90,10 +85,6 @@ async fn test_generate_embedding() {
     let response = response.unwrap();
     assert!(!response.embedding.is_empty());
 }
-
-
-
-
 
 
 

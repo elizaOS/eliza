@@ -1,5 +1,3 @@
-"""Roblox Open Cloud API Client."""
-
 import json
 import logging
 from datetime import datetime
@@ -30,28 +28,18 @@ T = TypeVar("T")
 
 
 class RobloxClient:
-    """Roblox Open Cloud API Client."""
-
     def __init__(self, config: RobloxConfig) -> None:
-        """Initialize the client.
-
-        Args:
-            config: Roblox configuration.
-        """
         config.validate()
         self.config = config
         self._client = httpx.AsyncClient(timeout=30.0)
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._client.aclose()
 
     async def __aenter__(self) -> "RobloxClient":
-        """Async context manager entry."""
         return self
 
     async def __aexit__(self, *args: object) -> None:
-        """Async context manager exit."""
         await self.close()
 
     async def _request(
@@ -62,22 +50,6 @@ class RobloxClient:
         body: dict[str, Any] | None = None,
         use_api_key: bool = True,
     ) -> dict[str, Any]:
-        """Make an HTTP request.
-
-        Args:
-            method: HTTP method.
-            base_url: Base URL for the API.
-            endpoint: API endpoint.
-            body: Optional request body.
-            use_api_key: Whether to include the API key header.
-
-        Returns:
-            Response data as a dictionary.
-
-        Raises:
-            ApiError: If the API returns an error.
-            NetworkError: If a network error occurs.
-        """
         url = f"{base_url}{endpoint}"
         headers: dict[str, str] = {"Content-Type": "application/json"}
 
@@ -108,21 +80,12 @@ class RobloxClient:
 
         return response.json()  # type: ignore[no-any-return]
 
-    # ==================== Messaging Service ====================
-
     async def publish_message(
         self,
         topic: str,
-        data: object,  # JSON-serializable data
+        data: object,
         universe_id: str | None = None,
     ) -> None:
-        """Publish a message to a topic via the Messaging Service.
-
-        Args:
-            topic: Topic name.
-            data: Message data.
-            universe_id: Optional universe ID override.
-        """
         if self.config.dry_run:
             logger.info(f"DRY RUN: Would publish to topic '{topic}': {data}")
             return
@@ -141,17 +104,10 @@ class RobloxClient:
         logger.debug(f"Published message to topic: {topic}")
 
     async def send_agent_message(self, message: MessagingServiceMessage) -> None:
-        """Send a message to the default agent topic.
-
-        Args:
-            message: Message to send.
-        """
         await self.publish_message(
             self.config.messaging_topic,
             message.model_dump(mode="json"),
         )
-
-    # ==================== DataStore ====================
 
     async def get_datastore_entry(
         self,
@@ -159,16 +115,6 @@ class RobloxClient:
         key: str,
         scope: str = "global",
     ) -> DataStoreEntry | None:
-        """Get an entry from a DataStore.
-
-        Args:
-            datastore_name: Name of the DataStore.
-            key: Entry key.
-            scope: DataStore scope.
-
-        Returns:
-            DataStore entry if found, None otherwise.
-        """
         endpoint = (
             f"/datastores/v1/universes/{self.config.universe_id}"
             f"/standard-datastores/datastore/entries/entry"
@@ -196,20 +142,9 @@ class RobloxClient:
         self,
         datastore_name: str,
         key: str,
-        value: object,  # JSON-serializable value
+        value: object,
         scope: str = "global",
     ) -> DataStoreEntry:
-        """Set an entry in a DataStore.
-
-        Args:
-            datastore_name: Name of the DataStore.
-            key: Entry key.
-            value: Entry value.
-            scope: DataStore scope.
-
-        Returns:
-            The created/updated DataStore entry.
-        """
         if self.config.dry_run:
             logger.info(f"DRY RUN: Would set DataStore entry '{key}': {value}")
             now = datetime.now()
@@ -245,13 +180,6 @@ class RobloxClient:
         key: str,
         scope: str = "global",
     ) -> None:
-        """Delete an entry from a DataStore.
-
-        Args:
-            datastore_name: Name of the DataStore.
-            key: Entry key.
-            scope: DataStore scope.
-        """
         if self.config.dry_run:
             logger.info(f"DRY RUN: Would delete DataStore entry '{key}'")
             return
@@ -266,17 +194,7 @@ class RobloxClient:
 
         await self._request("DELETE", ROBLOX_API_BASE, endpoint)
 
-    # ==================== Users ====================
-
     async def get_user_by_id(self, user_id: int) -> RobloxUser:
-        """Get user information by user ID.
-
-        Args:
-            user_id: Roblox user ID.
-
-        Returns:
-            User information.
-        """
         endpoint = f"/v1/users/{user_id}"
         response = await self._request("GET", USERS_API_BASE, endpoint, use_api_key=False)
 
@@ -289,14 +207,6 @@ class RobloxClient:
         )
 
     async def get_user_by_username(self, username: str) -> RobloxUser | None:
-        """Get user information by username.
-
-        Args:
-            username: Roblox username.
-
-        Returns:
-            User information if found, None otherwise.
-        """
         endpoint = "/v1/usernames/users"
         response = await self._request(
             "POST",
@@ -318,15 +228,6 @@ class RobloxClient:
         )
 
     async def get_avatar_url(self, user_id: int, size: str = "150x150") -> str | None:
-        """Get avatar thumbnail URL for a user.
-
-        Args:
-            user_id: Roblox user ID.
-            size: Thumbnail size.
-
-        Returns:
-            Avatar URL if available, None otherwise.
-        """
         endpoint = f"/v1/users/avatar-headshot?userIds={user_id}&size={size}&format=Png"
 
         try:
@@ -335,22 +236,11 @@ class RobloxClient:
             if data:
                 return data[0].get("imageUrl")  # type: ignore[no-any-return]
         except Exception:  # noqa: S110, BLE001
-            # Silent fail - avatar URL is optional
             pass
 
         return None
 
-    # ==================== Experience Info ====================
-
     async def get_experience_info(self, universe_id: str | None = None) -> RobloxExperienceInfo:
-        """Get experience/universe information.
-
-        Args:
-            universe_id: Optional universe ID override.
-
-        Returns:
-            Experience information.
-        """
         target_universe_id = universe_id or self.config.universe_id
         endpoint = f"/v1/games?universeIds={target_universe_id}"
 
@@ -382,11 +272,6 @@ class RobloxClient:
         )
 
     def is_dry_run(self) -> bool:
-        """Check if dry run mode is enabled.
-
-        Returns:
-            True if dry run mode is enabled.
-        """
         return self.config.dry_run
 
 

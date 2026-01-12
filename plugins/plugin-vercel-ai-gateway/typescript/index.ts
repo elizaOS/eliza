@@ -1,17 +1,3 @@
-/**
- * Vercel AI Gateway Plugin for elizaOS
- *
- * Provides integration with Vercel AI Gateway for:
- * - Text generation (GPT-5, GPT-5-mini, Claude, etc.)
- * - Embeddings (text-embedding-3-small, etc.)
- * - Image generation (DALL-E)
- * - Image description (Vision models)
- * - Object/JSON generation
- *
- * The Vercel AI Gateway provides a single endpoint with zero markup
- * for accessing models from OpenAI, Anthropic, Google, and more.
- */
-
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -37,13 +23,6 @@ import { getApiKeyOptional, getBaseUrl } from "./utils/config";
 
 export { GatewayClient } from "./providers/client";
 
-// ============================================================================
-// Plugin Definition
-// ============================================================================
-
-/**
- * Test suite for the Vercel AI Gateway plugin.
- */
 const pluginTests = [
   {
     name: "gateway_plugin_tests",
@@ -171,11 +150,6 @@ const pluginTests = [
   },
 ];
 
-/**
- * Vercel AI Gateway plugin for elizaOS.
- *
- * Provides model handlers for all Vercel AI Gateway-compatible APIs.
- */
 export const gatewayPlugin: Plugin = {
   name: "gateway",
   description: "Vercel AI Gateway integration for text, image, audio, and embedding models",

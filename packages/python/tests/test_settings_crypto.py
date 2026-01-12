@@ -1,5 +1,3 @@
-"""Parity tests for settings/secrets crypto helpers (Python ↔ TypeScript/Rust)."""
-
 import pytest
 
 from elizaos import AgentRuntime, Character

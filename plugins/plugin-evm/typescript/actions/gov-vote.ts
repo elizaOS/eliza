@@ -8,9 +8,7 @@ import type { SupportedChain, Transaction, VoteParams } from "../types";
 export { voteTemplate };
 
 export class VoteAction {
-  constructor(private walletProvider: WalletProvider) {
-    this.walletProvider = walletProvider;
-  }
+  constructor(private walletProvider: WalletProvider) {}
 
   async vote(params: VoteParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
@@ -30,18 +28,16 @@ export class VoteAction {
 
     try {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
-
-      // Log current block before sending transaction
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = // @ts-expect-error - viem type narrowing issue
-        await walletClient.sendTransaction({
-          account: walletClient.account,
-          to: params.governor,
-          value: BigInt(0),
-          data: txData as Hex,
-          chain: chainConfig,
-        });
+      // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
+      const hash = await walletClient.sendTransaction({
+        account: walletClient.account,
+        to: params.governor,
+        value: BigInt(0),
+        data: txData as Hex,
+        chain: chainConfig,
+      });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -74,12 +70,10 @@ export const voteAction = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      // Validate required fields
       if (!options.chain || !options.governor || !options.proposalId || !options.support) {
         throw new Error("Missing required parameters for vote");
       }
 
-      // Convert options to VoteParams
       const voteParams: VoteParams = {
         chain: options.chain as SupportedChain,
         governor: options.governor as Address,
@@ -103,7 +97,6 @@ export const voteAction = {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error in vote handler:", errorMessage);
       if (callback) {
         callback({ text: `Error: ${errorMessage}` });
       }

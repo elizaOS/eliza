@@ -1,7 +1,3 @@
-/**
- * Text generation model handlers for Ollama.
- */
-
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { generateText } from "ai";
@@ -10,14 +6,6 @@ import { createOllama } from "ollama-ai-provider";
 import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
 import { ensureModelAvailable } from "./availability";
 
-/**
- * Generate text using the specified Ollama model.
- *
- * @param ollama - The Ollama provider instance
- * @param model - Model name to use
- * @param params - Generation parameters
- * @returns The generated text
- */
 async function generateOllamaText(
   ollama: ReturnType<typeof createOllama>,
   model: string,
@@ -51,13 +39,6 @@ async function generateOllamaText(
   }
 }
 
-/**
- * Handle TEXT_SMALL model generation.
- *
- * @param runtime - The agent runtime
- * @param params - Generation parameters
- * @returns The generated text
- */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   { prompt, stopSequences = [] }: GenerateTextParams
@@ -96,13 +77,6 @@ export async function handleTextSmall(
   }
 }
 
-/**
- * Handle TEXT_LARGE model generation.
- *
- * @param runtime - The agent runtime
- * @param params - Generation parameters
- * @returns The generated text
- */
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   {

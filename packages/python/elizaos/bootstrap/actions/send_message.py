@@ -1,10 +1,3 @@
-"""
-SEND_MESSAGE Action - Send a message to a specific target.
-
-This action allows the agent to send messages to specific
-rooms, entities, or channels.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -20,15 +13,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class SendMessageAction:
-    """
-    Action for sending messages to specific targets.
-
-    This action is used when:
-    - A message needs to be sent to a specific room
-    - Direct messaging to an entity is required
-    - Cross-room communication is needed
-    """
-
     name: str = "SEND_MESSAGE"
     similes: list[str] = field(
         default_factory=lambda: [
@@ -47,11 +31,9 @@ class SendMessageAction:
     async def validate(
         self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
     ) -> bool:
-        """Validate that message can be sent."""
-        # Check if target information is available
         if message.content and message.content.target:
             return True
-        return True  # Default validation passes
+        return True
 
     async def handler(
         self,
@@ -62,8 +44,6 @@ class SendMessageAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """Handle sending a message."""
-        # Get message content from responses
         message_text = ""
         if responses and responses[0].content:
             message_text = str(responses[0].content.text or "")
@@ -76,7 +56,6 @@ class SendMessageAction:
                 success=False,
             )
 
-        # Determine target
         target_room_id = message.room_id
         target_entity_id: UUID | None = None
 
@@ -100,69 +79,49 @@ class SendMessageAction:
                 success=False,
             )
 
-        try:
-            # Create the message memory
-            message_content = Content(
-                text=message_text,
-                source="agent",
-                actions=["SEND_MESSAGE"],
-            )
+        message_content = Content(
+            text=message_text,
+            source="agent",
+            actions=["SEND_MESSAGE"],
+        )
 
-            await runtime.create_memory(
-                content=message_content,
-                room_id=target_room_id,
-                entity_id=runtime.agent_id,
-                memory_type=MemoryType.MESSAGE,
-                metadata={
-                    "type": "SEND_MESSAGE",
-                    "targetEntityId": str(target_entity_id) if target_entity_id else None,
-                },
-            )
+        await runtime.create_memory(
+            content=message_content,
+            room_id=target_room_id,
+            entity_id=runtime.agent_id,
+            memory_type=MemoryType.MESSAGE,
+            metadata={
+                "type": "SEND_MESSAGE",
+                "targetEntityId": str(target_entity_id) if target_entity_id else None,
+            },
+        )
 
-            response_content = Content(
-                text=f"Message sent: {message_text[:50]}...",
-                actions=["SEND_MESSAGE"],
-            )
+        response_content = Content(
+            text=f"Message sent: {message_text[:50]}...",
+            actions=["SEND_MESSAGE"],
+        )
 
-            if callback:
-                await callback(response_content)
+        if callback:
+            await callback(response_content)
 
-            return ActionResult(
-                text="Message sent to room",
-                values={
-                    "success": True,
-                    "messageSent": True,
-                    "targetRoomId": str(target_room_id),
-                    "targetEntityId": str(target_entity_id) if target_entity_id else None,
-                },
-                data={
-                    "actionName": "SEND_MESSAGE",
-                    "targetRoomId": str(target_room_id),
-                    "messagePreview": message_text[:100],
-                },
-                success=True,
-            )
-
-        except Exception as error:
-            runtime.logger.error(
-                {
-                    "src": "plugin:bootstrap:action:sendMessage",
-                    "agentId": runtime.agent_id,
-                    "error": str(error),
-                },
-                "Error sending message",
-            )
-            return ActionResult(
-                text="Error sending message",
-                values={"success": False, "error": str(error)},
-                data={"actionName": "SEND_MESSAGE", "error": str(error)},
-                success=False,
-                error=error,
-            )
+        return ActionResult(
+            text="Message sent to room",
+            values={
+                "success": True,
+                "messageSent": True,
+                "targetRoomId": str(target_room_id),
+                "targetEntityId": str(target_entity_id) if target_entity_id else None,
+            },
+            data={
+                "actionName": "SEND_MESSAGE",
+                "targetRoomId": str(target_room_id),
+                "messagePreview": message_text[:100],
+            },
+            success=True,
+        )
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions demonstrating the SEND_MESSAGE action."""
         return [
             [
                 ActionExample(
@@ -180,7 +139,6 @@ class SendMessageAction:
         ]
 
 
-# Create the action instance
 send_message_action = Action(
     name=SendMessageAction.name,
     similes=SendMessageAction().similes,

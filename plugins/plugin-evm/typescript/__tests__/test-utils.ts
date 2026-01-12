@@ -13,4 +13,4 @@ export {
   createTestState,
   createUUID,
   setupActionTest,
-} from "../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
+} from "../../../../packages/typescript/src/bootstrap/__tests__/test-utils";

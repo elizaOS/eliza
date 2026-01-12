@@ -1,10 +1,3 @@
-/**
- * @elizaos/plugin-evm Wallet Provider
- *
- * Provides wallet functionality for EVM chains including key management,
- * client creation, and balance querying.
- */
-
 import * as path from "node:path";
 import {
   type IAgentRuntime,
@@ -48,12 +41,6 @@ import {
   type SupportedChain,
 } from "../types";
 
-/**
- * Wallet provider for EVM chains
- *
- * Manages wallet access, chain configuration, and balance queries.
- * Supports both standard private keys and TEE-derived keys.
- */
 export class WalletProvider {
   private readonly cacheKey = "evm/wallet";
   private _chains: Record<string, Chain>;
@@ -70,31 +57,18 @@ export class WalletProvider {
     this._account = this.initializeAccount(accountOrPrivateKey);
   }
 
-  /**
-   * Get the account's address
-   */
   getAddress(): Address {
     return this._account.address;
   }
 
-  /**
-   * Get the configured chains
-   */
   get chains(): Record<string, Chain> {
     return this._chains;
   }
 
-  /**
-   * Get the account
-   */
   get account(): PrivateKeyAccount {
     return this._account;
   }
 
-  /**
-   * Get a public client for a specific chain
-   * @throws EVMError if chain is not configured
-   */
   getPublicClient(
     chainName: SupportedChain
   ): PublicClient<HttpTransport, Chain, Account | undefined> {
@@ -107,10 +81,6 @@ export class WalletProvider {
     });
   }
 
-  /**
-   * Get a wallet client for a specific chain
-   * @throws EVMError if chain is not configured
-   */
   getWalletClient(chainName: SupportedChain): WalletClient {
     assertChainConfigured(this._chains, chainName);
     const transport = this.createHttpTransport(chainName);
@@ -122,9 +92,6 @@ export class WalletProvider {
     });
   }
 
-  /**
-   * Get a test client for Hardhat
-   */
   getTestClient(): TestClient {
     return createTestClient({
       chain: viemChains.hardhat,
@@ -135,10 +102,6 @@ export class WalletProvider {
       .extend(walletActions);
   }
 
-  /**
-   * Get chain configuration by name
-   * @throws EVMError if chain is not configured
-   */
   getChainConfigs(chainName: SupportedChain): Chain {
     const chain = this._chains[chainName];
     if (!chain?.id) {
@@ -147,16 +110,10 @@ export class WalletProvider {
     return chain;
   }
 
-  /**
-   * Get all supported chain names
-   */
   getSupportedChains(): SupportedChain[] {
     return Object.keys(this._chains) as SupportedChain[];
   }
 
-  /**
-   * Get wallet balances for all configured chains
-   */
   async getWalletBalances(): Promise<Record<SupportedChain, string>> {
     const cacheKey = path.join(this.cacheKey, "walletBalances");
     const cachedData = await this._runtime.getCache<Record<SupportedChain, string>>(cacheKey);
@@ -189,9 +146,6 @@ export class WalletProvider {
     return balances;
   }
 
-  /**
-   * Get wallet balance for a specific chain
-   */
   async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
     try {
       const client = this.getPublicClient(chainName);
@@ -205,24 +159,16 @@ export class WalletProvider {
     }
   }
 
-  /**
-   * Add a chain to the configuration
-   */
   addChain(chain: Record<string, Chain>): void {
     this._chains = { ...this._chains, ...chain };
   }
 
-  /**
-   * Initialize account from private key or existing account
-   */
   private initializeAccount(
     accountOrPrivateKey: PrivateKeyAccount | `0x${string}`
   ): PrivateKeyAccount {
     if (typeof accountOrPrivateKey === "string") {
-      // Validate the private key format
       const result = PrivateKeySchema.safeParse(accountOrPrivateKey);
       if (!result.success) {
-        // Format the Zod error for display
         const zodError = result.error as {
           errors?: Array<{ message?: string }>;
           issues?: Array<{ message?: string }>;
@@ -240,16 +186,12 @@ export class WalletProvider {
     return accountOrPrivateKey;
   }
 
-  /**
-   * Create HTTP transport for a chain
-   */
   private createHttpTransport(chainName: SupportedChain) {
     const chain = this._chains[chainName];
     if (!chain) {
       throw new EVMError(EVMErrorCode.CHAIN_NOT_CONFIGURED, `Chain not found: ${chainName}`);
     }
 
-    // Check for custom RPC URL
     const customRpc = chain.rpcUrls.custom;
     if (customRpc) {
       return http(customRpc.http[0]);
@@ -257,10 +199,6 @@ export class WalletProvider {
     return http(chain.rpcUrls.default.http[0]);
   }
 
-  /**
-   * Generate a chain configuration from name with optional custom RPC
-   * @throws EVMError if chain name is invalid
-   */
   static genChainFromName(chainName: string, customRpcUrl?: string | null): Chain {
     const baseChain = (viemChains as Record<string, Chain | undefined>)[chainName];
 
@@ -284,13 +222,8 @@ export class WalletProvider {
   }
 }
 
-/**
- * Generate chain configurations from runtime settings
- */
 function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
   const settings = runtime.character?.settings;
-
-  // Extract configured chains from settings
   let configuredChains: string[] = [];
   if (
     typeof settings === "object" &&
@@ -304,7 +237,6 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
     configuredChains = settings.chains.evm;
   }
 
-  // Use defaults if no chains configured
   const chainsToUse = configuredChains.length > 0 ? configuredChains : [...DEFAULT_CHAINS];
 
   if (!configuredChains.length) {
@@ -315,15 +247,12 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
 
   for (const chainName of chainsToUse) {
     try {
-      // Try to get RPC URL from settings
       const rpcUrlRaw =
         runtime.getSetting(`ETHEREUM_PROVIDER_${chainName.toUpperCase()}`) ??
         runtime.getSetting(`EVM_PROVIDER_${chainName.toUpperCase()}`);
 
-      // Convert to string if we got a valid URL
       const rpcUrl = typeof rpcUrlRaw === "string" ? rpcUrlRaw : null;
 
-      // Skip chains that don't exist in viem
       if (!(chainName in viemChains)) {
         logger.warn(`Chain ${chainName} not found in viem chains, skipping`);
         continue;
@@ -340,10 +269,6 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
   return chains;
 }
 
-/**
- * Generate a new EVM private key and store it in the runtime
- * @returns The generated private key
- */
 async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${string}`> {
   const newPrivateKey = generatePrivateKey();
   const account = privateKeyToAccount(newPrivateKey);
@@ -355,10 +280,8 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
   logger.warn("⚠️  IMPORTANT: Back up your private key for production use!");
   logger.warn("═══════════════════════════════════════════════════════════════════");
 
-  // Store the private key in the runtime secrets
   runtime.setSetting("EVM_PRIVATE_KEY", newPrivateKey, true);
 
-  // Persist to database if possible
   try {
     await runtime.updateAgent(runtime.agentId, {
       settings: {
@@ -377,10 +300,6 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
   return newPrivateKey;
 }
 
-/**
- * Initialize a wallet provider from runtime configuration
- * If no private key is found, generates a new one automatically and stores it.
- */
 export async function initWalletProvider(runtime: IAgentRuntime): Promise<WalletProvider> {
   const teeModeRaw = runtime.getSetting("TEE_MODE");
   const teeMode = typeof teeModeRaw === "string" ? teeModeRaw : TEEMode.OFF;
@@ -399,8 +318,6 @@ export async function initWalletProvider(runtime: IAgentRuntime): Promise<Wallet
   }
 
   const privateKeyRaw = runtime.getSetting("EVM_PRIVATE_KEY");
-
-  // Auto-generate private key if not found
   let privateKey: string;
   if (!privateKeyRaw || typeof privateKeyRaw !== "string") {
     privateKey = await generateAndStorePrivateKey(runtime);
@@ -408,14 +325,10 @@ export async function initWalletProvider(runtime: IAgentRuntime): Promise<Wallet
     privateKey = privateKeyRaw;
   }
 
-  // Validate the private key format
   const validatedKey = PrivateKeySchema.parse(privateKey);
   return new WalletProvider(validatedKey, runtime, chains);
 }
 
-/**
- * Lazy TEE wallet provider that initializes the TEE wallet on first use
- */
 class LazyTeeWalletProvider extends WalletProvider {
   private teeWallet: WalletProvider | null = null;
   private initPromise: Promise<void> | null = null;
@@ -424,7 +337,6 @@ class LazyTeeWalletProvider extends WalletProvider {
   private readonly teeChains: Record<string, Chain>;
 
   constructor(runtime: IAgentRuntime, walletSecretSalt: string, chains: Record<string, Chain>) {
-    // Initialize with a dummy account that will be replaced
     const dummyKey = "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
     super(dummyKey, runtime, chains);
     this.walletSecretSalt = walletSecretSalt;
@@ -452,7 +364,6 @@ class LazyTeeWalletProvider extends WalletProvider {
       );
     }
 
-    // Type assertion for TEE service method
     const teeWithDerive = teeService as {
       deriveEcdsaKeypair?: (
         salt: string,
@@ -491,7 +402,6 @@ class LazyTeeWalletProvider extends WalletProvider {
     chainName: SupportedChain
   ): PublicClient<HttpTransport, Chain, Account | undefined> {
     if (!this.teeWallet) {
-      // Public client doesn't need the account
       return super.getPublicClient(chainName);
     }
     return this.teeWallet.getPublicClient(chainName);
@@ -520,9 +430,6 @@ class LazyTeeWalletProvider extends WalletProvider {
   }
 }
 
-/**
- * EVM Wallet Provider for agent context
- */
 export const evmWalletProvider: Provider = {
   name: "EVMWalletProvider",
   async get(runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> {
@@ -534,7 +441,6 @@ export const evmWalletProvider: Provider = {
         return await directFetchWalletData(runtime, state);
       }
 
-      // Type assertion for service method
       const serviceWithCache = evmService as {
         getCachedData?: () => Promise<
           | {
@@ -578,14 +484,11 @@ export const evmWalletProvider: Provider = {
       };
     } catch (error) {
       logger.error("Error in EVM wallet provider:", error);
-      throw error; // Fail fast - don't swallow errors
+      throw error;
     }
   },
 };
 
-/**
- * Direct wallet data fetching fallback
- */
 async function directFetchWalletData(
   runtime: IAgentRuntime,
   state?: State

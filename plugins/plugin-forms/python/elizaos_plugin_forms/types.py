@@ -1,6 +1,3 @@
-"""
-Type definitions for the elizaOS Forms Plugin.
-"""
 
 from datetime import datetime
 from enum import Enum

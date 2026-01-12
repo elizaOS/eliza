@@ -16,11 +16,6 @@ export class RssService extends Service {
   static serviceType = "RSS";
   capabilityDescription = "The agent is able to deal with RSS/atom feeds";
 
-  /**
-   * Fetch and parse an RSS feed from a URL
-   * @param urlToFetch - The URL of the RSS feed
-   * @returns Parsed RSS feed or null on error
-   */
   async fetchUrl(urlToFetch: string): Promise<RssFeed | null> {
     let response: string | undefined;
     try {
@@ -45,23 +40,15 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Subscribe to an RSS feed
-   * @param url - The RSS feed URL
-   * @param title - Optional feed title (will be fetched if not provided)
-   */
   async subscribeFeed(url: string, title?: string): Promise<boolean> {
     try {
       const feedId = createUniqueUuid(this.runtime, `feed_sub_${url}`);
-
-      // Check if already subscribed
       const existing = await this.runtime.getMemoriesByIds([feedId], "feedsubscriptions");
       if (existing && existing.length > 0) {
         logger.info({ url }, "Already subscribed to feed");
         return true;
       }
 
-      // Fetch feed title if not provided
       let feedTitle = title;
       if (!feedTitle) {
         const feedData = await this.fetchUrl(url);
@@ -97,15 +84,9 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Unsubscribe from an RSS feed
-   * @param url - The RSS feed URL
-   */
   async unsubscribeFeed(url: string): Promise<boolean> {
     try {
       const feedId = createUniqueUuid(this.runtime, `feed_sub_${url}`);
-
-      // Check if subscribed
       const existing = await this.runtime.getMemoriesByIds([feedId], "feedsubscriptions");
       if (!existing || existing.length === 0) {
         logger.warn({ url }, "Not subscribed to feed");
@@ -121,9 +102,6 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Get all subscribed feeds
-   */
   async getSubscribedFeeds(): Promise<Memory[]> {
     try {
       const feeds = await this.runtime.getMemories({
@@ -137,9 +115,6 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Check all subscribed feeds and store new items
-   */
   async checkAllFeeds(): Promise<void> {
     try {
       const feeds = await this.getSubscribedFeeds();
@@ -163,30 +138,23 @@ export class RssService extends Service {
 
           let newItemCount = 0;
 
-          // Process each item with improved duplicate detection
           for (const item of feedData.items) {
-            // Primary ID: based on guid
             const primaryId = createUniqueUuid(this.runtime, `${url}_${item.guid}`);
-
-            // Fallback ID: based on title and pubDate (for feeds with inconsistent guids)
             const fallbackId = createUniqueUuid(
               this.runtime,
               `${url}_${item.title}_${item.pubDate}`
             );
 
-            // Check both IDs to avoid duplicates
             const existingByGuid = await this.runtime.getMemoriesByIds([primaryId], "feeditems");
             const existingByTitleDate = await this.runtime.getMemoriesByIds(
               [fallbackId],
               "feeditems"
             );
 
-            // Only create if item doesn't exist by either method
             if (
               (!existingByGuid || existingByGuid.length === 0) &&
               (!existingByTitleDate || existingByTitleDate.length === 0)
             ) {
-              // Use primary ID if guid exists, otherwise use fallback
               const itemId = item.guid ? primaryId : fallbackId;
 
               const itemMemory: Memory = {
@@ -219,7 +187,6 @@ export class RssService extends Service {
             }
           }
 
-          // Update feed subscription metadata
           if (!feed.id) {
             continue;
           }
@@ -253,9 +220,6 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Load initial feeds from environment configuration
-   */
   private async loadInitialFeeds(): Promise<void> {
     const rssFeeds = this.runtime.getSetting("RSS_FEEDS");
 
@@ -267,21 +231,18 @@ export class RssService extends Service {
     try {
       let feedUrls: string[] = [];
 
-      // Try to parse as JSON array first
       if (typeof rssFeeds === "string") {
         try {
           const parsed = JSON.parse(rssFeeds);
           if (Array.isArray(parsed)) {
             feedUrls = parsed;
           } else {
-            // Treat as comma-separated list
             feedUrls = rssFeeds
               .split(",")
               .map((url) => url.trim())
               .filter((url) => url.length > 0);
           }
         } catch {
-          // Not JSON, treat as comma-separated
           feedUrls = rssFeeds
             .split(",")
             .map((url) => url.trim())
@@ -303,9 +264,6 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Register the RSS feed check task worker
-   */
   private registerFeedCheckWorker(): void {
     const worker: TaskWorker = {
       name: "RSS_FEED_CHECK",
@@ -337,14 +295,9 @@ export class RssService extends Service {
 
     try {
       logger.info("Starting RSS service...");
-
-      // Register the feed check task worker
       this.registerFeedCheckWorker();
-
-      // Load initial feeds from environment configuration
       await this.loadInitialFeeds();
 
-      // Create periodic feed check task
       const checkIntervalSetting = this.runtime.getSetting("RSS_CHECK_INTERVAL_MINUTES");
       const checkIntervalMinutes =
         typeof checkIntervalSetting === "number" ? checkIntervalSetting : 15;
@@ -372,9 +325,6 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Start the RSS service with the given runtime.
-   */
   static async start(runtime: IAgentRuntime): Promise<RssService> {
     const service = new RssService(runtime);
     await service.start();
@@ -398,9 +348,6 @@ export class RssService extends Service {
     }
   }
 
-  /**
-   * Stops the RSS service associated with the given runtime.
-   */
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(RssService.serviceType);
     if (!service) {
@@ -414,5 +361,4 @@ export class RssService extends Service {
   }
 }
 
-// Class export alias
 export const rssService = RssService;

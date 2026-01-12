@@ -1,23 +1,9 @@
-"""
-Shared XML prompts for the elizaOS Forms Plugin.
-
-These prompts are auto-generated from prompts/*.txt files.
-DO NOT EDIT - Generated from ../../typescript/generated/prompts/python/prompts.py
-
-To modify prompts, edit the .txt files in prompts/ and run:
-  npm run build:prompts
-"""
-
-# Import generated prompts
-# Note: In a real deployment, these would be imported from the generated prompts.py
-# For now, we'll keep the builder functions here but reference the generated templates
 try:
     from ...typescript.generated.prompts.python.prompts import (
         FORM_CREATION_TEMPLATE,
         FORM_EXTRACTION_TEMPLATE,
     )
 except ImportError:
-    # Fallback for development - import from generated location
     import sys
     from pathlib import Path
 
@@ -32,7 +18,6 @@ except ImportError:
             FORM_EXTRACTION_TEMPLATE,
         )
     else:
-        # Fallback to hardcoded templates if generated files don't exist
         FORM_EXTRACTION_TEMPLATE = """# Task: Extract Form Field Values
 
 ## User Message
@@ -85,16 +70,6 @@ def build_extraction_prompt(
     user_message: str,
     fields: list[dict[str, str]],
 ) -> str:
-    """
-    Build the form extraction prompt with the given user message and fields.
-
-    Args:
-        user_message: The user's message to extract values from
-        fields: List of field dictionaries with id, type, label, description, and optional criteria
-
-    Returns:
-        The formatted prompt string
-    """
     field_descriptions = "\n".join(
         f'  <field id="{f["id"]}" type="{f["type"]}" label="{f["label"]}"'
         f"{' criteria="' + f['criteria'] + '"' if f.get('criteria') else ''}>"
@@ -113,23 +88,10 @@ def build_extraction_prompt(
     )
 
 
-# FORM_CREATION_TEMPLATE is imported above
-
-
 def build_creation_prompt(
     user_message: str,
     available_types: list[str],
 ) -> str:
-    """
-    Build the form creation prompt with available form types.
-
-    Args:
-        user_message: The user's message requesting form creation
-        available_types: List of available form type names
-
-    Returns:
-        The formatted prompt string
-    """
     types_list = "\n".join(f"  <type>{t}</type>" for t in available_types)
 
     return FORM_CREATION_TEMPLATE.replace("{{user_message}}", user_message).replace(

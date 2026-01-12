@@ -1,5 +1,3 @@
-"""Message Classifier Provider - Classifies incoming messages for planning."""
-
 import logging
 from typing import Any, Optional
 
@@ -9,13 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 class MessageClassifierProvider:
-    """
-    Classifies incoming messages by complexity and planning requirements.
-
-    Uses LLM analysis to determine if strategic planning, sequential execution,
-    or direct action is needed.
-    """
-
     name = "messageClassifier"
     description = (
         "Classifies incoming messages by complexity and planning requirements "
@@ -29,7 +20,6 @@ class MessageClassifierProvider:
         message: dict[str, Any],
         state: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Classify a message for planning purposes."""
         text = message.get("content", {}).get("text") or ""
 
         if not text.strip():
@@ -165,7 +155,6 @@ CONFIDENCE: [0.0-1.0]"""
             return self._fallback_classification(text)
 
     def _classify_heuristically(self, text: str) -> str:
-        """Heuristic classification for testing."""
         text_lower = text.lower()
 
         if any(word in text_lower for word in ["strategy", "plan", "strategic"]):
@@ -198,7 +187,6 @@ DEPENDENCIES:
 CONFIDENCE: {confidence}"""
 
     def _fallback_classification(self, text: str) -> dict[str, Any]:
-        """Fallback classification when LLM fails."""
         text_lower = text.lower()
         classification = "general"
         confidence = 0.5
@@ -228,8 +216,3 @@ CONFIDENCE: {confidence}"""
             "text": f"Message classified as: {classification} with confidence: {confidence} (fallback)",
             "data": result,
         }
-
-
-
-
-

@@ -1,7 +1,3 @@
-/**
- * Text generation model handlers for OpenRouter.
- */
-
 import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
@@ -10,9 +6,6 @@ import { createOpenRouterProvider } from "../providers";
 import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-/**
- * Build common generation parameters for both streaming and non-streaming modes.
- */
 function buildGenerateParams(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
@@ -46,9 +39,6 @@ function buildGenerateParams(
   return { generateParams, modelName, modelLabel, prompt };
 }
 
-/**
- * Handle streaming text generation.
- */
 function handleStreamingGeneration(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
@@ -81,9 +71,6 @@ function handleStreamingGeneration(
   };
 }
 
-/**
- * Common text generation logic for both small and large models.
- */
 async function generateTextWithModel(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
@@ -97,12 +84,10 @@ async function generateTextWithModel(
 
   logger.debug(`[OpenRouter] Generating text with ${modelLabel} model: ${modelName}`);
 
-  // Handle streaming mode
   if (params.stream) {
     return handleStreamingGeneration(runtime, modelType, generateParams, prompt, modelLabel);
   }
 
-  // Non-streaming mode
   // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
   const response = await generateText(generateParams);
 
@@ -113,11 +98,6 @@ async function generateTextWithModel(
   return response.text;
 }
 
-/**
- * TEXT_SMALL model handler.
- *
- * @returns `string` for simple text generation, `TextStreamResult` for streaming
- */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
@@ -125,11 +105,6 @@ export async function handleTextSmall(
   return generateTextWithModel(runtime, ModelType.TEXT_SMALL, params);
 }
 
-/**
- * TEXT_LARGE model handler.
- *
- * @returns `string` for simple text generation, `TextStreamResult` for streaming
- */
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams

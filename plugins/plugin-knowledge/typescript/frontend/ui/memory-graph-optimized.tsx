@@ -6,7 +6,6 @@ import ForceGraph2D, {
   type NodeObject,
 } from "react-force-graph-2d";
 
-// Declare global window extension for TypeScript
 declare global {
   interface Window {
     ELIZA_CONFIG?: {

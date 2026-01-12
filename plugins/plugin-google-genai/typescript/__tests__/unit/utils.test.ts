@@ -1,7 +1,3 @@
-/**
- * Unit tests for utility functions.
- */
-
 import { describe, expect, it, vi } from "vitest";
 
 // Mock @elizaos/core

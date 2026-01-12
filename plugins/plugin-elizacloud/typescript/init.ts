@@ -6,14 +6,10 @@ import {
   isBrowser,
 } from "./utils/config";
 
-/**
- * Initialize and validate ElizaOS Cloud configuration
- */
 export function initializeOpenAI(
-  _config: Record<string, unknown>,
+  _config: Record<string, string | null>,
   runtime: IAgentRuntime,
 ): void {
-  // Do check in the background
   void (async () => {
     try {
       if (!getApiKey(runtime) && !isBrowser()) {
@@ -43,7 +39,7 @@ export function initializeOpenAI(
         } else {
           logger.log("ElizaOS Cloud API key validated successfully");
         }
-      } catch (fetchError: unknown) {
+      } catch (fetchError) {
         const message =
           fetchError instanceof Error ? fetchError.message : String(fetchError);
         logger.warn(`Error validating ElizaOS Cloud API key: ${message}`);
@@ -51,7 +47,7 @@ export function initializeOpenAI(
           "ElizaOS Cloud functionality will be limited until a valid API key is provided",
         );
       }
-    } catch (error: unknown) {
+    } catch (error) {
       const message =
         (error as { errors?: Array<{ message: string }> })?.errors
           ?.map((e) => e.message)

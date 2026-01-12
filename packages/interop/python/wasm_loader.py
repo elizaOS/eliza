@@ -104,12 +104,8 @@ class WasmPluginLoader:
             data = self._read_memory(ptr, len_)
             print(f"[ERROR] {data.decode('utf-8')}")
 
-        try:
-            self.linker.define(self.store, "env", "console_log", console_log)
-            self.linker.define(self.store, "env", "console_error", console_error)
-        except wasmtime.WasmtimeError:
-            # Imports may already be defined
-            pass
+        self.linker.define(self.store, "env", "console_log", console_log)
+        self.linker.define(self.store, "env", "console_error", console_error)
 
     def _load_module(self) -> None:
         """Load and instantiate the WASM module."""

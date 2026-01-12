@@ -10,10 +10,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-/**
- * Session summaries table
- * Stores condensed summaries of conversation sessions
- */
 export const sessionSummaries = pgTable(
   "session_summaries",
   {

@@ -1,7 +1,3 @@
-/**
- * Browser type action
- */
-
 import type {
   Action,
   ActionResult,

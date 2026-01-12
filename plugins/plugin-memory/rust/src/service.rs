@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Memory Service - Manages short-term and long-term memory.
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -50,9 +49,6 @@ pub trait CacheAdapter: Send + Sync {
     async fn set(&self, key: &str, value: serde_json::Value) -> Result<()>;
 }
 
-/// Memory Service.
-///
-/// Manages both short-term (session summaries) and long-term (persistent facts) memory.
 pub struct MemoryService {
     config: RwLock<MemoryConfig>,
     agent_id: Option<Uuid>,
@@ -63,14 +59,11 @@ pub struct MemoryService {
 }
 
 impl MemoryService {
-    /// Service type identifier.
     pub const SERVICE_TYPE: &'static str = "memory";
 
-    /// Capability description.
     pub const CAPABILITY_DESCRIPTION: &'static str =
-        "Advanced memory management with short-term summarization and long-term persistent facts";
+        "Memory management with short-term summarization and long-term persistent facts";
 
-    /// Create a new memory service.
     pub fn new(config: MemoryConfig) -> Self {
         Self {
             config: RwLock::new(config),
@@ -82,7 +75,6 @@ impl MemoryService {
         }
     }
 
-    /// Create a new memory service with database and cache adapters.
     pub fn with_adapters(
         config: MemoryConfig,
         agent_id: Uuid,
@@ -99,12 +91,10 @@ impl MemoryService {
         }
     }
 
-    /// Get the current configuration.
     pub async fn get_config(&self) -> MemoryConfig {
         self.config.read().await.clone()
     }
 
-    /// Update configuration.
     pub async fn update_config<F>(&self, update_fn: F)
     where
         F: FnOnce(&mut MemoryConfig),
@@ -113,7 +103,6 @@ impl MemoryService {
         update_fn(&mut config);
     }
 
-    /// Increment and return message count for a room.
     pub async fn increment_message_count(&self, room_id: Uuid) -> i32 {
         let mut counts = self.session_message_counts.write().await;
         let current = counts.get(&room_id).copied().unwrap_or(0);
@@ -122,7 +111,6 @@ impl MemoryService {
         new_count
     }
 
-    /// Reset message count for a room.
     pub async fn reset_message_count(&self, room_id: Uuid) {
         let mut counts = self.session_message_counts.write().await;
         counts.insert(room_id, 0);
@@ -132,7 +120,6 @@ impl MemoryService {
         format!("memory:extraction:{}:{}", entity_id, room_id)
     }
 
-    /// Get the last extraction checkpoint for an entity in a room.
     pub async fn get_last_extraction_checkpoint(
         &self,
         entity_id: Uuid,
@@ -167,7 +154,6 @@ impl MemoryService {
         Ok(0)
     }
 
-    /// Set the last extraction checkpoint for an entity in a room.
     pub async fn set_last_extraction_checkpoint(
         &self,
         entity_id: Uuid,
@@ -195,7 +181,6 @@ impl MemoryService {
         Ok(())
     }
 
-    /// Check if long-term extraction should run.
     pub async fn should_run_extraction(
         &self,
         entity_id: Uuid,
@@ -210,7 +195,9 @@ impl MemoryService {
             return Ok(false);
         }
 
-        let last_checkpoint = self.get_last_extraction_checkpoint(entity_id, room_id).await?;
+        let last_checkpoint = self
+            .get_last_extraction_checkpoint(entity_id, room_id)
+            .await?;
         let current_checkpoint = (current_message_count / interval) * interval;
         let should_run = current_message_count >= threshold && current_checkpoint > last_checkpoint;
 
@@ -223,6 +210,7 @@ impl MemoryService {
     }
 
     /// Store a long-term memory.
+    #[allow(clippy::too_many_arguments)]
     pub async fn store_long_term_memory(
         &self,
         agent_id: Uuid,
@@ -282,20 +270,20 @@ impl MemoryService {
         Ok(memory)
     }
 
-    /// Retrieve long-term memories for an entity.
     pub async fn get_long_term_memories(
         &self,
         entity_id: Uuid,
         category: Option<LongTermMemoryCategory>,
         limit: i32,
     ) -> Result<Vec<LongTermMemory>> {
-        let agent_id = self.agent_id.ok_or_else(|| {
-            MemoryError::InvalidConfig("Agent ID not set".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .ok_or_else(|| MemoryError::InvalidConfig("Agent ID not set".to_string()))?;
 
-        let db = self.db.as_ref().ok_or_else(|| {
-            MemoryError::Database("Database not available".to_string())
-        })?;
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| MemoryError::Database("Database not available".to_string()))?;
 
         let mut conditions = serde_json::json!({
             "agent_id": agent_id.to_string(),
@@ -321,20 +309,20 @@ impl MemoryService {
             .collect()
     }
 
-    /// Update a long-term memory.
     pub async fn update_long_term_memory(
         &self,
         memory_id: Uuid,
         entity_id: Uuid,
         updates: serde_json::Value,
     ) -> Result<()> {
-        let agent_id = self.agent_id.ok_or_else(|| {
-            MemoryError::InvalidConfig("Agent ID not set".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .ok_or_else(|| MemoryError::InvalidConfig("Agent ID not set".to_string()))?;
 
-        let db = self.db.as_ref().ok_or_else(|| {
-            MemoryError::Database("Database not available".to_string())
-        })?;
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| MemoryError::Database("Database not available".to_string()))?;
 
         let mut update_data = updates;
         update_data["updated_at"] = serde_json::json!(Utc::now().to_rfc3339());
@@ -357,15 +345,15 @@ impl MemoryService {
         Ok(())
     }
 
-    /// Delete a long-term memory.
     pub async fn delete_long_term_memory(&self, memory_id: Uuid, entity_id: Uuid) -> Result<()> {
-        let agent_id = self.agent_id.ok_or_else(|| {
-            MemoryError::InvalidConfig("Agent ID not set".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .ok_or_else(|| MemoryError::InvalidConfig("Agent ID not set".to_string()))?;
 
-        let db = self.db.as_ref().ok_or_else(|| {
-            MemoryError::Database("Database not available".to_string())
-        })?;
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| MemoryError::Database("Database not available".to_string()))?;
 
         db.delete(
             "long_term_memories",
@@ -384,15 +372,18 @@ impl MemoryService {
         Ok(())
     }
 
-    /// Get the current session summary for a room.
-    pub async fn get_current_session_summary(&self, room_id: Uuid) -> Result<Option<SessionSummary>> {
-        let agent_id = self.agent_id.ok_or_else(|| {
-            MemoryError::InvalidConfig("Agent ID not set".to_string())
-        })?;
+    pub async fn get_current_session_summary(
+        &self,
+        room_id: Uuid,
+    ) -> Result<Option<SessionSummary>> {
+        let agent_id = self
+            .agent_id
+            .ok_or_else(|| MemoryError::InvalidConfig("Agent ID not set".to_string()))?;
 
-        let db = self.db.as_ref().ok_or_else(|| {
-            MemoryError::Database("Database not available".to_string())
-        })?;
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| MemoryError::Database("Database not available".to_string()))?;
 
         let results = db
             .select(
@@ -414,7 +405,7 @@ impl MemoryService {
         Ok(Some(summary))
     }
 
-    /// Store a session summary.
+    #[allow(clippy::too_many_arguments)]
     pub async fn store_session_summary(
         &self,
         agent_id: Uuid,
@@ -476,20 +467,20 @@ impl MemoryService {
         Ok(session_summary)
     }
 
-    /// Update a session summary.
     pub async fn update_session_summary(
         &self,
         summary_id: Uuid,
         room_id: Uuid,
         updates: serde_json::Value,
     ) -> Result<()> {
-        let agent_id = self.agent_id.ok_or_else(|| {
-            MemoryError::InvalidConfig("Agent ID not set".to_string())
-        })?;
+        let agent_id = self
+            .agent_id
+            .ok_or_else(|| MemoryError::InvalidConfig("Agent ID not set".to_string()))?;
 
-        let db = self.db.as_ref().ok_or_else(|| {
-            MemoryError::Database("Database not available".to_string())
-        })?;
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| MemoryError::Database("Database not available".to_string()))?;
 
         let mut update_data = updates;
         update_data["updated_at"] = serde_json::json!(Utc::now().to_rfc3339());
@@ -512,7 +503,6 @@ impl MemoryService {
         Ok(())
     }
 
-    /// Get formatted long-term memories for context.
     pub async fn get_formatted_long_term_memories(&self, entity_id: Uuid) -> Result<String> {
         let memories = self.get_long_term_memories(entity_id, None, 20).await?;
 
@@ -544,10 +534,3 @@ impl MemoryService {
         Ok(sections.join("\n\n"))
     }
 }
-
-
-
-
-
-
-

@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! RSS Client
-//!
-//! Async HTTP client for fetching and parsing RSS/Atom feeds.
 
 use std::time::Duration;
 
@@ -12,20 +9,12 @@ use crate::error::{Result, RssError};
 use crate::parser::parse_rss_to_json;
 use crate::types::{RssConfig, RssFeed};
 
-/// Async RSS feed client.
-///
-/// Fetches and parses RSS/Atom feeds using reqwest.
 pub struct RssClient {
     config: RssConfig,
     http: Client,
 }
 
 impl RssClient {
-    /// Create a new RSS client.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Client configuration
     pub fn new(config: RssConfig) -> Result<Self> {
         let http = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
@@ -36,16 +25,10 @@ impl RssClient {
         Ok(Self { config, http })
     }
 
-    /// Create a client with default configuration.
     pub fn default_client() -> Result<Self> {
         Self::new(RssConfig::default())
     }
 
-    /// Fetch and parse an RSS/Atom feed.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The feed URL to fetch
     pub async fn fetch_feed(&self, url: &str) -> Result<RssFeed> {
         let response = self
             .http
@@ -71,24 +54,10 @@ impl RssClient {
         parse_rss_to_json(&content)
     }
 
-    /// Fetch a feed, returning None on error.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The feed URL to fetch
     pub async fn fetch_feed_safe(&self, url: &str) -> Option<RssFeed> {
         self.fetch_feed(url).await.ok()
     }
 
-    /// Validate that a URL points to a valid RSS/Atom feed.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The URL to validate
-    ///
-    /// # Returns
-    ///
-    /// Tuple of (is_valid, message)
     pub async fn validate_feed(&self, url: &str) -> (bool, String) {
         match self.fetch_feed(url).await {
             Ok(feed) => {
@@ -106,21 +75,11 @@ impl RssClient {
         }
     }
 
-    /// Get the client configuration.
     pub fn config(&self) -> &RssConfig {
         &self.config
     }
 }
 
-/// Extract all URLs from a block of text.
-///
-/// - Supports http(s)://, ftp://, and schemeless "www." links
-/// - Strips trailing punctuation
-/// - Normalizes and deduplicates results
-///
-/// # Arguments
-///
-/// * `text` - The text to extract URLs from
 pub fn extract_urls(text: &str) -> Vec<String> {
     let url_pattern = Regex::new(r#"(?i)(?:(?:https?|ftp)://|www\.)[^\s<>"'`]+"#).unwrap();
     let trailing_punct = Regex::new(r#"[)\]}>,.;!?:'"…]$"#).unwrap();
@@ -130,18 +89,13 @@ pub fn extract_urls(text: &str) -> Vec<String> {
 
     for cap in url_pattern.find_iter(text) {
         let mut candidate = cap.as_str().to_string();
-
-        // Trim leading wrappers
         candidate = candidate.trim_start_matches(|c: char| "([{<'\"".contains(c)).to_string();
-
-        // Add scheme if missing
         let mut with_scheme = if candidate.starts_with("www.") {
             format!("http://{}", candidate)
         } else {
             candidate
         };
 
-        // Trim trailing punctuation
         while trailing_punct.is_match(&with_scheme) {
             if is_valid_url(&with_scheme) {
                 break;
@@ -153,7 +107,6 @@ pub fn extract_urls(text: &str) -> Vec<String> {
             continue;
         }
 
-        // Normalize
         if let Ok(parsed) = url::Url::parse(&with_scheme) {
             let normalized = parsed.to_string();
             if !seen.contains(&normalized) {
@@ -171,11 +124,6 @@ fn is_valid_url(url: &str) -> bool {
     url::Url::parse(url).is_ok()
 }
 
-/// Format a relative time string (e.g., "5 minutes ago").
-///
-/// # Arguments
-///
-/// * `timestamp_ms` - Timestamp in milliseconds
 pub fn format_relative_time(timestamp_ms: i64) -> String {
     let now = chrono::Utc::now().timestamp_millis();
     let time_since = now - timestamp_ms;

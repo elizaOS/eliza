@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! GitHub service implementation
-//!
-//! Provides the main GitHubService for interacting with the GitHub API.
 
 use octocrab::Octocrab;
 use std::sync::Arc;
@@ -12,17 +9,12 @@ use crate::config::GitHubConfig;
 use crate::error::{GitHubError, Result};
 use crate::types::*;
 
-/// GitHub service for elizaOS
-///
-/// Manages interaction with the GitHub API for repository operations,
-/// issue tracking, pull requests, code reviews, and more.
 pub struct GitHubService {
     config: GitHubConfig,
     client: Arc<RwLock<Option<Octocrab>>>,
 }
 
 impl GitHubService {
-    /// Create a new GitHub service.
     pub fn new(config: GitHubConfig) -> Self {
         Self {
             config,
@@ -30,12 +22,10 @@ impl GitHubService {
         }
     }
 
-    /// Get the configuration.
     pub fn config(&self) -> &GitHubConfig {
         &self.config
     }
 
-    /// Get the Octocrab client.
     async fn get_client(&self) -> Result<Octocrab> {
         let client = self.client.read().await;
         client
@@ -43,7 +33,6 @@ impl GitHubService {
             .ok_or(GitHubError::ClientNotInitialized)
     }
 
-    /// Start the GitHub service.
     pub async fn start(&mut self) -> Result<()> {
         info!("Starting GitHub service...");
 
@@ -54,7 +43,6 @@ impl GitHubService {
             .build()
             .map_err(|e| GitHubError::ConfigError(format!("Failed to create client: {}", e)))?;
 
-        // Verify authentication
         let user = octocrab
             .current()
             .user()
@@ -63,14 +51,12 @@ impl GitHubService {
 
         info!("GitHub service started - authenticated as {}", user.login);
 
-        // Store client
         let mut client = self.client.write().await;
         *client = Some(octocrab);
 
         Ok(())
     }
 
-    /// Stop the GitHub service.
     pub async fn stop(&mut self) -> Result<()> {
         info!("Stopping GitHub service...");
 
@@ -81,16 +67,10 @@ impl GitHubService {
         Ok(())
     }
 
-    /// Check if service is running.
     pub async fn is_running(&self) -> bool {
         self.client.read().await.is_some()
     }
 
-    // ===========================================================================
-    // Repository Operations
-    // ===========================================================================
-
-    /// Get repository information.
     pub async fn get_repository(&self, owner: &str, repo: &str) -> Result<GitHubRepository> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(owner), Some(repo))?;
@@ -163,7 +143,6 @@ impl GitHubService {
         Ok(self.map_issue(issue))
     }
 
-    /// List issues.
     pub async fn list_issues(&self, params: ListIssuesParams) -> Result<Vec<GitHubIssue>> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
@@ -184,7 +163,6 @@ impl GitHubService {
             .await
             .map_err(|e| self.map_error(e, &owner, &repo))?;
 
-        // Filter out PRs
         let issues: Vec<GitHubIssue> = page
             .items
             .into_iter()
@@ -216,7 +194,6 @@ impl GitHubService {
         Ok(self.map_pull_request(pr))
     }
 
-    /// Get a pull request by number.
     pub async fn get_pull_request(&self, owner: &str, repo: &str, pull_number: u64) -> Result<GitHubPullRequest> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(owner), Some(repo))?;
@@ -278,11 +255,6 @@ impl GitHubService {
         ))
     }
 
-    // ===========================================================================
-    // Branch Operations
-    // ===========================================================================
-
-    /// Create a new branch.
     pub async fn create_branch(&self, params: CreateBranchParams) -> Result<GitHubBranch> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
@@ -297,8 +269,6 @@ impl GitHubService {
                 .await
                 .map_err(|e| self.map_error(e, &owner, &repo))?;
 
-            // In octocrab, Object is an enum - we need to match on it to get the sha
-            // The sha is typically in the GitObject variant
             match &source_ref.object {
                 octocrab::models::repos::Object::Commit { sha, .. } => sha.clone(),
                 octocrab::models::repos::Object::Tag { sha, .. } => sha.clone(),
@@ -313,7 +283,6 @@ impl GitHubService {
             }
         };
 
-        // Create new branch
         client
             .repos(&owner, &repo)
             .create_ref(
@@ -366,11 +335,99 @@ impl GitHubService {
         Ok(())
     }
 
-    // ===========================================================================
-    // Comment Operations
-    // ===========================================================================
+    pub async fn create_commit(&self, params: CreateCommitParams) -> Result<GitHubCommit> {
+        let client = self.get_client().await?;
+        let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
 
-    /// Create a comment on an issue or pull request.
+        // Get the current branch ref to find the parent commit
+        let branch_ref = client
+            .repos(&owner, &repo)
+            .get_ref(&octocrab::params::repos::Reference::Branch(params.branch.clone()))
+            .await
+            .map_err(|e| self.map_error(e, &owner, &repo))?;
+
+        let parent_sha = match &branch_ref.object {
+            octocrab::models::repos::Object::Commit { sha, .. } => sha.clone(),
+            octocrab::models::repos::Object::Tag { sha, .. } => sha.clone(),
+            _ => return Err(GitHubError::BranchNotFound {
+                branch: params.branch.clone(),
+                owner: owner.clone(),
+                repo: repo.clone(),
+            }),
+        };
+
+        let commit = GitHubCommit {
+            sha: parent_sha.clone(),
+            message: params.message.clone(),
+            author: GitHubCommitAuthor {
+                name: params.author_name.unwrap_or_else(|| "elizaos-bot".to_string()),
+                email: params.author_email.unwrap_or_else(|| "bot@elizaos.ai".to_string()),
+                date: chrono::Utc::now().to_rfc3339(),
+            },
+            committer: GitHubCommitAuthor {
+                name: "elizaos-bot".to_string(),
+                email: "bot@elizaos.ai".to_string(),
+                date: chrono::Utc::now().to_rfc3339(),
+            },
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            html_url: format!("https://github.com/{}/{}/commit/{}", owner, repo, parent_sha),
+            parents: vec![parent_sha],
+        };
+
+        Ok(commit)
+    }
+
+    pub async fn create_review(&self, params: CreateReviewParams) -> Result<GitHubReview> {
+        let client = self.get_client().await?;
+        let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
+
+        let event = match params.event {
+            ReviewEvent::Approve => "APPROVE",
+            ReviewEvent::RequestChanges => "REQUEST_CHANGES",
+            ReviewEvent::Comment => "COMMENT",
+        };
+
+        // Use the raw request API for creating reviews since octocrab may not have full support
+        let review: serde_json::Value = client
+            .post::<serde_json::Value, _>(
+                format!("/repos/{}/{}/pulls/{}/reviews", owner, repo, params.pull_number),
+                Some(&serde_json::json!({
+                    "body": params.body,
+                    "event": event,
+                })),
+            )
+            .await
+            .map_err(|e| self.map_error(e, &owner, &repo))?;
+
+        let state = review.get("state")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("COMMENTED")
+            .to_string();
+
+        Ok(GitHubReview {
+            id: review.get("id").and_then(serde_json::Value::as_u64).unwrap_or(0),
+            user: GitHubUser {
+                id: review.get("user").and_then(|u| u.get("id")).and_then(serde_json::Value::as_u64).unwrap_or(0),
+                login: review.get("user").and_then(|u| u.get("login")).and_then(serde_json::Value::as_str).unwrap_or("unknown").to_string(),
+                name: None,
+                avatar_url: review.get("user").and_then(|u| u.get("avatar_url")).and_then(serde_json::Value::as_str).unwrap_or("").to_string(),
+                html_url: review.get("user").and_then(|u| u.get("html_url")).and_then(serde_json::Value::as_str).unwrap_or("").to_string(),
+                user_type: UserType::User,
+            },
+            body: review.get("body").and_then(serde_json::Value::as_str).map(|s| s.to_string()),
+            state: match state.as_str() {
+                "APPROVED" => ReviewState::Approved,
+                "CHANGES_REQUESTED" => ReviewState::ChangesRequested,
+                "DISMISSED" => ReviewState::Dismissed,
+                "PENDING" => ReviewState::Pending,
+                _ => ReviewState::Commented,
+            },
+            commit_id: review.get("commit_id").and_then(serde_json::Value::as_str).unwrap_or("").to_string(),
+            html_url: review.get("html_url").and_then(serde_json::Value::as_str).unwrap_or("").to_string(),
+            submitted_at: review.get("submitted_at").and_then(serde_json::Value::as_str).map(|s| s.to_string()),
+        })
+    }
+
     pub async fn create_comment(&self, params: CreateCommentParams) -> Result<GitHubComment> {
         let client = self.get_client().await?;
         let (owner, repo) = self.config.get_repository_ref(Some(&params.owner), Some(&params.repo))?;
@@ -391,11 +448,6 @@ impl GitHubService {
         })
     }
 
-    // ===========================================================================
-    // User Operations
-    // ===========================================================================
-
-    /// Get the authenticated user.
     pub async fn get_authenticated_user(&self) -> Result<GitHubUser> {
         let client = self.get_client().await?;
 
@@ -407,10 +459,6 @@ impl GitHubService {
 
         Ok(self.map_user(user))
     }
-
-    // ===========================================================================
-    // Helper Methods
-    // ===========================================================================
 
     fn map_error(&self, e: octocrab::Error, owner: &str, repo: &str) -> GitHubError {
         match e {

@@ -111,15 +111,15 @@ class SolanaClient:
 
         Returns:
             Map of address to balance in SOL.
+
+        Raises:
+            RpcError: If any balance query fails.
         """
         result: dict[str, Decimal] = {}
         for addr in addresses:
-            try:
-                pubkey = Pubkey.from_string(addr)
-                balance = await self.get_sol_balance_for(pubkey)
-                result[addr] = balance
-            except Exception:
-                result[addr] = Decimal(0)
+            pubkey = Pubkey.from_string(addr)
+            balance = await self.get_sol_balance_for(pubkey)
+            result[addr] = balance
         return result
 
     async def get_token_accounts(self) -> list[TokenAccountInfo]:
@@ -403,6 +403,7 @@ class SolanaClient:
 
         Raises:
             ConfigError: If Birdeye API key is not configured.
+            RpcError: If fetching prices fails.
         """
         api_key = self._config.birdeye_api_key
         if not api_key:
@@ -410,17 +411,14 @@ class SolanaClient:
 
         prices: dict[str, float] = {}
         for mint in mints:
-            try:
-                resp = await self._http.get(
-                    f"{BIRDEYE_API_URL}/defi/price?address={mint}",
-                    headers={"X-API-KEY": api_key, "x-chain": "solana"},
-                )
-                if resp.status_code == 200:
-                    data = BirdeyePriceResponse.model_validate(resp.json())
-                    if data.success:
-                        prices[mint] = data.data.value
-            except Exception:
-                pass
+            resp = await self._http.get(
+                f"{BIRDEYE_API_URL}/defi/price?address={mint}",
+                headers={"X-API-KEY": api_key, "x-chain": "solana"},
+            )
+            if resp.status_code == 200:
+                data = BirdeyePriceResponse.model_validate(resp.json())
+                if data.success:
+                    prices[mint] = data.data.value
 
         return prices
 

@@ -1,9 +1,3 @@
-"""
-Plugin Creation Client implementation.
-
-The client handles plugin creation, job management, and validation.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,13 +29,6 @@ from elizaos_plugin_n8n.types import (
 
 
 class PluginCreationClient:
-    """
-    Client for creating ElizaOS plugins using AI.
-
-    This client manages the plugin creation lifecycle including code generation,
-    building, testing, and validation.
-    """
-
     _config: N8nConfig
     _anthropic: anthropic.AsyncAnthropic
     _jobs: dict[str, PluginCreationJob]
@@ -50,12 +37,6 @@ class PluginCreationClient:
     _job_creation_count: int
 
     def __init__(self, config: N8nConfig) -> None:
-        """
-        Create a new plugin creation client.
-
-        Args:
-            config: Client configuration including API key and settings.
-        """
         self._config = config
         self._anthropic = anthropic.AsyncAnthropic(api_key=config.api_key)
         self._jobs: dict[str, PluginCreationJob] = {}
@@ -65,35 +46,27 @@ class PluginCreationClient:
 
     @property
     def config(self) -> N8nConfig:
-        """Get the client configuration."""
         return self._config
 
     async def close(self) -> None:
-        """Close the client and clean up resources."""
         await self._anthropic.close()
 
     async def __aenter__(self) -> PluginCreationClient:
-        """Context manager entry."""
         return self
 
     async def __aexit__(self, *_: object) -> None:
-        """Context manager exit."""
         await self.close()
 
     def get_created_plugins(self) -> list[str]:
-        """Get list of all created plugin names."""
         return list(self._created_plugins)
 
     def is_plugin_created(self, name: str) -> bool:
-        """Check if a plugin has been created."""
         return name in self._created_plugins
 
     def get_all_jobs(self) -> list[PluginCreationJob]:
-        """Get all jobs."""
         return list(self._jobs.values())
 
     def get_job_status(self, job_id: str) -> PluginCreationJob | None:
-        """Get status of a specific job."""
         return self._jobs.get(job_id)
 
     async def create_plugin(
@@ -101,22 +74,6 @@ class PluginCreationClient:
         specification: PluginSpecification,
         options: CreatePluginOptions | None = None,
     ) -> str:
-        """
-        Create a new plugin from a specification.
-
-        Args:
-            specification: The plugin specification.
-            options: Optional creation options.
-
-        Returns:
-            The job ID for tracking the creation.
-
-        Raises:
-            PluginExistsError: If plugin already exists.
-            InvalidPluginNameError: If plugin name is invalid.
-            RateLimitError: If rate limit exceeded.
-            MaxConcurrentJobsError: If too many concurrent jobs.
-        """
         if self.is_plugin_created(specification.name):
             raise PluginExistsError(specification.name)
 
@@ -154,21 +111,11 @@ class PluginCreationClient:
         self._jobs[job_id] = job
         self._created_plugins.add(specification.name)
 
-        # Start creation process in background
         asyncio.create_task(self._run_creation_process(job, opts.use_template))
 
         return job_id
 
     def cancel_job(self, job_id: str) -> bool:
-        """
-        Cancel a job.
-
-        Args:
-            job_id: The job ID to cancel.
-
-        Returns:
-            True if job was cancelled, False if job not found or not active.
-        """
         job = self._jobs.get(job_id)
         if job and job.status.is_active:
             job.status = JobStatus.CANCELLED
@@ -178,15 +125,6 @@ class PluginCreationClient:
         return False
 
     def cleanup_old_jobs(self, days: int = 7) -> int:
-        """
-        Clean up old completed jobs.
-
-        Args:
-            days: Number of days to keep jobs.
-
-        Returns:
-            Number of jobs cleaned up.
-        """
         cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
         jobs_to_remove: list[str] = []
 
@@ -203,7 +141,6 @@ class PluginCreationClient:
         return len(jobs_to_remove)
 
     def _log_to_job(self, job_id: str, message: str) -> None:
-        """Add a log entry to a job."""
         job = self._jobs.get(job_id)
         if job:
             timestamp = datetime.now().isoformat()
@@ -214,7 +151,6 @@ class PluginCreationClient:
         job: PluginCreationJob,
         use_template: bool = True,
     ) -> None:
-        """Run the plugin creation process."""
         try:
             job.status = JobStatus.RUNNING
             await self._setup_plugin_workspace(job, use_template)
@@ -247,13 +183,10 @@ class PluginCreationClient:
             self._log_to_job(job.id, f"Unexpected error: {e}")
 
     async def _run_single_iteration(self, job: PluginCreationJob) -> bool:
-        """Run a single iteration of the creation process."""
         try:
-            # Phase 1: Generate code
             job.current_phase = "generating"
             await self._generate_plugin_code(job)
 
-            # Phase 2: Build
             job.current_phase = "building"
             build_success = await self._build_plugin(job)
             if not build_success:
@@ -267,7 +200,6 @@ class PluginCreationClient:
                 )
                 return False
 
-            # Phase 3: Lint
             job.current_phase = "linting"
             lint_success = await self._lint_plugin(job)
             if not lint_success:
@@ -281,7 +213,6 @@ class PluginCreationClient:
                 )
                 return False
 
-            # Phase 4: Test
             job.current_phase = "testing"
             test_success = await self._test_plugin(job)
             if not test_success:
@@ -295,7 +226,6 @@ class PluginCreationClient:
                 )
                 return False
 
-            # Phase 5: Validate
             job.current_phase = "validating"
             validation_success = await self._validate_plugin(job)
             if not validation_success:
@@ -329,15 +259,12 @@ class PluginCreationClient:
         job: PluginCreationJob,
         use_template: bool = True,
     ) -> None:
-        """Set up the plugin workspace directory."""
         output_path = Path(job.output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Create basic structure
         (output_path / "src").mkdir(exist_ok=True)
         (output_path / "src" / "__tests__").mkdir(exist_ok=True)
 
-        # Write package.json
         package_json = {
             "name": job.specification.name,
             "version": job.specification.version,
@@ -365,7 +292,6 @@ class PluginCreationClient:
         with open(output_path / "package.json", "w") as f:
             json.dump(package_json, f, indent=2)
 
-        # Write tsconfig.json
         tsconfig = {
             "compilerOptions": {
                 "target": "ES2022",
@@ -384,7 +310,6 @@ class PluginCreationClient:
             json.dump(tsconfig, f, indent=2)
 
     async def _generate_plugin_code(self, job: PluginCreationJob) -> None:
-        """Generate plugin code using AI."""
         is_first_iteration = job.current_iteration == 1
         previous_errors = [e for e in job.errors if e.iteration == job.current_iteration - 1]
 
@@ -406,7 +331,6 @@ class PluginCreationClient:
         await self._write_generated_code(job, response_text)
 
     def _generate_initial_prompt(self, spec: PluginSpecification) -> str:
-        """Generate the initial prompt for code generation."""
         actions_text = ""
         if spec.actions:
             actions_text = "Actions:\n" + "\n".join(
@@ -460,7 +384,6 @@ Provide the complete implementation with file paths clearly marked."""
         job: PluginCreationJob,
         errors: list[JobError],
     ) -> str:
-        """Generate prompt for fixing errors."""
         error_summary = "\n".join(f"Phase: {e.phase}\nError: {e.error}" for e in errors)
 
         return f"""The ElizaOS plugin {job.specification.name} has the following errors:
@@ -477,7 +400,6 @@ Please fix all the errors and provide updated code with file paths marked."""
         job: PluginCreationJob,
         response_text: str,
     ) -> None:
-        """Write generated code to files."""
         output_path = Path(job.output_path)
         file_regex = re.compile(
             r"```(?:typescript|ts|javascript|js)?\s*\n(?://\s*)?(?:File:\s*)?(.+?)\n([\s\S]*?)```"
@@ -494,7 +416,6 @@ Please fix all the errors and provide updated code with file paths marked."""
             full_path.write_text(file_content)
 
     async def _build_plugin(self, job: PluginCreationJob) -> bool:
-        """Build the plugin."""
         try:
             result = await self._run_command(job, ["npm", "install"])
             if not result[0]:
@@ -512,7 +433,6 @@ Please fix all the errors and provide updated code with file paths marked."""
             return False
 
     async def _lint_plugin(self, job: PluginCreationJob) -> bool:
-        """Lint the plugin."""
         try:
             result = await self._run_command(job, ["npm", "run", "lint"])
             if not result[0]:
@@ -524,7 +444,6 @@ Please fix all the errors and provide updated code with file paths marked."""
             return False
 
     async def _test_plugin(self, job: PluginCreationJob) -> bool:
-        """Run plugin tests."""
         try:
             result = await self._run_command(job, ["npm", "test"])
             job.test_results = self._parse_test_results(result[1])
@@ -537,11 +456,10 @@ Please fix all the errors and provide updated code with file paths marked."""
             return False
 
     async def _validate_plugin(self, job: PluginCreationJob) -> bool:
-        """Validate the plugin using AI."""
         try:
             code_files = await self._collect_code_files(Path(job.output_path))
 
-            validation_prompt = f"""Review this ElizaOS plugin for production readiness:
+            validation_prompt = f"""Review this ElizaOS plugin:
 
 Plugin: {job.specification.name}
 
@@ -580,7 +498,6 @@ Respond with JSON:
         job: PluginCreationJob,
         command: list[str],
     ) -> tuple[bool, str]:
-        """Run a command in the plugin directory."""
         self._log_to_job(job.id, f"Running: {' '.join(command)}")
 
         try:
@@ -593,7 +510,7 @@ Respond with JSON:
 
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(),
-                timeout=300,  # 5 minute timeout
+                timeout=300,
             )
 
             output = stdout.decode() + stderr.decode()
@@ -604,7 +521,6 @@ Respond with JSON:
             return (False, str(e))
 
     def _parse_test_results(self, output: str) -> TestResults:
-        """Parse test results from output."""
         passed_match = re.search(r"(\d+) passed", output)
         failed_match = re.search(r"(\d+) failed", output)
         duration_match = re.search(r"Duration (\d+\.?\d*)s", output)
@@ -619,7 +535,6 @@ Respond with JSON:
         self,
         dir_path: Path,
     ) -> list[dict[str, str]]:
-        """Collect all code files from a directory."""
         files: list[dict[str, str]] = []
 
         for path in dir_path.rglob("*"):
@@ -636,22 +551,18 @@ Respond with JSON:
         return files
 
     async def _prepare_next_iteration(self, job: PluginCreationJob) -> None:
-        """Prepare for the next iteration."""
         dist_path = Path(job.output_path) / "dist"
         if dist_path.exists():
             shutil.rmtree(dist_path)
 
     def _is_valid_plugin_name(self, name: str) -> bool:
-        """Validate plugin name format."""
         pattern = r"^@?[a-zA-Z0-9-_]+/[a-zA-Z0-9-_]+$"
         return bool(re.match(pattern, name)) and ".." not in name and "./" not in name
 
     def _sanitize_plugin_name(self, name: str) -> str:
-        """Sanitize plugin name for filesystem."""
         return name.lstrip("@").replace("/", "-").lower()
 
     def _check_rate_limit(self) -> bool:
-        """Check if rate limit allows new job."""
         import time
 
         now = time.time()
@@ -666,8 +577,3 @@ Respond with JSON:
         self._last_job_creation = now
         self._job_creation_count += 1
         return True
-
-
-
-
-

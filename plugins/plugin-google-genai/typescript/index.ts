@@ -1,4 +1,3 @@
-
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -54,9 +53,10 @@ const pluginTests = [
             if (embedding.length === 0) {
               throw new Error("Failed to generate embedding");
             }
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            logger.error(`Error in test_text_embedding: ${message}`);
+          } catch (error) {
+            logger.error(
+              `Error in test_text_embedding: ${error instanceof Error ? error.message : String(error)}`
+            );
             throw error;
           }
         },
@@ -72,9 +72,10 @@ const pluginTests = [
               throw new Error("Failed to generate text");
             }
             logger.log("Generated with TEXT_SMALL:", text);
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            logger.error(`Error in test_text_small: ${message}`);
+          } catch (error) {
+            logger.error(
+              `Error in test_text_small: ${error instanceof Error ? error.message : String(error)}`
+            );
             throw error;
           }
         },
@@ -90,9 +91,10 @@ const pluginTests = [
               throw new Error("Failed to generate text");
             }
             logger.log("Generated with TEXT_LARGE:", `${text.substring(0, 100)}...`);
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            logger.error(`Error in test_text_large: ${message}`);
+          } catch (error) {
+            logger.error(
+              `Error in test_text_large: ${error instanceof Error ? error.message : String(error)}`
+            );
             throw error;
           }
         },
@@ -116,9 +118,10 @@ const pluginTests = [
             } else {
               logger.error(`Invalid image description result format: ${JSON.stringify(result)}`);
             }
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            logger.error(`Error in test_image_description: ${message}`);
+          } catch (error) {
+            logger.error(
+              `Error in test_image_description: ${error instanceof Error ? error.message : String(error)}`
+            );
             throw error;
           }
         },
@@ -147,9 +150,10 @@ const pluginTests = [
             if (!result.name || !result.age || !result.hobbies) {
               throw new Error("Generated object missing required fields");
             }
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            logger.error(`Error in test_object_generation: ${message}`);
+          } catch (error) {
+            logger.error(
+              `Error in test_object_generation: ${error instanceof Error ? error.message : String(error)}`
+            );
             throw error;
           }
         },
@@ -209,14 +213,14 @@ export const googleGenAIPlugin: Plugin = {
     [ModelType.OBJECT_SMALL]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, string | number | boolean | null>> => {
       return handleObjectSmall(runtime, params);
     },
 
     [ModelType.OBJECT_LARGE]: async (
       runtime: IAgentRuntime,
       params: ObjectGenerationParams
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<Record<string, string | number | boolean | null>> => {
       return handleObjectLarge(runtime, params);
     },
   },

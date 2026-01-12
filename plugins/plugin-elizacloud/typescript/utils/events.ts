@@ -5,13 +5,6 @@ import {
 } from "@elizaos/core";
 import type { LanguageModelUsage } from "ai";
 
-/**
- * Emits a model usage event
- * @param runtime The runtime context
- * @param type The model type
- * @param prompt The prompt used
- * @param usage The LLM usage data
- */
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
@@ -22,7 +15,6 @@ export function emitModelUsageEvent(
     totalTokens?: number;
   },
 ) {
-  // Never emit the full prompt; truncate to avoid leaking secrets/PII
   const truncatedPrompt =
     typeof prompt === "string"
       ? prompt.length > 200

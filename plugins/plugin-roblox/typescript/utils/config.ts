@@ -1,45 +1,26 @@
-/**
- * Configuration utilities for Roblox plugin
- */
-
 import type { IAgentRuntime } from "@elizaos/core";
 import type { RobloxConfig } from "../types";
 
-/**
- * Default configuration values
- */
 export const ROBLOX_DEFAULTS = {
   MESSAGING_TOPIC: "eliza-agent",
   POLL_INTERVAL: 30,
   DRY_RUN: false,
 } as const;
 
-/**
- * Check if Roblox plugin is enabled (has required configuration)
- */
 export function hasRobloxEnabled(runtime: IAgentRuntime): boolean {
   const apiKey = runtime.getSetting("ROBLOX_API_KEY");
   const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID");
   return Boolean(apiKey && universeId);
 }
 
-/**
- * Get Roblox API key from runtime settings
- */
 export function getRobloxApiKey(runtime: IAgentRuntime): string | undefined {
   return runtime.getSetting("ROBLOX_API_KEY") as string | undefined;
 }
 
-/**
- * Get Roblox Universe ID from runtime settings
- */
 export function getRobloxUniverseId(runtime: IAgentRuntime): string | undefined {
   return runtime.getSetting("ROBLOX_UNIVERSE_ID") as string | undefined;
 }
 
-/**
- * Validate and build Roblox configuration from runtime settings
- */
 export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {
   const apiKey = runtime.getSetting("ROBLOX_API_KEY") as string | undefined;
   const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID") as string | undefined;

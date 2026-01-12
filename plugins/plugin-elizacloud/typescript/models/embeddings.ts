@@ -7,12 +7,7 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-// Maximum texts per batch (OpenAI limit is 2048, but we use smaller for safety)
 const MAX_BATCH_SIZE = 100;
-
-/**
- * Extract rate limit info from response headers
- */
 function extractRateLimitInfo(response: Response): {
   remainingRequests?: number;
   remainingTokens?: number;
@@ -47,9 +42,6 @@ function extractRateLimitInfo(response: Response): {
   };
 }
 
-/**
- * Get embedding configuration from runtime
- */
 function getEmbeddingConfig(runtime: IAgentRuntime) {
   const embeddingModelName = getSetting(
     runtime,
@@ -70,63 +62,20 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   return { embeddingModelName, embeddingDimension };
 }
 
-/**
- * Create a zero/error vector with a marker value
- */
 function createErrorVector(dimension: number, marker: number): number[] {
   const vector = Array(dimension).fill(0);
   vector[0] = marker;
   return vector;
 }
 
-/**
- * Batch embedding params type for batch mode
- */
 export interface BatchEmbeddingParams {
   texts: string[];
 }
 
-/**
- * Type guard to check if params is batch mode
- */
-function isBatchParams(params: TextEmbeddingParams | BatchEmbeddingParams | string | null): params is BatchEmbeddingParams {
-  return (
-    typeof params === "object" &&
-    params !== null &&
-    "texts" in params &&
-    Array.isArray(params.texts)
-  );
-}
-
-/**
- * TEXT_EMBEDDING model handler (registered with ElizaOS runtime)
- *
- * Supports both single text and batch mode:
- * - Single: { text: "..." } or "string" → returns number[]
- * - Batch: { texts: ["...", "..."] } → returns number[][]
- *
- * @overload Single text mode
- */
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
-): Promise<number[]>;
-
-/**
- * @overload Batch mode - returns array of embeddings
- */
-export async function handleTextEmbedding(
-  runtime: IAgentRuntime,
-  params: BatchEmbeddingParams,
-): Promise<number[][]>;
-
-/**
- * Implementation supporting both single and batch modes
- */
-export async function handleTextEmbedding(
-  runtime: IAgentRuntime,
-  params: TextEmbeddingParams | BatchEmbeddingParams | string | null,
-): Promise<number[] | number[][]> {
+): Promise<number[]> {
   const { embeddingDimension } = getEmbeddingConfig(runtime);
 
   if (params === null) {
@@ -134,13 +83,6 @@ export async function handleTextEmbedding(
     return createErrorVector(embeddingDimension, 0.1);
   }
 
-  // Check for batch mode: { texts: string[] }
-  if (isBatchParams(params)) {
-    logger.debug(`[Embeddings] Batch mode: ${params.texts.length} texts`);
-    return handleBatchTextEmbedding(runtime, params.texts);
-  }
-
-  // Single text mode
   let text: string;
   if (typeof params === "string") {
     text = params;
@@ -156,14 +98,10 @@ export async function handleTextEmbedding(
     return createErrorVector(embeddingDimension, 0.3);
   }
 
-  // Use batch function with single text for consistency
   const results = await handleBatchTextEmbedding(runtime, [text]);
   return results[0];
 }
 
-/**
- * Batch result type for tracking individual embedding results
- */
 export interface BatchEmbeddingResult {
   embedding: number[];
   index: number;
@@ -171,15 +109,6 @@ export interface BatchEmbeddingResult {
   error?: string;
 }
 
-/**
- * BATCH TEXT_EMBEDDING handler - sends multiple texts in ONE API request
- * This is MUCH more efficient for processing large documents
- * OpenAI supports up to 2048 texts per request
- *
- * @param runtime - Agent runtime
- * @param texts - Array of texts to embed (max 100 per batch for safety)
- * @returns Array of embeddings in same order as input texts
- */
 export async function handleBatchTextEmbedding(
   runtime: IAgentRuntime,
   texts: string[],
@@ -193,7 +122,6 @@ export async function handleBatchTextEmbedding(
     return [];
   }
 
-  // Filter out empty texts and track indices
   const validTexts: { text: string; originalIndex: number }[] = [];
   const results: number[][] = new Array(texts.length);
 
@@ -202,7 +130,6 @@ export async function handleBatchTextEmbedding(
     if (text) {
       validTexts.push({ text, originalIndex: i });
     } else {
-      // Fill with error vector for empty texts
       results[i] = createErrorVector(embeddingDimension, 0.3);
     }
   }
@@ -212,7 +139,6 @@ export async function handleBatchTextEmbedding(
     return results;
   }
 
-  // Process in batches of MAX_BATCH_SIZE
   for (
     let batchStart = 0;
     batchStart < validTexts.length;
@@ -235,13 +161,12 @@ export async function handleBatchTextEmbedding(
         },
         body: JSON.stringify({
           model: embeddingModelName,
-          input: batchTexts, // Array of texts!
+          input: batchTexts,
         }),
       });
 
       const rateLimitInfo = extractRateLimitInfo(response);
 
-      // Log rate limit status
       if (
         rateLimitInfo.remainingRequests !== undefined &&
         rateLimitInfo.remainingRequests < 50
@@ -251,7 +176,6 @@ export async function handleBatchTextEmbedding(
         );
       }
 
-      // Handle rate limit (429)
       if (response.status === 429) {
         const retryAfter = rateLimitInfo.retryAfter || 30;
         logger.warn(
@@ -259,7 +183,6 @@ export async function handleBatchTextEmbedding(
         );
         await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
 
-        // Retry this batch
         const retryResponse = await fetch(`${embeddingBaseURL}/embeddings`, {
           method: "POST",
           headers: {
@@ -276,7 +199,6 @@ export async function handleBatchTextEmbedding(
           logger.error(
             `[BatchEmbeddings] Retry failed: ${retryResponse.status}`,
           );
-          // Fill batch with error vectors
           for (const item of batch) {
             results[item.originalIndex] = createErrorVector(
               embeddingDimension,
@@ -331,7 +253,6 @@ export async function handleBatchTextEmbedding(
         continue;
       }
 
-      // Map embeddings back to original indices
       for (const item of data.data) {
         const originalIndex = batch[item.index].originalIndex;
         results[originalIndex] = item.embedding;
@@ -354,7 +275,7 @@ export async function handleBatchTextEmbedding(
       logger.debug(
         `[BatchEmbeddings] Got ${batch.length} embeddings (${embeddingDimension}d), remaining: ${rateLimitInfo.remainingRequests ?? "unknown"}`,
       );
-    } catch (error: unknown) {
+    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`[BatchEmbeddings] Error: ${message}`);
       for (const item of batch) {

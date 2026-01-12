@@ -1,9 +1,4 @@
-"""
-elizaOS Bootstrap Plugin - Python implementation.
-
-This module defines the main plugin that provides core bootstrap
-functionality for elizaOS agents.
-"""
+"""elizaOS Bootstrap Plugin - Python implementation."""
 
 from __future__ import annotations
 
@@ -32,7 +27,6 @@ def _get_providers(config: CapabilityConfig) -> list:
     result = []
     if not config.disable_basic:
         providers_to_add = BASIC_PROVIDERS
-        # Filter out character provider if skip_character_provider is set
         if config.skip_character_provider:
             providers_to_add = [p for p in providers_to_add if p.name != "CHARACTER"]
         result.extend(providers_to_add)
@@ -62,7 +56,6 @@ def _get_evaluators(config: CapabilityConfig) -> list:
         result.extend(BASIC_EVALUATORS)
     if config.enable_extended:
         result.extend(EXTENDED_EVALUATORS)
-    # Autonomy has no evaluators currently
     return result
 
 
@@ -79,27 +72,7 @@ def _get_services(config: CapabilityConfig) -> list:
 
 
 def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
-    """
-    Create a bootstrap plugin with the specified capability configuration.
-
-    Args:
-        config: Capability configuration. If None, uses default (basic only).
-
-    Returns:
-        A configured bootstrap plugin.
-
-    Example:
-        ```python
-        # Create plugin with default configuration (basic capabilities enabled)
-        plugin = create_bootstrap_plugin()
-
-        # Create plugin with extended capabilities
-        plugin = create_bootstrap_plugin(CapabilityConfig(enable_extended=True))
-
-        # Create minimal plugin (no basic capabilities)
-        plugin = create_bootstrap_plugin(CapabilityConfig(disable_basic=True))
-        ```
-    """
+    """Create a bootstrap plugin with the specified capability configuration."""
     if config is None:
         config = CapabilityConfig()
 
@@ -119,7 +92,6 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
             agentId=str(runtime.agent_id),
         )
 
-        # Initialize services
         for service_class in services:
             service = service_class()
             await service.start(runtime)
@@ -149,8 +121,6 @@ def create_bootstrap_plugin(config: CapabilityConfig | None = None) -> Plugin:
     )
 
 
-# Default bootstrap plugin (basic capabilities only)
 bootstrap_plugin = create_bootstrap_plugin()
 
-# Export the plugin and factory
 __all__ = ["bootstrap_plugin", "create_bootstrap_plugin", "CapabilityConfig"]

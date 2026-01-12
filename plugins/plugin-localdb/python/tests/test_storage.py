@@ -1,5 +1,3 @@
-"""Tests for JSONStorage."""
-
 import os
 import shutil
 import tempfile
@@ -10,7 +8,6 @@ from elizaos_plugin_localdb.storage import JSONStorage
 
 @pytest.fixture
 def temp_dir():
-    """Create a temporary directory for tests."""
     dir_path = tempfile.mkdtemp()
     yield dir_path
     shutil.rmtree(dir_path)
@@ -18,13 +15,10 @@ def temp_dir():
 
 @pytest.fixture
 def storage(temp_dir):
-    """Create a JSONStorage instance for tests."""
     return JSONStorage(temp_dir)
-
 
 @pytest.mark.asyncio
 async def test_init(storage, temp_dir):
-    """Test storage initialization."""
     await storage.init()
     assert storage.is_ready()
     assert os.path.exists(temp_dir)
@@ -32,7 +26,6 @@ async def test_init(storage, temp_dir):
 
 @pytest.mark.asyncio
 async def test_set_and_get(storage):
-    """Test setting and getting items."""
     await storage.init()
 
     data = {"name": "Test", "value": 42}
@@ -46,7 +39,6 @@ async def test_set_and_get(storage):
 
 @pytest.mark.asyncio
 async def test_get_all(storage):
-    """Test getting all items from a collection."""
     await storage.init()
 
     await storage.set("items", "item-1", {"name": "One"})
@@ -58,7 +50,6 @@ async def test_get_all(storage):
 
 @pytest.mark.asyncio
 async def test_delete(storage):
-    """Test deleting items."""
     await storage.init()
 
     await storage.set("items", "item-1", {"name": "Test"})
@@ -72,7 +63,6 @@ async def test_delete(storage):
 
 @pytest.mark.asyncio
 async def test_get_where(storage):
-    """Test filtering items."""
     await storage.init()
 
     await storage.set("items", "item-1", {"name": "Apple", "type": "fruit"})
@@ -85,7 +75,6 @@ async def test_get_where(storage):
 
 @pytest.mark.asyncio
 async def test_count(storage):
-    """Test counting items."""
     await storage.init()
 
     await storage.set("items", "item-1", {"value": 1})
@@ -95,14 +84,12 @@ async def test_count(storage):
     count = await storage.count("items")
     assert count == 3
 
-    # Count with predicate
     high_count = await storage.count("items", lambda x: x.get("value", 0) > 1)
     assert high_count == 2
 
 
 @pytest.mark.asyncio
 async def test_close(storage):
-    """Test closing storage."""
     await storage.init()
     assert storage.is_ready()
 

@@ -50,7 +50,6 @@ export const subscribeFeedAction: Action = {
     }
     runtime.logger.debug({ url }, "Attempting to subscribe to feed");
 
-    // Fetch the feed to validate it and get the title
     const feedData = await service.fetchUrl(url);
 
     if (!feedData || !feedData.items) {
@@ -65,7 +64,6 @@ export const subscribeFeedAction: Action = {
       return { success: false, error: "Invalid or empty RSS feed" };
     }
 
-    // Subscribe to the feed
     const success = await service.subscribeFeed(url, feedData.title);
 
     if (success) {

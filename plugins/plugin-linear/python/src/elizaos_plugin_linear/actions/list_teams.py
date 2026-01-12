@@ -1,4 +1,3 @@
-"""List teams action for Linear plugin."""
 
 import json
 import logging
@@ -38,7 +37,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -53,7 +51,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the list teams action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -63,7 +60,6 @@ async def handler(
         name_filter: str | None = None
         specific_team: str | None = None
 
-        # Use LLM to parse the request
         if content:
             prompt = LIST_TEAMS_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
@@ -115,7 +111,6 @@ async def handler(
                 )
             return {"text": no_teams_msg, "success": True, "data": {"teams": []}}
 
-        # Format team list
         team_list = []
         for i, team in enumerate(teams):
             info = f"{i + 1}. {team['name']} ({team['key']})"
@@ -186,8 +181,3 @@ list_teams_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

@@ -1,24 +1,11 @@
-/**
- * Model availability checking for Ollama.
- */
-
 import { logger } from "@elizaos/core";
 
-/**
- * Ensures that the specified Ollama model is available locally.
- * Downloads the model if not found.
- *
- * @param model - The model name to check
- * @param providedBaseURL - Optional base URL override
- * @param customFetch - Optional custom fetch function
- */
 export async function ensureModelAvailable(
   model: string,
   providedBaseURL?: string,
   customFetch?: typeof fetch | null
 ): Promise<void> {
   const baseURL = providedBaseURL || "http://localhost:11434/api";
-  // Remove /api suffix for direct API calls
   const apiBase = baseURL.endsWith("/api") ? baseURL.slice(0, -4) : baseURL;
   const fetcher = customFetch ?? fetch;
 

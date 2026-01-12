@@ -1,8 +1,3 @@
-/**
- * Templates for Polymarket plugin.
- * Auto-generated from prompts/*.txt
- * DO NOT EDIT - Generated from ./generated/prompts/typescript/prompts.ts
- */
 import {
   checkOrderScoringTemplate,
   getAccountAccessStatusTemplate,

@@ -1,5 +1,3 @@
-"""Actions for the Linear plugin."""
-
 from elizaos_plugin_linear.actions.clear_activity import clear_activity_action
 from elizaos_plugin_linear.actions.create_comment import create_comment_action
 from elizaos_plugin_linear.actions.create_issue import create_issue_action
@@ -23,8 +21,3 @@ __all__ = [
     "get_activity_action",
     "clear_activity_action",
 ]
-
-
-
-
-

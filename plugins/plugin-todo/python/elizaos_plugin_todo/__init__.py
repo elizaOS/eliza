@@ -34,6 +34,24 @@ from elizaos_plugin_todo.errors import (
 )
 from elizaos_plugin_todo.notification_manager import NotificationManager
 from elizaos_plugin_todo.reminder_service import ReminderService
+from elizaos_plugin_todo.actions import (
+    CANCEL_TODO_ACTION,
+    COMPLETE_TODO_ACTION,
+    CONFIRM_TODO_ACTION,
+    CREATE_TODO_ACTION,
+    UPDATE_TODO_ACTION,
+    CancelTodoResult,
+    CompleteTodoResult,
+    ConfirmTodoResult,
+    CreateTodoResult,
+    UpdateTodoResult,
+    handle_cancel_todo,
+    handle_complete_todo,
+    handle_confirm_todo,
+    handle_create_todo,
+    handle_update_todo,
+)
+from elizaos_plugin_todo.providers import TODOS_PROVIDER, get_todos
 from elizaos_plugin_todo.types import (
     ConfirmationResponse,
     CreateTodoParams,
@@ -63,6 +81,25 @@ __all__ = [
     "ReminderService",
     "NotificationManager",
     "CacheManager",
+    # Actions
+    "CREATE_TODO_ACTION",
+    "COMPLETE_TODO_ACTION",
+    "UPDATE_TODO_ACTION",
+    "CANCEL_TODO_ACTION",
+    "CONFIRM_TODO_ACTION",
+    "handle_create_todo",
+    "handle_complete_todo",
+    "handle_update_todo",
+    "handle_cancel_todo",
+    "handle_confirm_todo",
+    "CreateTodoResult",
+    "CompleteTodoResult",
+    "UpdateTodoResult",
+    "CancelTodoResult",
+    "ConfirmTodoResult",
+    # Providers
+    "TODOS_PROVIDER",
+    "get_todos",
     # Errors
     "TodoError",
     "ValidationError",

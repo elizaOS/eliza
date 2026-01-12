@@ -1,8 +1,4 @@
 #![allow(missing_docs)]
-//! Ollama API client implementation.
-//!
-//! The client handles HTTP communication with the Ollama API,
-//! including request/response handling and error processing.
 
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use std::collections::HashMap;
@@ -17,20 +13,12 @@ use crate::types::{
     ShowRequest, TagsResponse, TextGenerationParams, TextGenerationResponse,
 };
 
-/// Ollama API client.
-///
-/// Provides methods for text generation, object generation, and embeddings.
 pub struct OllamaClient {
     config: OllamaConfig,
     http_client: reqwest::Client,
 }
 
 impl OllamaClient {
-    /// Create a new Ollama client with the given configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the HTTP client cannot be built.
     pub fn new(config: OllamaConfig) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -47,18 +35,12 @@ impl OllamaClient {
         })
     }
 
-    /// Get the client configuration.
     pub fn config(&self) -> &OllamaConfig {
         &self.config
     }
 
-    /// List available models.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the request fails.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        let response = self.http_client.get(&self.config.tags_url()).send().await?;
+        let response = self.http_client.get(self.config.tags_url()).send().await?;
 
         if response.status().is_success() {
             let tags: TagsResponse = response.json().await?;
@@ -71,20 +53,14 @@ impl OllamaClient {
         }
     }
 
-    /// Ensure a model is available, downloading if necessary.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the model cannot be pulled.
     pub async fn ensure_model_available(&self, model: &str) -> Result<bool> {
-        // Check if model exists
         let show_request = ShowRequest {
             model: model.to_string(),
         };
 
         let response = self
             .http_client
-            .post(&self.config.show_url())
+            .post(self.config.show_url())
             .json(&show_request)
             .send()
             .await?;
@@ -93,7 +69,6 @@ impl OllamaClient {
             return Ok(true);
         }
 
-        // Try to pull the model
         debug!("Model {} not found, attempting to pull", model);
         let pull_request = PullRequest {
             model: model.to_string(),
@@ -102,7 +77,7 @@ impl OllamaClient {
 
         let response = self
             .http_client
-            .post(&self.config.pull_url())
+            .post(self.config.pull_url())
             .json(&pull_request)
             .send()
             .await?;
@@ -110,11 +85,6 @@ impl OllamaClient {
         Ok(response.status().is_success())
     }
 
-    /// Generate text using the small model.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails.
     pub async fn generate_text_small(
         &self,
         params: TextGenerationParams,
@@ -123,11 +93,6 @@ impl OllamaClient {
             .await
     }
 
-    /// Generate text using the large model.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails.
     pub async fn generate_text_large(
         &self,
         params: TextGenerationParams,
@@ -136,11 +101,6 @@ impl OllamaClient {
             .await
     }
 
-    /// Generate text using a specific model.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails.
     pub async fn generate_text_with_model(
         &self,
         params: TextGenerationParams,
@@ -191,11 +151,6 @@ impl OllamaClient {
         })
     }
 
-    /// Generate a JSON object using the small model.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails or JSON cannot be extracted.
     pub async fn generate_object_small(
         &self,
         params: ObjectGenerationParams,
@@ -204,11 +159,6 @@ impl OllamaClient {
             .await
     }
 
-    /// Generate a JSON object using the large model.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails or JSON cannot be extracted.
     pub async fn generate_object_large(
         &self,
         params: ObjectGenerationParams,
@@ -217,11 +167,6 @@ impl OllamaClient {
             .await
     }
 
-    /// Generate a JSON object using a specific model.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails or JSON cannot be extracted.
     pub async fn generate_object_with_model(
         &self,
         params: ObjectGenerationParams,
@@ -231,7 +176,6 @@ impl OllamaClient {
 
         self.ensure_model_available(model).await?;
 
-        // Build a JSON-focused prompt
         let json_prompt = if params.prompt.contains("```json")
             || params.prompt.contains("respond with valid JSON")
         {
@@ -244,7 +188,6 @@ impl OllamaClient {
             )
         };
 
-        // Build system prompt
         let system = if let Some(user_system) = params.system {
             format!("{}\nYou must respond with valid JSON only.", user_system)
         } else {
@@ -276,7 +219,6 @@ impl OllamaClient {
 
         let response = self.send_generate_request(&request).await?;
 
-        // Parse JSON from response
         let object = self.extract_json(&response.response)?;
 
         Ok(ObjectGenerationResponse {
@@ -285,11 +227,6 @@ impl OllamaClient {
         })
     }
 
-    /// Generate an embedding for the given text.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails.
     pub async fn generate_embedding(&self, params: EmbeddingParams) -> Result<EmbeddingResponse> {
         let model = self.config.embedding_model();
         debug!(model = %model, "Generating embedding");
@@ -303,7 +240,7 @@ impl OllamaClient {
 
         let response = self
             .http_client
-            .post(&self.config.embeddings_url())
+            .post(self.config.embeddings_url())
             .json(&request)
             .send()
             .await?;
@@ -324,11 +261,10 @@ impl OllamaClient {
         }
     }
 
-    /// Send a request to the generate API.
     async fn send_generate_request(&self, request: &GenerateRequest) -> Result<GenerateResponse> {
         let response = self
             .http_client
-            .post(&self.config.generate_url())
+            .post(self.config.generate_url())
             .json(request)
             .send()
             .await?;
@@ -351,21 +287,17 @@ impl OllamaClient {
         }
     }
 
-    /// Extract JSON from text response.
     fn extract_json(&self, text: &str) -> Result<serde_json::Value> {
-        // Try direct parsing first
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
             return Ok(value);
         }
 
-        // Try extracting from code blocks
         if let Some(json_str) = self.extract_from_code_block(text) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
                 return Ok(value);
             }
         }
 
-        // Try finding JSON object in text
         if let Some(json_str) = self.find_json_object(text) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_str) {
                 return Ok(value);
@@ -373,19 +305,15 @@ impl OllamaClient {
         }
 
         error!("Failed to extract JSON from response: {}", text);
-        // Return empty object instead of error
         Ok(serde_json::json!({}))
     }
 
-    /// Extract JSON from a code block.
     fn extract_from_code_block(&self, text: &str) -> Option<String> {
-        // Try ```json block first
         let json_block_re = regex::Regex::new(r"```json\s*([\s\S]*?)\s*```").ok()?;
         if let Some(caps) = json_block_re.captures(text) {
             return caps.get(1).map(|m| m.as_str().trim().to_string());
         }
 
-        // Try any code block with JSON-like content
         let any_block_re = regex::Regex::new(r"```(?:\w*)\s*([\s\S]*?)\s*```").ok()?;
         for caps in any_block_re.captures_iter(text) {
             if let Some(content) = caps.get(1) {
@@ -399,14 +327,12 @@ impl OllamaClient {
         None
     }
 
-    /// Find a JSON object in text.
     fn find_json_object(&self, text: &str) -> Option<String> {
         let trimmed = text.trim();
         if trimmed.starts_with('{') && trimmed.ends_with('}') {
             return Some(trimmed.to_string());
         }
 
-        // Find the largest {...} pattern
         let mut best: Option<&str> = None;
         let mut depth = 0;
         let mut start = None;
@@ -437,7 +363,6 @@ impl OllamaClient {
         best.map(|s| s.to_string())
     }
 
-    /// Check if the client is properly configured.
     pub fn is_configured(&self) -> bool {
         !self.config.base_url().is_empty()
     }
@@ -486,7 +411,3 @@ mod tests {
         assert_eq!(result.unwrap()["message"], "hello");
     }
 }
-
-
-
-

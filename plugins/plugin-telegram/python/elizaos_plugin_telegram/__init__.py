@@ -26,6 +26,20 @@ from elizaos_plugin_telegram.types import (
     TelegramWorldPayload,
 )
 
+# Actions
+from elizaos_plugin_telegram.actions import (
+    SEND_MESSAGE_ACTION,
+    SendMessageResult,
+    handle_send_message,
+)
+
+# Providers
+from elizaos_plugin_telegram.providers import (
+    CHAT_STATE_PROVIDER,
+    ChatStateResult,
+    get_chat_state,
+)
+
 __all__ = [
     # Config
     "TelegramConfig",
@@ -47,6 +61,14 @@ __all__ = [
     "TelegramWorldPayload",
     # Service
     "TelegramService",
+    # Actions
+    "SEND_MESSAGE_ACTION",
+    "SendMessageResult",
+    "handle_send_message",
+    # Providers
+    "CHAT_STATE_PROVIDER",
+    "ChatStateResult",
+    "get_chat_state",
 ]
 
 __version__ = "1.0.0"

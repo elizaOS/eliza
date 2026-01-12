@@ -1,9 +1,3 @@
-"""
-Database types for elizaOS.
-
-This module defines the IDatabaseAdapter interface and related types.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -18,8 +12,6 @@ if TYPE_CHECKING:
 
 
 class BaseLogBody(BaseModel):
-    """Base log body type with common properties."""
-
     run_id: str | UUID | None = Field(default=None, alias="runId")
     status: str | None = None
     message_id: UUID | None = Field(default=None, alias="messageId")
@@ -31,8 +23,6 @@ class BaseLogBody(BaseModel):
 
 
 class ActionLogBody(BaseLogBody):
-    """Log body for action logs."""
-
     action: str | None = None
     action_id: UUID | str | None = Field(default=None, alias="actionId")
     message: str | None = None
@@ -47,16 +37,12 @@ class ActionLogBody(BaseLogBody):
 
 
 class EvaluatorLogBody(BaseLogBody):
-    """Log body for evaluator logs."""
-
     evaluator: str | None = None
     message: str | None = None
     state: Any | None = None
 
 
 class ModelLogBody(BaseLogBody):
-    """Log body for model logs."""
-
     model_type: str | None = Field(default=None, alias="modelType")
     model_key: str | None = Field(default=None, alias="modelKey")
     params: dict[str, Any] | None = None
@@ -70,8 +56,6 @@ class ModelLogBody(BaseLogBody):
 
 
 class EmbeddingLogBody(BaseLogBody):
-    """Log body for embedding logs."""
-
     memory_id: str | None = Field(default=None, alias="memoryId")
     duration: int | None = None
 
@@ -81,8 +65,6 @@ LogBody = BaseLogBody | ActionLogBody | EvaluatorLogBody | ModelLogBody | Embedd
 
 
 class Log(BaseModel):
-    """Represents a log entry."""
-
     id: UUID | None = Field(default=None, description="Optional unique identifier")
     entity_id: UUID = Field(..., alias="entityId", description="Associated entity ID")
     room_id: UUID | None = Field(default=None, alias="roomId", description="Associated room ID")
@@ -98,8 +80,6 @@ RunStatus = Literal["started", "completed", "timeout", "error"]
 
 
 class AgentRunCounts(BaseModel):
-    """Counts for an agent run."""
-
     actions: int = 0
     model_calls: int = Field(default=0, alias="modelCalls")
     errors: int = 0
@@ -109,8 +89,6 @@ class AgentRunCounts(BaseModel):
 
 
 class AgentRunSummary(BaseModel):
-    """Summary of an agent run."""
-
     run_id: str = Field(..., alias="runId")
     status: RunStatus
     started_at: int | None = Field(default=None, alias="startedAt")
@@ -126,8 +104,6 @@ class AgentRunSummary(BaseModel):
 
 
 class AgentRunSummaryResult(BaseModel):
-    """Result of agent run summary query."""
-
     runs: list[AgentRunSummary]
     total: int
     has_more: bool = Field(..., alias="hasMore")
@@ -136,8 +112,6 @@ class AgentRunSummaryResult(BaseModel):
 
 
 class EmbeddingSearchResult(BaseModel):
-    """Result interface for embedding similarity searches."""
-
     embedding: list[float]
     levenshtein_score: float = Field(..., alias="levenshteinScore")
 
@@ -145,8 +119,6 @@ class EmbeddingSearchResult(BaseModel):
 
 
 class MemoryRetrievalOptions(BaseModel):
-    """Options for memory retrieval operations."""
-
     room_id: UUID = Field(..., alias="roomId")
     count: int | None = None
     unique: bool | None = None
@@ -158,8 +130,6 @@ class MemoryRetrievalOptions(BaseModel):
 
 
 class MemorySearchOptions(BaseModel):
-    """Options for memory search operations."""
-
     embedding: list[float]
     match_threshold: float | None = Field(default=None, alias="matchThreshold")
     count: int | None = None
@@ -172,8 +142,6 @@ class MemorySearchOptions(BaseModel):
 
 
 class MultiRoomMemoryOptions(BaseModel):
-    """Options for multi-room memory retrieval."""
-
     room_ids: list[UUID] = Field(..., alias="roomIds")
     limit: int | None = None
     agent_id: UUID | None = Field(default=None, alias="agentId")
@@ -182,8 +150,6 @@ class MultiRoomMemoryOptions(BaseModel):
 
 
 class MemoryOptions(BaseModel):
-    """Options pattern for memory operations."""
-
     room_id: UUID = Field(..., alias="roomId")
     limit: int | None = None
     agent_id: UUID | None = Field(default=None, alias="agentId")
@@ -195,8 +161,6 @@ class MemoryOptions(BaseModel):
 
 
 class SearchOptions(MemoryOptions):
-    """Specialized memory search options."""
-
     embedding: list[float]
     similarity: float | None = None
 
@@ -209,8 +173,6 @@ DbConnection = Any
 
 # Vector dimension constants
 class VECTOR_DIMS:
-    """Allowable vector dimensions."""
-
     SMALL = 384
     MEDIUM = 512
     LARGE = 768
@@ -220,53 +182,33 @@ class VECTOR_DIMS:
 
 
 class IDatabaseAdapter(ABC):
-    """Interface for database operations."""
-
     @property
     @abstractmethod
-    def db(self) -> Any:
-        """Database instance."""
-        ...
+    def db(self) -> Any: ...
 
     @abstractmethod
-    async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
-        """Initialize database connection."""
-        ...
+    async def initialize(
+        self, config: dict[str, str | int | bool | None] | None = None
+    ) -> None: ...
 
     @abstractmethod
-    async def init(self) -> None:
-        """Initialize database connection (alias)."""
-        ...
+    async def init(self) -> None: ...
 
     async def run_plugin_migrations(
         self,
         plugins: list[dict[str, Any]],
         options: dict[str, bool] | None = None,
     ) -> None:
-        """Run plugin schema migrations for all registered plugins.
-
-        This is an optional method - subclasses may override to implement
-        custom migration logic.
-        """
-        _ = plugins, options  # Optional method, default is no-op
+        _ = plugins, options
 
     async def run_migrations(self, migrations_paths: list[str] | None = None) -> None:
-        """Run database migrations from migration files.
-
-        This is an optional method - subclasses may override to implement
-        custom migration logic.
-        """
-        _ = migrations_paths  # Optional method, default is no-op
+        _ = migrations_paths
 
     @abstractmethod
-    async def is_ready(self) -> bool:
-        """Check if the database connection is ready."""
-        ...
+    async def is_ready(self) -> bool: ...
 
     @abstractmethod
-    async def close(self) -> None:
-        """Close database connection."""
-        ...
+    async def close(self) -> None: ...
 
     @abstractmethod
     async def get_connection(self) -> Any:
@@ -274,63 +216,42 @@ class IDatabaseAdapter(ABC):
         ...
 
     async def with_entity_context(self, entity_id: UUID | None, callback: Any) -> Any:
-        """Execute a callback with entity context for Entity RLS."""
-        _ = entity_id  # Entity ID for RLS context, subclasses may use
+        _ = entity_id
         return await callback()
 
     # Agent methods
     @abstractmethod
-    async def get_agent(self, agent_id: UUID) -> Any | None:
-        """Get agent by ID."""
-        ...
+    async def get_agent(self, agent_id: UUID) -> Any | None: ...
 
     @abstractmethod
-    async def get_agents(self) -> list[Any]:
-        """Get all agents."""
-        ...
+    async def get_agents(self) -> list[Any]: ...
 
     @abstractmethod
-    async def create_agent(self, agent: Any) -> bool:
-        """Create a new agent."""
-        ...
+    async def create_agent(self, agent: Any) -> bool: ...
 
     @abstractmethod
-    async def update_agent(self, agent_id: UUID, agent: Any) -> bool:
-        """Update an agent."""
-        ...
+    async def update_agent(self, agent_id: UUID, agent: Any) -> bool: ...
 
     @abstractmethod
-    async def delete_agent(self, agent_id: UUID) -> bool:
-        """Delete an agent."""
-        ...
+    async def delete_agent(self, agent_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def ensure_embedding_dimension(self, dimension: int) -> None:
-        """Ensure embedding dimension is set."""
-        ...
+    async def ensure_embedding_dimension(self, dimension: int) -> None: ...
 
     # Entity methods
     @abstractmethod
-    async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None:
-        """Get entities by IDs."""
-        ...
+    async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None: ...
 
     @abstractmethod
     async def get_entities_for_room(
         self, room_id: UUID, include_components: bool = False
-    ) -> list[Any]:
-        """Get entities for room."""
-        ...
+    ) -> list[Any]: ...
 
     @abstractmethod
-    async def create_entities(self, entities: list[Any]) -> bool:
-        """Create new entities."""
-        ...
+    async def create_entities(self, entities: list[Any]) -> bool: ...
 
     @abstractmethod
-    async def update_entity(self, entity: Any) -> None:
-        """Update entity."""
-        ...
+    async def update_entity(self, entity: Any) -> None: ...
 
     # Component methods
     @abstractmethod
@@ -340,9 +261,7 @@ class IDatabaseAdapter(ABC):
         component_type: str,
         world_id: UUID | None = None,
         source_entity_id: UUID | None = None,
-    ) -> Any | None:
-        """Get component by ID."""
-        ...
+    ) -> Any | None: ...
 
     @abstractmethod
     async def get_components(
@@ -350,287 +269,180 @@ class IDatabaseAdapter(ABC):
         entity_id: UUID,
         world_id: UUID | None = None,
         source_entity_id: UUID | None = None,
-    ) -> list[Any]:
-        """Get all components for an entity."""
-        ...
+    ) -> list[Any]: ...
 
     @abstractmethod
-    async def create_component(self, component: Any) -> bool:
-        """Create component."""
-        ...
+    async def create_component(self, component: Any) -> bool: ...
 
     @abstractmethod
-    async def update_component(self, component: Any) -> None:
-        """Update component."""
-        ...
+    async def update_component(self, component: Any) -> None: ...
 
     @abstractmethod
-    async def delete_component(self, component_id: UUID) -> None:
-        """Delete component."""
-        ...
+    async def delete_component(self, component_id: UUID) -> None: ...
 
     # Memory methods
     @abstractmethod
     async def get_memories(
         self,
         params: dict[str, Any],
-    ) -> list[Any]:
-        """Get memories matching criteria."""
-        ...
+    ) -> list[Any]: ...
 
     @abstractmethod
-    async def get_memory_by_id(self, id: UUID) -> Any | None:
-        """Get memory by ID."""
-        ...
+    async def get_memory_by_id(self, id: UUID) -> Any | None: ...
 
     @abstractmethod
     async def get_memories_by_ids(
         self, ids: list[UUID], table_name: str | None = None
-    ) -> list[Any]:
-        """Get memories by IDs."""
-        ...
+    ) -> list[Any]: ...
 
     @abstractmethod
-    async def get_memories_by_room_ids(self, params: dict[str, Any]) -> list[Any]:
-        """Get memories by room IDs."""
-        ...
+    async def get_memories_by_room_ids(self, params: dict[str, Any]) -> list[Any]: ...
 
     @abstractmethod
-    async def get_cached_embeddings(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        """Get cached embeddings."""
-        ...
+    async def get_cached_embeddings(self, params: dict[str, Any]) -> list[dict[str, Any]]: ...
 
     @abstractmethod
-    async def log(self, params: dict[str, Any]) -> None:
-        """Log an entry."""
-        ...
+    async def log(self, params: dict[str, Any]) -> None: ...
 
     @abstractmethod
-    async def get_logs(self, params: dict[str, Any]) -> list[Log]:
-        """Get logs."""
-        ...
+    async def get_logs(self, params: dict[str, Any]) -> list[Log]: ...
 
     @abstractmethod
-    async def delete_log(self, log_id: UUID) -> None:
-        """Delete a log."""
-        ...
+    async def delete_log(self, log_id: UUID) -> None: ...
 
     async def get_agent_run_summaries(self, params: dict[str, Any]) -> AgentRunSummaryResult:
-        """Get agent run summaries."""
-        _ = params  # Optional method, default returns empty result
+        _ = params
         return AgentRunSummaryResult(runs=[], total=0, hasMore=False)
 
     @abstractmethod
-    async def search_memories(self, params: dict[str, Any]) -> list[Any]:
-        """Search memories by embedding similarity."""
-        ...
+    async def search_memories(self, params: dict[str, Any]) -> list[Any]: ...
 
     @abstractmethod
-    async def create_memory(self, memory: Any, table_name: str, unique: bool = False) -> UUID:
-        """Create a memory."""
-        ...
+    async def create_memory(self, memory: Any, table_name: str, unique: bool = False) -> UUID: ...
 
     @abstractmethod
-    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
-        """Update a memory (accepts Memory object or dict)."""
-        ...
+    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool: ...
 
     @abstractmethod
-    async def delete_memory(self, memory_id: UUID) -> None:
-        """Delete a memory."""
-        ...
+    async def delete_memory(self, memory_id: UUID) -> None: ...
 
     @abstractmethod
-    async def delete_many_memories(self, memory_ids: list[UUID]) -> None:
-        """Delete multiple memories."""
-        ...
+    async def delete_many_memories(self, memory_ids: list[UUID]) -> None: ...
 
     @abstractmethod
-    async def delete_all_memories(self, room_id: UUID, table_name: str) -> None:
-        """Delete all memories for a room."""
-        ...
+    async def delete_all_memories(self, room_id: UUID, table_name: str) -> None: ...
 
     @abstractmethod
     async def count_memories(
         self, room_id: UUID, unique: bool = False, table_name: str | None = None
-    ) -> int:
-        """Count memories for a room."""
-        ...
+    ) -> int: ...
 
     # World methods
     @abstractmethod
-    async def create_world(self, world: Any) -> UUID:
-        """Create a world."""
-        ...
+    async def create_world(self, world: Any) -> UUID: ...
 
     @abstractmethod
-    async def get_world(self, id: UUID) -> Any | None:
-        """Get world by ID."""
-        ...
+    async def get_world(self, id: UUID) -> Any | None: ...
 
     @abstractmethod
-    async def remove_world(self, id: UUID) -> None:
-        """Remove a world."""
-        ...
+    async def remove_world(self, id: UUID) -> None: ...
 
     @abstractmethod
-    async def get_all_worlds(self) -> list[Any]:
-        """Get all worlds."""
-        ...
+    async def get_all_worlds(self) -> list[Any]: ...
 
     @abstractmethod
-    async def update_world(self, world: Any) -> None:
-        """Update a world."""
-        ...
+    async def update_world(self, world: Any) -> None: ...
 
     # Room methods
     @abstractmethod
-    async def get_rooms_by_ids(self, room_ids: list[UUID]) -> list[Any] | None:
-        """Get rooms by IDs."""
-        ...
+    async def get_rooms_by_ids(self, room_ids: list[UUID]) -> list[Any] | None: ...
 
     @abstractmethod
-    async def create_rooms(self, rooms: list[Any]) -> list[UUID]:
-        """Create rooms."""
-        ...
+    async def create_rooms(self, rooms: list[Any]) -> list[UUID]: ...
 
     @abstractmethod
-    async def delete_room(self, room_id: UUID) -> None:
-        """Delete a room."""
-        ...
+    async def delete_room(self, room_id: UUID) -> None: ...
 
     @abstractmethod
-    async def delete_rooms_by_world_id(self, world_id: UUID) -> None:
-        """Delete rooms by world ID."""
-        ...
+    async def delete_rooms_by_world_id(self, world_id: UUID) -> None: ...
 
     @abstractmethod
-    async def update_room(self, room: Any) -> None:
-        """Update a room."""
-        ...
+    async def update_room(self, room: Any) -> None: ...
 
     # Participant methods
     @abstractmethod
-    async def get_rooms_for_participant(self, entity_id: UUID) -> list[UUID]:
-        """Get rooms for a participant."""
-        ...
+    async def get_rooms_for_participant(self, entity_id: UUID) -> list[UUID]: ...
 
     @abstractmethod
-    async def get_rooms_for_participants(self, user_ids: list[UUID]) -> list[UUID]:
-        """Get rooms for participants."""
-        ...
+    async def get_rooms_for_participants(self, user_ids: list[UUID]) -> list[UUID]: ...
 
     @abstractmethod
-    async def get_rooms_by_world(self, world_id: UUID) -> list[Any]:
-        """Get rooms by world."""
-        ...
+    async def get_rooms_by_world(self, world_id: UUID) -> list[Any]: ...
 
     @abstractmethod
-    async def remove_participant(self, entity_id: UUID, room_id: UUID) -> bool:
-        """Remove a participant from a room."""
-        ...
+    async def remove_participant(self, entity_id: UUID, room_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def get_participants_for_entity(self, entity_id: UUID) -> list[Any]:
-        """Get participants for an entity."""
-        ...
+    async def get_participants_for_entity(self, entity_id: UUID) -> list[Any]: ...
 
     @abstractmethod
-    async def get_participants_for_room(self, room_id: UUID) -> list[UUID]:
-        """Get participants for a room."""
-        ...
+    async def get_participants_for_room(self, room_id: UUID) -> list[UUID]: ...
 
     @abstractmethod
-    async def is_room_participant(self, room_id: UUID, entity_id: UUID) -> bool:
-        """Check if entity is a room participant."""
-        ...
+    async def is_room_participant(self, room_id: UUID, entity_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def add_participants_room(self, entity_ids: list[UUID], room_id: UUID) -> bool:
-        """Add participants to a room."""
-        ...
+    async def add_participants_room(self, entity_ids: list[UUID], room_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def get_participant_user_state(self, room_id: UUID, entity_id: UUID) -> str | None:
-        """Get participant user state."""
-        ...
+    async def get_participant_user_state(self, room_id: UUID, entity_id: UUID) -> str | None: ...
 
     @abstractmethod
     async def set_participant_user_state(
         self, room_id: UUID, entity_id: UUID, state: str | None
-    ) -> None:
-        """Set participant user state."""
-        ...
+    ) -> None: ...
 
     # Relationship methods
     @abstractmethod
-    async def create_relationship(self, params: dict[str, Any]) -> bool:
-        """Create a new relationship."""
-        ...
+    async def create_relationship(self, params: dict[str, Any]) -> bool: ...
 
     @abstractmethod
-    async def update_relationship(self, relationship: Any) -> None:
-        """Update an existing relationship."""
-        ...
+    async def update_relationship(self, relationship: Any) -> None: ...
 
     @abstractmethod
-    async def get_relationship(self, params: dict[str, Any]) -> Any | None:
-        """Get a relationship between two entities."""
-        ...
+    async def get_relationship(self, params: dict[str, Any]) -> Any | None: ...
 
     @abstractmethod
-    async def get_relationships(self, params: dict[str, Any]) -> list[Any]:
-        """Get all relationships for an entity."""
-        ...
+    async def get_relationships(self, params: dict[str, Any]) -> list[Any]: ...
 
     # Cache methods
     @abstractmethod
-    async def get_cache(self, key: str) -> Any | None:
-        """Get cached value."""
-        ...
+    async def get_cache(self, key: str) -> Any | None: ...
 
     @abstractmethod
-    async def set_cache(self, key: str, value: Any) -> bool:
-        """Set cached value."""
-        ...
+    async def set_cache(self, key: str, value: Any) -> bool: ...
 
     @abstractmethod
-    async def delete_cache(self, key: str) -> bool:
-        """Delete cached value."""
-        ...
+    async def delete_cache(self, key: str) -> bool: ...
 
     # Task methods
     @abstractmethod
-    async def create_task(self, task: Any) -> UUID:
-        """Create a task."""
-        ...
+    async def create_task(self, task: Any) -> UUID: ...
 
     @abstractmethod
-    async def get_tasks(self, params: dict[str, Any]) -> list[Any]:
-        """Get tasks."""
-        ...
+    async def get_tasks(self, params: dict[str, Any]) -> list[Any]: ...
 
     @abstractmethod
-    async def get_task(self, id: UUID) -> Any | None:
-        """Get task by ID."""
-        ...
+    async def get_task(self, id: UUID) -> Any | None: ...
 
     @abstractmethod
-    async def get_tasks_by_name(self, name: str) -> list[Any]:
-        """Get tasks by name."""
-        ...
+    async def get_tasks_by_name(self, name: str) -> list[Any]: ...
 
     @abstractmethod
-    async def update_task(self, id: UUID, task: dict[str, Any]) -> None:
-        """Update a task."""
-        ...
+    async def update_task(self, id: UUID, task: dict[str, Any]) -> None: ...
 
     @abstractmethod
-    async def delete_task(self, id: UUID) -> None:
-        """Delete a task."""
-        ...
+    async def delete_task(self, id: UUID) -> None: ...
 
     @abstractmethod
-    async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[Any]:
-        """Get memories by world ID."""
-        ...
+    async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[Any]: ...

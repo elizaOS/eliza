@@ -1,9 +1,3 @@
-"""
-Runtime types for elizaOS.
-
-This module defines the IAgentRuntime interface and related types.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -47,8 +41,6 @@ SendHandlerFunction = Callable[[Any, Content], Awaitable[None]]
 
 
 class TargetInfo(BaseModel):
-    """Target information for sending messages."""
-
     room_id: UUID | None = Field(default=None, alias="roomId")
     entity_id: UUID | None = Field(default=None, alias="entityId")
     world_id: UUID | None = Field(default=None, alias="worldId")
@@ -58,202 +50,122 @@ class TargetInfo(BaseModel):
 
 
 class IAgentRuntime(IDatabaseAdapter, ABC):
-    """
-    Represents the core runtime environment for an agent.
-    Defines methods for database interaction, plugin management, event handling,
-    state composition, model usage, and task management.
-    """
-
     # Properties that must be implemented
     @property
     @abstractmethod
-    def agent_id(self) -> UUID:
-        """Get the agent's UUID."""
-        ...
+    def agent_id(self) -> UUID: ...
 
     @property
     @abstractmethod
-    def character(self) -> Character:
-        """Get the agent's character configuration."""
-        ...
+    def character(self) -> Character: ...
 
     @property
     @abstractmethod
-    def providers(self) -> list[Provider]:
-        """Get registered providers."""
-        ...
+    def providers(self) -> list[Provider]: ...
 
     @property
     @abstractmethod
-    def actions(self) -> list[Action]:
-        """Get registered actions."""
-        ...
+    def actions(self) -> list[Action]: ...
 
     @property
     @abstractmethod
-    def evaluators(self) -> list[Evaluator]:
-        """Get registered evaluators."""
-        ...
+    def evaluators(self) -> list[Evaluator]: ...
 
     @property
     @abstractmethod
-    def plugins(self) -> list[Plugin]:
-        """Get registered plugins."""
-        ...
+    def plugins(self) -> list[Plugin]: ...
 
     @property
     @abstractmethod
-    def services(self) -> dict[str, list[Service]]:
-        """Get registered services."""
-        ...
+    def services(self) -> dict[str, list[Service]]: ...
 
     @property
     @abstractmethod
-    def routes(self) -> list[Route]:
-        """Get registered routes."""
-        ...
+    def routes(self) -> list[Route]: ...
 
     @property
     @abstractmethod
-    def events(self) -> dict[str, list[Callable[[Any], Awaitable[None]]]]:
-        """Get registered event handlers."""
-        ...
+    def events(self) -> dict[str, list[Callable[[Any], Awaitable[None]]]]: ...
 
     @property
     @abstractmethod
-    def state_cache(self) -> dict[str, State]:
-        """Get the state cache."""
-        ...
+    def state_cache(self) -> dict[str, State]: ...
 
     @property
     @abstractmethod
-    def message_service(self) -> Any | None:
-        """Get the message service (if registered)."""
-        ...
+    def message_service(self) -> Any | None: ...
 
     # Database adapter
     @abstractmethod
-    def register_database_adapter(self, adapter: IDatabaseAdapter) -> None:
-        """Register a database adapter."""
-        ...
+    def register_database_adapter(self, adapter: IDatabaseAdapter) -> None: ...
 
     @abstractmethod
-    async def get_connection(self) -> Any:
-        """Get the underlying database connection."""
-        ...
+    async def get_connection(self) -> Any: ...
 
     # Plugin management
     @abstractmethod
-    async def register_plugin(self, plugin: Plugin) -> None:
-        """Register a plugin with the runtime."""
-        ...
+    async def register_plugin(self, plugin: Plugin) -> None: ...
 
     @abstractmethod
-    async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
-        """Initialize the runtime."""
-        ...
+    async def initialize(
+        self, config: dict[str, str | int | bool | None] | None = None
+    ) -> None: ...
 
     # Service management
     @abstractmethod
-    def get_service(self, service: str) -> Service | None:
-        """Get a service by type."""
-        ...
+    def get_service(self, service: str) -> Service | None: ...
 
     @abstractmethod
-    def get_services_by_type(self, service: str) -> list[Service]:
-        """Get all services of a type."""
-        ...
+    def get_services_by_type(self, service: str) -> list[Service]: ...
 
     @abstractmethod
-    def get_all_services(self) -> dict[str, list[Service]]:
-        """Get all registered services."""
-        ...
+    def get_all_services(self) -> dict[str, list[Service]]: ...
 
     @abstractmethod
-    async def register_service(self, service: type[Service]) -> None:
-        """Register a service class."""
-        ...
+    async def register_service(self, service: type[Service]) -> None: ...
 
     @abstractmethod
-    async def get_service_load_promise(self, service_type: str) -> Service:
-        """Get a promise that resolves when the service is loaded."""
-        ...
+    async def get_service_load_promise(self, service_type: str) -> Service: ...
 
     @abstractmethod
-    def get_registered_service_types(self) -> list[str]:
-        """Get all registered service types."""
-        ...
+    def get_registered_service_types(self) -> list[str]: ...
 
     @abstractmethod
-    def has_service(self, service_type: str) -> bool:
-        """Check if a service is registered."""
-        ...
+    def has_service(self, service_type: str) -> bool: ...
 
     # Settings
     @abstractmethod
     def set_setting(
         self, key: str, value: str | bool | int | float | None, secret: bool = False
-    ) -> None:
-        """Set a runtime setting."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
-    def get_setting(self, key: str) -> str | bool | int | float | None:
-        """Get a runtime setting."""
-        ...
+    def get_setting(self, key: str) -> str | bool | int | float | None: ...
 
     @abstractmethod
-    def get_all_settings(self) -> dict[str, str | bool | int | float | None]:
-        """Get all runtime/character settings (resolved view)."""
-        ...
+    def get_all_settings(self) -> dict[str, str | bool | int | float | None]: ...
 
     @abstractmethod
-    def compose_prompt(self, *, state: State, template: TemplateType) -> str:
-        """Compose a prompt from state and a template (Handlebars-style placeholders)."""
-        ...
+    def compose_prompt(self, *, state: State, template: TemplateType) -> str: ...
 
     @abstractmethod
-    def compose_prompt_from_state(self, *, state: State, template: TemplateType) -> str:
-        """Compose a prompt from state and a template (explicit form)."""
-        ...
+    def compose_prompt_from_state(self, *, state: State, template: TemplateType) -> str: ...
 
     @abstractmethod
-    def get_current_time_ms(self) -> int:
-        """Get current time in milliseconds."""
-        ...
+    def get_current_time_ms(self) -> int: ...
 
     @abstractmethod
-    def get_conversation_length(self) -> int:
-        """Get the conversation length."""
-        ...
+    def get_conversation_length(self) -> int: ...
 
     @property
     @abstractmethod
-    def logger(self) -> Logger:
-        """Get the runtime logger."""
-        ...
+    def logger(self) -> Logger: ...
 
     @abstractmethod
-    def is_action_planning_enabled(self) -> bool:
-        """
-        Check if action planning mode is enabled.
-
-        When enabled (default), the agent can plan and execute multiple actions per response.
-        When disabled, the agent executes only a single action per response - a performance
-        optimization useful for game situations where state updates with every action.
-
-        Priority: constructor option > character setting ACTION_PLANNING > default (True)
-        """
-        ...
+    def is_action_planning_enabled(self) -> bool: ...
 
     @abstractmethod
-    def is_check_should_respond_enabled(self) -> bool:
-        """
-        Check if shouldRespond evaluation is enabled.
-
-        When disabled (ChatGPT mode), the agent always responds without checking.
-        """
-        ...
+    def is_check_should_respond_enabled(self) -> bool: ...
 
     # Action processing
     @abstractmethod
@@ -264,14 +176,10 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         state: State | None = None,
         callback: HandlerCallback | None = None,
         options: dict[str, Any] | None = None,
-    ) -> None:
-        """Process actions for a message."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
-    def get_action_results(self, message_id: UUID) -> list[ActionResult]:
-        """Get action results for a message."""
-        ...
+    def get_action_results(self, message_id: UUID) -> list[ActionResult]: ...
 
     # Evaluation
     @abstractmethod
@@ -282,25 +190,17 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         did_respond: bool = False,
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
-    ) -> list[Evaluator] | None:
-        """Evaluate a message."""
-        ...
+    ) -> list[Evaluator] | None: ...
 
     # Component registration
     @abstractmethod
-    def register_provider(self, provider: Provider) -> None:
-        """Register a provider."""
-        ...
+    def register_provider(self, provider: Provider) -> None: ...
 
     @abstractmethod
-    def register_action(self, action: Action) -> None:
-        """Register an action."""
-        ...
+    def register_action(self, action: Action) -> None: ...
 
     @abstractmethod
-    def register_evaluator(self, evaluator: Evaluator) -> None:
-        """Register an evaluator."""
-        ...
+    def register_evaluator(self, evaluator: Evaluator) -> None: ...
 
     # Connection management
     @abstractmethod
@@ -310,9 +210,7 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         rooms: list[Room],
         source: str,
         world: World,
-    ) -> None:
-        """Ensure connections are set up."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
     async def ensure_connection(
@@ -329,24 +227,16 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         channel_type: str | None = None,
         user_id: UUID | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> None:
-        """Ensure a connection is set up."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
-    async def ensure_participant_in_room(self, entity_id: UUID, room_id: UUID) -> None:
-        """Ensure an entity is a participant in a room."""
-        ...
+    async def ensure_participant_in_room(self, entity_id: UUID, room_id: UUID) -> None: ...
 
     @abstractmethod
-    async def ensure_world_exists(self, world: World) -> None:
-        """Ensure a world exists."""
-        ...
+    async def ensure_world_exists(self, world: World) -> None: ...
 
     @abstractmethod
-    async def ensure_room_exists(self, room: Room) -> None:
-        """Ensure a room exists."""
-        ...
+    async def ensure_room_exists(self, room: Room) -> None: ...
 
     # State composition
     @abstractmethod
@@ -356,15 +246,11 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         include_list: list[str] | None = None,
         only_include: bool = False,
         skip_cache: bool = False,
-    ) -> State:
-        """Compose state for a message."""
-        ...
+    ) -> State: ...
 
     # Model usage
     @abstractmethod
-    def has_model(self, model_type: str | ModelType) -> bool:
-        """Check if a model handler is registered for a given model type."""
-        ...
+    def has_model(self, model_type: str | ModelType) -> bool: ...
 
     @abstractmethod
     async def use_model(
@@ -373,18 +259,14 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         params: dict[str, Any] | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> Any:
-        """Use a model for inference."""
-        ...
+    ) -> Any: ...
 
     @abstractmethod
     async def generate_text(
         self,
         input_text: str,
         options: GenerateTextOptions | None = None,
-    ) -> GenerateTextResult:
-        """Generate text using an LLM."""
-        ...
+    ) -> GenerateTextResult: ...
 
     @abstractmethod
     def register_model(
@@ -393,16 +275,12 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
         provider: str,
         priority: int = 0,
-    ) -> None:
-        """Register a model handler."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
     def get_model(
         self, model_type: str
-    ) -> Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]] | None:
-        """Get a model handler."""
-        ...
+    ) -> Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]] | None: ...
 
     # Event handling
     @abstractmethod
@@ -410,130 +288,84 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
         self,
         event: str,
         handler: Callable[[Any], Awaitable[None]],
-    ) -> None:
-        """Register an event handler."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
-    def get_event(self, event: str) -> list[Callable[[Any], Awaitable[None]]] | None:
-        """Get event handlers for an event type."""
-        ...
+    def get_event(self, event: str) -> list[Callable[[Any], Awaitable[None]]] | None: ...
 
     @abstractmethod
     async def emit_event(
         self,
         event: str | list[str],
         params: Any,
-    ) -> None:
-        """Emit an event."""
-        ...
+    ) -> None: ...
 
     # Task management
     @abstractmethod
-    def register_task_worker(self, task_handler: TaskWorker) -> None:
-        """Register a task worker."""
-        ...
+    def register_task_worker(self, task_handler: TaskWorker) -> None: ...
 
     @abstractmethod
-    def get_task_worker(self, name: str) -> TaskWorker | None:
-        """Get a task worker by name."""
-        ...
+    def get_task_worker(self, name: str) -> TaskWorker | None: ...
 
     # Lifecycle
     @abstractmethod
-    async def stop(self) -> None:
-        """Stop the runtime."""
-        ...
+    async def stop(self) -> None: ...
 
     # Memory/embedding helpers
     @abstractmethod
-    async def add_embedding_to_memory(self, memory: Memory) -> Memory:
-        """Add embedding to a memory."""
-        ...
+    async def add_embedding_to_memory(self, memory: Memory) -> Memory: ...
 
     @abstractmethod
-    async def queue_embedding_generation(self, memory: Memory, priority: str = "normal") -> None:
-        """Queue a memory for async embedding generation."""
-        ...
+    async def queue_embedding_generation(
+        self, memory: Memory, priority: str = "normal"
+    ) -> None: ...
 
     @abstractmethod
-    async def get_all_memories(self) -> list[Memory]:
-        """Get all memories."""
-        ...
+    async def get_all_memories(self) -> list[Memory]: ...
 
     @abstractmethod
-    async def clear_all_agent_memories(self) -> None:
-        """Clear all agent memories."""
-        ...
+    async def clear_all_agent_memories(self) -> None: ...
 
     @abstractmethod
-    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
-        """Update a memory (accepts Memory object or dict)."""
-        ...
+    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool: ...
 
     # Run tracking
     @abstractmethod
-    def create_run_id(self) -> UUID:
-        """Create a new run ID."""
-        ...
+    def create_run_id(self) -> UUID: ...
 
     @abstractmethod
-    def start_run(self, room_id: UUID | None = None) -> UUID:
-        """Start a new run."""
-        ...
+    def start_run(self, room_id: UUID | None = None) -> UUID: ...
 
     @abstractmethod
-    def end_run(self) -> None:
-        """End the current run."""
-        ...
+    def end_run(self) -> None: ...
 
     @abstractmethod
-    def get_current_run_id(self) -> UUID:
-        """Get the current run ID."""
-        ...
+    def get_current_run_id(self) -> UUID: ...
 
     # Convenience wrappers
     @abstractmethod
-    async def get_entity_by_id(self, entity_id: UUID) -> Entity | None:
-        """Get entity by ID."""
-        ...
+    async def get_entity_by_id(self, entity_id: UUID) -> Entity | None: ...
 
     @abstractmethod
-    async def get_room(self, room_id: UUID) -> Room | None:
-        """Get room by ID."""
-        ...
+    async def get_room(self, room_id: UUID) -> Room | None: ...
 
     @abstractmethod
-    async def create_entity(self, entity: Entity) -> bool:
-        """Create an entity."""
-        ...
+    async def create_entity(self, entity: Entity) -> bool: ...
 
     @abstractmethod
-    async def create_room(self, room: Room) -> UUID:
-        """Create a room."""
-        ...
+    async def create_room(self, room: Room) -> UUID: ...
 
     @abstractmethod
-    async def add_participant(self, entity_id: UUID, room_id: UUID) -> bool:
-        """Add a participant to a room."""
-        ...
+    async def add_participant(self, entity_id: UUID, room_id: UUID) -> bool: ...
 
     @abstractmethod
-    async def get_rooms(self, world_id: UUID) -> list[Room]:
-        """Get rooms for a world."""
-        ...
+    async def get_rooms(self, world_id: UUID) -> list[Room]: ...
 
     @abstractmethod
-    def register_send_handler(self, source: str, handler: SendHandlerFunction) -> None:
-        """Register a send handler."""
-        ...
+    def register_send_handler(self, source: str, handler: SendHandlerFunction) -> None: ...
 
     @abstractmethod
-    async def send_message_to_target(self, target: TargetInfo, content: Content) -> None:
-        """Send a message to a target."""
-        ...
+    async def send_message_to_target(self, target: TargetInfo, content: Content) -> None: ...
 
     @abstractmethod
-    async def update_world(self, world: World) -> None:
-        """Update a world."""
-        ...
+    async def update_world(self, world: World) -> None: ...

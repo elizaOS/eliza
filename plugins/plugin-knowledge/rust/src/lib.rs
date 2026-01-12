@@ -1,26 +1,25 @@
 #![allow(missing_docs)]
-//! elizaOS Knowledge Plugin
-//!
-//! Provides Retrieval Augmented Generation (RAG) capabilities including:
-//! - Document processing and text extraction
-//! - Text chunking with semantic awareness
-//! - Embedding generation via multiple providers
-//! - Semantic search and knowledge retrieval
 
-mod types;
-mod service;
-mod plugin;
+pub mod actions;
 mod chunker;
+mod plugin;
+pub mod providers;
+mod service;
+mod types;
 
-pub use types::*;
-pub use service::KnowledgeService;
-pub use plugin::KnowledgePlugin;
+pub use actions::{
+    get_actions, ActionContext, ActionError, ActionResult, KnowledgeAction,
+    ProcessKnowledgeAction, SearchKnowledgeAction,
+};
 pub use chunker::TextChunker;
+pub use plugin::KnowledgePlugin;
+pub use providers::{
+    DocumentsProvider, KnowledgeProvider, KnowledgeProviderTrait, ProviderContext, ProviderResult,
+};
+pub use service::KnowledgeService;
+pub use types::*;
 
-/// Plugin version
 pub const VERSION: &str = "1.6.1";
-
-/// Plugin name
 pub const PLUGIN_NAME: &str = "knowledge";
 
 #[cfg(test)]

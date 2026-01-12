@@ -1,10 +1,8 @@
-"""BlueSky API client using AT Protocol."""
 
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 import httpx
 
@@ -36,7 +34,6 @@ logger = logging.getLogger(__name__)
 
 
 class BlueSkyClient:
-    """BlueSky API client."""
 
     def __init__(self, config: BlueSkyConfig) -> None:
         self.config = config
@@ -94,7 +91,7 @@ class BlueSkyClient:
         )
 
     async def get_timeline(self, request: TimelineRequest) -> TimelineResponse:
-        params: dict[str, Any] = {"limit": request.limit}
+        params: dict[str, str | int] = {"limit": request.limit}
         if request.algorithm:
             params["algorithm"] = request.algorithm
         if request.cursor:
@@ -114,7 +111,7 @@ class BlueSkyClient:
             logger.info("Dry run: would create post", extra={"text": request.content.text})
             return self._mock_post(request.content.text)
 
-        record: dict[str, Any] = {
+        record: dict[str, str | dict | list] = {
             "$type": "app.bsky.feed.post",
             "text": request.content.text,
             "createdAt": datetime.now(UTC).isoformat(),
@@ -194,7 +191,7 @@ class BlueSkyClient:
     async def get_notifications(
         self, limit: int = 50, cursor: str | None = None
     ) -> tuple[list[BlueSkyNotification], str | None]:
-        params: dict[str, Any] = {"limit": limit}
+        params: dict[str, str | int] = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
 
@@ -230,7 +227,7 @@ class BlueSkyClient:
     async def get_conversations(
         self, limit: int = 50, cursor: str | None = None
     ) -> tuple[list[BlueSkyConversation], str | None]:
-        params: dict[str, Any] = {"limit": limit}
+        params: dict[str, str | int] = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
 
@@ -261,7 +258,7 @@ class BlueSkyClient:
     async def get_messages(
         self, convo_id: str, limit: int = 50, cursor: str | None = None
     ) -> tuple[list[BlueSkyMessage], str | None]:
-        params: dict[str, Any] = {"convoId": convo_id, "limit": limit}
+        params: dict[str, str | int] = {"convoId": convo_id, "limit": limit}
         if cursor:
             params["cursor"] = cursor
 
@@ -306,10 +303,10 @@ class BlueSkyClient:
         self,
         method: str,
         endpoint: str,
-        params: dict[str, Any] | None = None,
-        json: dict[str, Any] | None = None,
+        params: dict[str, str | int] | None = None,
+        json: dict[str, str | int | float | bool | dict | list | None] | None = None,
         chat: bool = False,
-    ) -> dict[str, Any]:
+    ) -> dict[str, str | int | float | bool | dict | list | None]:
         if not self._session:
             raise AuthenticationError("Not authenticated")
 
@@ -329,7 +326,7 @@ class BlueSkyClient:
                 raise RateLimitError()
             if not response.is_success:
                 raise Exception(f"Request failed: {response.status_code}")
-            result: dict[str, Any] = response.json()
+            result: dict[str, str | int | float | bool | dict | list | None] = response.json()
             return result
 
         except httpx.TimeoutException as e:
@@ -337,7 +334,7 @@ class BlueSkyClient:
         except httpx.RequestError as e:
             raise NetworkError(f"Request failed: {e}") from e
 
-    def _map_post(self, data: dict[str, Any]) -> BlueSkyPost:
+    def _map_post(self, data: dict[str, str | int | float | bool | dict | list | None]) -> BlueSkyPost:
         record = data.get("record", {})
         return BlueSkyPost(
             uri=data["uri"],

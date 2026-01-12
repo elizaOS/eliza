@@ -2,7 +2,6 @@ import {
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Memory,
   ModelType,
   type State,
@@ -11,9 +10,13 @@ import {
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,
 } from "../templates/toolSelectionTemplate";
-import type { McpProvider, McpProviderData, McpToolInfo } from "../types";
+import type { McpProvider } from "../types";
 import type { ToolSelectionArgument, ToolSelectionName } from "./schemas";
-import { validateToolSelectionArgument, validateToolSelectionName } from "./validation";
+import {
+  createToolSelectionFeedbackPrompt,
+  validateToolSelectionArgument,
+  validateToolSelectionName,
+} from "./validation";
 import { withModelRetry } from "./wrapper";
 
 export interface CreateToolSelectionOptions {
@@ -25,10 +28,6 @@ export interface CreateToolSelectionOptions {
   readonly toolSelectionName?: ToolSelectionName;
 }
 
-/**
- * Creates a tool selection name based on the current state and MCP provider.
- * @returns A tool selection name object or null if the selection is invalid.
- */
 export async function createToolSelectionName({
   runtime,
   state,
@@ -40,12 +39,10 @@ export async function createToolSelectionName({
     state: { ...state, values: { ...state.values, mcpProvider } },
     template: toolSelectionNameTemplate,
   });
-  logger.debug(`[SELECTION] Tool Selection Name Prompt:\n${toolSelectionPrompt}`);
 
   const toolSelectionName = (await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: toolSelectionPrompt,
   })) as string;
-  logger.debug(`[SELECTION] Tool Selection Name Response:\n${toolSelectionName}`);
 
   return await withModelRetry<ToolSelectionName>({
     runtime,
@@ -65,10 +62,6 @@ export async function createToolSelectionName({
   });
 }
 
-/**
- * Creates a tool selection argument based on the current state and MCP provider.
- * @returns A tool selection argument object or null if the selection is invalid.
- */
 export async function createToolSelectionArgument({
   runtime,
   state,
@@ -94,7 +87,6 @@ export async function createToolSelectionArgument({
   }
 
   const toolInputSchema = toolData.inputSchema ?? {};
-  logger.trace(`[SELECTION] Tool Input Schema:\n${JSON.stringify({ toolInputSchema }, null, 2)}`);
 
   const toolSelectionArgumentPrompt: string = composePromptFromState({
     state: {
@@ -107,12 +99,10 @@ export async function createToolSelectionArgument({
     },
     template: toolSelectionArgumentTemplate,
   });
-  logger.debug(`[SELECTION] Tool Selection Prompt:\n${toolSelectionArgumentPrompt}`);
 
   const toolSelectionArgument = (await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: toolSelectionArgumentPrompt,
   })) as string;
-  logger.debug(`[SELECTION] Tool Selection Argument Response:\n${toolSelectionArgument}`);
 
   return await withModelRetry<ToolSelectionArgument>({
     runtime,
@@ -130,57 +120,4 @@ export async function createToolSelectionArgument({
       ),
     failureMsg: "I'm having trouble figuring out the best way to help with your request.",
   });
-}
-
-function createToolSelectionFeedbackPrompt(
-  originalResponse: string,
-  errorMessage: string,
-  state: State,
-  userMessage: string
-): string {
-  let toolsDescription = "";
-  const mcpData = state.values.mcp as Record<string, McpProviderData[string]> | undefined;
-
-  if (mcpData) {
-    for (const [serverName, server] of Object.entries(mcpData)) {
-      if (server.status !== "connected") continue;
-
-      const tools = server.tools as Record<string, McpToolInfo> | undefined;
-      if (tools) {
-        for (const [toolName, tool] of Object.entries(tools)) {
-          toolsDescription += `Tool: ${toolName} (Server: ${serverName})\n`;
-          toolsDescription += `Description: ${tool.description ?? "No description available"}\n\n`;
-        }
-      }
-    }
-  }
-
-  const feedbackPrompt = createFeedbackPrompt(
-    originalResponse,
-    errorMessage,
-    "tool",
-    toolsDescription,
-    userMessage
-  );
-  logger.debug(`[SELECTION] Tool Selection Feedback Prompt:\n${feedbackPrompt}`);
-  return feedbackPrompt;
-}
-
-function createFeedbackPrompt(
-  originalResponse: string,
-  errorMessage: string,
-  itemType: string,
-  itemsDescription: string,
-  userMessage: string
-): string {
-  return `Error parsing JSON: ${errorMessage}
-  
-  Your original response:
-  ${originalResponse}
-  
-  Please try again with valid JSON for ${itemType} selection.
-  Available ${itemType}s:
-  ${itemsDescription}
-  
-  User request: ${userMessage}`;
 }

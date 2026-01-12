@@ -1,12 +1,8 @@
-"""Test configuration and fixtures."""
-
 import pytest
 
 
 @pytest.fixture
 def sample_pdf_bytes() -> bytes:
-    """Provide a minimal PDF for testing."""
-    # Minimal valid PDF structure
     return b"""%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
@@ -39,8 +35,3 @@ trailer
 startxref
 300
 %%EOF"""
-
-
-
-
-

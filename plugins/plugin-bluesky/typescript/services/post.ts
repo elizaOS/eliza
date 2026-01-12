@@ -1,7 +1,3 @@
-/**
- * BlueSky post service.
- */
-
 import { composePrompt, type IAgentRuntime, ModelType } from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
 import {

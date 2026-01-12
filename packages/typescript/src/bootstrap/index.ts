@@ -1,5 +1,3 @@
-// Import from relative paths to avoid self-referential package imports during builds
-
 import { v4 } from "uuid";
 import { createUniqueUuid } from "../entities.ts";
 import { logger } from "../logger.ts";
@@ -48,14 +46,12 @@ import * as autonomy from "./autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
-/** Shape of image description XML response */
 interface ImageDescriptionXml {
   description?: string;
   title?: string;
   text?: string;
 }
 
-/** Shape of message handler XML response */
 interface MessageHandlerXml {
   thought?: string;
   actions?: string | string[];
@@ -64,7 +60,6 @@ interface MessageHandlerXml {
   simple?: boolean;
 }
 
-/** Shape of post creation XML response */
 interface PostCreationXml {
   post?: string;
   thought?: string;
@@ -74,79 +69,17 @@ export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./providers/index.ts";
 
-/**
- * Represents media data containing a buffer of data and the media type.
- * @typedef {Object} MediaData
- * @property {Buffer} data - The buffer of data.
- * @property {string} mediaType - The type of media.
- */
 type MediaData = {
   data: Buffer;
   mediaType: string;
 };
 
-/**
- * Escapes special characters in a string to make it JSON-safe.
- */
-/* // Removing JSON specific helpers
-function escapeForJson(input: string): string {
-  return input
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/```/g, '\\`\\`\\`');
-}
-
-function sanitizeJson(rawJson: string): string {
-  try {
-    // Try parsing directly
-    JSON.parse(rawJson);
-    return rawJson; // Already valid
-  } catch {
-    // Continue to sanitization
-  }
-
-  // first, replace all newlines with \n
-  const sanitized = rawJson
-    .replace(/\n/g, '\\n')
-
-    // then, replace all backticks with \\\`
-    .replace(/`/g, '\\\`');
-
-  // Regex to find and escape the "text" field
-  const fixed = sanitized.replace(/"text"\s*:\s*"([\s\S]*?)"\s*,\s*"simple"/, (_match, group) => {
-    const escapedText = escapeForJson(group);
-    return `"text": "${escapedText}", "simple"`;
-  });
-
-  // Validate that the result is actually parseable
-  try {
-    JSON.parse(fixed);
-    return fixed;
-  } catch (e) {
-    throw new Error(`Failed to sanitize JSON: ${e.message}`);
-  }
-}
-*/
-
-/**
- * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
- *
- * @param attachments Array of Media objects containing URLs or file paths to fetch media from
- * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
- */
-/**
- * Fetches media data from given attachments.
- * @param {Media[]} attachments - Array of Media objects to fetch data from.
- * @returns {Promise<MediaData[]>} - A Promise that resolves with an array of MediaData objects.
- */
 export async function fetchMediaData(
   attachments: Media[],
 ): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
-        // Handle HTTP URLs
         const response = await fetch(attachment.url);
         if (!response.ok) {
           throw new Error(`Failed to fetch file: ${attachment.url}`);
@@ -155,12 +88,6 @@ export async function fetchMediaData(
         const mediaType = attachment.contentType || "image/png";
         return { data: mediaBuffer, mediaType };
       }
-      // if (fs.existsSync(attachment.url)) {
-      //   // Handle local file paths
-      //   const mediaBuffer = await fs.promises.readFile(path.resolve(attachment.url));
-      //   const mediaType = attachment.contentType || 'image/png';
-      //   return { data: mediaBuffer, mediaType };
-      // }
       throw new Error(
         `File not found: ${attachment.url}. Make sure the path is correct.`,
       );
@@ -195,12 +122,10 @@ export async function processAttachments(
   const processedAttachments: Media[] = [];
 
   for (const attachment of attachments) {
-    // Start with the original attachment
     const processedAttachment: Media = { ...attachment };
 
     const isRemote = /^(http|https):\/\//.test(attachment.url);
     const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
-    // Only process images that don't already have descriptions
     if (
       attachment.contentType === ContentType.IMAGE &&
       !attachment.description
@@ -217,7 +142,6 @@ export async function processAttachments(
       let imageUrl = url;
 
       if (!isRemote) {
-        // Only convert local/internal media to base64
         const res = await fetch(url);
         if (!res.ok) {
           throw new Error(`Failed to fetch image: ${res.statusText}`);
@@ -230,10 +154,25 @@ export async function processAttachments(
         imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
       }
 
-      const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-        prompt: imageDescriptionTemplate,
-        imageUrl,
-      });
+      let response: string | object | undefined;
+      try {
+        response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          prompt: imageDescriptionTemplate,
+          imageUrl,
+        });
+      } catch (err) {
+        runtime.logger.error(
+          {
+            src: "plugin:bootstrap",
+            agentId: runtime.agentId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "Error generating image description",
+        );
+        // Continue with original attachment on error
+        processedAttachments.push(processedAttachment);
+        continue;
+      }
 
       if (typeof response === "string") {
         // Parse XML response
@@ -291,9 +230,13 @@ export async function processAttachments(
         "description" in response
       ) {
         // Handle object responses for backwards compatibility
-        processedAttachment.description = response.description;
-        processedAttachment.title = response.title || "Image";
-        processedAttachment.text = response.description;
+        const responseObj = response as {
+          description?: string;
+          title?: string;
+        };
+        processedAttachment.description = responseObj.description;
+        processedAttachment.title = responseObj.title || "Image";
+        processedAttachment.text = responseObj.description;
 
         runtime.logger.debug(
           {
@@ -359,15 +302,6 @@ export async function processAttachments(
   return processedAttachments;
 }
 
-/**
- * Determines whether the agent should respond to a message.
- * Uses simple rules for obvious cases (DM, mentions, specific sources) and defers to LLM for ambiguous cases.
- *
- * @returns Object containing:
- *  - shouldRespond: boolean - whether the agent should respond (only relevant if skipEvaluation is true)
- *  - skipEvaluation: boolean - whether we can skip the LLM evaluation (decision made by simple rules)
- *  - reason: string - explanation for debugging
- */
 export function shouldRespond(
   runtime: IAgentRuntime,
   message: Memory,
@@ -393,7 +327,6 @@ export function shouldRespond(
       .filter(Boolean);
   }
 
-  // Channel types that always trigger a response (private channels)
   const alwaysRespondChannels = [
     ChannelType.DM,
     ChannelType.VOICE_DM,
@@ -401,10 +334,8 @@ export function shouldRespond(
     ChannelType.API,
   ];
 
-  // Sources that always trigger a response
   const alwaysRespondSources = ["client_chat"];
 
-  // Support runtime-configurable overrides via env settings
   const customChannels = normalizeEnvList(
     runtime.getSetting("ALWAYS_RESPOND_CHANNELS"),
   );
@@ -469,14 +400,6 @@ export function shouldRespond(
   };
 }
 
-/**
- * Handles the receipt of a reaction message and creates a memory in the designated memory manager.
- *
- * @param {Object} params - The parameters for the function.
- * @param {IAgentRuntime} params.runtime - The agent runtime object.
- * @param {Memory} params.message - The reaction message to be stored in memory.
- * @returns {void}
- */
 const reactionReceivedHandler = async ({
   runtime,
   message,
@@ -487,15 +410,6 @@ const reactionReceivedHandler = async ({
   await runtime.createMemory(message, "messages");
 };
 
-/**
- * Handles the generation of a post (like a Post) and creates a memory for it.
- *
- * @param {Object} params - The parameters for the function.
- * @param {IAgentRuntime} params.runtime - The agent runtime object.
- * @param {Memory} params.message - The post message to be processed.
- * @param {HandlerCallback} params.callback - The callback function to execute after processing.
- * @returns {Promise<void>}
- */
 const postGeneratedHandler = async ({
   runtime,
   callback,
@@ -516,7 +430,6 @@ const postGeneratedHandler = async ({
     messageServerId: userId as UUID,
   });
 
-  // Ensure timeline room exists
   await runtime.ensureRoomExists({
     id: roomId,
     name: `${runtime.character.name}'s Feed`,
@@ -549,7 +462,6 @@ const postGeneratedHandler = async ({
     "ENTITIES",
   ]);
 
-  // get xUserName
   const entity = await runtime.getEntityById(runtime.agentId);
   interface XMetadata {
     x?: {
@@ -574,7 +486,6 @@ const postGeneratedHandler = async ({
 
   let responseContent: Content | null = null;
 
-  // Retry if missing required fields
   let retries = 0;
   const maxRetries = 3;
   while (
@@ -585,10 +496,8 @@ const postGeneratedHandler = async ({
       prompt,
     });
 
-    // Parse XML
     const parsedXml = parseKeyValueXml<MessageHandlerXml>(response);
     if (parsedXml) {
-      // Normalize actions/providers to arrays (XML parser may return string or array)
       const actionsRaw = parsedXml.actions;
       const providersRaw = parsedXml.providers;
       responseContent = {
@@ -627,23 +536,19 @@ const postGeneratedHandler = async ({
     }
   }
 
-  // update stats with correct providers
   const responseContentProviders = responseContent?.providers;
   state = await runtime.composeState(message, responseContentProviders);
 
-  // Generate prompt for post content
   const postPrompt = composePromptFromState({
     state,
     template:
       runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
 
-  // Use TEXT_LARGE model as we expect structured XML text, not a JSON object
   const xmlResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: postPrompt,
   });
 
-  // Parse the XML response
   const parsedXmlResponse = parseKeyValueXml<PostCreationXml>(xmlResponseText);
 
   if (!parsedXmlResponse) {
@@ -654,42 +559,14 @@ const postGeneratedHandler = async ({
     throw new Error("Failed to parse XML response for post creation");
   }
 
-  /**
-   * Cleans up a post text by removing quotes and fixing newlines
-   */
   function cleanupPostText(text: string): string {
-    // Remove quotes
     let cleanedText = text.replace(/^['"](.*)['"]$/, "$1");
-    // Fix newlines
     cleanedText = cleanedText.replaceAll(/\\n/g, "\n\n");
     cleanedText = cleanedText.replace(/([^\n])\n([^\n])/g, "$1\n\n$2");
-
     return cleanedText;
   }
 
-  // Cleanup the post text
   const cleanedText = cleanupPostText(parsedXmlResponse.post ?? "");
-
-  // Prepare media if included
-  // const mediaData: MediaData[] = [];
-  // if (jsonResponse.imagePrompt) {
-  // 	const images = await runtime.useModel(ModelType.IMAGE, {
-  // 		prompt: jsonResponse.imagePrompt,
-  // 		output: "no-schema",
-  // 	});
-  // 	try {
-  // 		// Convert image prompt to Media format for fetchMediaData
-  // 		const imagePromptMedia: any[] = images
-
-  // 		// Fetch media using the utility function
-  // 		const fetchedMedia = await fetchMediaData(imagePromptMedia);
-  // 		mediaData.push(...fetchedMedia);
-  // 	} catch (error) {
-  // 		runtime.logger.error("Error fetching media for post:", error);
-  // 	}
-  // }
-
-  // have we posted it before?
   const stateData = state.data;
   const stateDataProviders = stateData?.providers;
   const RM =
@@ -774,18 +651,6 @@ const postGeneratedHandler = async ({
       await callback(message.content);
     }
   }
-
-  // Process the actions and execute the callback
-  // await runtime.processActions(message, responseMessages, state, callback);
-
-  // // Run any configured evaluators
-  // await runtime.evaluate(
-  // 	message,
-  // 	state,
-  // 	true, // Post generation is always a "responding" scenario
-  // 	callback,
-  // 	responseMessages,
-  // );
 };
 
 /**
@@ -837,7 +702,6 @@ const syncSingleUser = async (
   const roomId = createUniqueUuid(runtime, channelId);
   const worldId = createUniqueUuid(runtime, messageServerId);
 
-  // Create world with ownership metadata for DM connections (onboarding)
   const worldMetadata =
     type === ChannelType.DM
       ? {
@@ -876,7 +740,6 @@ const syncSingleUser = async (
     metadata: worldMetadata,
   });
 
-  // Verify the world was created with proper metadata
   const createdWorld = await runtime.getWorld(worldId);
   runtime.logger.info(
     {
@@ -932,13 +795,6 @@ const handleServerSync = async ({
   }
 };
 
-/**
- * Handles control messages for enabling or disabling UI elements in the frontend
- * @param {Object} params - Parameters for the handler
- * @param {IAgentRuntime} params.runtime - The runtime instance
- * @param {Object} params.message - The control message
- * @param {string} params.source - Source of the message
- */
 const controlMessageHandler = async ({
   runtime,
   message,
@@ -953,10 +809,6 @@ const controlMessageHandler = async ({
     "Processing control message",
   );
 
-  // Here we would use a WebSocket service to send the control message to the frontend
-  // This would typically be handled by a registered service with sendMessage capability
-
-  // Get any registered WebSocket service
   const serviceNames = Array.from(runtime.getAllServices().keys()) as string[];
   const websocketServiceName = serviceNames.find(
     (name: string) =>
@@ -973,7 +825,6 @@ const controlMessageHandler = async ({
       }) => Promise<void>;
     }
     if (websocketService && "sendMessage" in websocketService) {
-      // Send the control message through the WebSocket service
       await (websocketService as WebSocketServiceWithSendMessage).sendMessage({
         type: "controlMessage",
         payload: {
@@ -1358,8 +1209,6 @@ const basic = {
   services: [TaskService, EmbeddingGenerationService] as ServiceClass[],
 };
 
-// Extended capabilities - opt-in
-// Includes rolodex/contact management, relationship tracking, and follow-up scheduling
 const extended = {
   providers: [
     providers.choiceProvider,
@@ -1405,11 +1254,7 @@ const autonomyCapabilities = {
   routes: autonomy.autonomyRoutes,
 };
 
-/**
- * Create a bootstrap plugin with the specified capability configuration.
- */
 export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
-  // Filter out character provider if skipCharacterProvider is set
   const basicProviders = config.skipCharacterProvider
     ? basic.providers.filter((p) => p.name !== "CHARACTER")
     : basic.providers;
@@ -1453,5 +1298,4 @@ export {
   autonomyCapabilities,
 };
 
-// Export autonomy components for direct access
 export * from "./autonomy/index.ts";

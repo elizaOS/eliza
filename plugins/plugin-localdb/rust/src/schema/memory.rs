@@ -1,9 +1,5 @@
 #![allow(missing_docs)]
-//! Memory schema for elizaOS database
-//!
-//! Corresponds to the TypeScript memoryTable in packages/plugin-sql/typescript/schema/memory.ts
 
-/// SQL for creating the memories table
 pub const CREATE_MEMORIES_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS memories (
     id UUID PRIMARY KEY NOT NULL,
@@ -19,7 +15,6 @@ CREATE TABLE IF NOT EXISTS memories (
 )
 "#;
 
-/// SQL for creating indexes on memories table
 pub const CREATE_MEMORIES_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_memories_type_room ON memories (type, room_id);
 CREATE INDEX IF NOT EXISTS idx_memories_world_id ON memories (world_id);
@@ -28,7 +23,6 @@ CREATE INDEX IF NOT EXISTS idx_memories_document_id ON memories ((metadata->>'do
 CREATE INDEX IF NOT EXISTS idx_fragments_order ON memories ((metadata->>'documentId'), (metadata->>'position'));
 "#;
 
-/// SQL for memory constraints
 pub const CREATE_MEMORIES_CONSTRAINTS: &str = r#"
 ALTER TABLE memories 
 ADD CONSTRAINT IF NOT EXISTS fragment_metadata_check CHECK (
@@ -66,7 +60,6 @@ pub struct MemoryRecord {
 }
 
 impl MemoryRecord {
-    /// Convert to elizaOS Memory type
     pub fn to_memory(&self) -> elizaos::Memory {
         use elizaos::{Content, Memory, MemoryMetadata, UUID};
 
@@ -96,7 +89,6 @@ impl MemoryRecord {
         }
     }
 
-    /// Convert from elizaOS Memory type
     pub fn from_memory(memory: &elizaos::Memory, table_name: &str) -> Self {
         MemoryRecord {
             id: memory

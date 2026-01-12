@@ -1,10 +1,3 @@
-"""
-Attachments Provider - Provides context about message attachments.
-
-This provider extracts and formats information about any media
-attachments in the current message.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,7 +9,6 @@ if TYPE_CHECKING:
 
 
 def format_attachment(attachment: dict[str, str]) -> str:
-    """Format a single attachment for display."""
     att_type = attachment.get("type", "unknown")
     url = attachment.get("url", "")
     title = attachment.get("title", "")
@@ -38,15 +30,8 @@ async def get_attachments(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get attachment information from the current message.
-
-    Returns formatted information about any media attachments
-    (images, files, etc.) in the message.
-    """
     attachments: list[dict[str, str]] = []
 
-    # Extract attachments from message content
     if message.content and hasattr(message.content, "attachments"):
         raw_attachments = message.content.attachments or []
         for att in raw_attachments:
@@ -58,13 +43,8 @@ async def get_attachments(
     if not attachments:
         return ProviderResult(
             text="",
-            values={
-                "hasAttachments": False,
-                "attachmentCount": 0,
-            },
-            data={
-                "attachments": [],
-            },
+            values={"hasAttachments": False, "attachmentCount": 0},
+            data={"attachments": []},
         )
 
     formatted_attachments = "\n".join(format_attachment(att) for att in attachments)
@@ -84,7 +64,6 @@ async def get_attachments(
     )
 
 
-# Create the provider instance
 attachments_provider = Provider(
     name="ATTACHMENTS",
     description="Media attachments in the current message",

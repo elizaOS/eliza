@@ -12,9 +12,6 @@ import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlanningService } from "../services/planning-service";
 
-/**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
- */
 async function createTestRuntime(): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
@@ -95,10 +92,6 @@ function createTestPlanningContext(): PlanningContext {
   };
 }
 
-/**
- * Integration tests for the planning system
- * Tests the complete workflow from planning to execution
- */
 describe("Planning Integration Tests", () => {
   let runtime: IAgentRuntime;
   let cleanup: () => Promise<void>;

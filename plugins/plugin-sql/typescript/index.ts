@@ -8,16 +8,6 @@ import { PGliteClientManager } from "./pglite/manager";
 import * as schema from "./schema";
 import { resolvePgliteDir } from "./utils";
 
-/**
- * Global Singleton Instances (Package-scoped)
- *
- * These instances are stored globally within the package scope to ensure a single shared instance across multiple adapters within this package.
- * This approach prevents multiple instantiations due to module caching or multiple imports within the same process.
- *
- * IMPORTANT:
- * - Do NOT directly modify these instances outside their intended initialization logic.
- * - These instances are NOT exported and should NOT be accessed outside this package.
- */
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 
 interface GlobalSingletons {
@@ -25,7 +15,6 @@ interface GlobalSingletons {
   postgresConnectionManager?: PostgresConnectionManager;
 }
 
-// Type assertion needed because globalThis doesn't include symbol keys in its type definition
 const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
@@ -34,17 +23,6 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
-/**
- * Creates a database adapter based on the provided configuration.
- * If a postgresUrl is provided in the config, a PgDatabaseAdapter is initialized using the PostgresConnectionManager.
- * If no postgresUrl is provided, a PgliteDatabaseAdapter is initialized using PGliteClientManager with the dataDir from the config.
- *
- * @param {object} config - The configuration object.
- * @param {string} [config.dataDir] - The directory where data is stored. Defaults to "./.eliza/.elizadb".
- * @param {string} [config.postgresUrl] - The URL for the PostgreSQL database.
- * @param {UUID} agentId - The unique identifier for the agent.
- * @returns {IDatabaseAdapter} The created database adapter.
- */
 export function createDatabaseAdapter(
   config: {
     dataDir?: string;
@@ -83,10 +61,8 @@ export function createDatabaseAdapter(
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
 
-  // Only resolve PGLite directory when we're actually using PGLite
   const dataDir = resolvePgliteDir(config.dataDir);
 
-  // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
   if (dataDir && !dataDir.includes("://")) {
     mkdirSync(dataDir, { recursive: true });
   }
@@ -113,8 +89,6 @@ export const plugin: Plugin = {
       "plugin-sql init starting"
     );
 
-    // Prefer direct check for existing adapter (avoid readiness heuristics)
-    // AgentRuntime has a public adapter property
     interface RuntimeWithAdapter {
       adapter?: IDatabaseAdapter;
       hasDatabaseAdapter?: () => boolean;
@@ -150,9 +124,7 @@ export const plugin: Plugin = {
       "No database adapter found, proceeding to register"
     );
 
-    // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting("POSTGRES_URL");
-    // Only support PGLITE_DATA_DIR going forward
     const dataDir = runtime.getSetting("PGLITE_DATA_DIR");
 
     const dbAdapter = createDatabaseAdapter(
@@ -175,7 +147,6 @@ export const plugin: Plugin = {
 
 export default plugin;
 
-// Export additional utilities that may be needed by consumers
 export { DatabaseMigrationService } from "./migration-service";
 export {
   applyRLSToNewTables,

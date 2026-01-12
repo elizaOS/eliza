@@ -1,7 +1,3 @@
-/**
- * Action to execute a custom action in a Roblox game
- */
-
 import {
   type Action,
   type ActionExample,
@@ -63,9 +59,6 @@ const executeGameActionExamples: ActionExample[][] = [
   ],
 ];
 
-/**
- * Known game actions and their parameter patterns
- */
 interface GameActionConfig {
   name: string;
   patterns: RegExp[];
@@ -105,9 +98,6 @@ const KNOWN_ACTIONS: GameActionConfig[] = [
   },
 ];
 
-/**
- * Parse a message to extract action name and parameters
- */
 function parseGameAction(
   message: string
 ): { actionName: string; parameters: Record<string, unknown> } | null {
@@ -123,7 +113,6 @@ function parseGameAction(
     }
   }
 
-  // Default: treat as a generic action request
   const genericMatch = message.match(/(?:execute|run|do)\s+(\w+)/i);
   if (genericMatch) {
     return {
@@ -135,9 +124,6 @@ function parseGameAction(
   return null;
 }
 
-/**
- * Action to execute a custom action in a Roblox game
- */
 const executeGameAction: Action = {
   name: "EXECUTE_ROBLOX_ACTION",
   similes: ["ROBLOX_ACTION", "GAME_ACTION", "DO_IN_GAME", "TRIGGER_EVENT", "RUN_GAME_COMMAND"],
@@ -174,7 +160,6 @@ const executeGameAction: Action = {
         };
       }
 
-      // Extract action details from state or message
       const messageContent =
         (state?.message as string) || (message.content as { text?: string }).text || "";
 
@@ -196,11 +181,9 @@ const executeGameAction: Action = {
 
       const { actionName, parameters } = parsedAction;
 
-      // Extract target player IDs if applicable
       const playerIdMatch = messageContent.match(/player\s*(\d+)/i);
       const targetPlayerIds = playerIdMatch ? [parseInt(playerIdMatch[1], 10)] : undefined;
 
-      // Execute the action
       await service.executeAction(runtime.agentId, actionName, parameters, targetPlayerIds);
 
       logger.info({ actionName, parameters, targetPlayerIds }, "Executed Roblox game action");

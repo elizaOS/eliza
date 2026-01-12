@@ -1,9 +1,3 @@
-"""
-RSS Client
-
-Async HTTP client for fetching and parsing RSS/Atom feeds.
-"""
-
 from __future__ import annotations
 
 import re
@@ -19,27 +13,13 @@ if TYPE_CHECKING:
 
 
 class RssClientError(Exception):
-    """Base exception for RSS client errors."""
-
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
 
 
 class RssClient:
-    """
-    Async RSS feed client.
-
-    Fetches and parses RSS/Atom feeds using httpx.
-    """
-
     def __init__(self, config: RssConfig | None = None) -> None:
-        """
-        Initialize the RSS client.
-
-        Args:
-            config: Optional RSS configuration.
-        """
         self._config = config or RssConfig()
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self._config.timeout),
@@ -51,7 +31,6 @@ class RssClient:
         )
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._client.aclose()
 
     async def __aenter__(self) -> RssClient:
@@ -61,18 +40,6 @@ class RssClient:
         await self.close()
 
     async def fetch_feed(self, url: str) -> RssFeed:
-        """
-        Fetch and parse an RSS/Atom feed.
-
-        Args:
-            url: The feed URL to fetch.
-
-        Returns:
-            Parsed RssFeed object.
-
-        Raises:
-            RssClientError: If the request fails or feed cannot be parsed.
-        """
         try:
             response = await self._client.get(url)
             response.raise_for_status()
@@ -96,30 +63,12 @@ class RssClient:
             raise RssClientError(f"Request error fetching {url}: {e}") from e
 
     async def fetch_feed_safe(self, url: str) -> RssFeed | None:
-        """
-        Fetch and parse a feed, returning None on error.
-
-        Args:
-            url: The feed URL to fetch.
-
-        Returns:
-            Parsed RssFeed object or None on error.
-        """
         try:
             return await self.fetch_feed(url)
         except RssClientError:
             return None
 
     async def validate_feed(self, url: str) -> tuple[bool, str]:
-        """
-        Validate that a URL points to a valid RSS/Atom feed.
-
-        Args:
-            url: The URL to validate.
-
-        Returns:
-            Tuple of (is_valid, message).
-        """
         try:
             feed = await self.fetch_feed(url)
             if feed.title:
@@ -130,42 +79,23 @@ class RssClient:
 
 
 def extract_urls(text: str) -> list[str]:
-    """
-    Extract all URLs from a block of text.
-
-    - Supports http(s)://, ftp://, and schemeless "www." links
-    - Strips trailing punctuation
-    - Normalizes and deduplicates results
-
-    Args:
-        text: The text to extract URLs from.
-
-    Returns:
-        List of normalized URL strings.
-    """
     url_pattern = re.compile(r'(?:(?:https?|ftp)://|www\.)[^\s<>"\'`]+', re.IGNORECASE)
     candidates = url_pattern.findall(text)
 
     results: list[str] = []
     seen: set[str] = set()
-
     trailing_punct = re.compile(r'[)\]}>,.;!?:\'"\u2026]$')
 
     for raw in candidates:
-        # Trim leading wrappers
         candidate = re.sub(r'^[(\[{<\'"]+', "", raw)
-
-        # Add scheme if missing
         with_scheme = f"http://{candidate}" if candidate.startswith("www.") else candidate
 
-        # Always strip common trailing punctuation first
         while with_scheme and trailing_punct.search(with_scheme):
             with_scheme = with_scheme[:-1]
 
         if not with_scheme or not _is_valid_url(with_scheme):
             continue
 
-        # Normalize
         try:
             from urllib.parse import urlparse, urlunparse
 
@@ -181,7 +111,6 @@ def extract_urls(text: str) -> list[str]:
 
 
 def _is_valid_url(url: str) -> bool:
-    """Check if a string is a valid URL."""
     try:
         from urllib.parse import urlparse
 
@@ -192,15 +121,6 @@ def _is_valid_url(url: str) -> bool:
 
 
 def format_relative_time(timestamp_ms: int) -> str:
-    """
-    Format a relative time string (e.g., "5 minutes ago").
-
-    Args:
-        timestamp_ms: Timestamp in milliseconds.
-
-    Returns:
-        Human-readable relative time string.
-    """
     import time
 
     now_ms = int(time.time() * 1000)

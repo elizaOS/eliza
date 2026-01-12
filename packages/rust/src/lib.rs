@@ -53,7 +53,9 @@ pub use types::agent::{Agent, AgentStatus, Bio, Character};
 pub use types::primitives::{Content, Metadata, UUID};
 
 // Re-export environment types (entities, rooms, worlds, etc.)
-pub use types::environment::{ChannelType, Component, Entity, Relationship, Room, World, WorldMetadata};
+pub use types::environment::{
+    ChannelType, Component, Entity, Relationship, Room, World, WorldMetadata,
+};
 
 // Re-export memory types
 pub use types::memory::{Memory, MemoryMetadata};

@@ -1,24 +1,4 @@
 #![allow(missing_docs)]
-//! PDF Plugin for elizaOS
-//!
-//! This crate provides PDF reading and text extraction for elizaOS agents.
-//!
-//! # Example
-//!
-//! ```rust,no_run
-//! use elizaos_plugin_pdf::{PdfClient, PdfExtractionOptions};
-//!
-//! # async fn example() -> anyhow::Result<()> {
-//! let client = PdfClient::new();
-//!
-//! let pdf_bytes = std::fs::read("document.pdf")?;
-//! let text = client.extract_text(&pdf_bytes, None).await?;
-//! println!("Extracted: {}", text);
-//! # Ok(())
-//! # }
-//! ```
-
-#![warn(missing_docs)]
 
 pub mod client;
 pub mod error;
@@ -47,7 +27,6 @@ impl PdfPlugin {
         }
     }
 
-    /// Extract text from PDF bytes.
     pub async fn extract_text(
         &self,
         pdf_bytes: &[u8],
@@ -65,7 +44,6 @@ impl PdfPlugin {
         self.client.extract_text_from_file(file_path, options).await
     }
 
-    /// Convert PDF to text with full result information.
     pub async fn convert_to_text(
         &self,
         pdf_bytes: &[u8],
@@ -79,12 +57,10 @@ impl PdfPlugin {
         self.client.get_document_info(pdf_bytes).await
     }
 
-    /// Get the number of pages in a PDF.
     pub async fn get_page_count(&self, pdf_bytes: &[u8]) -> Result<usize> {
         self.client.get_page_count(pdf_bytes).await
     }
 
-    /// Get the underlying client for advanced operations.
     pub fn client(&self) -> &PdfClient {
         &self.client
     }
@@ -96,7 +72,6 @@ impl Default for PdfPlugin {
     }
 }
 
-/// Create a PDF plugin instance.
 pub fn get_pdf_plugin() -> PdfPlugin {
     PdfPlugin::new()
 }

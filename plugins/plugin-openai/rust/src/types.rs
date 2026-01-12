@@ -319,7 +319,7 @@ impl ImageDescriptionParams {
 }
 
 /// Parameters for audio transcription.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct TranscriptionParams {
     /// Model to use.
     pub model: Option<String>,
@@ -331,19 +331,6 @@ pub struct TranscriptionParams {
     pub temperature: Option<f32>,
     /// Response format.
     pub response_format: Option<TranscriptionResponseFormat>,
-}
-
-
-impl Default for TranscriptionParams {
-    fn default() -> Self {
-        Self {
-            model: None,
-            language: None,
-            prompt: None,
-            temperature: None,
-            response_format: None,
-        }
-    }
 }
 
 /// Parameters for text-to-speech.

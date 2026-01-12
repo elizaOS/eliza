@@ -157,11 +157,8 @@ class LinkChecker:
     
     def check_file_links(self, file_path: Path) -> List[Dict]:
         """Check all links in a file"""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except Exception as e:
-            return [{"error": f"Could not read file: {e}"}]
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
         
         links = self.extract_links(content)
         results = []
@@ -207,11 +204,8 @@ class LinkChecker:
         if link_result["valid"] or not link_result["suggestion"]:
             return False
         
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except Exception as e:
-            return False
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
         
         link = link_result["link"]
         old_url = link["url"]
@@ -231,21 +225,18 @@ class LinkChecker:
         
         # Only apply if content changed
         if new_content != content:
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(new_content)
-                
-                # Track the fix
-                self.fixes_applied.append({
-                    "file": str(file_path),
-                    "old_url": old_url,
-                    "new_url": new_url,
-                    "confidence": link_result["confidence"],
-                    "type": link_result["link_type"]
-                })
-                return True
-            except Exception as e:
-                return False
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            
+            # Track the fix
+            self.fixes_applied.append({
+                "file": str(file_path),
+                "old_url": old_url,
+                "new_url": new_url,
+                "confidence": link_result["confidence"],
+                "type": link_result["link_type"]
+            })
+            return True
         
         return False
     

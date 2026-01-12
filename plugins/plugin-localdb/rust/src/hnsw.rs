@@ -1,35 +1,22 @@
 #![allow(missing_docs)]
-//! Simple HNSW (Hierarchical Navigable Small World) implementation.
-//!
-//! This is a basic implementation for local testing and development.
-//! Not optimized for large-scale production use.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
 
-/// Result of a vector similarity search.
 #[derive(Debug, Clone)]
 pub struct VectorSearchResult {
-    /// ID of the vector
     pub id: String,
-    /// Cosine distance (0 = identical, 2 = opposite)
     pub distance: f32,
-    /// Cosine similarity (1 = identical, -1 = opposite)
     pub similarity: f32,
 }
 
-/// Configuration for HNSW index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HNSWConfig {
-    /// Max connections per layer
     pub m: usize,
-    /// Size of dynamic candidate list during construction
     pub ef_construction: usize,
-    /// Size of dynamic candidate list during search
     pub ef_search: usize,
-    /// Level multiplier
     pub ml: f32,
 }
 
@@ -45,7 +32,6 @@ impl Default for HNSWConfig {
     }
 }
 
-/// A node in the HNSW graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct HNSWNode {
     id: String,
@@ -54,10 +40,8 @@ struct HNSWNode {
     neighbors: HashMap<usize, HashSet<String>>,
 }
 
-/// Serialized HNSW index for persistence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HNSWIndex {
-    /// Embedding dimension
     pub dimension: usize,
     config: HNSWConfig,
     nodes: HashMap<String, HNSWNode>,
@@ -65,7 +49,6 @@ pub struct HNSWIndex {
     max_level: usize,
 }
 
-/// Candidate for nearest neighbor search.
 #[derive(Debug, Clone)]
 struct Candidate {
     id: String,
@@ -93,7 +76,6 @@ impl Ord for Candidate {
     }
 }
 
-/// Calculate cosine distance between two vectors.
 fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         return 1.0;
@@ -117,7 +99,6 @@ fn cosine_distance(a: &[f32], b: &[f32]) -> f32 {
     1.0 - (dot_product / magnitude)
 }
 
-/// Simple HNSW implementation for vector similarity search.
 pub struct SimpleHNSW {
     nodes: HashMap<String, HNSWNode>,
     entry_point: Option<String>,
@@ -127,7 +108,6 @@ pub struct SimpleHNSW {
 }
 
 impl SimpleHNSW {
-    /// Create a new HNSW index.
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
@@ -138,12 +118,10 @@ impl SimpleHNSW {
         }
     }
 
-    /// Initialize the HNSW index with a given dimension.
     pub fn init(&mut self, dimension: usize) {
         self.dimension = dimension;
     }
 
-    /// Load from a serialized index.
     pub fn load_from_index(&mut self, index: HNSWIndex) {
         self.dimension = index.dimension;
         self.config = index.config;
@@ -160,7 +138,6 @@ impl SimpleHNSW {
         level as usize
     }
 
-    /// Add a vector to the index.
     pub fn add(&mut self, id: String, vector: Vec<f32>) -> Result<()> {
         if vector.len() != self.dimension {
             anyhow::bail!(
@@ -170,7 +147,6 @@ impl SimpleHNSW {
             );
         }
 
-        // Update existing node
         if let Some(existing) = self.nodes.get_mut(&id) {
             existing.vector = vector;
             return Ok(());
@@ -184,13 +160,11 @@ impl SimpleHNSW {
             neighbors: HashMap::new(),
         };
 
-        // Initialize neighbor sets for each level
         for l in 0..=level {
             new_node.neighbors.insert(l, HashSet::new());
         }
 
         if self.entry_point.is_none() {
-            // First node
             self.entry_point = Some(id.clone());
             self.max_level = level;
             self.nodes.insert(id, new_node);
@@ -199,14 +173,12 @@ impl SimpleHNSW {
 
         let mut current = self.entry_point.clone().unwrap();
 
-        // Search from top level down
         for l in (level + 1..=self.max_level).rev() {
             if let Some(closest) = self.search_layer(&vector, &current, 1, l).first() {
                 current = closest.id.clone();
             }
         }
 
-        // Insert at each level
         for l in (0..=level.min(self.max_level)).rev() {
             let neighbors = self.search_layer(&vector, &current, self.config.ef_construction, l);
             let selected: Vec<_> = neighbors.into_iter().take(self.config.m).collect();
@@ -214,13 +186,11 @@ impl SimpleHNSW {
             for neighbor in &selected {
                 new_node.neighbors.get_mut(&l).unwrap().insert(neighbor.id.clone());
 
-                // First pass: add connections
                 if let Some(neighbor_node) = self.nodes.get_mut(&neighbor.id) {
                     neighbor_node.neighbors.entry(l).or_default().insert(id.clone());
                 }
             }
 
-            // Second pass: prune if over limit (separate to avoid borrow issues)
             for neighbor in &selected {
                 let should_prune = if let Some(neighbor_node) = self.nodes.get(&neighbor.id) {
                     neighbor_node.neighbors.get(&l).map_or(false, |n| n.len() > self.config.m)
@@ -229,7 +199,6 @@ impl SimpleHNSW {
                 };
 
                 if should_prune {
-                    // Get the data we need before mutating
                     let (neighbor_vector, current_neighbors) = {
                         let neighbor_node = self.nodes.get(&neighbor.id).unwrap();
                         (
@@ -259,7 +228,6 @@ impl SimpleHNSW {
 
         self.nodes.insert(id.clone(), new_node);
 
-        // Update entry point if needed
         if level > self.max_level {
             self.max_level = level;
             self.entry_point = Some(id);
@@ -296,7 +264,6 @@ impl SimpleHNSW {
         }];
 
         while let Some(current) = candidates.pop() {
-            // Get furthest result
             if let Some(furthest) = results.iter().max_by(|a, b| {
                 a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
             }) {
@@ -378,14 +345,12 @@ impl SimpleHNSW {
         candidates
     }
 
-    /// Remove a vector from the index.
     pub fn remove(&mut self, id: &str) {
         let node = match self.nodes.remove(id) {
             Some(n) => n,
             None => return,
         };
 
-        // Remove from all neighbors
         for (level, neighbors) in &node.neighbors {
             for neighbor_id in neighbors {
                 if let Some(neighbor_node) = self.nodes.get_mut(neighbor_id) {
@@ -396,13 +361,11 @@ impl SimpleHNSW {
             }
         }
 
-        // Update entry point if needed
         if self.entry_point.as_deref() == Some(id) {
             if self.nodes.is_empty() {
                 self.entry_point = None;
                 self.max_level = 0;
             } else {
-                // Find new entry point
                 let (new_entry, new_level) = self
                     .nodes
                     .iter()
@@ -415,7 +378,6 @@ impl SimpleHNSW {
         }
     }
 
-    /// Search for nearest neighbors.
     pub fn search(&self, query: &[f32], k: usize, threshold: f32) -> Vec<VectorSearchResult> {
         if self.entry_point.is_none() || self.nodes.is_empty() {
             return Vec::new();
@@ -427,14 +389,12 @@ impl SimpleHNSW {
 
         let mut current = self.entry_point.clone().unwrap();
 
-        // Search from top to level 1
         for l in (1..=self.max_level).rev() {
             if let Some(closest) = self.search_layer(query, &current, 1, l).first() {
                 current = closest.id.clone();
             }
         }
 
-        // Search at level 0
         let results = self.search_layer(query, &current, k.max(self.config.ef_search), 0);
 
         results
@@ -449,7 +409,6 @@ impl SimpleHNSW {
             .collect()
     }
 
-    /// Serialize the index for persistence.
     pub fn serialize(&self) -> HNSWIndex {
         HNSWIndex {
             dimension: self.dimension,
@@ -460,7 +419,6 @@ impl SimpleHNSW {
         }
     }
 
-    /// Get the number of vectors in the index.
     pub fn size(&self) -> usize {
         self.nodes.len()
     }

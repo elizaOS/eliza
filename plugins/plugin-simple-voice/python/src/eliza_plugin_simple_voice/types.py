@@ -1,23 +1,12 @@
-"""Type definitions for the Simple Voice plugin."""
-
 from dataclasses import dataclass
 
 
 @dataclass
 class SamTTSOptions:
-    """SAM TTS Voice Configuration."""
-
     speed: int = 72
-    """Speaking speed (20-200)"""
-
     pitch: int = 64
-    """Voice pitch (0-255)"""
-
     throat: int = 128
-    """Throat resonance (0-255)"""
-
     mouth: int = 128
-    """Mouth articulation (0-255)"""
 
 
 DEFAULT_SAM_OPTIONS = SamTTSOptions()

@@ -1,5 +1,3 @@
-"""Tests for the Linear service."""
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,8 +10,6 @@ from elizaos_plugin_linear.types import (
 
 
 class TestRuntime:
-    """Test runtime for testing."""
-
     def __init__(self, settings: dict[str, str | None] | None = None) -> None:
         self._settings = settings or {}
 
@@ -23,7 +19,6 @@ class TestRuntime:
 
 @pytest.fixture
 def test_runtime() -> TestRuntime:
-    """Create a test runtime with test settings."""
     return TestRuntime(
         {
             "LINEAR_API_KEY": "test-api-key",
@@ -33,17 +28,13 @@ def test_runtime() -> TestRuntime:
 
 
 class TestLinearService:
-    """Tests for LinearService."""
-
     def test_init_without_api_key_raises_error(self) -> None:
-        """Test that initialization without API key raises error."""
         runtime = TestRuntime()
 
         with pytest.raises(LinearAuthenticationError, match="Linear API key is required"):
             LinearService(runtime)
 
     def test_init_with_api_key_succeeds(self, test_runtime: TestRuntime) -> None:
-        """Test that initialization with API key succeeds."""
         service = LinearService(test_runtime)
 
         assert service.config.api_key == "test-api-key"
@@ -51,7 +42,6 @@ class TestLinearService:
 
     @pytest.mark.asyncio
     async def test_start_validates_connection(self, test_runtime: TestRuntime) -> None:
-        """Test that start validates the API connection."""
         with patch.object(LinearService, "_validate_connection", new_callable=AsyncMock):
             service = await LinearService.start(test_runtime)
 
@@ -59,14 +49,11 @@ class TestLinearService:
             service._validate_connection.assert_called_once()  # type: ignore
 
     def test_activity_log_operations(self, test_runtime: TestRuntime) -> None:
-        """Test activity log operations."""
         service = LinearService(test_runtime)
 
-        # Clear log
         service.clear_activity_log()
         assert len(service.get_activity_log()) == 0
 
-        # Add activity via internal method
         service._log_activity("test_action", "issue", "test-123", {"test": "data"}, True)
 
         activity = service.get_activity_log()
@@ -75,25 +62,20 @@ class TestLinearService:
         assert activity[0].resource_type == "issue"
         assert activity[0].success is True
 
-        # Clear again
         service.clear_activity_log()
         assert len(service.get_activity_log()) == 0
 
     def test_activity_log_limit(self, test_runtime: TestRuntime) -> None:
-        """Test activity log respects limit."""
         service = LinearService(test_runtime)
         service.clear_activity_log()
 
-        # Add more than limit
         for i in range(15):
             service._log_activity(f"action_{i}", "issue", f"id-{i}", {}, True)
 
-        # Get with limit
         activity = service.get_activity_log(limit=5)
         assert len(activity) == 5
 
     def test_activity_log_filter(self, test_runtime: TestRuntime) -> None:
-        """Test activity log filtering."""
         service = LinearService(test_runtime)
         service.clear_activity_log()
 
@@ -101,7 +83,6 @@ class TestLinearService:
         service._log_activity("update_issue", "issue", "id-2", {}, False)
         service._log_activity("create_issue", "issue", "id-3", {}, True)
 
-        # Filter by success
         successful = service.get_activity_log(filter_by={"success": True})
         assert len(successful) == 2
 
@@ -110,7 +91,6 @@ class TestLinearService:
 
     @pytest.mark.asyncio
     async def test_get_teams(self, test_runtime: TestRuntime) -> None:
-        """Test get teams."""
         service = LinearService(test_runtime)
 
         mock_response = {
@@ -140,7 +120,6 @@ class TestLinearService:
 
     @pytest.mark.asyncio
     async def test_create_issue(self, test_runtime: TestRuntime) -> None:
-        """Test create issue."""
         service = LinearService(test_runtime)
 
         mock_response = {
@@ -172,12 +151,6 @@ class TestLinearService:
             assert issue["identifier"] == "ENG-123"
             assert issue["title"] == "Test Issue"
 
-            # Check activity was logged
             activity = service.get_activity_log()
             assert len(activity) == 1
             assert activity[0].action == "create_issue"
-
-
-
-
-

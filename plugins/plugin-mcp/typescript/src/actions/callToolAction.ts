@@ -1,11 +1,10 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import type { McpService } from "../service";
 import { MCP_SERVICE_NAME, type McpServer } from "../types";
@@ -67,13 +66,9 @@ export const callToolAction: Action = {
         mcpProvider,
       });
       if (!toolSelectionName || toolSelectionName.noToolAvailable) {
-        logger.warn("[NO_TOOL_AVAILABLE] No appropriate tool available for the request");
         return await handleNoToolAvailable(callback, toolSelectionName);
       }
-      const { serverName, toolName, reasoning } = toolSelectionName;
-      logger.info(
-        `[CALLING] Calling tool "${serverName}/${toolName}" on server with reasoning: "${reasoning}"`
-      );
+      const { serverName, toolName } = toolSelectionName;
 
       const toolSelectionArgument = await createToolSelectionArgument({
         runtime,
@@ -84,14 +79,8 @@ export const callToolAction: Action = {
         toolSelectionName,
       });
       if (!toolSelectionArgument) {
-        logger.warn(
-          "[NO_TOOL_SELECTION_ARGUMENT] No appropriate tool selection argument available"
-        );
         return await handleNoToolAvailable(callback, toolSelectionName);
       }
-      logger.info(
-        `[SELECTED] Tool Selection result:\n${JSON.stringify(toolSelectionArgument, null, 2)}`
-      );
 
       const result = await mcpService.callTool(
         serverName,

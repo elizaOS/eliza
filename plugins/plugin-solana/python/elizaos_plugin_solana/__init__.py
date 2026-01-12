@@ -6,6 +6,7 @@ This package provides:
 - SOL and SPL token transfers
 - Token swaps via Jupiter
 - Portfolio tracking and balance queries
+- elizaOS actions and providers
 
 Example:
     >>> from elizaos_plugin_solana import SolanaClient, WalletConfig
@@ -40,6 +41,23 @@ from elizaos_plugin_solana.types import (
     WalletPortfolio,
 )
 
+# Actions
+from elizaos_plugin_solana.actions import (
+    SWAP_ACTION,
+    TRANSFER_ACTION,
+    SwapActionResult,
+    TransferActionResult,
+    handle_swap,
+    handle_transfer,
+)
+
+# Providers
+from elizaos_plugin_solana.providers import (
+    WALLET_PROVIDER,
+    WalletProviderResult,
+    get_wallet_portfolio,
+)
+
 __version__ = "1.2.6"
 __all__ = [
     # Client
@@ -68,6 +86,17 @@ __all__ = [
     "TransactionError",
     "InsufficientBalanceError",
     "SwapError",
+    # Actions
+    "SWAP_ACTION",
+    "TRANSFER_ACTION",
+    "SwapActionResult",
+    "TransferActionResult",
+    "handle_swap",
+    "handle_transfer",
+    # Providers
+    "WALLET_PROVIDER",
+    "WalletProviderResult",
+    "get_wallet_portfolio",
 ]
 
 # Plugin constants

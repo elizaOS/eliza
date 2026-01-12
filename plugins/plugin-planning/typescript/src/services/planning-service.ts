@@ -73,9 +73,6 @@ interface WorkingMemory {
   [key: string]: unknown;
 }
 
-/**
- * Working Memory Implementation for Plan Execution
- */
 class PlanWorkingMemory {
   private memory = new Map<string, unknown>();
   [key: string]: unknown;
@@ -109,10 +106,6 @@ class PlanWorkingMemory {
   }
 }
 
-/**
- * Production-Ready Planning Service Implementation
- * Provides comprehensive planning capabilities with full runtime integration
- */
 export class PlanningService extends Service {
   static serviceType = "planning";
 
@@ -136,9 +129,6 @@ export class PlanningService extends Service {
     return service;
   }
 
-  /**
-   * Creates a simple plan for basic message handling (backwards compatibility)
-   */
   async createSimplePlan(
     _runtime: IAgentRuntime,
     message: Memory,
@@ -218,9 +208,6 @@ export class PlanningService extends Service {
     }
   }
 
-  /**
-   * Creates a comprehensive multi-step plan using LLM planning
-   */
   async createComprehensivePlan(
     runtime: IAgentRuntime,
     context: PlanningContext,
@@ -272,9 +259,6 @@ export class PlanningService extends Service {
     }
   }
 
-  /**
-   * Executes a plan with full runtime integration and error handling
-   */
   async executePlan(
     runtime: IAgentRuntime,
     plan: ActionPlan,
@@ -379,9 +363,6 @@ export class PlanningService extends Service {
     }
   }
 
-  /**
-   * Validates a plan before execution
-   */
   async validatePlan(
     runtime: IAgentRuntime,
     plan: ActionPlan
@@ -443,9 +424,6 @@ export class PlanningService extends Service {
     }
   }
 
-  /**
-   * Adapts a plan during execution based on results or errors
-   */
   async adaptPlan(
     runtime: IAgentRuntime,
     plan: ActionPlan,
@@ -482,17 +460,11 @@ export class PlanningService extends Service {
     }
   }
 
-  /**
-   * Gets the current execution status of a plan
-   */
   async getPlanStatus(planId: UUID): Promise<PlanState | null> {
     const execution = this.planExecutions.get(planId);
     return execution?.state || null;
   }
 
-  /**
-   * Cancels plan execution
-   */
   async cancelPlan(planId: UUID): Promise<boolean> {
     const execution = this.planExecutions.get(planId);
     if (!execution) {
@@ -507,9 +479,6 @@ export class PlanningService extends Service {
     return true;
   }
 
-  /**
-   * Cleanup method
-   */
   async stop(): Promise<void> {
     for (const [, execution] of this.planExecutions) {
       execution.abortController?.abort();
@@ -522,8 +491,6 @@ export class PlanningService extends Service {
 
     logger.info("PlanningService stopped");
   }
-
-  // Private helper methods
 
   private buildPlanningPrompt(
     context: PlanningContext,

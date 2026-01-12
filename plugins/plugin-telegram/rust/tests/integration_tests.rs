@@ -86,19 +86,11 @@ fn test_chat_allowed() {
     assert!(config_all.is_chat_allowed(99999));
 }
 
-/// Test connecting to Telegram (requires valid credentials)
+/// Test service is not running initially
 #[tokio::test]
-#[ignore = "Requires valid Telegram credentials"]
-async fn test_telegram_connection() {
-    let config = TelegramConfig::from_env().expect("Failed to load config");
-    let mut service = TelegramService::new(config);
-
-    // Set up event callback
-    service.set_event_callback(|event, payload| {
-        println!("Event: {:?}, Payload: {:?}", event, payload);
-    });
-
-    // For now, just verify service was created
+async fn test_service_not_running() {
+    let config = TelegramConfig::new("123456:ABC-DEF".to_string());
+    let service = TelegramService::new(config);
     assert!(!service.is_running().await);
 }
 

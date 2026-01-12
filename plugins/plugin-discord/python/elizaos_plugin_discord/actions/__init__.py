@@ -9,8 +9,23 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from elizaos_plugin_discord.actions.add_reaction import AddReactionAction
+from elizaos_plugin_discord.actions.chat_with_attachments import ChatWithAttachmentsAction
+from elizaos_plugin_discord.actions.create_poll import CreatePollAction
+from elizaos_plugin_discord.actions.download_media import DownloadMediaAction
+from elizaos_plugin_discord.actions.get_user_info import GetUserInfoAction
+from elizaos_plugin_discord.actions.join_channel import JoinChannelAction
+from elizaos_plugin_discord.actions.leave_channel import LeaveChannelAction
+from elizaos_plugin_discord.actions.list_channels import ListChannelsAction
+from elizaos_plugin_discord.actions.pin_message import PinMessageAction
+from elizaos_plugin_discord.actions.react_to_message import ReactToMessageAction
+from elizaos_plugin_discord.actions.read_channel import ReadChannelAction
+from elizaos_plugin_discord.actions.search_messages import SearchMessagesAction
 from elizaos_plugin_discord.actions.send_dm import SendDmAction
 from elizaos_plugin_discord.actions.send_message import SendMessageAction
+from elizaos_plugin_discord.actions.server_info import ServerInfoAction
+from elizaos_plugin_discord.actions.summarize_conversation import SummarizeConversationAction
+from elizaos_plugin_discord.actions.transcribe_media import TranscribeMediaAction
+from elizaos_plugin_discord.actions.unpin_message import UnpinMessageAction
 
 if TYPE_CHECKING:
     from elizaos_plugin_discord.service import DiscordService
@@ -129,6 +144,21 @@ def get_all_actions() -> list[DiscordAction]:
         SendMessageAction(),
         SendDmAction(),
         AddReactionAction(),
+        ChatWithAttachmentsAction(),
+        CreatePollAction(),
+        DownloadMediaAction(),
+        GetUserInfoAction(),
+        JoinChannelAction(),
+        LeaveChannelAction(),
+        ListChannelsAction(),
+        PinMessageAction(),
+        ReactToMessageAction(),
+        ReadChannelAction(),
+        SearchMessagesAction(),
+        ServerInfoAction(),
+        SummarizeConversationAction(),
+        TranscribeMediaAction(),
+        UnpinMessageAction(),
     ]
 
 
@@ -139,5 +169,20 @@ __all__ = [
     "SendMessageAction",
     "SendDmAction",
     "AddReactionAction",
+    "ChatWithAttachmentsAction",
+    "CreatePollAction",
+    "DownloadMediaAction",
+    "GetUserInfoAction",
+    "JoinChannelAction",
+    "LeaveChannelAction",
+    "ListChannelsAction",
+    "PinMessageAction",
+    "ReactToMessageAction",
+    "ReadChannelAction",
+    "SearchMessagesAction",
+    "ServerInfoAction",
+    "SummarizeConversationAction",
+    "TranscribeMediaAction",
+    "UnpinMessageAction",
     "get_all_actions",
 ]

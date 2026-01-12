@@ -12,17 +12,12 @@ export class PlaywrightInstaller {
     this.logger = logger;
   }
 
-  /**
-   * Check if Playwright browsers are installed
-   */
   private isPlaywrightInstalled(): boolean {
     try {
-      // Check if chromium executable exists
       const playwrightPath =
         process.env.PLAYWRIGHT_BROWSERS_PATH ||
         join(process.env.HOME || "/home/eliza", ".cache", "ms-playwright");
 
-      // Check for chromium directory
       const _chromiumPath = join(playwrightPath, "chromium-*");
       const hasChromium =
         existsSync(playwrightPath) &&
@@ -36,9 +31,6 @@ export class PlaywrightInstaller {
     }
   }
 
-  /**
-   * Install Playwright browsers
-   */
   private async installPlaywright(): Promise<void> {
     this.logger.info("Installing Playwright browsers...");
 
@@ -46,9 +38,7 @@ export class PlaywrightInstaller {
       const npmPath = process.platform === "win32" ? "npm.cmd" : "npm";
       const args = ["exec", "playwright", "install", "chromium"];
 
-      this.logger.info(
-        "Installing Playwright browsers (without system deps - should be pre-installed)",
-      );
+      this.logger.info("Installing Playwright browsers");
 
       const installProcess = spawn(npmPath, args, {
         stdio: "pipe",
@@ -93,9 +83,6 @@ export class PlaywrightInstaller {
     });
   }
 
-  /**
-   * Ensure Playwright is installed, installing if necessary
-   */
   async ensurePlaywrightInstalled(): Promise<void> {
     if (this.isPlaywrightInstalled()) {
       this.logger.info("Playwright browsers already installed");
@@ -118,9 +105,6 @@ export class PlaywrightInstaller {
     return this.installPromise;
   }
 
-  /**
-   * Check if Playwright is ready (installed or being installed)
-   */
   isReady(): boolean {
     return this.isPlaywrightInstalled() || this.isInstalling;
   }

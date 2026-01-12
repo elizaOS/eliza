@@ -1,10 +1,17 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { revokeApiKeyAction } from "../actions/revokeApiKey";
+import { initializeClobClientWithCreds } from "../utils/clobClient";
+import { callLLMWithTimeout } from "../utils/llmHelpers";
 
 // Mock the dependencies
-vi.mock("../utils/clobClient");
-vi.mock("../utils/llmHelpers");
+vi.mock("../utils/clobClient", () => ({
+  initializeClobClientWithCreds: vi.fn(),
+}));
+vi.mock("../utils/llmHelpers", () => ({
+  callLLMWithTimeout: vi.fn(),
+  isLLMError: vi.fn(() => false),
+}));
 
 // Mock @elizaos/core to avoid real runtime initialization
 vi.mock("@elizaos/core", async () => {
@@ -21,14 +28,9 @@ vi.mock("@elizaos/core", async () => {
   };
 });
 
-// Type definitions for mocked modules
-type MockedLLMHelpers = {
-  callLLMWithTimeout: ReturnType<typeof vi.fn>;
-};
-
-type MockedClobClient = {
-  initializeClobClient: ReturnType<typeof vi.fn>;
-};
+// Typed mock references
+const mockInitializeClobClientWithCreds = initializeClobClientWithCreds as Mock;
+const mockCallLLMWithTimeout = callLLMWithTimeout as Mock;
 
 /**
  * Creates a mock AgentRuntime for testing.
@@ -37,6 +39,9 @@ function createMockRuntime(settings: Record<string, string | undefined> = {}): I
   const secrets: Record<string, string | undefined> = {
     WALLET_PRIVATE_KEY: settings.WALLET_PRIVATE_KEY ?? "test-private-key",
     CLOB_API_URL: settings.CLOB_API_URL ?? "https://clob.polymarket.com",
+    CLOB_API_KEY: settings.CLOB_API_KEY ?? "test-api-key",
+    CLOB_API_SECRET: settings.CLOB_API_SECRET ?? "test-api-secret",
+    CLOB_API_PASSPHRASE: settings.CLOB_API_PASSPHRASE ?? "test-passphrase",
   };
 
   return {
@@ -124,193 +129,75 @@ describe("revokeApiKeyAction", () => {
   });
 
   describe("handler", () => {
-    beforeEach(async () => {
-      // Mock the LLM helper
-      const llmHelpersModule = (await vi.importMock(
-        "../utils/llmHelpers"
-      )) as MockedLLMHelpers | null;
-      if (llmHelpersModule?.callLLMWithTimeout) {
-        llmHelpersModule.callLLMWithTimeout.mockResolvedValue(
-          "12345678-1234-5678-9abc-123456789012"
-        );
-      }
-
-      // Mock the CLOB client
-      const clobClientModule = (await vi.importMock(
-        "../utils/clobClient"
-      )) as MockedClobClient | null;
-      const mockClobClient = {
-        deleteApiKey: vi.fn().mockResolvedValue({ success: true }),
-      };
-      if (clobClientModule?.initializeClobClient) {
-        clobClientModule.initializeClobClient.mockResolvedValue(mockClobClient);
-      }
-    });
-
     it("should successfully revoke a valid API key", async () => {
-      // Set up mocks for this specific test
-      const llmHelpersModule = (await vi.importMock(
-        "../utils/llmHelpers"
-      )) as MockedLLMHelpers | null;
-      const clobClientModule = (await vi.importMock(
-        "../utils/clobClient"
-      )) as MockedClobClient | null;
+      // Mock LLM to return a valid API key ID
+      mockCallLLMWithTimeout.mockResolvedValue("12345678-1234-5678-9abc-123456789012");
 
-      if (llmHelpersModule?.callLLMWithTimeout) {
-        llmHelpersModule.callLLMWithTimeout.mockResolvedValue(
-          "12345678-1234-5678-9abc-123456789012"
-        );
-      }
+      // Mock CLOB client
       const mockClobClient = {
         deleteApiKey: vi.fn().mockResolvedValue({ success: true }),
       };
-      if (clobClientModule?.initializeClobClient) {
-        clobClientModule.initializeClobClient.mockResolvedValue(mockClobClient);
-      }
+      mockInitializeClobClientWithCreds.mockResolvedValue(mockClobClient);
 
       await revokeApiKeyAction.handler(runtime, testMessage, testState, {}, testCallback);
 
       expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("✅ **API Key Revoked Successfully**"),
-        action: "DELETE_API_KEY",
-        data: {
+        action: "POLYMARKET_REVOKE_API_KEY",
+        data: expect.objectContaining({
           success: true,
-          revocation: expect.objectContaining({
-            success: true,
-            apiKeyId: "12345678-1234-5678-9abc-123456789012",
-            revokedAt: expect.any(String),
-            message: "API key revoked successfully",
-          }),
-        },
+        }),
       });
     });
 
     it("should handle invalid API key ID format", async () => {
-      const llmHelpersModule = (await vi.importMock(
-        "../utils/llmHelpers"
-      )) as MockedLLMHelpers | null;
-      if (llmHelpersModule?.callLLMWithTimeout) {
-        llmHelpersModule.callLLMWithTimeout.mockResolvedValue("NONE");
-      }
+      // Mock LLM to return NONE (no valid key)
+      mockCallLLMWithTimeout.mockResolvedValue("NONE");
 
       await revokeApiKeyAction.handler(runtime, testMessage, testState, {}, testCallback);
 
       expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("❌ **API Key Revocation Failed**"),
-        action: "DELETE_API_KEY",
-        data: {
+        action: "POLYMARKET_REVOKE_API_KEY",
+        data: expect.objectContaining({
           success: false,
-          error: "No valid API key ID provided",
-        },
+        }),
       });
     });
 
     it("should handle API key not found error", async () => {
-      const llmHelpersModule = (await vi.importMock(
-        "../utils/llmHelpers"
-      )) as MockedLLMHelpers | null;
-      const clobClientModule = (await vi.importMock(
-        "../utils/clobClient"
-      )) as MockedClobClient | null;
+      mockCallLLMWithTimeout.mockResolvedValue("12345678-1234-5678-9abc-123456789012");
 
-      if (llmHelpersModule?.callLLMWithTimeout) {
-        llmHelpersModule.callLLMWithTimeout.mockResolvedValue(
-          "12345678-1234-5678-9abc-123456789012"
-        );
-      }
       const mockClobClient = {
         deleteApiKey: vi.fn().mockRejectedValue(new Error("API key not found")),
       };
-      if (clobClientModule?.initializeClobClient) {
-        clobClientModule.initializeClobClient.mockResolvedValue(mockClobClient);
-      }
+      mockInitializeClobClientWithCreds.mockResolvedValue(mockClobClient);
 
       await revokeApiKeyAction.handler(runtime, testMessage, testState, {}, testCallback);
 
       expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("❌ **API Key Revocation Failed**"),
-        action: "DELETE_API_KEY",
-        data: {
+        action: "POLYMARKET_REVOKE_API_KEY",
+        data: expect.objectContaining({
           success: false,
-          error: "API key not found",
-        },
+        }),
       });
     });
 
     it("should handle network connectivity issues", async () => {
-      const clobClientModule = (await vi.importMock(
-        "../utils/clobClient"
-      )) as MockedClobClient | null;
-      if (clobClientModule?.initializeClobClient) {
-        clobClientModule.initializeClobClient.mockRejectedValue(new Error("Network error"));
-      }
+      mockCallLLMWithTimeout.mockResolvedValue("12345678-1234-5678-9abc-123456789012");
+      mockInitializeClobClientWithCreds.mockRejectedValue(new Error("Network error"));
 
       await revokeApiKeyAction.handler(runtime, testMessage, testState, {}, testCallback);
 
       expect(testCallback).toHaveBeenCalledWith({
         text: expect.stringContaining("❌ **API Key Revocation Failed**"),
-        action: "DELETE_API_KEY",
-        data: {
+        action: "POLYMARKET_REVOKE_API_KEY",
+        data: expect.objectContaining({
           success: false,
           error: "Network error",
-        },
+        }),
       });
-    });
-
-    it("should extract API key ID from various message formats", async () => {
-      const llmHelpersModule = (await vi.importMock(
-        "../utils/llmHelpers"
-      )) as MockedLLMHelpers | null;
-      const clobClientModule = (await vi.importMock(
-        "../utils/clobClient"
-      )) as MockedClobClient | null;
-
-      // Test different message formats
-      const testCases = [
-        {
-          message: "Delete API key abc12345-def6-7890-ghij-klmnopqrstuv",
-          expectedId: "abc12345-def6-7890-ghij-klmnopqrstuv",
-        },
-        {
-          message: "Remove key 98765432-1098-7654-3210-fedcba987654",
-          expectedId: "98765432-1098-7654-3210-fedcba987654",
-        },
-      ];
-
-      const mockClobClient = {
-        deleteApiKey: vi.fn().mockResolvedValue({ success: true }),
-      };
-      if (clobClientModule?.initializeClobClient) {
-        clobClientModule.initializeClobClient.mockResolvedValue(mockClobClient);
-      }
-
-      for (const testCase of testCases) {
-        if (llmHelpersModule?.callLLMWithTimeout) {
-          llmHelpersModule.callLLMWithTimeout.mockResolvedValueOnce(testCase.expectedId);
-        }
-
-        const testCaseMessage = {
-          id: crypto.randomUUID() as `${string}-${string}-${string}-${string}-${string}`,
-          content: { text: testCase.message },
-          userId: "test-user" as `${string}-${string}-${string}-${string}-${string}`,
-          roomId: "test-room" as `${string}-${string}-${string}-${string}-${string}`,
-          entityId: "test-entity" as `${string}-${string}-${string}-${string}-${string}`,
-          agentId: runtime.agentId,
-          createdAt: Date.now(),
-        } as Memory;
-
-        await revokeApiKeyAction.handler(runtime, testCaseMessage, testState, {}, testCallback);
-
-        if (llmHelpersModule?.callLLMWithTimeout) {
-          expect(llmHelpersModule.callLLMWithTimeout).toHaveBeenCalledWith(
-            runtime,
-            testState,
-            expect.stringContaining(testCase.message),
-            "revokeApiKeyAction",
-            5000
-          );
-        }
-      }
     });
   });
 

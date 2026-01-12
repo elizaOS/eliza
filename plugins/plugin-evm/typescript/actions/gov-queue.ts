@@ -8,9 +8,7 @@ import type { QueueProposalParams, SupportedChain, Transaction } from "../types"
 export { queueProposalTemplate };
 
 export class QueueAction {
-  constructor(private walletProvider: WalletProvider) {
-    this.walletProvider = walletProvider;
-  }
+  constructor(private walletProvider: WalletProvider) {}
 
   async queue(params: QueueProposalParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
@@ -29,18 +27,16 @@ export class QueueAction {
 
     try {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
-
-      // Log current block before sending transaction
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = // @ts-expect-error - viem type narrowing issue
-        await walletClient.sendTransaction({
-          account: walletClient.account,
-          to: params.governor,
-          value: BigInt(0),
-          data: txData as Hex,
-          chain: chainConfig,
-        });
+      // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
+      const hash = await walletClient.sendTransaction({
+        account: walletClient.account,
+        to: params.governor,
+        value: BigInt(0),
+        data: txData as Hex,
+        chain: chainConfig,
+      });
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,
@@ -57,7 +53,7 @@ export class QueueAction {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Vote failed: ${errorMessage}`);
+      throw new Error(`Queue failed: ${errorMessage}`);
     }
   }
 }
@@ -73,7 +69,6 @@ export const queueAction = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      // Validate required fields
       if (
         !options.chain ||
         !options.governor ||
@@ -85,7 +80,6 @@ export const queueAction = {
         throw new Error("Missing required parameters for queue proposal");
       }
 
-      // Convert options to QueueProposalParams
       const queueParams: QueueProposalParams = {
         chain: options.chain as SupportedChain,
         governor: options.governor as Address,
@@ -111,7 +105,6 @@ export const queueAction = {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error in queue handler:", errorMessage);
       if (callback) {
         callback({ text: `Error: ${errorMessage}` });
       }

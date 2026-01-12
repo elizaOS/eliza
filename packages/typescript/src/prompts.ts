@@ -1,18 +1,3 @@
-/**
- * Prompt templates for elizaOS
- *
- * NOTE: These prompts are now sourced from the shared @elizaos/prompts package.
- * This file re-exports them for backwards compatibility.
- * To modify prompts, edit the .txt files in packages/prompts/prompts/ and run:
- *   cd packages/prompts && npm run build
- */
-
-// Re-export all prompts from the shared prompts package
-// When the prompts package is properly integrated, this will become:
-// export * from '@elizaos/prompts';
-
-// For now, we define the prompts inline but they match the shared package format
-
 export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} whether they should respond to the message, ignore it or stop the conversation.</task>
 
 <providers>

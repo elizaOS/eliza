@@ -1,16 +1,7 @@
-/**
- * Plugin Registry Providers
- *
- * Providers for tracking created plugins.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { PluginRegistryData } from "../types";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 
-/**
- * Provider for the plugin registry.
- */
 export const pluginRegistryProvider: Provider = {
   name: "plugin_registry",
   description: "Provides information about all created plugins in the current session",
@@ -57,9 +48,6 @@ export const pluginRegistryProvider: Provider = {
   },
 };
 
-/**
- * Provider to check if a plugin exists.
- */
 export const pluginExistsProvider: Provider = {
   name: "plugin_exists_check",
   description: "Checks if a specific plugin has already been created",

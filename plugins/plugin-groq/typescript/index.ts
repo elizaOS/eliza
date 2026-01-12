@@ -40,7 +40,7 @@ function extractRetryDelay(message: string): number {
   if (match?.[1]) {
     return Math.ceil(Number.parseFloat(match[1]) * 1000) + 1000;
   }
-  return 10000; // Default 10 seconds
+  return 10000;
 }
 
 async function generateWithRetry(
@@ -135,7 +135,10 @@ export const groqPlugin: Plugin = {
         prompt: params.prompt,
         temperature: params.temperature,
       });
-      return object as Record<string, unknown>;
+      return object as Record<
+        string,
+        string | number | boolean | null | Record<string, string | number | boolean | null>
+      >;
     },
 
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
@@ -148,7 +151,10 @@ export const groqPlugin: Plugin = {
         prompt: params.prompt,
         temperature: params.temperature,
       });
-      return object as Record<string, unknown>;
+      return object as Record<
+        string,
+        string | number | boolean | null | Record<string, string | number | boolean | null>
+      >;
     },
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
@@ -157,7 +163,7 @@ export const groqPlugin: Plugin = {
           typeof obj === "object" &&
           obj !== null &&
           "audioData" in obj &&
-          Buffer.isBuffer((obj as { audioData: unknown }).audioData)
+          Buffer.isBuffer((obj as Record<string, unknown>).audioData)
         );
       }
 
@@ -237,7 +243,9 @@ export const groqPlugin: Plugin = {
             if (!response.ok) {
               throw new Error(`API key validation failed: ${response.statusText}`);
             }
-            const data = (await response.json()) as { data: unknown[] };
+            const data = (await response.json()) as {
+              data: Array<{ id: string; owned_by: string }>;
+            };
             logger.info(`Groq API validated, ${data.data.length} models available`);
           },
         },

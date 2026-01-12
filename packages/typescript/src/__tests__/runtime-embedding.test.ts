@@ -73,14 +73,13 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
       expect(event).toBeDefined();
-      expect(event?.payload).toMatchObject({
-        runtime,
-        memory,
-        priority: "normal",
-        source: "runtime",
-        retryCount: 0,
-        maxRetries: 3,
-      });
+      const payload = event?.payload as EmbeddingGenerationPayload;
+      expect(payload.runtime).toBe(runtime);
+      expect(payload.memory).toEqual(memory);
+      expect(payload.priority).toBe("normal");
+      expect(payload.source).toBe("runtime");
+      expect(payload.retryCount).toBe(0);
+      expect(payload.maxRetries).toBe(3);
     });
 
     it("should skip memory that already has embeddings", async () => {

@@ -1,6 +1,12 @@
 //! Integration tests for the GitHub plugin
 
-use elizaos_plugin_github::{GitHubConfig, PLUGIN_NAME, PLUGIN_VERSION};
+use elizaos_plugin_github::{
+    GitHubConfig, PLUGIN_NAME, PLUGIN_VERSION,
+    // Actions
+    CreateIssueAction, CreatePullRequestAction, CreateCommentAction,
+    CreateBranchAction, MergePullRequestAction, PushCodeAction,
+    ReviewPullRequestAction, GitHubAction, ActionContext,
+};
 
 #[test]
 fn test_plugin_metadata() {
@@ -65,6 +71,164 @@ fn test_config_validation_empty_token() {
 fn test_config_validation_valid() {
     let config = GitHubConfig::new("valid_token".to_string());
     assert!(config.validate().is_ok());
+}
+
+// =============================================================================
+// Action Tests
+// =============================================================================
+
+#[test]
+fn test_all_actions_have_names() {
+    let actions: Vec<Box<dyn GitHubAction>> = vec![
+        Box::new(CreateIssueAction),
+        Box::new(CreatePullRequestAction),
+        Box::new(CreateCommentAction),
+        Box::new(CreateBranchAction),
+        Box::new(MergePullRequestAction),
+        Box::new(PushCodeAction),
+        Box::new(ReviewPullRequestAction),
+    ];
+
+    let names: Vec<&str> = actions.iter().map(|a| a.name()).collect();
+    assert!(names.contains(&"CREATE_GITHUB_ISSUE"));
+    assert!(names.contains(&"CREATE_GITHUB_PULL_REQUEST"));
+    assert!(names.contains(&"CREATE_GITHUB_COMMENT"));
+    assert!(names.contains(&"CREATE_GITHUB_BRANCH"));
+    assert!(names.contains(&"MERGE_GITHUB_PULL_REQUEST"));
+    assert!(names.contains(&"PUSH_GITHUB_CODE"));
+    assert!(names.contains(&"REVIEW_GITHUB_PULL_REQUEST"));
+}
+
+#[tokio::test]
+async fn test_push_code_action_validate() {
+    let action = PushCodeAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "Push these changes to the repository" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(action.validate(&context).await.unwrap());
+}
+
+#[tokio::test]
+async fn test_push_code_action_validate_commit() {
+    let action = PushCodeAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "Commit this file" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(action.validate(&context).await.unwrap());
+}
+
+#[tokio::test]
+async fn test_push_code_action_no_keywords() {
+    let action = PushCodeAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "Hello world" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(!action.validate(&context).await.unwrap());
+}
+
+#[tokio::test]
+async fn test_review_pr_action_validate() {
+    let action = ReviewPullRequestAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "Review this pull request" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(action.validate(&context).await.unwrap());
+}
+
+#[tokio::test]
+async fn test_review_pr_action_validate_approve() {
+    let action = ReviewPullRequestAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "Approve this PR" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(action.validate(&context).await.unwrap());
+}
+
+#[tokio::test]
+async fn test_review_pr_action_validate_lgtm() {
+    let action = ReviewPullRequestAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "LGTM on this change" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(action.validate(&context).await.unwrap());
+}
+
+#[tokio::test]
+async fn test_review_pr_action_no_keywords() {
+    let action = ReviewPullRequestAction;
+    
+    let context = ActionContext {
+        message: serde_json::json!({
+            "content": { "text": "Hello world" }
+        }),
+        owner: "test".to_string(),
+        repo: "test".to_string(),
+        state: serde_json::json!({}),
+    };
+    
+    assert!(!action.validate(&context).await.unwrap());
+}
+
+#[test]
+fn test_push_code_action_similes() {
+    let action = PushCodeAction;
+    let similes = action.similes();
+    
+    assert!(similes.contains(&"COMMIT_CODE"));
+    assert!(similes.contains(&"PUSH_CHANGES"));
+    assert!(similes.contains(&"GIT_PUSH"));
+}
+
+#[test]
+fn test_review_pr_action_similes() {
+    let action = ReviewPullRequestAction;
+    let similes = action.similes();
+    
+    assert!(similes.contains(&"APPROVE_PR"));
+    assert!(similes.contains(&"CODE_REVIEW"));
+    assert!(similes.contains(&"REQUEST_CHANGES"));
 }
 
 

@@ -1,125 +1,120 @@
-//! Error types for the Anthropic client.
-//!
-//! All errors are strongly typed with no generic error handling.
-//! Errors are designed to provide actionable information.
-
 use thiserror::Error;
 
-/// Result type for Anthropic operations.
+/// A specialized Result type for Anthropic API operations.
 pub type Result<T> = std::result::Result<T, AnthropicError>;
 
-/// Errors that can occur when using the Anthropic client.
+/// Errors that can occur when interacting with the Anthropic API.
 #[derive(Error, Debug)]
 pub enum AnthropicError {
-    /// API key is missing or invalid.
+    /// Error related to API key validation or authentication.
     #[error("API key error: {message}")]
     ApiKeyError {
-        /// Details about the API key error.
+        /// Detailed error message.
         message: String,
     },
 
-    /// Configuration error.
+    /// Error in client configuration.
     #[error("Configuration error: {message}")]
     ConfigError {
-        /// Details about what's misconfigured.
+        /// Detailed error message.
         message: String,
     },
 
     /// HTTP request failed.
     #[error("HTTP request failed: {message}")]
     HttpError {
-        /// Details about the HTTP error.
+        /// Detailed error message.
         message: String,
         /// HTTP status code, if available.
         status_code: Option<u16>,
     },
 
-    /// Rate limit exceeded.
+    /// Rate limit exceeded; should retry after the specified duration.
     #[error("Rate limit exceeded: retry after {retry_after_seconds} seconds")]
     RateLimitError {
-        /// Seconds to wait before retrying.
+        /// Number of seconds to wait before retrying.
         retry_after_seconds: u64,
     },
 
-    /// API returned an error response.
+    /// Error returned by the Anthropic API.
     #[error("API error ({error_type}): {message}")]
     ApiError {
-        /// Type of error from the API.
+        /// The type of error as reported by the API.
         error_type: String,
-        /// Error message from the API.
+        /// Detailed error message from the API.
         message: String,
     },
 
-    /// Failed to parse API response.
+    /// Failed to parse the API response.
     #[error("Response parsing error: {message}")]
     ParseError {
-        /// Details about what failed to parse.
+        /// Detailed error message.
         message: String,
     },
 
-    /// JSON generation failed.
+    /// Failed to extract valid JSON from model output.
     #[error("JSON generation error: {message}")]
     JsonGenerationError {
-        /// Details about the JSON generation failure.
+        /// Detailed error message.
         message: String,
     },
 
-    /// Invalid parameter provided.
+    /// An invalid parameter was provided.
     #[error("Invalid parameter '{parameter}': {message}")]
     InvalidParameter {
-        /// Name of the invalid parameter.
+        /// The name of the invalid parameter.
         parameter: String,
-        /// Why it's invalid.
+        /// Explanation of why the parameter is invalid.
         message: String,
     },
 
-    /// Model not supported.
+    /// The requested model is not supported.
     #[error("Model not supported: {model}")]
     UnsupportedModel {
-        /// The unsupported model name.
+        /// The unsupported model identifier.
         model: String,
     },
 
-    /// Network error.
+    /// Network connectivity error.
     #[error("Network error: {message}")]
     NetworkError {
-        /// Details about the network error.
+        /// Detailed error message.
         message: String,
     },
 
-    /// Request timeout.
+    /// Request timed out.
     #[error("Request timed out after {timeout_seconds} seconds")]
     Timeout {
-        /// Timeout duration in seconds.
+        /// The timeout duration in seconds.
         timeout_seconds: u64,
     },
 
-    /// Server error (5xx).
+    /// Server returned an error status code.
     #[error("Server error ({status_code}): {message}")]
     ServerError {
         /// HTTP status code.
         status_code: u16,
-        /// Error message.
+        /// Detailed error message.
         message: String,
     },
 }
 
 impl AnthropicError {
-    /// Create an API key error.
+    /// Creates an API key error with the given message.
     pub fn api_key<S: Into<String>>(message: S) -> Self {
         Self::ApiKeyError {
             message: message.into(),
         }
     }
 
-    /// Create a configuration error.
+    /// Creates a configuration error with the given message.
     pub fn config<S: Into<String>>(message: S) -> Self {
         Self::ConfigError {
             message: message.into(),
         }
     }
 
-    /// Create an HTTP error.
+    /// Creates an HTTP error with the given message and optional status code.
     pub fn http<S: Into<String>>(message: S, status_code: Option<u16>) -> Self {
         Self::HttpError {
             message: message.into(),
@@ -127,21 +122,21 @@ impl AnthropicError {
         }
     }
 
-    /// Create a parse error.
+    /// Creates a parse error with the given message.
     pub fn parse<S: Into<String>>(message: S) -> Self {
         Self::ParseError {
             message: message.into(),
         }
     }
 
-    /// Create a JSON generation error.
+    /// Creates a JSON generation error with the given message.
     pub fn json_generation<S: Into<String>>(message: S) -> Self {
         Self::JsonGenerationError {
             message: message.into(),
         }
     }
 
-    /// Create an invalid parameter error.
+    /// Creates an invalid parameter error.
     pub fn invalid_parameter<S: Into<String>>(parameter: S, message: S) -> Self {
         Self::InvalidParameter {
             parameter: parameter.into(),
@@ -149,7 +144,7 @@ impl AnthropicError {
         }
     }
 
-    /// Check if this error is retryable.
+    /// Returns true if the error is potentially transient and the request could be retried.
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -160,7 +155,7 @@ impl AnthropicError {
         )
     }
 
-    /// Get retry delay in seconds if this is a rate limit error.
+    /// Returns the number of seconds to wait before retrying, if applicable.
     pub fn retry_after(&self) -> Option<u64> {
         match self {
             Self::RateLimitError {
@@ -213,5 +208,3 @@ impl From<serde_json::Error> for AnthropicError {
         }
     }
 }
-
-

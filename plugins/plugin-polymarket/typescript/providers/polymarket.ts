@@ -1,15 +1,6 @@
-/**
- * @elizaos/plugin-polymarket Providers
- *
- * Context providers for Polymarket data.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "../constants";
 
-/**
- * Provider for Polymarket market context
- */
 export const polymarketProvider: Provider = {
   name: "POLYMARKET_PROVIDER",
   description: "Provides current Polymarket market information and context",

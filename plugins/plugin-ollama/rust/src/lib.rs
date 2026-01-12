@@ -1,31 +1,7 @@
-#![allow(missing_docs)]
-//! elizaOS Plugin Ollama - Rust Implementation
+//! Ollama plugin for ElizaOS.
 //!
-//! This crate provides an Ollama API client for elizaOS,
-//! supporting text generation, object generation, and embeddings
-//! using locally-hosted models.
-//!
-//! # Features
-//!
-//! - `native` (default): Enables full async support with tokio
-//! - `wasm`: Enables WebAssembly support with JavaScript interop
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use elizaos_plugin_ollama::{OllamaClient, OllamaConfig, TextGenerationParams};
-//!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let config = OllamaConfig::from_env()?;
-//!     let client = OllamaClient::new(config)?;
-//!
-//!     let params = TextGenerationParams::new("What is the meaning of life?");
-//!     let response = client.generate_text_large(params).await?;
-//!     println!("Response: {}", response.text);
-//!     Ok(())
-//! }
-//! ```
+//! This crate provides an Ollama API client with text generation, object generation,
+//! and embedding support for the ElizaOS framework.
 
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
@@ -38,30 +14,26 @@ pub mod types;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Re-export commonly used types for convenience
 pub use client::OllamaClient;
 pub use config::OllamaConfig;
 pub use error::{OllamaError, Result};
 pub use types::{EmbeddingParams, ObjectGenerationParams, TextGenerationParams};
 
-/// Create an Ollama client from environment variables.
+/// Creates an Ollama client using configuration from environment variables.
 ///
 /// # Errors
 ///
-/// Returns an error if required environment variables are not set.
+/// Returns an error if the configuration cannot be loaded from the environment
+/// or if the client fails to initialize.
 pub fn create_client_from_env() -> Result<OllamaClient> {
     let config = OllamaConfig::from_env()?;
     OllamaClient::new(config)
 }
 
-/// Plugin metadata
+/// The name of this plugin.
 pub const PLUGIN_NAME: &str = "ollama";
-/// Plugin description
+/// A description of this plugin's functionality.
 pub const PLUGIN_DESCRIPTION: &str =
     "Ollama API client with text generation, object generation, and embedding support";
-/// Plugin version
+/// The version of this plugin, derived from Cargo.toml.
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-
-
-

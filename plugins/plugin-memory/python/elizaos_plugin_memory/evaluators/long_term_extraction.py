@@ -1,4 +1,3 @@
-"""Long-term Memory Extraction Evaluator."""
 
 from __future__ import annotations
 
@@ -70,7 +69,6 @@ Skills, workflows, methodologies, and how-to knowledge.
 
 
 def parse_memory_extraction_xml(xml: str) -> list[MemoryExtraction]:
-    """Parse XML memory extraction response."""
     pattern = (
         r"<memory>[\s\S]*?"
         r"<category>(.*?)</category>[\s\S]*?"
@@ -111,38 +109,23 @@ def parse_memory_extraction_xml(xml: str) -> list[MemoryExtraction]:
 
 
 class ModelHandler(Protocol):
-    """Protocol for model handler."""
-
     async def generate(self, prompt: str, max_tokens: int = 2000) -> str:
-        """Generate text from prompt."""
         ...
 
 
 class MemoryCounter(Protocol):
-    """Protocol for counting memories."""
-
     async def count_memories(self, room_id: UUID) -> int:
-        """Count memories in a room."""
         ...
 
 
 @dataclass
 class Message:
-    """Message representation."""
-
     entity_id: UUID
     content_text: str
     created_at: int = 0
 
 
 class LongTermExtractionEvaluator:
-    """
-    Long-term Memory Extraction Evaluator.
-
-    Analyzes conversations to extract persistent facts about users that should be
-    remembered across all future conversations.
-    """
-
     name: str = "LONG_TERM_MEMORY_EXTRACTION"
     description: str = "Extracts long-term facts about users from conversations"
     similes: list[str] = ["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"]
@@ -156,7 +139,6 @@ class LongTermExtractionEvaluator:
         agent_id: UUID,
         agent_name: str = "Agent",
     ) -> None:
-        """Initialize the evaluator."""
         self._memory_service = memory_service
         self._model_handler = model_handler
         self._memory_counter = memory_counter
@@ -169,7 +151,6 @@ class LongTermExtractionEvaluator:
         room_id: UUID,
         message_text: str | None,
     ) -> bool:
-        """Check if extraction should run."""
         if entity_id == self._agent_id:
             return False
 
@@ -193,13 +174,11 @@ class LongTermExtractionEvaluator:
         room_id: UUID,
         recent_messages: list[Message],
     ) -> None:
-        """Handle extraction."""
         config = self._memory_service.get_config()
 
         try:
             logger.info("Extracting long-term memories for entity %s", entity_id)
 
-            # Format messages
             sorted_messages = sorted(recent_messages, key=lambda m: m.created_at)
             formatted_messages = "\n".join(
                 f"{self._agent_name if msg.entity_id == self._agent_id else 'User'}: "
@@ -207,7 +186,6 @@ class LongTermExtractionEvaluator:
                 for msg in sorted_messages
             )
 
-            # Get existing memories
             existing_memories = await self._memory_service.get_long_term_memories(
                 entity_id, None, 30
             )
@@ -259,7 +237,6 @@ class LongTermExtractionEvaluator:
                         extraction.confidence,
                     )
 
-            # Update extraction checkpoint
             current_message_count = await self._memory_counter.count_memories(room_id)
             await self._memory_service.set_last_extraction_checkpoint(
                 entity_id, room_id, current_message_count
@@ -272,8 +249,3 @@ class LongTermExtractionEvaluator:
 
         except Exception as e:
             logger.error("Error during long-term memory extraction: %s", e)
-
-
-
-
-

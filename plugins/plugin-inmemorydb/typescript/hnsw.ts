@@ -1,29 +1,19 @@
-/**
- * Simple HNSW (Hierarchical Navigable Small World) implementation
- *
- * Pure in-memory, ephemeral vector index.
- * All data is lost on restart - no persistence.
- */
-
 import type { IVectorStorage, VectorSearchResult } from "./types";
 
 interface HNSWNode {
   id: string;
   vector: number[];
   level: number;
-  neighbors: Map<number, Set<string>>; // level -> neighbor ids
+  neighbors: Map<number, Set<string>>;
 }
 
 interface HNSWConfig {
-  M: number; // Max connections per layer
-  efConstruction: number; // Size of dynamic candidate list during construction
-  efSearch: number; // Size of dynamic candidate list during search
-  mL: number; // Level multiplier (1/ln(M))
+  M: number;
+  efConstruction: number;
+  efSearch: number;
+  mL: number;
 }
 
-/**
- * Calculate cosine distance between two vectors
- */
 function cosineDistance(a: number[], b: number[]): number {
   if (a.length !== b.length) {
     throw new Error(`Vector dimension mismatch: ${a.length} vs ${b.length}`);
@@ -42,16 +32,9 @@ function cosineDistance(a: number[], b: number[]): number {
   const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
   if (magnitude === 0) return 1;
 
-  // Cosine similarity: dot(a,b) / (|a| * |b|)
-  // Cosine distance: 1 - similarity
   return 1 - dotProduct / magnitude;
 }
 
-/**
- * Simple HNSW implementation for vector similarity search
- *
- * Completely ephemeral - no persistence, all data lost on close/restart
- */
 export class EphemeralHNSW implements IVectorStorage {
   private nodes: Map<string, HNSWNode> = new Map();
   private entryPoint: string | null = null;
@@ -70,7 +53,6 @@ export class EphemeralHNSW implements IVectorStorage {
 
   async init(dimension: number): Promise<void> {
     this.dimension = dimension;
-    // No persistence - just initialize fresh
   }
 
   private getRandomLevel(): number {
@@ -88,10 +70,8 @@ export class EphemeralHNSW implements IVectorStorage {
       );
     }
 
-    // Check if already exists
     const existing = this.nodes.get(id);
     if (existing) {
-      // Update existing node's vector
       existing.vector = vector;
       return;
     }
@@ -104,13 +84,11 @@ export class EphemeralHNSW implements IVectorStorage {
       neighbors: new Map(),
     };
 
-    // Initialize neighbor sets for each level
     for (let l = 0; l <= level; l++) {
       newNode.neighbors.set(l, new Set());
     }
 
     if (this.entryPoint === null) {
-      // First node
       this.entryPoint = id;
       this.maxLevel = level;
       this.nodes.set(id, newNode);
@@ -119,16 +97,13 @@ export class EphemeralHNSW implements IVectorStorage {
 
     let currentNode = this.entryPoint;
 
-    // Search from top level down to level+1, just finding the closest node
     for (let l = this.maxLevel; l > level; l--) {
       currentNode = this.searchLayer(vector, currentNode, 1, l)[0]?.id ?? currentNode;
     }
 
-    // Insert at each level from level down to 0
     for (let l = Math.min(level, this.maxLevel); l >= 0; l--) {
       const neighbors = this.searchLayer(vector, currentNode, this.config.efConstruction, l);
 
-      // Connect to M closest neighbors
       const M = this.config.M;
       const selectedNeighbors = neighbors.slice(0, M);
 
@@ -147,7 +122,6 @@ export class EphemeralHNSW implements IVectorStorage {
           }
           neighborSet.add(id);
 
-          // Prune if over limit
           if (neighborSet.size > M) {
             const toKeep = this.selectBestNeighbors(neighborNode.vector, neighborSet, M);
             neighborNode.neighbors.set(l, new Set(toKeep.map((n) => n.id)));
@@ -162,7 +136,6 @@ export class EphemeralHNSW implements IVectorStorage {
 
     this.nodes.set(id, newNode);
 
-    // Update entry point if new node has higher level
     if (level > this.maxLevel) {
       this.maxLevel = level;
       this.entryPoint = id;
@@ -181,21 +154,17 @@ export class EphemeralHNSW implements IVectorStorage {
 
     const entryDist = cosineDistance(query, entryNode.vector);
 
-    // candidates: min-heap by distance (closest first)
     const candidates: Array<{ id: string; distance: number }> = [
       { id: entryId, distance: entryDist },
     ];
 
-    // results: max-heap by distance (furthest first for pruning)
     const results: Array<{ id: string; distance: number }> = [{ id: entryId, distance: entryDist }];
 
     while (candidates.length > 0) {
-      // Get closest candidate
       candidates.sort((a, b) => a.distance - b.distance);
       const current = candidates.shift();
       if (!current) break;
 
-      // Get furthest result
       results.sort((a, b) => b.distance - a.distance);
       const furthestResult = results[0];
 
@@ -259,7 +228,6 @@ export class EphemeralHNSW implements IVectorStorage {
     const node = this.nodes.get(id);
     if (!node) return;
 
-    // Remove from all neighbors' neighbor lists
     for (const [level, neighbors] of node.neighbors) {
       for (const neighborId of neighbors) {
         const neighborNode = this.nodes.get(neighborId);
@@ -271,13 +239,11 @@ export class EphemeralHNSW implements IVectorStorage {
 
     this.nodes.delete(id);
 
-    // Update entry point if needed
     if (this.entryPoint === id) {
       if (this.nodes.size === 0) {
         this.entryPoint = null;
         this.maxLevel = 0;
       } else {
-        // Find new entry point with highest level
         let maxLevel = 0;
         let newEntry: string | null = null;
         for (const [nodeId, n] of this.nodes) {
@@ -303,7 +269,6 @@ export class EphemeralHNSW implements IVectorStorage {
 
     let currentNode = this.entryPoint;
 
-    // Search from top to level 1
     for (let l = this.maxLevel; l > 0; l--) {
       const closest = this.searchLayer(query, currentNode, 1, l);
       if (closest.length > 0) {
@@ -311,7 +276,6 @@ export class EphemeralHNSW implements IVectorStorage {
       }
     }
 
-    // Search at level 0 with ef
     const results = this.searchLayer(query, currentNode, Math.max(k, this.config.efSearch), 0);
 
     return results
@@ -330,7 +294,6 @@ export class EphemeralHNSW implements IVectorStorage {
     this.maxLevel = 0;
   }
 
-  /** Get count of vectors in the index */
   size(): number {
     return this.nodes.size;
   }

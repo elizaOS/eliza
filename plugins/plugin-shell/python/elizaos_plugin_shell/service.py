@@ -1,7 +1,3 @@
-"""
-Shell service for executing commands within a restricted directory.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -32,15 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class ShellService:
-    """Service for executing shell commands within a restricted directory."""
-
     def __init__(self, config: ShellConfig) -> None:
-        """
-        Initialize the shell service.
-
-        Args:
-            config: Shell configuration
-        """
         self._config = config
         self._current_directory = config.allowed_directory
         self._command_history: dict[str, list[CommandHistoryEntry]] = {}
@@ -49,12 +37,10 @@ class ShellService:
 
     @property
     def current_directory(self) -> str:
-        """Get the current working directory."""
         return self._current_directory
 
     @property
     def allowed_directory(self) -> str:
-        """Get the allowed directory."""
         return self._config.allowed_directory
 
     async def execute_command(
@@ -62,17 +48,6 @@ class ShellService:
         command: str,
         conversation_id: str | None = None,
     ) -> CommandResult:
-        """
-        Execute a shell command within the allowed directory.
-
-        Args:
-            command: The command to execute
-            conversation_id: Optional conversation ID for history tracking
-
-        Returns:
-            The command execution result
-        """
-        # Check if shell is enabled
         if not self._config.enabled:
             return CommandResult(
                 success=False,
@@ -83,7 +58,6 @@ class ShellService:
                 executed_in=self._current_directory,
             )
 
-        # Basic command validation
         if not command or not isinstance(command, str):
             return CommandResult(
                 success=False,
@@ -96,7 +70,6 @@ class ShellService:
 
         trimmed_command = command.strip()
 
-        # Check for dangerous patterns
         if not is_safe_command(trimmed_command):
             return CommandResult(
                 success=False,
@@ -107,7 +80,6 @@ class ShellService:
                 executed_in=self._current_directory,
             )
 
-        # Check for forbidden commands
         if is_forbidden_command(trimmed_command, self._config.forbidden_commands):
             return CommandResult(
                 success=False,
@@ -118,16 +90,13 @@ class ShellService:
                 executed_in=self._current_directory,
             )
 
-        # Handle cd command specially
         if trimmed_command.startswith("cd "):
             result = await self._handle_cd_command(trimmed_command)
             self._add_to_history(conversation_id, trimmed_command, result)
             return result
 
-        # Execute the command
         result = await self._run_command(trimmed_command)
 
-        # Track file operations if successful
         if result.success:
             file_ops = self._detect_file_operations(trimmed_command, self._current_directory)
             self._add_to_history(conversation_id, trimmed_command, result, file_ops)
@@ -137,10 +106,8 @@ class ShellService:
         return result
 
     async def _handle_cd_command(self, command: str) -> CommandResult:
-        """Handle the cd command to change directory within allowed bounds."""
         parts = command.split()
         if len(parts) < 2:
-            # cd without arguments goes to allowed directory
             self._current_directory = self._config.allowed_directory
             return CommandResult(
                 success=True,
@@ -167,7 +134,6 @@ class ShellService:
                 executed_in=self._current_directory,
             )
 
-        # Update current directory
         self._current_directory = validated_path
         return CommandResult(
             success=True,
@@ -178,23 +144,18 @@ class ShellService:
         )
 
     async def _run_command(self, command: str) -> CommandResult:
-        """Run a command using subprocess."""
-        # Check if we need shell for redirects/pipes
         use_shell = any(char in command for char in [">", "<", "|"])
 
         try:
             if use_shell:
-                # Use shell for commands with redirects/pipes
                 cmd_args = ["sh", "-c", command]
                 logger.info(
                     f'Executing shell command: sh -c "{command}" in {self._current_directory}'
                 )
             else:
-                # Split command for direct execution
                 cmd_args = shlex.split(command)
                 logger.info(f"Executing command: {' '.join(cmd_args)} in {self._current_directory}")
 
-            # Run the command with timeout
             timeout_seconds = self._config.timeout / 1000.0
 
             try:
@@ -260,7 +221,6 @@ class ShellService:
         result: CommandResult,
         file_operations: list[FileOperation] | None = None,
     ) -> None:
-        """Add a command to the history."""
         if not conversation_id:
             return
 
@@ -280,7 +240,6 @@ class ShellService:
         history = self._command_history[conversation_id]
         history.append(entry)
 
-        # Trim history if it exceeds max length
         if len(history) > self._max_history_per_conversation:
             self._command_history[conversation_id] = history[1:]
 
@@ -289,7 +248,6 @@ class ShellService:
         command: str,
         cwd: str,
     ) -> list[FileOperation] | None:
-        """Detect file operations from a command."""
         import re
 
         operations: list[FileOperation] = []
@@ -301,7 +259,6 @@ class ShellService:
                 return path
             return os.path.join(cwd, path)
 
-        # File creation/writing
         if cmd == "touch" and len(parts) > 1:
             operations.append(
                 FileOperation(
@@ -356,24 +313,20 @@ class ShellService:
         conversation_id: str,
         limit: int | None = None,
     ) -> list[CommandHistoryEntry]:
-        """Get command history for a conversation."""
         history = self._command_history.get(conversation_id, [])
         if limit and limit > 0:
             return history[-limit:]
         return history
 
     def clear_command_history(self, conversation_id: str) -> None:
-        """Clear command history for a conversation."""
         if conversation_id in self._command_history:
             del self._command_history[conversation_id]
         logger.info(f"Cleared command history for conversation: {conversation_id}")
 
     def get_current_directory(self, conversation_id: str | None = None) -> str:
-        """Get the current working directory."""
         return self._current_directory
 
     def get_allowed_directory(self) -> str:
-        """Get the allowed directory."""
         return self._config.allowed_directory
 
 

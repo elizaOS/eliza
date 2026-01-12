@@ -1,23 +1,18 @@
 #![allow(missing_docs)]
-//! WebAssembly bindings for the Memory Plugin.
-
 #![cfg(feature = "wasm")]
 
-use wasm_bindgen::prelude::*;
 use js_sys;
+use wasm_bindgen::prelude::*;
 
-use crate::types::{LongTermMemoryCategory, MemoryExtraction, SummaryResult};
 use crate::config::MemoryConfig;
+use crate::types::{LongTermMemoryCategory, MemoryExtraction, SummaryResult};
 
-/// Initialize WASM module.
 #[wasm_bindgen(start)]
 pub fn init() {
-    // Set up panic hook for better error messages
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
 }
 
-/// Create default memory configuration.
 #[wasm_bindgen]
 pub fn create_default_config() -> JsValue {
     let config = MemoryConfig::default();
@@ -27,7 +22,6 @@ pub fn create_default_config() -> JsValue {
         .unwrap_or(JsValue::NULL)
 }
 
-/// Parse memory category from string.
 #[wasm_bindgen]
 pub fn parse_memory_category(category: &str) -> Result<JsValue, JsValue> {
     category
@@ -41,7 +35,6 @@ pub fn parse_memory_category(category: &str) -> Result<JsValue, JsValue> {
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Create a memory extraction result.
 #[wasm_bindgen]
 pub fn create_memory_extraction(
     category: &str,
@@ -62,22 +55,17 @@ pub fn create_memory_extraction(
     serde_json::to_string(&extraction)
         .map_err(|_| JsValue::from_str("Failed to serialize extraction"))
         .and_then(|s| {
-            js_sys::JSON::parse(&s)
-                .map_err(|_| JsValue::from_str("Failed to parse JSON"))
+            js_sys::JSON::parse(&s).map_err(|_| JsValue::from_str("Failed to parse JSON"))
         })
 }
 
-/// Create a summary result.
 #[wasm_bindgen]
 pub fn create_summary_result(
     summary: &str,
     topics: Vec<JsValue>,
     key_points: Vec<JsValue>,
 ) -> Result<JsValue, JsValue> {
-    let topics: Vec<String> = topics
-        .into_iter()
-        .filter_map(|v| v.as_string())
-        .collect();
+    let topics: Vec<String> = topics.into_iter().filter_map(|v| v.as_string()).collect();
 
     let key_points: Vec<String> = key_points
         .into_iter()
@@ -90,16 +78,13 @@ pub fn create_summary_result(
         key_points,
     };
 
-    // Convert to JSON string then parse as JsValue
     serde_json::to_string(&result)
         .map_err(|_| JsValue::from_str("Failed to serialize result"))
         .and_then(|s| {
-            js_sys::JSON::parse(&s)
-                .map_err(|_| JsValue::from_str("Failed to parse JSON"))
+            js_sys::JSON::parse(&s).map_err(|_| JsValue::from_str("Failed to parse JSON"))
         })
 }
 
-/// Get plugin metadata.
 #[wasm_bindgen]
 pub fn get_plugin_info() -> JsValue {
     let info = serde_json::json!({
@@ -112,5 +97,3 @@ pub fn get_plugin_info() -> JsValue {
         .and_then(|s| js_sys::JSON::parse(&s).ok())
         .unwrap_or(JsValue::NULL)
 }
-
-

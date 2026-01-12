@@ -1,12 +1,8 @@
-"""Push Code Action."""
-
 from elizaos_plugin_github.actions.create_issue import ActionContext, ActionResult
 from elizaos_plugin_github.types import CreateCommitParams, FileChange
 
 
 class PushCodeAction:
-    """Action to create a commit with file changes and push to a branch."""
-
     @property
     def name(self) -> str:
         return "PUSH_GITHUB_CODE"
@@ -27,7 +23,6 @@ class PushCodeAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):
@@ -40,7 +35,6 @@ class PushCodeAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -87,8 +81,3 @@ class PushCodeAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to push code: {e}")
-
-
-
-
-

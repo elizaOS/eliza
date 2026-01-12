@@ -1,5 +1,3 @@
-"""Tests for type definitions."""
-
 from elizaos_plugin_elizacloud.types import (
     DetokenizeTextParams,
     ElizaCloudConfig,
@@ -16,7 +14,6 @@ from elizaos_plugin_elizacloud.types import (
 
 
 def test_eliza_cloud_config_defaults() -> None:
-    """Test ElizaCloudConfig default values."""
     config = ElizaCloudConfig(api_key="test_key")
 
     assert config.api_key == "test_key"
@@ -32,7 +29,6 @@ def test_eliza_cloud_config_defaults() -> None:
 
 
 def test_text_generation_params_defaults() -> None:
-    """Test TextGenerationParams default values."""
     params = TextGenerationParams(prompt="Test prompt")
 
     assert params.prompt == "Test prompt"
@@ -45,7 +41,6 @@ def test_text_generation_params_defaults() -> None:
 
 
 def test_object_generation_params_defaults() -> None:
-    """Test ObjectGenerationParams default values."""
     params = ObjectGenerationParams(prompt="Generate a JSON object")
 
     assert params.prompt == "Generate a JSON object"
@@ -54,20 +49,16 @@ def test_object_generation_params_defaults() -> None:
 
 
 def test_text_embedding_params() -> None:
-    """Test TextEmbeddingParams configurations."""
-    # Single text
     single = TextEmbeddingParams(text="Hello")
     assert single.text == "Hello"
     assert single.texts is None
 
-    # Batch texts
     batch = TextEmbeddingParams(texts=["Hello", "World"])
     assert batch.text is None
     assert batch.texts == ["Hello", "World"]
 
 
 def test_image_generation_params() -> None:
-    """Test ImageGenerationParams."""
     params = ImageGenerationParams(prompt="A sunset")
 
     assert params.prompt == "A sunset"
@@ -78,13 +69,11 @@ def test_image_generation_params() -> None:
 
 
 def test_image_description_params() -> None:
-    """Test ImageDescriptionParams."""
     params = ImageDescriptionParams(image_url="https://example.com/image.jpg")
 
     assert params.image_url == "https://example.com/image.jpg"
     assert params.prompt is None
 
-    # With custom prompt
     params_with_prompt = ImageDescriptionParams(
         image_url="https://example.com/image.jpg",
         prompt="Describe this in detail",
@@ -93,7 +82,6 @@ def test_image_description_params() -> None:
 
 
 def test_image_description_result() -> None:
-    """Test ImageDescriptionResult."""
     result = ImageDescriptionResult(title="Sunset", description="A beautiful sunset")
 
     assert result.title == "Sunset"
@@ -101,7 +89,6 @@ def test_image_description_result() -> None:
 
 
 def test_text_to_speech_params() -> None:
-    """Test TextToSpeechParams."""
     params = TextToSpeechParams(text="Hello world")
 
     assert params.text == "Hello world"
@@ -112,7 +99,6 @@ def test_text_to_speech_params() -> None:
 
 
 def test_transcription_params() -> None:
-    """Test TranscriptionParams."""
     params = TranscriptionParams(audio=b"audio_data")
 
     assert params.audio == b"audio_data"
@@ -136,7 +122,6 @@ def test_tokenize_text_params() -> None:
 
 
 def test_detokenize_text_params() -> None:
-    """Test DetokenizeTextParams."""
     params = DetokenizeTextParams(tokens=[1, 2, 3, 4])
 
     assert params.tokens == [1, 2, 3, 4]

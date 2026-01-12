@@ -1,9 +1,3 @@
-"""
-Providers for the elizaOS Bootstrap Plugin.
-
-This module exports all available providers for the bootstrap plugin.
-"""
-
 from .action_state import action_state_provider
 from .actions import actions_provider
 from .agent_settings import agent_settings_provider
@@ -44,13 +38,11 @@ __all__ = [
     "relationships_provider",
     "roles_provider",
     "world_provider",
-    # Capability lists
     "BASIC_PROVIDERS",
     "EXTENDED_PROVIDERS",
     "ALL_PROVIDERS",
 ]
 
-# Basic providers - included by default
 BASIC_PROVIDERS = [
     actions_provider,
     action_state_provider,
@@ -65,7 +57,6 @@ BASIC_PROVIDERS = [
     world_provider,
 ]
 
-# Extended providers - opt-in
 EXTENDED_PROVIDERS = [
     choice_provider,
     contacts_provider,
@@ -77,5 +68,4 @@ EXTENDED_PROVIDERS = [
     agent_settings_provider,
 ]
 
-# All providers list for easy registration (backwards compatibility)
 ALL_PROVIDERS = BASIC_PROVIDERS + EXTENDED_PROVIDERS

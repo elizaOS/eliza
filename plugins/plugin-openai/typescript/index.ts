@@ -1,16 +1,3 @@
-/**
- * OpenAI Plugin for elizaOS
- *
- * Provides integration with OpenAI's APIs for:
- * - Text generation (GPT-4, GPT-4o, etc.)
- * - Embeddings (text-embedding-3-small, etc.)
- * - Image generation (DALL-E)
- * - Image description (GPT-4 Vision)
- * - Audio transcription (Whisper)
- * - Text-to-speech (TTS)
- * - Tokenization (tiktoken)
- */
-
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
   TranscriptionParams as CoreTranscriptionParams,
@@ -42,15 +29,6 @@ import {
 import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL } from "./utils/config";
 
-// ============================================================================
-// Plugin Definition
-// ============================================================================
-
-/**
- * OpenAI plugin for elizaOS.
- *
- * Provides model handlers for all OpenAI-compatible APIs.
- */
 export const openaiPlugin: Plugin = {
   name: "openai",
   description: "OpenAI API integration for text, image, audio, and embedding models",

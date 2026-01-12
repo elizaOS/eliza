@@ -1,7 +1,3 @@
-//! Security utilities for the browser plugin.
-//!
-//! Provides URL validation, input sanitization, and rate limiting.
-
 use crate::types::{RateLimitConfig, RateLimitEntry, SecurityConfig};
 use crate::utils::errors::{security_error, BrowserError};
 use regex::Regex;
@@ -10,7 +6,6 @@ use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
 
-/// URL validation result
 #[derive(Debug)]
 pub struct ValidationResult {
     pub valid: bool,
@@ -18,7 +13,6 @@ pub struct ValidationResult {
     pub error: Option<String>,
 }
 
-/// URL Validator
 pub struct UrlValidator {
     config: SecurityConfig,
 }
@@ -29,7 +23,6 @@ impl UrlValidator {
     }
 
     pub fn validate(&self, url: &str) -> ValidationResult {
-        // Check URL length
         if url.len() > self.config.max_url_length {
             return ValidationResult {
                 valid: false,
@@ -38,11 +31,9 @@ impl UrlValidator {
             };
         }
 
-        // Parse URL
         let parsed = match Url::parse(url) {
             Ok(u) => u,
             Err(_) => {
-                // Try adding https://
                 let url_with_scheme = format!("https://{}", url);
                 match Url::parse(&url_with_scheme) {
                     Ok(u) => u,
@@ -57,7 +48,6 @@ impl UrlValidator {
             }
         };
 
-        // Check protocol
         let scheme = parsed.scheme();
         if scheme == "file" && !self.config.allow_file_protocol {
             return ValidationResult {
@@ -75,7 +65,6 @@ impl UrlValidator {
             };
         }
 
-        // Check localhost
         if let Some(host) = parsed.host_str() {
             let is_localhost = ["localhost", "127.0.0.1", "::1"].contains(&host);
             if is_localhost && !self.config.allow_localhost {
@@ -86,7 +75,6 @@ impl UrlValidator {
                 };
             }
 
-            // Check blocked domains
             for blocked in &self.config.blocked_domains {
                 if host.contains(blocked) {
                     return ValidationResult {
@@ -97,7 +85,6 @@ impl UrlValidator {
                 }
             }
 
-            // Check allowed domains
             if !self.config.allowed_domains.is_empty() {
                 let allowed = self.config.allowed_domains.iter().any(|domain| {
                     host == domain || host.ends_with(&format!(".{}", domain))
@@ -130,11 +117,9 @@ impl Default for UrlValidator {
     }
 }
 
-/// Input sanitization utilities
 pub struct InputSanitizer;
 
 impl InputSanitizer {
-    /// Sanitize text input to prevent XSS and injection attacks
     pub fn sanitize_text(input: &str) -> String {
         let re_tags = Regex::new(r"[<>]").unwrap();
         let re_js = Regex::new(r"(?i)javascript:").unwrap();
@@ -146,7 +131,6 @@ impl InputSanitizer {
         result.trim().to_string()
     }
 
-    /// Sanitize selector strings for browser actions
     pub fn sanitize_selector(selector: &str) -> String {
         let re_quotes = Regex::new(r#"['"]"#).unwrap();
         let re_tags = Regex::new(r"[<>]").unwrap();
@@ -156,7 +140,6 @@ impl InputSanitizer {
         result.trim().to_string()
     }
 
-    /// Sanitize file paths
     pub fn sanitize_file_path(path: &str) -> String {
         let re_traversal = Regex::new(r"\.\.").unwrap();
         let re_invalid = Regex::new(r#"[<>:"|?\*]"#).unwrap();
@@ -167,7 +150,6 @@ impl InputSanitizer {
     }
 }
 
-/// Validate URL security for actions
 pub fn validate_secure_action(
     url: Option<&str>,
     validator: &UrlValidator,
@@ -184,7 +166,6 @@ pub fn validate_secure_action(
     Ok(())
 }
 
-/// Rate limiter for preventing abuse
 pub struct RateLimiter {
     config: RateLimitConfig,
     action_counts: RwLock<HashMap<String, RateLimitEntry>>,
@@ -207,7 +188,6 @@ impl RateLimiter {
             .as_secs() as i64
     }
 
-    /// Check if an action is allowed
     pub fn check_action_limit(&self, user_id: &str) -> bool {
         let now = Self::current_time();
         let mut counts = self.action_counts.write().unwrap();
@@ -231,7 +211,6 @@ impl RateLimiter {
         true
     }
 
-    /// Check if a new session is allowed
     pub fn check_session_limit(&self, user_id: &str) -> bool {
         let now = Self::current_time();
         let mut counts = self.session_counts.write().unwrap();
@@ -256,8 +235,6 @@ impl RateLimiter {
     }
 }
 
-/// Default URL validator instance
 pub fn default_url_validator() -> UrlValidator {
     UrlValidator::default()
 }
-

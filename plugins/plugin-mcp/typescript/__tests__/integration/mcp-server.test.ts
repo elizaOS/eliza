@@ -1,6 +1,17 @@
+import { execSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+// Helper function to check if a command exists
+function commandExists(cmd: string): boolean {
+  try {
+    execSync(`which ${cmd}`, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Integration tests for MCP server connectivity.
@@ -29,8 +40,7 @@ describe("MCP Server Integration", () => {
 
     it("should connect to a stdio MCP server", async () => {
       // Skip if npx is not available
-      const npxCheck = Bun.spawnSync(["which", "npx"]);
-      if (npxCheck.exitCode !== 0) {
+      if (!commandExists("npx")) {
         console.log("Skipping test: npx not available");
         return;
       }
@@ -89,8 +99,7 @@ describe("MCP Server Integration", () => {
     let client: Client | null = null;
 
     beforeAll(async () => {
-      const npxCheck = Bun.spawnSync(["which", "npx"]);
-      if (npxCheck.exitCode !== 0) {
+      if (!commandExists("npx")) {
         return;
       }
 

@@ -1,9 +1,3 @@
-/**
- * Create Issue Action
- *
- * Creates a new issue in a GitHub repository.
- */
-
 import {
   type Action,
   type ActionExample,
@@ -65,13 +59,11 @@ export const createIssueAction: Action = {
     "Creates a new issue in a GitHub repository. Use this to report bugs, request features, or track tasks.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
-    // Check if GitHub service is available
     const service = runtime.getService(GITHUB_SERVICE_NAME);
     if (!service) {
       return false;
     }
 
-    // Check if message contains issue-related content
     const text = (message.content as Content).text?.toLowerCase() ?? "";
     return (
       text.includes("issue") ||
@@ -101,12 +93,9 @@ export const createIssueAction: Action = {
     }
 
     try {
-      // Extract issue details from the message
-      // In a real implementation, you would use the LLM to extract structured data
       const content = message.content as Content;
       const text = content.text ?? "";
 
-      // For now, use a simple extraction - in production, use LLM
       const params: CreateIssueParams = {
         owner: (state?.owner as string) ?? service.getConfig().owner ?? "",
         repo: (state?.repo as string) ?? service.getConfig().repo ?? "",
@@ -116,7 +105,6 @@ export const createIssueAction: Action = {
         assignees: (state?.assignees as string[]) ?? [],
       };
 
-      // Validate params
       const validation = createIssueSchema.safeParse(params);
       if (!validation.success) {
         const errors = formatZodErrors(validation.error);
@@ -129,7 +117,6 @@ export const createIssueAction: Action = {
         return { success: false };
       }
 
-      // Create the issue
       const issue = await service.createIssue(params);
 
       logger.info(`Created issue #${issue.number}: ${issue.title}`);

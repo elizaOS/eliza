@@ -11,19 +11,8 @@ import type {
 import { ModelType } from "../../types/index.ts";
 import { composePromptFromState } from "../../utils.ts";
 
-// Inline to avoid circular import issues
 const booleanFooter = "Respond with only a YES or a NO.";
 
-/**
- * Template string for deciding if the agent should mute a room and stop responding unless explicitly mentioned.
- *
- * @type {string}
- */
-/**
- * Template for deciding if agent should mute a room and stop responding unless explicitly mentioned.
- *
- * @type {string}
- */
 export const shouldMuteTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
 
 {{recentMessages}}
@@ -38,20 +27,6 @@ Respond with YES if:
 Otherwise, respond with NO.
 ${booleanFooter}`;
 
-/**
- * Action for muting a room, ignoring all messages unless explicitly mentioned.
- * Only do this if explicitly asked to, or if you're annoying people.
- *
- * @name MUTE_ROOM
- * @type {Action}
- *
- * @property {string} name - The name of the action
- * @property {string[]} similes - Similar actions related to muting a room
- * @property {string} description - Description of the action
- * @property {Function} validate - Validation function to check if the room is not already muted
- * @property {Function} handler - Handler function to handle muting the room
- * @property {ActionExample[][]} examples - Examples of using the action
- */
 export const muteRoomAction: Action = {
   name: "MUTE_ROOM",
   similes: [
@@ -102,7 +77,7 @@ export const muteRoomAction: Action = {
     async function _shouldMute(state: State): Promise<boolean> {
       const shouldMutePrompt = composePromptFromState({
         state,
-        template: shouldMuteTemplate, // Define this template separately
+        template: shouldMuteTemplate,
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -112,7 +87,6 @@ export const muteRoomAction: Action = {
 
       const cleanedResponse = response.trim().toLowerCase();
 
-      // Handle various affirmative responses
       if (
         cleanedResponse === "true" ||
         cleanedResponse === "yes" ||
@@ -136,7 +110,6 @@ export const muteRoomAction: Action = {
         return true;
       }
 
-      // Handle various negative responses
       if (
         cleanedResponse === "false" ||
         cleanedResponse === "no" ||
@@ -159,7 +132,6 @@ export const muteRoomAction: Action = {
         );
       }
 
-      // Default to false if response is unclear
       logger.warn(
         {
           src: "plugin:bootstrap:action:mute_room",
@@ -183,7 +155,6 @@ export const muteRoomAction: Action = {
       };
     }
 
-    // Ensure room has a name for consistent return values
     const roomName = room.name ?? `Room-${message.roomId.substring(0, 8)}`;
 
     if (shouldMute) {

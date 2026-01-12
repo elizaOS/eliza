@@ -1,16 +1,9 @@
-/**
- * Embedding model handlers for OpenRouter.
- */
-
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 
 import { getApiKey, getBaseURL, getEmbeddingModel, getSetting } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-/**
- * TEXT_EMBEDDING model handler for OpenRouter.
- */
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null

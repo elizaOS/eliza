@@ -16,47 +16,25 @@ import {
   pluginCreationStatusProvider,
 } from "../../providers/plugin-creation-providers";
 
-// Test utilities for creating real runtime
-async function createTestRuntime(): Promise<{
+function createMockRuntime(): {
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;
-}> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
+} {
+  const agentId = "test-agent-id" as `${string}-${string}-${string}-${string}-${string}`;
 
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
+  const runtime = {
     agentId,
     character: {
       name: "Test Agent",
       bio: ["A test agent"],
       system: "You are a helpful assistant.",
-      plugins: [],
-      settings: {},
-      messageExamples: [],
-      postExamples: [],
-      topics: ["testing"],
-      adjectives: ["helpful"],
-      style: { all: [], chat: [], post: [] },
     },
-    adapter,
-    plugins: [],
-  });
+    getService: () => undefined, // No services by default
+    getSetting: () => undefined, // No settings by default
+    services: new Map(),
+  } as unknown as IAgentRuntime;
 
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    try {
-      await runtime.stop();
-      await adapter.close();
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
+  const cleanup = async () => {};
 
   return { runtime, cleanup };
 }
@@ -100,20 +78,6 @@ describe("n8nPlugin", () => {
 });
 
 describe("createPluginAction", () => {
-  let _runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
-
-  beforeEach(async () => {
-    const result = await createTestRuntime();
-    _runtime = result.runtime;
-    cleanup = result.cleanup;
-    vi.clearAllMocks();
-  });
-
-  afterEach(async () => {
-    await cleanup();
-  });
-
   it("should be properly defined", () => {
     expect(createPluginAction).toBeDefined();
     expect(createPluginAction.name).toBe("createPlugin");
@@ -131,20 +95,6 @@ describe("createPluginAction", () => {
 });
 
 describe("checkPluginCreationStatusAction", () => {
-  let _runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
-
-  beforeEach(async () => {
-    const result = await createTestRuntime();
-    _runtime = result.runtime;
-    cleanup = result.cleanup;
-    vi.clearAllMocks();
-  });
-
-  afterEach(async () => {
-    await cleanup();
-  });
-
   it("should be properly defined", () => {
     expect(checkPluginCreationStatusAction).toBeDefined();
     expect(checkPluginCreationStatusAction.name).toBe("checkPluginCreationStatus");
@@ -152,20 +102,6 @@ describe("checkPluginCreationStatusAction", () => {
 });
 
 describe("cancelPluginCreationAction", () => {
-  let _runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
-
-  beforeEach(async () => {
-    const result = await createTestRuntime();
-    _runtime = result.runtime;
-    cleanup = result.cleanup;
-    vi.clearAllMocks();
-  });
-
-  afterEach(async () => {
-    await cleanup();
-  });
-
   it("should be properly defined", () => {
     expect(cancelPluginCreationAction).toBeDefined();
     expect(cancelPluginCreationAction.name).toBe("cancelPluginCreation");
@@ -177,8 +113,8 @@ describe("pluginCreationStatusProvider", () => {
   let cleanup: () => Promise<void>;
   let testState: State;
 
-  beforeEach(async () => {
-    const result = await createTestRuntime();
+  beforeEach(() => {
+    const result = createMockRuntime();
     runtime = result.runtime;
     cleanup = result.cleanup;
     testState = { values: {}, data: {}, text: "" };
@@ -206,8 +142,8 @@ describe("pluginCreationCapabilitiesProvider", () => {
   let cleanup: () => Promise<void>;
   let testState: State;
 
-  beforeEach(async () => {
-    const result = await createTestRuntime();
+  beforeEach(() => {
+    const result = createMockRuntime();
     runtime = result.runtime;
     cleanup = result.cleanup;
     testState = { values: {}, data: {}, text: "" };

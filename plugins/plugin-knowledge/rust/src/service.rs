@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Knowledge Service - Core RAG functionality.
 
 use crate::chunker::TextChunker;
 use crate::types::{self, *};
@@ -7,9 +6,6 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// The Knowledge Service provides core RAG functionality.
-///
-/// Handles document processing, embedding generation, and semantic search.
 pub struct KnowledgeService {
     config: KnowledgeConfig,
     chunker: TextChunker,
@@ -18,7 +14,6 @@ pub struct KnowledgeService {
 }
 
 impl KnowledgeService {
-    /// Create a new knowledge service with the given configuration.
     pub fn new(config: KnowledgeConfig) -> Self {
         let chunker = TextChunker::new(config.chunk_size, config.chunk_overlap);
 
@@ -30,24 +25,20 @@ impl KnowledgeService {
         }
     }
 
-    /// Create a new knowledge service with default configuration.
     pub fn default() -> Self {
         Self::new(KnowledgeConfig::default())
     }
 
-    /// Get the service configuration.
     pub fn config(&self) -> &KnowledgeConfig {
         &self.config
     }
 
-    /// Generate a deterministic content ID based on content.
     pub fn generate_content_id(
         &self,
         content: &str,
         agent_id: &str,
         filename: Option<&str>,
     ) -> String {
-        // Use first 2000 chars for ID generation
         let content_for_hash: String = content
             .chars()
             .take(2000)
@@ -56,36 +47,30 @@ impl KnowledgeService {
             .collect::<Vec<_>>()
             .join(" ");
 
-        // Create hash components
         let mut hash_input = format!("{}::{}", agent_id, content_for_hash);
         if let Some(fname) = filename {
             hash_input = format!("{}::{}", hash_input, fname);
         }
 
-        // Generate SHA-256 hash
         let mut hasher = Sha256::new();
         hasher.update(hash_input.as_bytes());
         let hash = hex::encode(hasher.finalize());
 
-        // Generate UUID v5 from hash
         let namespace = Uuid::NAMESPACE_DNS;
         let uuid = Uuid::new_v5(&namespace, hash.as_bytes());
 
         uuid.to_string()
     }
 
-    /// Add knowledge to the system.
     pub async fn add_knowledge(&mut self, options: AddKnowledgeOptions) -> types::Result<ProcessingResult> {
         let agent_id = options.agent_id.as_deref().unwrap_or("default");
 
-        // Generate content-based ID
         let document_id = self.generate_content_id(
             &options.content,
             agent_id,
             Some(&options.filename),
         );
 
-        // Check if document already exists
         if let Some(existing) = self.documents.get(&document_id) {
             return Ok(ProcessingResult {
                 document_id,
@@ -95,7 +80,6 @@ impl KnowledgeService {
             });
         }
 
-        // Extract text content
         let text_content = self.extract_text(&options.content, &options.content_type)?;
 
         if text_content.trim().is_empty() {
@@ -107,7 +91,6 @@ impl KnowledgeService {
             });
         }
 
-        // Create document
         let mut document = KnowledgeDocument {
             id: document_id.clone(),
             content: text_content.clone(),
@@ -118,16 +101,13 @@ impl KnowledgeService {
             metadata: options.metadata.clone(),
         };
 
-        // Add memory type to metadata
         document.metadata.insert(
             "type".to_string(),
             serde_json::Value::String("document".to_string()),
         );
 
-        // Split into chunks
         let chunk_result = self.chunker.split(&text_content);
 
-        // Create fragments
         let mut fragments = Vec::new();
         for (i, chunk) in chunk_result.chunks.into_iter().enumerate() {
             let fragment_id = format!("{}-{}", document_id, i);
@@ -177,9 +157,7 @@ impl KnowledgeService {
         })
     }
 
-    /// Extract text from content based on type.
     fn extract_text(&self, content: &str, content_type: &str) -> types::Result<String> {
-        // For text types, content is already text
         if content_type.starts_with("text/")
             || content_type == "application/json"
             || content_type == "application/xml"
@@ -187,31 +165,24 @@ impl KnowledgeService {
             return Ok(content.to_string());
         }
 
-        // For binary types, we'd need additional processing
-        // For now, return as-is and log warning
         log::warn!("Unsupported content type for text extraction: {}", content_type);
         Ok(content.to_string())
     }
 
-    /// Search for relevant knowledge.
     pub async fn search(
         &self,
         query: &str,
         count: usize,
         threshold: f64,
     ) -> types::Result<Vec<SearchResult>> {
-        // Without embedding provider, we can't do semantic search
-        // Return empty for now (in production, would use actual embeddings)
         log::debug!("Searching for: {} (count: {}, threshold: {})", query, count, threshold);
 
-        // Simple text matching fallback when no embeddings
         let query_lower = query.to_lowercase();
         let mut results: Vec<SearchResult> = Vec::new();
 
         for fragment in self.fragments.values() {
             let content_lower = fragment.content.to_lowercase();
 
-            // Simple relevance score based on word overlap
             let query_words: Vec<&str> = query_lower.split_whitespace().collect();
             let matching_words = query_words
                 .iter()
@@ -236,16 +207,12 @@ impl KnowledgeService {
             }
         }
 
-        // Sort by similarity
         results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Limit results
         results.truncate(count);
 
         Ok(results)
     }
 
-    /// Get knowledge items relevant to a query.
     pub async fn get_knowledge(&self, query: &str, count: usize) -> types::Result<Vec<KnowledgeItem>> {
         let results: Vec<SearchResult> = self.search(query, count, 0.1).await?;
 
@@ -261,10 +228,8 @@ impl KnowledgeService {
             .collect())
     }
 
-    /// Delete a knowledge document and its fragments.
     pub async fn delete_knowledge(&mut self, document_id: &str) -> bool {
         if let Some(document) = self.documents.remove(document_id) {
-            // Remove fragments
             for fragment in &document.fragments {
                 self.fragments.remove(&fragment.id);
             }
@@ -276,17 +241,14 @@ impl KnowledgeService {
         }
     }
 
-    /// Get all documents in the knowledge base.
     pub fn get_documents(&self) -> Vec<&KnowledgeDocument> {
         self.documents.values().collect()
     }
 
-    /// Get a document by ID.
     pub fn get_document(&self, document_id: &str) -> Option<&KnowledgeDocument> {
         self.documents.get(document_id)
     }
 
-    /// Calculate cosine similarity between two vectors.
     pub fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> f64 {
         if vec1.len() != vec2.len() {
             return 0.0;

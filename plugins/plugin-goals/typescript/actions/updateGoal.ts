@@ -18,29 +18,23 @@ import {
 } from "../generated/prompts/typescript/prompts.js";
 import { createGoalDataService, type GoalData } from "../services/goalDataService";
 
-// Interface for goal selection properties
 interface GoalSelection {
   goalId: string;
   goalName: string;
   isFound: boolean;
 }
 
-// Interface for goal update properties
 interface GoalUpdate {
   name?: string;
   description?: string;
 }
 
-/**
- * Extracts which goal the user wants to update
- */
 async function extractGoalSelection(
   runtime: IAgentRuntime,
   message: Memory,
   availableGoals: GoalData[]
 ): Promise<GoalSelection> {
   try {
-    // Format available goals for the prompt
     const goalsText = availableGoals
       .map((goal) => {
         return `ID: ${goal.id}\nName: ${goal.name}\nDescription: ${goal.description || goal.name}\nOwner Type: ${goal.ownerType}\nTags: ${goal.tags?.join(", ") || "none"}\n`;
@@ -60,7 +54,6 @@ async function extractGoalSelection(
       stopSequences: [],
     });
 
-    // Parse XML from the text results
     const parsedResult = parseKeyValueXml(result) as GoalSelection | null;
 
     if (!parsedResult || typeof parsedResult.isFound === "undefined") {
@@ -68,7 +61,6 @@ async function extractGoalSelection(
       return { goalId: "", goalName: "", isFound: false };
     }
 
-    // Convert string 'true'/'false' to boolean and handle 'null' strings
     const finalResult: GoalSelection = {
       goalId: parsedResult.goalId === "null" ? "" : String(parsedResult.goalId || ""),
       goalName: parsedResult.goalName === "null" ? "" : String(parsedResult.goalName || ""),
@@ -91,7 +83,6 @@ async function extractGoalUpdate(
   goal: GoalData
 ): Promise<GoalUpdate | null> {
   try {
-    // Format goal details for the prompt
     let goalDetails = `Name: ${goal.name}\n`;
     if (goal.description) goalDetails += `Description: ${goal.description}\n`;
     goalDetails += `Owner Type: ${goal.ownerType}\n`;
@@ -110,10 +101,8 @@ async function extractGoalUpdate(
       stopSequences: [],
     });
 
-    // Parse XML from the text results
     const parsedUpdate = parseKeyValueXml(result) as GoalUpdate | null;
 
-    // Validate the parsed update has at least one property
     if (!parsedUpdate || Object.keys(parsedUpdate).length === 0) {
       logger.error("Failed to extract valid goal update information from XML");
       return null;
@@ -137,16 +126,12 @@ async function extractGoalUpdate(
   }
 }
 
-/**
- * The UPDATE_GOAL action allows users to modify an existing goal.
- */
 export const updateGoalAction: Action = {
   name: "UPDATE_GOAL",
   similes: ["EDIT_GOAL", "MODIFY_GOAL", "CHANGE_GOAL", "REVISE_GOAL"],
   description: "Updates an existing goal's name or description.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    // Check if any active goals exist
     try {
       const dataService = createGoalDataService(runtime);
 
@@ -212,7 +197,6 @@ export const updateGoalAction: Action = {
         return { success: false, error: "No active goals" };
       }
 
-      // Phase 1: Extract which goal to update
       const goalSelection = await extractGoalSelection(runtime, message, availableGoals);
       if (!goalSelection.isFound) {
         if (callback) {
@@ -239,7 +223,6 @@ export const updateGoalAction: Action = {
         return { success: false, error: "Goal not found" };
       }
 
-      // Phase 2: Extract what updates to make
       const update = await extractGoalUpdate(runtime, message, goal);
       if (!update) {
         if (callback) {
@@ -252,7 +235,6 @@ export const updateGoalAction: Action = {
         return { success: false, error: "Invalid update" };
       }
 
-      // Phase 3: Apply the update
       await dataService.updateGoal(goal.id, update);
 
       const ownerText = goal.ownerType === "agent" ? "Agent" : "User";

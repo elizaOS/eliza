@@ -1,18 +1,5 @@
-/**
- * Type definitions for the GitHub plugin.
- *
- * Strong types with validation - no unknown or any types.
- */
-
 import { z } from "zod";
 
-// =============================================================================
-// Core Types
-// =============================================================================
-
-/**
- * GitHub repository reference
- */
 export interface RepositoryRef {
   /** Repository owner (username or organization) */
   owner: string;
@@ -20,9 +7,6 @@ export interface RepositoryRef {
   repo: string;
 }
 
-/**
- * GitHub file reference
- */
 export interface FileRef extends RepositoryRef {
   /** File path relative to repository root */
   path: string;
@@ -30,9 +14,6 @@ export interface FileRef extends RepositoryRef {
   branch?: string;
 }
 
-/**
- * File content for commits
- */
 export interface FileChange {
   /** File path relative to repository root */
   path: string;
@@ -44,23 +25,10 @@ export interface FileChange {
   operation?: "add" | "modify" | "delete";
 }
 
-// =============================================================================
-// Issue Types
-// =============================================================================
-
-/**
- * Issue state
- */
 export type IssueState = "open" | "closed";
 
-/**
- * Issue state reason (for closed issues)
- */
 export type IssueStateReason = "completed" | "not_planned" | "reopened";
 
-/**
- * GitHub issue
- */
 export interface GitHubIssue {
   /** Issue number */
   number: number;
@@ -94,9 +62,6 @@ export interface GitHubIssue {
   isPullRequest: boolean;
 }
 
-/**
- * Issue creation parameters
- */
 export interface CreateIssueParams extends RepositoryRef {
   /** Issue title */
   title: string;
@@ -110,9 +75,6 @@ export interface CreateIssueParams extends RepositoryRef {
   milestone?: number;
 }
 
-/**
- * Issue update parameters
- */
 export interface UpdateIssueParams extends RepositoryRef {
   /** Issue number */
   issueNumber: number;
@@ -132,9 +94,6 @@ export interface UpdateIssueParams extends RepositoryRef {
   milestone?: number | null;
 }
 
-/**
- * Issue list parameters
- */
 export interface ListIssuesParams extends RepositoryRef {
   /** Filter by state */
   state?: IssueState | "all";
@@ -156,23 +115,10 @@ export interface ListIssuesParams extends RepositoryRef {
   page?: number;
 }
 
-// =============================================================================
-// Pull Request Types
-// =============================================================================
-
-/**
- * Pull request state
- */
 export type PullRequestState = "open" | "closed";
 
-/**
- * Pull request merge state
- */
 export type MergeableState = "mergeable" | "conflicting" | "unknown";
 
-/**
- * GitHub pull request
- */
 export interface GitHubPullRequest {
   /** PR number */
   number: number;
@@ -224,9 +170,6 @@ export interface GitHubPullRequest {
   changedFiles: number;
 }
 
-/**
- * Branch reference (head or base)
- */
 export interface GitHubBranchRef {
   /** Branch name */
   ref: string;
@@ -238,9 +181,6 @@ export interface GitHubBranchRef {
   repo: RepositoryRef | null;
 }
 
-/**
- * Pull request creation parameters
- */
 export interface CreatePullRequestParams extends RepositoryRef {
   /** PR title */
   title: string;
@@ -256,9 +196,6 @@ export interface CreatePullRequestParams extends RepositoryRef {
   maintainerCanModify?: boolean;
 }
 
-/**
- * Pull request update parameters
- */
 export interface UpdatePullRequestParams extends RepositoryRef {
   /** PR number */
   pullNumber: number;
@@ -274,9 +211,6 @@ export interface UpdatePullRequestParams extends RepositoryRef {
   maintainerCanModify?: boolean;
 }
 
-/**
- * Pull request merge parameters
- */
 export interface MergePullRequestParams extends RepositoryRef {
   /** PR number */
   pullNumber: number;
@@ -290,9 +224,6 @@ export interface MergePullRequestParams extends RepositoryRef {
   sha?: string;
 }
 
-/**
- * Pull request list parameters
- */
 export interface ListPullRequestsParams extends RepositoryRef {
   /** Filter by state */
   state?: PullRequestState | "all";
@@ -310,18 +241,8 @@ export interface ListPullRequestsParams extends RepositoryRef {
   page?: number;
 }
 
-// =============================================================================
-// Review Types
-// =============================================================================
-
-/**
- * Review state
- */
 export type ReviewState = "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING";
 
-/**
- * GitHub pull request review
- */
 export interface GitHubReview {
   /** Review ID */
   id: number;
@@ -339,37 +260,20 @@ export interface GitHubReview {
   submittedAt: string | null;
 }
 
-/**
- * Review comment
- */
 export interface GitHubReviewComment {
-  /** Comment ID */
   id: number;
-  /** Comment body */
   body: string;
-  /** File path */
   path: string;
-  /** Line number in the diff */
   line: number | null;
-  /** Original line number */
   originalLine: number | null;
-  /** Diff side */
   side: "LEFT" | "RIGHT";
-  /** Comment author */
   user: GitHubUser;
-  /** Creation timestamp (ISO 8601) */
   createdAt: string;
-  /** Last update timestamp (ISO 8601) */
   updatedAt: string;
-  /** HTML URL */
   htmlUrl: string;
-  /** In reply to comment ID */
   inReplyToId: number | null;
 }
 
-/**
- * Create review parameters
- */
 export interface CreateReviewParams extends RepositoryRef {
   /** PR number */
   pullNumber: number;
@@ -401,13 +305,6 @@ export interface ReviewCommentInput {
   startSide?: "LEFT" | "RIGHT";
 }
 
-// =============================================================================
-// Comment Types
-// =============================================================================
-
-/**
- * GitHub issue/PR comment
- */
 export interface GitHubComment {
   /** Comment ID */
   id: number;
@@ -423,9 +320,6 @@ export interface GitHubComment {
   htmlUrl: string;
 }
 
-/**
- * Create comment parameters
- */
 export interface CreateCommentParams extends RepositoryRef {
   /** Issue or PR number */
   issueNumber: number;
@@ -433,13 +327,6 @@ export interface CreateCommentParams extends RepositoryRef {
   body: string;
 }
 
-// =============================================================================
-// Branch Types
-// =============================================================================
-
-/**
- * GitHub branch
- */
 export interface GitHubBranch {
   /** Branch name */
   name: string;
@@ -449,9 +336,6 @@ export interface GitHubBranch {
   protected: boolean;
 }
 
-/**
- * Create branch parameters
- */
 export interface CreateBranchParams extends RepositoryRef {
   /** New branch name */
   branchName: string;
@@ -459,13 +343,6 @@ export interface CreateBranchParams extends RepositoryRef {
   fromRef: string;
 }
 
-// =============================================================================
-// Commit Types
-// =============================================================================
-
-/**
- * GitHub commit
- */
 export interface GitHubCommit {
   /** Commit SHA */
   sha: string;
@@ -483,9 +360,6 @@ export interface GitHubCommit {
   parents: string[];
 }
 
-/**
- * Commit author info
- */
 export interface GitHubCommitAuthor {
   /** Author name */
   name: string;
@@ -495,9 +369,6 @@ export interface GitHubCommitAuthor {
   date: string;
 }
 
-/**
- * Create commit parameters
- */
 export interface CreateCommitParams extends RepositoryRef {
   /** Commit message */
   message: string;
@@ -513,13 +384,6 @@ export interface CreateCommitParams extends RepositoryRef {
   authorEmail?: string;
 }
 
-// =============================================================================
-// File Types
-// =============================================================================
-
-/**
- * GitHub file content
- */
 export interface GitHubFileContent {
   /** File name */
   name: string;
@@ -541,14 +405,8 @@ export interface GitHubFileContent {
   downloadUrl: string | null;
 }
 
-/**
- * Get file parameters
- */
 export interface GetFileParams extends FileRef {}
 
-/**
- * Directory entry
- */
 export interface GitHubDirectoryEntry {
   /** Entry name */
   name: string;
@@ -566,13 +424,6 @@ export interface GitHubDirectoryEntry {
   downloadUrl: string | null;
 }
 
-// =============================================================================
-// Repository Types
-// =============================================================================
-
-/**
- * GitHub repository
- */
 export interface GitHubRepository {
   /** Repository ID */
   id: number;
@@ -618,9 +469,6 @@ export interface GitHubRepository {
   license: GitHubLicense | null;
 }
 
-/**
- * GitHub license
- */
 export interface GitHubLicense {
   /** License key */
   key: string;
@@ -632,13 +480,6 @@ export interface GitHubLicense {
   url: string | null;
 }
 
-// =============================================================================
-// User Types
-// =============================================================================
-
-/**
- * GitHub user
- */
 export interface GitHubUser {
   /** User ID */
   id: number;
@@ -654,13 +495,6 @@ export interface GitHubUser {
   type: "User" | "Organization" | "Bot";
 }
 
-// =============================================================================
-// Label & Milestone Types
-// =============================================================================
-
-/**
- * GitHub label
- */
 export interface GitHubLabel {
   /** Label ID */
   id: number;
@@ -674,9 +508,6 @@ export interface GitHubLabel {
   default: boolean;
 }
 
-/**
- * GitHub milestone
- */
 export interface GitHubMilestone {
   /** Milestone number */
   number: number;
@@ -700,13 +531,6 @@ export interface GitHubMilestone {
   closedIssues: number;
 }
 
-// =============================================================================
-// Webhook Event Types
-// =============================================================================
-
-/**
- * GitHub event types
- */
 export type GitHubEventType =
   | "push"
   | "pull_request"
@@ -725,9 +549,6 @@ export type GitHubEventType =
   | "check_suite"
   | "status";
 
-/**
- * GitHub webhook event payload (base)
- */
 export interface GitHubWebhookEvent {
   /** Event action */
   action?: string;
@@ -739,9 +560,6 @@ export interface GitHubWebhookEvent {
   organization?: GitHubUser;
 }
 
-/**
- * Push event payload
- */
 export interface PushEventPayload extends GitHubWebhookEvent {
   /** Ref that was pushed (refs/heads/...) */
   ref: string;
@@ -765,9 +583,6 @@ export interface PushEventPayload extends GitHubWebhookEvent {
   pusher: { name: string; email: string };
 }
 
-/**
- * Push commit
- */
 export interface PushCommit {
   /** Commit SHA */
   id: string;
@@ -789,9 +604,6 @@ export interface PushCommit {
   modified: string[];
 }
 
-/**
- * Pull request event payload
- */
 export interface PullRequestEventPayload extends GitHubWebhookEvent {
   action:
     | "opened"
@@ -813,9 +625,6 @@ export interface PullRequestEventPayload extends GitHubWebhookEvent {
   pullRequest: GitHubPullRequest;
 }
 
-/**
- * Issue event payload
- */
 export interface IssueEventPayload extends GitHubWebhookEvent {
   action:
     | "opened"
@@ -836,9 +645,6 @@ export interface IssueEventPayload extends GitHubWebhookEvent {
   issue: GitHubIssue;
 }
 
-/**
- * Comment event payload
- */
 export interface CommentEventPayload extends GitHubWebhookEvent {
   action: "created" | "edited" | "deleted";
   /** Issue or PR */
@@ -847,13 +653,6 @@ export interface CommentEventPayload extends GitHubWebhookEvent {
   comment: GitHubComment;
 }
 
-// =============================================================================
-// Plugin Settings
-// =============================================================================
-
-/**
- * GitHub plugin settings
- */
 export interface GitHubSettings {
   /** GitHub API token */
   apiToken: string;
@@ -872,10 +671,6 @@ export interface GitHubSettings {
   /** GitHub App installation ID */
   installationId?: string;
 }
-
-// =============================================================================
-// Zod Schemas for Validation
-// =============================================================================
 
 export const repositoryRefSchema = z.object({
   owner: z.string().min(1, "Owner is required"),
@@ -979,10 +774,6 @@ export const gitHubSettingsSchema = z.object({
   installationId: z.string().optional(),
 });
 
-/**
- * Helper to format ZodError issues into a readable string.
- * Uses proper Zod types to avoid `as unknown as` casts.
- */
 export function formatZodErrors(error: z.ZodError): string {
   const flattened = error.flatten();
   const fieldErrors = Object.entries(flattened.fieldErrors)

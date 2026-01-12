@@ -1,7 +1,3 @@
-/**
- * CapSolver integration for CAPTCHA solving
- */
-
 import { logger } from "@elizaos/core";
 import axios from "axios";
 import type { CapSolverConfig, CaptchaTask, CaptchaType } from "../types.js";
@@ -11,9 +7,6 @@ interface CapSolverTaskResult {
   gRecaptchaResponse?: string;
 }
 
-/**
- * CapSolver service for solving various CAPTCHA types
- */
 export class CapSolverService {
   private readonly apiUrl: string;
   private readonly retryAttempts: number;
@@ -55,9 +48,6 @@ export class CapSolverService {
     }
   }
 
-  /**
-   * Get task result with polling
-   */
   async getTaskResult(taskId: string): Promise<CapSolverTaskResult> {
     let attempts = 0;
 
@@ -165,9 +155,6 @@ export class CapSolverService {
     return solution.gRecaptchaResponse ?? "";
   }
 
-  /**
-   * Solve reCAPTCHA v3
-   */
   async solveRecaptchaV3(
     websiteURL: string,
     websiteKey: string,
@@ -228,9 +215,6 @@ export class CapSolverService {
   }
 }
 
-/**
- * Detect CAPTCHA type on a page
- */
 export async function detectCaptchaType(page: {
   $: (selector: string) => Promise<unknown>;
   evaluate: <T>(fn: () => T) => Promise<T>;
@@ -239,7 +223,6 @@ export async function detectCaptchaType(page: {
   siteKey?: string;
 }> {
   try {
-    // Check for Cloudflare Turnstile
     const turnstileElement = await page.$("[data-sitekey]");
     if (turnstileElement) {
       const cfTurnstile = await page.$(".cf-turnstile");
@@ -248,7 +231,6 @@ export async function detectCaptchaType(page: {
       }
     }
 
-    // Check for reCAPTCHA
     const recaptchaElement = await page.$("[data-sitekey], .g-recaptcha");
     if (recaptchaElement) {
       const isV3 = await page.evaluate(() => {
@@ -260,7 +242,6 @@ export async function detectCaptchaType(page: {
       return { type: isV3 ? "recaptcha-v3" : "recaptcha-v2" };
     }
 
-    // Check for hCaptcha
     const hcaptchaElement = await page.$("[data-sitekey].h-captcha, [data-hcaptcha-sitekey]");
     if (hcaptchaElement) {
       return { type: "hcaptcha" };
@@ -274,9 +255,6 @@ export async function detectCaptchaType(page: {
   }
 }
 
-/**
- * Inject CAPTCHA solution into the page
- */
 export async function injectCaptchaSolution(
   page: { evaluate: <T>(fn: (token: string) => T, token: string) => Promise<T> },
   captchaType: CaptchaType,
@@ -285,7 +263,6 @@ export async function injectCaptchaSolution(
   switch (captchaType) {
     case "turnstile":
       await page.evaluate((token: string) => {
-        // Type-safe access to global document and callbacks
         interface GlobalWithDocument {
           document: Document;
           turnstileCallback?: (token: string) => void;
@@ -304,7 +281,6 @@ export async function injectCaptchaSolution(
     case "recaptcha-v2":
     case "recaptcha-v3":
       await page.evaluate((token: string) => {
-        // Type-safe access to global document and callbacks
         interface GlobalWithDocument {
           document: Document;
           onRecaptchaSuccess?: (token: string) => void;
@@ -323,7 +299,6 @@ export async function injectCaptchaSolution(
 
     case "hcaptcha":
       await page.evaluate((token: string) => {
-        // Type-safe access to global document and callbacks
         interface GlobalWithDocument {
           document: Document;
           hcaptchaCallback?: (token: string) => void;

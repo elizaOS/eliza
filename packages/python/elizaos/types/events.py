@@ -1,9 +1,3 @@
-"""
-Event types for elizaOS.
-
-This module defines types for the event system.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -19,8 +13,6 @@ if TYPE_CHECKING:
 
 
 class EventType(str, Enum):
-    """Standard event types across all platforms."""
-
     # World events
     WORLD_JOINED = "WORLD_JOINED"
     WORLD_CONNECTED = "WORLD_CONNECTED"
@@ -78,16 +70,12 @@ class EventType(str, Enum):
 
 
 class PlatformPrefix(str, Enum):
-    """Platform-specific event type prefix."""
-
     DISCORD = "DISCORD"
     TELEGRAM = "TELEGRAM"
     X = "X"
 
 
 class EventPayload(BaseModel):
-    """Base payload interface for all events."""
-
     runtime: Any = Field(..., description="Agent runtime")
     source: str = Field(..., description="Event source")
     on_complete: Callable[[], None] | None = Field(
@@ -98,16 +86,12 @@ class EventPayload(BaseModel):
 
 
 class WorldPayload(EventPayload):
-    """Payload for world-related events."""
-
     world: Any = Field(..., description="World object")
     rooms: list[Any] = Field(..., description="Rooms in the world")
     entities: list[Any] = Field(..., description="Entities in the world")
 
 
 class EntityPayload(EventPayload):
-    """Payload for entity-related events."""
-
     entity_id: UUID = Field(..., alias="entityId", description="Entity ID")
     world_id: UUID | None = Field(default=None, alias="worldId", description="World ID")
     room_id: UUID | None = Field(default=None, alias="roomId", description="Room ID")
@@ -117,8 +101,6 @@ class EntityPayload(EventPayload):
 
 
 class MessagePayload(EventPayload):
-    """Payload for message-related events."""
-
     message: Any = Field(..., description="Message memory")
     callback: Callable[[Content], Awaitable[list[Any]]] | None = Field(
         default=None, description="Message callback"
@@ -128,8 +110,6 @@ class MessagePayload(EventPayload):
 
 
 class ChannelClearedPayload(EventPayload):
-    """Payload for channel cleared events."""
-
     room_id: UUID = Field(..., alias="roomId", description="Room ID")
     channel_id: str = Field(..., alias="channelId", description="Channel ID")
     memory_count: int = Field(..., alias="memoryCount", description="Number of memories cleared")
@@ -151,8 +131,6 @@ class InvokePayload(EventPayload):
 
 
 class RunEventPayload(EventPayload):
-    """Run event payload type."""
-
     run_id: UUID = Field(..., alias="runId", description="Run ID")
     message_id: UUID = Field(..., alias="messageId", description="Message ID")
     room_id: UUID = Field(..., alias="roomId", description="Room ID")
@@ -167,8 +145,6 @@ class RunEventPayload(EventPayload):
 
 
 class ActionEventPayload(EventPayload):
-    """Action event payload type."""
-
     room_id: UUID = Field(..., alias="roomId", description="Room ID")
     world: UUID = Field(..., description="World ID")
     content: Content = Field(..., description="Content")
@@ -178,8 +154,6 @@ class ActionEventPayload(EventPayload):
 
 
 class EvaluatorEventPayload(EventPayload):
-    """Evaluator event payload type."""
-
     evaluator_id: UUID = Field(..., alias="evaluatorId", description="Evaluator ID")
     evaluator_name: str = Field(..., alias="evaluatorName", description="Evaluator name")
     start_time: int | None = Field(default=None, alias="startTime", description="Start time")
@@ -190,8 +164,6 @@ class EvaluatorEventPayload(EventPayload):
 
 
 class ModelEventPayload(EventPayload):
-    """Model event payload type."""
-
     provider: str = Field(..., description="Model provider")
     type: str = Field(..., description="Model type")
     prompt: str = Field(..., description="Prompt")
@@ -201,8 +173,6 @@ class ModelEventPayload(EventPayload):
 
 
 class EmbeddingGenerationPayload(EventPayload):
-    """Payload for embedding generation events."""
-
     memory: Any = Field(..., description="Memory to embed")
     priority: str | None = Field(default=None, description="Priority level")
     retry_count: int | None = Field(default=None, alias="retryCount", description="Retry count")
@@ -215,8 +185,6 @@ class EmbeddingGenerationPayload(EventPayload):
 
 
 class ControlMessage(BaseModel):
-    """Control message for control events."""
-
     type: str = Field(..., description="Control message type")
     data: dict[str, Any] | None = Field(default=None, description="Message data")
 
@@ -224,8 +192,6 @@ class ControlMessage(BaseModel):
 
 
 class ControlMessagePayload(EventPayload):
-    """Payload for control message events."""
-
     message: ControlMessage = Field(..., description="Control message")
 
 

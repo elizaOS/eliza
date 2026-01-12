@@ -1,9 +1,3 @@
-/**
- * Create Pull Request Action
- *
- * Creates a new pull request in a GitHub repository.
- */
-
 import {
   type Action,
   type ActionExample,

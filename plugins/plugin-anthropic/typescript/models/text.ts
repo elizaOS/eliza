@@ -1,10 +1,3 @@
-/**
- * Text generation model handlers.
- *
- * These handlers implement text generation using Anthropic's Claude models.
- * Strong types are enforced - no `any` types, fail fast on invalid input.
- */
-
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
@@ -18,9 +11,6 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
-/**
- * Resolved generation parameters after applying defaults and validation.
- */
 interface ResolvedTextParams {
   readonly prompt: string;
   readonly stopSequences: readonly string[];
@@ -32,11 +22,6 @@ interface ResolvedTextParams {
   readonly providerOptions: ProviderOptions;
 }
 
-/**
- * Resolve and validate text generation parameters.
- *
- * @throws Error if both temperature and topP are explicitly provided
- */
 function resolveTextParams(
   params: GenerateTextParams,
   modelName: ModelName,
@@ -47,12 +32,10 @@ function resolveTextParams(
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
 
-  // Get raw param values to check if they were explicitly set
   const rawParams = params as Record<string, unknown>;
   const topPExplicit = "topP" in rawParams;
   const temperatureExplicit = "temperature" in rawParams;
 
-  // Validate: can't use both temperature and topP
   if (topPExplicit && temperatureExplicit) {
     throw new Error(
       "Cannot use both temperature and topP parameters simultaneously. " +
@@ -60,7 +43,6 @@ function resolveTextParams(
     );
   }
 
-  // Determine temperature vs topP
   let temperature: number | undefined;
   let topP: number | undefined;
 
@@ -72,17 +54,14 @@ function resolveTextParams(
     topP = undefined;
   }
 
-  // Determine max tokens
   const defaultMaxTokens = modelName.includes("-3-") ? 4096 : 8192;
   const maxTokens = params.maxTokens ?? defaultMaxTokens;
 
-  // Build provider options
   const rawProviderOptions = rawParams["providerOptions"] as ProviderOptions | undefined;
   const providerOptions: ProviderOptions = rawProviderOptions
     ? JSON.parse(JSON.stringify(rawProviderOptions))
     : {};
 
-  // Add CoT budget if configured
   if (cotBudget > 0) {
     const existingAnthropic = providerOptions.anthropic ?? {};
     (providerOptions as { anthropic: Record<string, unknown> }).anthropic = {
@@ -103,9 +82,6 @@ function resolveTextParams(
   };
 }
 
-/**
- * Generate text using a specific model.
- */
 async function generateTextWithModel(
   runtime: IAgentRuntime,
   params: GenerateTextParams,
@@ -121,7 +97,6 @@ async function generateTextWithModel(
 
   const resolved = resolveTextParams(params, modelName, cotBudget);
 
-  // Build telemetry config
   const agentName = resolved.providerOptions.agentName;
   const telemetryConfig = {
     isEnabled: experimentalTelemetry,
@@ -129,7 +104,6 @@ async function generateTextWithModel(
     metadata: agentName ? { agentName } : undefined,
   };
 
-  // Build generate params - AI SDK types require specific structure
   const generateParams = {
     model: anthropic(modelName),
     prompt: resolved.prompt,
@@ -152,13 +126,6 @@ async function generateTextWithModel(
   return text;
 }
 
-/**
- * TEXT_SMALL model handler.
- *
- * Generates text using the configured small model (default: claude-3-5-haiku).
- *
- * @throws Error if both temperature and topP are provided
- */
 export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
@@ -167,13 +134,6 @@ export async function handleTextSmall(
   return generateTextWithModel(runtime, params, modelName, "small", ModelType.TEXT_SMALL);
 }
 
-/**
- * TEXT_LARGE model handler.
- *
- * Generates text using the configured large model (default: claude-sonnet-4).
- *
- * @throws Error if both temperature and topP are provided
- */
 export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams

@@ -1,40 +1,19 @@
 #![allow(missing_docs)]
-//! GitHub plugin configuration
-//!
-//! Configuration can be loaded from environment variables or constructed programmatically.
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{GitHubError, Result};
 
-/// GitHub plugin configuration
-///
-/// Contains all settings required to interact with the GitHub API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubConfig {
-    /// API token for authentication (required)
     pub api_token: String,
-
-    /// Default repository owner
     pub owner: Option<String>,
-
-    /// Default repository name
     pub repo: Option<String>,
-
-    /// Default branch
     #[serde(default = "default_branch")]
     pub branch: String,
-
-    /// Webhook secret for verification
     pub webhook_secret: Option<String>,
-
-    /// GitHub App ID
     pub app_id: Option<String>,
-
-    /// GitHub App private key
     pub app_private_key: Option<String>,
-
-    /// GitHub App installation ID
     pub installation_id: Option<String>,
 }
 
@@ -43,19 +22,6 @@ fn default_branch() -> String {
 }
 
 impl GitHubConfig {
-    /// Create a new configuration with required API token.
-    ///
-    /// # Arguments
-    ///
-    /// * `api_token` - GitHub personal access token
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use elizaos_plugin_github::GitHubConfig;
-    ///
-    /// let config = GitHubConfig::new("ghp_your_token_here".to_string());
-    /// ```
     pub fn new(api_token: String) -> Self {
         Self {
             api_token,
@@ -112,13 +78,11 @@ impl GitHubConfig {
         })
     }
 
-    /// Set owner (builder pattern)
     pub fn with_owner(mut self, owner: String) -> Self {
         self.owner = Some(owner);
         self
     }
 
-    /// Set repository (builder pattern)
     pub fn with_repo(mut self, repo: String) -> Self {
         self.repo = Some(repo);
         self
@@ -130,26 +94,11 @@ impl GitHubConfig {
         self
     }
 
-    /// Set webhook secret (builder pattern)
     pub fn with_webhook_secret(mut self, secret: String) -> Self {
         self.webhook_secret = Some(secret);
         self
     }
 
-    /// Get repository reference, falling back to defaults.
-    ///
-    /// # Arguments
-    ///
-    /// * `owner` - Optional owner override
-    /// * `repo` - Optional repo override
-    ///
-    /// # Returns
-    ///
-    /// Tuple of (owner, repo)
-    ///
-    /// # Errors
-    ///
-    /// Returns `GitHubError::MissingSetting` if neither override nor default is available.
     pub fn get_repository_ref(
         &self,
         owner: Option<&str>,
@@ -168,16 +117,10 @@ impl GitHubConfig {
         Ok((resolved_owner, resolved_repo))
     }
 
-    /// Check if GitHub App authentication is configured.
     pub fn has_app_auth(&self) -> bool {
         self.app_id.is_some() && self.app_private_key.is_some()
     }
 
-    /// Validate configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `GitHubError::ConfigError` if configuration is invalid.
     pub fn validate(&self) -> Result<()> {
         if self.api_token.is_empty() {
             return Err(GitHubError::ConfigError(
@@ -253,10 +196,5 @@ mod tests {
         assert!(config.validate().is_err());
     }
 }
-
-
-
-
-
 
 

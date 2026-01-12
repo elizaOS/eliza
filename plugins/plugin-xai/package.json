@@ -86,8 +86,8 @@
     "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
     "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
     "test:python": "test -d python && cd python && pytest || echo 'Python tests skipped'",
-    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
-    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:rust": "cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
+    "lint:python": "cd python && ruff check --fix . && ruff format .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
     "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_xai"
   },

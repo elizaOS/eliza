@@ -54,8 +54,8 @@
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",
-    "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets -- -D warnings || echo 'Rust lint skipped'",
-    "lint:python": "test -d python && cd python && ruff check . && ruff format --check . || echo 'Python lint skipped'",
+    "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt || echo 'Rust lint skipped'",
+    "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",
     "lint:python:fix": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint fix skipped'",
     "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules"
   },

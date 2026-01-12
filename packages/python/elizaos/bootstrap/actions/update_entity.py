@@ -1,10 +1,3 @@
-"""
-UPDATE_ENTITY Action - Update entity information.
-
-This action allows the agent to update information about
-an entity (user, agent, or other entity type).
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,15 +14,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class UpdateEntityAction:
-    """
-    Action for updating entity information.
-
-    This action is used when:
-    - Entity profile needs updating
-    - Entity metadata should be changed
-    - Entity attributes need modification
-    """
-
     name: str = "UPDATE_ENTITY"
     similes: list[str] = field(
         default_factory=lambda: [
@@ -48,8 +32,6 @@ class UpdateEntityAction:
     async def validate(
         self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
     ) -> bool:
-        """Validate that entity update is possible."""
-        # Check if there's an entity context
         return message.entity_id is not None
 
     async def handler(
@@ -61,7 +43,6 @@ class UpdateEntityAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """Handle entity update."""
         if state is None:
             raise ValueError("State is required for UPDATE_ENTITY action")
 
@@ -74,129 +55,100 @@ class UpdateEntityAction:
                 success=False,
             )
 
-        try:
-            # Get current entity info
-            entity = await runtime.get_entity(entity_id)
-            if entity is None:
-                return ActionResult(
-                    text="Entity not found",
-                    values={"success": False, "error": "entity_not_found"},
-                    data={"actionName": "UPDATE_ENTITY"},
-                    success=False,
-                )
-
-            # Compose state with context
-            state = await runtime.compose_state(
-                message, ["RECENT_MESSAGES", "ACTION_STATE", "ENTITY_INFO"]
+        entity = await runtime.get_entity(entity_id)
+        if entity is None:
+            return ActionResult(
+                text="Entity not found",
+                values={"success": False, "error": "entity_not_found"},
+                data={"actionName": "UPDATE_ENTITY"},
+                success=False,
             )
 
-            entity_info = f"""
+        state = await runtime.compose_state(
+            message, ["RECENT_MESSAGES", "ACTION_STATE", "ENTITY_INFO"]
+        )
+
+        entity_info = f"""
 Entity ID: {entity.id}
 Name: {entity.name or "Unknown"}
 Type: {entity.entity_type or "Unknown"}
 """
-            if entity.metadata:
-                entity_info += f"Metadata: {entity.metadata}"
+        if entity.metadata:
+            entity_info += f"Metadata: {entity.metadata}"
 
-            template = (
-                runtime.character.templates.get("updateEntityTemplate")
-                if runtime.character.templates
-                and "updateEntityTemplate" in runtime.character.templates
-                else UPDATE_ENTITY_TEMPLATE
-            )
-            prompt = runtime.compose_prompt(state=state, template=template)
-            prompt = prompt.replace("{{entityInfo}}", entity_info)
+        template = (
+            runtime.character.templates.get("updateEntityTemplate")
+            if runtime.character.templates and "updateEntityTemplate" in runtime.character.templates
+            else UPDATE_ENTITY_TEMPLATE
+        )
+        prompt = runtime.compose_prompt(state=state, template=template)
+        prompt = prompt.replace("{{entityInfo}}", entity_info)
 
-            response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
-            parsed_xml = parse_key_value_xml(response_text)
+        response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
+        parsed_xml = parse_key_value_xml(response_text)
 
-            if parsed_xml is None:
-                raise ValueError("Failed to parse XML response")
+        if parsed_xml is None:
+            raise ValueError("Failed to parse XML response")
 
-            thought = str(parsed_xml.get("thought", ""))
-            target_entity_id_str = str(parsed_xml.get("entity_id", str(entity_id)))
+        thought = str(parsed_xml.get("thought", ""))
+        target_entity_id_str = str(parsed_xml.get("entity_id", str(entity_id)))
 
-            # Validate target entity ID
-            try:
-                target_entity_id = UUID(target_entity_id_str)
-            except ValueError as e:
-                raise ValueError(f"Invalid entity ID: {target_entity_id_str}") from e
+        target_entity_id = UUID(target_entity_id_str)
 
-            # Parse updates
-            updates_raw = parsed_xml.get("updates", {})
-            updated_fields: list[str] = []
+        updates_raw = parsed_xml.get("updates", {})
+        updated_fields: list[str] = []
 
-            if isinstance(updates_raw, dict):
-                field_list = updates_raw.get("field", [])
-                if isinstance(field_list, dict):
-                    field_list = [field_list]
-                for field_update in field_list:
-                    if isinstance(field_update, dict):
-                        field_name = str(field_update.get("name", ""))
-                        field_value = str(field_update.get("value", ""))
-                        if field_name and field_value:
-                            # Apply update to entity
-                            if entity.metadata is None:
-                                entity.metadata = {}
-                            entity.metadata[field_name] = field_value
-                            updated_fields.append(field_name)
+        if isinstance(updates_raw, dict):
+            field_list = updates_raw.get("field", [])
+            if isinstance(field_list, dict):
+                field_list = [field_list]
+            for field_update in field_list:
+                if isinstance(field_update, dict):
+                    field_name = str(field_update.get("name", ""))
+                    field_value = str(field_update.get("value", ""))
+                    if field_name and field_value:
+                        if entity.metadata is None:
+                            entity.metadata = {}
+                        entity.metadata[field_name] = field_value
+                        updated_fields.append(field_name)
 
-            if not updated_fields:
-                return ActionResult(
-                    text="No fields to update",
-                    values={"success": True, "noChanges": True},
-                    data={"actionName": "UPDATE_ENTITY", "thought": thought},
-                    success=True,
-                )
-
-            # Save the updated entity
-            await runtime.update_entity(entity)
-
-            response_content = Content(
-                text=f"Updated entity fields: {', '.join(updated_fields)}",
-                actions=["UPDATE_ENTITY"],
-            )
-
-            if callback:
-                await callback(response_content)
-
+        if not updated_fields:
             return ActionResult(
-                text=f"Updated entity: {', '.join(updated_fields)}",
-                values={
-                    "success": True,
-                    "entityUpdated": True,
-                    "entityId": str(target_entity_id),
-                    "updatedFields": ", ".join(updated_fields),
-                },
-                data={
-                    "actionName": "UPDATE_ENTITY",
-                    "entityId": str(target_entity_id),
-                    "updatedFields": updated_fields,
-                    "thought": thought,
-                },
+                text="No fields to update",
+                values={"success": True, "noChanges": True},
+                data={"actionName": "UPDATE_ENTITY", "thought": thought},
                 success=True,
             )
 
-        except Exception as error:
-            runtime.logger.error(
-                {
-                    "src": "plugin:bootstrap:action:updateEntity",
-                    "agentId": runtime.agent_id,
-                    "error": str(error),
-                },
-                "Error updating entity",
-            )
-            return ActionResult(
-                text="Error updating entity",
-                values={"success": False, "error": str(error)},
-                data={"actionName": "UPDATE_ENTITY", "error": str(error)},
-                success=False,
-                error=error,
-            )
+        await runtime.update_entity(entity)
+
+        response_content = Content(
+            text=f"Updated entity fields: {', '.join(updated_fields)}",
+            actions=["UPDATE_ENTITY"],
+        )
+
+        if callback:
+            await callback(response_content)
+
+        return ActionResult(
+            text=f"Updated entity: {', '.join(updated_fields)}",
+            values={
+                "success": True,
+                "entityUpdated": True,
+                "entityId": str(target_entity_id),
+                "updatedFields": ", ".join(updated_fields),
+            },
+            data={
+                "actionName": "UPDATE_ENTITY",
+                "entityId": str(target_entity_id),
+                "updatedFields": updated_fields,
+                "thought": thought,
+            },
+            success=True,
+        )
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions demonstrating the UPDATE_ENTITY action."""
         return [
             [
                 ActionExample(
@@ -214,7 +166,6 @@ Type: {entity.entity_type or "Unknown"}
         ]
 
 
-# Create the action instance
 update_entity_action = Action(
     name=UpdateEntityAction.name,
     similes=UpdateEntityAction().similes,

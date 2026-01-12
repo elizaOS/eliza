@@ -1,24 +1,19 @@
 #![allow(missing_docs)]
-//! Model definitions for the N8n Plugin.
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Available Claude model identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum ClaudeModel {
-    /// Claude 3.5 Sonnet - fast and efficient.
     #[serde(rename = "claude-3-5-sonnet-20241022")]
     Sonnet35,
 
-    /// Claude 3 Opus - most capable.
     #[default]
     #[serde(rename = "claude-3-opus-20240229")]
     Opus3,
 }
 
 impl ClaudeModel {
-    /// Get the model ID string.
     pub fn as_str(&self) -> &'static str {
         match self {
             ClaudeModel::Sonnet35 => "claude-3-5-sonnet-20241022",
@@ -26,7 +21,6 @@ impl ClaudeModel {
         }
     }
 
-    /// Get a human-readable display name.
     pub fn display_name(&self) -> &'static str {
         match self {
             ClaudeModel::Sonnet35 => "Claude 3.5 Sonnet",
@@ -53,30 +47,22 @@ impl std::str::FromStr for ClaudeModel {
     }
 }
 
-/// Status of a plugin creation job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
-    /// Job is pending.
     #[default]
     Pending,
-    /// Job is running.
     Running,
-    /// Job completed successfully.
     Completed,
-    /// Job failed.
     Failed,
-    /// Job was cancelled.
     Cancelled,
 }
 
 impl JobStatus {
-    /// Check if the job is still active (pending or running).
     pub fn is_active(&self) -> bool {
         matches!(self, JobStatus::Pending | JobStatus::Running)
     }
 
-    /// Check if the job has reached a terminal state.
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,

@@ -1,15 +1,6 @@
-/**
- * Plugin Creation Providers
- *
- * Providers for plugin creation status and capabilities.
- */
-
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 
-/**
- * Provider for active plugin creation job status.
- */
 export const pluginCreationStatusProvider: Provider = {
   name: "plugin_creation_status",
   description: "Provides status of active plugin creation jobs",
@@ -44,9 +35,6 @@ export const pluginCreationStatusProvider: Provider = {
   },
 };
 
-/**
- * Provider for plugin creation capabilities.
- */
 export const pluginCreationCapabilitiesProvider: Provider = {
   name: "plugin_creation_capabilities",
   description: "Provides information about plugin creation capabilities",

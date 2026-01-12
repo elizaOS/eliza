@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Linear API service for ElizaOS.
 
 use chrono::Utc;
 use reqwest::Client;
@@ -11,7 +10,6 @@ use uuid::Uuid;
 use crate::error::{LinearError, Result};
 use crate::types::*;
 
-/// GraphQL queries
 mod queries {
     pub const VIEWER: &str = r#"
         query Viewer {
@@ -242,7 +240,6 @@ mod queries {
     "#;
 }
 
-/// Service for interacting with the Linear API
 pub struct LinearService {
     config: LinearConfig,
     client: Client,
@@ -250,7 +247,6 @@ pub struct LinearService {
 }
 
 impl LinearService {
-    /// Create a new Linear service
     pub fn new(config: LinearConfig) -> Result<Self> {
         if config.api_key.is_empty() {
             return Err(LinearError::Authentication(
@@ -267,7 +263,6 @@ impl LinearService {
         })
     }
 
-    /// Start the service and validate connection
     pub async fn start(config: LinearConfig) -> Result<Self> {
         let service = Self::new(config)?;
         service.validate_connection().await?;
@@ -275,13 +270,11 @@ impl LinearService {
         Ok(service)
     }
 
-    /// Validate the API connection
     async fn validate_connection(&self) -> Result<()> {
         self.get_current_user().await?;
         Ok(())
     }
 
-    /// Execute a GraphQL query
     async fn execute_query(&self, query: &str, variables: Option<Value>) -> Result<Value> {
         let mut payload = json!({ "query": query });
         if let Some(vars) = variables {
@@ -328,7 +321,6 @@ impl LinearService {
         Ok(data.get("data").cloned().unwrap_or(json!({})))
     }
 
-    /// Log an activity
     fn log_activity(
         &self,
         action: &str,
@@ -351,7 +343,6 @@ impl LinearService {
 
         if let Ok(mut log) = self.activity_log.write() {
             log.push(activity);
-            // Keep only last 1000 activities
             let len = log.len();
             if len > 1000 {
                 log.drain(0..len - 1000);
@@ -359,7 +350,6 @@ impl LinearService {
         }
     }
 
-    /// Get activity log
     pub fn get_activity_log(&self, limit: Option<usize>) -> Vec<ActivityItem> {
         if let Ok(log) = self.activity_log.read() {
             let limit = limit.unwrap_or(100);
@@ -369,7 +359,6 @@ impl LinearService {
         }
     }
 
-    /// Clear activity log
     pub fn clear_activity_log(&self) {
         if let Ok(mut log) = self.activity_log.write() {
             log.clear();
@@ -377,9 +366,6 @@ impl LinearService {
         }
     }
 
-    // Team operations
-
-    /// Get all teams
     pub async fn get_teams(&self) -> Result<Vec<Team>> {
         match self.execute_query(queries::TEAMS, None).await {
             Ok(data) => {
@@ -413,7 +399,6 @@ impl LinearService {
         }
     }
 
-    /// Get a specific team by ID
     pub async fn get_team(&self, team_id: &str) -> Result<Team> {
         let variables = json!({ "id": team_id });
 
@@ -450,9 +435,6 @@ impl LinearService {
         }
     }
 
-    // Issue operations
-
-    /// Create a new issue
     pub async fn create_issue(&self, input: IssueInput) -> Result<Issue> {
         let mut issue_input = json!({
             "title": input.title,
@@ -525,7 +507,6 @@ impl LinearService {
         }
     }
 
-    /// Get an issue by ID
     pub async fn get_issue(&self, issue_id: &str) -> Result<Issue> {
         let variables = json!({ "id": issue_id });
 
@@ -562,7 +543,6 @@ impl LinearService {
         }
     }
 
-    /// Update an issue
     pub async fn update_issue(&self, issue_id: &str, updates: Value) -> Result<Issue> {
         let variables = json!({
             "id": issue_id,
@@ -614,7 +594,6 @@ impl LinearService {
         }
     }
 
-    /// Archive an issue
     pub async fn delete_issue(&self, issue_id: &str) -> Result<()> {
         let variables = json!({ "id": issue_id });
 
@@ -659,7 +638,6 @@ impl LinearService {
         }
     }
 
-    /// Search for issues
     pub async fn search_issues(&self, filters: SearchFilters) -> Result<Vec<Issue>> {
         let mut filter_obj = json!({});
 
@@ -671,7 +649,6 @@ impl LinearService {
         }
 
         if let Some(team) = &filters.team {
-            // Try to find team by key
             let teams = self.get_teams().await?;
             if let Some(found_team) = teams
                 .iter()
@@ -732,9 +709,6 @@ impl LinearService {
         }
     }
 
-    // Comment operations
-
-    /// Create a comment on an issue
     pub async fn create_comment(&self, input: CommentInput) -> Result<Comment> {
         let variables = json!({
             "input": {
@@ -788,9 +762,6 @@ impl LinearService {
         }
     }
 
-    // Project operations
-
-    /// Get all projects
     pub async fn get_projects(&self, team_id: Option<&str>) -> Result<Vec<Project>> {
         let variables = json!({ "first": 100 });
 
@@ -803,7 +774,6 @@ impl LinearService {
                         .unwrap_or(json!([])),
                 )?;
 
-                // Filter by team if specified
                 if let Some(tid) = team_id {
                     projects.retain(|p| {
                         p.teams
@@ -838,9 +808,7 @@ impl LinearService {
         }
     }
 
-    /// Get a specific project by ID
     pub async fn get_project(&self, project_id: &str) -> Result<Project> {
-        // Get all projects and find the one we want
         let projects = self.get_projects(None).await?;
         
         let project = projects
@@ -860,9 +828,6 @@ impl LinearService {
         Ok(project)
     }
 
-    // User operations
-
-    /// Get all users
     pub async fn get_users(&self) -> Result<Vec<User>> {
         match self.execute_query(queries::USERS, None).await {
             Ok(data) => {
@@ -898,7 +863,6 @@ impl LinearService {
         }
     }
 
-    /// Get the current authenticated user
     pub async fn get_current_user(&self) -> Result<User> {
         match self.execute_query(queries::VIEWER, None).await {
             Ok(data) => {
@@ -933,9 +897,6 @@ impl LinearService {
         }
     }
 
-    // Label operations
-
-    /// Get labels
     pub async fn get_labels(&self, team_id: Option<&str>) -> Result<Vec<Label>> {
         let filter = team_id.map(|id| json!({ "team": { "id": { "eq": id } } }));
         let variables = json!({
@@ -977,7 +938,6 @@ impl LinearService {
         }
     }
 
-    /// Get workflow states for a team
     pub async fn get_workflow_states(&self, team_id: &str) -> Result<Vec<WorkflowState>> {
         let variables = json!({
             "filter": {

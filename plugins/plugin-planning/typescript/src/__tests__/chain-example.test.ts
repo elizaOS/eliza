@@ -6,9 +6,6 @@ import {
   processAnalysisAction,
 } from "../actions/chain-example";
 
-/**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
- */
 async function createTestRuntime(characterOverrides: Record<string, unknown> = {}): Promise<{
   runtime: IAgentRuntime;
   cleanup: () => Promise<void>;

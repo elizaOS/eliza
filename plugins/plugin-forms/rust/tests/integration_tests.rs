@@ -3,6 +3,11 @@
 use elizaos_plugin_forms::{
     FormField, FormFieldType, FormStatus, FormStep, FormTemplate,
     FieldValue, FieldError, FormUpdateResult,
+    // Actions
+    CreateFormAction, UpdateFormAction, CancelFormAction,
+    Action, get_actions,
+    // Providers
+    FormsContextProvider, Provider, get_providers,
 };
 
 #[test]
@@ -133,4 +138,220 @@ fn test_form_status_serialization() {
     let status = FormStatus::Completed;
     let json = serde_json::to_string(&status).unwrap();
     assert_eq!(json, "\"completed\"");
+}
+
+// ============================================================
+// Action Tests
+// ============================================================
+
+#[test]
+fn test_get_all_actions() {
+    let actions = get_actions();
+    assert_eq!(actions.len(), 3);
+    
+    let names: Vec<_> = actions.iter().map(|a| a.name()).collect();
+    assert!(names.contains(&"CREATE_FORM"));
+    assert!(names.contains(&"UPDATE_FORM"));
+    assert!(names.contains(&"CANCEL_FORM"));
+}
+
+#[test]
+fn test_create_form_action() {
+    let action = CreateFormAction;
+    
+    assert_eq!(action.name(), "CREATE_FORM");
+    assert!(!action.similes().is_empty());
+    assert!(!action.description().is_empty());
+    
+    // Should validate when forms service available and message contains form keywords
+    assert!(action.validate("I need to fill out a form", false, true));
+    assert!(action.validate("help me with this survey", false, true));
+    assert!(action.validate("I want to contact you", false, true));
+    
+    // Should not validate without forms service
+    assert!(!action.validate("I need to fill out a form", false, false));
+    
+    // Should not validate without form keywords
+    assert!(!action.validate("hello there", false, true));
+}
+
+#[test]
+fn test_create_form_extract_type() {
+    assert_eq!(CreateFormAction::extract_form_type("contact form please"), Some("contact"));
+    assert_eq!(CreateFormAction::extract_form_type("give some feedback"), Some("feedback"));
+    assert_eq!(CreateFormAction::extract_form_type("apply for job"), Some("application"));
+    assert_eq!(CreateFormAction::extract_form_type("take survey"), Some("survey"));
+    assert_eq!(CreateFormAction::extract_form_type("sign up here"), Some("registration"));
+    assert_eq!(CreateFormAction::extract_form_type("random message"), None);
+}
+
+#[test]
+fn test_update_form_action() {
+    let action = UpdateFormAction;
+    
+    assert_eq!(action.name(), "UPDATE_FORM");
+    assert!(!action.similes().is_empty());
+    
+    // Should validate when has active forms and contains form input
+    assert!(action.validate("My name is John Smith", true, true));
+    assert!(action.validate("test@example.com", true, true));
+    assert!(action.validate("my phone is 1234567890", true, true));
+    
+    // Should not validate without active forms
+    assert!(!action.validate("My name is John", false, true));
+    
+    // Should not validate without forms service
+    assert!(!action.validate("My name is John", true, false));
+}
+
+#[test]
+fn test_update_form_contains_input() {
+    assert!(UpdateFormAction::contains_form_input("My name is John"));
+    assert!(UpdateFormAction::contains_form_input("I am 25 years old"));
+    assert!(UpdateFormAction::contains_form_input("email@test.com"));
+    assert!(UpdateFormAction::contains_form_input("123456789"));
+    assert!(UpdateFormAction::contains_form_input("This is a longer message"));
+    
+    // Short messages should not be detected as input
+    assert!(!UpdateFormAction::contains_form_input("Hi"));
+    assert!(!UpdateFormAction::contains_form_input("OK"));
+}
+
+#[test]
+fn test_cancel_form_action() {
+    let action = CancelFormAction;
+    
+    assert_eq!(action.name(), "CANCEL_FORM");
+    assert!(!action.similes().is_empty());
+    
+    // Should validate when has active forms and wants to cancel
+    assert!(action.validate("cancel the form", true, true));
+    assert!(action.validate("stop please", true, true));
+    assert!(action.validate("nevermind", true, true));
+    
+    // Should not validate without active forms
+    assert!(!action.validate("cancel", false, true));
+    
+    // Should not validate without cancel intent
+    assert!(!action.validate("continue please", true, true));
+}
+
+#[test]
+fn test_cancel_form_wants_cancel() {
+    assert!(CancelFormAction::wants_cancel("cancel"));
+    assert!(CancelFormAction::wants_cancel("stop this"));
+    assert!(CancelFormAction::wants_cancel("abort please"));
+    assert!(CancelFormAction::wants_cancel("quit"));
+    assert!(CancelFormAction::wants_cancel("exit now"));
+    assert!(CancelFormAction::wants_cancel("nevermind"));
+    assert!(CancelFormAction::wants_cancel("never mind"));
+    assert!(CancelFormAction::wants_cancel("I don't want to do this"));
+    
+    assert!(!CancelFormAction::wants_cancel("continue"));
+    assert!(!CancelFormAction::wants_cancel("submit"));
+}
+
+#[test]
+fn test_action_examples() {
+    let actions = get_actions();
+    
+    for action in &actions {
+        let examples = action.examples();
+        assert!(!examples.is_empty(), "Action {} should have examples", action.name());
+    }
+}
+
+// ============================================================
+// Provider Tests
+// ============================================================
+
+#[test]
+fn test_get_all_providers() {
+    let providers = get_providers();
+    assert_eq!(providers.len(), 1);
+    assert_eq!(providers[0].name(), "FORMS_CONTEXT");
+}
+
+#[test]
+fn test_forms_context_provider_properties() {
+    let provider = FormsContextProvider;
+    
+    assert_eq!(provider.name(), "FORMS_CONTEXT");
+    assert!(provider.dynamic());
+    assert_eq!(provider.position(), 50);
+    assert!(!provider.description().is_empty());
+}
+
+#[test]
+fn test_forms_context_provider_empty() {
+    let result = FormsContextProvider::generate_context(&[]);
+    
+    assert!(result.text.is_empty());
+    assert!(result.values.is_empty());
+    assert!(result.data.is_empty());
+}
+
+#[test]
+fn test_forms_context_provider_with_form() {
+    use chrono::Utc;
+    use uuid::Uuid;
+    use elizaos_plugin_forms::Form;
+    
+    let form = Form {
+        id: Uuid::new_v4(),
+        name: "test_form".to_string(),
+        description: Some("Test form".to_string()),
+        steps: vec![FormStep::new(
+            "step1",
+            "Step 1",
+            vec![
+                FormField {
+                    id: "name".to_string(),
+                    label: "Name".to_string(),
+                    field_type: FormFieldType::Text,
+                    description: Some("Your name".to_string()),
+                    criteria: None,
+                    optional: false,
+                    secret: false,
+                    value: Some(FieldValue::String("John".to_string())),
+                    error: None,
+                    metadata: None,
+                },
+                FormField {
+                    id: "email".to_string(),
+                    label: "Email".to_string(),
+                    field_type: FormFieldType::Email,
+                    description: None,
+                    criteria: None,
+                    optional: false,
+                    secret: false,
+                    value: None,
+                    error: None,
+                    metadata: None,
+                },
+            ],
+        )],
+        current_step_index: 0,
+        status: FormStatus::Active,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        completed_at: None,
+        agent_id: Uuid::new_v4(),
+        metadata: None,
+    };
+    
+    let result = FormsContextProvider::generate_context(&[&form]);
+    
+    // Check text contains expected content
+    assert!(result.text.contains("[FORMS]"));
+    assert!(result.text.contains("test_form"));
+    assert!(result.text.contains("Step 1"));
+    assert!(result.text.contains("John")); // Completed field value
+    assert!(result.text.contains("Email")); // Remaining required field
+    
+    // Check values
+    assert!(result.values.contains_key("activeFormsCount"));
+    
+    // Check data
+    assert!(result.data.contains_key("forms"));
 }

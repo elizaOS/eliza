@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-// Simple tests for the plugin structure without deep imports
 describe("Storage S3 Plugin", () => {
   it("should export the plugin from index", async () => {
     const { storageS3Plugin } = await import("..");

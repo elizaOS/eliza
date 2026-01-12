@@ -1,9 +1,3 @@
-/**
- * GitHub service implementation.
- *
- * Provides the main GitHubService for interacting with the GitHub API.
- */
-
 import { type IAgentRuntime, logger, type Metadata, Service } from "@elizaos/core";
 import { Octokit } from "@octokit/rest";
 import { type GitHubPluginConfig, validateGitHubConfig } from "./config";
@@ -39,15 +33,8 @@ import type {
   UpdatePullRequestParams,
 } from "./types";
 
-/** Service name constant */
 export const GITHUB_SERVICE_NAME = "github";
 
-/**
- * GitHub service for elizaOS.
- *
- * Manages interaction with the GitHub API for repository operations,
- * issue tracking, pull requests, code reviews, and more.
- */
 export class GitHubService extends Service {
   static override serviceType = GITHUB_SERVICE_NAME;
 
@@ -77,9 +64,6 @@ export class GitHubService extends Service {
     return this._config;
   }
 
-  /**
-   * Get the Octokit client.
-   */
   private getClient(): Octokit {
     if (!this.octokit) {
       throw new Error("GitHub service not initialized");
@@ -87,13 +71,9 @@ export class GitHubService extends Service {
     return this.octokit;
   }
 
-  /**
-   * Start the GitHub service.
-   */
   async start(runtime: IAgentRuntime): Promise<void> {
     logger.info("Starting GitHub service...");
 
-    // Validate and store config
     this._config = validateGitHubConfig(runtime);
     const settings = this._config.toSettings();
     this.config = {
@@ -107,20 +87,15 @@ export class GitHubService extends Service {
       installationId: settings.installationId ?? undefined,
     };
 
-    // Create Octokit client
     this.octokit = new Octokit({
       auth: this._config.apiToken,
       userAgent: "elizaos-plugin-github/1.0.0",
     });
 
-    // Verify authentication
     const { data: user } = await this.octokit.users.getAuthenticated();
     logger.info(`GitHub service started - authenticated as ${user.login}`);
   }
 
-  /**
-   * Stop the GitHub service.
-   */
   override async stop(): Promise<void> {
     logger.info("Stopping GitHub service...");
     this.octokit = null;
@@ -129,13 +104,6 @@ export class GitHubService extends Service {
     logger.info("GitHub service stopped");
   }
 
-  // ===========================================================================
-  // Repository Operations
-  // ===========================================================================
-
-  /**
-   * Get repository information.
-   */
   async getRepository(params: RepositoryRef): Promise<GitHubRepository> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -144,9 +112,6 @@ export class GitHubService extends Service {
     return this.mapRepository(data);
   }
 
-  /**
-   * List repositories for a user or organization.
-   */
   async listRepositories(
     username?: string,
     options?: {
@@ -173,13 +138,6 @@ export class GitHubService extends Service {
     return data.map((r) => this.mapRepository(r));
   }
 
-  // ===========================================================================
-  // Issue Operations
-  // ===========================================================================
-
-  /**
-   * Create an issue.
-   */
   async createIssue(params: CreateIssueParams): Promise<GitHubIssue> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -197,9 +155,6 @@ export class GitHubService extends Service {
     return this.mapIssue(data);
   }
 
-  /**
-   * Get an issue by number.
-   */
   async getIssue(params: RepositoryRef & { issueNumber: number }): Promise<GitHubIssue> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -213,9 +168,6 @@ export class GitHubService extends Service {
     return this.mapIssue(data);
   }
 
-  /**
-   * Update an issue.
-   */
   async updateIssue(params: UpdateIssueParams): Promise<GitHubIssue> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -236,9 +188,6 @@ export class GitHubService extends Service {
     return this.mapIssue(data);
   }
 
-  /**
-   * List issues.
-   */
   async listIssues(params: ListIssuesParams): Promise<GitHubIssue[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -257,13 +206,9 @@ export class GitHubService extends Service {
       page: params.page ?? 1,
     });
 
-    // Filter out pull requests (GitHub API includes them in issues)
     return data.filter((issue) => !issue.pull_request).map((issue) => this.mapIssue(issue));
   }
 
-  /**
-   * Close an issue.
-   */
   async closeIssue(
     params: RepositoryRef & {
       issueNumber: number;
@@ -277,9 +222,6 @@ export class GitHubService extends Service {
     });
   }
 
-  /**
-   * Reopen an issue.
-   */
   async reopenIssue(params: RepositoryRef & { issueNumber: number }): Promise<GitHubIssue> {
     return this.updateIssue({
       ...params,
@@ -288,13 +230,6 @@ export class GitHubService extends Service {
     });
   }
 
-  // ===========================================================================
-  // Pull Request Operations
-  // ===========================================================================
-
-  /**
-   * Create a pull request.
-   */
   async createPullRequest(params: CreatePullRequestParams): Promise<GitHubPullRequest> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -313,9 +248,6 @@ export class GitHubService extends Service {
     return this.mapPullRequest(data);
   }
 
-  /**
-   * Get a pull request by number.
-   */
   async getPullRequest(params: RepositoryRef & { pullNumber: number }): Promise<GitHubPullRequest> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -329,9 +261,6 @@ export class GitHubService extends Service {
     return this.mapPullRequest(data);
   }
 
-  /**
-   * Update a pull request.
-   */
   async updatePullRequest(params: UpdatePullRequestParams): Promise<GitHubPullRequest> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -350,9 +279,6 @@ export class GitHubService extends Service {
     return this.mapPullRequest(data);
   }
 
-  /**
-   * List pull requests.
-   */
   async listPullRequests(params: ListPullRequestsParams): Promise<GitHubPullRequest[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -372,9 +298,6 @@ export class GitHubService extends Service {
     return data.map((pr) => this.mapPullRequest(pr));
   }
 
-  /**
-   * Merge a pull request.
-   */
   async mergePullRequest(
     params: MergePullRequestParams
   ): Promise<{ sha: string; merged: boolean; message: string }> {
@@ -398,9 +321,6 @@ export class GitHubService extends Service {
     };
   }
 
-  /**
-   * Close a pull request without merging.
-   */
   async closePullRequest(
     params: RepositoryRef & { pullNumber: number }
   ): Promise<GitHubPullRequest> {
@@ -410,13 +330,6 @@ export class GitHubService extends Service {
     });
   }
 
-  // ===========================================================================
-  // Review Operations
-  // ===========================================================================
-
-  /**
-   * Create a review on a pull request.
-   */
   async createReview(params: CreateReviewParams): Promise<GitHubReview> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -441,9 +354,6 @@ export class GitHubService extends Service {
     return this.mapReview(data);
   }
 
-  /**
-   * List reviews on a pull request.
-   */
   async listReviews(params: RepositoryRef & { pullNumber: number }): Promise<GitHubReview[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -478,9 +388,6 @@ export class GitHubService extends Service {
     return this.mapComment(data);
   }
 
-  /**
-   * List comments on an issue or pull request.
-   */
   async listComments(
     params: RepositoryRef & {
       issueNumber: number;
@@ -502,13 +409,6 @@ export class GitHubService extends Service {
     return data.map((c) => this.mapComment(c));
   }
 
-  // ===========================================================================
-  // Branch Operations
-  // ===========================================================================
-
-  /**
-   * Create a new branch.
-   */
   async createBranch(params: CreateBranchParams): Promise<GitHubBranch> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -529,7 +429,6 @@ export class GitHubService extends Service {
       sha = refData.object.sha;
     }
 
-    // Create the new branch
     await client.git.createRef({
       owner,
       repo,
@@ -544,9 +443,6 @@ export class GitHubService extends Service {
     };
   }
 
-  /**
-   * Delete a branch.
-   */
   async deleteBranch(params: RepositoryRef & { branchName: string }): Promise<void> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -558,9 +454,6 @@ export class GitHubService extends Service {
     });
   }
 
-  /**
-   * List branches.
-   */
   async listBranches(
     params: RepositoryRef & { perPage?: number; page?: number }
   ): Promise<GitHubBranch[]> {
@@ -581,13 +474,6 @@ export class GitHubService extends Service {
     }));
   }
 
-  // ===========================================================================
-  // File Operations
-  // ===========================================================================
-
-  /**
-   * Get file content.
-   */
   async getFile(params: GetFileParams): Promise<GitHubFileContent> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -626,9 +512,6 @@ export class GitHubService extends Service {
     };
   }
 
-  /**
-   * List directory contents.
-   */
   async listDirectory(params: GetFileParams): Promise<GitHubDirectoryEntry[]> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -655,13 +538,6 @@ export class GitHubService extends Service {
     }));
   }
 
-  // ===========================================================================
-  // Commit Operations
-  // ===========================================================================
-
-  /**
-   * Create a commit with multiple file changes.
-   */
   async createCommit(params: CreateCommitParams): Promise<GitHubCommit> {
     const client = this.getClient();
     const { owner, repo } = this.resolveRepoRef(params);
@@ -694,7 +570,6 @@ export class GitHubService extends Service {
 
     for (const file of params.files) {
       if (file.operation === "delete") {
-        // For deletions, we simply don't include the file in the new tree
         continue;
       }
 
@@ -721,7 +596,6 @@ export class GitHubService extends Service {
       tree: treeItems,
     });
 
-    // Create the commit
     const { data: commit } = await client.git.createCommit({
       owner,
       repo,
@@ -763,9 +637,6 @@ export class GitHubService extends Service {
     };
   }
 
-  /**
-   * List commits.
-   */
   async listCommits(
     params: RepositoryRef & {
       branch?: string;
@@ -820,9 +691,6 @@ export class GitHubService extends Service {
     return this.mapUser(data);
   }
 
-  /**
-   * Get a user by username.
-   */
   async getUser(username: string): Promise<GitHubUser> {
     const client = this.getClient();
 
@@ -852,10 +720,6 @@ export class GitHubService extends Service {
 
     return { owner, repo };
   }
-
-  // ===========================================================================
-  // Mapping Methods
-  // ===========================================================================
 
   private mapRepository(data: unknown): GitHubRepository {
     const d = data as Record<string, unknown>;

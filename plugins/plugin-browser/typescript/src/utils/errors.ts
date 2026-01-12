@@ -1,8 +1,3 @@
-/**
- * Browser Plugin Error Classes
- * Provides structured error handling with user-friendly messages
- */
-
 import { logger } from "@elizaos/core";
 
 export type ErrorCode =
@@ -139,9 +134,6 @@ export class NoUrlFoundError extends BrowserError {
   }
 }
 
-/**
- * Handle browser errors with logging and callback
- */
 export function handleBrowserError(
   error: Error | BrowserError,
   callback?: (content: { text: string; error?: boolean }) => Promise<unknown>,

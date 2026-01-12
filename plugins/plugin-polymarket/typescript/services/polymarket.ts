@@ -1,10 +1,3 @@
-/**
- * @elizaos/plugin-polymarket Service
- *
- * Long-running service that manages CLOB client connections and integrates
- * with plugin-evm for wallet management.
- */
-
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { ClobClient } from "@polymarket/clob-client";
 import { createWalletClient, http } from "viem";
@@ -19,9 +12,6 @@ import {
 } from "../constants";
 import type { ApiKeyCreds } from "../types";
 
-/**
- * Cached Polymarket wallet data structure
- */
 export interface PolymarketWalletData {
   readonly address: string;
   readonly chainId: number;
@@ -39,28 +29,12 @@ interface EnhancedWallet {
   ) => Promise<string>;
 }
 
-/**
- * Type alias for the ClobClient's signer parameter.
- * The ClobClient expects a specific signer interface that our EnhancedWallet satisfies.
- */
 type ClobClientSigner = ConstructorParameters<typeof ClobClient>[2];
 
-/**
- * Cast EnhancedWallet to ClobClient's signer type.
- */
 function asClobClientSigner(wallet: EnhancedWallet): ClobClientSigner {
   return wallet as ClobClientSigner;
 }
 
-/**
- * Polymarket Service for managing CLOB connections and wallet state
- *
- * This service:
- * - Initializes and manages CLOB client connections
- * - Integrates with plugin-evm for wallet operations
- * - Caches wallet data for quick access
- * - Manages WebSocket connections for real-time data
- */
 export class PolymarketService extends Service {
   static serviceType: string = POLYMARKET_SERVICE_NAME;
   capabilityDescription = "Polymarket prediction markets access and trading";
@@ -76,21 +50,14 @@ export class PolymarketService extends Service {
     this.polymarketRuntime = runtime;
   }
 
-  /**
-   * Start the Polymarket service
-   */
   static async start(runtime: IAgentRuntime): Promise<PolymarketService> {
     logger.info("Initializing PolymarketService");
 
     const service = new PolymarketService(runtime);
 
-    // Initialize the basic CLOB client
     await service.initializeClobClient();
-
-    // Try to initialize authenticated client if credentials are available
     await service.initializeAuthenticatedClient();
 
-    // Set up refresh interval for wallet data
     if (service.refreshInterval) {
       clearInterval(service.refreshInterval);
     }
@@ -104,9 +71,6 @@ export class PolymarketService extends Service {
     return service;
   }
 
-  /**
-   * Stop the Polymarket service
-   */
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(POLYMARKET_SERVICE_NAME);
     if (!service) {
@@ -118,24 +82,15 @@ export class PolymarketService extends Service {
     await polymarketService.stop();
   }
 
-  /**
-   * Stop this service instance
-   */
   async stop(): Promise<void> {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
       this.refreshInterval = null;
     }
 
-    // Close WebSocket connections if any
-    // ClobClient cleanup if needed
-
     logger.info("Polymarket service shutdown");
   }
 
-  /**
-   * Get the private key from runtime settings
-   */
   private getPrivateKey(): `0x${string}` {
     const privateKeySetting =
       this.polymarketRuntime.getSetting("POLYMARKET_PRIVATE_KEY") ||
@@ -148,15 +103,11 @@ export class PolymarketService extends Service {
       );
     }
 
-    // Convert to string and ensure it has 0x prefix
     const privateKey = String(privateKeySetting);
     const key = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
     return key as `0x${string}`;
   }
 
-  /**
-   * Create an enhanced wallet object compatible with CLOB client
-   */
   private createEnhancedWallet(privateKey: `0x${string}`): EnhancedWallet {
     const account = privateKeyToAccount(privateKey);
 
@@ -185,9 +136,6 @@ export class PolymarketService extends Service {
     };
   }
 
-  /**
-   * Initialize the basic CLOB client for read operations
-   */
   private async initializeClobClient(): Promise<void> {
     const clobApiUrlSetting =
       this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
@@ -211,9 +159,6 @@ export class PolymarketService extends Service {
     logger.info("CLOB client initialized successfully");
   }
 
-  /**
-   * Initialize authenticated client with API credentials
-   */
   private async initializeAuthenticatedClient(): Promise<void> {
     const apiKey = this.polymarketRuntime.getSetting("CLOB_API_KEY");
     const apiSecret =
@@ -250,9 +195,6 @@ export class PolymarketService extends Service {
     logger.info("Authenticated CLOB client initialized");
   }
 
-  /**
-   * Get the CLOB client for read operations
-   */
   getClobClient(): ClobClient {
     if (!this.clobClient) {
       throw new Error("CLOB client not initialized");
@@ -260,9 +202,6 @@ export class PolymarketService extends Service {
     return this.clobClient;
   }
 
-  /**
-   * Get the authenticated CLOB client for trading operations
-   */
   getAuthenticatedClient(): ClobClient {
     if (!this.authenticatedClient) {
       throw new Error(
@@ -272,9 +211,6 @@ export class PolymarketService extends Service {
     return this.authenticatedClient;
   }
 
-  /**
-   * Get the wallet address
-   */
   getWalletAddress(): string {
     if (!this.walletAddress) {
       throw new Error("Wallet not initialized");
@@ -282,20 +218,16 @@ export class PolymarketService extends Service {
     return this.walletAddress;
   }
 
-  /**
-   * Refresh wallet data and update cache
-   */
   async refreshWalletData(): Promise<void> {
     if (!this.clobClient || !this.walletAddress) {
       return;
     }
 
     try {
-      // Get USDC balance from Polymarket
       const walletData: PolymarketWalletData = {
         address: this.walletAddress,
         chainId: POLYGON_CHAIN_ID,
-        usdcBalance: "0", // Would be fetched from chain
+        usdcBalance: "0",
         timestamp: Date.now(),
       };
 
@@ -307,16 +239,10 @@ export class PolymarketService extends Service {
     }
   }
 
-  /**
-   * Get cached wallet data
-   */
   async getCachedData(): Promise<PolymarketWalletData | undefined> {
     return this.polymarketRuntime.getCache<PolymarketWalletData>(POLYMARKET_WALLET_DATA_CACHE_KEY);
   }
 
-  /**
-   * Check if authenticated client is available
-   */
   hasAuthenticatedClient(): boolean {
     return this.authenticatedClient !== null;
   }

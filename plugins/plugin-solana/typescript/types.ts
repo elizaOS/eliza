@@ -1,18 +1,5 @@
 import type { Keypair, PublicKey } from "@solana/web3.js";
 
-/**
- * Interface representing an item with specific properties.
- * @typedef {Object} Item
- * @property {string} name - The name of the item.
- * @property {string} address - The address of the item.
- * @property {string} symbol - The symbol of the item.
- * @property {number} decimals - The number of decimals for the item.
- * @property {string} balance - The balance of the item.
- * @property {string} uiAmount - The UI amount of the item.
- * @property {string} priceUsd - The price of the item in USD.
- * @property {string} valueUsd - The value of the item in USD.
- * @property {string} [valueSol] - Optional value of the item in SOL.
- */
 export interface Item {
   name: string;
   address: string;
@@ -42,15 +29,6 @@ export interface Prices {
   ethereum: { usd: string };
 }
 
-/**
- * Interface representing a wallet portfolio.
- * @typedef {Object} WalletPortfolio
- * @property {string} totalUsd - The total value in USD.
- * @property {string} [totalSol] - The total value in SOL (optional).
- * @property {Array<Item>} items - An array of items in the wallet portfolio.
- * @property {Prices} [prices] - Optional prices of the items.
- * @property {number} [lastUpdated] - Timestamp of when the portfolio was last updated (optional).
- */
 export interface WalletPortfolio {
   totalUsd: string;
   totalSol?: string;
@@ -107,11 +85,6 @@ export interface TokenAccountInfo {
   };
 }
 
-/**
- * API Response types for Solana plugin HTTP routes
- */
-
-// Base response wrapper
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -129,7 +102,6 @@ export interface WalletAddressResponse {
   publicKey: string;
 }
 
-// GET /wallet/balance
 export interface WalletBalanceResponse {
   publicKey: string;
   balance: number;
@@ -144,7 +116,6 @@ export interface TokenBalanceResponse {
   decimals: number;
 }
 
-// GET /wallet/portfolio
 export interface WalletPortfolioResponse {
   publicKey: string;
   totalUsd: string;
@@ -184,13 +155,6 @@ export interface TokenAccountResponse {
   amount: string;
 }
 
-// ============================================
-// Service types
-// ============================================
-
-/**
- * Mint balance information for a token.
- */
 export interface MintBalance {
   amount: string;
   decimals: number;
@@ -230,9 +194,6 @@ export interface ParsedTokenAccount {
   };
 }
 
-/**
- * Jupiter quote response.
- */
 export interface JupiterQuote {
   inputMint: string;
   inAmount: string;
@@ -274,9 +235,6 @@ export interface JupiterSwapResult {
   error?: string;
 }
 
-/**
- * Swap execution result.
- */
 export interface SwapResult {
   success: boolean;
   signature?: string;
@@ -285,9 +243,6 @@ export interface SwapResult {
   error?: string;
 }
 
-/**
- * Fees from a swap transaction.
- */
 export interface SwapFees {
   totalFee: number;
   platformFee: number;
@@ -303,9 +258,6 @@ export interface ExchangeProvider {
   executeSwap(params: SwapExecuteParams): Promise<SwapResult>;
 }
 
-/**
- * Parameters for getting a swap quote.
- */
 export interface SwapQuoteParams {
   inputMint: string;
   outputMint: string;
@@ -322,9 +274,6 @@ export interface SwapExecuteParams {
   wrapAndUnwrapSol?: boolean;
 }
 
-/**
- * Jupiter service interface.
- */
 export interface JupiterServiceInterface {
   getQuote(params: SwapQuoteParams): Promise<JupiterQuote>;
   swap(params: SwapExecuteParams): Promise<SwapResult>;
@@ -358,9 +307,6 @@ export interface ExtendedJupiterServiceInterface extends JupiterServiceInterface
   }): Promise<SwapFees>;
 }
 
-/**
- * Trading signal for swap execution.
- */
 export interface TradingSignal {
   sourceTokenCA: string;
   targetTokenCA: string;
@@ -382,9 +328,6 @@ export interface SwapExecutionResponse {
   error?: string;
 }
 
-/**
- * WebSocket account notification.
- */
 export interface AccountNotification {
   context: {
     slot: number;
@@ -410,9 +353,6 @@ export interface AccountNotification {
  */
 export type SubscriptionHandler = (notification: AccountNotification) => void | Promise<void>;
 
-/**
- * Cache wrapper with expiration.
- */
 export interface CacheWrapper<T> {
   exp: number;
   data: T;
@@ -431,9 +371,6 @@ export interface Token2022Metadata {
   additional?: Array<[string, string]>;
 }
 
-/**
- * Token supply information.
- */
 export interface TokenSupplyInfo {
   supply: bigint;
   decimals: number;
@@ -452,9 +389,6 @@ export interface BirdeyePriceResponse {
   };
 }
 
-/**
- * Birdeye API token item in wallet response.
- */
 export interface BirdeyeWalletTokenItem {
   address: string;
   symbol?: string;
@@ -478,9 +412,6 @@ export interface BirdeyeWalletTokenListResponse {
   };
 }
 
-/**
- * Swap wallet entry for batch swaps.
- */
 export interface SwapWalletEntry {
   keypair: Keypair;
   amount: number;
@@ -497,9 +428,6 @@ export interface BatchSwapResult {
   error?: string;
 }
 
-/**
- * Token account structure from Solana's getParsedTokenAccountsByOwner
- */
 export interface TokenAccountEntry {
   pubkey: PublicKey;
   account: {
@@ -541,9 +469,6 @@ export interface TokenMetaCacheEntry {
   };
 }
 
-/**
- * Parsed token account result
- */
 export interface ParsedTokenResult {
   mint: string;
   symbol: string | null;

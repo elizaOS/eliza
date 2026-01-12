@@ -1,10 +1,3 @@
-"""
-Simple HNSW (Hierarchical Navigable Small World) implementation.
-
-Pure in-memory, ephemeral vector index.
-All data is lost on restart - no persistence.
-"""
-
 from __future__ import annotations
 
 import math
@@ -16,22 +9,18 @@ from elizaos_plugin_inmemorydb.types import IVectorStorage, VectorSearchResult
 
 @dataclass
 class HNSWNode:
-    """Node in the HNSW graph."""
-
     id: str
     vector: list[float]
     level: int
-    neighbors: dict[int, set[str]] = field(default_factory=dict)  # level -> neighbor ids
+    neighbors: dict[int, set[str]] = field(default_factory=dict)
 
 
 @dataclass
 class HNSWConfig:
-    """HNSW configuration parameters."""
-
-    M: int = 16  # Max connections per layer  # noqa: N815
-    ef_construction: int = 200  # Size of dynamic candidate list during construction
-    ef_search: int = 50  # Size of dynamic candidate list during search
-    mL: float = field(default=0.0)  # Level multiplier (1/ln(M))  # noqa: N815
+    M: int = 16  # noqa: N815
+    ef_construction: int = 200
+    ef_search: int = 50
+    mL: float = field(default=0.0)  # noqa: N815
 
     def __post_init__(self) -> None:
         if self.mL == 0.0:
@@ -39,7 +28,6 @@ class HNSWConfig:
 
 
 def cosine_distance(a: list[float], b: list[float]) -> float:
-    """Calculate cosine distance between two vectors."""
     if len(a) != len(b):
         raise ValueError(f"Vector dimension mismatch: {len(a)} vs {len(b)}")
 
@@ -56,18 +44,10 @@ def cosine_distance(a: list[float], b: list[float]) -> float:
     if magnitude == 0:
         return 1.0
 
-    # Cosine similarity: dot(a,b) / (|a| * |b|)
-    # Cosine distance: 1 - similarity
     return 1.0 - (dot_product / magnitude)
 
 
 class EphemeralHNSW(IVectorStorage):
-    """
-    Simple HNSW implementation for vector similarity search.
-
-    Completely ephemeral - no persistence, all data lost on close/restart.
-    """
-
     def __init__(self) -> None:
         self._nodes: dict[str, HNSWNode] = {}
         self._entry_point: str | None = None
@@ -76,26 +56,21 @@ class EphemeralHNSW(IVectorStorage):
         self._config = HNSWConfig()
 
     async def init(self, dimension: int) -> None:
-        """Initialize the vector storage."""
         self._dimension = dimension
 
     def _get_random_level(self) -> int:
-        """Get a random level for a new node."""
         level = 0
         while random.random() < math.exp(-level * self._config.mL) and level < 16:
             level += 1
         return level
 
     async def add(self, id_: str, vector: list[float]) -> None:
-        """Add a vector with associated id."""
         if len(vector) != self._dimension:
             raise ValueError(
                 f"Vector dimension mismatch: expected {self._dimension}, got {len(vector)}"
             )
 
-        # Check if already exists
         if id_ in self._nodes:
-            # Update existing node's vector
             self._nodes[id_].vector = vector
             return
 
@@ -108,7 +83,6 @@ class EphemeralHNSW(IVectorStorage):
         )
 
         if self._entry_point is None:
-            # First node
             self._entry_point = id_
             self._max_level = level
             self._nodes[id_] = new_node
@@ -116,17 +90,14 @@ class EphemeralHNSW(IVectorStorage):
 
         current_node = self._entry_point
 
-        # Search from top level down to level+1
         for lvl in range(self._max_level, level, -1):
             results = self._search_layer(vector, current_node, 1, lvl)
             if results:
                 current_node = results[0]["id"]
 
-        # Insert at each level from level down to 0
         for lvl in range(min(level, self._max_level), -1, -1):
             neighbors = self._search_layer(vector, current_node, self._config.ef_construction, lvl)
 
-            # Connect to M closest neighbors
             max_neighbors = self._config.M
             selected_neighbors = neighbors[:max_neighbors]
 
@@ -139,7 +110,6 @@ class EphemeralHNSW(IVectorStorage):
                         neighbor_node.neighbors[lvl] = set()
                     neighbor_node.neighbors[lvl].add(id_)
 
-                    # Prune if over limit
                     if len(neighbor_node.neighbors[lvl]) > max_neighbors:
                         to_keep = self._select_best_neighbors(
                             neighbor_node.vector, neighbor_node.neighbors[lvl], max_neighbors
@@ -151,7 +121,6 @@ class EphemeralHNSW(IVectorStorage):
 
         self._nodes[id_] = new_node
 
-        # Update entry point if new node has higher level
         if level > self._max_level:
             self._max_level = level
             self._entry_point = id_
@@ -159,7 +128,6 @@ class EphemeralHNSW(IVectorStorage):
     def _search_layer(
         self, query: list[float], entry_id: str, ef: int, level: int
     ) -> list[dict[str, float | str]]:
-        """Search a layer for nearest neighbors."""
         visited: set[str] = {entry_id}
         entry_node = self._nodes.get(entry_id)
         if not entry_node:
@@ -167,16 +135,13 @@ class EphemeralHNSW(IVectorStorage):
 
         entry_dist = cosine_distance(query, entry_node.vector)
 
-        # Candidates and results
         candidates: list[dict[str, float | str]] = [{"id": entry_id, "distance": entry_dist}]
         results: list[dict[str, float | str]] = [{"id": entry_id, "distance": entry_dist}]
 
         while candidates:
-            # Get closest candidate
             candidates.sort(key=lambda x: x["distance"])
             current = candidates.pop(0)
 
-            # Get furthest result
             results.sort(key=lambda x: x["distance"], reverse=True)
             furthest_result = results[0]
 
@@ -214,7 +179,6 @@ class EphemeralHNSW(IVectorStorage):
     def _select_best_neighbors(
         self, node_vector: list[float], neighbor_ids: set[str], max_neighbors: int
     ) -> list[dict[str, float | str]]:
-        """Select the best neighbors by distance."""
         neighbors: list[dict[str, float | str]] = []
 
         for id_ in neighbor_ids:
@@ -226,12 +190,10 @@ class EphemeralHNSW(IVectorStorage):
         return neighbors[:max_neighbors]
 
     async def remove(self, id_: str) -> None:
-        """Remove a vector by id."""
         node = self._nodes.get(id_)
         if not node:
             return
 
-        # Remove from all neighbors' neighbor lists
         for level, neighbors in node.neighbors.items():
             for neighbor_id in neighbors:
                 neighbor_node = self._nodes.get(neighbor_id)
@@ -240,13 +202,11 @@ class EphemeralHNSW(IVectorStorage):
 
         del self._nodes[id_]
 
-        # Update entry point if needed
         if self._entry_point == id_:
             if not self._nodes:
                 self._entry_point = None
                 self._max_level = 0
             else:
-                # Find new entry point with highest level
                 max_level = 0
                 new_entry: str | None = None
                 for node_id, n in self._nodes.items():
@@ -259,7 +219,6 @@ class EphemeralHNSW(IVectorStorage):
     async def search(
         self, query: list[float], k: int, threshold: float = 0.5
     ) -> list[VectorSearchResult]:
-        """Search for nearest neighbors."""
         if self._entry_point is None or not self._nodes:
             return []
 
@@ -270,13 +229,11 @@ class EphemeralHNSW(IVectorStorage):
 
         current_node = self._entry_point
 
-        # Search from top to level 1
         for level in range(self._max_level, 0, -1):
             closest = self._search_layer(query, current_node, 1, level)
             if closest:
                 current_node = str(closest[0]["id"])
 
-        # Search at level 0 with ef
         results = self._search_layer(
             query, current_node, max(k, self._config.ef_search), 0
         )
@@ -292,17 +249,11 @@ class EphemeralHNSW(IVectorStorage):
         ]
 
     async def clear(self) -> None:
-        """Clear all vectors from the index."""
         self._nodes.clear()
         self._entry_point = None
         self._max_level = 0
 
     def size(self) -> int:
-        """Get count of vectors in the index."""
         return len(self._nodes)
-
-
-
-
 
 

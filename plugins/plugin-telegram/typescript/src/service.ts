@@ -20,17 +20,6 @@ import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
 import { TelegramEventTypes, type TelegramWorldPayload } from "./types";
 
-/**
- * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
- * This service handles all Telegram-specific functionality including:
- * - Initializing and managing the Telegram bot
- * - Setting up middleware for preprocessing messages
- * - Handling message and reaction events
- * - Synchronizing Telegram chats, users, and entities with the agent runtime
- * - Managing forum topics as separate rooms
- *
- * @extends Service
- */
 export class TelegramService extends Service {
   static serviceType = TELEGRAM_SERVICE_NAME;
   capabilityDescription = "The agent is able to send and receive messages on telegram";
@@ -40,15 +29,10 @@ export class TelegramService extends Service {
   private knownChats: Map<string, Chat> = new Map();
   private syncedEntityIds: Set<string> = new Set<string>();
 
-  /**
-   * Constructor for TelegramService class.
-   * @param {IAgentRuntime} runtime - The runtime object for the agent.
-   */
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     logger.log("📱 Constructing new TelegramService...");
 
-    // Check if Telegram bot token is available and valid
     const botToken = runtime.getSetting("TELEGRAM_BOT_TOKEN") as string;
     if (!botToken || botToken.trim() === "") {
       logger.warn("Telegram Bot Token not provided - Telegram functionality will be unavailable");
@@ -71,12 +55,6 @@ export class TelegramService extends Service {
     logger.log("✅ TelegramService constructor completed");
   }
 
-  /**
-   * Starts the Telegram service for the given runtime.
-   *
-   * @param {IAgentRuntime} runtime - The agent runtime to start the Telegram service for.
-   * @returns {Promise<TelegramService>} A promise that resolves with the initialized TelegramService.
-   */
   static async start(runtime: IAgentRuntime): Promise<TelegramService> {
     // Remove validateTelegramConfig call to allow service to start without token
 

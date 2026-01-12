@@ -1,26 +1,3 @@
-/**
- * N8n AutoPlugin for elizaOS
- *
- * Provides AI-powered plugin creation capabilities using Claude models.
- * Enables agents to autonomously create, build, test, and deploy ElizaOS plugins.
- *
- * ## Features
- *
- * - AI-powered plugin code generation
- * - Iterative refinement with build/lint/test validation
- * - Natural language to plugin specification conversion
- * - Plugin registry tracking
- *
- * ## Configuration
- *
- * Required:
- * - ANTHROPIC_API_KEY: Your Anthropic API key
- *
- * Optional:
- * - PLUGIN_DATA_DIR: Directory for plugin workspace (default: ./data)
- * - CLAUDE_MODEL: Model to use (default: claude-3-opus-20240229)
- */
-
 import type { Plugin } from "@elizaos/core";
 import {
   cancelPluginCreationAction,
@@ -45,11 +22,6 @@ export interface PluginConfig {
   readonly CLAUDE_MODEL?: string;
 }
 
-/**
- * N8n AutoPlugin for elizaOS.
- *
- * Provides AI-powered plugin creation using Claude models.
- */
 export const n8nPlugin: Plugin = {
   name: "@elizaos/plugin-n8n",
   description: "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
@@ -79,7 +51,6 @@ export const n8nPlugin: Plugin = {
   tests: [],
 };
 
-// Export individual components for direct use
 export {
   PluginCreationService,
   createPluginAction,
@@ -92,5 +63,4 @@ export {
   pluginExistsProvider,
 };
 
-// Default export
 export default n8nPlugin;

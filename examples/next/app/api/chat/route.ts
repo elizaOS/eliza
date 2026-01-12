@@ -4,11 +4,16 @@ import {
   type Character,
   createMessageMemory,
   type IAgentRuntime,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
+
+// Type assertion needed due to namespace import inference
+const typedSqlPlugin = sqlPlugin as Plugin;
+
 import { v4 as uuidv4 } from "uuid";
 import { generateElizaResponse } from "@/lib/eliza-classic";
 
@@ -45,7 +50,7 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
 
       const newRuntime = new AgentRuntime({
         character,
-        plugins: [sqlPlugin, openaiPlugin],
+        plugins: [typedSqlPlugin, openaiPlugin],
       });
 
       await newRuntime.initialize();

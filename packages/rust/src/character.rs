@@ -7,34 +7,14 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 
 /// Parse a character from a JSON string
-///
-/// # Arguments
-/// * `json` - JSON string containing character data
-///
-/// # Returns
-/// A Result containing the parsed Character or an error
-///
-/// # Example
-/// ```rust
-/// use elizaos::parse_character;
-///
-/// let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
-/// let character = parse_character(json).unwrap();
-/// assert_eq!(character.name, "TestAgent");
-/// ```
 pub fn parse_character(json: &str) -> Result<Character> {
-    let character: Character = serde_json::from_str(json).context("Failed to parse character JSON")?;
+    let character: Character =
+        serde_json::from_str(json).context("Failed to parse character JSON")?;
     validate_character(&character).context("Character validation failed")?;
     Ok(character)
 }
 
 /// Validate a character configuration
-///
-/// # Arguments
-/// * `character` - The character to validate
-///
-/// # Returns
-/// A Result with validation errors if any
 pub fn validate_character(character: &Character) -> Result<()> {
     // Validate name
     if character.name.is_empty() {
@@ -54,12 +34,6 @@ pub fn validate_character(character: &Character) -> Result<()> {
 }
 
 /// Merge character with default values
-///
-/// # Arguments
-/// * `character` - Partial character configuration
-///
-/// # Returns
-/// Complete character with defaults applied
 pub fn merge_character_defaults(mut character: Character) -> Character {
     // Apply defaults
     if character.settings.is_none() {
@@ -79,17 +53,7 @@ pub fn merge_character_defaults(mut character: Character) -> Character {
 }
 
 /// Build character plugins based on environment variables
-///
-/// This function determines which plugins to load based on available API keys
-/// and configuration in the environment.
-///
-/// # Arguments
-/// * `env` - Environment variables map
-///
-/// # Returns
-/// Ordered array of plugin names to load
 pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
-    // Match documented TS/Py plugin ordering.
     let mut plugins: Vec<String> = vec!["@elizaos/plugin-sql".to_string()];
 
     // Text-only plugins (no embedding support)

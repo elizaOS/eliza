@@ -228,6 +228,70 @@ async def get_spread(
         ) from e
 
 
+async def get_order_book_summary(
+    token_id: str,
+    runtime: RuntimeProtocol | None = None,
+) -> dict[str, any]:
+    """
+    Get order book summary for a specific token, including best bid/ask and spread.
+
+    Args:
+        token_id: The token ID to get order book summary for
+        runtime: Optional agent runtime for settings
+
+    Returns:
+        Dictionary with order book summary data
+
+    Raises:
+        PolymarketError: If fetching order book summary fails
+    """
+    if not token_id:
+        raise PolymarketError(
+            PolymarketErrorCode.INVALID_TOKEN,
+            "Token ID is required",
+        )
+
+    try:
+        order_book = await get_order_book(token_id, runtime)
+
+        best_bid = order_book.bids[0] if order_book.bids else None
+        best_ask = order_book.asks[0] if order_book.asks else None
+
+        spread = None
+        midpoint = None
+
+        if best_bid and best_ask:
+            bid_price = float(best_bid.price)
+            ask_price = float(best_ask.price)
+            spread = ask_price - bid_price
+            midpoint = (bid_price + ask_price) / 2
+
+        return {
+            "token_id": token_id,
+            "best_bid": {
+                "price": best_bid.price if best_bid else None,
+                "size": best_bid.size if best_bid else None,
+            },
+            "best_ask": {
+                "price": best_ask.price if best_ask else None,
+                "size": best_ask.size if best_ask else None,
+            },
+            "spread": str(spread) if spread is not None else None,
+            "midpoint": str(midpoint) if midpoint is not None else None,
+            "bid_levels": len(order_book.bids),
+            "ask_levels": len(order_book.asks),
+        }
+
+    except PolymarketError:
+        raise
+    except Exception as e:
+        raise PolymarketError(
+            PolymarketErrorCode.API_ERROR,
+            f"Failed to get order book summary: {e}",
+            cause=e,
+        ) from e
+
+
 
 
 

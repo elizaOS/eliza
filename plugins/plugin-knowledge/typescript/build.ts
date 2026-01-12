@@ -1,7 +1,3 @@
-/**
- * Build script for Knowledge Plugin
- */
-
 import { existsSync } from "node:fs";
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";

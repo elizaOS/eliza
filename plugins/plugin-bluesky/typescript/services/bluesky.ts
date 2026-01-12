@@ -1,7 +1,3 @@
-/**
- * BlueSky service for elizaOS.
- */
-
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";

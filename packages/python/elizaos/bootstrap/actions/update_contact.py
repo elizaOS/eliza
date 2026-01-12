@@ -1,9 +1,3 @@
-"""
-UPDATE_CONTACT Action - Update a contact in the rolodex.
-
-This action updates an existing contact's information.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -33,31 +27,22 @@ UPDATE_CONTACT_TEMPLATE = """# Update Contact Information
 Current message: {{message}}
 Sender: {{senderName}} (ID: {{senderId}})
 
-## Instructions
-Extract the contact update information from the message:
+Extract update information:
 1. Who to update (name or entity reference)
-2. What fields to update (categories, tags, preferences, notes)
-3. Whether to add to or replace existing values
+2. Fields to update (categories, tags, preferences, notes)
+3. Operation (add_to or replace)
 
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-## Response Format
 <response>
 <contactName>Name of the contact to update</contactName>
 <operation>add_to or replace</operation>
 <categories>comma-separated list of categories</categories>
 <tags>comma-separated list of tags</tags>
 <notes>Any additional notes</notes>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
+</response>"""
 
 
 @dataclass
 class UpdateContactAction:
-    """Action that updates a contact in the rolodex."""
-
     name: str = "UPDATE_CONTACT_INFO"
     similes: list[str] = field(
         default_factory=lambda: [
@@ -71,7 +56,6 @@ class UpdateContactAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         return rolodex_service is not None
 
@@ -84,7 +68,6 @@ class UpdateContactAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """Update a contact in the rolodex."""
         from elizaos.bootstrap.services.rolodex import RolodexService
 
         rolodex_service = runtime.get_service("rolodex")
@@ -96,111 +79,92 @@ class UpdateContactAction:
                 data={"error": "RolodexService not available"},
             )
 
-        try:
-            state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ENTITIES"])
+        state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ENTITIES"])
 
-            prompt = runtime.compose_prompt_from_state(
-                state=state,
-                template=UPDATE_CONTACT_TEMPLATE,
-            )
+        prompt = runtime.compose_prompt_from_state(
+            state=state,
+            template=UPDATE_CONTACT_TEMPLATE,
+        )
 
-            response = await runtime.use_model(ModelType.TEXT_SMALL, {"prompt": prompt})
-            parsed = parse_key_value_xml(response)
+        response = await runtime.use_model(ModelType.TEXT_SMALL, {"prompt": prompt})
+        parsed = parse_key_value_xml(response)
 
-            if not parsed or not parsed.get("contactName"):
-                return ActionResult(
-                    text="Could not determine which contact to update",
-                    success=False,
-                    values={"error": True},
-                    data={"error": "No contact name provided"},
-                )
-
-            contact_name = str(parsed.get("contactName", ""))
-            operation = str(parsed.get("operation", "replace"))
-
-            # Search for the contact
-            contacts = await rolodex_service.search_contacts(search_term=contact_name)
-
-            if not contacts:
-                return ActionResult(
-                    text=f"Could not find a contact named '{contact_name}'",
-                    success=False,
-                    values={"error": True},
-                    data={"error": "Contact not found"},
-                )
-
-            contact = contacts[0]
-
-            # Prepare updates
-            categories = None
-            tags = None
-
-            if parsed.get("categories"):
-                new_categories = [
-                    c.strip() for c in str(parsed["categories"]).split(",") if c.strip()
-                ]
-                if operation == "add_to" and contact.categories:
-                    categories = list(set(contact.categories + new_categories))
-                else:
-                    categories = new_categories
-
-            if parsed.get("tags"):
-                new_tags = [t.strip() for t in str(parsed["tags"]).split(",") if t.strip()]
-                if operation == "add_to" and contact.tags:
-                    tags = list(set(contact.tags + new_tags))
-                else:
-                    tags = new_tags
-
-            # Update the contact
-            updated = await rolodex_service.update_contact(
-                entity_id=contact.entity_id,
-                categories=categories,
-                tags=tags,
-            )
-
-            if updated:
-                response_text = f"I've updated {contact_name}'s contact information."
-                if categories:
-                    response_text += f" Categories: {', '.join(categories)}."
-                if tags:
-                    response_text += f" Tags: {', '.join(tags)}."
-
-                if callback:
-                    await callback(Content(text=response_text, actions=["UPDATE_CONTACT_INFO"]))
-
-                return ActionResult(
-                    text=response_text,
-                    success=True,
-                    values={
-                        "contactId": str(contact.entity_id),
-                        "categoriesStr": ",".join(categories) if categories else "",
-                        "tagsStr": ",".join(tags) if tags else "",
-                    },
-                    data={"success": True},
-                )
-            else:
-                return ActionResult(
-                    text="Failed to update contact",
-                    success=False,
-                    values={"error": True},
-                    data={"error": "Update operation failed"},
-                )
-
-        except Exception as e:
-            runtime.logger.error(
-                {"src": "action:update_contact", "error": str(e)},
-                "Error updating contact",
-            )
+        if not parsed or not parsed.get("contactName"):
             return ActionResult(
-                text=f"Error updating contact: {e}",
+                text="Could not determine which contact to update",
                 success=False,
                 values={"error": True},
-                data={"error": str(e)},
+                data={"error": "No contact name provided"},
+            )
+
+        contact_name = str(parsed.get("contactName", ""))
+        operation = str(parsed.get("operation", "replace"))
+
+        contacts = await rolodex_service.search_contacts(search_term=contact_name)
+
+        if not contacts:
+            return ActionResult(
+                text=f"Could not find a contact named '{contact_name}'",
+                success=False,
+                values={"error": True},
+                data={"error": "Contact not found"},
+            )
+
+        contact = contacts[0]
+
+        categories = None
+        tags = None
+
+        if parsed.get("categories"):
+            new_categories = [c.strip() for c in str(parsed["categories"]).split(",") if c.strip()]
+            if operation == "add_to" and contact.categories:
+                categories = list(set(contact.categories + new_categories))
+            else:
+                categories = new_categories
+
+        if parsed.get("tags"):
+            new_tags = [t.strip() for t in str(parsed["tags"]).split(",") if t.strip()]
+            if operation == "add_to" and contact.tags:
+                tags = list(set(contact.tags + new_tags))
+            else:
+                tags = new_tags
+
+        updated = await rolodex_service.update_contact(
+            entity_id=contact.entity_id,
+            categories=categories,
+            tags=tags,
+        )
+
+        if updated:
+            response_text = f"I've updated {contact_name}'s contact information."
+            if categories:
+                response_text += f" Categories: {', '.join(categories)}."
+            if tags:
+                response_text += f" Tags: {', '.join(tags)}."
+
+            if callback:
+                await callback(Content(text=response_text, actions=["UPDATE_CONTACT_INFO"]))
+
+            return ActionResult(
+                text=response_text,
+                success=True,
+                values={
+                    "contactId": str(contact.entity_id),
+                    "categoriesStr": ",".join(categories) if categories else "",
+                    "tagsStr": ",".join(tags) if tags else "",
+                },
+                data={"success": True},
+            )
+        else:
+            return ActionResult(
+                text="Failed to update contact",
+                success=False,
+                values={"error": True},
+                data={"error": "Update operation failed"},
             )
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions."""
         return [
             [
                 ActionExample(
@@ -217,7 +181,6 @@ class UpdateContactAction:
         ]
 
 
-# Create the action instance
 update_contact_action = Action(
     name=UpdateContactAction.name,
     similes=UpdateContactAction().similes,

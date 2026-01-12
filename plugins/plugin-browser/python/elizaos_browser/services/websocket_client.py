@@ -1,7 +1,3 @@
-"""
-WebSocket client for communication with browser server.
-"""
-
 import asyncio
 import json
 import logging
@@ -18,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class BrowserWebSocketClient:
-    """WebSocket client for browser automation server."""
-
     def __init__(self, server_url: str) -> None:
         self.server_url = server_url
         self._ws: Any = None
@@ -31,14 +25,11 @@ class BrowserWebSocketClient:
         self._receive_task: asyncio.Task[None] | None = None
 
     async def connect(self) -> None:
-        """Connect to the browser server."""
         try:
             self._ws = await websockets.connect(self.server_url)
             self._connected = True
             self._reconnect_attempts = 0
             logger.info(f"[Browser] Connected to server at {self.server_url}")
-
-            # Start receiving messages
             self._receive_task = asyncio.create_task(self._receive_messages())
 
         except Exception as e:
@@ -46,7 +37,6 @@ class BrowserWebSocketClient:
             raise
 
     async def _receive_messages(self) -> None:
-        """Receive messages from the server."""
         try:
             async for message in self._ws:
                 try:
@@ -78,7 +68,6 @@ class BrowserWebSocketClient:
                 await self._attempt_reconnect()
 
     async def _attempt_reconnect(self) -> None:
-        """Attempt to reconnect to the server."""
         self._reconnect_attempts += 1
         logger.info(
             f"[Browser] Attempting reconnection {self._reconnect_attempts}/{self._max_reconnect_attempts}..."
@@ -96,7 +85,6 @@ class BrowserWebSocketClient:
         msg_type: str,
         data: dict[str, Any] | None = None,
     ) -> WebSocketResponse:
-        """Send a message to the server and wait for response."""
         if not self._ws or not self._connected:
             raise RuntimeError("Not connected to browser server")
 
@@ -107,15 +95,12 @@ class BrowserWebSocketClient:
             **(data or {}),
         }
 
-        # Create future for response
         future: asyncio.Future[WebSocketResponse] = asyncio.get_event_loop().create_future()
         self._message_handlers[request_id] = future
 
         try:
             await self._ws.send(json.dumps(message))
             logger.debug(f"[Browser] Sent message: {msg_type} ({request_id})")
-
-            # Wait for response with timeout
             response = await asyncio.wait_for(future, timeout=30.0)
 
             if response.type == "error":
@@ -128,7 +113,6 @@ class BrowserWebSocketClient:
             raise RuntimeError(f"Request timeout for {msg_type}") from e
 
     def disconnect(self) -> None:
-        """Disconnect from the server."""
         self._reconnect_attempts = self._max_reconnect_attempts
 
         if self._receive_task:
@@ -142,13 +126,9 @@ class BrowserWebSocketClient:
         logger.info("[Browser] Client disconnected")
 
     def is_connected(self) -> bool:
-        """Check if connected."""
         return self._connected
 
-    # Convenience methods
-
     async def navigate(self, session_id: str, url: str) -> NavigationResult:
-        """Navigate to a URL."""
         response = await self.send_message(
             "navigate",
             {"sessionId": session_id, "data": {"url": url}},
@@ -164,12 +144,10 @@ class BrowserWebSocketClient:
         self,
         session_id: str,
     ) -> dict[str, Any]:
-        """Get browser state."""
         response = await self.send_message("getState", {"sessionId": session_id})
         return response.data or {"url": "", "title": "", "sessionId": session_id}
 
     async def go_back(self, session_id: str) -> NavigationResult:
-        """Go back in history."""
         response = await self.send_message("goBack", {"sessionId": session_id})
         data = response.data or {}
         return NavigationResult(
@@ -179,7 +157,6 @@ class BrowserWebSocketClient:
         )
 
     async def go_forward(self, session_id: str) -> NavigationResult:
-        """Go forward in history."""
         response = await self.send_message("goForward", {"sessionId": session_id})
         data = response.data or {}
         return NavigationResult(
@@ -189,7 +166,6 @@ class BrowserWebSocketClient:
         )
 
     async def refresh(self, session_id: str) -> NavigationResult:
-        """Refresh the page."""
         response = await self.send_message("refresh", {"sessionId": session_id})
         data = response.data or {}
         return NavigationResult(
@@ -199,7 +175,6 @@ class BrowserWebSocketClient:
         )
 
     async def click(self, session_id: str, description: str) -> WebSocketResponse:
-        """Click on an element."""
         return await self.send_message(
             "click",
             {"sessionId": session_id, "data": {"description": description}},
@@ -211,7 +186,6 @@ class BrowserWebSocketClient:
         text: str,
         field: str,
     ) -> WebSocketResponse:
-        """Type text into a field."""
         return await self.send_message(
             "type",
             {"sessionId": session_id, "data": {"text": text, "field": field}},
@@ -223,29 +197,24 @@ class BrowserWebSocketClient:
         option: str,
         dropdown: str,
     ) -> WebSocketResponse:
-        """Select an option from a dropdown."""
         return await self.send_message(
             "select",
             {"sessionId": session_id, "data": {"option": option, "dropdown": dropdown}},
         )
 
     async def extract(self, session_id: str, instruction: str) -> WebSocketResponse:
-        """Extract data from the page."""
         return await self.send_message(
             "extract",
             {"sessionId": session_id, "data": {"instruction": instruction}},
         )
 
     async def screenshot(self, session_id: str) -> WebSocketResponse:
-        """Take a screenshot."""
         return await self.send_message("screenshot", {"sessionId": session_id})
 
     async def solve_captcha(self, session_id: str) -> WebSocketResponse:
-        """Solve CAPTCHA."""
         return await self.send_message("solveCaptcha", {"sessionId": session_id})
 
     async def health(self) -> bool:
-        """Check server health."""
         try:
             response = await self.send_message("health", {})
             return (

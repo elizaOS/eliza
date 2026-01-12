@@ -1,9 +1,7 @@
-"""Core types for the BlueSky AT Protocol API."""
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +41,7 @@ class BlueSkyProfile(BaseModel):
 
 class PostFacet(BaseModel):
     index: dict[str, int]
-    features: list[dict[str, Any]]
+    features: list[dict[str, str | int | float | bool | dict | list | None]]
 
 
 class PostRecord(BaseModel):
@@ -73,8 +71,8 @@ class TimelineRequest(BaseModel):
 
 class TimelineFeedItem(BaseModel):
     post: BlueSkyPost
-    reply: dict[str, Any] | None = None
-    reason: dict[str, Any] | None = None
+    reply: dict[str, str | int | float | bool | dict | list | None] | None = None
+    reason: dict[str, str | int | float | bool | dict | list | None] | None = None
 
 
 class TimelineResponse(BaseModel):
@@ -103,7 +101,7 @@ class BlueSkyNotification(BaseModel):
     author: BlueSkyProfile
     reason: NotificationReason
     reason_subject: str | None = None
-    record: dict[str, Any]
+    record: dict[str, str | int | float | bool | dict | list | None]
     is_read: bool
     indexed_at: str
 
@@ -119,7 +117,7 @@ class BlueSkyMessage(BaseModel):
 class BlueSkyConversation(BaseModel):
     id: str
     rev: str
-    members: list[dict[str, Any]]
+    members: list[dict[str, str | int | float | bool | dict | list | None]]
     last_message: BlueSkyMessage | None = None
     unread_count: int
     muted: bool

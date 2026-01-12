@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Eliza Plugin Simple Voice - Retro SAM TTS
 
 pub mod types;
 pub mod sam_engine;

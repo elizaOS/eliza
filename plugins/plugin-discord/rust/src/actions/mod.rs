@@ -2,13 +2,43 @@
 //!
 //! Actions define what the agent can do on Discord.
 
-mod send_message;
-mod send_dm;
 mod add_reaction;
+mod chat_with_attachments;
+mod create_poll;
+mod download_media;
+mod get_user_info;
+mod join_channel;
+mod leave_channel;
+mod list_channels;
+mod pin_message;
+mod react_to_message;
+mod read_channel;
+mod search_messages;
+mod send_dm;
+mod send_message;
+mod server_info;
+mod summarize_conversation;
+mod transcribe_media;
+mod unpin_message;
 
-pub use send_message::SendMessageAction;
-pub use send_dm::SendDmAction;
 pub use add_reaction::AddReactionAction;
+pub use chat_with_attachments::ChatWithAttachmentsAction;
+pub use create_poll::CreatePollAction;
+pub use download_media::DownloadMediaAction;
+pub use get_user_info::GetUserInfoAction;
+pub use join_channel::JoinChannelAction;
+pub use leave_channel::LeaveChannelAction;
+pub use list_channels::ListChannelsAction;
+pub use pin_message::PinMessageAction;
+pub use react_to_message::ReactToMessageAction;
+pub use read_channel::ReadChannelAction;
+pub use search_messages::SearchMessagesAction;
+pub use send_dm::SendDmAction;
+pub use send_message::SendMessageAction;
+pub use server_info::ServerInfoAction;
+pub use summarize_conversation::SummarizeConversationAction;
+pub use transcribe_media::TranscribeMediaAction;
+pub use unpin_message::UnpinMessageAction;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -99,5 +129,20 @@ pub fn get_all_actions() -> Vec<Box<dyn DiscordAction>> {
         Box::new(SendMessageAction),
         Box::new(SendDmAction),
         Box::new(AddReactionAction),
+        Box::new(ChatWithAttachmentsAction),
+        Box::new(CreatePollAction),
+        Box::new(DownloadMediaAction),
+        Box::new(GetUserInfoAction),
+        Box::new(JoinChannelAction),
+        Box::new(LeaveChannelAction),
+        Box::new(ListChannelsAction),
+        Box::new(PinMessageAction),
+        Box::new(ReactToMessageAction),
+        Box::new(ReadChannelAction),
+        Box::new(SearchMessagesAction),
+        Box::new(ServerInfoAction),
+        Box::new(SummarizeConversationAction),
+        Box::new(TranscribeMediaAction),
+        Box::new(UnpinMessageAction),
     ]
 }

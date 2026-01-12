@@ -1,13 +1,6 @@
-/**
- * RSS Plugin Utility Functions
- */
-
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 
-/**
- * Create a message reply content object
- */
 export function createMessageReply(
   runtime: IAgentRuntime,
   message: Memory,
@@ -22,15 +15,6 @@ export function createMessageReply(
   };
 }
 
-/**
- * Extract all URLs from a block of text.
- * - Supports http(s)://, ftp://, and schemeless "www." links
- * - Strips trailing punctuation like .,?!:;)]}'"… if it slipped into the match
- * - Normalizes and deduplicates results (returns absolute URLs with scheme)
- *
- * @param text - The text to extract URLs from
- * @returns Array of normalized URL strings
- */
 export function extractUrls(text: string): string[] {
   const URL_MATCH = /(?:(?:https?|ftp):\/\/|www\.)[^\s<>"'`]+/gi;
   const candidates = text.match(URL_MATCH) || [];
@@ -39,14 +23,9 @@ export function extractUrls(text: string): string[] {
   const seen = new Set<string>();
 
   for (const raw of candidates) {
-    // Trim leading wrappers like ( [ { < ' "
     const candidate = raw.replace(/^[([{<'"]+/, "");
-
-    // Add scheme if missing
     let withScheme = candidate.startsWith("www.") ? `http://${candidate}` : candidate;
-
-    // Iteratively trim common trailing punctuation until it parses (or give up)
-    const TRAIL = /[)\]}>,.;!?:'"\u2026]$/; // includes … (ellipsis)
+    const TRAIL = /[)\]}>,.;!?:'"\u2026]$/;
     while (withScheme && TRAIL.test(withScheme.slice(-1)) && !isValidUrl(withScheme)) {
       withScheme = withScheme.slice(0, -1);
     }
@@ -63,9 +42,6 @@ export function extractUrls(text: string): string[] {
   return results;
 }
 
-/**
- * Check if a string is a valid URL
- */
 function isValidUrl(u: string): boolean {
   try {
     new URL(u);
@@ -75,9 +51,6 @@ function isValidUrl(u: string): boolean {
   }
 }
 
-/**
- * Format a relative time string (e.g., "5 minutes ago")
- */
 export function formatRelativeTime(timestamp: number): string {
   const timeSince = Date.now() - timestamp;
   const minutesSince = Math.floor(timeSince / 60000);

@@ -1,45 +1,27 @@
-#![allow(missing_docs)]
-//! Classic ELIZA Pattern Matching Plugin for elizaOS
+//! # ELIZA Classic Plugin
 //!
-//! This crate provides a pattern matching chatbot based on Joseph Weizenbaum's
-//! original 1966 ELIZA program. No LLM required.
+//! A Rust implementation of the classic ELIZA chatbot, originally created by
+//! Joseph Weizenbaum at MIT in 1966. ELIZA simulates a Rogerian psychotherapist
+//! by using pattern matching and substitution to transform user input into
+//! therapeutic-sounding responses.
 //!
-//! # Native Usage
+//! ## Features
+//!
+//! - Pattern-based response generation
+//! - Pronoun reflection (e.g., "I am" → "you are")
+//! - Configurable patterns and responses
+//! - Response history to avoid repetition
+//!
+//! ## Example
 //!
 //! ```rust
 //! use elizaos_plugin_eliza_classic::ElizaClassicPlugin;
 //!
-//! let plugin = ElizaClassicPlugin::new();
-//! let response = plugin.generate_response("I feel sad today");
+//! let eliza = ElizaClassicPlugin::new();
+//! println!("{}", eliza.get_greeting());
+//! let response = eliza.generate_response("I am feeling sad today");
 //! println!("{}", response);
 //! ```
-//!
-//! # Cross-Language Interop
-//!
-//! This plugin supports loading from multiple runtimes:
-//!
-//! ## From TypeScript (via WASM)
-//! ```typescript
-//! import { loadWasmPlugin } from '@elizaos/interop';
-//! const plugin = await loadWasmPlugin('./eliza_classic.wasm');
-//! ```
-//!
-//! ## From Python (via FFI)
-//! ```python
-//! from elizaos.interop import load_rust_plugin
-//! plugin = load_rust_plugin('./libelizaos_plugin_eliza_classic.so')
-//! ```
-//!
-//! ## From Any Language (via IPC)
-//! ```bash
-//! ./eliza-classic-ipc  # Reads JSON-RPC from stdin, writes to stdout
-//! ```
-//!
-//! # Feature Flags
-//!
-//! - `wasm`: Enable WASM bindings (for TypeScript runtime)
-//! - `ffi`: Enable FFI exports (for Python/C runtime)
-//! - `ipc`: Enable IPC server binary (for subprocess communication)
 
 #![warn(missing_docs)]
 
@@ -54,10 +36,6 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 pub use types::{ElizaConfig, ElizaPattern, ElizaRule};
-
-// ============================================================================
-// Pronoun Reflections
-// ============================================================================
 
 lazy_static! {
     static ref REFLECTIONS: HashMap<&'static str, &'static str> = {
@@ -83,7 +61,19 @@ lazy_static! {
     };
 }
 
-/// Reflect pronouns in text (I → you, my → your, etc.)
+/// Reflects pronouns in the input text to transform perspective.
+///
+/// This function converts first-person pronouns to second-person and vice versa,
+/// which is essential for ELIZA's response generation (e.g., "I am sad" becomes
+/// "you are sad").
+///
+/// # Arguments
+///
+/// * `text` - The input text to reflect
+///
+/// # Returns
+///
+/// A new string with pronouns reflected
 pub fn reflect(text: &str) -> String {
     text.to_lowercase()
         .split_whitespace()
@@ -91,10 +81,6 @@ pub fn reflect(text: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
-
-// ============================================================================
-// Default Responses
-// ============================================================================
 
 const DEFAULT_RESPONSES: &[&str] = &[
     "Very interesting.",
@@ -114,13 +100,11 @@ const DEFAULT_RESPONSES: &[&str] = &[
     "Interesting. Please go on.",
 ];
 
-// ============================================================================
-// ELIZA Classic Plugin
-// ============================================================================
-
-/// Classic ELIZA pattern matching plugin.
+/// The main ELIZA chatbot plugin struct.
 ///
-/// Provides a testable chat response interface without requiring an LLM.
+/// This struct encapsulates all the state and logic needed to simulate
+/// an ELIZA conversation, including pattern matching rules, default responses,
+/// and response history tracking.
 pub struct ElizaClassicPlugin {
     patterns: Vec<ElizaPattern>,
     default_responses: Vec<String>,
@@ -136,7 +120,11 @@ impl Default for ElizaClassicPlugin {
 }
 
 impl ElizaClassicPlugin {
-    /// Create a new ELIZA Classic plugin with default patterns.
+    /// Creates a new ELIZA plugin instance with default patterns and responses.
+    ///
+    /// # Returns
+    ///
+    /// A new `ElizaClassicPlugin` with the standard ELIZA patterns and responses.
     pub fn new() -> Self {
         Self {
             patterns: patterns::get_default_patterns(),
@@ -146,7 +134,15 @@ impl ElizaClassicPlugin {
         }
     }
 
-    /// Create a new plugin with custom configuration.
+    /// Creates a new ELIZA plugin instance with custom configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Custom configuration including additional patterns and responses
+    ///
+    /// # Returns
+    ///
+    /// A new `ElizaClassicPlugin` configured with the provided settings.
     pub fn with_config(config: ElizaConfig) -> Self {
         let mut patterns = patterns::get_default_patterns();
         patterns.extend(config.custom_patterns);
@@ -165,7 +161,19 @@ impl ElizaClassicPlugin {
         }
     }
 
-    /// Generate an ELIZA response for the given input.
+    /// Generates a response to the user's input using ELIZA's pattern matching.
+    ///
+    /// The method normalizes the input, searches for matching patterns,
+    /// applies pronoun reflection to captured groups, and returns an
+    /// appropriate therapeutic response.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The user's input text
+    ///
+    /// # Returns
+    ///
+    /// A response string generated based on pattern matching or a default response.
     pub fn generate_response(&self, input: &str) -> String {
         let normalized = input.to_lowercase().trim().to_string();
 
@@ -173,7 +181,6 @@ impl ElizaClassicPlugin {
             return "I didn't catch that. Could you please repeat?".to_string();
         }
 
-        // Find all matching patterns
         let mut matches: Vec<(&ElizaPattern, &ElizaRule, regex::Captures)> = Vec::new();
 
         for pattern in &self.patterns {
@@ -187,14 +194,11 @@ impl ElizaClassicPlugin {
         }
 
         if !matches.is_empty() {
-            // Sort by weight (higher = more priority)
             matches.sort_by(|a, b| b.0.weight.cmp(&a.0.weight));
             let (_, best_rule, captures) = &matches[0];
 
-            // Select a response, avoiding recent ones
             let response = self.select_response(&best_rule.responses);
 
-            // Substitute captured groups
             let mut result = response;
             for i in 1..=captures.len() {
                 if let Some(m) = captures.get(i) {
@@ -203,24 +207,29 @@ impl ElizaClassicPlugin {
                 }
             }
 
-            // Clean up remaining placeholders
             let placeholder_re = Regex::new(r"\$\d+").unwrap();
             result = placeholder_re.replace_all(&result, "that").to_string();
 
             return result;
         }
 
-        // No pattern matched, use default response
         self.select_response(&self.default_responses)
     }
 
-    /// Get the initial ELIZA greeting message.
+    /// Returns ELIZA's greeting message to start a conversation.
+    ///
+    /// # Returns
+    ///
+    /// A greeting string introducing ELIZA as a Rogerian psychotherapist.
     pub fn get_greeting(&self) -> String {
         "Hello. I am ELIZA, a Rogerian psychotherapist simulation. How are you feeling today?"
             .to_string()
     }
 
-    /// Clear the response history.
+    /// Clears the response history.
+    ///
+    /// This allows previously used responses to be selected again,
+    /// useful for starting fresh conversations.
     pub fn reset_history(&self) {
         let mut history = self.response_history.lock().unwrap();
         history.clear();
@@ -230,7 +239,6 @@ impl ElizaClassicPlugin {
         let mut history = self.response_history.lock().unwrap();
         let mut rng = rand::thread_rng();
 
-        // Filter out recently used responses
         let available: Vec<_> = responses
             .iter()
             .filter(|r| !history.contains(r))
@@ -246,7 +254,6 @@ impl ElizaClassicPlugin {
             responses.first().cloned().unwrap_or_else(|| "I see.".to_string())
         });
 
-        // Update history
         history.push(response.clone());
         if history.len() > self.max_history {
             history.remove(0);
@@ -256,11 +263,19 @@ impl ElizaClassicPlugin {
     }
 }
 
-// ============================================================================
-// Module-level functions
-// ============================================================================
-
-/// Generate an ELIZA response using default patterns.
+/// Generates a response using a shared global ELIZA instance.
+///
+/// This is a convenience function that uses a lazily-initialized global
+/// `ElizaClassicPlugin` instance. Useful for simple use cases where
+/// custom configuration is not needed.
+///
+/// # Arguments
+///
+/// * `input` - The user's input text
+///
+/// # Returns
+///
+/// A response string generated by the global ELIZA instance.
 pub fn generate_response(input: &str) -> String {
     lazy_static! {
         static ref PLUGIN: ElizaClassicPlugin = ElizaClassicPlugin::new();
@@ -268,7 +283,11 @@ pub fn generate_response(input: &str) -> String {
     PLUGIN.generate_response(input)
 }
 
-/// Get the default ELIZA greeting.
+/// Returns the standard ELIZA greeting message.
+///
+/// # Returns
+///
+/// A greeting string introducing ELIZA as a Rogerian psychotherapist.
 pub fn get_greeting() -> String {
     "Hello. I am ELIZA, a Rogerian psychotherapist simulation. How are you feeling today?"
         .to_string()
@@ -319,8 +338,4 @@ mod tests {
         assert!(!response.is_empty());
     }
 }
-
-
-
-
 

@@ -1,8 +1,4 @@
 #![allow(missing_docs)]
-//! In-memory database adapter for elizaOS
-//!
-//! A simple, ephemeral in-memory implementation for testing and development.
-//! All data is lost when the process ends or when close() is called.
 
 use chrono::Utc;
 use serde_json::json;
@@ -13,10 +9,6 @@ use crate::hnsw::EphemeralHNSW;
 use crate::storage::MemoryStorage;
 use crate::types::{IStorage, IVectorStorage, StorageResult, COLLECTIONS};
 
-/// In-memory database adapter
-///
-/// Completely ephemeral - all data is lost on restart.
-/// Perfect for testing, development, and stateless deployments.
 pub struct InMemoryDatabaseAdapter {
     storage: Arc<MemoryStorage>,
     vector_index: EphemeralHNSW,
@@ -61,8 +53,6 @@ impl InMemoryDatabaseAdapter {
         }
         Ok(())
     }
-
-    // ==================== Agent Methods ====================
 
     pub async fn get_agent(&self, agent_id: &str) -> StorageResult<Option<serde_json::Value>> {
         self.storage.get(COLLECTIONS::AGENTS, agent_id).await
@@ -111,8 +101,6 @@ impl InMemoryDatabaseAdapter {
     pub async fn delete_agent(&self, agent_id: &str) -> StorageResult<bool> {
         self.storage.delete(COLLECTIONS::AGENTS, agent_id).await
     }
-
-    // ==================== Memory Methods ====================
 
     pub async fn get_memories(
         &self,
@@ -167,14 +155,12 @@ impl InMemoryDatabaseAdapter {
             )
             .await?;
 
-        // Sort by createdAt descending
         memories.sort_by(|a, b| {
             let a_time = a.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
             let b_time = b.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
             b_time.cmp(&a_time)
         });
 
-        // Apply offset and count
         if let Some(off) = offset {
             memories = memories.into_iter().skip(off).collect();
         }
@@ -203,14 +189,12 @@ impl InMemoryDatabaseAdapter {
         let threshold = match_threshold.unwrap_or(0.5);
         let k = count.unwrap_or(10);
 
-        // Use HNSW index for vector search
         let results = self.vector_index.search(embedding, k * 2, threshold).await?;
 
         let mut memories = Vec::new();
         for result in results {
             let memory = self.get_memory_by_id(&result.id).await?;
             if let Some(mut memory) = memory {
-                // Apply filters
                 if let Some(metadata) = memory.get("metadata") {
                     if metadata.get("type").and_then(|v| v.as_str()) != Some(table_name) {
                         continue;
@@ -279,7 +263,6 @@ impl InMemoryDatabaseAdapter {
             memory.get("createdAt").cloned().unwrap_or_else(|| json!(now)),
         );
 
-        // Merge metadata
         let mut metadata = memory
             .get("metadata")
             .cloned()
@@ -294,7 +277,6 @@ impl InMemoryDatabaseAdapter {
             .set(COLLECTIONS::MEMORIES, &id, stored_memory)
             .await?;
 
-        // Index embedding if present
         if let Some(embedding) = memory.get("embedding").and_then(|v| v.as_array()) {
             let embedding: Vec<f32> = embedding
                 .iter()
@@ -313,8 +295,6 @@ impl InMemoryDatabaseAdapter {
         self.vector_index.remove(memory_id).await?;
         Ok(())
     }
-
-    // ==================== World Methods ====================
 
     pub async fn create_world(&self, world: serde_json::Value) -> StorageResult<String> {
         let id = world
@@ -342,8 +322,6 @@ impl InMemoryDatabaseAdapter {
     pub async fn get_all_worlds(&self) -> StorageResult<Vec<serde_json::Value>> {
         self.storage.get_all(COLLECTIONS::WORLDS).await
     }
-
-    // ==================== Room Methods ====================
 
     pub async fn create_rooms(
         &self,
@@ -389,7 +367,6 @@ impl InMemoryDatabaseAdapter {
     pub async fn delete_room(&self, room_id: &str) -> StorageResult<()> {
         self.storage.delete(COLLECTIONS::ROOMS, room_id).await?;
 
-        // Delete participants
         let room_id_owned = room_id.to_string();
         self.storage
             .delete_where(
@@ -400,7 +377,6 @@ impl InMemoryDatabaseAdapter {
             )
             .await?;
 
-        // Delete memories
         let room_id_owned = room_id.to_string();
         self.storage
             .delete_where(
@@ -414,12 +390,9 @@ impl InMemoryDatabaseAdapter {
         Ok(())
     }
 
-    // ==================== Cache Methods ====================
-
     pub async fn get_cache(&self, key: &str) -> StorageResult<Option<serde_json::Value>> {
         let cached = self.storage.get(COLLECTIONS::CACHE, key).await?;
         if let Some(cached) = cached {
-            // Check expiration
             if let Some(expires_at) = cached.get("expiresAt").and_then(|v| v.as_i64()) {
                 let now = Utc::now().timestamp_millis();
                 if now > expires_at {

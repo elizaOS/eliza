@@ -1,9 +1,3 @@
-/**
- * Create Comment Action
- *
- * Creates a comment on a GitHub issue or pull request.
- */
-
 import {
   type Action,
   type ActionExample,

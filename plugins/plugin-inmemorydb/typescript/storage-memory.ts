@@ -1,15 +1,5 @@
-/**
- * Pure in-memory storage implementation
- *
- * All data is ephemeral and lost on process restart or close()
- */
-
 import type { IStorage } from "./types";
 
-/**
- * In-memory storage using Map data structures
- * Completely ephemeral - no persistence whatsoever
- */
 export class MemoryStorage implements IStorage {
   private collections: Map<string, Map<string, unknown>> = new Map();
   private ready = false;
@@ -19,7 +9,6 @@ export class MemoryStorage implements IStorage {
   }
 
   async close(): Promise<void> {
-    // Clear all data on close - ephemeral storage
     this.collections.clear();
     this.ready = false;
   }

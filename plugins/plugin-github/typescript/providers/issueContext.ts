@@ -1,9 +1,3 @@
-/**
- * Issue Context Provider
- *
- * Provides context about a specific GitHub issue when relevant.
- */
-
 import type {
   Content,
   IAgentRuntime,
@@ -14,11 +8,7 @@ import type {
 } from "@elizaos/core";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 
-/**
- * Extract issue number from text
- */
 function extractIssueNumber(text: string): number | null {
-  // Match patterns like #123, issue #123, issue 123
   const patterns = [/#(\d+)/, /issue\s*#?(\d+)/i, /pr\s*#?(\d+)/i, /pull\s*request\s*#?(\d+)/i];
 
   for (const pattern of patterns) {
@@ -31,12 +21,6 @@ function extractIssueNumber(text: string): number | null {
   return null;
 }
 
-/**
- * Issue context provider
- *
- * When a message references a specific issue or PR number, this provider
- * fetches detailed information about it.
- */
 export const issueContextProvider: Provider = {
   name: "GITHUB_ISSUE_CONTEXT",
   description:
@@ -63,7 +47,6 @@ export const issueContextProvider: Provider = {
         return { text: null };
       }
 
-      // Try to fetch as issue first
       try {
         const issue = await service.getIssue({
           owner: config.owner,
@@ -71,7 +54,6 @@ export const issueContextProvider: Provider = {
           issueNumber,
         });
 
-        // Check if it's actually a PR
         if (issue.isPullRequest) {
           const pr = await service.getPullRequest({
             owner: config.owner,
@@ -116,7 +98,6 @@ export const issueContextProvider: Provider = {
           return { text: parts.join("\n") };
         }
 
-        // It's a regular issue
         const labels = issue.labels.map((l) => l.name).join(", ");
         const assignees = issue.assignees.map((a) => a.login).join(", ");
 

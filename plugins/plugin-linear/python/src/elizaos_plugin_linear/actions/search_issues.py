@@ -1,4 +1,3 @@
-"""Search issues action for Linear plugin."""
 
 import json
 import logging
@@ -42,7 +41,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -57,7 +55,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the search issues action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -74,7 +71,6 @@ async def handler(
 
         filters = LinearSearchFilters()
 
-        # Check for explicit filters in options
         if options and options.get("filters"):
             opt_filters = options["filters"]
             if isinstance(opt_filters, dict):
@@ -86,7 +82,6 @@ async def handler(
                 filters.label = opt_filters.get("label")
                 filters.limit = opt_filters.get("limit", 10)
         else:
-            # Use LLM to extract search filters
             prompt = SEARCH_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
@@ -140,11 +135,9 @@ async def handler(
                     logger.error("Failed to parse search filters")
                     filters.query = content
 
-        # Apply default team filter if configured
         if not filters.team:
             default_team_key = runtime.get_setting("LINEAR_DEFAULT_TEAM_KEY")
             if default_team_key:
-                # Check if user asked for "all" issues
                 searching_all = "all" in content.lower() and any(
                     kw in content.lower() for kw in ["issue", "bug", "task"]
                 )
@@ -231,8 +224,3 @@ search_issues_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

@@ -1,10 +1,8 @@
 #![allow(missing_docs)]
-//! Simple Voice Plugin - Retro TTS using SAM Speech Synthesizer.
 
 use crate::actions::SayAloudAction;
 use crate::services::SamTTSService;
 
-/// Simple Voice Plugin - Retro SAM TTS with hardware bridge integration.
 pub struct SimpleVoicePlugin {
     pub name: &'static str,
     pub description: &'static str,

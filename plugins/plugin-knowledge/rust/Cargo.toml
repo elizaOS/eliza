@@ -42,6 +42,9 @@ env_logger = "0.10"
 # Async traits
 async-trait = "0.1"
 
+# Regex for pattern matching
+regex = "1.10"
+
 [dev-dependencies]
 tokio-test = "0.4"
 

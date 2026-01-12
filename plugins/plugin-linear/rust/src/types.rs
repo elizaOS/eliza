@@ -1,10 +1,8 @@
 #![allow(missing_docs)]
-//! Type definitions for the Linear plugin.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Configuration for Linear API connection
 #[derive(Debug, Clone)]
 pub struct LinearConfig {
     pub api_key: String,
@@ -12,7 +10,6 @@ pub struct LinearConfig {
     pub default_team_key: Option<String>,
 }
 
-/// Resource types in Linear
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceType {
@@ -37,7 +34,6 @@ impl std::fmt::Display for ResourceType {
     }
 }
 
-/// Activity log entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityItem {
     pub id: String,
@@ -50,7 +46,6 @@ pub struct ActivityItem {
     pub error: Option<String>,
 }
 
-/// Input for creating an issue
 #[derive(Debug, Clone, Default)]
 pub struct IssueInput {
     pub title: String,
@@ -65,14 +60,12 @@ pub struct IssueInput {
     pub due_date: Option<DateTime<Utc>>,
 }
 
-/// Input for creating a comment
 #[derive(Debug, Clone)]
 pub struct CommentInput {
     pub body: String,
     pub issue_id: String,
 }
 
-/// Filters for searching issues
 #[derive(Debug, Clone, Default)]
 pub struct SearchFilters {
     pub state: Option<Vec<String>>,
@@ -85,7 +78,6 @@ pub struct SearchFilters {
     pub limit: Option<i32>,
 }
 
-/// Team data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     pub id: String,
@@ -94,7 +86,6 @@ pub struct Team {
     pub description: Option<String>,
 }
 
-/// User data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
@@ -102,7 +93,6 @@ pub struct User {
     pub email: String,
 }
 
-/// Workflow state data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowState {
     pub id: String,
@@ -112,7 +102,6 @@ pub struct WorkflowState {
     pub color: String,
 }
 
-/// Label data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Label {
     pub id: String,
@@ -120,7 +109,6 @@ pub struct Label {
     pub color: String,
 }
 
-/// Issue data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Issue {
@@ -142,13 +130,11 @@ pub struct Issue {
     pub project: Option<Project>,
 }
 
-/// Labels wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Labels {
     pub nodes: Vec<Label>,
 }
 
-/// Project data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
@@ -164,13 +150,11 @@ pub struct Project {
     pub teams: Option<Teams>,
 }
 
-/// Teams wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Teams {
     pub nodes: Vec<Team>,
 }
 
-/// Comment data from Linear API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
@@ -179,7 +163,6 @@ pub struct Comment {
     pub created_at: String,
 }
 
-/// Result from an action handler
 #[derive(Debug, Clone, Serialize)]
 pub struct ActionResult {
     pub text: String,
@@ -214,7 +197,6 @@ impl ActionResult {
     }
 }
 
-/// Provider result
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderResult {
     pub text: String,
@@ -237,10 +219,5 @@ impl ProviderResult {
         }
     }
 }
-
-
-
-
-
 
 

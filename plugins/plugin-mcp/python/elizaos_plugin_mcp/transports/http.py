@@ -13,14 +13,7 @@ from elizaos_plugin_mcp.types import HttpServerConfig, McpError
 
 
 class HttpTransport(Transport):
-    """Transport that communicates with an MCP server via HTTP/SSE."""
-
     def __init__(self, config: HttpServerConfig) -> None:
-        """Initialize the HTTP transport.
-
-        Args:
-            config: Configuration for the HTTP server.
-        """
         self._config = config
         self._client: httpx.AsyncClient | None = None
         self._request_id = 0
@@ -29,18 +22,15 @@ class HttpTransport(Transport):
         self._connected = False
 
     async def connect(self) -> None:
-        """Establish the SSE connection to the MCP server."""
         if self._connected:
             raise McpError("Transport already connected", "ALREADY_CONNECTED")
 
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(self._config.timeout_ms / 1000))
 
-        # Start SSE listener
         self._sse_task = asyncio.create_task(self._sse_listener())
         self._connected = True
 
     async def _sse_listener(self) -> None:
-        """Listen for SSE events from the server."""
         if self._client is None:
             return
 
@@ -51,19 +41,16 @@ class HttpTransport(Transport):
                         data = json.loads(line[6:])
                         await self._handle_message(data)
         except httpx.HTTPError as e:
-            # Connection closed or error - expected during shutdown
             if self._connected:
                 raise McpError.connection_error("http", str(e)) from e
 
     async def _handle_message(self, message: dict[str, Any]) -> None:
-        """Handle an incoming message from the SSE stream."""
         if "id" in message and message["id"] in self._pending_responses:
             future = self._pending_responses.pop(message["id"])
             if not future.done():
                 future.set_result(message)
 
     async def send(self, message: dict[str, Any]) -> None:
-        """Send a JSON-RPC message to the server via POST."""
         if self._client is None:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
@@ -75,22 +62,15 @@ class HttpTransport(Transport):
         response.raise_for_status()
 
     async def receive(self) -> dict[str, Any]:
-        """Receive a JSON-RPC message from the SSE stream.
-
-        Note: This blocks until a message is received.
-        """
         if not self._connected:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
-        # Wait for the next message from the SSE stream
-        # This is handled by the pending_responses mechanism
         raise McpError(
             "Direct receive not supported for HTTP transport, use send_request",
             "NOT_SUPPORTED",
         )
 
     async def send_request(self, message: dict[str, Any]) -> dict[str, Any]:
-        """Send a request and wait for the response."""
         if self._client is None:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
@@ -98,14 +78,11 @@ class HttpTransport(Transport):
         if request_id is None:
             raise McpError("Request must have an id", "INVALID_REQUEST")
 
-        # Create a future for the response
         future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
         self._pending_responses[request_id] = future
 
-        # Send the request
         await self.send(message)
 
-        # Wait for the response
         try:
             return await asyncio.wait_for(
                 future,
@@ -116,7 +93,6 @@ class HttpTransport(Transport):
             raise McpError.timeout_error(f"Request {request_id}") from e
 
     async def close(self) -> None:
-        """Close the HTTP connection."""
         self._connected = False
 
         if self._sse_task is not None:
@@ -131,13 +107,11 @@ class HttpTransport(Transport):
             await self._client.aclose()
             self._client = None
 
-        # Cancel any pending responses
         for future in self._pending_responses.values():
             if not future.done():
                 future.cancel()
         self._pending_responses.clear()
 
     def next_request_id(self) -> int:
-        """Generate the next request ID."""
         self._request_id += 1
         return self._request_id

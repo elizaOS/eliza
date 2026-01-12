@@ -1,9 +1,5 @@
-/**
- * Tests for BlueSky types.
- */
-
 import { describe, expect, it } from "vitest";
-import { BlueSkyError, CACHE_SIZES, CACHE_TTLS, ERROR_MESSAGES } from "../../types";
+import { BlueSkyError, CACHE_SIZE, CACHE_TTL } from "../../types";
 
 describe("BlueSkyError", () => {
   it("should create an error with message", () => {
@@ -21,34 +17,18 @@ describe("BlueSkyError", () => {
     const error = new BlueSkyError("Test error", "NETWORK_ERROR", 500);
     expect(error.status).toBe(500);
   });
-
-  it("should create an error with details", () => {
-    const details = { extra: "info" };
-    const error = new BlueSkyError("Test error", "UNKNOWN", undefined, details);
-    expect(error.details).toEqual(details);
-  });
 });
 
 describe("Cache Configuration", () => {
   it("should have valid TTLs", () => {
-    expect(CACHE_TTLS.PROFILE).toBe(3600000); // 1 hour
-    expect(CACHE_TTLS.TIMELINE).toBe(300000); // 5 minutes
-    expect(CACHE_TTLS.POST).toBe(1800000); // 30 minutes
+    expect(CACHE_TTL.PROFILE).toBe(3600000);
+    expect(CACHE_TTL.TIMELINE).toBe(300000);
+    expect(CACHE_TTL.POST).toBe(1800000);
   });
 
   it("should have valid sizes", () => {
-    expect(CACHE_SIZES.PROFILE).toBe(1000);
-    expect(CACHE_SIZES.POST).toBe(10000);
-    expect(CACHE_SIZES.CONVERSATIONS).toBe(100);
-  });
-});
-
-describe("Error Messages", () => {
-  it("should have all required error messages", () => {
-    expect(ERROR_MESSAGES.NOT_AUTHENTICATED).toBeDefined();
-    expect(ERROR_MESSAGES.INVALID_HANDLE).toBeDefined();
-    expect(ERROR_MESSAGES.MISSING_CREDENTIALS).toBeDefined();
-    expect(ERROR_MESSAGES.POST_TOO_LONG).toBeDefined();
-    expect(ERROR_MESSAGES.RATE_LIMITED).toBeDefined();
+    expect(CACHE_SIZE.PROFILE).toBe(1000);
+    expect(CACHE_SIZE.POST).toBe(10000);
+    expect(CACHE_SIZE.CONVERSATIONS).toBe(100);
   });
 });

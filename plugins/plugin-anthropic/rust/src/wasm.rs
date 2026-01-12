@@ -1,8 +1,9 @@
-//! WASM bindings for elizaOS plugin-anthropic
-
 use wasm_bindgen::prelude::*;
 
-/// Initialize the WASM module with panic hook for better error messages
+/// Initializes the WebAssembly module.
+///
+/// This function is automatically called when the WASM module is loaded.
+/// It sets up the panic hook for better error messages in the browser console.
 #[wasm_bindgen(start)]
 pub fn init_wasm() {
     #[cfg(feature = "console_error_panic_hook")]

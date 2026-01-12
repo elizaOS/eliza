@@ -1,10 +1,3 @@
-/**
- * Plugin Creation Service
- *
- * Core service that handles AI-powered plugin code generation,
- * building, testing, and validation.
- */
-
 import { type ChildProcess, exec, execSync, spawn } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -24,14 +17,8 @@ import { ClaudeModel as ClaudeModelConst } from "../types";
 
 const _execAsync = promisify(exec);
 
-/**
- * Service type identifier.
- */
 export const PLUGIN_CREATION_SERVICE_TYPE = "plugin_creation" as const;
 
-/**
- * Service for creating ElizaOS plugins using AI.
- */
 export class PluginCreationService extends Service {
   static serviceType: "plugin_creation" = "plugin_creation";
 
@@ -42,8 +29,7 @@ export class PluginCreationService extends Service {
   private lastJobCreation: number = 0;
   private jobCreationCount: number = 0;
 
-  public readonly capabilityDescription: string =
-    "Plugin creation service with AI-powered code generation";
+  public readonly capabilityDescription: string = "Plugin creation service";
 
   async stop(): Promise<void> {
     for (const job of this.jobs.values()) {
@@ -74,31 +60,19 @@ export class PluginCreationService extends Service {
     }
   }
 
-  /**
-   * Set the Claude model to use for generation.
-   */
   public setModel(model: ClaudeModel): void {
     this.selectedModel = model;
     logger.info(`Claude model set to: ${model}`);
   }
 
-  /**
-   * Get list of all created plugin names.
-   */
   public getCreatedPlugins(): string[] {
     return Array.from(this.createdPlugins);
   }
 
-  /**
-   * Check if a plugin has been created.
-   */
   public isPluginCreated(name: string): boolean {
     return this.createdPlugins.has(name);
   }
 
-  /**
-   * Create a new plugin from a specification.
-   */
   public async createPlugin(
     specification: PluginSpecification,
     apiKey?: string,
@@ -155,7 +129,6 @@ export class PluginCreationService extends Service {
     this.jobs.set(jobId, job);
     this.createdPlugins.add(specification.name);
 
-    // Set timeout for job
     setTimeout(
       () => {
         const jobStatus = this.jobs.get(jobId);
@@ -169,7 +142,6 @@ export class PluginCreationService extends Service {
       30 * 60 * 1000
     );
 
-    // Start creation process in background
     this.runCreationProcess(job, options?.useTemplate ?? true).catch((error) => {
       job.status = "failed";
       job.error = error.message;
@@ -184,23 +156,14 @@ export class PluginCreationService extends Service {
     return jobId;
   }
 
-  /**
-   * Get all jobs.
-   */
   public getAllJobs(): PluginCreationJob[] {
     return Array.from(this.jobs.values());
   }
 
-  /**
-   * Get status of a specific job.
-   */
   public getJobStatus(jobId: string): PluginCreationJob | null {
     return this.jobs.get(jobId) ?? null;
   }
 
-  /**
-   * Cancel a job.
-   */
   public cancelJob(jobId: string): void {
     const job = this.jobs.get(jobId);
     if (job && (job.status === "pending" || job.status === "running")) {
@@ -208,18 +171,13 @@ export class PluginCreationService extends Service {
       job.completedAt = new Date();
       this.logToJob(jobId, "Job cancelled by user");
 
-      const jobWithProcess = job as PluginCreationJob & {
-        childProcess?: ChildProcess;
-      };
+      const jobWithProcess = job as PluginCreationJob & { childProcess?: ChildProcess };
       if (jobWithProcess.childProcess && !jobWithProcess.childProcess.killed) {
         jobWithProcess.childProcess.kill("SIGTERM");
       }
     }
   }
 
-  /**
-   * Clean up old completed jobs.
-   */
   public cleanupOldJobs(): void {
     const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const jobsToRemove: string[] = [];
@@ -534,7 +492,7 @@ export default defineConfig({
 
   private async generatePluginCode(job: PluginCreationJob): Promise<void> {
     if (!this.anthropic) {
-      throw new Error("AI code generation not available without ANTHROPIC_API_KEY");
+      throw new Error("Code generation not available without ANTHROPIC_API_KEY");
     }
 
     const isFirstIteration = job.currentIteration === 1;
@@ -738,7 +696,7 @@ Provide the updated code with file paths clearly marked.`;
     try {
       const codeFiles = await this.collectCodeFiles(job.outputPath);
 
-      const validationPrompt = `Review this ElizaOS plugin for production readiness:
+      const validationPrompt = `Review this ElizaOS plugin:
 
 Plugin: ${job.specification.name}
 Specification: ${JSON.stringify(job.specification, null, 2)}
@@ -842,9 +800,7 @@ Respond with JSON:
 
             this.logToJob(job.id, `Using ${pm.cmd} as package manager`);
             break;
-          } catch {
-            // Try next package manager
-          }
+          } catch {}
         }
       }
 
@@ -872,9 +828,7 @@ Respond with JSON:
 
       const child = spawn(actualCommand, actualArgs, spawnOptions);
 
-      const jobWithProcess = job as PluginCreationJob & {
-        childProcess?: ChildProcess;
-      };
+      const jobWithProcess = job as PluginCreationJob & { childProcess?: ChildProcess };
       jobWithProcess.childProcess = child;
 
       child.on("error", (error: NodeJS.ErrnoException) => {
@@ -917,9 +871,7 @@ Respond with JSON:
         () => {
           try {
             child.kill("SIGTERM");
-          } catch {
-            // Process might already be dead
-          }
+          } catch {}
           resolve({
             success: false,
             output: `${output}\n[Process killed due to timeout]`,

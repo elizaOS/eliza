@@ -7,13 +7,6 @@ import type {
 import { ModelType } from "@elizaos/core";
 import { encodingForModel, type TiktokenModel } from "js-tiktoken";
 
-/**
- * Asynchronously tokenizes the given text based on the specified model and prompt.
- *
- * @param {ModelTypeName} model - The type of model to use for tokenization.
- * @param {string} prompt - The text prompt to tokenize.
- * @returns {number[]} - An array of tokens representing the encoded prompt.
- */
 async function tokenizeText(
   model: ModelTypeName,
   prompt: string,
@@ -28,13 +21,6 @@ async function tokenizeText(
   return tokens;
 }
 
-/**
- * Detokenize a sequence of tokens back into text using the specified model.
- *
- * @param {ModelTypeName} model - The type of model to use for detokenization.
- * @param {number[]} tokens - The sequence of tokens to detokenize.
- * @returns {string} The detokenized text.
- */
 async function detokenizeText(
   model: ModelTypeName,
   tokens: number[],
@@ -50,9 +36,6 @@ async function detokenizeText(
   return encodingForModel(modelName as TiktokenModel).decode(tokens);
 }
 
-/**
- * TEXT_TOKENIZER_ENCODE handler
- */
 export async function handleTokenizerEncode(
   _runtime: IAgentRuntime,
   { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams,
@@ -60,9 +43,6 @@ export async function handleTokenizerEncode(
   return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
 }
 
-/**
- * TEXT_TOKENIZER_DECODE handler
- */
 export async function handleTokenizerDecode(
   _runtime: IAgentRuntime,
   { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams,

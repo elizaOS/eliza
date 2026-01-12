@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any
 
 import httpx
 
@@ -24,10 +23,11 @@ from elizaos_plugin_groq.types import (
 
 logger = logging.getLogger(__name__)
 
+JsonValue = str | int | float | bool | None | dict[str, "JsonValue"] | list["JsonValue"]
+JsonObject = dict[str, JsonValue]
+
 
 class GroqClient:
-    """Groq API client."""
-
     def __init__(
         self,
         api_key: str,
@@ -63,14 +63,12 @@ class GroqClient:
         await self._client.aclose()
 
     async def generate_text_small(self, params: GenerateTextParams) -> str:
-        """Generate text with small model."""
         return await self._generate_text(self.config.small_model, params)
 
     async def generate_text_large(self, params: GenerateTextParams) -> str:
         return await self._generate_text(self.config.large_model, params)
 
     async def _generate_text(self, model: str, params: GenerateTextParams) -> str:
-        """Generate text with specified model."""
         messages: list[ChatMessage] = []
         if params.system:
             messages.append(ChatMessage(role=MessageRole.SYSTEM, content=params.system))
@@ -96,14 +94,25 @@ class GroqClient:
 
         return response.choices[0].message.content
 
-    async def generate_object(self, params: GenerateObjectParams) -> dict[str, Any]:
+    async def generate_object_small(self, params: GenerateObjectParams) -> JsonObject:
+        return await self._generate_object_with_model(self.config.small_model, params)
+
+    async def generate_object_large(self, params: GenerateObjectParams) -> JsonObject:
+        return await self._generate_object_with_model(self.config.large_model, params)
+
+    async def generate_object(self, params: GenerateObjectParams) -> JsonObject:
+        return await self.generate_object_large(params)
+
+    async def _generate_object_with_model(
+        self, model: str, params: GenerateObjectParams
+    ) -> JsonObject:
         text = await self._generate_text(
-            self.config.large_model,
+            model,
             GenerateTextParams(prompt=params.prompt, temperature=params.temperature),
         )
 
         json_str = _extract_json(text)
-        result: dict[str, Any] = json.loads(json_str)
+        result: JsonObject = json.loads(json_str)
         return result
 
     async def transcribe(self, params: TranscriptionParams) -> str:
@@ -140,13 +149,13 @@ class GroqClient:
         data = await self._request("GET", "/models")
         return ModelsResponse.model_validate(data).data
 
-    async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    async def _request(self, method: str, path: str, **kwargs: object) -> JsonObject:
         for attempt in range(3):
             try:
                 response = await self._client.request(method, path, **kwargs)
 
                 if response.status_code == 200:
-                    result: dict[str, Any] = response.json()
+                    result: JsonObject = response.json()
                     return result
 
                 error = GroqError.from_response(response.status_code, response.text)

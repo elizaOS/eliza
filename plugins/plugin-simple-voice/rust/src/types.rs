@@ -1,19 +1,13 @@
 #![allow(missing_docs)]
-//! Type definitions for the Simple Voice plugin.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// SAM TTS Voice Configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SamTTSOptions {
-    /// Speaking speed (20-200)
     pub speed: u8,
-    /// Voice pitch (0-255)
     pub pitch: u8,
-    /// Throat resonance (0-255)
     pub throat: u8,
-    /// Mouth articulation (0-255)
     pub mouth: u8,
 }
 
@@ -44,13 +38,11 @@ pub const VOCALIZATION_PATTERNS: &[&str] = &[
     "can you say", "please say", "i want to hear", "let me hear",
 ];
 
-/// Hardware bridge trait
 #[async_trait::async_trait]
 pub trait HardwareBridge: Send + Sync {
     async fn send_audio_data(&self, audio_buffer: &[u8]) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
-/// Memory content
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryContent {
     pub text: String,
@@ -69,7 +61,6 @@ pub struct Memory {
     pub created_at: u64,
 }
 
-/// Action callback result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallbackResult {
     pub text: String,

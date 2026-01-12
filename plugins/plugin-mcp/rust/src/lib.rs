@@ -1,11 +1,9 @@
 #![allow(missing_docs)]
-//! elizaOS MCP Plugin - Model Context Protocol client for elizaOS agents.
-//!
-//! This crate provides a Rust implementation of the MCP client, allowing
-//! elizaOS agents to connect to and interact with MCP servers.
 
+pub mod actions;
 pub mod client;
 pub mod error;
+pub mod providers;
 pub mod transport;
 pub mod transports;
 pub mod types;
@@ -18,5 +16,9 @@ pub use types::{
     ConnectionStatus, HttpServerConfig, McpResource, McpResourceContent, McpResourceTemplate,
     McpServerConfig, McpTool, McpToolInputSchema, McpToolResult, StdioServerConfig, TextContent,
 };
+pub use actions::{
+    ActionContext, ActionResult, CallToolAction, McpAction, ReadResourceAction,
+};
+pub use providers::{McpProvider, McpProviderTrait, ProviderContext, ProviderResult};
 
 

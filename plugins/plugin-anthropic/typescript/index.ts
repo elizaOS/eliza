@@ -1,31 +1,3 @@
-/**
- * Anthropic Plugin for elizaOS
- *
- * Provides text and object generation using Anthropic's Claude models.
- *
- * ## Supported Models
- *
- * - TEXT_SMALL: claude-3-5-haiku (fast, efficient)
- * - TEXT_LARGE: claude-sonnet-4 (most capable)
- * - OBJECT_SMALL: JSON generation with small model
- * - OBJECT_LARGE: JSON generation with large model
- *
- * ## Configuration
- *
- * Required:
- * - ANTHROPIC_API_KEY: Your Anthropic API key
- *
- * Optional:
- * - ANTHROPIC_SMALL_MODEL: Override small model (default: claude-3-5-haiku-20241022)
- * - ANTHROPIC_LARGE_MODEL: Override large model (default: claude-sonnet-4-20250514)
- * - ANTHROPIC_BASE_URL: Custom API endpoint
- * - ANTHROPIC_BROWSER_BASE_URL: Browser proxy endpoint
- * - ANTHROPIC_EXPERIMENTAL_TELEMETRY: Enable telemetry (default: false)
- * - ANTHROPIC_COT_BUDGET: Chain-of-thought token budget
- * - ANTHROPIC_COT_BUDGET_SMALL: CoT budget for small model
- * - ANTHROPIC_COT_BUDGET_LARGE: CoT budget for large model
- */
-
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -39,9 +11,6 @@ import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
 
-/**
- * Test suite for the Anthropic plugin.
- */
 const pluginTests = [
   {
     name: "anthropic_plugin_tests",
@@ -145,11 +114,6 @@ const pluginTests = [
   },
 ];
 
-/**
- * Anthropic plugin for elizaOS.
- *
- * Provides text generation and JSON object generation using Claude models.
- */
 export const anthropicPlugin: Plugin = {
   name: "anthropic",
   description: "Anthropic plugin (supports text and object generation)",

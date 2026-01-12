@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Shell service for executing commands within a restricted directory.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -17,7 +16,6 @@ use crate::types::{
     CommandHistoryEntry, CommandResult, FileOperation, FileOperationType, ShellConfig,
 };
 
-/// Shell service for executing commands within a restricted directory.
 pub struct ShellService {
     config: ShellConfig,
     current_directory: PathBuf,
@@ -26,7 +24,6 @@ pub struct ShellService {
 }
 
 impl ShellService {
-    /// Create a new shell service with the given configuration.
     pub fn new(config: ShellConfig) -> Self {
         let current_directory = config.allowed_directory.clone();
         info!("Shell service initialized with history tracking");
@@ -39,23 +36,19 @@ impl ShellService {
         }
     }
 
-    /// Get the current working directory.
     pub fn current_directory(&self) -> &Path {
         &self.current_directory
     }
 
-    /// Get the allowed directory.
     pub fn allowed_directory(&self) -> &Path {
         &self.config.allowed_directory
     }
 
-    /// Execute a shell command within the allowed directory.
     pub async fn execute_command(
         &mut self,
         command: &str,
         conversation_id: Option<&str>,
     ) -> Result<CommandResult> {
-        // Check if shell is enabled
         if !self.config.enabled {
             return Ok(CommandResult::error(
                 "Shell plugin disabled",
@@ -64,7 +57,6 @@ impl ShellService {
             ));
         }
 
-        // Basic command validation
         let trimmed_command = command.trim();
         if trimmed_command.is_empty() {
             return Ok(CommandResult::error(
@@ -74,7 +66,6 @@ impl ShellService {
             ));
         }
 
-        // Check for dangerous patterns
         if !is_safe_command(trimmed_command) {
             return Ok(CommandResult::error(
                 "Security policy violation",
@@ -83,7 +74,6 @@ impl ShellService {
             ));
         }
 
-        // Check for forbidden commands
         if is_forbidden_command(trimmed_command, &self.config.forbidden_commands) {
             return Ok(CommandResult::error(
                 "Forbidden command",
@@ -92,7 +82,6 @@ impl ShellService {
             ));
         }
 
-        // Handle cd command specially
         if trimmed_command.starts_with("cd ") {
             let result = self.handle_cd_command(trimmed_command);
             if let Some(conv_id) = conversation_id {
@@ -101,10 +90,8 @@ impl ShellService {
             return Ok(result);
         }
 
-        // Execute the command
         let result = self.run_command(trimmed_command).await?;
 
-        // Track file operations and history
         if let Some(conv_id) = conversation_id {
             let file_ops = if result.success {
                 self.detect_file_operations(trimmed_command)
@@ -117,12 +104,10 @@ impl ShellService {
         Ok(result)
     }
 
-    /// Handle the cd command to change directory within allowed bounds.
     fn handle_cd_command(&mut self, command: &str) -> CommandResult {
         let parts: Vec<&str> = command.split_whitespace().collect();
 
         if parts.len() < 2 {
-            // cd without arguments goes to allowed directory
             self.current_directory = self.config.allowed_directory.clone();
             return CommandResult::success(
                 format!("Changed directory to: {}", self.current_directory.display()),

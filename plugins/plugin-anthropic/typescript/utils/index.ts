@@ -1,7 +1,3 @@
-/**
- * Utility exports for the Anthropic plugin.
- */
-
 export {
   getApiKey,
   getApiKeyOptional,

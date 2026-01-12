@@ -1,5 +1,3 @@
-"""Repository State Provider."""
-
 from typing import Protocol
 
 from elizaos_plugin_github.types import ListIssuesParams, ListPullRequestsParams, RepositoryRef
@@ -29,10 +27,9 @@ class RepositoryStateProvider:
 
     async def get(
         self,
-        context: ProviderContext,  # noqa: ARG002
+        context: ProviderContext,
         service: object,
     ) -> str | None:
-        """Get repository state context."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -44,10 +41,8 @@ class RepositoryStateProvider:
             if not config.owner or not config.repo:
                 return "GitHub repository not configured. Please set GITHUB_OWNER and GITHUB_REPO."
 
-            # Fetch repository info
             repo = await service.get_repository(RepositoryRef(owner=config.owner, repo=config.repo))
 
-            # Fetch recent open issues (limit 5)
             issues = await service.list_issues(
                 ListIssuesParams(
                     owner=config.owner,

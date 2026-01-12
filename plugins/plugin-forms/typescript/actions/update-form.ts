@@ -11,39 +11,29 @@ import { logger } from "@elizaos/core";
 import type { FormsService } from "../services/forms-service";
 import type { Form } from "../types";
 
-/**
- * UpdateFormAction processes user messages to extract form field values
- * and updates the active form accordingly.
- */
 export const updateFormAction: Action = {
   name: "UPDATE_FORM",
   similes: ["FILL_FORM", "SUBMIT_FORM", "COMPLETE_FORM", "FORM_INPUT"],
   description: "Updates an active form with values extracted from the user message",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
-    // Check if forms service is available
     const formsService = runtime.getService<FormsService>("forms");
     if (!formsService) {
       return false;
     }
 
-    // Check if there are any active forms
     const activeForms = await formsService.listForms("active");
     if (activeForms.length === 0) {
       return false;
     }
 
-    // Check if the message seems to contain form input
     const text = message.content.text?.toLowerCase() || "";
-
-    // Simple heuristics to detect if user is providing form input
-    // This could be enhanced with more sophisticated detection
     const containsFormInput =
       text.includes("my name is") ||
       text.includes("i am") ||
-      text.includes("@") || // Email
-      !!text.match(/\d{2,}/) || // Numbers
-      text.length > 5; // Minimum length for meaningful input
+      text.includes("@") ||
+      !!text.match(/\d{2,}/) ||
+      text.length > 5;
 
     return containsFormInput;
   },
@@ -60,7 +50,6 @@ export const updateFormAction: Action = {
       throw new Error("Forms service not available");
     }
 
-    // Get active forms
     const activeForms = await formsService.listForms("active");
     if (activeForms.length === 0) {
       await callback?.({
@@ -70,7 +59,6 @@ export const updateFormAction: Action = {
       return;
     }
 
-    // Check if a specific form ID was provided
     let targetForm: Form | undefined;
     const specifiedFormId =
       (options?.parameters as Record<string, unknown> | undefined)?.formId ||
@@ -78,7 +66,6 @@ export const updateFormAction: Action = {
       state?.values?.activeFormId;
 
     if (specifiedFormId) {
-      // Find the specific form
       targetForm = activeForms.find((f) => f.id === specifiedFormId);
       if (!targetForm) {
         await callback?.({
@@ -88,8 +75,6 @@ export const updateFormAction: Action = {
         return;
       }
     } else {
-      // For now, update the first active form
-      // In the future, we could use context to determine which form to update
       targetForm = activeForms[0];
     }
 
@@ -97,7 +82,6 @@ export const updateFormAction: Action = {
 
     logger.debug(`Updating form ${formId} with user message`);
 
-    // Update the form with the message
     const result = await formsService.updateForm(formId, message);
 
     if (!result.success) {
@@ -111,7 +95,6 @@ export const updateFormAction: Action = {
       };
     }
 
-    // Prepare response based on update result
     let responseText = "";
 
     if (result.updatedFields && result.updatedFields.length > 0) {
@@ -126,7 +109,6 @@ export const updateFormAction: Action = {
       responseText += result.message || "";
     }
 
-    // Add form state to response
     const form = result.form;
     if (form && form.status === "active") {
       const currentStep = form.steps[form.currentStepIndex];

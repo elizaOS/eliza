@@ -1,5 +1,3 @@
-"""Tests for ELIZA Classic Plugin."""
-
 from elizaos_plugin_eliza_classic import (
     ElizaClassicPlugin,
     generate_response,
@@ -9,8 +7,6 @@ from elizaos_plugin_eliza_classic import (
 
 
 class TestReflect:
-    """Tests for pronoun reflection."""
-
     def test_reflect_i_to_you(self) -> None:
         assert reflect("i am happy") == "you are happy"
 
@@ -25,8 +21,6 @@ class TestReflect:
 
 
 class TestGenerateResponse:
-    """Tests for response generation."""
-
     def test_greeting(self) -> None:
         response = generate_response("hello")
         assert response in [
@@ -38,12 +32,10 @@ class TestGenerateResponse:
     def test_sad_response(self) -> None:
         response = generate_response("I am sad")
         assert len(response) > 0
-        # Should be a comforting response
 
     def test_family_response(self) -> None:
         response = generate_response("my mother is kind")
         assert len(response) > 0
-        # Should mention family
 
     def test_computer_response(self) -> None:
         response = generate_response("I think about computers")
@@ -54,14 +46,11 @@ class TestGenerateResponse:
         assert response == "I didn't catch that. Could you please repeat?"
 
     def test_default_response(self) -> None:
-        # An input that won't match any pattern
         response = generate_response("xyzzy")
         assert len(response) > 0
 
 
 class TestElizaClassicPlugin:
-    """Tests for the plugin class."""
-
     def test_generate_response(self, plugin: ElizaClassicPlugin) -> None:
         response = plugin.generate_response("hello")
         assert len(response) > 0
@@ -73,14 +62,11 @@ class TestElizaClassicPlugin:
     def test_reset_history(self, plugin: ElizaClassicPlugin) -> None:
         plugin.generate_response("hello")
         plugin.reset_history()
-        # After reset, should still work
         response = plugin.generate_response("hello")
         assert len(response) > 0
 
 
 class TestGetGreeting:
-    """Tests for the greeting function."""
-
     def test_greeting_contains_eliza(self) -> None:
         greeting = get_greeting()
         assert "ELIZA" in greeting
@@ -88,8 +74,3 @@ class TestGetGreeting:
     def test_greeting_is_string(self) -> None:
         greeting = get_greeting()
         assert isinstance(greeting, str)
-
-
-
-
-

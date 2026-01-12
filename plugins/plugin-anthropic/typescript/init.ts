@@ -1,15 +1,6 @@
-/**
- * Anthropic plugin initialization.
- *
- * Validates configuration and logs status at startup.
- */
-
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getApiKeyOptional, isBrowser } from "./utils/config";
 
-/**
- * Plugin configuration object structure
- */
 export interface PluginConfig {
   readonly ANTHROPIC_API_KEY?: string;
   readonly ANTHROPIC_SMALL_MODEL?: string;
@@ -22,24 +13,12 @@ export interface PluginConfig {
   readonly ANTHROPIC_COT_BUDGET_LARGE?: string;
 }
 
-// ============================================================================
-// Suppress AI SDK Warnings
-// ============================================================================
-
-// Disable AI SDK warning logging by default (can be overridden by setting to true)
 const _globalThis = globalThis as Record<string, unknown>;
 if (_globalThis["AI_SDK_LOG_WARNINGS"] === undefined) {
   _globalThis["AI_SDK_LOG_WARNINGS"] = false;
 }
 
-/**
- * Initialize and validate Anthropic configuration.
- *
- * This function runs validation in the background to avoid blocking
- * plugin initialization. It logs warnings if configuration is missing.
- */
 export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntime): void {
-  // Run validation asynchronously to not block init
   void (async () => {
     const apiKey = getApiKeyOptional(runtime);
 

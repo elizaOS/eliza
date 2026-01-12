@@ -1,7 +1,3 @@
-/**
- * Build script for ELIZA Classic Plugin
- */
-
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { build } from "bun";
@@ -9,9 +5,8 @@ import { build } from "bun";
 const outdir = "./dist";
 
 async function buildPlugin() {
-  console.log("🔨 Building ELIZA Classic Plugin...\n");
+  console.log("Building ELIZA Classic Plugin...\n");
 
-  // Clean dist
   await rm(outdir, { recursive: true, force: true });
   await mkdir(outdir, { recursive: true });
   await mkdir(join(outdir, "browser"), { recursive: true });
@@ -20,8 +15,7 @@ async function buildPlugin() {
   await mkdir(join(outdir, "models"), { recursive: true });
   await mkdir(join(outdir, "types"), { recursive: true });
 
-  // Build Node ESM
-  console.log("📦 Building Node ESM...");
+  console.log("Building Node ESM...");
   await build({
     entrypoints: ["./index.node.ts"],
     outdir: join(outdir, "node"),
@@ -33,8 +27,7 @@ async function buildPlugin() {
     external: ["@elizaos/core"],
   });
 
-  // Build Node CJS
-  console.log("📦 Building Node CJS...");
+  console.log("Building Node CJS...");
   await build({
     entrypoints: ["./index.node.ts"],
     outdir: join(outdir, "cjs"),
@@ -59,15 +52,14 @@ async function buildPlugin() {
     external: ["@elizaos/core"],
   });
 
-  // Generate declarations using tsc
-  console.log("📝 Generating type declarations...");
+  console.log("Generating type declarations...");
   const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
     stdout: "inherit",
     stderr: "inherit",
   });
   await proc.exited;
 
-  console.log("\n✅ Build complete!");
+  console.log("\nBuild complete!");
 }
 
 buildPlugin().catch((err) => {

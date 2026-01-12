@@ -1,7 +1,3 @@
-/**
- * Build script for BlueSky plugin.
- */
-
 import { build } from "bun";
 
 const isWatch = process.argv.includes("--watch");
@@ -9,7 +5,6 @@ const isWatch = process.argv.includes("--watch");
 async function buildPlugin() {
   console.log("Building BlueSky plugin...");
 
-  // Build Node.js entry
   await build({
     entrypoints: ["./index.node.ts"],
     outdir: "../dist/node",
@@ -29,7 +24,6 @@ async function buildPlugin() {
     ],
   });
 
-  // Build Browser entry
   await build({
     entrypoints: ["./index.browser.ts"],
     outdir: "../dist/browser",
@@ -45,9 +39,5 @@ async function buildPlugin() {
 
 if (isWatch) {
   console.log("Watching for changes...");
-  // In watch mode, we'd use a file watcher
-  // For now, just build once
-  await buildPlugin();
-} else {
-  await buildPlugin();
 }
+await buildPlugin();

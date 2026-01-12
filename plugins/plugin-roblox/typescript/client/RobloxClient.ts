@@ -1,12 +1,3 @@
-/**
- * Roblox Open Cloud API Client
- *
- * Provides methods for interacting with Roblox's Open Cloud APIs including:
- * - Messaging Service (cross-server communication)
- * - DataStore (persistent data storage)
- * - User information lookup
- */
-
 import type {
   DataStoreEntry,
   MessagingServiceMessage,
@@ -18,9 +9,6 @@ import type {
 const ROBLOX_API_BASE = "https://apis.roblox.com";
 const USERS_API_BASE = "https://users.roblox.com";
 
-/**
- * Error thrown by Roblox API operations
- */
 export class RobloxApiError extends Error {
   constructor(
     message: string,
@@ -33,9 +21,6 @@ export class RobloxApiError extends Error {
   }
 }
 
-/**
- * Roblox Open Cloud API Client
- */
 export class RobloxClient {
   private config: RobloxConfig;
 
@@ -43,9 +28,6 @@ export class RobloxClient {
     this.config = config;
   }
 
-  /**
-   * Make an authenticated request to the Roblox Open Cloud API
-   */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -78,7 +60,6 @@ export class RobloxClient {
       );
     }
 
-    // Handle empty responses
     const text = await response.text();
     if (!text) {
       return {} as T;
@@ -87,11 +68,6 @@ export class RobloxClient {
     return JSON.parse(text) as T;
   }
 
-  // ==================== Messaging Service ====================
-
-  /**
-   * Publish a message to a topic via the Messaging Service
-   */
   async publishMessage(topic: string, data: unknown, universeId?: string): Promise<void> {
     if (this.config.dryRun) {
       console.log(`[DRY RUN] Would publish to topic "${topic}":`, data);
@@ -109,18 +85,10 @@ export class RobloxClient {
     );
   }
 
-  /**
-   * Send a message to the default agent topic
-   */
   async sendAgentMessage(message: MessagingServiceMessage): Promise<void> {
     await this.publishMessage(this.config.messagingTopic, message);
   }
 
-  // ==================== DataStore ====================
-
-  /**
-   * Get an entry from a DataStore
-   */
   async getDataStoreEntry<T = unknown>(
     datastoreName: string,
     key: string,
@@ -151,9 +119,6 @@ export class RobloxClient {
     }
   }
 
-  /**
-   * Set an entry in a DataStore
-   */
   async setDataStoreEntry<T = unknown>(
     datastoreName: string,
     key: string,
@@ -192,9 +157,6 @@ export class RobloxClient {
     };
   }
 
-  /**
-   * Delete an entry from a DataStore
-   */
   async deleteDataStoreEntry(
     datastoreName: string,
     key: string,
@@ -211,9 +173,6 @@ export class RobloxClient {
     );
   }
 
-  /**
-   * List entries in a DataStore
-   */
   async listDataStoreEntries(
     datastoreName: string,
     scope: string = "global",
@@ -237,11 +196,6 @@ export class RobloxClient {
     };
   }
 
-  // ==================== Users ====================
-
-  /**
-   * Get user information by user ID
-   */
   async getUserById(userId: number): Promise<RobloxUser> {
     const response = await this.request<{
       id: number;
@@ -260,9 +214,6 @@ export class RobloxClient {
     };
   }
 
-  /**
-   * Get user information by username
-   */
   async getUserByUsername(username: string): Promise<RobloxUser | null> {
     try {
       const response = await this.request<{
@@ -298,9 +249,6 @@ export class RobloxClient {
     }
   }
 
-  /**
-   * Get multiple users by their IDs
-   */
   async getUsersByIds(userIds: number[]): Promise<RobloxUser[]> {
     if (userIds.length === 0) {
       return [];
@@ -328,9 +276,6 @@ export class RobloxClient {
     }));
   }
 
-  /**
-   * Get avatar thumbnail URL for a user
-   */
   async getAvatarUrl(userId: number, size: string = "150x150"): Promise<string | undefined> {
     try {
       const response = await this.request<{
@@ -347,11 +292,6 @@ export class RobloxClient {
     }
   }
 
-  // ==================== Experience Info ====================
-
-  /**
-   * Get experience/universe information
-   */
   async getExperienceInfo(universeId?: string): Promise<RobloxExperienceInfo> {
     const targetUniverseId = universeId || this.config.universeId;
 
@@ -395,18 +335,10 @@ export class RobloxClient {
     };
   }
 
-  // ==================== Configuration ====================
-
-  /**
-   * Get the current configuration
-   */
   getConfig(): Readonly<RobloxConfig> {
     return { ...this.config };
   }
 
-  /**
-   * Check if dry run mode is enabled
-   */
   isDryRun(): boolean {
     return this.config.dryRun;
   }

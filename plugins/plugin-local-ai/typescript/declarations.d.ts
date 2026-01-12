@@ -9,7 +9,6 @@ declare module "stream-browserify" {
     PassThrough: typeof NodePassThrough;
     Readable: typeof NodeReadable;
     Transform: typeof NodeTransform;
-    // Add other properties as needed
   }
 
   const pkg: StreamBrowserify;

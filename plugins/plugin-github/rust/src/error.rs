@@ -1,190 +1,125 @@
 #![allow(missing_docs)]
-//! Error types for the GitHub plugin
-//!
-//! Provides strongly-typed errors that fail fast with clear messages.
 
 use std::fmt;
 use thiserror::Error;
 
-/// Result type alias for GitHub operations
 pub type Result<T> = std::result::Result<T, GitHubError>;
 
-/// GitHub plugin error types
-///
-/// All errors are designed to fail fast with clear, actionable messages.
-/// No defensive programming or error swallowing.
 #[derive(Debug, Error)]
 pub enum GitHubError {
-    /// GitHub client is not initialized
     #[error("GitHub client not initialized - call start() first")]
     ClientNotInitialized,
 
-    /// Configuration error
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
-    /// Missing required setting
     #[error("Missing required setting: {0}")]
     MissingSetting(String),
 
-    /// Invalid argument
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
-    /// Repository not found
     #[error("Repository not found: {owner}/{repo}")]
     RepositoryNotFound {
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// Branch not found
     #[error("Branch not found: {branch} in {owner}/{repo}")]
     BranchNotFound {
-        /// Branch name
         branch: String,
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// File not found
     #[error("File not found: {path} in {owner}/{repo}")]
     FileNotFound {
-        /// File path
         path: String,
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// Issue not found
     #[error("Issue #{issue_number} not found in {owner}/{repo}")]
     IssueNotFound {
-        /// Issue number
         issue_number: u64,
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// Pull request not found
     #[error("Pull request #{pull_number} not found in {owner}/{repo}")]
     PullRequestNotFound {
-        /// Pull request number
         pull_number: u64,
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// Permission denied
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
 
-    /// Rate limited by GitHub API
     #[error("Rate limited by GitHub API, retry after {retry_after_ms}ms")]
     RateLimited {
-        /// Milliseconds until retry is allowed
         retry_after_ms: u64,
-        /// Remaining requests
         remaining: u32,
-        /// Reset timestamp
         reset_at: chrono::DateTime<chrono::Utc>,
     },
 
-    /// Secondary rate limit (abuse detection)
     #[error("Secondary rate limit hit, retry after {retry_after_ms}ms")]
     SecondaryRateLimit {
-        /// Milliseconds until retry is allowed
         retry_after_ms: u64,
     },
 
-    /// Merge conflict
     #[error("Merge conflict in pull request #{pull_number} in {owner}/{repo}")]
     MergeConflict {
-        /// Pull request number
         pull_number: u64,
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// Branch already exists
     #[error("Branch already exists: {branch} in {owner}/{repo}")]
     BranchExists {
-        /// Branch name
         branch: String,
-        /// Repository owner
         owner: String,
-        /// Repository name
         repo: String,
     },
 
-    /// Validation error
     #[error("Validation failed for {field}: {reason}")]
     ValidationFailed {
-        /// Field name
         field: String,
-        /// Reason
         reason: String,
     },
 
-    /// API error from GitHub
     #[error("GitHub API error ({status}): {message}")]
     ApiError {
-        /// HTTP status code
         status: u16,
-        /// Error message
         message: String,
-        /// Error code
         code: Option<String>,
-        /// Documentation URL
         documentation_url: Option<String>,
     },
 
-    /// Network error
     #[error("Network error: {0}")]
     NetworkError(String),
 
-    /// Timeout
     #[error("Operation timed out after {timeout_ms}ms: {operation}")]
     Timeout {
-        /// Timeout in milliseconds
         timeout_ms: u64,
-        /// Operation description
         operation: String,
     },
 
-    /// Git operation error
     #[error("Git operation failed ({operation}): {reason}")]
     GitOperation {
-        /// Operation name
         operation: String,
-        /// Failure reason
         reason: String,
     },
 
-    /// Webhook verification error
     #[error("Webhook verification failed: {0}")]
     WebhookVerification(String),
 
-    /// Serialization/deserialization error
     #[error("Serialization error: {0}")]
     SerializationError(String),
 
-    /// Internal error
     #[error("Internal error: {0}")]
     Internal(String),
 
-    /// Octocrab error
     #[cfg(feature = "native")]
     #[error("GitHub API error: {0}")]
     OctocrabError(#[from] octocrab::Error),
@@ -202,7 +137,6 @@ impl GitHubError {
         )
     }
 
-    /// Get retry delay in milliseconds if applicable
     pub fn retry_after_ms(&self) -> Option<u64> {
         match self {
             GitHubError::RateLimited { retry_after_ms, .. } => Some(*retry_after_ms),

@@ -10,15 +10,8 @@ import { longTermExtractionTemplate } from "../generated/prompts/typescript/prom
 import type { MemoryService } from "../services/memory-service";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types";
 
-/**
- * Template for extracting long-term memories using cognitive science memory types
- * Auto-generated from prompts/long_term_extraction.txt
- */
 const extractionTemplate = longTermExtractionTemplate;
 
-/**
- * Parse XML memory extraction response
- */
 function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
   const memoryMatches = xml.matchAll(
     /<memory>[\s\S]*?<category>(.*?)<\/category>[\s\S]*?<content>(.*?)<\/content>[\s\S]*?<confidence>(.*?)<\/confidence>[\s\S]*?<\/memory>/g
@@ -44,9 +37,6 @@ function parseMemoryExtractionXML(xml: string): MemoryExtraction[] {
   return extractions;
 }
 
-/**
- * Long-term Memory Extraction Evaluator
- */
 export const longTermExtractionEvaluator: Evaluator = {
   name: "LONG_TERM_MEMORY_EXTRACTION",
   description: "Extracts long-term facts about users from conversations",
@@ -157,9 +147,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 
       const currentMessageCount = await runtime.countMemories(roomId, false, "messages");
       await memoryService.setLastExtractionCheckpoint(entityId, roomId, currentMessageCount);
-      logger.debug(
-        `Updated extraction checkpoint to ${currentMessageCount} for entity ${entityId}`
-      );
+      logger.debug(`Updated checkpoint to ${currentMessageCount} for entity ${entityId}`);
     } catch (error) {
       logger.error({ error }, "Error during long-term memory extraction:");
     }

@@ -1,5 +1,3 @@
-"""Parity tests for UUID utilities (Python ↔ TypeScript/Rust)."""
-
 import uuid as uuid_module
 
 import pytest
@@ -9,7 +7,6 @@ from elizaos.types import string_to_uuid
 
 class TestStringToUuidParity:
     def test_deterministic_vectors_match_typescript(self) -> None:
-        # Canonical vectors from `packages/typescript/src/__tests__/utils/stringToUuid.test.ts`
         vectors = [
             ("test", "a94a8fe5-ccb1-0ba6-9c4c-0873d391e987"),
             ("hello world", "f0355dd5-2823-054c-ae66-a0b12842c215"),
@@ -41,12 +38,9 @@ class TestStringToUuidParity:
         parts = uuid_str.split("-")
         assert len(parts) == 5
 
-        # Variant bits: 10xxxxxx in first byte of 4th segment (index 3)
         variant_byte = int(parts[3][0:2], 16)
         assert (variant_byte & 0xC0) == 0x80
 
-        # Version nibble: first hex digit of 3rd segment (index 2) should be 0
         assert parts[2][0] == "0"
 
-        # Also ensure Python's uuid parser accepts it
         uuid_module.UUID(uuid_str)

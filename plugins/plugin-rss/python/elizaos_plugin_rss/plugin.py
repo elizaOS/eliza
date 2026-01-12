@@ -1,9 +1,3 @@
-"""
-RSS Plugin for elizaOS
-
-Main plugin definition and integration points.
-"""
-
 from __future__ import annotations
 
 import json
@@ -26,20 +20,12 @@ if TYPE_CHECKING:
 
 @dataclass
 class RssPlugin:
-    """
-    RSS Plugin for elizaOS.
-
-    Provides RSS/Atom feed monitoring and subscription management.
-    """
-
     config: RssConfig = field(default_factory=RssConfig)
     client: RssClient | None = None
     subscribed_feeds: dict[str, FeedSubscriptionMetadata] = field(default_factory=dict)
     feed_items: dict[str, FeedItemMetadata] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Initialize the plugin from environment variables."""
-        # Load config from environment
         rss_feeds = os.environ.get("RSS_FEEDS", "")
         if rss_feeds:
             try:
@@ -47,7 +33,6 @@ class RssPlugin:
                 if isinstance(feeds, list):
                     self.config.feeds = feeds
             except json.JSONDecodeError:
-                # Treat as comma-separated list
                 self.config.feeds = [f.strip() for f in rss_feeds.split(",") if f.strip()]
 
         if os.environ.get("RSS_DISABLE_ACTIONS", "").lower() == "true":
@@ -66,15 +51,11 @@ class RssPlugin:
                 pass
 
     async def start(self) -> None:
-        """Start the plugin and initialize the client."""
         self.client = RssClient(self.config)
-
-        # Subscribe to initial feeds
         for url in self.config.feeds:
             await self.subscribe_feed(url)
 
     async def stop(self) -> None:
-        """Stop the plugin and close the client."""
         if self.client:
             await self.client.close()
             self.client = None
@@ -87,15 +68,6 @@ class RssPlugin:
         await self.stop()
 
     async def fetch_feed(self, url: str) -> RssFeed | None:
-        """
-        Fetch and parse an RSS feed.
-
-        Args:
-            url: The feed URL to fetch.
-
-        Returns:
-            Parsed RssFeed or None on error.
-        """
         if not self.client:
             self.client = RssClient(self.config)
 
@@ -105,20 +77,9 @@ class RssPlugin:
             return None
 
     async def subscribe_feed(self, url: str, title: str | None = None) -> bool:
-        """
-        Subscribe to an RSS feed.
-
-        Args:
-            url: The feed URL.
-            title: Optional feed title.
-
-        Returns:
-            True if subscription was successful.
-        """
         if url in self.subscribed_feeds:
             return True
 
-        # Fetch title if not provided
         feed_title = title
         if not feed_title:
             feed = await self.fetch_feed(url)
@@ -137,15 +98,6 @@ class RssPlugin:
         return True
 
     async def unsubscribe_feed(self, url: str) -> bool:
-        """
-        Unsubscribe from an RSS feed.
-
-        Args:
-            url: The feed URL.
-
-        Returns:
-            True if unsubscription was successful.
-        """
         if url not in self.subscribed_feeds:
             return False
 
@@ -153,21 +105,9 @@ class RssPlugin:
         return True
 
     def get_subscribed_feeds(self) -> list[tuple[str, FeedSubscriptionMetadata]]:
-        """
-        Get all subscribed feeds.
-
-        Returns:
-            List of (url, metadata) tuples.
-        """
         return list(self.subscribed_feeds.items())
 
     async def check_all_feeds(self) -> dict[str, int]:
-        """
-        Check all subscribed feeds for new items.
-
-        Returns:
-            Dictionary mapping feed URLs to count of new items.
-        """
         import time
 
         results: dict[str, int] = {}
@@ -207,37 +147,17 @@ class RssPlugin:
         return results
 
     def get_feed_items(self, limit: int = 50) -> list[FeedItemMetadata]:
-        """
-        Get recent feed items.
-
-        Args:
-            limit: Maximum number of items to return.
-
-        Returns:
-            List of feed item metadata.
-        """
         items = list(self.feed_items.values())
-        # Sort by pub_date if available (most recent first)
         items.sort(key=lambda x: x.pub_date or "", reverse=True)
         return items[:limit]
 
     def format_feed_items(self, items: list[FeedItemMetadata] | None = None) -> str:
-        """
-        Format feed items for display.
-
-        Args:
-            items: Items to format (defaults to all items).
-
-        Returns:
-            Formatted string based on configured format.
-        """
         if items is None:
             items = self.get_feed_items()
 
         if not items:
             return "No RSS feed items available."
 
-        # Group by feed
         by_feed: dict[str, list[FeedItemMetadata]] = {}
         for item in items:
             feed_title = item.feed_title or "Unknown Feed"
@@ -253,7 +173,6 @@ class RssPlugin:
     def _format_markdown(
         self, items: list[FeedItemMetadata], by_feed: dict[str, list[FeedItemMetadata]]
     ) -> str:
-        """Format items as markdown."""
         output = f"# Recent RSS Feed Items ({len(items)} items from {len(by_feed)} feeds)\n\n"
 
         for feed_title, feed_items in by_feed.items():
@@ -282,7 +201,6 @@ class RssPlugin:
     def _format_csv(
         self, items: list[FeedItemMetadata], by_feed: dict[str, list[FeedItemMetadata]]
     ) -> str:
-        """Format items as CSV."""
         output = f"# RSS Feed Items ({len(items)} from {len(by_feed)} feeds)\n"
         output += "Feed,Title,URL,Published,Description\n"
 
@@ -299,28 +217,8 @@ class RssPlugin:
 
 
 def create_plugin(config: RssConfig | None = None) -> RssPlugin:
-    """
-    Create an RSS plugin instance.
-
-    Args:
-        config: Optional plugin configuration.
-
-    Returns:
-        Configured RssPlugin instance.
-    """
     return RssPlugin(config=config or RssConfig())
 
 
 def get_rss_plugin() -> RssPlugin:
-    """
-    Get an RSS plugin instance configured from environment variables.
-
-    Returns:
-        RssPlugin configured from environment.
-    """
     return RssPlugin()
-
-
-
-
-

@@ -1,7 +1,3 @@
-/**
- * Ollama plugin definition for elizaOS.
- */
-
 import type {
   GenerateTextParams,
   IAgentRuntime,
@@ -11,7 +7,6 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 
-// Disable AI SDK warning logging by default (can be overridden by setting to true)
 (globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
 
 import { handleTextEmbedding } from "./models/embedding";
@@ -19,14 +14,6 @@ import { handleObjectLarge, handleObjectSmall } from "./models/object";
 import { handleTextLarge, handleTextSmall } from "./models/text";
 import { getApiBase, getBaseURL } from "./utils/config";
 
-/**
- * Ollama plugin for elizaOS.
- *
- * Provides integration with locally-hosted Ollama models for:
- * - Text generation (small and large)
- * - Object/JSON generation
- * - Text embeddings
- */
 export const ollamaPlugin: Plugin = {
   name: "ollama",
   description: "Ollama plugin for local LLM inference",
@@ -43,7 +30,6 @@ export const ollamaPlugin: Plugin = {
     const baseURL = getBaseURL(runtime);
     const apiBase = getApiBase(runtime);
 
-    // Check if endpoint is configured
     if (!baseURL || baseURL === "http://localhost:11434/api") {
       const endpoint = runtime.getSetting("OLLAMA_API_ENDPOINT");
       if (!endpoint) {
@@ -54,7 +40,6 @@ export const ollamaPlugin: Plugin = {
     }
 
     try {
-      // Validate Ollama API endpoint by checking if it's accessible
       const response = await fetch(`${apiBase}/api/tags`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },

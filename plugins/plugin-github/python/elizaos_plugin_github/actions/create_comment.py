@@ -1,12 +1,8 @@
-"""Create Comment Action."""
-
 from elizaos_plugin_github.actions.create_issue import ActionContext, ActionResult
 from elizaos_plugin_github.types import CreateCommentParams
 
 
 class CreateCommentAction:
-    """Action to create a comment on a GitHub issue or pull request."""
-
     @property
     def name(self) -> str:
         return "CREATE_GITHUB_COMMENT"
@@ -26,7 +22,6 @@ class CreateCommentAction:
         ]
 
     async def validate(self, context: ActionContext) -> bool:
-        """Validate the action can be executed."""
         content = context.message.get("content", {})
         text = ""
         if isinstance(content, dict):
@@ -39,7 +34,6 @@ class CreateCommentAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -71,8 +65,3 @@ class CreateCommentAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create comment: {e}")
-
-
-
-
-

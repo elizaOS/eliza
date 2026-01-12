@@ -1,9 +1,3 @@
-/**
- * Browser entry point for plugin-localdb
- *
- * Uses localStorage-based JSON storage for persistence.
- */
-
 import {
   type IAgentRuntime,
   type IDatabaseAdapter,
@@ -14,7 +8,6 @@ import {
 import { LocalDatabaseAdapter } from "./adapter";
 import { BrowserStorage } from "./storage-browser";
 
-// Global singleton for storage manager
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-localdb/global-singletons");
 type GlobalSymbols = typeof globalThis & {
   [GLOBAL_SINGLETONS]?: {
@@ -28,21 +21,12 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 }
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
-/**
- * Creates a local database adapter for browsers
- *
- * @param config Configuration options
- * @param config.prefix localStorage key prefix (default: "elizaos")
- * @param agentId The agent ID
- * @returns The database adapter
- */
 export function createDatabaseAdapter(
   config: { prefix?: string },
   agentId: UUID
 ): IDatabaseAdapter {
   const prefix = config.prefix ?? "elizaos";
 
-  // Create or reuse storage manager
   if (!globalSingletons.storageManager) {
     globalSingletons.storageManager = new BrowserStorage(prefix);
   }
@@ -50,9 +34,6 @@ export function createDatabaseAdapter(
   return new LocalDatabaseAdapter(globalSingletons.storageManager, agentId);
 }
 
-/**
- * Plugin definition for elizaOS
- */
 export const plugin: Plugin = {
   name: "@elizaos/plugin-localdb",
   description: "Simple JSON-based local database storage for elizaOS (browser)",
@@ -60,7 +41,6 @@ export const plugin: Plugin = {
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:localdb" }, "Initializing local database plugin (browser)");
 
-    // Check if adapter already exists
     interface RuntimeWithAdapter {
       adapter?: IDatabaseAdapter;
       hasDatabaseAdapter?: () => boolean;
@@ -82,10 +62,7 @@ export const plugin: Plugin = {
       return;
     }
 
-    // Get prefix from settings
     const prefix = runtime.getSetting("LOCALDB_PREFIX") as string | undefined;
-
-    // Create and register adapter
     const adapter = createDatabaseAdapter({ prefix }, runtime.agentId);
 
     await adapter.init();

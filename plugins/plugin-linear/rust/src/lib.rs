@@ -1,8 +1,4 @@
 #![allow(missing_docs)]
-//! ElizaOS Linear Plugin (Rust)
-//!
-//! A comprehensive Linear integration plugin for ElizaOS that enables
-//! issue tracking, project management, and team collaboration.
 
 pub mod actions;
 pub mod error;
@@ -10,14 +6,6 @@ pub mod providers;
 pub mod service;
 pub mod types;
 
-// Import directly from submodules:
-// - error::{LinearError, Result}
-// - service::LinearService
-// - types::*
-// - actions::{create_issue, get_issue, update_issue, etc.}
-// - providers::{get_issues_context, get_teams_context, etc.}
-
-/// Plugin definition for ElizaOS
 pub struct LinearPlugin {
     pub name: &'static str,
     pub description: &'static str,
@@ -31,7 +19,6 @@ impl LinearPlugin {
         }
     }
 
-    /// Get all actions provided by this plugin
     pub fn actions() -> Vec<&'static str> {
         vec![
             "CREATE_LINEAR_ISSUE",
@@ -47,7 +34,6 @@ impl LinearPlugin {
         ]
     }
 
-    /// Get all providers provided by this plugin
     pub fn providers() -> Vec<&'static str> {
         vec![
             "LINEAR_ISSUES",
@@ -64,6 +50,5 @@ impl Default for LinearPlugin {
     }
 }
 
-/// The main plugin instance
 pub static PLUGIN: LinearPlugin = LinearPlugin::new();
 

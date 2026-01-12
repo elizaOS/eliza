@@ -1,10 +1,3 @@
-"""
-elizaOS Core Types - Pydantic models and type definitions.
-
-This module provides all the core type definitions for elizaOS,
-using Pydantic for validation and strong typing.
-"""
-
 from elizaos.types.agent import (
     Agent,
     AgentStatus,

@@ -1,5 +1,3 @@
-"""Tests for Planning Service."""
-
 import pytest
 from uuid import uuid4
 
@@ -9,13 +7,11 @@ from elizaos_plugin_planning.types import PlanningConfig
 
 @pytest.fixture
 def planning_service() -> PlanningService:
-    """Create a planning service for testing."""
     return PlanningService()
 
 
 @pytest.fixture
 def sample_message() -> dict:
-    """Create a sample message for testing."""
     return {
         "id": str(uuid4()),
         "entity_id": str(uuid4()),
@@ -27,7 +23,6 @@ def sample_message() -> dict:
 
 @pytest.fixture
 def sample_context() -> dict:
-    """Create a sample planning context for testing."""
     return {
         "goal": "Build and deploy a website",
         "constraints": [
@@ -39,15 +34,11 @@ def sample_context() -> dict:
 
 
 class TestPlanningServiceInit:
-    """Test PlanningService initialization."""
-
     def test_default_config(self, planning_service: PlanningService) -> None:
-        """Test default configuration."""
         assert planning_service.config.max_steps == 10
         assert planning_service.config.execution_model == "sequential"
 
     def test_custom_config(self) -> None:
-        """Test custom configuration."""
         config = PlanningConfig(max_steps=20, execution_model="parallel")
         service = PlanningService(config=config)
         assert service.config.max_steps == 20
@@ -55,11 +46,8 @@ class TestPlanningServiceInit:
 
 
 class TestSimplePlan:
-    """Test simple plan creation."""
-
     @pytest.mark.asyncio
     async def test_create_simple_plan_email(self, planning_service: PlanningService) -> None:
-        """Test simple plan creation for email action."""
         message = {"content": {"text": "Send an email to John"}}
         plan = await planning_service.create_simple_plan(message, {})
 
@@ -69,7 +57,6 @@ class TestSimplePlan:
 
     @pytest.mark.asyncio
     async def test_create_simple_plan_search(self, planning_service: PlanningService) -> None:
-        """Test simple plan creation for search action."""
         message = {"content": {"text": "Search for Python tutorials"}}
         plan = await planning_service.create_simple_plan(message, {})
 
@@ -78,7 +65,6 @@ class TestSimplePlan:
 
     @pytest.mark.asyncio
     async def test_create_simple_plan_default(self, planning_service: PlanningService) -> None:
-        """Test simple plan creation defaults to REPLY."""
         message = {"content": {"text": "Hello there"}}
         plan = await planning_service.create_simple_plan(message, {})
 
@@ -87,13 +73,10 @@ class TestSimplePlan:
 
 
 class TestComprehensivePlan:
-    """Test comprehensive plan creation."""
-
     @pytest.mark.asyncio
     async def test_create_comprehensive_plan(
         self, planning_service: PlanningService, sample_context: dict
     ) -> None:
-        """Test comprehensive plan creation."""
         plan = await planning_service.create_comprehensive_plan(sample_context)
 
         assert plan is not None
@@ -104,7 +87,6 @@ class TestComprehensivePlan:
     async def test_comprehensive_plan_with_message(
         self, planning_service: PlanningService, sample_context: dict, sample_message: dict
     ) -> None:
-        """Test comprehensive plan creation with message context."""
         plan = await planning_service.create_comprehensive_plan(sample_context, sample_message)
 
         assert plan is not None
@@ -112,7 +94,6 @@ class TestComprehensivePlan:
 
     @pytest.mark.asyncio
     async def test_comprehensive_plan_empty_goal(self, planning_service: PlanningService) -> None:
-        """Test comprehensive plan with empty goal raises error."""
         context = {
             "goal": "",
             "constraints": [],
@@ -125,13 +106,10 @@ class TestComprehensivePlan:
 
 
 class TestPlanValidation:
-    """Test plan validation."""
-
     @pytest.mark.asyncio
     async def test_validate_valid_plan(
         self, planning_service: PlanningService, sample_context: dict
     ) -> None:
-        """Test validation of a valid plan."""
         plan = await planning_service.create_comprehensive_plan(sample_context)
         is_valid, issues = await planning_service.validate_plan(plan)
 
@@ -140,7 +118,6 @@ class TestPlanValidation:
 
     @pytest.mark.asyncio
     async def test_validate_empty_plan(self, planning_service: PlanningService) -> None:
-        """Test validation of empty plan fails."""
         from elizaos_plugin_planning.types import ActionPlan
 
         plan = ActionPlan(
@@ -157,13 +134,10 @@ class TestPlanValidation:
 
 
 class TestPlanExecution:
-    """Test plan execution."""
-
     @pytest.mark.asyncio
     async def test_execute_simple_plan(
         self, planning_service: PlanningService, sample_message: dict
     ) -> None:
-        """Test execution of a simple plan."""
         plan = await planning_service.create_simple_plan(sample_message, {})
         assert plan is not None
 
@@ -177,7 +151,6 @@ class TestPlanExecution:
     async def test_execute_with_callback(
         self, planning_service: PlanningService, sample_message: dict
     ) -> None:
-        """Test execution with callback."""
         plan = await planning_service.create_simple_plan(sample_message, {})
         callbacks_received: list = []
 
@@ -190,34 +163,22 @@ class TestPlanExecution:
 
 
 class TestPlanCancellation:
-    """Test plan cancellation."""
-
     @pytest.mark.asyncio
     async def test_cancel_nonexistent_plan(self, planning_service: PlanningService) -> None:
-        """Test cancelling a non-existent plan."""
         result = await planning_service.cancel_plan(uuid4())
         assert not result
 
     @pytest.mark.asyncio
     async def test_get_status_nonexistent_plan(self, planning_service: PlanningService) -> None:
-        """Test getting status of non-existent plan."""
         status = await planning_service.get_plan_status(uuid4())
         assert status is None
 
 
 class TestServiceLifecycle:
-    """Test service lifecycle."""
-
     @pytest.mark.asyncio
     async def test_start_and_stop(self, planning_service: PlanningService) -> None:
-        """Test starting and stopping the service."""
         await planning_service.start(None)
         await planning_service.stop()
 
         assert len(planning_service.active_plans) == 0
         assert len(planning_service.plan_executions) == 0
-
-
-
-
-

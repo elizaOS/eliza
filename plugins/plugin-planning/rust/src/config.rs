@@ -1,27 +1,17 @@
 #![allow(missing_docs)]
-//! Configuration for the Planning Plugin.
 
 use crate::types::{ExecutionModel, RetryPolicy};
 use serde::{Deserialize, Serialize};
 
-/// Configuration for planning service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanningConfig {
-    /// Maximum steps in a plan
     pub max_steps: i32,
-    /// Default execution timeout in milliseconds
     pub default_timeout_ms: i64,
-    /// Default execution model
     pub execution_model: ExecutionModel,
-    /// Enable plan adaptation during execution
     pub enable_adaptation: bool,
-    /// Default retry policy
     pub retry_policy: RetryPolicy,
-    /// Model type for planning
     pub planning_model_type: String,
-    /// Temperature for LLM generation
     pub planning_temperature: f32,
-    /// Max tokens for planning response
     pub planning_max_tokens: i32,
 }
 
@@ -42,7 +32,6 @@ impl Default for PlanningConfig {
 }
 
 impl PlanningConfig {
-    /// Create a new config from environment variables.
     pub fn from_env() -> Self {
         let mut config = Self::default();
 
@@ -83,5 +72,3 @@ impl PlanningConfig {
         config
     }
 }
-
-

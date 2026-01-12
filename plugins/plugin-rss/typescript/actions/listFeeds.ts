@@ -49,7 +49,6 @@ export const listFeedsAction: Action = {
       return { success: true };
     }
 
-    // Format the feed list
     let feedList = `You are subscribed to ${feeds.length} RSS feed${feeds.length > 1 ? "s" : ""}:\n\n`;
 
     feeds.forEach((feed, index) => {

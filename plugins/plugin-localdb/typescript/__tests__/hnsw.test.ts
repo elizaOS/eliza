@@ -1,7 +1,3 @@
-/**
- * Tests for SimpleHNSW
- */
-
 import { beforeEach, describe, expect, it } from "vitest";
 import { SimpleHNSW } from "../hnsw";
 
@@ -10,7 +6,7 @@ describe("SimpleHNSW", () => {
 
   beforeEach(async () => {
     hnsw = new SimpleHNSW();
-    await hnsw.init(3); // 3-dimensional vectors
+    await hnsw.init(3);
   });
 
   describe("initialization", () => {
@@ -42,13 +38,10 @@ describe("SimpleHNSW", () => {
       await hnsw.add("v2", [0.9, 0.1, 0.0]); // Similar to v1
       await hnsw.add("v3", [0.0, 1.0, 0.0]); // Orthogonal
 
-      // Search for v1-like vector
       const results = await hnsw.search([1.0, 0.0, 0.0], 2, 0.5);
 
       expect(results.length).toBe(2);
-      // v1 should be first (exact match)
       expect(results[0].id).toBe("v1");
-      // v2 should be second (similar)
       expect(results[1].id).toBe("v2");
     });
 
@@ -95,7 +88,6 @@ describe("SimpleHNSW", () => {
 
       const serialized = hnsw.getIndex();
 
-      // Create new index and deserialize
       const hnsw2 = new SimpleHNSW(
         async () => {},
         async () => serialized
@@ -125,11 +117,10 @@ describe("SimpleHNSW", () => {
 
     it("should update existing vector", async () => {
       await hnsw.add("v1", [1.0, 0.0, 0.0]);
-      await hnsw.add("v1", [0.0, 1.0, 0.0]); // Update same id
+      await hnsw.add("v1", [0.0, 1.0, 0.0]);
 
       expect(hnsw.size()).toBe(1);
 
-      // Search for new vector
       const results = await hnsw.search([0.0, 1.0, 0.0], 1, 0.9);
       expect(results[0].id).toBe("v1");
     });
@@ -156,7 +147,6 @@ describe("SimpleHNSW", () => {
 
       expect(hnsw.size()).toBe(100);
 
-      // Search should return results
       const results = await hnsw.search([1.0, 0.0, 0.0], 5, 0.0);
       expect(results.length).toBe(5);
     });

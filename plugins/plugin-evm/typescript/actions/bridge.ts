@@ -1,9 +1,3 @@
-/**
- * @elizaos/plugin-evm Bridge Action
- *
- * Handles cross-chain token bridges using LiFi SDK.
- */
-
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import {
@@ -40,19 +34,9 @@ import {
 
 export { bridgeTemplate };
 
-/**
- * Type helpers for LiFi SDK callbacks.
- * The SDK has strict callback types that don't always align with our implementations.
- * These adapters properly convert between our WalletProvider types and LiFi SDK expectations.
- */
 type LiFiGetWalletClient = Parameters<typeof EVM>[0]["getWalletClient"];
 type LiFiSwitchChain = Parameters<typeof EVM>[0]["switchChain"];
 
-/**
- * Type adapter for LiFi SDK getWalletClient callback.
- * Our WalletProvider.getWalletClient returns a WalletClient synchronously,
- * but LiFi expects an async function that returns a Promise<WalletClient>.
- */
 function createLiFiGetWalletClientAdapter(
   walletProvider: WalletProvider,
   getFirstChain: () => string
@@ -63,10 +47,6 @@ function createLiFiGetWalletClientAdapter(
   }) as LiFiGetWalletClient;
 }
 
-/**
- * Type adapter for LiFi SDK switchChain callback.
- * Converts our chain name-based API to LiFi's chainId-based API.
- */
 function createLiFiSwitchChainAdapter(
   walletProvider: WalletProvider,
   getChainNameById: (chainId: number) => string
@@ -78,10 +58,6 @@ function createLiFiSwitchChainAdapter(
   }) as LiFiSwitchChain;
 }
 
-/**
- * Type adapter for ExecutionOptions switchChainHook.
- * Similar to switchChain but used during route execution.
- */
 function createExecutionSwitchChainHookAdapter(
   walletProvider: WalletProvider,
   getChainNameById: (chainId: number) => string
@@ -93,9 +69,6 @@ function createExecutionSwitchChainHookAdapter(
   }) as ExecutionOptions["switchChainHook"];
 }
 
-/**
- * Bridge execution status
- */
 interface BridgeExecutionStatus {
   readonly route: RouteExtended;
   readonly isComplete: boolean;
@@ -105,26 +78,20 @@ interface BridgeExecutionStatus {
   readonly totalSteps: number;
 }
 
-/**
- * Bridge action executor
- */
 export class BridgeAction {
   private readonly activeRoutes: Map<string, BridgeExecutionStatus> = new Map();
 
   constructor(private readonly walletProvider: WalletProvider) {
-    // Create EVM provider configuration for LiFi SDK
     const evmProvider = EVM({
       getWalletClient: createLiFiGetWalletClientAdapter(
         this.walletProvider,
         () => Object.keys(this.walletProvider.chains)[0]
       ),
-      switchChain: createLiFiSwitchChainAdapter(
-        this.walletProvider,
-        (chainId: number) => this.getChainNameById(chainId)
+      switchChain: createLiFiSwitchChainAdapter(this.walletProvider, (chainId: number) =>
+        this.getChainNameById(chainId)
       ),
     });
 
-    // Initialize LiFi SDK config (used globally by the SDK)
     createConfig({
       integrator: "eliza-agent",
       providers: [evmProvider],
@@ -198,7 +165,7 @@ export class BridgeAction {
     const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
-    // @ts-expect-error - viem type narrowing issue
+    // @ts-expect-error - viem type narrowing issue with readContract parameters
     const decimals = (await publicClient.readContract({
       address: tokenAddress as Address,
       abi: decimalsAbi,
@@ -349,9 +316,6 @@ export class BridgeAction {
     throw new EVMError(EVMErrorCode.NETWORK_ERROR, "Route status polling failed");
   }
 
-  /**
-   * Execute a cross-chain bridge
-   */
   async bridge(params: BridgeParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
     const [fromAddress] = await walletClient.getAddresses();
@@ -445,9 +409,6 @@ export class BridgeAction {
     }
   }
 
-  /**
-   * Get status of a specific transaction
-   */
   async getTransactionStatus(txHash: string, fromChainId: number, toChainId: number, tool: string) {
     return await getStatus({
       txHash,
@@ -457,9 +418,6 @@ export class BridgeAction {
     });
   }
 
-  /**
-   * Resume a failed or interrupted bridge
-   */
   async resumeBridge(route: RouteExtended) {
     const routeId = `resume_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const executionOptions = this.createExecutionOptions(routeId);
@@ -474,9 +432,6 @@ export class BridgeAction {
   }
 }
 
-/**
- * Build bridge details from LLM response
- */
 async function buildBridgeDetails(
   state: State,
   runtime: IAgentRuntime,
@@ -536,9 +491,6 @@ async function buildBridgeDetails(
   return bridgeOptions;
 }
 
-/**
- * Bridge action definition
- */
 export const bridgeAction = {
   name: "EVM_BRIDGE_TOKENS",
   description: "Bridge tokens between different chains with gas optimization",
@@ -631,9 +583,6 @@ export const bridgeAction = {
   similes: ["CROSS_CHAIN_TRANSFER", "CHAIN_BRIDGE", "MOVE_CROSS_CHAIN", "BRIDGE_TOKENS"],
 };
 
-/**
- * Check bridge transaction status
- */
 export async function checkBridgeStatus(
   txHash: string,
   fromChainId: number,

@@ -13,38 +13,25 @@ export interface PluginConfig {
   readonly IMAGE_MODEL?: string;
 }
 
-/**
- * Initialize and validate Google Generative AI configuration
- */
 export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRuntime): void {
-  // Run validation in the background without blocking initialization
-  void (async () => {
+  (async () => {
     try {
       const apiKey = getApiKey(runtime);
       if (!apiKey) {
-        logger.warn(
-          "GOOGLE_GENERATIVE_AI_API_KEY is not set in environment - Google AI functionality will be limited"
-        );
+        logger.warn("GOOGLE_GENERATIVE_AI_API_KEY is not set");
         return;
       }
 
-      try {
-        const genAI = new GoogleGenAI({ apiKey });
-        const modelList = await genAI.models.list();
-        const models = [];
-        for await (const model of modelList) {
-          models.push(model);
-        }
-        logger.log(`Google AI API key validated successfully. Available models: ${models.length}`);
-      } catch (fetchError: unknown) {
-        const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
-        logger.warn(`Error validating Google AI API key: ${message}`);
-        logger.warn("Google AI functionality will be limited until a valid API key is provided");
+      const genAI = new GoogleGenAI({ apiKey });
+      const modelList = await genAI.models.list();
+      const models = [];
+      for await (const model of modelList) {
+        models.push(model);
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+      logger.log(`Google AI API key validated. Available models: ${models.length}`);
+    } catch (error) {
       logger.warn(
-        `Google AI plugin configuration issue: ${message} - You need to configure the GOOGLE_GENERATIVE_AI_API_KEY in your environment variables`
+        `Google AI configuration error: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   })();

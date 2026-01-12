@@ -1,10 +1,3 @@
-"""
-Agent Settings Provider - Provides agent configuration settings.
-
-This provider supplies the agent's current settings and configuration,
-filtered to exclude sensitive information like API keys.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -15,7 +8,6 @@ if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
 
 
-# Keys that should never be exposed
 SENSITIVE_KEY_PATTERNS = (
     "key",
     "secret",
@@ -32,26 +24,17 @@ async def get_agent_settings_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get the agent's current settings.
-
-    Returns only safe settings, filtering out sensitive information.
-    """
     all_settings = runtime.get_all_settings()
 
-    # Filter out sensitive settings
     safe_settings: dict[str, str] = {}
     for key, value in all_settings.items():
-        key_lower = key.lower()
-        is_sensitive = any(pattern in key_lower for pattern in SENSITIVE_KEY_PATTERNS)
-        if not is_sensitive:
+        if not any(pattern in key.lower() for pattern in SENSITIVE_KEY_PATTERNS):
             safe_settings[key] = str(value)
 
     sections: list[str] = []
     if safe_settings:
         sections.append("# Agent Settings")
         for key, value in safe_settings.items():
-            # Truncate long values
             display_value = value if len(value) <= 50 else value[:50] + "..."
             sections.append(f"- {key}: {display_value}")
 
@@ -69,7 +52,6 @@ async def get_agent_settings_context(
     )
 
 
-# Create the provider instance
 agent_settings_provider = Provider(
     name="AGENT_SETTINGS",
     description="Provides the agent's current configuration settings (filtered for security)",

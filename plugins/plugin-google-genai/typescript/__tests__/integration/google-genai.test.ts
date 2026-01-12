@@ -1,13 +1,6 @@
-/**
- * Integration tests for the Google GenAI plugin.
- *
- * These tests require a valid GOOGLE_GENERATIVE_AI_API_KEY environment variable.
- */
-
 import { config } from "dotenv";
 import { beforeAll, describe, expect, it } from "vitest";
 
-// Load environment variables
 config();
 
 const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;

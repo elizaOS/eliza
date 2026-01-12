@@ -1,0 +1,1 @@
+export { generateResponseAction } from "./generateResponse";

@@ -1,11 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * Build script for @elizaos/plugin-roblox
- *
- * This script builds the TypeScript source for Node.js.
- */
-
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,12 +10,10 @@ async function build() {
   const totalStart = Date.now();
   const distDir = join(process.cwd(), "dist");
 
-  // Ensure dist directory exists
   if (!existsSync(distDir)) {
     await mkdir(distDir, { recursive: true });
   }
 
-  // Node build
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-roblox...");
   const nodeResult = await Bun.build({
@@ -40,7 +32,6 @@ async function build() {
   }
   console.log(`✅ Build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
-  // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");

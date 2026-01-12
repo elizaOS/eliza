@@ -1,39 +1,8 @@
-#![allow(missing_docs)]
-//! elizaOS Plugin Planning - Rust Implementation
+//! Comprehensive planning and execution plugin for ElizaOS.
 //!
-//! This crate provides planning and execution capabilities for elizaOS agents,
-//! including message classification, plan creation, and multi-model execution.
-//!
-//! # Features
-//!
-//! - `native` (default): Enables full async support with tokio
-//! - `wasm`: Enables WebAssembly support with JavaScript interop
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use elizaos_plugin_planning::{PlanningService, PlanningConfig};
-//!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let config = PlanningConfig::default();
-//!     let service = PlanningService::new(config);
-//!
-//!     // Create a comprehensive plan
-//!     let context = PlanningContext {
-//!         goal: "Build a website".to_string(),
-//!         constraints: vec![],
-//!         available_actions: vec!["ANALYZE".to_string()],
-//!         preferences: None,
-//!     };
-//!
-//!     let plan = service.create_comprehensive_plan(&context).await?;
-//!
-//!     Ok(())
-//! }
-//! ```
+//! Provides intelligent action planning, message classification,
+//! and multi-step execution capabilities.
 
-#![warn(missing_docs)]
 #![deny(unsafe_code)]
 
 pub mod config;
@@ -41,26 +10,41 @@ pub mod error;
 pub mod service;
 pub mod types;
 
+pub mod actions;
+pub mod providers;
+
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-// Import directly from submodules:
-// - config::PlanningConfig
-// - error::{PlanningError, Result}
-// - service::PlanningService
-// - types::{ActionPlan, ActionStep, ExecutionModel, etc.}
+// Re-export action/provider traits
+pub use actions::{Action, ActionExample};
+pub use providers::{Provider, ProviderParams, ProviderResult};
 
-/// Plugin metadata
+// Re-export actions
+pub use actions::{
+    AnalyzeInputAction, ProcessAnalysisAction, ExecuteFinalAction, CreatePlanAction,
+    get_planning_action_names,
+};
+
+// Re-export providers
+pub use providers::{MessageClassifierProvider, get_planning_provider_names};
+
+// Re-export main types for convenience
+pub use config::PlanningConfig;
+pub use error::{PlanningError, Result};
+pub use service::PlanningService;
+pub use types::{
+    ActionPlan, ActionResult, ActionStep, ExecutionModel, MessageClassification,
+    PlanExecutionResult, PlanState, PlanningContext, PlanningConstraint, PlanningPreferences,
+    RetryPolicy,
+};
+
+/// The plugin name identifier.
 pub const PLUGIN_NAME: &str = "planning";
-/// Plugin description
+/// Human-readable description of the plugin's functionality.
 pub const PLUGIN_DESCRIPTION: &str =
     "Comprehensive planning and execution plugin with integrated planning service";
-/// Plugin version
+/// Current version of the plugin from Cargo.toml.
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-
-
-
-
 
 

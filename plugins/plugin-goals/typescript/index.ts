@@ -1,27 +1,16 @@
 import type { Plugin } from "@elizaos/core";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-// Import actions
 import { cancelGoalAction } from "./actions/cancelGoal.js";
 import { completeGoalAction } from "./actions/completeGoal.js";
 import { confirmGoalAction } from "./actions/confirmGoal.js";
 import { createGoalAction } from "./actions/createGoal.js";
 import { updateGoalAction } from "./actions/updateGoal.js";
 import { routes } from "./apis.js";
-
-// Import providers
 import { goalsProvider } from "./providers/goals.js";
-// Import schema
 import { goalSchema } from "./schema.js";
-// Import services
 import { GoalDataServiceWrapper } from "./services/goalDataService.js";
-
-// Import tests
 import { GoalsPluginE2ETestSuite } from "./tests.js";
 
-/**
- * The GoalsPlugin provides goal management functionality,
- * including creating, completing, updating, and canceling goals.
- */
 export const GoalsPlugin: Plugin = {
   name: "goals",
   description: "Provides goal management functionality for tracking and achieving objectives.",
@@ -40,23 +29,19 @@ export const GoalsPlugin: Plugin = {
   tests: [GoalsPluginE2ETestSuite],
 
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    // Database migrations are handled by the SQL plugin
     if (runtime.db) {
       logger.info("Database available, GoalsPlugin ready for operation");
     } else {
       logger.warn("No database instance available, operations will be limited");
     }
-
     logger.info("GoalsPlugin initialized successfully");
   },
 };
 
 export default GoalsPlugin;
 
-// Export schema
 export { goalSchema } from "./schema.js";
 export type { GoalData } from "./services/goalDataService.js";
-// Export data service utilities
 export {
   createGoalDataService,
   GoalDataServiceWrapper,

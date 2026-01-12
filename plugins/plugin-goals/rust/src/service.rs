@@ -1,29 +1,45 @@
-//! Goal service implementation
-//!
-//! Provides the main GoalService for managing goals.
-
 use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::error::{GoalError, Result};
 use crate::types::{CreateGoalParams, Goal, GoalFilters, GoalOwnerType, UpdateGoalParams};
 
-/// Database protocol trait
+/// Trait for database operations required by the goal service.
+///
+/// Implementations of this trait provide the persistence layer for goals.
 #[async_trait]
 pub trait Database: Send + Sync {
-    /// Execute a query and return results
+    /// Executes a query and returns multiple results.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query string to execute
+    /// * `params` - Query parameters as key-value pairs
+    ///
+    /// # Returns
+    ///
+    /// A vector of result rows, each as a HashMap of column names to values.
     async fn execute(
         &self,
         query: &str,
         params: HashMap<String, serde_json::Value>,
     ) -> Result<Vec<HashMap<String, serde_json::Value>>>;
 
-    /// Execute a query and return a single result
+    /// Executes a query and returns at most one result.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query string to execute
+    /// * `params` - Query parameters as key-value pairs
+    ///
+    /// # Returns
+    ///
+    /// An optional result row as a HashMap of column names to values.
     async fn execute_one(
         &self,
         query: &str,
@@ -31,38 +47,57 @@ pub trait Database: Send + Sync {
     ) -> Result<Option<HashMap<String, serde_json::Value>>>;
 }
 
-/// In-memory database for testing
+/// An in-memory database implementation for goals.
+///
+/// This implementation stores goals in memory using a thread-safe HashMap.
+/// Suitable for testing and development, but data is lost on restart.
 pub struct InMemoryDatabase {
     goals: Arc<RwLock<HashMap<String, Goal>>>,
 }
 
 impl InMemoryDatabase {
-    /// Create a new in-memory database
+    /// Creates a new empty in-memory database.
     pub fn new() -> Self {
         Self {
             goals: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    /// Insert a goal
+    /// Inserts a goal into the database.
+    ///
+    /// If a goal with the same ID exists, it will be replaced.
     pub async fn insert_goal(&self, goal: Goal) {
         let mut goals = self.goals.write().await;
         goals.insert(goal.id.clone(), goal);
     }
 
-    /// Get a goal by ID
+    /// Retrieves a goal by its ID.
+    ///
+    /// # Returns
+    ///
+    /// The goal if found, or `None` if not present.
     pub async fn get_goal(&self, id: &str) -> Option<Goal> {
         let goals = self.goals.read().await;
         goals.get(id).cloned()
     }
 
-    /// Get all goals
+    /// Retrieves all goals in the database.
+    ///
+    /// # Returns
+    ///
+    /// A vector of all stored goals.
     pub async fn get_all_goals(&self) -> Vec<Goal> {
         let goals = self.goals.read().await;
         goals.values().cloned().collect()
     }
 
-    /// Update a goal
+    /// Updates a goal with the provided parameters.
+    ///
+    /// Only fields that are `Some` in the updates will be modified.
+    ///
+    /// # Returns
+    ///
+    /// The updated goal if found, or `None` if the goal doesn't exist.
     pub async fn update_goal(&self, id: &str, updates: UpdateGoalParams) -> Option<Goal> {
         let mut goals = self.goals.write().await;
         if let Some(goal) = goals.get_mut(id) {
@@ -90,7 +125,11 @@ impl InMemoryDatabase {
         None
     }
 
-    /// Delete a goal
+    /// Deletes a goal from the database.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the goal was found and deleted, `false` otherwise.
     pub async fn delete_goal(&self, id: &str) -> bool {
         let mut goals = self.goals.write().await;
         goals.remove(id).is_some()
@@ -103,22 +142,34 @@ impl Default for InMemoryDatabase {
     }
 }
 
-/// Goal service for elizaOS
+/// Service for managing goals with business logic.
 ///
-/// Manages goal CRUD operations.
+/// The `GoalService` provides high-level operations for creating, reading,
+/// updating, and deleting goals, with validation and business rules applied.
 pub struct GoalService {
     db: Arc<InMemoryDatabase>,
 }
 
 impl GoalService {
-    /// Create a new goal service
+    /// Creates a new `GoalService` with the given database.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - An Arc-wrapped in-memory database instance
     pub fn new(db: Arc<InMemoryDatabase>) -> Self {
         Self { db }
     }
 
-    /// Create a new goal
+    /// Creates a new goal with the provided parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - The parameters for creating the goal
+    ///
+    /// # Errors
+    ///
+    /// Returns `ValidationError` if the goal name is empty.
     pub async fn create_goal(&self, params: CreateGoalParams) -> Result<Goal> {
-        // Validate params
         if params.name.is_empty() {
             return Err(GoalError::ValidationError("Goal name cannot be empty".to_string()));
         }
@@ -145,7 +196,11 @@ impl GoalService {
         Ok(goal)
     }
 
-    /// Get a goal by ID
+    /// Retrieves a goal by its ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the goal doesn't exist.
     pub async fn get_goal(&self, id: &str) -> Result<Goal> {
         self.db
             .get_goal(id)
@@ -153,7 +208,9 @@ impl GoalService {
             .ok_or_else(|| GoalError::NotFound(id.to_string()))
     }
 
-    /// Get goals with optional filters
+    /// Retrieves goals matching the optional filters.
+    ///
+    /// If no filters are provided, returns all goals.
     pub async fn get_goals(&self, filters: Option<GoalFilters>) -> Result<Vec<Goal>> {
         let all_goals = self.db.get_all_goals().await;
 
@@ -161,25 +218,21 @@ impl GoalService {
             .into_iter()
             .filter(|goal| {
                 if let Some(ref f) = filters {
-                    // Filter by owner_type
                     if let Some(ref owner_type) = f.owner_type {
                         if &goal.owner_type != owner_type {
                             return false;
                         }
                     }
-                    // Filter by owner_id
                     if let Some(ref owner_id) = f.owner_id {
                         if &goal.owner_id != owner_id {
                             return false;
                         }
                     }
-                    // Filter by is_completed
                     if let Some(is_completed) = f.is_completed {
                         if goal.is_completed != is_completed {
                             return false;
                         }
                     }
-                    // Filter by tags
                     if let Some(ref tags) = f.tags {
                         if !tags.iter().any(|t| goal.tags.contains(t)) {
                             return false;
@@ -193,7 +246,11 @@ impl GoalService {
         Ok(filtered)
     }
 
-    /// Update a goal
+    /// Updates a goal with the provided parameters.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the goal doesn't exist.
     pub async fn update_goal(&self, id: &str, updates: UpdateGoalParams) -> Result<Goal> {
         self.db
             .update_goal(id, updates)
@@ -201,7 +258,11 @@ impl GoalService {
             .ok_or_else(|| GoalError::NotFound(id.to_string()))
     }
 
-    /// Delete a goal
+    /// Deletes a goal by its ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the goal doesn't exist.
     pub async fn delete_goal(&self, id: &str) -> Result<()> {
         if self.db.delete_goal(id).await {
             info!("Deleted goal: {}", id);
@@ -211,7 +272,14 @@ impl GoalService {
         }
     }
 
-    /// Complete a goal
+    /// Marks a goal as completed.
+    ///
+    /// Sets `is_completed` to `true` and `completed_at` to the current time.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the goal doesn't exist, or
+    /// `AlreadyCompleted` if the goal is already completed.
     pub async fn complete_goal(&self, id: &str) -> Result<Goal> {
         let goal = self.get_goal(id).await?;
 
@@ -223,7 +291,12 @@ impl GoalService {
         self.update_goal(id, updates).await
     }
 
-    /// Cancel a goal
+    /// Cancels a goal by deleting it.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotFound` if the goal doesn't exist, or
+    /// `AlreadyCompleted` if the goal is already completed.
     pub async fn cancel_goal(&self, id: &str) -> Result<()> {
         let goal = self.get_goal(id).await?;
 
@@ -234,7 +307,12 @@ impl GoalService {
         self.delete_goal(id).await
     }
 
-    /// Get uncompleted goals
+    /// Retrieves all uncompleted goals, optionally filtered by owner.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner_type` - Optional filter by owner type
+    /// * `owner_id` - Optional filter by owner ID
     pub async fn get_uncompleted_goals(
         &self,
         owner_type: Option<GoalOwnerType>,
@@ -249,7 +327,12 @@ impl GoalService {
         self.get_goals(Some(filters)).await
     }
 
-    /// Get completed goals
+    /// Retrieves all completed goals, optionally filtered by owner.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner_type` - Optional filter by owner type
+    /// * `owner_id` - Optional filter by owner ID
     pub async fn get_completed_goals(
         &self,
         owner_type: Option<GoalOwnerType>,
@@ -264,7 +347,17 @@ impl GoalService {
         self.get_goals(Some(filters)).await
     }
 
-    /// Count goals
+    /// Counts goals matching the specified criteria.
+    ///
+    /// # Arguments
+    ///
+    /// * `owner_type` - The owner type to filter by
+    /// * `owner_id` - The owner ID to filter by
+    /// * `is_completed` - Optional completion status filter
+    ///
+    /// # Returns
+    ///
+    /// The count of matching goals.
     pub async fn count_goals(
         &self,
         owner_type: GoalOwnerType,

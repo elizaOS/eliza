@@ -13,31 +13,6 @@ import {
 } from "./models";
 import { getApiKey, getBaseURL } from "./utils/config";
 
-/**
- * Defines the ElizaOS Cloud plugin with its name, description, and configuration options.
- *
- * Configuration:
- * - ELIZAOS_CLOUD_API_KEY: Your ElizaOS Cloud API key (format: eliza_xxxxx)
- *   Get it from: https://www.elizacloud.ai/dashboard/api-keys
- *
- * - ELIZAOS_CLOUD_BASE_URL: ElizaOS Cloud API base URL
- *   Default: https://www.elizacloud.ai/api/v1
- *
- * - ELIZAOS_CLOUD_SMALL_MODEL: Small/fast model for quick tasks
- *   Available: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash
- *   Default: gpt-4o-mini
- *
- * - ELIZAOS_CLOUD_LARGE_MODEL: Large/powerful model for complex tasks
- *   Available: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash
- *   Default: gpt-4o
- *
- * - ELIZAOS_CLOUD_EMBEDDING_MODEL: Model for text embeddings
- * - ELIZAOS_CLOUD_EMBEDDING_API_KEY: Separate API key for embeddings (optional)
- * - ELIZAOS_CLOUD_EMBEDDING_URL: Separate URL for embeddings (optional)
- * - ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL: Model for image description (default: gpt-4o-mini)
- *
- * @type {Plugin}
- */
 export const elizaOSCloudPlugin: Plugin = {
   name: "elizaOSCloud",
   description:
@@ -98,7 +73,11 @@ export const elizaOSCloudPlugin: Plugin = {
             });
             const data = await response.json();
             logger.log(
-              { data: (data as { data?: unknown[] })?.data?.length ?? "N/A" },
+              {
+                data:
+                  (data as { data?: Array<Record<string, never>> })?.data
+                    ?.length ?? "N/A",
+              },
               "Models Available",
             );
             if (!response.ok) {
@@ -119,7 +98,7 @@ export const elizaOSCloudPlugin: Plugin = {
                 },
               );
               logger.log({ embedding }, "embedding");
-            } catch (error: unknown) {
+            } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_embedding: ${message}`);
@@ -138,7 +117,7 @@ export const elizaOSCloudPlugin: Plugin = {
                 throw new Error("Failed to generate text");
               }
               logger.log({ text }, "generated with test_text_large");
-            } catch (error: unknown) {
+            } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_large: ${message}`);
@@ -176,7 +155,7 @@ export const elizaOSCloudPlugin: Plugin = {
                 size: "1024x1024",
               });
               logger.log({ image }, "generated with test_image_generation");
-            } catch (error: unknown) {
+            } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_image_generation: ${message}`);
@@ -207,11 +186,11 @@ export const elizaOSCloudPlugin: Plugin = {
                     `Invalid image description result format: ${JSON.stringify(result)}`,
                   );
                 }
-              } catch (e: unknown) {
+              } catch (e) {
                 const message = e instanceof Error ? e.message : String(e);
                 logger.error(`Error in image description test: ${message}`);
               }
-            } catch (e: unknown) {
+            } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
               logger.error(
                 `Error in ELIZAOS_CLOUD_test_image_description: ${message}`,
@@ -236,7 +215,7 @@ export const elizaOSCloudPlugin: Plugin = {
                 { transcription },
                 "generated with test_transcription",
               );
-            } catch (error: unknown) {
+            } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_transcription: ${message}`);
@@ -300,7 +279,7 @@ export const elizaOSCloudPlugin: Plugin = {
                 throw new Error("Failed to generate speech");
               }
               logger.log("Generated speech successfully");
-            } catch (error: unknown) {
+            } catch (error) {
               const message =
                 error instanceof Error ? error.message : String(error);
               logger.error(

@@ -1,5 +1,3 @@
-//! Integration tests for PDF Plugin
-
 use elizaos_plugin_pdf::types::{
     PdfConversionResult, PdfDocumentInfo, PdfExtractionOptions, PdfMetadata, PdfPageInfo,
 };
@@ -85,10 +83,5 @@ fn test_document_info() {
     assert_eq!(info.metadata.title, Some("Test".to_string()));
     assert_eq!(info.pages.len(), 1);
 }
-
-
-
-
-
 
 

@@ -1,7 +1,3 @@
-"""
-Type definitions for the N8n Plugin.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,8 +8,6 @@ from pydantic import BaseModel, Field
 
 
 class JobStatus(str, Enum):
-    """Status of a plugin creation job."""
-
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -22,16 +16,12 @@ class JobStatus(str, Enum):
 
 
 class ActionSpecification(BaseModel):
-    """Specification for a plugin action."""
-
     name: str
     description: str
     parameters: dict[str, Any] | None = None
 
 
 class ProviderSpecification(BaseModel):
-    """Specification for a plugin provider."""
-
     name: str
     description: str
     data_structure: dict[str, Any] | None = Field(default=None, alias="dataStructure")
@@ -40,24 +30,18 @@ class ProviderSpecification(BaseModel):
 
 
 class ServiceSpecification(BaseModel):
-    """Specification for a plugin service."""
-
     name: str
     description: str
     methods: list[str] | None = None
 
 
 class EvaluatorSpecification(BaseModel):
-    """Specification for a plugin evaluator."""
-
     name: str
     description: str
     triggers: list[str] | None = None
 
 
 class EnvironmentVariableSpec(BaseModel):
-    """Environment variable specification."""
-
     name: str
     description: str
     required: bool
@@ -65,8 +49,6 @@ class EnvironmentVariableSpec(BaseModel):
 
 
 class PluginSpecification(BaseModel):
-    """Complete specification for creating a plugin."""
-
     name: str
     description: str
     version: str = "1.0.0"
@@ -83,8 +65,6 @@ class PluginSpecification(BaseModel):
 
 
 class JobError(BaseModel):
-    """Error that occurred during plugin creation."""
-
     iteration: int
     phase: str
     error: str
@@ -92,16 +72,12 @@ class JobError(BaseModel):
 
 
 class TestResults(BaseModel):
-    """Test results from plugin validation."""
-
     passed: int
     failed: int
     duration: float
 
 
 class PluginCreationJob(BaseModel):
-    """A plugin creation job tracking object."""
-
     id: str
     specification: PluginSpecification
     status: JobStatus
@@ -124,8 +100,6 @@ class PluginCreationJob(BaseModel):
 
 
 class CreatePluginOptions(BaseModel):
-    """Options for creating a plugin."""
-
     use_template: bool = Field(default=True, alias="useTemplate")
     model: str | None = None
 
@@ -133,8 +107,6 @@ class CreatePluginOptions(BaseModel):
 
 
 class PluginInfo(BaseModel):
-    """Information about a created plugin."""
-
     name: str
     id: str | None = None
     status: JobStatus | None = None
@@ -148,15 +120,8 @@ class PluginInfo(BaseModel):
 
 
 class PluginRegistryData(BaseModel):
-    """Plugin registry data."""
-
     total_created: int = Field(alias="totalCreated")
     plugins: list[PluginInfo]
     active_jobs: int = Field(alias="activeJobs")
 
     model_config = {"populate_by_name": True}
-
-
-
-
-

@@ -1,16 +1,3 @@
-"""
-Prompt templates for elizaOS Python runtime.
-
-NOTE: These prompts are sourced from the shared @elizaos/prompts package.
-To modify prompts, edit the .txt files in packages/prompts/prompts/ and run:
-  cd packages/prompts && npm run build
-
-These prompts use Handlebars-style template syntax:
-- {{variableName}} for simple substitution
-- {{#each items}}...{{/each}} for iteration
-- {{#if condition}}...{{/if}} for conditionals
-"""
-
 from __future__ import annotations
 
 REPLY_TEMPLATE = """# Task: Generate dialog for the character {{agentName}}.

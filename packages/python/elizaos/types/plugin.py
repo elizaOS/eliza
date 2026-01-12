@@ -1,9 +1,3 @@
-"""
-Plugin types for elizaOS.
-
-This module defines types for plugins and routes.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -20,8 +14,6 @@ if TYPE_CHECKING:
 
 
 class RouteRequest(BaseModel):
-    """Minimal request interface for route handlers."""
-
     body: Any | None = Field(default=None, description="Request body")
     params: dict[str, str] | None = Field(default=None, description="Route parameters")
     query: dict[str, Any] | None = Field(default=None, description="Query parameters")
@@ -36,8 +28,6 @@ class RouteRequest(BaseModel):
 
 
 class RouteResponse:
-    """Minimal response interface for route handlers."""
-
     def __init__(self) -> None:
         self._status_code: int = 200
         self._headers: dict[str, str | list[str]] = {}
@@ -45,27 +35,22 @@ class RouteResponse:
         self.headers_sent: bool = False
 
     def status(self, code: int) -> RouteResponse:
-        """Set the response status code."""
         self._status_code = code
         return self
 
     def json(self, data: Any) -> RouteResponse:
-        """Send JSON response."""
         self._body = data
         return self
 
     def send(self, data: Any) -> RouteResponse:
-        """Send response data."""
         self._body = data
         return self
 
     def end(self) -> RouteResponse:
-        """End the response."""
         self.headers_sent = True
         return self
 
     def set_header(self, name: str, value: str | list[str]) -> RouteResponse:
-        """Set a response header."""
         self._headers[name] = value
         return self
 
@@ -102,8 +87,6 @@ PluginEvents = dict[str, list[Callable[[Any], Awaitable[None]]]]
 
 
 class TestCase(BaseModel):
-    """Test case definition for plugin tests."""
-
     name: str = Field(..., description="Test case name")
     fn: Callable[[IAgentRuntime], Awaitable[None]] = Field(..., description="Test function")
 
@@ -120,8 +103,6 @@ class TestSuite(BaseModel):
 
 
 class ComponentTypeDefinition(BaseModel):
-    """Component type definition for plugins."""
-
     name: str = Field(..., description="Component type name")
     schema_def: dict[str, Any] = Field(..., alias="schema", description="Component schema")
     validator: Callable[[Any], bool] | None = Field(
@@ -132,8 +113,6 @@ class ComponentTypeDefinition(BaseModel):
 
 
 class Plugin(BaseModel):
-    """Plugin for extending agent functionality."""
-
     name: str = Field(..., description="Unique name for the plugin")
     description: str = Field(..., description="Human-readable description")
 
@@ -196,8 +175,6 @@ class ProjectAgent(BaseModel):
 
 
 class Project(BaseModel):
-    """Project definition with multiple agents."""
-
     agents: list[ProjectAgent] = Field(..., description="Project agents")
 
     model_config = {"arbitrary_types_allowed": True}

@@ -2,17 +2,6 @@ import type { IAgentRuntime, Memory, Provider } from "@elizaos/core";
 import { addHeader, logger } from "@elizaos/core";
 import type { KnowledgeService } from "./service.ts";
 
-/**
- * Represents a knowledge provider that retrieves knowledge from the knowledge base.
- * @type {Provider}
- * @property {string} name - The name of the knowledge provider.
- * @property {string} description - The description of the knowledge provider.
- * @property {boolean} dynamic - Indicates if the knowledge provider is dynamic or static.
- * @property {Function} get - Asynchronously retrieves knowledge from the knowledge base.
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {Memory} message - The message containing the query for knowledge retrieval.
- * @returns {Object} An object containing the retrieved knowledge data, values, and text.
- */
 export const knowledgeProvider: Provider = {
   name: "KNOWLEDGE",
   description:
@@ -39,7 +28,6 @@ export const knowledgeProvider: Provider = {
       knowledge = knowledge.slice(0, 4000 * tokenLength);
     }
 
-    // 📊 Prepare RAG metadata for conversation memory tracking
     let ragMetadata = null;
     if (knowledgeData && knowledgeData.length > 0) {
       ragMetadata = {
@@ -61,12 +49,10 @@ export const knowledgeProvider: Provider = {
       };
     }
 
-    // 🎯 Store RAG metadata for conversation memory enrichment
     if (knowledgeData && knowledgeData.length > 0 && knowledgeService && ragMetadata) {
       try {
         knowledgeService.setPendingRAGMetadata(ragMetadata);
 
-        // Schedule enrichment check (with small delay to allow memory creation)
         setTimeout(async () => {
           try {
             await knowledgeService.enrichRecentMemoriesWithPendingRAG();
@@ -74,9 +60,8 @@ export const knowledgeProvider: Provider = {
             const errorMessage = error instanceof Error ? error.message : String(error);
             logger.warn("RAG memory enrichment failed:", errorMessage);
           }
-        }, 2000); // 2 second delay
+        }, 2000);
       } catch (error) {
-        // Don't fail the provider if enrichment fails
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.warn("RAG memory enrichment failed:", errorMessage);
       }
@@ -85,16 +70,16 @@ export const knowledgeProvider: Provider = {
     return {
       data: {
         knowledge,
-        ragMetadata, // 🎯 Include RAG metadata for memory tracking
-        knowledgeUsed: knowledgeData && knowledgeData.length > 0, // Simple flag for easy detection
+        ragMetadata,
+        knowledgeUsed: knowledgeData && knowledgeData.length > 0,
       },
       values: {
         knowledge,
-        knowledgeUsed: knowledgeData && knowledgeData.length > 0, // Simple flag for easy detection
+        knowledgeUsed: knowledgeData && knowledgeData.length > 0,
       },
       text: knowledge,
-      ragMetadata, // 🎯 Also include at top level for easy access
-      knowledgeUsed: knowledgeData && knowledgeData.length > 0, // 🎯 Simple flag at top level too
+      ragMetadata,
+      knowledgeUsed: knowledgeData && knowledgeData.length > 0,
     };
   },
 };

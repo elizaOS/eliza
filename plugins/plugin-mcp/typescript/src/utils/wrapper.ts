@@ -1,7 +1,6 @@
 import {
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Memory,
   ModelType,
   type State,
@@ -30,10 +29,6 @@ export interface WithModelRetryOptions<T> {
   readonly retryCount?: number;
 }
 
-/**
- * Retries the model selection process in case of parsing errors.
- * Uses fail-fast approach - throws on unrecoverable errors.
- */
 export async function withModelRetry<T>({
   runtime,
   message,
@@ -47,14 +42,7 @@ export async function withModelRetry<T>({
 }: WithModelRetryOptions<T>): Promise<T | null> {
   const maxRetries = getMaxRetries(runtime);
 
-  logger.info(`[WITH-MODEL-RETRY] Raw selection input:\n${JSON.stringify(input)}`);
-
-  // If input is a string, parse it to JSON
   const parsedJson = typeof input === "string" ? parseJSON<Record<string, unknown>>(input) : input;
-
-  logger.debug(
-    `[WITH-MODEL-RETRY] Parsed selection input:\n${JSON.stringify(parsedJson, null, 2)}`
-  );
 
   const validationResult = validationFn(parsedJson);
 
@@ -63,11 +51,8 @@ export async function withModelRetry<T>({
   }
 
   const errorMessage = (validationResult as { success: false; error: string }).error;
-  logger.error({ errorMessage }, `[WITH-MODEL-RETRY] Validation failed: ${errorMessage}`);
 
   if (retryCount < maxRetries) {
-    logger.debug(`[WITH-MODEL-RETRY] Retrying (attempt ${retryCount + 1}/${maxRetries})`);
-
     const feedbackPrompt: string = createFeedbackPromptFn(
       input,
       errorMessage,
@@ -95,8 +80,6 @@ export async function withModelRetry<T>({
   if (callback && failureMsg) {
     await callback({
       text: failureMsg,
-      thought:
-        "Failed to parse response after multiple retries. Requesting clarification from user.",
       actions: ["REPLY"],
     });
   }
@@ -104,16 +87,12 @@ export async function withModelRetry<T>({
   return null;
 }
 
-/**
- * Retrieves the maximum number of retries for MCP selection from the agent runtime settings.
- */
 function getMaxRetries(runtime: IAgentRuntime): number {
   const rawSettings = runtime.getSetting("mcp");
 
   if (rawSettings && typeof rawSettings === "object") {
     const settings = rawSettings as McpSettings;
     if (typeof settings.maxRetries === "number" && settings.maxRetries >= 0) {
-      logger.debug(`[WITH-MODEL-RETRY] Using configured selection retries: ${settings.maxRetries}`);
       return settings.maxRetries;
     }
   }

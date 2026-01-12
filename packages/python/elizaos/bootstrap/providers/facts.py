@@ -1,10 +1,3 @@
-"""
-Facts Provider - Provides known facts about entities.
-
-This provider retrieves and formats facts that have been learned
-about entities through conversation and memory.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,14 +13,6 @@ async def get_facts_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get known facts about entities in the conversation.
-
-    Returns facts that have been learned and stored about:
-    - The current user
-    - Other participants
-    - The agent itself
-    """
     sections: list[str] = []
     facts_list: list[dict[str, str]] = []
 
@@ -35,68 +20,43 @@ async def get_facts_context(
     room_id = message.room_id
 
     if entity_id:
-        try:
-            # Get facts about the sender
-            sender_facts = await runtime.get_memories(
-                entity_id=entity_id,
-                memory_type=MemoryType.FACT,
-                limit=10,
-            )
+        sender_facts = await runtime.get_memories(
+            entity_id=entity_id,
+            memory_type=MemoryType.FACT,
+            limit=10,
+        )
 
-            if sender_facts:
-                sender = await runtime.get_entity(entity_id)
-                sender_name = sender.name if sender and sender.name else "User"
-                sections.append(f"\n## Facts about {sender_name}")
+        if sender_facts:
+            sender = await runtime.get_entity(entity_id)
+            sender_name = sender.name if sender and sender.name else "User"
+            sections.append(f"\n## Facts about {sender_name}")
 
-                for fact in sender_facts:
-                    if fact.content and fact.content.text:
-                        fact_text = fact.content.text
-                        if len(fact_text) > 200:
-                            fact_text = fact_text[:200] + "..."
-                        facts_list.append(
-                            {
-                                "entityId": str(entity_id),
-                                "entityName": sender_name,
-                                "fact": fact_text,
-                            }
-                        )
-                        sections.append(f"- {fact_text}")
+            for fact in sender_facts:
+                if fact.content and fact.content.text:
+                    fact_text = fact.content.text
+                    if len(fact_text) > 200:
+                        fact_text = fact_text[:200] + "..."
+                    facts_list.append(
+                        {"entityId": str(entity_id), "entityName": sender_name, "fact": fact_text}
+                    )
+                    sections.append(f"- {fact_text}")
 
-        except Exception as e:
-            runtime.logger.warning(
-                {"src": "provider:facts", "error": str(e)},
-                "Error fetching facts",
-            )
-
-    # Get facts about the room context if available
     if room_id:
-        try:
-            room_facts = await runtime.get_memories(
-                room_id=room_id,
-                memory_type=MemoryType.FACT,
-                limit=5,
-            )
+        room_facts = await runtime.get_memories(
+            room_id=room_id,
+            memory_type=MemoryType.FACT,
+            limit=5,
+        )
 
-            if room_facts:
-                sections.append("\n## Room Context Facts")
-                for fact in room_facts:
-                    if fact.content and fact.content.text:
-                        fact_text = fact.content.text
-                        if len(fact_text) > 200:
-                            fact_text = fact_text[:200] + "..."
-                        facts_list.append(
-                            {
-                                "roomId": str(room_id),
-                                "fact": fact_text,
-                            }
-                        )
-                        sections.append(f"- {fact_text}")
-
-        except Exception as e:
-            runtime.logger.warning(
-                {"src": "provider:facts", "error": str(e)},
-                "Error fetching room facts",
-            )
+        if room_facts:
+            sections.append("\n## Room Context Facts")
+            for fact in room_facts:
+                if fact.content and fact.content.text:
+                    fact_text = fact.content.text
+                    if len(fact_text) > 200:
+                        fact_text = fact_text[:200] + "..."
+                    facts_list.append({"roomId": str(room_id), "fact": fact_text})
+                    sections.append(f"- {fact_text}")
 
     context_text = ""
     if sections:
@@ -114,7 +74,6 @@ async def get_facts_context(
     )
 
 
-# Create the provider instance
 facts_provider = Provider(
     name="FACTS",
     description="Provides known facts about entities learned through conversation",

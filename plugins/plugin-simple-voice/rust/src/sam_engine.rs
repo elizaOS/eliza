@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! SAM Speech Synthesis Engine
-//!
-//! Formant-based synthesis for that distinctive retro robotic sound.
 
 use std::f32::consts::PI;
 use crate::types::SamTTSOptions;
@@ -36,7 +33,6 @@ const FORMANT_FREQUENCIES: [(u16, u16, u16); 32] = [
     (0, 0, 0),          // silence
 ];
 
-/// SAM Speech Synthesis Engine
 pub struct SamEngine {
     options: SamTTSOptions,
     sample_rate: u32,
@@ -112,7 +108,6 @@ impl SamEngine {
             }
         }
 
-        // Apply formant
         if f1 > 0 {
             for (i, sample) in wave.iter_mut().enumerate() {
                 let formant1 = 0.5 * (2.0 * PI * f1 as f32 * i as f32 / sample_rate_f).sin();
@@ -125,7 +120,6 @@ impl SamEngine {
             }
         }
 
-        // Apply envelope
         let attack = (duration_samples / 10).min(100);
         let release = (duration_samples / 5).min(200);
 
@@ -138,7 +132,6 @@ impl SamEngine {
             }
         }
 
-        // Normalize
         let max_val = wave.iter().map(|x| x.abs()).fold(0.0f32, f32::max);
         if max_val > 0.0 {
             for sample in &mut wave {
@@ -149,7 +142,6 @@ impl SamEngine {
         wave
     }
 
-    /// Synthesize speech from text. Returns 8-bit PCM audio.
     pub fn synthesize(&self, text: &str) -> Vec<u8> {
         let phonemes = self.text_to_phonemes(text);
 

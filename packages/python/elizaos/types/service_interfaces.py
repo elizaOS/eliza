@@ -1,11 +1,3 @@
-"""
-Service interface definitions for elizaOS.
-
-This module provides standardized service interface definitions that plugins implement.
-Each interface extends the base Service class and defines the contract for a specific
-capability (e.g., transcription, wallet, browser automation).
-"""
-
 from __future__ import annotations
 
 from abc import abstractmethod
@@ -25,8 +17,6 @@ if TYPE_CHECKING:
 
 
 class TokenBalance(BaseModel):
-    """A standardized representation of a token holding."""
-
     address: str = Field(..., description="Token mint address or native identifier")
     balance: str = Field(..., description="Raw balance as string for precision")
     decimals: int = Field(..., description="Number of decimal places")
@@ -37,8 +27,6 @@ class TokenBalance(BaseModel):
 
 
 class TokenData(BaseModel):
-    """Generic representation of token data from various services."""
-
     id: str = Field(..., description="Unique identifier")
     symbol: str = Field(..., description="Token symbol")
     name: str = Field(..., description="Token name")
@@ -64,22 +52,16 @@ class TokenData(BaseModel):
 
 
 class WalletAsset(TokenBalance):
-    """A wallet asset with value information."""
-
     price_usd: float | None = Field(None, description="Current price in USD")
     value_usd: float | None = Field(None, description="Total value in USD")
 
 
 class WalletPortfolio(BaseModel):
-    """Wallet portfolio containing all assets."""
-
     total_value_usd: float = Field(..., description="Total portfolio value")
     assets: list[WalletAsset] = Field(default_factory=list, description="Portfolio assets")
 
 
 class ITokenDataService(Service):
-    """Interface for token data services."""
-
     service_type: ClassVar[str] = ServiceType.TOKEN_DATA
 
     @property
@@ -87,33 +69,25 @@ class ITokenDataService(Service):
         return "Provides standardized access to token market data."
 
     @abstractmethod
-    async def get_token_details(self, address: str, chain: str) -> TokenData | None:
-        """Fetch detailed information for a single token."""
-        ...
+    async def get_token_details(self, address: str, chain: str) -> TokenData | None: ...
 
     @abstractmethod
     async def get_trending_tokens(
         self, chain: str | None = None, limit: int | None = None, time_period: str | None = None
-    ) -> list[TokenData]:
-        """Fetch a list of trending tokens."""
-        ...
+    ) -> list[TokenData]: ...
 
     @abstractmethod
     async def search_tokens(
         self, query: str, chain: str | None = None, limit: int | None = None
-    ) -> list[TokenData]:
-        """Search for tokens based on a query string."""
-        ...
+    ) -> list[TokenData]: ...
 
     @abstractmethod
-    async def get_tokens_by_addresses(self, addresses: list[str], chain: str) -> list[TokenData]:
-        """Fetch data for multiple tokens by their addresses."""
-        ...
+    async def get_tokens_by_addresses(
+        self, addresses: list[str], chain: str
+    ) -> list[TokenData]: ...
 
 
 class IWalletService(Service):
-    """Interface for wallet services."""
-
     service_type: ClassVar[str] = ServiceType.WALLET
 
     @property
@@ -121,19 +95,13 @@ class IWalletService(Service):
         return "Provides standardized access to wallet balances and portfolios."
 
     @abstractmethod
-    async def get_portfolio(self, owner: str | None = None) -> WalletPortfolio:
-        """Retrieve the entire portfolio of assets held by the wallet."""
-        ...
+    async def get_portfolio(self, owner: str | None = None) -> WalletPortfolio: ...
 
     @abstractmethod
-    async def get_balance(self, asset_address: str, owner: str | None = None) -> float:
-        """Retrieve the balance of a specific asset in the wallet."""
-        ...
+    async def get_balance(self, asset_address: str, owner: str | None = None) -> float: ...
 
     @abstractmethod
-    async def transfer_sol(self, from_keypair: object, to_pubkey: object, lamports: int) -> str:
-        """Transfer native tokens from a keypair to a recipient."""
-        ...
+    async def transfer_sol(self, from_keypair: object, to_pubkey: object, lamports: int) -> str: ...
 
 
 # ============================================================================
@@ -142,8 +110,6 @@ class IWalletService(Service):
 
 
 class PoolTokenInfo(BaseModel):
-    """Token information in a pool."""
-
     mint: str = Field(..., description="Token mint address")
     symbol: str | None = Field(None, description="Token symbol")
     reserve: str | None = Field(None, description="Token reserve")
@@ -151,8 +117,6 @@ class PoolTokenInfo(BaseModel):
 
 
 class PoolInfo(BaseModel):
-    """A standardized representation of a liquidity pool."""
-
     id: str = Field(..., description="Pool unique identifier")
     display_name: str | None = Field(None, description="User-friendly name")
     dex: str = Field(..., description="DEX identifier")
@@ -167,8 +131,6 @@ class PoolInfo(BaseModel):
 
 
 class LpPositionDetails(BaseModel):
-    """User's position in a liquidity pool."""
-
     pool_id: str = Field(..., description="Pool ID")
     dex: str = Field(..., description="DEX identifier")
     lp_token_balance: TokenBalance = Field(..., description="LP token balance")
@@ -182,8 +144,6 @@ class LpPositionDetails(BaseModel):
 
 
 class TransactionResult(BaseModel):
-    """Result of a blockchain transaction."""
-
     success: bool = Field(..., description="Whether transaction succeeded")
     transaction_id: str | None = Field(None, description="Transaction ID")
     error: str | None = Field(None, description="Error message if failed")
@@ -191,8 +151,6 @@ class TransactionResult(BaseModel):
 
 
 class ILpService(Service):
-    """Interface for liquidity pool services."""
-
     service_type: ClassVar[str] = ServiceType.LP_POOL
 
     @property
@@ -200,16 +158,12 @@ class ILpService(Service):
         return "Provides standardized access to DEX liquidity pools."
 
     @abstractmethod
-    def get_dex_name(self) -> str:
-        """Returns the name of the DEX this service interacts with."""
-        ...
+    def get_dex_name(self) -> str: ...
 
     @abstractmethod
     async def get_pools(
         self, token_a_mint: str | None = None, token_b_mint: str | None = None
-    ) -> list[PoolInfo]:
-        """Fetch available liquidity pools from the DEX."""
-        ...
+    ) -> list[PoolInfo]: ...
 
     @abstractmethod
     async def add_liquidity(
@@ -221,9 +175,7 @@ class ILpService(Service):
         slippage_bps: int,
         tick_lower_index: int | None = None,
         tick_upper_index: int | None = None,
-    ) -> tuple[TransactionResult, TokenBalance | None]:
-        """Add liquidity to a pool."""
-        ...
+    ) -> tuple[TransactionResult, TokenBalance | None]: ...
 
     @abstractmethod
     async def remove_liquidity(
@@ -232,21 +184,15 @@ class ILpService(Service):
         pool_id: str,
         lp_token_amount_lamports: str,
         slippage_bps: int,
-    ) -> tuple[TransactionResult, list[TokenBalance] | None]:
-        """Remove liquidity from a pool."""
-        ...
+    ) -> tuple[TransactionResult, list[TokenBalance] | None]: ...
 
     @abstractmethod
     async def get_lp_position_details(
         self, user_account_public_key: str, pool_or_position_identifier: str
-    ) -> LpPositionDetails | None:
-        """Fetch details of a specific LP position."""
-        ...
+    ) -> LpPositionDetails | None: ...
 
     @abstractmethod
-    async def get_market_data_for_pools(self, pool_ids: list[str]) -> dict[str, PoolInfo]:
-        """Fetch latest market data for pools."""
-        ...
+    async def get_market_data_for_pools(self, pool_ids: list[str]) -> dict[str, PoolInfo]: ...
 
 
 # ============================================================================
@@ -255,8 +201,6 @@ class ILpService(Service):
 
 
 class TranscriptionOptions(BaseModel):
-    """Options for audio transcription."""
-
     language: str | None = None
     model: str | None = None
     temperature: float | None = None
@@ -268,8 +212,6 @@ class TranscriptionOptions(BaseModel):
 
 
 class TranscriptionSegment(BaseModel):
-    """A segment of transcription."""
-
     id: int = Field(..., description="Segment ID")
     text: str = Field(..., description="Segment text")
     start: float = Field(..., description="Start time in seconds")
@@ -283,8 +225,6 @@ class TranscriptionSegment(BaseModel):
 
 
 class TranscriptionWord(BaseModel):
-    """A word in transcription."""
-
     word: str = Field(..., description="The word")
     start: float = Field(..., description="Start time in seconds")
     end: float = Field(..., description="End time in seconds")
@@ -292,8 +232,6 @@ class TranscriptionWord(BaseModel):
 
 
 class TranscriptionResult(BaseModel):
-    """Result of audio transcription."""
-
     text: str = Field(..., description="Transcribed text")
     language: str | None = None
     duration: float | None = None
@@ -303,8 +241,6 @@ class TranscriptionResult(BaseModel):
 
 
 class SpeechToTextOptions(BaseModel):
-    """Options for speech-to-text."""
-
     language: str | None = None
     model: str | None = None
     continuous: bool | None = None
@@ -313,8 +249,6 @@ class SpeechToTextOptions(BaseModel):
 
 
 class TextToSpeechOptions(BaseModel):
-    """Options for text-to-speech."""
-
     voice: str | None = None
     model: str | None = None
     speed: float | None = None
@@ -323,8 +257,6 @@ class TextToSpeechOptions(BaseModel):
 
 
 class VoiceInfo(BaseModel):
-    """Voice information for TTS."""
-
     id: str = Field(..., description="Voice ID")
     name: str = Field(..., description="Voice name")
     language: str = Field(..., description="Voice language")
@@ -332,8 +264,6 @@ class VoiceInfo(BaseModel):
 
 
 class ITranscriptionService(Service):
-    """Interface for transcription and speech services."""
-
     service_type: ClassVar[str] = ServiceType.TRANSCRIPTION
 
     @property
@@ -343,43 +273,31 @@ class ITranscriptionService(Service):
     @abstractmethod
     async def transcribe_audio(
         self, audio_path: str | bytes, options: TranscriptionOptions | None = None
-    ) -> TranscriptionResult:
-        """Transcribe audio file to text."""
-        ...
+    ) -> TranscriptionResult: ...
 
     @abstractmethod
     async def transcribe_video(
         self, video_path: str | bytes, options: TranscriptionOptions | None = None
-    ) -> TranscriptionResult:
-        """Transcribe video file to text."""
-        ...
+    ) -> TranscriptionResult: ...
 
     @abstractmethod
     async def speech_to_text(
         self, audio_stream: BufferedReader | bytes, options: SpeechToTextOptions | None = None
-    ) -> TranscriptionResult:
-        """Real-time speech to text."""
-        ...
+    ) -> TranscriptionResult: ...
 
     @abstractmethod
-    async def text_to_speech(self, text: str, options: TextToSpeechOptions | None = None) -> bytes:
-        """Convert text to speech."""
-        ...
+    async def text_to_speech(
+        self, text: str, options: TextToSpeechOptions | None = None
+    ) -> bytes: ...
 
     @abstractmethod
-    async def get_supported_languages(self) -> list[str]:
-        """Get supported languages for transcription."""
-        ...
+    async def get_supported_languages(self) -> list[str]: ...
 
     @abstractmethod
-    async def get_available_voices(self) -> list[VoiceInfo]:
-        """Get available voices for TTS."""
-        ...
+    async def get_available_voices(self) -> list[VoiceInfo]: ...
 
     @abstractmethod
-    async def detect_language(self, audio_path: str | bytes) -> str:
-        """Detect language of audio file."""
-        ...
+    async def detect_language(self, audio_path: str | bytes) -> str: ...
 
 
 # ============================================================================
@@ -388,8 +306,6 @@ class ITranscriptionService(Service):
 
 
 class VideoFormat(BaseModel):
-    """Video format information."""
-
     format_id: str = Field(..., description="Format ID")
     url: str = Field(..., description="Download URL")
     extension: str = Field(..., description="File extension")
@@ -403,8 +319,6 @@ class VideoFormat(BaseModel):
 
 
 class VideoInfo(BaseModel):
-    """Video information."""
-
     url: str = Field(..., description="Video URL")
     title: str | None = None
     duration: float | None = None
@@ -417,8 +331,6 @@ class VideoInfo(BaseModel):
 
 
 class VideoDownloadOptions(BaseModel):
-    """Video download options."""
-
     format: str | None = None
     quality: str | None = None
     output_path: str | None = None
@@ -430,8 +342,6 @@ class VideoDownloadOptions(BaseModel):
 
 
 class VideoProcessingOptions(BaseModel):
-    """Video processing options."""
-
     start_time: float | None = None
     end_time: float | None = None
     output_format: str | None = None
@@ -443,8 +353,6 @@ class VideoProcessingOptions(BaseModel):
 
 
 class IVideoService(Service):
-    """Interface for video processing services."""
-
     service_type: ClassVar[str] = ServiceType.VIDEO
 
     @property
@@ -452,36 +360,26 @@ class IVideoService(Service):
         return "Video download, processing, and conversion capabilities"
 
     @abstractmethod
-    async def get_video_info(self, url: str) -> VideoInfo:
-        """Get video information without downloading."""
-        ...
+    async def get_video_info(self, url: str) -> VideoInfo: ...
 
     @abstractmethod
-    async def download_video(self, url: str, options: VideoDownloadOptions | None = None) -> str:
-        """Download a video from URL."""
-        ...
+    async def download_video(
+        self, url: str, options: VideoDownloadOptions | None = None
+    ) -> str: ...
 
     @abstractmethod
-    async def extract_audio(self, video_path: str, output_path: str | None = None) -> str:
-        """Extract audio from video."""
-        ...
+    async def extract_audio(self, video_path: str, output_path: str | None = None) -> str: ...
 
     @abstractmethod
-    async def get_thumbnail(self, video_path: str, timestamp: float | None = None) -> str:
-        """Generate thumbnail from video."""
-        ...
+    async def get_thumbnail(self, video_path: str, timestamp: float | None = None) -> str: ...
 
     @abstractmethod
     async def convert_video(
         self, video_path: str, output_path: str, options: VideoProcessingOptions | None = None
-    ) -> str:
-        """Convert video to different format."""
-        ...
+    ) -> str: ...
 
     @abstractmethod
-    async def get_available_formats(self, url: str) -> list[VideoFormat]:
-        """Get available formats for a video URL."""
-        ...
+    async def get_available_formats(self, url: str) -> list[VideoFormat]: ...
 
 
 # ============================================================================
@@ -490,15 +388,11 @@ class IVideoService(Service):
 
 
 class BrowserViewport(BaseModel):
-    """Browser viewport size."""
-
     width: int = Field(..., description="Width in pixels")
     height: int = Field(..., description="Height in pixels")
 
 
 class BrowserNavigationOptions(BaseModel):
-    """Browser navigation options."""
-
     timeout: int | None = None
     wait_until: Literal["load", "domcontentloaded", "networkidle0", "networkidle2"] | None = None
     viewport: BrowserViewport | None = None
@@ -507,8 +401,6 @@ class BrowserNavigationOptions(BaseModel):
 
 
 class ScreenshotClip(BaseModel):
-    """Screenshot clip region."""
-
     x: int = Field(..., description="X position")
     y: int = Field(..., description="Y position")
     width: int = Field(..., description="Width")
@@ -516,8 +408,6 @@ class ScreenshotClip(BaseModel):
 
 
 class ScreenshotOptions(BaseModel):
-    """Screenshot options."""
-
     full_page: bool | None = None
     clip: ScreenshotClip | None = None
     format: Literal["png", "jpeg", "webp"] | None = None
@@ -526,30 +416,22 @@ class ScreenshotOptions(BaseModel):
 
 
 class ElementSelector(BaseModel):
-    """Element selector options."""
-
     selector: str = Field(..., description="CSS selector")
     text: str | None = None
     timeout: int | None = None
 
 
 class ExtractedLink(BaseModel):
-    """Extracted link from page."""
-
     url: str = Field(..., description="Link URL")
     text: str = Field(..., description="Link text")
 
 
 class ExtractedImage(BaseModel):
-    """Extracted image from page."""
-
     src: str = Field(..., description="Image source")
     alt: str | None = None
 
 
 class ExtractedContent(BaseModel):
-    """Extracted content from a page."""
-
     text: str = Field(..., description="Text content")
     html: str = Field(..., description="HTML content")
     links: list[ExtractedLink] = Field(default_factory=list, description="Links found")
@@ -559,24 +441,18 @@ class ExtractedContent(BaseModel):
 
 
 class ClickOptions(BaseModel):
-    """Click options."""
-
     timeout: int | None = None
     force: bool | None = None
     wait_for_navigation: bool | None = None
 
 
 class TypeOptions(BaseModel):
-    """Type/input options."""
-
     delay: int | None = None
     timeout: int | None = None
     clear: bool | None = None
 
 
 class IBrowserService(Service):
-    """Interface for browser automation services."""
-
     service_type: ClassVar[str] = ServiceType.BROWSER
 
     @property
@@ -584,61 +460,41 @@ class IBrowserService(Service):
         return "Web browser automation and scraping capabilities"
 
     @abstractmethod
-    async def navigate(self, url: str, options: BrowserNavigationOptions | None = None) -> None:
-        """Navigate to a URL."""
-        ...
+    async def navigate(self, url: str, options: BrowserNavigationOptions | None = None) -> None: ...
 
     @abstractmethod
-    async def screenshot(self, options: ScreenshotOptions | None = None) -> bytes:
-        """Take a screenshot of the current page."""
-        ...
+    async def screenshot(self, options: ScreenshotOptions | None = None) -> bytes: ...
 
     @abstractmethod
-    async def extract_content(self, selector: str | None = None) -> ExtractedContent:
-        """Extract text and content from the current page."""
-        ...
+    async def extract_content(self, selector: str | None = None) -> ExtractedContent: ...
 
     @abstractmethod
     async def click(
         self, selector: str | ElementSelector, options: ClickOptions | None = None
-    ) -> None:
-        """Click on an element."""
-        ...
+    ) -> None: ...
 
     @abstractmethod
-    async def type_text(self, selector: str, text: str, options: TypeOptions | None = None) -> None:
-        """Type text into an input field."""
-        ...
+    async def type_text(
+        self, selector: str, text: str, options: TypeOptions | None = None
+    ) -> None: ...
 
     @abstractmethod
-    async def wait_for_element(self, selector: str | ElementSelector) -> None:
-        """Wait for an element to appear."""
-        ...
+    async def wait_for_element(self, selector: str | ElementSelector) -> None: ...
 
     @abstractmethod
-    async def evaluate(self, script: str, *args: object) -> object:
-        """Evaluate JavaScript in the browser context."""
-        ...
+    async def evaluate(self, script: str, *args: object) -> object: ...
 
     @abstractmethod
-    async def get_current_url(self) -> str:
-        """Get the current page URL."""
-        ...
+    async def get_current_url(self) -> str: ...
 
     @abstractmethod
-    async def go_back(self) -> None:
-        """Go back in browser history."""
-        ...
+    async def go_back(self) -> None: ...
 
     @abstractmethod
-    async def go_forward(self) -> None:
-        """Go forward in browser history."""
-        ...
+    async def go_forward(self) -> None: ...
 
     @abstractmethod
-    async def refresh(self) -> None:
-        """Refresh the current page."""
-        ...
+    async def refresh(self) -> None: ...
 
 
 # ============================================================================
@@ -647,8 +503,6 @@ class IBrowserService(Service):
 
 
 class PdfMetadata(BaseModel):
-    """PDF metadata."""
-
     title: str | None = None
     author: str | None = None
     created_at: datetime | None = None
@@ -656,16 +510,12 @@ class PdfMetadata(BaseModel):
 
 
 class PdfExtractionResult(BaseModel):
-    """PDF text extraction result."""
-
     text: str = Field(..., description="Extracted text")
     page_count: int = Field(..., description="Total page count")
     metadata: PdfMetadata | None = None
 
 
 class PdfMargins(BaseModel):
-    """PDF page margins."""
-
     top: float | None = None
     bottom: float | None = None
     left: float | None = None
@@ -673,8 +523,6 @@ class PdfMargins(BaseModel):
 
 
 class PdfGenerationOptions(BaseModel):
-    """PDF generation options."""
-
     format: Literal["A4", "A3", "Letter"] | None = None
     orientation: Literal["portrait", "landscape"] | None = None
     margins: PdfMargins | None = None
@@ -683,16 +531,12 @@ class PdfGenerationOptions(BaseModel):
 
 
 class PdfConversionOptions(BaseModel):
-    """PDF conversion options."""
-
     quality: Literal["high", "medium", "low"] | None = None
     output_format: Literal["pdf", "pdf/a"] | None = None
     compression: bool | None = None
 
 
 class IPdfService(Service):
-    """Interface for PDF processing services."""
-
     service_type: ClassVar[str] = ServiceType.PDF
 
     @property
@@ -700,33 +544,23 @@ class IPdfService(Service):
         return "PDF processing, extraction, and generation capabilities"
 
     @abstractmethod
-    async def extract_text(self, pdf_path: str | bytes) -> PdfExtractionResult:
-        """Extract text and metadata from a PDF file."""
-        ...
+    async def extract_text(self, pdf_path: str | bytes) -> PdfExtractionResult: ...
 
     @abstractmethod
     async def generate_pdf(
         self, html_content: str, options: PdfGenerationOptions | None = None
-    ) -> bytes:
-        """Generate a PDF from HTML content."""
-        ...
+    ) -> bytes: ...
 
     @abstractmethod
     async def convert_to_pdf(
         self, file_path: str, options: PdfConversionOptions | None = None
-    ) -> bytes:
-        """Convert a document to PDF format."""
-        ...
+    ) -> bytes: ...
 
     @abstractmethod
-    async def merge_pdfs(self, pdf_paths: list[str | bytes]) -> bytes:
-        """Merge multiple PDF files into one."""
-        ...
+    async def merge_pdfs(self, pdf_paths: list[str | bytes]) -> bytes: ...
 
     @abstractmethod
-    async def split_pdf(self, pdf_path: str | bytes) -> list[bytes]:
-        """Split a PDF into individual pages."""
-        ...
+    async def split_pdf(self, pdf_path: str | bytes) -> list[bytes]: ...
 
 
 # ============================================================================
@@ -735,15 +569,11 @@ class IPdfService(Service):
 
 
 class SearchDateRange(BaseModel):
-    """Date range for search filtering."""
-
     start: datetime | None = None
     end: datetime | None = None
 
 
 class WebSearchBaseOptions(BaseModel):
-    """Web search options."""
-
     limit: int | None = None
     offset: int | None = None
     language: str | None = None
@@ -756,8 +586,6 @@ class WebSearchBaseOptions(BaseModel):
 
 
 class SearchResult(BaseModel):
-    """A single search result."""
-
     title: str = Field(..., description="Result title")
     url: str = Field(..., description="Result URL")
     description: str = Field(..., description="Result description")
@@ -770,8 +598,6 @@ class SearchResult(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    """Search response containing results."""
-
     query: str = Field(..., description="Original query")
     results: list[SearchResult] = Field(default_factory=list, description="Search results")
     total_results: int | None = None
@@ -782,8 +608,6 @@ class SearchResponse(BaseModel):
 
 
 class NewsSearchOptions(WebSearchBaseOptions):
-    """News search options."""
-
     category: (
         Literal["general", "business", "entertainment", "health", "science", "sports", "technology"]
         | None
@@ -792,8 +616,6 @@ class NewsSearchOptions(WebSearchBaseOptions):
 
 
 class ImageSearchOptions(WebSearchBaseOptions):
-    """Image search options."""
-
     size: Literal["small", "medium", "large", "wallpaper", "any"] | None = None
     color: str | None = None
     image_type: Literal["photo", "clipart", "line", "animated"] | None = None
@@ -802,16 +624,12 @@ class ImageSearchOptions(WebSearchBaseOptions):
 
 
 class VideoSearchOptions(WebSearchBaseOptions):
-    """Video search options."""
-
     duration: Literal["short", "medium", "long", "any"] | None = None
     resolution: Literal["high", "standard", "any"] | None = None
     quality: Literal["high", "standard", "any"] | None = None
 
 
 class PageInfo(BaseModel):
-    """Detailed page information."""
-
     title: str = Field(..., description="Page title")
     description: str = Field(..., description="Page description")
     content: str = Field(..., description="Page content")
@@ -821,8 +639,6 @@ class PageInfo(BaseModel):
 
 
 class IWebSearchService(Service):
-    """Interface for web search services."""
-
     service_type: ClassVar[str] = ServiceType.WEB_SEARCH
 
     @property
@@ -832,45 +648,31 @@ class IWebSearchService(Service):
     @abstractmethod
     async def search(
         self, query: str, options: WebSearchBaseOptions | None = None
-    ) -> SearchResponse:
-        """Perform a general web search."""
-        ...
+    ) -> SearchResponse: ...
 
     @abstractmethod
     async def search_news(
         self, query: str, options: NewsSearchOptions | None = None
-    ) -> SearchResponse:
-        """Search for news articles."""
-        ...
+    ) -> SearchResponse: ...
 
     @abstractmethod
     async def search_images(
         self, query: str, options: ImageSearchOptions | None = None
-    ) -> SearchResponse:
-        """Search for images."""
-        ...
+    ) -> SearchResponse: ...
 
     @abstractmethod
     async def search_videos(
         self, query: str, options: VideoSearchOptions | None = None
-    ) -> SearchResponse:
-        """Search for videos."""
-        ...
+    ) -> SearchResponse: ...
 
     @abstractmethod
-    async def get_suggestions(self, query: str) -> list[str]:
-        """Get search suggestions for a query."""
-        ...
+    async def get_suggestions(self, query: str) -> list[str]: ...
 
     @abstractmethod
-    async def get_trending_searches(self, region: str | None = None) -> list[str]:
-        """Get trending searches."""
-        ...
+    async def get_trending_searches(self, region: str | None = None) -> list[str]: ...
 
     @abstractmethod
-    async def get_page_info(self, url: str) -> PageInfo:
-        """Get detailed information about a specific URL."""
-        ...
+    async def get_page_info(self, url: str) -> PageInfo: ...
 
 
 # ============================================================================
@@ -879,15 +681,11 @@ class IWebSearchService(Service):
 
 
 class EmailAddress(BaseModel):
-    """Email address with optional name."""
-
     email: str = Field(..., description="Email address")
     name: str | None = None
 
 
 class EmailAttachment(BaseModel):
-    """Email attachment."""
-
     filename: str = Field(..., description="Filename")
     content: bytes | str = Field(..., description="Content as bytes or base64")
     content_type: str | None = None
@@ -896,8 +694,6 @@ class EmailAttachment(BaseModel):
 
 
 class EmailMessage(BaseModel):
-    """Email message."""
-
     from_address: EmailAddress = Field(..., alias="from", description="Sender address")
     to: list[EmailAddress] = Field(..., description="Recipients")
     cc: list[EmailAddress] | None = None
@@ -917,8 +713,6 @@ class EmailMessage(BaseModel):
 
 
 class EmailSendOptions(BaseModel):
-    """Email send options."""
-
     retry: int | None = None
     timeout: int | None = None
     track_opens: bool | None = None
@@ -927,8 +721,6 @@ class EmailSendOptions(BaseModel):
 
 
 class EmailSearchOptions(BaseModel):
-    """Email search options."""
-
     query: str | None = None
     from_address: str | None = Field(None, alias="from")
     to: str | None = None
@@ -946,8 +738,6 @@ class EmailSearchOptions(BaseModel):
 
 
 class EmailFolder(BaseModel):
-    """Email folder."""
-
     name: str = Field(..., description="Folder name")
     path: str = Field(..., description="Folder path")
     folder_type: Literal["inbox", "sent", "drafts", "trash", "spam", "custom"] = Field(
@@ -961,8 +751,6 @@ class EmailFolder(BaseModel):
 
 
 class EmailAccount(BaseModel):
-    """Email account information."""
-
     email: str = Field(..., description="Email address")
     name: str | None = None
     provider: str | None = None
@@ -972,8 +760,6 @@ class EmailAccount(BaseModel):
 
 
 class IEmailService(Service):
-    """Interface for email services."""
-
     service_type: ClassVar[str] = ServiceType.EMAIL
 
     @property
@@ -983,61 +769,39 @@ class IEmailService(Service):
     @abstractmethod
     async def send_email(
         self, message: EmailMessage, options: EmailSendOptions | None = None
-    ) -> str:
-        """Send an email."""
-        ...
+    ) -> str: ...
 
     @abstractmethod
-    async def get_emails(self, options: EmailSearchOptions | None = None) -> list[EmailMessage]:
-        """Get emails from a folder."""
-        ...
+    async def get_emails(self, options: EmailSearchOptions | None = None) -> list[EmailMessage]: ...
 
     @abstractmethod
-    async def get_email(self, message_id: str) -> EmailMessage:
-        """Get a specific email by ID."""
-        ...
+    async def get_email(self, message_id: str) -> EmailMessage: ...
 
     @abstractmethod
-    async def delete_email(self, message_id: str) -> None:
-        """Delete an email."""
-        ...
+    async def delete_email(self, message_id: str) -> None: ...
 
     @abstractmethod
-    async def mark_email_as_read(self, message_id: str, read: bool) -> None:
-        """Mark an email as read/unread."""
-        ...
+    async def mark_email_as_read(self, message_id: str, read: bool) -> None: ...
 
     @abstractmethod
-    async def flag_email(self, message_id: str, flagged: bool) -> None:
-        """Flag/unflag an email."""
-        ...
+    async def flag_email(self, message_id: str, flagged: bool) -> None: ...
 
     @abstractmethod
-    async def move_email(self, message_id: str, folder_path: str) -> None:
-        """Move email to a different folder."""
-        ...
+    async def move_email(self, message_id: str, folder_path: str) -> None: ...
 
     @abstractmethod
-    async def get_folders(self) -> list[EmailFolder]:
-        """Get available folders."""
-        ...
+    async def get_folders(self) -> list[EmailFolder]: ...
 
     @abstractmethod
-    async def create_folder(self, folder_name: str, parent_path: str | None = None) -> None:
-        """Create a new folder."""
-        ...
+    async def create_folder(self, folder_name: str, parent_path: str | None = None) -> None: ...
 
     @abstractmethod
-    async def get_account_info(self) -> EmailAccount:
-        """Get account information."""
-        ...
+    async def get_account_info(self) -> EmailAccount: ...
 
     @abstractmethod
     async def search_emails(
         self, query: str, options: EmailSearchOptions | None = None
-    ) -> list[EmailMessage]:
-        """Search emails."""
-        ...
+    ) -> list[EmailMessage]: ...
 
 
 # ============================================================================
@@ -1046,8 +810,6 @@ class IEmailService(Service):
 
 
 class MessageParticipant(BaseModel):
-    """Message participant information."""
-
     id: str = Field(..., description="Participant ID (UUID)")
     name: str = Field(..., description="Display name")
     username: str | None = None
@@ -1056,8 +818,6 @@ class MessageParticipant(BaseModel):
 
 
 class MessageAttachment(BaseModel):
-    """Message attachment."""
-
     id: str = Field(..., description="Attachment ID (UUID)")
     filename: str = Field(..., description="Filename")
     url: str = Field(..., description="File URL")
@@ -1070,8 +830,6 @@ class MessageAttachment(BaseModel):
 
 
 class MessageReaction(BaseModel):
-    """Message reaction."""
-
     emoji: str = Field(..., description="Emoji used")
     count: int = Field(..., description="Number of reactions")
     users: list[str] = Field(default_factory=list, description="User IDs who reacted")
@@ -1079,8 +837,6 @@ class MessageReaction(BaseModel):
 
 
 class MessageReference(BaseModel):
-    """Message reference (reply/forward/quote)."""
-
     message_id: str = Field(..., description="Referenced message ID")
     channel_id: str = Field(..., description="Channel of referenced message")
     ref_type: Literal["reply", "forward", "quote"] = Field(
@@ -1091,16 +847,12 @@ class MessageReference(BaseModel):
 
 
 class EmbedField(BaseModel):
-    """Embed field."""
-
     name: str = Field(..., description="Field name")
     value: str = Field(..., description="Field value")
     inline: bool | None = None
 
 
 class MessageEmbed(BaseModel):
-    """Message embed."""
-
     title: str | None = None
     description: str | None = None
     url: str | None = None
@@ -1109,8 +861,6 @@ class MessageEmbed(BaseModel):
 
 
 class MessageContent(BaseModel):
-    """Message content."""
-
     text: str | None = None
     html: str | None = None
     markdown: str | None = None
@@ -1122,8 +872,6 @@ class MessageContent(BaseModel):
 
 
 class MessageThread(BaseModel):
-    """Thread information."""
-
     id: str = Field(..., description="Thread ID")
     message_count: int = Field(..., description="Number of messages")
     participants: list[str] = Field(default_factory=list, description="Participant IDs")
@@ -1131,8 +879,6 @@ class MessageThread(BaseModel):
 
 
 class MessageInfo(BaseModel):
-    """Message information."""
-
     id: str = Field(..., description="Message ID (UUID)")
     channel_id: str = Field(..., description="Channel ID")
     sender_id: str = Field(..., description="Sender ID")
@@ -1145,8 +891,6 @@ class MessageInfo(BaseModel):
 
 
 class MessageSendOptions(BaseModel):
-    """Message send options."""
-
     reply_to: str | None = None
     ephemeral: bool | None = None
     silent: bool | None = None
@@ -1156,8 +900,6 @@ class MessageSendOptions(BaseModel):
 
 
 class MessageSearchOptions(BaseModel):
-    """Message search options."""
-
     query: str | None = None
     channel_id: str | None = None
     sender_id: str | None = None
@@ -1171,8 +913,6 @@ class MessageSearchOptions(BaseModel):
 
 
 class ChannelPermissions(BaseModel):
-    """Channel permissions."""
-
     can_send: bool = Field(..., description="Can send messages")
     can_read: bool = Field(..., description="Can read messages")
     can_delete: bool = Field(..., description="Can delete messages")
@@ -1181,8 +921,6 @@ class ChannelPermissions(BaseModel):
 
 
 class MessageChannel(BaseModel):
-    """Message channel."""
-
     id: str = Field(..., description="Channel ID (UUID)")
     name: str = Field(..., description="Channel name")
     channel_type: Literal["text", "voice", "dm", "group", "announcement", "thread"] = Field(
@@ -1199,8 +937,6 @@ class MessageChannel(BaseModel):
 
 
 class IMessagingService(Service):
-    """Interface for platform messaging services (Discord, Slack, etc)."""
-
     service_type: ClassVar[str] = ServiceType.MESSAGE
 
     @property
@@ -1210,61 +946,39 @@ class IMessagingService(Service):
     @abstractmethod
     async def send_message(
         self, channel_id: str, content: MessageContent, options: MessageSendOptions | None = None
-    ) -> str:
-        """Send a message to a channel."""
-        ...
+    ) -> str: ...
 
     @abstractmethod
     async def get_messages(
         self, channel_id: str, options: MessageSearchOptions | None = None
-    ) -> list[MessageInfo]:
-        """Get messages from a channel."""
-        ...
+    ) -> list[MessageInfo]: ...
 
     @abstractmethod
-    async def get_message(self, message_id: str) -> MessageInfo:
-        """Get a specific message by ID."""
-        ...
+    async def get_message(self, message_id: str) -> MessageInfo: ...
 
     @abstractmethod
-    async def edit_message(self, message_id: str, content: MessageContent) -> None:
-        """Edit a message."""
-        ...
+    async def edit_message(self, message_id: str, content: MessageContent) -> None: ...
 
     @abstractmethod
-    async def delete_message(self, message_id: str) -> None:
-        """Delete a message."""
-        ...
+    async def delete_message(self, message_id: str) -> None: ...
 
     @abstractmethod
-    async def add_reaction(self, message_id: str, emoji: str) -> None:
-        """Add a reaction to a message."""
-        ...
+    async def add_reaction(self, message_id: str, emoji: str) -> None: ...
 
     @abstractmethod
-    async def remove_reaction(self, message_id: str, emoji: str) -> None:
-        """Remove a reaction from a message."""
-        ...
+    async def remove_reaction(self, message_id: str, emoji: str) -> None: ...
 
     @abstractmethod
-    async def pin_message(self, message_id: str) -> None:
-        """Pin a message."""
-        ...
+    async def pin_message(self, message_id: str) -> None: ...
 
     @abstractmethod
-    async def unpin_message(self, message_id: str) -> None:
-        """Unpin a message."""
-        ...
+    async def unpin_message(self, message_id: str) -> None: ...
 
     @abstractmethod
-    async def get_channels(self) -> list[MessageChannel]:
-        """Get available channels."""
-        ...
+    async def get_channels(self) -> list[MessageChannel]: ...
 
     @abstractmethod
-    async def get_channel(self, channel_id: str) -> MessageChannel:
-        """Get channel information."""
-        ...
+    async def get_channel(self, channel_id: str) -> MessageChannel: ...
 
     @abstractmethod
     async def create_channel(
@@ -1274,16 +988,12 @@ class IMessagingService(Service):
         description: str | None = None,
         participants: list[str] | None = None,
         private: bool | None = None,
-    ) -> str:
-        """Create a new channel."""
-        ...
+    ) -> str: ...
 
     @abstractmethod
     async def search_messages(
         self, query: str, options: MessageSearchOptions | None = None
-    ) -> list[MessageInfo]:
-        """Search messages across channels."""
-        ...
+    ) -> list[MessageInfo]: ...
 
 
 # ============================================================================
@@ -1292,8 +1002,6 @@ class IMessagingService(Service):
 
 
 class PostMedia(BaseModel):
-    """Post media content."""
-
     id: str = Field(..., description="Media ID (UUID)")
     url: str = Field(..., description="Media URL")
     media_type: Literal["image", "video", "audio", "document"] = Field(
@@ -1312,8 +1020,6 @@ class PostMedia(BaseModel):
 
 
 class PostLocation(BaseModel):
-    """Post location."""
-
     name: str = Field(..., description="Location name")
     address: str | None = None
     latitude: float | None = None
@@ -1322,8 +1028,6 @@ class PostLocation(BaseModel):
 
 
 class PostAuthor(BaseModel):
-    """Post author information."""
-
     id: str = Field(..., description="Author ID (UUID)")
     username: str = Field(..., description="Username")
     display_name: str = Field(..., description="Display name")
@@ -1336,8 +1040,6 @@ class PostAuthor(BaseModel):
 
 
 class PostEngagement(BaseModel):
-    """Post engagement metrics."""
-
     likes: int = Field(..., description="Number of likes")
     shares: int = Field(..., description="Number of shares")
     comments: int = Field(..., description="Number of comments")
@@ -1349,8 +1051,6 @@ class PostEngagement(BaseModel):
 
 
 class PostLinkPreview(BaseModel):
-    """Link preview in post."""
-
     url: str = Field(..., description="Link URL")
     title: str | None = None
     description: str | None = None
@@ -1358,15 +1058,11 @@ class PostLinkPreview(BaseModel):
 
 
 class PollOption(BaseModel):
-    """Poll option."""
-
     text: str = Field(..., description="Option text")
     votes: int = Field(..., description="Number of votes")
 
 
 class PostPoll(BaseModel):
-    """Post poll."""
-
     question: str = Field(..., description="Poll question")
     options: list[PollOption] = Field(..., description="Poll options")
     expires_at: datetime | None = None
@@ -1374,8 +1070,6 @@ class PostPoll(BaseModel):
 
 
 class PostContent(BaseModel):
-    """Post content."""
-
     text: str | None = None
     html: str | None = None
     media: list[PostMedia] | None = None
@@ -1387,24 +1081,18 @@ class PostContent(BaseModel):
 
 
 class PostThread(BaseModel):
-    """Post thread information."""
-
     id: str = Field(..., description="Thread ID")
     position: int = Field(..., description="Position in thread")
     total: int = Field(..., description="Total posts in thread")
 
 
 class CrossPostedInfo(BaseModel):
-    """Cross-post information."""
-
     platform: str = Field(..., description="Platform name")
     platform_id: str = Field(..., description="Platform-specific ID")
     url: str = Field(..., description="Post URL")
 
 
 class PostInfo(BaseModel):
-    """Post information."""
-
     id: str = Field(..., description="Post ID (UUID)")
     author: PostAuthor = Field(..., description="Post author")
     content: PostContent = Field(..., description="Post content")
@@ -1424,8 +1112,6 @@ class PostInfo(BaseModel):
 
 
 class PostCreateOptions(BaseModel):
-    """Post creation options."""
-
     platforms: list[str] | None = None
     scheduled_at: datetime | None = None
     visibility: Literal["public", "private", "followers", "friends", "unlisted"] | None = None
@@ -1441,8 +1127,6 @@ class PostCreateOptions(BaseModel):
 
 
 class PostSearchOptions(BaseModel):
-    """Post search options."""
-
     query: str | None = None
     author: str | None = None
     platform: str | None = None
@@ -1459,23 +1143,17 @@ class PostSearchOptions(BaseModel):
 
 
 class DemographicsData(BaseModel):
-    """Demographics data."""
-
     age: dict[str, int] | None = None
     gender: dict[str, int] | None = None
     location: dict[str, int] | None = None
 
 
 class PerformingHour(BaseModel):
-    """Top performing hour."""
-
     hour: int = Field(..., description="Hour of day (0-23)")
     engagement: int = Field(..., description="Engagement count")
 
 
 class PostAnalytics(BaseModel):
-    """Post analytics."""
-
     post_id: str = Field(..., description="Post ID (UUID)")
     platform: str = Field(..., description="Platform name")
     impressions: int = Field(..., description="Total impressions")
@@ -1489,8 +1167,6 @@ class PostAnalytics(BaseModel):
 
 
 class IPostService(Service):
-    """Interface for social media posting services."""
-
     service_type: ClassVar[str] = ServiceType.POST
 
     @property
@@ -1500,77 +1176,51 @@ class IPostService(Service):
     @abstractmethod
     async def create_post(
         self, content: PostContent, options: PostCreateOptions | None = None
-    ) -> str:
-        """Create and publish a new post."""
-        ...
+    ) -> str: ...
 
     @abstractmethod
-    async def get_posts(self, options: PostSearchOptions | None = None) -> list[PostInfo]:
-        """Get posts from timeline or specific user."""
-        ...
+    async def get_posts(self, options: PostSearchOptions | None = None) -> list[PostInfo]: ...
 
     @abstractmethod
-    async def get_post(self, post_id: str) -> PostInfo:
-        """Get a specific post by ID."""
-        ...
+    async def get_post(self, post_id: str) -> PostInfo: ...
 
     @abstractmethod
-    async def edit_post(self, post_id: str, content: PostContent) -> None:
-        """Edit an existing post."""
-        ...
+    async def edit_post(self, post_id: str, content: PostContent) -> None: ...
 
     @abstractmethod
-    async def delete_post(self, post_id: str) -> None:
-        """Delete a post."""
-        ...
+    async def delete_post(self, post_id: str) -> None: ...
 
     @abstractmethod
-    async def like_post(self, post_id: str, like: bool) -> None:
-        """Like/unlike a post."""
-        ...
+    async def like_post(self, post_id: str, like: bool) -> None: ...
 
     @abstractmethod
-    async def share_post(self, post_id: str, comment: str | None = None) -> str:
-        """Share/repost a post."""
-        ...
+    async def share_post(self, post_id: str, comment: str | None = None) -> str: ...
 
     @abstractmethod
-    async def save_post(self, post_id: str, save: bool) -> None:
-        """Save/unsave a post."""
-        ...
+    async def save_post(self, post_id: str, save: bool) -> None: ...
 
     @abstractmethod
-    async def comment_on_post(self, post_id: str, content: PostContent) -> str:
-        """Comment on a post."""
-        ...
+    async def comment_on_post(self, post_id: str, content: PostContent) -> str: ...
 
     @abstractmethod
     async def get_comments(
         self, post_id: str, options: PostSearchOptions | None = None
-    ) -> list[PostInfo]:
-        """Get comments for a post."""
-        ...
+    ) -> list[PostInfo]: ...
 
     @abstractmethod
     async def schedule_post(
         self, content: PostContent, scheduled_at: datetime, options: PostCreateOptions | None = None
-    ) -> str:
-        """Schedule a post for later publishing."""
-        ...
+    ) -> str: ...
 
     @abstractmethod
-    async def get_post_analytics(self, post_id: str) -> PostAnalytics:
-        """Get analytics for a post."""
-        ...
+    async def get_post_analytics(self, post_id: str) -> PostAnalytics: ...
 
     @abstractmethod
-    async def get_trending_posts(self, options: PostSearchOptions | None = None) -> list[PostInfo]:
-        """Get trending posts."""
-        ...
+    async def get_trending_posts(
+        self, options: PostSearchOptions | None = None
+    ) -> list[PostInfo]: ...
 
     @abstractmethod
     async def search_posts(
         self, query: str, options: PostSearchOptions | None = None
-    ) -> list[PostInfo]:
-        """Search posts across platforms."""
-        ...
+    ) -> list[PostInfo]: ...

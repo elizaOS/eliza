@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! S3 Storage Client
-//!
-//! Async client for S3 storage operations using AWS SDK.
 
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
@@ -20,14 +17,12 @@ use tracing::debug;
 use crate::error::{Result, S3StorageError};
 use crate::types::{get_content_type, JsonUploadResult, S3StorageConfig, UploadResult};
 
-/// S3 Storage client.
 pub struct S3StorageClient {
     client: Client,
     config: S3StorageConfig,
 }
 
 impl S3StorageClient {
-    /// Create a new S3 storage client.
     pub async fn new(config: S3StorageConfig) -> Result<Self> {
         debug!("Creating S3 storage client for bucket: {}", config.bucket);
 
@@ -54,7 +49,6 @@ impl S3StorageClient {
         Ok(Self { client, config })
     }
 
-    /// Generate the storage key for a file.
     fn generate_key(&self, file_name: &str, sub_directory: Option<&str>) -> String {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -70,7 +64,6 @@ impl S3StorageClient {
             .to_string()
     }
 
-    /// Get the public URL for an object.
     fn get_public_url(&self, key: &str) -> String {
         if let Some(ref endpoint) = self.config.endpoint {
             format!("{}/{}/{}", endpoint, self.config.bucket, key)
@@ -82,7 +75,6 @@ impl S3StorageClient {
         }
     }
 
-    /// Upload a file to S3.
     pub async fn upload_file(
         &self,
         file_path: &str,
@@ -130,7 +122,6 @@ impl S3StorageClient {
         Ok(UploadResult::success(url))
     }
 
-    /// Upload bytes to S3.
     pub async fn upload_bytes(
         &self,
         data: Bytes,
@@ -165,7 +156,6 @@ impl S3StorageClient {
         Ok(UploadResult::success(url))
     }
 
-    /// Upload JSON to S3.
     pub async fn upload_json(
         &self,
         json_data: &serde_json::Value,
@@ -217,7 +207,6 @@ impl S3StorageClient {
         Ok(JsonUploadResult::success(url, key))
     }
 
-    /// Generate a signed URL for an existing object.
     pub async fn generate_signed_url(&self, key: &str, expires_in: u64) -> Result<String> {
         debug!("Generating signed URL for: {}", key);
 
@@ -240,7 +229,6 @@ impl S3StorageClient {
         Ok(presigned.uri().to_string())
     }
 
-    /// Download an object from S3.
     pub async fn download(&self, key: &str) -> Result<Bytes> {
         debug!("Downloading object: {}", key);
 
@@ -267,7 +255,6 @@ impl S3StorageClient {
         Ok(bytes)
     }
 
-    /// Download an object to a file.
     pub async fn download_file(&self, key: &str, destination: &str) -> Result<()> {
         debug!("Downloading object {} to {}", key, destination);
 
@@ -277,7 +264,6 @@ impl S3StorageClient {
         Ok(())
     }
 
-    /// Delete an object from S3.
     pub async fn delete(&self, key: &str) -> Result<()> {
         debug!("Deleting object: {}", key);
 
@@ -294,7 +280,6 @@ impl S3StorageClient {
         Ok(())
     }
 
-    /// Check if an object exists.
     pub async fn exists(&self, key: &str) -> Result<bool> {
         debug!("Checking if object exists: {}", key);
 
@@ -320,4 +305,3 @@ impl S3StorageClient {
         }
     }
 }
-

@@ -1,9 +1,3 @@
-"""
-PDF Client
-
-Async client for PDF text extraction using pypdf.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -26,36 +20,17 @@ from elizaos_plugin_pdf.types import (
 
 
 class PdfError(Exception):
-    """Base exception for PDF processing errors."""
-
     def __init__(self, message: str, cause: Exception | None = None) -> None:
         super().__init__(message)
         self.cause = cause
 
 
 class PdfClient:
-    """
-    Async PDF processing client.
-
-    Provides async PDF text extraction using pypdf.
-    """
-
     def __init__(self) -> None:
-        """Initialize the PDF client."""
         self._loop = asyncio.get_event_loop()
 
     def _clean_content(self, content: str) -> str:
-        """
-        Clean up PDF text content by removing problematic characters.
-
-        Args:
-            content: Raw text content from PDF.
-
-        Returns:
-            Cleaned text content.
-        """
         try:
-            # Filter out null characters and other problematic control characters
             filtered = "".join(
                 char
                 for char in content
@@ -118,19 +93,6 @@ class PdfClient:
         pdf_bytes: bytes,
         options: PdfExtractionOptions | None = None,
     ) -> str:
-        """
-        Extract text from PDF bytes.
-
-        Args:
-            pdf_bytes: The PDF file content as bytes.
-            options: Optional extraction options.
-
-        Returns:
-            Extracted text content.
-
-        Raises:
-            PdfError: If extraction fails.
-        """
         opts = options or PdfExtractionOptions()
         result = await self._loop.run_in_executor(
             None, partial(self._extract_text_sync, pdf_bytes, opts)
@@ -146,20 +108,6 @@ class PdfClient:
         file_path: str | Path,
         options: PdfExtractionOptions | None = None,
     ) -> str:
-        """
-        Extract text from a PDF file.
-
-        Args:
-            file_path: Path to the PDF file.
-            options: Optional extraction options.
-
-        Returns:
-            Extracted text content.
-
-        Raises:
-            PdfError: If extraction fails.
-            FileNotFoundError: If file doesn't exist.
-        """
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -174,16 +122,6 @@ class PdfClient:
         pdf_bytes: bytes,
         options: PdfExtractionOptions | None = None,
     ) -> PdfConversionResult:
-        """
-        Convert PDF to text with full result information.
-
-        Args:
-            pdf_bytes: The PDF file content as bytes.
-            options: Optional extraction options.
-
-        Returns:
-            PdfConversionResult with success status and text.
-        """
         opts = options or PdfExtractionOptions()
         return await self._loop.run_in_executor(
             None, partial(self._extract_text_sync, pdf_bytes, opts)
@@ -210,7 +148,6 @@ class PdfClient:
                 modification_date=self._parse_pdf_date(pdf_meta.modification_date),
             )
 
-        # Extract per-page info
         pages: list[PdfPageInfo] = []
         all_text: list[str] = []
 
@@ -237,16 +174,13 @@ class PdfClient:
         )
 
     def _parse_pdf_date(self, date_str: str | None) -> datetime | None:
-        """Parse PDF date string to datetime."""
         if not date_str:
             return None
 
         try:
-            # PDF date format: D:YYYYMMDDHHmmSSOHH'mm'
             if date_str.startswith("D:"):
                 date_str = date_str[2:]
 
-            # Try common formats
             for fmt in [
                 "%Y%m%d%H%M%S",
                 "%Y%m%d%H%M",
@@ -284,19 +218,6 @@ class PdfClient:
             raise PdfError(f"Failed to get document info: {e}", cause=e) from e
 
     async def get_document_info_from_file(self, file_path: str | Path) -> PdfDocumentInfo:
-        """
-        Get document information from a PDF file.
-
-        Args:
-            file_path: Path to the PDF file.
-
-        Returns:
-            PdfDocumentInfo with all document information.
-
-        Raises:
-            PdfError: If extraction fails.
-            FileNotFoundError: If file doesn't exist.
-        """
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -307,23 +228,8 @@ class PdfClient:
         return await self.get_document_info(pdf_bytes)
 
     async def get_page_count(self, pdf_bytes: bytes) -> int:
-        """
-        Get the number of pages in a PDF.
-
-        Args:
-            pdf_bytes: The PDF file content as bytes.
-
-        Returns:
-            Number of pages.
-        """
-
         def _count_pages() -> int:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             return len(reader.pages)
 
         return await self._loop.run_in_executor(None, _count_pages)
-
-
-
-
-

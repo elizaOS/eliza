@@ -1,10 +1,3 @@
-"""
-Relationship Extraction Evaluator - Passively extracts relationship info.
-
-This evaluator analyzes conversations to extract and update
-relationship information between entities.
-"""
-
 from __future__ import annotations
 
 import re
@@ -16,8 +9,6 @@ from elizaos.types import Evaluator
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
 
-
-# Platform identity patterns
 X_HANDLE_PATTERN = re.compile(r"@[\w]+")
 EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
 PHONE_PATTERN = re.compile(r"\+?[\d\s\-()]{10,}")
@@ -25,10 +16,8 @@ DISCORD_PATTERN = re.compile(r"[\w]+#\d{4}")
 
 
 def extract_platform_identities(text: str) -> list[dict[str, str | bool | float]]:
-    """Extract platform identities from text."""
     identities: list[dict[str, str | bool | float]] = []
 
-    # X handles
     for match in X_HANDLE_PATTERN.finditer(text):
         handle = match.group()
         if handle.lower() not in ("@here", "@everyone", "@channel"):
@@ -41,7 +30,6 @@ def extract_platform_identities(text: str) -> list[dict[str, str | bool | float]
                 }
             )
 
-    # Email addresses
     for match in EMAIL_PATTERN.finditer(text):
         identities.append(
             {
@@ -52,7 +40,6 @@ def extract_platform_identities(text: str) -> list[dict[str, str | bool | float]
             }
         )
 
-    # Discord usernames
     for match in DISCORD_PATTERN.finditer(text):
         identities.append(
             {
@@ -67,10 +54,8 @@ def extract_platform_identities(text: str) -> list[dict[str, str | bool | float]
 
 
 def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
-    """Detect relationship indicators in text."""
     indicators: list[dict[str, str | float]] = []
 
-    # Friend indicators
     friend_patterns = [
         r"my friend",
         r"good friend",
@@ -89,7 +74,6 @@ def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
             )
             break
 
-    # Colleague indicators
     colleague_patterns = [
         r"my colleague",
         r"coworker",
@@ -108,7 +92,6 @@ def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
             )
             break
 
-    # Family indicators
     family_patterns = [
         r"my (brother|sister|mom|dad|mother|father|parent|son|daughter|child)",
         r"my family",
@@ -133,14 +116,6 @@ async def evaluate_relationship_extraction(
     message: Memory,
     state: State | None = None,
 ) -> EvaluatorResult:
-    """
-    Extract relationship information from the conversation.
-
-    This evaluator passively analyzes messages to:
-    - Extract platform identities (X, Discord, email)
-    - Detect relationship indicators
-    - Update entity metadata
-    """
     text = message.content.text if message.content else ""
 
     if not text:
@@ -151,67 +126,47 @@ async def evaluate_relationship_extraction(
             details={"noText": True},
         )
 
-    try:
-        # Extract platform identities
-        identities = extract_platform_identities(text)
+    identities = extract_platform_identities(text)
 
-        # Detect relationship indicators
-        indicators = detect_relationship_indicators(text)
+    indicators = detect_relationship_indicators(text)
 
-        # Update entity metadata if we found identities
-        if identities and message.entity_id:
-            entity = await runtime.get_entity(message.entity_id)
-            if entity:
-                metadata = entity.metadata or {}
-                existing_identities = metadata.get("platformIdentities", [])
-                if isinstance(existing_identities, list):
-                    for identity in identities:
-                        # Check if already exists
-                        exists = any(
-                            i.get("platform") == identity["platform"]
-                            and i.get("handle") == identity["handle"]
-                            for i in existing_identities
-                        )
-                        if not exists:
-                            existing_identities.append(identity)
-                    metadata["platformIdentities"] = existing_identities
-                    entity.metadata = metadata
-                    await runtime.update_entity(entity)
+    if identities and message.entity_id:
+        entity = await runtime.get_entity(message.entity_id)
+        if entity:
+            metadata = entity.metadata or {}
+            existing_identities = metadata.get("platformIdentities", [])
+            if isinstance(existing_identities, list):
+                for identity in identities:
+                    exists = any(
+                        i.get("platform") == identity["platform"]
+                        and i.get("handle") == identity["handle"]
+                        for i in existing_identities
+                    )
+                    if not exists:
+                        existing_identities.append(identity)
+                metadata["platformIdentities"] = existing_identities
+                entity.metadata = metadata
+                await runtime.update_entity(entity)
 
-        runtime.logger.info(
-            {
-                "src": "evaluator:relationship_extraction",
-                "agentId": str(runtime.agent_id),
-                "identitiesFound": len(identities),
-                "indicatorsFound": len(indicators),
-            },
-            "Completed extraction",
-        )
+    runtime.logger.info(
+        {
+            "src": "evaluator:relationship_extraction",
+            "agentId": str(runtime.agent_id),
+            "identitiesFound": len(identities),
+            "indicatorsFound": len(indicators),
+        },
+        "Completed extraction",
+    )
 
-        return EvaluatorResult(
-            score=70,
-            passed=True,
-            reason=f"Found {len(identities)} identities and {len(indicators)} relationship indicators",
-            details={
-                "identitiesCount": len(identities),
-                "indicatorsCount": len(indicators),
-            },
-        )
-
-    except Exception as e:
-        runtime.logger.error(
-            {
-                "src": "evaluator:relationship_extraction",
-                "error": str(e),
-            },
-            "Error during extraction",
-        )
-        return EvaluatorResult(
-            score=50,
-            passed=True,
-            reason=f"Extraction error: {e}",
-            details={"error": str(e)},
-        )
+    return EvaluatorResult(
+        score=70,
+        passed=True,
+        reason=f"Found {len(identities)} identities and {len(indicators)} relationship indicators",
+        details={
+            "identitiesCount": len(identities),
+            "indicatorsCount": len(indicators),
+        },
+    )
 
 
 async def validate_relationship_extraction(
@@ -219,11 +174,9 @@ async def validate_relationship_extraction(
     message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate that extraction can be performed."""
     return message.content is not None and bool(message.content.text)
 
 
-# Create the evaluator instance
 relationship_extraction_evaluator = Evaluator(
     name="RELATIONSHIP_EXTRACTION",
     description="Passively extracts and updates relationship information from conversations",

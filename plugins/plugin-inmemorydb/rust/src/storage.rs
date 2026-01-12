@@ -1,16 +1,9 @@
-//! Pure in-memory storage implementation
-//!
-//! All data is ephemeral and lost on process restart or close().
-
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 
 use crate::types::{IStorage, PredicateFn, StorageResult};
 
-/// In-memory storage using HashMap data structures.
-///
-/// Completely ephemeral - no persistence whatsoever.
 pub struct MemoryStorage {
     collections: RwLock<HashMap<String, HashMap<String, serde_json::Value>>>,
     ready: RwLock<bool>,
@@ -68,7 +61,6 @@ impl IStorage for MemoryStorage {
         collection: &str,
         predicate: PredicateFn,
     ) -> StorageResult<Vec<serde_json::Value>> {
-        // Clone the data to avoid lifetime issues with the predicate
         let items: Vec<serde_json::Value> = {
             let collections = self.collections.read();
             collections
@@ -111,7 +103,6 @@ impl IStorage for MemoryStorage {
         collection: &str,
         predicate: PredicateFn,
     ) -> StorageResult<()> {
-        // Find keys to delete first
         let to_delete: Vec<String> = {
             let collections = self.collections.read();
             collections
@@ -124,8 +115,7 @@ impl IStorage for MemoryStorage {
                 })
                 .unwrap_or_default()
         };
-        
-        // Then delete them
+
         if !to_delete.is_empty() {
             let mut collections = self.collections.write();
             if let Some(col) = collections.get_mut(collection) {
@@ -142,7 +132,6 @@ impl IStorage for MemoryStorage {
         collection: &str,
         predicate: Option<PredicateFn>,
     ) -> StorageResult<usize> {
-        // Clone the data to avoid lifetime issues
         let items: Vec<serde_json::Value> = {
             let collections = self.collections.read();
             collections
@@ -150,7 +139,7 @@ impl IStorage for MemoryStorage {
                 .map(|col| col.values().cloned().collect())
                 .unwrap_or_default()
         };
-        
+
         let count = match predicate {
             Some(pred) => items.iter().filter(|v| pred(v)).count(),
             None => items.len(),
@@ -173,15 +162,12 @@ mod tests {
         let storage = MemoryStorage::new();
         storage.init().await.unwrap();
 
-        // Set
         let data = serde_json::json!({"name": "test"});
         storage.set("test", "1", data.clone()).await.unwrap();
 
-        // Get
         let result = storage.get("test", "1").await.unwrap();
         assert_eq!(result, Some(data));
 
-        // Delete
         assert!(storage.delete("test", "1").await.unwrap());
         assert_eq!(storage.get("test", "1").await.unwrap(), None);
     }

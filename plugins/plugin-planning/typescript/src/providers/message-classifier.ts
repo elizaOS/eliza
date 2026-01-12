@@ -1,4 +1,4 @@
-import { composePrompt, ModelType, type Provider, type ProviderValue } from "@elizaos/core";
+import { composePrompt, ModelType, type Provider } from "@elizaos/core";
 import { messageClassifierTemplate } from "../generated/prompts/typescript/prompts.js";
 
 export const messageClassifierProvider: Provider = {
@@ -19,7 +19,7 @@ export const messageClassifierProvider: Provider = {
           planningRequired: false,
           stakeholders: [],
           constraints: [],
-        } as Record<string, ProviderValue>,
+        },
       };
     }
 
@@ -104,7 +104,7 @@ export const messageClassifierProvider: Provider = {
           dependencies,
           analyzedAt: Date.now(),
           modelUsed: "TEXT_SMALL",
-        } as Record<string, ProviderValue>,
+        },
       };
     } catch (error) {
       const text_lower = text.toLowerCase();
@@ -144,7 +144,7 @@ export const messageClassifierProvider: Provider = {
           dependencies: [],
           error: (error as Error).message,
           fallback: true,
-        } as Record<string, ProviderValue>,
+        },
       };
     }
   },

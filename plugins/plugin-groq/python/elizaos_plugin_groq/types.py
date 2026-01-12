@@ -40,8 +40,6 @@ class TextToSpeechParams(BaseModel):
 
 
 class GroqConfig(BaseModel):
-    """Configuration for the Groq client."""
-
     api_key: str
     base_url: str = "https://api.groq.com/openai/v1"
     small_model: str = "llama-3.1-8b-instant"
@@ -62,16 +60,12 @@ class ChatCompletionRequest(BaseModel):
 
 
 class ChatChoice(BaseModel):
-    """A completion choice."""
-
     index: int
     message: ChatMessage
     finish_reason: str | None = None
 
 
 class ChatCompletionResponse(BaseModel):
-    """Chat completion response."""
-
     id: str
     model: str
     choices: list[ChatChoice]
@@ -82,8 +76,6 @@ class TranscriptionResponse(BaseModel):
 
 
 class ModelInfo(BaseModel):
-    """Model information."""
-
     id: str
     owned_by: str
 

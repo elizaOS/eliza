@@ -1,11 +1,3 @@
-"""
-IGNORE Action - Ignore messages without responding.
-
-This action is used when the agent should not respond to a message,
-such as when the user is aggressive, inappropriate, or the conversation
-has naturally ended.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,15 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass
 class IgnoreAction:
-    """
-    Action that ignores the current message without responding.
-
-    Use this action when:
-    - The user is aggressive, rude, or inappropriate
-    - The conversation has naturally ended (both parties said goodbye)
-    - The agent's response would not add value
-    """
-
     name: str = "IGNORE"
     similes: list[str] = field(
         default_factory=lambda: ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"]
@@ -44,7 +27,6 @@ class IgnoreAction:
     async def validate(
         self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None
     ) -> bool:
-        """Always valid - agents can always choose to ignore."""
         return True
 
     async def handler(
@@ -56,21 +38,6 @@ class IgnoreAction:
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> ActionResult:
-        """
-        Handle the ignore action by not responding.
-
-        Args:
-            runtime: The agent runtime
-            message: The message to ignore
-            state: Current conversation state
-            options: Handler options
-            callback: Optional callback (may pass original response content)
-            responses: Previous responses in the chain
-
-        Returns:
-            ActionResult indicating the message was ignored
-        """
-        # If there's a callback and response content, forward it
         if callback and responses and len(responses) > 0:
             first_response = responses[0]
             if first_response.content:
@@ -85,7 +52,6 @@ class IgnoreAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        """Example interactions demonstrating the IGNORE action."""
         return [
             [
                 ActionExample(name="{{name1}}", content=Content(text="Go screw yourself")),
@@ -104,7 +70,6 @@ class IgnoreAction:
         ]
 
 
-# Create the action instance
 ignore_action = Action(
     name=IgnoreAction.name,
     similes=IgnoreAction().similes,

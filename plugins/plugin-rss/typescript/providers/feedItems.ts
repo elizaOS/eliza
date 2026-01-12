@@ -2,10 +2,6 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import { logger } from "@elizaos/core";
 import type { FeedItemMetadata } from "../types";
 
-/**
- * Provider for RSS feed items
- * Provides recent feed items from subscribed RSS feeds to the agent's context
- */
 export const feedItemsProvider: Provider = {
   name: "FEEDITEMS",
   description: "Provides recent news and articles from subscribed RSS feeds",
@@ -27,17 +23,13 @@ export const feedItemsProvider: Provider = {
         };
       }
 
-      // Sort by creation date (most recent first)
       const sortedItems = [...items].sort((a, b) => {
         const timeA = a.createdAt || 0;
         const timeB = b.createdAt || 0;
         return timeB - timeA;
       });
 
-      // Limit to most recent 50 items to avoid overwhelming the context
       const recentItems = sortedItems.slice(0, 50);
-
-      // Group items by feed for better organization
       const itemsByFeed = new Map<string, Memory[]>();
       for (const item of recentItems) {
         const metadata = item.metadata as FeedItemMetadata;
@@ -51,14 +43,11 @@ export const feedItemsProvider: Provider = {
         }
       }
 
-      // Get format preference from settings (default: 'csv' for economy)
-      // Options: 'csv' (compact, token-efficient) or 'markdown' (human-readable)
       const format = runtime.getSetting("RSS_FEED_FORMAT") || "csv";
 
       let outputText: string;
 
       if (format === "markdown") {
-        // Markdown format - more readable but uses more tokens
         outputText = `# Recent RSS Feed Items (${recentItems.length} items from ${itemsByFeed.size} feeds)\n\n`;
 
         for (const [feedTitle, feedItems] of itemsByFeed) {
@@ -83,7 +72,6 @@ export const feedItemsProvider: Provider = {
               outputText += `- Author: ${author}\n`;
             }
             if (description) {
-              // Truncate long descriptions
               const shortDesc =
                 description.length > 200 ? `${description.substring(0, 200)}...` : description;
               outputText += `- Description: ${shortDesc}\n`;
@@ -92,7 +80,6 @@ export const feedItemsProvider: Provider = {
           }
         }
       } else {
-        // CSV format (default) - compact and token-efficient
         outputText = `# RSS Feed Items (${recentItems.length} from ${itemsByFeed.size} feeds)\n`;
         outputText += "Feed,Title,URL,Published,Description\n";
 

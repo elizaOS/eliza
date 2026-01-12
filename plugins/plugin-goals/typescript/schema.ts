@@ -10,9 +10,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-/**
- * Goals table - stores long-term achievable goals
- */
 export const goalsTable = pgTable(
   "goals",
   {
@@ -37,9 +34,6 @@ export const goalsTable = pgTable(
   })
 );
 
-/**
- * Goal tags table - stores tags associated with goals
- */
 export const goalTagsTable = pgTable(
   "goal_tags",
   {
@@ -59,9 +53,6 @@ export const goalTagsTable = pgTable(
   })
 );
 
-/**
- * Relations
- */
 export const goalsRelations = relations(goalsTable, ({ many }) => ({
   tags: many(goalTagsTable),
 }));
@@ -73,13 +64,9 @@ export const goalTagsRelations = relations(goalTagsTable, ({ one }) => ({
   }),
 }));
 
-/**
- * Export the complete schema
- */
 export const goalSchema = {
   goalsTable,
   goalTagsTable,
-  // Also include the original structure for compatibility
   tables: {
     goals: goalsTable,
     goalTags: goalTagsTable,

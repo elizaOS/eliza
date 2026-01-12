@@ -1,9 +1,3 @@
-"""
-Environment types for elizaOS.
-
-This module defines types for entities, rooms, worlds, and their relationships.
-"""
-
 from __future__ import annotations
 
 from enum import Enum
@@ -14,8 +8,6 @@ from elizaos.types.primitives import UUID, Metadata
 
 
 class Component(BaseModel):
-    """Component attached to an entity."""
-
     id: UUID = Field(..., description="Unique identifier")
     entity_id: UUID = Field(..., alias="entityId", description="Entity this belongs to")
     agent_id: UUID = Field(..., alias="agentId", description="Associated agent")
@@ -30,8 +22,6 @@ class Component(BaseModel):
 
 
 class Entity(BaseModel):
-    """Represents a user account or entity."""
-
     id: UUID | None = Field(default=None, description="Unique identifier, optional on creation")
     names: list[str] = Field(..., description="Names of the entity")
     metadata: Metadata = Field(default_factory=dict, description="Additional metadata")
@@ -56,8 +46,6 @@ class Role(str, Enum):
 
 
 class WorldMetadata(BaseModel):
-    """Metadata for a world."""
-
     ownership: dict[str, str] | None = Field(default=None, description="Ownership information")
     roles: dict[UUID, Role] | None = Field(
         default=None, description="Role assignments by entity ID"
@@ -67,11 +55,6 @@ class WorldMetadata(BaseModel):
 
 
 class World(BaseModel):
-    """
-    Represents a world - a collection of rooms and entities
-    (e.g., a Discord server, a project).
-    """
-
     id: UUID = Field(..., description="Unique identifier")
     name: str | None = Field(default=None, description="World name")
     agent_id: UUID = Field(..., alias="agentId", description="Associated agent")
@@ -84,29 +67,23 @@ class World(BaseModel):
 
 
 class ChannelType(str, Enum):
-    """Channel type enumeration."""
-
-    SELF = "SELF"  # Messages to self
-    DM = "DM"  # Direct messages between two participants
-    GROUP = "GROUP"  # Group messages with multiple participants
-    VOICE_DM = "VOICE_DM"  # Voice direct messages
-    VOICE_GROUP = "VOICE_GROUP"  # Voice channels with multiple participants
-    FEED = "FEED"  # Social media feed
-    THREAD = "THREAD"  # Threaded conversation
-    WORLD = "WORLD"  # World channel
-    FORUM = "FORUM"  # Forum discussion
-    API = "API"  # API-initiated messages
+    SELF = "SELF"
+    DM = "DM"
+    GROUP = "GROUP"
+    VOICE_DM = "VOICE_DM"
+    VOICE_GROUP = "VOICE_GROUP"
+    FEED = "FEED"
+    THREAD = "THREAD"
+    WORLD = "WORLD"
+    FORUM = "FORUM"
+    API = "API"
 
 
 class RoomMetadata(BaseModel):
-    """Metadata for a room."""
-
     model_config = {"extra": "allow"}
 
 
 class Room(BaseModel):
-    """Represents a room - a specific context for interaction."""
-
     id: UUID = Field(..., description="Unique identifier")
     name: str | None = Field(default=None, description="Room name")
     agent_id: UUID | None = Field(default=None, alias="agentId", description="Associated agent")
@@ -125,8 +102,6 @@ class Room(BaseModel):
 
 
 class Participant(BaseModel):
-    """Room participant with account details."""
-
     id: UUID = Field(..., description="Unique identifier")
     entity: Entity = Field(..., description="Associated account")
 
@@ -134,8 +109,6 @@ class Participant(BaseModel):
 
 
 class Relationship(BaseModel):
-    """Represents a relationship between users."""
-
     id: UUID = Field(..., description="Unique identifier")
     source_entity_id: UUID = Field(..., alias="sourceEntityId", description="First user ID")
     target_entity_id: UUID = Field(..., alias="targetEntityId", description="Second user ID")

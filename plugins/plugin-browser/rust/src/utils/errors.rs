@@ -1,11 +1,6 @@
-//! Browser Plugin Error Types
-//!
-//! Provides structured error handling with user-friendly messages.
-
 use crate::types::ErrorCode;
 use thiserror::Error;
 
-/// Browser error type
 #[derive(Error, Debug)]
 pub struct BrowserError {
     pub code: ErrorCode,
@@ -43,7 +38,6 @@ impl BrowserError {
     }
 }
 
-/// Service not available error
 pub fn service_not_available() -> BrowserError {
     BrowserError::new(
         "Browser service is not available",
@@ -53,7 +47,6 @@ pub fn service_not_available() -> BrowserError {
     )
 }
 
-/// Session error
 pub fn session_error(message: impl Into<String>) -> BrowserError {
     BrowserError::new(
         message,
@@ -63,7 +56,6 @@ pub fn session_error(message: impl Into<String>) -> BrowserError {
     )
 }
 
-/// Navigation error
 pub fn navigation_error(url: &str, original_error: Option<&str>) -> BrowserError {
     let message = match original_error {
         Some(err) => format!("Failed to navigate to {}: {}", url, err),
@@ -82,7 +74,6 @@ pub fn navigation_error(url: &str, original_error: Option<&str>) -> BrowserError
     }))
 }
 
-/// Action error
 pub fn action_error(action: &str, target: &str, original_error: Option<&str>) -> BrowserError {
     let message = match original_error {
         Some(err) => format!("Failed to {} on {}: {}", action, target, err),
@@ -102,7 +93,6 @@ pub fn action_error(action: &str, target: &str, original_error: Option<&str>) ->
     }))
 }
 
-/// Security error
 pub fn security_error(message: impl Into<String>) -> BrowserError {
     BrowserError::new(
         message,
@@ -112,7 +102,6 @@ pub fn security_error(message: impl Into<String>) -> BrowserError {
     )
 }
 
-/// CAPTCHA error
 pub fn captcha_error(message: impl Into<String>) -> BrowserError {
     BrowserError::new(
         message,
@@ -122,7 +111,6 @@ pub fn captcha_error(message: impl Into<String>) -> BrowserError {
     )
 }
 
-/// Timeout error
 pub fn timeout_error(operation: &str, timeout_ms: u64) -> BrowserError {
     BrowserError::new(
         format!("{} timed out after {}ms", operation, timeout_ms),
@@ -136,7 +124,6 @@ pub fn timeout_error(operation: &str, timeout_ms: u64) -> BrowserError {
     }))
 }
 
-/// No URL found error
 pub fn no_url_found() -> BrowserError {
     BrowserError::new(
         "No URL found in message",
@@ -146,7 +133,6 @@ pub fn no_url_found() -> BrowserError {
     )
 }
 
-/// Handle browser error with logging
 pub fn handle_browser_error<F>(error: &BrowserError, callback: Option<F>, action: Option<&str>)
 where
     F: FnOnce(&str, bool),
@@ -161,10 +147,5 @@ where
         cb(&message, true);
     }
 }
-
-
-
-
-
 
 

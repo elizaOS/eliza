@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! PDF Client
-//!
-//! Async client for PDF text extraction.
 
 use lopdf::Document;
 use regex::Regex;
@@ -14,7 +11,6 @@ use crate::types::{
     PdfConversionResult, PdfDocumentInfo, PdfExtractionOptions, PdfMetadata, PdfPageInfo,
 };
 
-/// PDF processing client.
 pub struct PdfClient {
     control_char_regex: Regex,
     whitespace_regex: Regex,
@@ -22,7 +18,6 @@ pub struct PdfClient {
 }
 
 impl PdfClient {
-    /// Create a new PDF client.
     pub fn new() -> Self {
         Self {
             control_char_regex: Regex::new(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]").unwrap(),
@@ -31,18 +26,13 @@ impl PdfClient {
         }
     }
 
-    /// Clean up PDF text content.
     fn clean_content(&self, content: &str) -> String {
-        // Remove control characters
         let cleaned = self.control_char_regex.replace_all(content, "");
-        // Collapse whitespace
         let cleaned = self.whitespace_regex.replace_all(&cleaned, " ");
-        // Remove trailing spaces
         let cleaned = self.trailing_space_regex.replace_all(&cleaned, "$1");
         cleaned.trim().to_string()
     }
 
-    /// Extract text from PDF bytes.
     pub async fn extract_text(
         &self,
         pdf_bytes: &[u8],
@@ -71,7 +61,6 @@ impl PdfClient {
                 return Err(PdfError::InvalidPageRange { start, end });
             }
 
-            // Extract text using pdf-extract
             let full_text = pdf_extract::extract_text_from_mem(&bytes)
                 .map_err(|e| PdfError::ExtractionError(e.to_string()))?;
 
@@ -87,7 +76,6 @@ impl PdfClient {
         }
     }
 
-    /// Extract text from a PDF file.
     pub async fn extract_text_from_file(
         &self,
         file_path: &str,
@@ -115,7 +103,6 @@ impl PdfClient {
     ) -> PdfConversionResult {
         let bytes = pdf_bytes.to_vec();
 
-        // Get page count first
         let page_count = match tokio::task::spawn_blocking({
             let bytes = bytes.clone();
             move || -> Result<usize> {
@@ -153,21 +140,18 @@ impl PdfClient {
                 return Err(PdfError::EmptyDocument);
             }
 
-            // Extract metadata (simplified - metadata extraction is optional)
             let metadata = PdfMetadata::default();
 
-            // Extract text
             let full_text = pdf_extract::extract_text_from_mem(&bytes)
                 .map_err(|e| PdfError::ExtractionError(e.to_string()))?;
 
-            // Create page info (simplified - using full text for all pages)
             let mut pages = Vec::new();
             for page_num in 1..=page_count {
                 pages.push(PdfPageInfo {
                     page_number: page_num,
-                    width: 612.0,  // Default US Letter width
-                    height: 792.0, // Default US Letter height
-                    text: String::new(), // Simplified: per-page extraction not implemented
+                    width: 612.0,
+                    height: 792.0,
+                    text: String::new(),
                 });
             }
 
@@ -182,7 +166,6 @@ impl PdfClient {
         .map_err(|e| PdfError::ExtractionError(e.to_string()))?
     }
 
-    /// Get the number of pages in a PDF.
     pub async fn get_page_count(&self, pdf_bytes: &[u8]) -> Result<usize> {
         debug!("Getting page count from PDF ({} bytes)", pdf_bytes.len());
 

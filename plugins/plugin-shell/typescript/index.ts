@@ -17,7 +17,6 @@ export { clearHistory } from "./actions/clearHistory";
 export { executeCommand } from "./actions/executeCommand";
 export { shellHistoryProvider } from "./providers/shellHistoryProvider";
 export { ShellService } from "./services/shellService";
-// Export types and utilities for external use
 export type {
   CommandHistoryEntry,
   CommandResult,

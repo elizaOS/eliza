@@ -1,37 +1,43 @@
-//! elizaOS Goals Plugin
+//! Goal management plugin for elizaOS agents.
 //!
-//! This crate provides goal management functionality for elizaOS agents.
+//! This plugin provides functionality for creating, tracking, and managing goals
+//! for AI agents. Goals can be assigned to either agents or entities and support
+//! metadata, tags, and completion tracking.
 //!
 //! # Features
 //!
-//! - `native`: Full async support with tokio (default)
+//! - Create and manage goals with rich metadata
+//! - Track goal completion status
+//! - Filter goals by owner, status, and tags
+//! - In-memory storage (native feature)
 //!
 //! # Example
 //!
-//! ```no_run
-//! use elizaos_plugin_goals::{GoalService, CreateGoalParams, GoalOwnerType};
+//! ```rust
+//! use elizaos_plugin_goals::{plugin, CreateGoalParams, GoalOwnerType};
 //!
-//! #[tokio::main]
-//! async fn main() {
-//!     // Goal service would be created with a database connection
-//!     // let service = GoalService::new(db);
-//!     // let goal = service.create_goal(params).await.unwrap();
-//! }
+//! let p = plugin();
+//! println!("Plugin: {} v{}", p.name, p.version);
 //! ```
 
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
 
+/// Error types and result aliases for goal operations.
 pub mod error;
+/// Type definitions for goals, filters, and related structures.
 pub mod types;
 
 #[cfg(feature = "native")]
+/// Service layer for goal persistence and business logic.
 pub mod service;
 
 #[cfg(feature = "native")]
+/// Goal-related actions that can be performed by agents.
 pub mod actions;
 
 #[cfg(feature = "native")]
+/// Providers for goal data access.
 pub mod providers;
 
 // Re-exports for convenience
@@ -41,14 +47,18 @@ pub use types::*;
 #[cfg(feature = "native")]
 pub use service::GoalService;
 
-/// Plugin metadata
+/// The name identifier for this plugin.
 pub const PLUGIN_NAME: &str = "goals";
-/// Plugin version matching Cargo.toml
+/// The version of this plugin, derived from Cargo.toml.
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Plugin description
+/// A human-readable description of this plugin's purpose.
 pub const PLUGIN_DESCRIPTION: &str = "Goal management for elizaOS agents";
 
-/// Create the Goals plugin instance
+/// Creates a new instance of the goals plugin with default configuration.
+///
+/// # Returns
+///
+/// A `Plugin` instance with the plugin name, version, and description.
 pub fn plugin() -> Plugin {
     Plugin {
         name: PLUGIN_NAME.to_string(),
@@ -57,14 +67,14 @@ pub fn plugin() -> Plugin {
     }
 }
 
-/// Plugin metadata structure
+/// Plugin metadata and configuration.
 #[derive(Debug, Clone)]
 pub struct Plugin {
-    /// Plugin name
+    /// The unique name identifier for this plugin.
     pub name: String,
-    /// Plugin description
+    /// A human-readable description of the plugin's functionality.
     pub description: String,
-    /// Plugin version
+    /// The semantic version of the plugin.
     pub version: String,
 }
 

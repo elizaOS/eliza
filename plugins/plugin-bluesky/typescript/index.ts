@@ -1,7 +1,3 @@
-/**
- * BlueSky Plugin for elizaOS
- */
-
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { BlueSkyService } from "./services/bluesky";
@@ -27,9 +23,6 @@ export interface PluginConfig {
   readonly BLUESKY_MAX_POST_LENGTH?: string;
 }
 
-/**
- * Test suite for the BlueSky plugin.
- */
 const pluginTests = [
   {
     name: "bluesky_plugin_tests",
@@ -66,12 +59,6 @@ const pluginTests = [
   },
 ];
 
-/**
- * BlueSky plugin for elizaOS.
- *
- * Provides BlueSky integration using the AT Protocol for posting,
- * messaging, notifications, and profile management.
- */
 export const blueSkyPlugin: Plugin = {
   name: "bluesky",
   description: "BlueSky client plugin using AT Protocol for social interactions",

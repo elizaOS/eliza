@@ -1,4 +1,3 @@
-"""Create issue action for Linear plugin."""
 
 import json
 import logging
@@ -41,7 +40,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -56,7 +54,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the create issue action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -71,13 +68,11 @@ async def handler(
                 )
             return {"text": error_message, "success": False}
 
-        # Check for structured data in options
         structured_data = options.get("issueData") if options else None
 
         if structured_data:
             issue_data = structured_data
         else:
-            # Use LLM to extract issue information
             prompt = CREATE_ISSUE_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
@@ -85,7 +80,6 @@ async def handler(
                 raise RuntimeError("Failed to extract issue information")
 
             try:
-                # Strip markdown code blocks if present
                 cleaned = re.sub(r"^```(?:json)?\n?", "", response)
                 cleaned = re.sub(r"\n?```$", "", cleaned).strip()
                 parsed = json.loads(cleaned)
@@ -105,7 +99,6 @@ async def handler(
                     if team:
                         issue_data["team_id"] = team["id"]
 
-                # Handle assignee
                 if parsed.get("assignee"):
                     clean_assignee = parsed["assignee"].lstrip("@")
                     users = await linear_service.get_users()
@@ -121,7 +114,6 @@ async def handler(
                     if user:
                         issue_data["assignee_id"] = user["id"]
 
-                # Handle labels
                 if parsed.get("labels") and isinstance(parsed["labels"], list):
                     labels = await linear_service.get_labels(issue_data.get("team_id"))
                     label_ids = []
@@ -136,7 +128,6 @@ async def handler(
                     if label_ids:
                         issue_data["label_ids"] = label_ids
 
-                # Use default team if not specified
                 if not issue_data.get("team_id"):
                     default_team_key = runtime.get_setting("LINEAR_DEFAULT_TEAM_KEY")
                     if default_team_key:
@@ -147,7 +138,6 @@ async def handler(
                         if default_team:
                             issue_data["team_id"] = default_team["id"]
 
-                    # Fall back to first team
                     if not issue_data.get("team_id"):
                         teams = await linear_service.get_teams()
                         if teams:
@@ -155,7 +145,6 @@ async def handler(
 
             except json.JSONDecodeError as parse_error:
                 logger.error(f"Failed to parse LLM response: {parse_error}")
-                # Fallback to simple title extraction
                 issue_data = {
                     "title": content[:100] + "..." if len(content) > 100 else content,
                     "description": content,
@@ -190,7 +179,6 @@ async def handler(
                 )
             return {"text": error_message, "success": False}
 
-        # Create the issue
         issue_input = LinearIssueInput(
             title=issue_data["title"],
             team_id=issue_data["team_id"],
@@ -265,8 +253,3 @@ create_issue_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

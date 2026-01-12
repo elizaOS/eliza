@@ -1,25 +1,17 @@
-"""
-URL extraction and parsing utilities.
-"""
-
 import re
 
 
 def extract_url(text: str) -> str | None:
-    """Extract URL from text message."""
-    # Check for quoted URL first
     quoted_match = re.search(r'["\']([^"\']+)["\']', text)
     if quoted_match:
         url = quoted_match.group(1)
         if url.startswith("http") or "." in url:
             return url
 
-    # Check for explicit URL
     url_match = re.search(r"(https?://[^\s]+)", text)
     if url_match:
         return url_match.group(1)
 
-    # Check for domain after navigation keywords
     domain_match = re.search(
         r"(?:go to|navigate to|open|visit)\s+([a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,})",
         text,
@@ -32,13 +24,11 @@ def extract_url(text: str) -> str | None:
 
 
 def parse_click_target(text: str) -> str:
-    """Parse click target from message."""
     match = re.search(r"click (?:on |the )?(.+)$", text, re.IGNORECASE)
     return match.group(1) if match else "element"
 
 
 def parse_type_action(text: str) -> tuple[str, str]:
-    """Parse type action from message. Returns (text_to_type, field)."""
     text_match = re.search(r'["\']([^"\']+)["\']', text)
     text_to_type = text_match.group(1) if text_match else ""
 
@@ -49,7 +39,6 @@ def parse_type_action(text: str) -> tuple[str, str]:
 
 
 def parse_select_action(text: str) -> tuple[str, str]:
-    """Parse select action from message. Returns (option, dropdown)."""
     option_match = re.search(r'["\']([^"\']+)["\']', text)
     option = option_match.group(1) if option_match else ""
 
@@ -60,13 +49,9 @@ def parse_select_action(text: str) -> tuple[str, str]:
 
 
 def parse_extract_instruction(text: str) -> str:
-    """Parse extract instruction from message."""
     match = re.search(
         r"(?:extract|get|find|scrape|read) (?:the )?(.+?)(?:\s+from|\s*$)",
         text,
         re.IGNORECASE,
     )
     return match.group(1) if match else text
-
-
-

@@ -1,10 +1,3 @@
-"""
-Ollama API client implementation.
-
-The client handles HTTP communication with the Ollama API,
-including request/response handling and error processing.
-"""
-
 from __future__ import annotations
 
 import json
@@ -35,22 +28,10 @@ from elizaos_plugin_ollama.types import (
 
 
 class OllamaClient:
-    """
-    Ollama API client.
-
-    Provides methods for text generation, object generation, and embeddings.
-    """
-
     _config: OllamaConfig
     _http_client: httpx.AsyncClient
 
     def __init__(self, config: OllamaConfig) -> None:
-        """
-        Create a new Ollama client with the given configuration.
-
-        Args:
-            config: Client configuration including base URL and model settings.
-        """
         self._config = config
         self._http_client = httpx.AsyncClient(
             timeout=config.timeout_seconds,
@@ -59,32 +40,18 @@ class OllamaClient:
 
     @property
     def config(self) -> OllamaConfig:
-        """Get the client configuration."""
         return self._config
 
     async def close(self) -> None:
-        """Close the HTTP client."""
         await self._http_client.aclose()
 
     async def __aenter__(self) -> OllamaClient:
-        """Context manager entry."""
         return self
 
     async def __aexit__(self, *_: object) -> None:
-        """Context manager exit."""
         await self.close()
 
     async def list_models(self) -> list[ModelInfo]:
-        """
-        List all available models.
-
-        Returns:
-            List of available models.
-
-        Raises:
-            ConnectionError: If the server is not reachable.
-            NetworkError: If the request fails.
-        """
         try:
             response = await self._http_client.get(self._config.tags_url)
             if response.is_success:
@@ -96,17 +63,7 @@ class OllamaClient:
             raise ConnectionError(self._config.base_url, str(e)) from e
 
     async def ensure_model_available(self, model: str) -> bool:
-        """
-        Ensure a model is available, downloading if necessary.
-
-        Args:
-            model: The model name to check/download.
-
-        Returns:
-            True if the model is available.
-        """
         try:
-            # Check if model exists
             response = await self._http_client.post(
                 self._config.show_url,
                 json={"model": model},
@@ -114,7 +71,6 @@ class OllamaClient:
             if response.is_success:
                 return True
 
-            # Try to pull the model
             response = await self._http_client.post(
                 self._config.pull_url,
                 json={"model": model, "stream": False},
@@ -126,18 +82,6 @@ class OllamaClient:
     async def generate_text_small(
         self, params: TextGenerationParams | str
     ) -> TextGenerationResponse:
-        """
-        Generate text using the small model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Text generation response.
-
-        Raises:
-            OllamaError: If the API request fails.
-        """
         if isinstance(params, str):
             params = TextGenerationParams(prompt=params)
         return await self._generate_text_with_model(params, self._config.small_model)
@@ -145,18 +89,6 @@ class OllamaClient:
     async def generate_text_large(
         self, params: TextGenerationParams | str
     ) -> TextGenerationResponse:
-        """
-        Generate text using the large model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Text generation response.
-
-        Raises:
-            OllamaError: If the API request fails.
-        """
         if isinstance(params, str):
             params = TextGenerationParams(prompt=params)
         return await self._generate_text_with_model(params, self._config.large_model)
@@ -164,7 +96,6 @@ class OllamaClient:
     async def _generate_text_with_model(
         self, params: TextGenerationParams, model: str
     ) -> TextGenerationResponse:
-        """Generate text using a specific model."""
         await self.ensure_model_available(model)
 
         options: dict[str, Any] = {}
@@ -198,15 +129,6 @@ class OllamaClient:
     async def generate_object_small(
         self, params: ObjectGenerationParams | str
     ) -> ObjectGenerationResponse:
-        """
-        Generate a JSON object using the small model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Object generation response.
-        """
         if isinstance(params, str):
             params = ObjectGenerationParams(prompt=params)
         return await self._generate_object_with_model(params, self._config.small_model)
@@ -214,15 +136,6 @@ class OllamaClient:
     async def generate_object_large(
         self, params: ObjectGenerationParams | str
     ) -> ObjectGenerationResponse:
-        """
-        Generate a JSON object using the large model.
-
-        Args:
-            params: Generation parameters or a prompt string.
-
-        Returns:
-            Object generation response.
-        """
         if isinstance(params, str):
             params = ObjectGenerationParams(prompt=params)
         return await self._generate_object_with_model(params, self._config.large_model)
@@ -230,10 +143,8 @@ class OllamaClient:
     async def _generate_object_with_model(
         self, params: ObjectGenerationParams, model: str
     ) -> ObjectGenerationResponse:
-        """Generate a JSON object using a specific model."""
         await self.ensure_model_available(model)
 
-        # Build a JSON-focused prompt
         if "```json" in params.prompt or "respond with valid JSON" in params.prompt:
             json_prompt = params.prompt
         else:
@@ -243,7 +154,6 @@ class OllamaClient:
                 "markdown formatting, or additional text."
             )
 
-        # Build system prompt
         if params.system:
             system = f"{params.system}\nYou must respond with valid JSON only."
         else:
@@ -266,7 +176,6 @@ class OllamaClient:
 
         response = await self._send_generate_request(request)
 
-        # Parse JSON from response
         parsed_object = self._extract_json(response.response)
 
         return ObjectGenerationResponse(
@@ -275,15 +184,6 @@ class OllamaClient:
         )
 
     async def generate_embedding(self, params: EmbeddingParams | str) -> EmbeddingResponse:
-        """
-        Generate an embedding for the given text.
-
-        Args:
-            params: Embedding parameters or text string.
-
-        Returns:
-            Embedding response with the vector.
-        """
         if isinstance(params, str):
             params = EmbeddingParams(text=params)
 
@@ -315,7 +215,6 @@ class OllamaClient:
         raise NetworkError(f"Failed to generate embedding: {response.text}", response.status_code)
 
     async def _send_generate_request(self, request: GenerateRequest) -> GenerateResponse:
-        """Send a request to the generate API."""
         try:
             response = await self._http_client.post(
                 self._config.generate_url,
@@ -329,7 +228,6 @@ class OllamaClient:
         if response.is_success:
             return GenerateResponse.model_validate(response.json())
 
-        # Handle error responses
         status_code = response.status_code
         if status_code == 404:
             raise ModelNotFoundError(request.model)
@@ -337,8 +235,6 @@ class OllamaClient:
         raise NetworkError(f"API request failed: {response.text}", status_code)
 
     def _extract_json(self, text: str) -> dict[str, Any]:
-        """Extract JSON from text response."""
-        # Try direct parsing first
         try:
             parsed = json.loads(text)
             if isinstance(parsed, dict):
@@ -346,7 +242,6 @@ class OllamaClient:
         except json.JSONDecodeError:
             pass
 
-        # Try extracting from code blocks
         json_str = self._extract_from_code_block(text)
         if json_str:
             try:
@@ -356,7 +251,6 @@ class OllamaClient:
             except json.JSONDecodeError:
                 pass
 
-        # Try finding JSON object in text
         json_str = self._find_json_object(text)
         if json_str:
             try:
@@ -366,17 +260,13 @@ class OllamaClient:
             except json.JSONDecodeError:
                 pass
 
-        # Return empty dict if we couldn't parse
         return {}
 
     def _extract_from_code_block(self, text: str) -> str | None:
-        """Extract JSON from a code block."""
-        # Try ```json block first
         json_block_match = re.search(r"```json\s*([\s\S]*?)\s*```", text)
         if json_block_match:
             return json_block_match.group(1).strip()
 
-        # Try any code block with JSON-like content
         for match in re.finditer(r"```(?:\w*)\s*([\s\S]*?)\s*```", text):
             content = match.group(1).strip()
             if content.startswith("{") and content.endswith("}"):
@@ -385,12 +275,10 @@ class OllamaClient:
         return None
 
     def _find_json_object(self, text: str) -> str | None:
-        """Find a JSON object in text."""
         trimmed = text.strip()
         if trimmed.startswith("{") and trimmed.endswith("}"):
             return trimmed
 
-        # Find the largest {...} pattern
         best: str | None = None
         depth = 0
         start: int | None = None
@@ -408,8 +296,4 @@ class OllamaClient:
                         best = candidate
 
         return best
-
-
-
-
 

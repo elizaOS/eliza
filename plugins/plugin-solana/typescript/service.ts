@@ -400,7 +400,9 @@ export class SolanaService extends Service {
    * Type guard to check if a service implements ExtendedJupiterServiceInterface.
    * Uses duck typing to check for the getQuote method without unsafe casts.
    */
-  private isJupiterService(service: Service | null): service is Service & ExtendedJupiterServiceInterface {
+  private isJupiterService(
+    service: Service | null
+  ): service is Service & ExtendedJupiterServiceInterface {
     if (service === null) return false;
     // Duck type check: verify getQuote method exists and is callable
     const maybeJupiter = service as { getQuote?: (...args: unknown[]) => unknown };

@@ -1,5 +1,3 @@
-//! WebSocket client for communication with browser server.
-
 use crate::types::{NavigationResult, WebSocketMessage, WebSocketResponse};
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
@@ -12,7 +10,6 @@ use uuid::Uuid;
 type ResponseSender = mpsc::Sender<WebSocketResponse>;
 type ResponseMap = Arc<RwLock<HashMap<String, ResponseSender>>>;
 
-/// WebSocket client for browser automation server
 pub struct BrowserWebSocketClient {
     server_url: String,
     connected: Arc<RwLock<bool>>,
@@ -30,7 +27,6 @@ impl BrowserWebSocketClient {
         }
     }
 
-    /// Connect to the browser server
     pub async fn connect(&self) -> Result<(), String> {
         let url = url::Url::parse(&self.server_url)
             .map_err(|e| format!("Invalid URL: {}", e))?;
@@ -41,7 +37,6 @@ impl BrowserWebSocketClient {
 
         let (mut write, mut read) = ws_stream.split();
 
-        // Create channel for sending messages
         let (tx, mut rx) = mpsc::channel::<Message>(100);
         *self.sender.write().await = Some(tx);
         *self.connected.write().await = true;
@@ -51,7 +46,6 @@ impl BrowserWebSocketClient {
         let pending = Arc::clone(&self.pending_requests);
         let connected = Arc::clone(&self.connected);
 
-        // Spawn task to handle incoming messages
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 match msg {
@@ -76,7 +70,6 @@ impl BrowserWebSocketClient {
             }
         });
 
-        // Spawn task to handle outgoing messages
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
                 if let Err(e) = write.send(msg).await {
@@ -89,7 +82,6 @@ impl BrowserWebSocketClient {
         Ok(())
     }
 
-    /// Send a message and wait for response
     pub async fn send_message(
         &self,
         msg_type: &str,
@@ -101,7 +93,7 @@ impl BrowserWebSocketClient {
 
         let request_id = Uuid::new_v4().to_string();
         let mut message_data = data;
-        
+
         let message = WebSocketMessage {
             msg_type: msg_type.to_string(),
             request_id: request_id.clone(),
@@ -112,11 +104,9 @@ impl BrowserWebSocketClient {
         let json = serde_json::to_string(&message)
             .map_err(|e| format!("Failed to serialize message: {}", e))?;
 
-        // Create channel for response
         let (tx, mut rx) = mpsc::channel::<WebSocketResponse>(1);
         self.pending_requests.write().await.insert(request_id.clone(), tx);
 
-        // Send message
         if let Some(sender) = self.sender.read().await.as_ref() {
             sender
                 .send(Message::Text(json))
@@ -126,7 +116,6 @@ impl BrowserWebSocketClient {
 
         debug!("[Browser] Sent message: {} ({})", msg_type, request_id);
 
-        // Wait for response with timeout
         let response = tokio::time::timeout(
             std::time::Duration::from_secs(30),
             rx.recv(),
@@ -135,7 +124,6 @@ impl BrowserWebSocketClient {
         .map_err(|_| format!("Request timeout for {}", msg_type))?
         .ok_or_else(|| "No response received".to_string())?;
 
-        // Clean up
         self.pending_requests.write().await.remove(&request_id);
 
         if response.msg_type == "error" {
@@ -145,19 +133,15 @@ impl BrowserWebSocketClient {
         Ok(response)
     }
 
-    /// Disconnect from the server
     pub async fn disconnect(&self) {
         *self.connected.write().await = false;
         *self.sender.write().await = None;
         info!("[Browser] Client disconnected");
     }
 
-    /// Check if connected
     pub async fn is_connected(&self) -> bool {
         *self.connected.read().await
     }
-
-    // Convenience methods
 
     pub async fn navigate(&self, session_id: &str, url: &str) -> Result<NavigationResult, String> {
         let mut data = HashMap::new();
@@ -168,7 +152,7 @@ impl BrowserWebSocketClient {
         data.insert("data".to_string(), serde_json::json!(inner_data));
 
         let response = self.send_message("navigate", data).await?;
-        
+
         let resp_data = response.data.unwrap_or_default();
         Ok(NavigationResult {
             success: response.success,
@@ -192,7 +176,7 @@ impl BrowserWebSocketClient {
 
         let response = self.send_message("goBack", data).await?;
         let resp_data = response.data.unwrap_or_default();
-        
+
         Ok(NavigationResult {
             success: response.success,
             url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -207,7 +191,7 @@ impl BrowserWebSocketClient {
 
         let response = self.send_message("goForward", data).await?;
         let resp_data = response.data.unwrap_or_default();
-        
+
         Ok(NavigationResult {
             success: response.success,
             url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -222,7 +206,7 @@ impl BrowserWebSocketClient {
 
         let response = self.send_message("refresh", data).await?;
         let resp_data = response.data.unwrap_or_default();
-        
+
         Ok(NavigationResult {
             success: response.success,
             url: resp_data.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -234,7 +218,7 @@ impl BrowserWebSocketClient {
     pub async fn click(&self, session_id: &str, description: &str) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
-        
+
         let mut inner_data = HashMap::new();
         inner_data.insert("description".to_string(), serde_json::json!(description));
         data.insert("data".to_string(), serde_json::json!(inner_data));
@@ -245,7 +229,7 @@ impl BrowserWebSocketClient {
     pub async fn type_text(&self, session_id: &str, text: &str, field: &str) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
-        
+
         let mut inner_data = HashMap::new();
         inner_data.insert("text".to_string(), serde_json::json!(text));
         inner_data.insert("field".to_string(), serde_json::json!(field));
@@ -257,7 +241,7 @@ impl BrowserWebSocketClient {
     pub async fn select(&self, session_id: &str, option: &str, dropdown: &str) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
-        
+
         let mut inner_data = HashMap::new();
         inner_data.insert("option".to_string(), serde_json::json!(option));
         inner_data.insert("dropdown".to_string(), serde_json::json!(dropdown));
@@ -269,7 +253,7 @@ impl BrowserWebSocketClient {
     pub async fn extract(&self, session_id: &str, instruction: &str) -> Result<WebSocketResponse, String> {
         let mut data = HashMap::new();
         data.insert("sessionId".to_string(), serde_json::json!(session_id));
-        
+
         let mut inner_data = HashMap::new();
         inner_data.insert("instruction".to_string(), serde_json::json!(instruction));
         data.insert("data".to_string(), serde_json::json!(inner_data));
@@ -293,7 +277,7 @@ impl BrowserWebSocketClient {
 
     pub async fn health(&self) -> Result<bool, String> {
         let response = self.send_message("health", HashMap::new()).await?;
-        
+
         let is_healthy = response.msg_type == "health"
             && response.data
                 .as_ref()
@@ -304,4 +288,3 @@ impl BrowserWebSocketClient {
         Ok(is_healthy)
     }
 }
-

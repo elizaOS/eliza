@@ -10,30 +10,23 @@ import { logger } from "@elizaos/core";
 import type { FormsService } from "../services/forms-service";
 import type { Form } from "../types";
 
-/**
- * CancelFormAction cancels an active form.
- */
 export const cancelFormAction: Action = {
   name: "CANCEL_FORM",
   similes: ["ABORT_FORM", "STOP_FORM", "QUIT_FORM", "EXIT_FORM"],
   description: "Cancels an active form",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
-    // Check if forms service is available
     const formsService = runtime.getService<FormsService>("forms");
     if (!formsService) {
       return false;
     }
 
-    // Check if there are any active forms
     const activeForms = await formsService.listForms("active");
     if (activeForms.length === 0) {
       return false;
     }
 
     const text = message.content.text?.toLowerCase() || "";
-
-    // Check if user wants to cancel a form
     const wantsCancel =
       text.includes("cancel") ||
       text.includes("stop") ||
@@ -59,7 +52,6 @@ export const cancelFormAction: Action = {
       throw new Error("Forms service not available");
     }
 
-    // Get active forms
     const activeForms = await formsService.listForms("active");
     if (activeForms.length === 0) {
       await callback?.({
@@ -69,7 +61,6 @@ export const cancelFormAction: Action = {
       return;
     }
 
-    // Check if a specific form ID was provided
     let targetForm: Form | undefined;
     const specifiedFormId =
       (options?.parameters as Record<string, unknown> | undefined)?.formId ||
@@ -77,7 +68,6 @@ export const cancelFormAction: Action = {
       state?.values?.activeFormId;
 
     if (specifiedFormId) {
-      // Find the specific form
       targetForm = activeForms.find((f) => f.id === specifiedFormId);
       if (!targetForm) {
         await callback?.({
@@ -87,7 +77,6 @@ export const cancelFormAction: Action = {
         return;
       }
     } else {
-      // For now, cancel the first active form
       targetForm = activeForms[0];
     }
 
@@ -95,7 +84,6 @@ export const cancelFormAction: Action = {
 
     logger.debug(`Cancelling form ${formId}`);
 
-    // Cancel the form
     const success = await formsService.cancelForm(formId);
 
     if (success) {

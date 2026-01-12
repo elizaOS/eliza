@@ -1,7 +1,3 @@
-/**
- * Tests for ELIZA Classic Plugin
- */
-
 import { describe, expect, test } from "vitest";
 import { generateElizaResponse, getElizaGreeting, reflect } from "../models/text";
 
@@ -16,11 +12,10 @@ describe("ELIZA Classic Plugin", () => {
     });
 
     test("should reflect 'you' to 'me' and 'are' to 'am'", () => {
-      // "are" also gets reflected to "am" in ELIZA's pronoun system
       expect(reflect("you are nice")).toBe("me am nice");
     });
 
-    test("should preserve unknown words", () => {
+    test("should preserve words without reflections", () => {
       expect(reflect("the cat sat")).toBe("the cat sat");
     });
   });
@@ -58,7 +53,6 @@ describe("ELIZA Classic Plugin", () => {
 
     test("should reflect pronouns in response", () => {
       const response = generateElizaResponse("I remember my birthday");
-      // The response should contain reflected pronouns
       expect(response.length).toBeGreaterThan(0);
     });
   });

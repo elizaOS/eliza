@@ -2,20 +2,11 @@ import { type IAgentRuntime, logger } from "@elizaos/core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 
-/**
- * Interface representing the result of a keypair generation.
- * @typedef {Object} KeypairResult
- * @property {Keypair} [keypair] - The generated keypair.
- * @property {PublicKey} [publicKey] - The public key corresponding to the generated keypair.
- */
 export interface KeypairResult {
   keypair?: Keypair;
   publicKey?: PublicKey;
 }
 
-/**
- * Extract a string setting from the runtime, returning null if not found.
- */
 function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
   if (value === null || value === undefined) {
@@ -27,19 +18,12 @@ function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   return value;
 }
 
-/**
- * Generate a new Solana keypair and store it in the runtime settings.
- * @param runtime The agent runtime to store the keypair in.
- * @returns The newly generated keypair.
- */
 function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
   const keypair = Keypair.generate();
   const privateKeyBase58 = bs58.encode(keypair.secretKey);
   const publicKeyBase58 = keypair.publicKey.toBase58();
 
-  // Store the private key as a secret
   runtime.setSetting("SOLANA_PRIVATE_KEY", privateKeyBase58, true);
-  // Also store the public key for convenience
   runtime.setSetting("SOLANA_PUBLIC_KEY", publicKeyBase58, false);
 
   logger.warn("⚠️  No Solana wallet found in agent secrets. Generated new wallet automatically.");
@@ -50,15 +34,6 @@ function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
   return keypair;
 }
 
-/**
- * Gets either a keypair or public key based on runtime settings.
- * If no keypair exists and one is required, a new keypair will be generated
- * and stored automatically.
- *
- * @param runtime The agent runtime
- * @param requirePrivateKey Whether to return a full keypair (true) or just public key (false)
- * @returns KeypairResult containing either keypair or public key
- */
 export async function getWalletKey(
   runtime: IAgentRuntime,
   requirePrivateKey = true
@@ -69,19 +44,16 @@ export async function getWalletKey(
       getStringSetting(runtime, "WALLET_PRIVATE_KEY");
 
     if (!privateKeyString) {
-      // No private key found - generate a new one automatically
       const keypair = generateAndStoreKeypair(runtime);
       return { keypair };
     }
 
     try {
-      // First try base58
       const secretKey = bs58.decode(privateKeyString);
       return { keypair: Keypair.fromSecretKey(secretKey) };
     } catch (e) {
       logger.log({ e }, "Error decoding base58 private key:");
       try {
-        // Then try base64
         logger.log("Try decoding base64 instead");
         const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
         return { keypair: Keypair.fromSecretKey(secretKey) };
@@ -91,7 +63,6 @@ export async function getWalletKey(
       }
     }
   } else {
-    // When only public key is needed, check for existing keys first
     const publicKeyString =
       getStringSetting(runtime, "SOLANA_PUBLIC_KEY") ??
       getStringSetting(runtime, "WALLET_PUBLIC_KEY");
@@ -115,13 +86,10 @@ export async function getWalletKey(
           const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
           const keypair = Keypair.fromSecretKey(secretKey);
           return { publicKey: keypair.publicKey };
-        } catch {
-          // Fall through to generate new keypair
-        }
+        } catch {}
       }
     }
 
-    // No keys found at all - generate a new keypair
     const keypair = generateAndStoreKeypair(runtime);
     return { publicKey: keypair.publicKey };
   }

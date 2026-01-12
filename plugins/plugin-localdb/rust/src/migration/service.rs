@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Migration service for runtime migrations.
 
 use anyhow::{Context, Result};
 use serde_json::Value;
@@ -11,13 +10,6 @@ use tracing::{debug, info};
 use super::storage::{JournalStorage, SnapshotStorage};
 use super::tracker::MigrationTracker;
 
-/// Migration service for runtime migrations.
-///
-/// Provides functionality similar to TypeScript RuntimeMigrator:
-/// - Plugin-based schema migrations
-/// - Schema snapshot tracking
-/// - Migration history tracking
-/// - Automatic schema detection
 pub struct MigrationService {
     tracker: MigrationTracker,
     journal_storage: JournalStorage,
@@ -26,7 +18,6 @@ pub struct MigrationService {
 }
 
 impl MigrationService {
-    /// Create a new migration service.
     pub fn new(pool: PgPool) -> Self {
         let pool_arc = Arc::new(pool);
         Self {
@@ -37,14 +28,12 @@ impl MigrationService {
         }
     }
 
-    /// Initialize migration tracking tables.
     pub async fn initialize(&self) -> Result<()> {
         self.tracker.ensure_tables().await?;
         info!("Migration service initialized");
         Ok(())
     }
 
-    /// Get migration status for a plugin.
     pub async fn get_status(&self, plugin_name: &str) -> Result<Value> {
         let last_migration = self.tracker.get_last_migration(plugin_name).await?;
         let latest_snapshot = self.snapshot_storage.get_latest_snapshot(plugin_name).await?;
@@ -74,7 +63,6 @@ impl MigrationService {
         Ok(Value::Object(status))
     }
 
-    /// Record a migration.
     pub async fn record_migration(
         &self,
         plugin_name: &str,
@@ -186,7 +174,6 @@ impl MigrationService {
         Ok(())
     }
 
-    /// Get the latest snapshot for a plugin.
     pub async fn get_latest_snapshot(&self, plugin_name: &str) -> Result<Option<Value>> {
         self.snapshot_storage.get_latest_snapshot(plugin_name).await
     }

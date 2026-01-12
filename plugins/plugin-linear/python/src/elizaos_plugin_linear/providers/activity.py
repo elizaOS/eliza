@@ -1,18 +1,14 @@
-"""Activity provider for Linear plugin."""
 
 from datetime import datetime
-from typing import Any
-
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol
 from elizaos_plugin_linear.services.linear import LinearService
 
 
 async def get_activity(
     runtime: RuntimeProtocol,
-    _message: Any,
-    _state: Any,
+    _message: object,
+    _state: object,
 ) -> ProviderResult:
-    """Get Linear activity for context."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -60,8 +56,3 @@ linear_activity_provider = Provider(
     description="Provides context about recent Linear activity",
     get=get_activity,
 )
-
-
-
-
-

@@ -1,21 +1,33 @@
-#![allow(missing_docs)]
-//! S3 Storage Plugin for elizaOS
+//! # S3 Storage Plugin
 //!
-//! This crate provides AWS S3 and S3-compatible storage integration for elizaOS agents.
+//! A Rust plugin for uploading and managing files in Amazon S3 or S3-compatible
+//! storage services. This plugin provides a high-level API for common storage
+//! operations including file uploads, byte uploads, JSON uploads, and signed URL
+//! generation.
 //!
-//! # Example
+//! ## Features
+//!
+//! - File upload from local paths
+//! - Direct byte data upload
+//! - JSON serialization and upload
+//! - Pre-signed URL generation for secure access
+//! - Support for custom S3-compatible endpoints
+//!
+//! ## Example
 //!
 //! ```rust,no_run
-//! use elizaos_plugin_s3_storage::{S3StorageClient, S3StorageConfig};
+//! use elizaos_plugin_s3_storage::{S3StoragePlugin, S3StorageConfig};
 //!
-//! # async fn example() -> anyhow::Result<()> {
-//! let config = S3StorageConfig::new("access-key", "secret-key", "us-east-1", "bucket");
-//! let client = S3StorageClient::new(config).await?;
-//!
-//! let result = client.upload_file("file.txt", None, false, 900).await?;
-//! println!("Uploaded to: {:?}", result.url);
-//! # Ok(())
-//! # }
+//! async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//!     let config = S3StorageConfig::new(
+//!         "access_key",
+//!         "secret_key",
+//!         "us-east-1",
+//!         "my-bucket"
+//!     );
+//!     let plugin = S3StoragePlugin::new(config).await?;
+//!     Ok(())
+//! }
 //! ```
 
 #![warn(missing_docs)]
@@ -30,22 +42,41 @@ pub use types::*;
 
 use anyhow::Result as AnyhowResult;
 
-/// S3 Storage plugin for elizaOS.
+/// High-level S3 storage plugin for file and data management.
 ///
-/// This struct wraps the S3 client and provides a simple interface
-/// for file storage operations.
+/// This struct wraps an [`S3StorageClient`] and provides convenient methods
+/// for uploading files, bytes, and JSON data to S3-compatible storage.
 pub struct S3StoragePlugin {
     client: S3StorageClient,
 }
 
 impl S3StoragePlugin {
-    /// Create a new S3StoragePlugin with the given configuration.
+    /// Creates a new S3 storage plugin with the provided configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The S3 storage configuration including credentials and bucket info
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the initialized plugin or an error if initialization fails.
     pub async fn new(config: S3StorageConfig) -> Result<Self> {
         let client = S3StorageClient::new(config).await?;
         Ok(Self { client })
     }
 
-    /// Upload a file to S3.
+    /// Uploads a file from the local filesystem to S3.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Path to the local file to upload
+    /// * `sub_directory` - Optional subdirectory within the bucket
+    /// * `use_signed_url` - Whether to generate a signed URL for the uploaded file
+    /// * `expires_in` - Expiration time in seconds for the signed URL
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the upload result with the file's S3 key and optional signed URL.
     pub async fn upload_file(
         &self,
         file_path: &str,
@@ -56,7 +87,20 @@ impl S3StoragePlugin {
         self.client.upload_file(file_path, sub_directory, use_signed_url, expires_in).await
     }
 
-    /// Upload bytes to S3.
+    /// Uploads raw byte data to S3.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The byte data to upload
+    /// * `file_name` - Name for the file in S3
+    /// * `content_type` - MIME type of the content (e.g., "image/png")
+    /// * `sub_directory` - Optional subdirectory within the bucket
+    /// * `use_signed_url` - Whether to generate a signed URL for the uploaded file
+    /// * `expires_in` - Expiration time in seconds for the signed URL
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the upload result with the file's S3 key and optional signed URL.
     pub async fn upload_bytes(
         &self,
         data: bytes::Bytes,
@@ -69,7 +113,21 @@ impl S3StoragePlugin {
         self.client.upload_bytes(data, file_name, content_type, sub_directory, use_signed_url, expires_in).await
     }
 
-    /// Upload JSON to S3.
+    /// Uploads JSON data to S3.
+    ///
+    /// The data is serialized to JSON format before uploading.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_data` - The JSON value to upload
+    /// * `file_name` - Optional custom filename (auto-generated if not provided)
+    /// * `sub_directory` - Optional subdirectory within the bucket
+    /// * `use_signed_url` - Whether to generate a signed URL for the uploaded file
+    /// * `expires_in` - Expiration time in seconds for the signed URL
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the JSON upload result with additional metadata.
     pub async fn upload_json(
         &self,
         json_data: &serde_json::Value,
@@ -81,28 +139,43 @@ impl S3StoragePlugin {
         self.client.upload_json(json_data, file_name, sub_directory, use_signed_url, expires_in).await
     }
 
-    /// Generate a signed URL for an existing object.
+    /// Generates a pre-signed URL for accessing an existing S3 object.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The S3 object key
+    /// * `expires_in` - Expiration time in seconds for the signed URL
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the pre-signed URL string.
     pub async fn generate_signed_url(&self, key: &str, expires_in: u64) -> Result<String> {
         self.client.generate_signed_url(key, expires_in).await
     }
 
-    /// Get the underlying client for advanced operations.
+    /// Returns a reference to the underlying S3 storage client.
+    ///
+    /// This allows direct access to the client for advanced operations
+    /// not covered by the plugin's high-level API.
     pub fn client(&self) -> &S3StorageClient {
         &self.client
     }
 }
 
-/// Create an S3 storage plugin from environment variables.
+/// Creates an S3 storage plugin using environment variables for configuration.
 ///
-/// Required environment variables:
-/// - `AWS_ACCESS_KEY_ID`: AWS access key ID
-/// - `AWS_SECRET_ACCESS_KEY`: AWS secret access key
-/// - `AWS_REGION`: AWS region
-/// - `AWS_S3_BUCKET`: S3 bucket name
+/// This function reads the following environment variables:
+/// - `AWS_ACCESS_KEY_ID` (required)
+/// - `AWS_SECRET_ACCESS_KEY` (required)
+/// - `AWS_REGION` (required)
+/// - `AWS_S3_BUCKET` (required)
+/// - `AWS_S3_UPLOAD_PATH` (optional)
+/// - `AWS_S3_ENDPOINT` (optional, for S3-compatible services)
 ///
-/// Optional environment variables:
-/// - `AWS_S3_UPLOAD_PATH`: Upload path prefix
-/// - `AWS_S3_ENDPOINT`: Custom S3 endpoint
+/// # Returns
+///
+/// A `Result` containing the initialized plugin or an error if required
+/// environment variables are missing.
 pub async fn get_s3_storage_plugin() -> AnyhowResult<S3StoragePlugin> {
     let access_key = std::env::var("AWS_ACCESS_KEY_ID")
         .map_err(|_| anyhow::anyhow!("AWS_ACCESS_KEY_ID environment variable is required"))?;
@@ -127,10 +200,6 @@ pub async fn get_s3_storage_plugin() -> AnyhowResult<S3StoragePlugin> {
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create S3 storage plugin: {}", e))
 }
-
-
-
-
 
 
 

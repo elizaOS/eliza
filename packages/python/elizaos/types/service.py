@@ -1,9 +1,3 @@
-"""
-Service types for elizaOS.
-
-This module defines the Service base class and service-related types.
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -18,10 +12,6 @@ if TYPE_CHECKING:
 
 
 class ServiceTypeRegistry:
-    """
-    Core service type registry that can be extended by plugins.
-    """
-
     TRANSCRIPTION: ClassVar[str] = "transcription"
     VIDEO: ClassVar[str] = "video"
     BROWSER: ClassVar[str] = "browser"
@@ -45,10 +35,6 @@ ServiceTypeName = str
 
 
 class ServiceType:
-    """
-    Enumerates the recognized types of services that can be registered and used.
-    """
-
     TRANSCRIPTION = ServiceTypeRegistry.TRANSCRIPTION
     VIDEO = ServiceTypeRegistry.VIDEO
     BROWSER = ServiceTypeRegistry.BROWSER
@@ -68,65 +54,44 @@ class ServiceType:
 
 
 class Service(ABC):
-    """
-    Abstract base class for services.
-    Services provide specialized functionalities like audio transcription,
-    video processing, web browsing, etc.
-    """
-
-    # Class variable for service type - must be set by subclasses
     service_type: ClassVar[str] = ServiceType.UNKNOWN
 
     def __init__(self, runtime: IAgentRuntime | None = None) -> None:
-        """Initialize the service with an optional runtime reference."""
         self._runtime = runtime
         self._config: Metadata | None = None
 
     @property
     def runtime(self) -> IAgentRuntime:
-        """Get the runtime instance."""
         if self._runtime is None:
             raise RuntimeError("Service runtime not set")
         return self._runtime
 
     @runtime.setter
     def runtime(self, value: IAgentRuntime) -> None:
-        """Set the runtime instance."""
         self._runtime = value
 
     @property
     def config(self) -> Metadata | None:
-        """Get the service configuration."""
         return self._config
 
     @config.setter
     def config(self, value: Metadata | None) -> None:
-        """Set the service configuration."""
         self._config = value
 
     @property
     @abstractmethod
-    def capability_description(self) -> str:
-        """Get the capability description for this service."""
-        ...
+    def capability_description(self) -> str: ...
 
     @abstractmethod
-    async def stop(self) -> None:
-        """Stop the service connection."""
-        ...
+    async def stop(self) -> None: ...
 
     @classmethod
     async def start(cls, runtime: IAgentRuntime) -> Service:
-        """Start the service connection."""
         raise NotImplementedError("Subclasses must implement start()")
 
     @classmethod
     def register_send_handlers(cls, runtime: IAgentRuntime, service: Service) -> None:
-        """Optional static method to register send handlers.
-
-        Subclasses may override this to register custom send handlers.
-        """
-        _ = runtime, service  # Optional method, default is no-op
+        _ = runtime, service
 
 
 class ServiceError(BaseModel):
@@ -143,7 +108,6 @@ class ServiceError(BaseModel):
 
 
 def create_service_error(error: Exception | str | Any, code: str = "UNKNOWN_ERROR") -> ServiceError:
-    """Safely create a ServiceError from any caught error."""
     if isinstance(error, Exception):
         return ServiceError(code=code, message=str(error), cause=error)
     return ServiceError(code=code, message=str(error))

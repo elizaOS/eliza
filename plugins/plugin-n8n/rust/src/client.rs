@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Plugin Creation Client implementation.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -19,7 +18,6 @@ use crate::types::{
     CreatePluginOptions, JobError, PluginCreationJob, PluginSpecification, TestResults,
 };
 
-/// Client for creating ElizaOS plugins using AI.
 pub struct PluginCreationClient {
     config: N8nConfig,
     http_client: reqwest::Client,
@@ -30,11 +28,6 @@ pub struct PluginCreationClient {
 }
 
 impl PluginCreationClient {
-    /// Create a new plugin creation client.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the configuration is invalid.
     pub fn new(config: N8nConfig) -> Result<Self> {
         config.validate()?;
 
@@ -52,51 +45,35 @@ impl PluginCreationClient {
         })
     }
 
-    /// Get the configuration.
     pub fn config(&self) -> &N8nConfig {
         &self.config
     }
 
-    /// Get list of all created plugin names.
     pub async fn get_created_plugins(&self) -> Vec<String> {
         self.created_plugins.read().await.iter().cloned().collect()
     }
 
-    /// Check if a plugin has been created.
     pub async fn is_plugin_created(&self, name: &str) -> bool {
         self.created_plugins.read().await.contains(name)
     }
 
-    /// Get all jobs.
     pub async fn get_all_jobs(&self) -> Vec<PluginCreationJob> {
         self.jobs.read().await.values().cloned().collect()
     }
 
-    /// Get status of a specific job.
     pub async fn get_job_status(&self, job_id: &str) -> Option<PluginCreationJob> {
         self.jobs.read().await.get(job_id).cloned()
     }
 
-    /// Create a new plugin from a specification.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Plugin already exists
-    /// - Plugin name is invalid
-    /// - Rate limit exceeded
-    /// - Too many concurrent jobs
     pub async fn create_plugin(
         &self,
         specification: PluginSpecification,
         options: Option<CreatePluginOptions>,
     ) -> Result<String> {
-        // Check if plugin already exists
         if self.is_plugin_created(&specification.name).await {
             return Err(N8nError::plugin_exists(&specification.name));
         }
 
-        // Validate plugin name
         if !self.is_valid_plugin_name(&specification.name) {
             return Err(N8nError::invalid_plugin_name(&specification.name));
         }
@@ -106,7 +83,6 @@ impl PluginCreationClient {
             return Err(N8nError::RateLimit);
         }
 
-        // Check concurrent jobs
         let job_count = self.jobs.read().await.len();
         if job_count >= self.config.max_concurrent_jobs {
             return Err(N8nError::MaxConcurrentJobs {
@@ -155,7 +131,6 @@ impl PluginCreationClient {
             .await
             .insert(specification.name.clone());
 
-        // Start creation process in background
         let client = self.clone_for_background();
         let job_id_clone = job_id.clone();
         tokio::spawn(async move {
@@ -175,7 +150,6 @@ impl PluginCreationClient {
         Ok(job_id)
     }
 
-    /// Cancel a job.
     pub async fn cancel_job(&self, job_id: &str) -> bool {
         let mut jobs = self.jobs.write().await;
         if let Some(job) = jobs.get_mut(job_id) {
@@ -234,7 +208,6 @@ impl PluginCreationClient {
     }
 
     async fn run_creation_process(&self, job_id: &str, use_template: bool) -> Result<()> {
-        // Update status to running
         {
             let mut jobs = self.jobs.write().await;
             if let Some(job) = jobs.get_mut(job_id) {
@@ -249,7 +222,6 @@ impl PluginCreationClient {
         let mut success = false;
 
         for iteration in 1..=max_iterations {
-            // Update iteration info
             {
                 let mut jobs = self.jobs.write().await;
                 if let Some(job) = jobs.get_mut(job_id) {
@@ -290,14 +262,12 @@ impl PluginCreationClient {
     }
 
     async fn run_single_iteration(&self, job_id: &str) -> Result<bool> {
-        // Phase 1: Generate code
         self.update_phase(job_id, "generating").await;
         if let Err(e) = self.generate_plugin_code(job_id).await {
             self.add_error(job_id, "generating", &e.to_string()).await;
             return Ok(false);
         }
 
-        // Phase 2: Build
         self.update_phase(job_id, "building").await;
         if let Err(e) = self.build_plugin(job_id).await {
             self.add_error(job_id, "building", &e.to_string()).await;
@@ -311,14 +281,12 @@ impl PluginCreationClient {
             return Ok(false);
         }
 
-        // Phase 4: Test
         self.update_phase(job_id, "testing").await;
         if let Err(e) = self.test_plugin(job_id).await {
             self.add_error(job_id, "testing", &e.to_string()).await;
             return Ok(false);
         }
 
-        // Phase 5: Validate
         self.update_phase(job_id, "validating").await;
         if let Err(e) = self.validate_plugin(job_id).await {
             self.add_error(job_id, "validating", &e.to_string()).await;
@@ -356,12 +324,10 @@ impl PluginCreationClient {
                 .ok_or_else(|| N8nError::job_not_found(job_id))?
         };
 
-        // Create directories
         tokio::fs::create_dir_all(&output_path).await?;
         tokio::fs::create_dir_all(output_path.join("src")).await?;
         tokio::fs::create_dir_all(output_path.join("src/__tests__")).await?;
 
-        // Get specification
         let (name, description, version, deps) = {
             let jobs = self.jobs.read().await;
             let job = jobs.get(job_id).ok_or_else(|| N8nError::job_not_found(job_id))?;
@@ -382,7 +348,6 @@ impl PluginCreationClient {
             }
         }
 
-        // Write package.json
         let mut package_json = serde_json::json!({
             "name": name,
             "version": version,
@@ -403,7 +368,6 @@ impl PluginCreationClient {
             }
         });
         
-        // Add dependencies to the JSON object
         if let Some(obj) = package_json.as_object_mut() {
             obj.insert("dependencies".to_string(), serde_json::Value::Object(deps_map));
         }
@@ -414,7 +378,6 @@ impl PluginCreationClient {
         )
         .await?;
 
-        // Write tsconfig.json
         let tsconfig = serde_json::json!({
             "compilerOptions": {
                 "target": "ES2022",
@@ -460,7 +423,6 @@ impl PluginCreationClient {
             self.generate_iteration_prompt(&spec, &prev_errors)
         };
 
-        // Call Anthropic API
         let response = self
             .http_client
             .post("https://api.anthropic.com/v1/messages")
@@ -524,12 +486,12 @@ impl PluginCreationClient {
         }
 
         prompt.push_str(
-            "Create a complete ElizaOS plugin implementation following these requirements:\n\n\
+            "Create an ElizaOS plugin implementation:\n\n\
              1. Create src/index.ts that exports the plugin object\n\
              2. Implement all specified components\n\
              3. Follow ElizaOS plugin structure and conventions\n\
              4. Include proper TypeScript types\n\
-             5. Add comprehensive error handling\n\
+             5. Add error handling\n\
              6. Create unit tests\n\
              7. Ensure all imports use @elizaos/core\n\
              8. No stubs or incomplete implementations\n\n\
@@ -618,7 +580,6 @@ impl PluginCreationClient {
             .run_command(job_id, &output_path, "npm", &["test"])
             .await;
 
-        // Parse test results
         if let Ok(output) = &result {
             let test_results = self.parse_test_results(output);
             let mut jobs = self.jobs.write().await;
@@ -634,8 +595,7 @@ impl PluginCreationClient {
     }
 
     async fn validate_plugin(&self, _job_id: &str) -> Result<()> {
-        // Skip AI validation for now - would require another API call
-        warn!("Skipping AI validation");
+        warn!("Skipping validation");
         Ok(())
     }
 

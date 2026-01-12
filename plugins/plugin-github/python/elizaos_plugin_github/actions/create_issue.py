@@ -1,21 +1,15 @@
-"""Create Issue Action."""
-
 from typing import Protocol
 
 from elizaos_plugin_github.types import CreateIssueParams
 
 
 class ActionContext(Protocol):
-    """Action context protocol."""
-
     message: dict[str, object]
     owner: str
     repo: str
 
 
 class ActionResult:
-    """Action result."""
-
     def __init__(
         self,
         success: bool,
@@ -36,8 +30,6 @@ class ActionResult:
 
 
 class CreateIssueAction:
-    """Action to create a new issue in a GitHub repository."""
-
     @property
     def name(self) -> str:
         return "CREATE_GITHUB_ISSUE"
@@ -71,7 +63,6 @@ class CreateIssueAction:
         context: ActionContext,
         service: object,
     ) -> ActionResult:
-        """Execute the action."""
         from elizaos_plugin_github.service import GitHubService
 
         if not isinstance(service, GitHubService):
@@ -101,8 +92,3 @@ class CreateIssueAction:
             )
         except Exception as e:
             return ActionResult.error_result(f"Failed to create issue: {e}")
-
-
-
-
-

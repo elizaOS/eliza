@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! JSON file-based storage implementation for Rust.
 
 use anyhow::{Context, Result};
 use serde::{de::DeserializeOwned, Serialize};
@@ -8,15 +7,12 @@ use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
-/// JSON file-based storage.
-/// Each collection is stored as a directory with JSON files for each item.
 pub struct JsonStorage {
     data_dir: PathBuf,
     ready: RwLock<bool>,
 }
 
 impl JsonStorage {
-    /// Create a new JsonStorage instance.
     pub fn new<P: AsRef<Path>>(data_dir: P) -> Result<Self> {
         Ok(Self {
             data_dir: data_dir.as_ref().to_path_buf(),
@@ -24,7 +20,6 @@ impl JsonStorage {
         })
     }
 
-    /// Initialize the storage, creating the data directory if needed.
     pub async fn init(&self) -> Result<()> {
         fs::create_dir_all(&self.data_dir)
             .context("Failed to create data directory")?;
@@ -32,13 +27,11 @@ impl JsonStorage {
         Ok(())
     }
 
-    /// Close the storage.
     pub async fn close(&self) -> Result<()> {
         *self.ready.write().unwrap() = false;
         Ok(())
     }
 
-    /// Check if storage is ready.
     pub fn is_ready(&self) -> bool {
         *self.ready.read().unwrap()
     }
@@ -48,7 +41,6 @@ impl JsonStorage {
     }
 
     fn file_path(&self, collection: &str, id: &str) -> PathBuf {
-        // Sanitize id to be filesystem-safe
         let safe_id: String = id
             .chars()
             .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
@@ -56,7 +48,6 @@ impl JsonStorage {
         self.collection_dir(collection).join(format!("{}.json", safe_id))
     }
 
-    /// Get an item by collection and id.
     pub fn get<T: DeserializeOwned>(&self, collection: &str, id: &str) -> Result<Option<T>> {
         let path = self.file_path(collection, id);
         if !path.exists() {
@@ -69,7 +60,6 @@ impl JsonStorage {
         Ok(Some(item))
     }
 
-    /// Get all items in a collection.
     pub fn get_all<T: DeserializeOwned>(&self, collection: &str) -> Result<Vec<T>> {
         let dir = self.collection_dir(collection);
         if !dir.exists() {
@@ -92,7 +82,6 @@ impl JsonStorage {
         Ok(items)
     }
 
-    /// Get items matching a predicate.
     pub fn get_where<T, F>(&self, collection: &str, predicate: F) -> Result<Vec<T>>
     where
         T: DeserializeOwned,
@@ -102,7 +91,6 @@ impl JsonStorage {
         Ok(all.into_iter().filter(predicate).collect())
     }
 
-    /// Set an item in a collection.
     pub fn set<T: Serialize>(&self, collection: &str, id: &str, data: &T) -> Result<()> {
         let dir = self.collection_dir(collection);
         fs::create_dir_all(&dir).context("Failed to create collection directory")?;
@@ -114,7 +102,6 @@ impl JsonStorage {
         Ok(())
     }
 
-    /// Delete an item from a collection.
     pub fn delete(&self, collection: &str, id: &str) -> Result<bool> {
         let path = self.file_path(collection, id);
         if !path.exists() {
@@ -124,7 +111,6 @@ impl JsonStorage {
         Ok(true)
     }
 
-    /// Delete multiple items from a collection.
     pub fn delete_many(&self, collection: &str, ids: &[&str]) -> Result<()> {
         for id in ids {
             self.delete(collection, id)?;
@@ -132,7 +118,6 @@ impl JsonStorage {
         Ok(())
     }
 
-    /// Count items in a collection.
     pub fn count(&self, collection: &str) -> Result<usize> {
         let dir = self.collection_dir(collection);
         if !dir.exists() {
@@ -146,7 +131,6 @@ impl JsonStorage {
         Ok(count)
     }
 
-    /// Save raw data to a file.
     pub fn save_raw(&self, filename: &str, data: &str) -> Result<()> {
         let path = self.data_dir.join(filename);
         if let Some(parent) = path.parent() {
@@ -156,7 +140,6 @@ impl JsonStorage {
         Ok(())
     }
 
-    /// Load raw data from a file.
     pub fn load_raw(&self, filename: &str) -> Result<Option<String>> {
         let path = self.data_dir.join(filename);
         if !path.exists() {
@@ -192,18 +175,14 @@ mod tests {
             value: 42,
         };
 
-        // Set
         storage.set("items", &item.id, &item).unwrap();
 
-        // Get
         let retrieved: Option<TestItem> = storage.get("items", "test-1").unwrap();
         assert_eq!(retrieved, Some(item.clone()));
 
-        // Get all
         let all: Vec<TestItem> = storage.get_all("items").unwrap();
         assert_eq!(all.len(), 1);
 
-        // Delete
         let deleted = storage.delete("items", "test-1").unwrap();
         assert!(deleted);
 

@@ -9,7 +9,7 @@ import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { AgentRuntime } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createTestDatabaseAdapter } from "../../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
+import { createTestDatabaseAdapter } from "../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
 
 // Check if we have an API key before running tests
 const API_KEY = process.env.ANTHROPIC_API_KEY;

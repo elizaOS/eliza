@@ -1,9 +1,3 @@
-"""
-Component types for elizaOS.
-
-This module defines types for Actions, Providers, Evaluators, and related components.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -29,8 +23,6 @@ class ActionExample(BaseModel):
 
 
 class ActionResult(BaseModel):
-    """Result returned by an action after execution."""
-
     text: str | None = Field(default=None, description="Optional text description of the result")
     values: dict[str, Any] | None = Field(
         default=None, description="Values to merge into the state"
@@ -54,17 +46,6 @@ class ActionContext(BaseModel):
     model_config = {"populate_by_name": True}
 
     def get_previous_result(self, action_name: str) -> ActionResult | None:
-        """Get a specific previous result by action name.
-
-        Searches through previous_results for a result where the action name
-        matches the provided action_name. Action names are stored in result.data.actionName.
-
-        Args:
-            action_name: The name of the action to find results for
-
-        Returns:
-            The first matching ActionResult, or None if no match is found
-        """
         for result in self.previous_results:
             if result.data and isinstance(result.data, dict):
                 stored_action_name = result.data.get("actionName")
@@ -83,8 +64,6 @@ class ActionPlanStepInfo(BaseModel):
 
 
 class ActionPlanInfo(BaseModel):
-    """Multi-step action plan information."""
-
     total_steps: int = Field(..., alias="totalSteps", description="Total number of steps")
     current_step: int = Field(
         ..., alias="currentStep", description="Current step being executed (1-based)"
@@ -150,8 +129,6 @@ Validator = Callable[
 
 
 class ActionParameterSchema(BaseModel):
-    """JSON Schema type for action parameter validation."""
-
     type: str = Field(..., description="JSON Schema type (string, number, boolean, object, array)")
     description: str | None = Field(default=None, description="Description for LLM guidance")
     default: str | int | float | bool | None = Field(
@@ -191,8 +168,6 @@ ActionParameters = dict[str, str | int | float | bool | None | dict[str, Any] | 
 
 
 class Action(BaseModel):
-    """Represents an action the agent can perform."""
-
     name: str = Field(..., description="Action name")
     description: str = Field(..., description="Detailed description")
     similes: list[str] | None = Field(default=None, description="Similar action descriptions")
@@ -237,8 +212,6 @@ class Evaluator(BaseModel):
 
 
 class ProviderResult(BaseModel):
-    """Result returned by a provider."""
-
     text: str | None = Field(
         default=None, description="Human-readable text for LLM prompt inclusion"
     )
@@ -260,8 +233,6 @@ ProviderGet = Callable[
 
 
 class Provider(BaseModel):
-    """Provider for external data/services."""
-
     name: str = Field(..., description="Provider name")
     description: str | None = Field(default=None, description="Description of the provider")
     dynamic: bool | None = Field(default=None, description="Whether the provider is dynamic")

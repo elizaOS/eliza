@@ -1,9 +1,3 @@
-/**
- * Plugin Creation Actions
- *
- * Actions for creating, monitoring, and cancelling plugin creation jobs.
- */
-
 import type {
   Action,
   ActionResult,
@@ -17,7 +11,6 @@ import type { PluginCreationJob, PluginSpecification } from "../types";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 import { isValidJsonSpecification, validatePrompt } from "../utils/validation";
 
-// Zod schema for plugin specification validation
 const PluginSpecificationSchema = z.object({
   name: z.string().regex(/^@?[a-zA-Z0-9-_]+\/[a-zA-Z0-9-_]+$/, "Invalid plugin name format"),
   description: z.string().min(10, "Description must be at least 10 characters"),
@@ -31,7 +24,7 @@ const PluginSpecificationSchema = z.object({
       z.object({
         name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Action name must be alphanumeric"),
         description: z.string(),
-        parameters: z.record(z.string(), z.unknown()).optional(),
+        parameters: z.record(z.string(), z.string()).optional(),
       })
     )
     .optional(),
@@ -40,7 +33,7 @@ const PluginSpecificationSchema = z.object({
       z.object({
         name: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, "Provider name must be alphanumeric"),
         description: z.string(),
-        dataStructure: z.record(z.string(), z.unknown()).optional(),
+        dataStructure: z.record(z.string(), z.string()).optional(),
       })
     )
     .optional(),
@@ -75,9 +68,6 @@ const PluginSpecificationSchema = z.object({
     .optional(),
 });
 
-/**
- * Action to create a plugin from a JSON specification.
- */
 export const createPluginAction: Action = {
   name: "createPlugin",
   description: "Create a new plugin from a specification using AI assistance",
@@ -141,7 +131,7 @@ export const createPluginAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: { [key: string]: string },
     _callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -198,9 +188,6 @@ export const createPluginAction: Action = {
   },
 };
 
-/**
- * Action to check the status of a plugin creation job.
- */
 export const checkPluginCreationStatusAction: Action = {
   name: "checkPluginCreationStatus",
   description: "Check the status of a plugin creation job",
@@ -239,7 +226,7 @@ export const checkPluginCreationStatusAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: { [key: string]: string },
     _callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -289,33 +276,33 @@ export const checkPluginCreationStatusAction: Action = {
         };
       }
 
-      let response = `📦 Plugin Creation Status\n`;
+      let response = `Plugin Creation Status\n`;
       response += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      response += `🆔 Job ID: ${targetJob.id}\n`;
-      response += `📌 Plugin: ${targetJob.specification.name}\n`;
-      response += `📊 Status: ${targetJob.status.toUpperCase()}\n`;
-      response += `🔄 Phase: ${targetJob.currentPhase}\n`;
-      response += `📈 Progress: ${Math.round(targetJob.progress)}%\n`;
-      response += `⏱️ Started: ${targetJob.startedAt.toLocaleString()}\n`;
+      response += `Job ID: ${targetJob.id}\n`;
+      response += `Plugin: ${targetJob.specification.name}\n`;
+      response += `Status: ${targetJob.status.toUpperCase()}\n`;
+      response += `Phase: ${targetJob.currentPhase}\n`;
+      response += `Progress: ${Math.round(targetJob.progress)}%\n`;
+      response += `Started: ${targetJob.startedAt.toLocaleString()}\n`;
 
       if (targetJob.completedAt) {
-        response += `✅ Completed: ${targetJob.completedAt.toLocaleString()}\n`;
+        response += `Completed: ${targetJob.completedAt.toLocaleString()}\n`;
         const duration = targetJob.completedAt.getTime() - targetJob.startedAt.getTime();
-        response += `⏳ Duration: ${Math.round(duration / 1000)}s\n`;
+        response += `Duration: ${Math.round(duration / 1000)}s\n`;
       }
 
       if (targetJob.logs.length > 0) {
-        response += `\n📝 Recent Activity:\n`;
+        response += `\nRecent Activity:\n`;
         targetJob.logs.slice(-5).forEach((log) => {
           response += `  ${log}\n`;
         });
       }
 
       if (targetJob.status === "completed") {
-        response += `\n✅ Plugin created successfully!\n`;
-        response += `📂 Location: ${targetJob.outputPath}\n`;
+        response += `\nPlugin created successfully!\n`;
+        response += `Location: ${targetJob.outputPath}\n`;
       } else if (targetJob.status === "failed") {
-        response += `\n❌ Plugin creation failed\n`;
+        response += `\nPlugin creation failed\n`;
         if (targetJob.error) {
           response += `Error: ${targetJob.error}\n`;
         }
@@ -340,9 +327,6 @@ export const checkPluginCreationStatusAction: Action = {
   },
 };
 
-/**
- * Action to cancel a plugin creation job.
- */
 export const cancelPluginCreationAction: Action = {
   name: "cancelPluginCreation",
   description: "Cancel the current plugin creation job",
@@ -377,7 +361,7 @@ export const cancelPluginCreationAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: { [key: string]: string },
     _callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -418,9 +402,6 @@ export const cancelPluginCreationAction: Action = {
   },
 };
 
-/**
- * Action to create a plugin from natural language description.
- */
 export const createPluginFromDescriptionAction: Action = {
   name: "createPluginFromDescription",
   description: "Create a plugin from a natural language description",
@@ -459,7 +440,7 @@ export const createPluginFromDescriptionAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: { [key: string]: unknown },
+    _options?: { [key: string]: string },
     _callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -497,10 +478,10 @@ export const createPluginFromDescriptionAction: Action = {
       return {
         success: true,
         text:
-          `I'm creating a plugin based on your description!\n\n` +
-          `📦 Plugin: ${specification.name}\n` +
-          `📝 Description: ${specification.description}\n` +
-          `🆔 Job ID: ${jobId}\n\n` +
+          `Creating plugin based on your description!\n\n` +
+          `Plugin: ${specification.name}\n` +
+          `Description: ${specification.description}\n` +
+          `Job ID: ${jobId}\n\n` +
           `Components to be created:\n` +
           `${specification.actions?.length ? `- ${specification.actions.length} actions\n` : ""}` +
           `${specification.providers?.length ? `- ${specification.providers.length} providers\n` : ""}` +
@@ -517,9 +498,6 @@ export const createPluginFromDescriptionAction: Action = {
   },
 };
 
-/**
- * Generate plugin specification from natural language description.
- */
 function generatePluginSpecification(description: string): PluginSpecification {
   const lowerDesc = description.toLowerCase();
 

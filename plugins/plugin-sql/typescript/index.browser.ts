@@ -9,37 +9,23 @@ import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
 import * as schema from "./schema";
 
-/**
- * Browser-safe entrypoint for @elizaos/plugin-sql
- *
- * This entrypoint only uses the PGlite (WASM) path and avoids any Node/Postgres-only
- * code or Node builtins, so it can be safely bundled into browser/client environments.
- */
-
-// Global singletons (browser-safe)
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
 }
 
-// Type assertion needed because globalThis doesn't include symbol keys in its type definition
 const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
-/**
- * Create a PGlite adapter for the browser (in-memory by default).
- * No Postgres fallback in browser builds.
- */
 export function createDatabaseAdapter(
   _config: { dataDir?: string },
   agentId: UUID
 ): IDatabaseAdapter {
   if (!globalSingletons.pgLiteClientManager) {
-    // Use in-memory PGlite by default in the browser.
     globalSingletons.pgLiteClientManager = new PGliteClientManager({});
   }
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
@@ -53,9 +39,7 @@ export const plugin: Plugin = {
   init: async (_config, runtime: IAgentRuntime) => {
     logger.info({ src: "plugin:sql" }, "plugin-sql (browser) init starting");
 
-    // Check if a database adapter is already registered
     try {
-      // Try to check if the runtime is ready (has an adapter)
       const isReady = await runtime.isReady();
       if (isReady) {
         logger.info(
@@ -64,11 +48,8 @@ export const plugin: Plugin = {
         );
         return;
       }
-    } catch (_error) {
-      // No adapter exists or isReady failed, continue with creation
-    }
+    } catch (_error) {}
 
-    // In browser builds, always use PGlite (in-memory unless configured elsewhere in runtime)
     const dbAdapter = createDatabaseAdapter({}, runtime.agentId);
     runtime.registerDatabaseAdapter(dbAdapter);
     logger.info({ src: "plugin:sql" }, "Browser database adapter (PGlite) created and registered");

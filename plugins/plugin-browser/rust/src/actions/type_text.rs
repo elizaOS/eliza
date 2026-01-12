@@ -1,5 +1,3 @@
-//! Browser Type Action
-
 use crate::services::BrowserService;
 use crate::types::ActionResult;
 use crate::utils::{action_error, parse_type_action, session_error};
@@ -7,12 +5,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Action metadata
 pub const TYPE_ACTION_NAME: &str = "BROWSER_TYPE";
 pub const TYPE_SIMILES: &[&str] = &["TYPE_TEXT", "INPUT", "ENTER_TEXT"];
 pub const TYPE_DESCRIPTION: &str = "Type text into an input field on the webpage";
 
-/// Type text into an input field
 pub async fn browser_type(
     service: Arc<BrowserService>,
     message: &str,
@@ -57,10 +53,5 @@ pub async fn browser_type(
         }
     }
 }
-
-
-
-
-
 
 

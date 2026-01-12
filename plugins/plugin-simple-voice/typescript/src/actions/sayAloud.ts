@@ -10,13 +10,9 @@ import { logger } from "@elizaos/core";
 import type { SamTTSService } from "../services/SamTTSService";
 import { type SamTTSOptions, SPEECH_TRIGGERS, VOCALIZATION_PATTERNS } from "../types";
 
-/**
- * Extract text to speak from user message
- */
 function extractTextToSpeak(messageText: string): string {
   const text = messageText.toLowerCase().trim();
 
-  // Extract quoted text
   const quotedPatterns = [
     /say ["']([^"']+)["']/,
     /speak ["']([^"']+)["']/,
@@ -30,7 +26,6 @@ function extractTextToSpeak(messageText: string): string {
     if (match) return match[1];
   }
 
-  // Extract text after keywords
   const keywordPatterns = [
     /(?:say|speak|read)\s+(?:aloud\s+)?(?:this\s+)?:?\s*(.+)$/,
     /(?:can you|please)\s+(?:say|speak|read)\s+(?:aloud\s+)?(.+)$/,
@@ -52,14 +47,10 @@ function extractTextToSpeak(messageText: string): string {
   return text;
 }
 
-/**
- * Extract voice options from user message
- */
 function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
   const text = messageText.toLowerCase();
   const options: Partial<SamTTSOptions> = {};
 
-  // Pitch
   if (text.includes("higher voice") || text.includes("high pitch") || text.includes("squeaky")) {
     options.pitch = 100;
   } else if (
@@ -70,7 +61,6 @@ function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
     options.pitch = 30;
   }
 
-  // Speed
   if (text.includes("faster") || text.includes("quickly") || text.includes("speed up")) {
     options.speed = 120;
   } else if (text.includes("slower") || text.includes("slowly") || text.includes("slow down")) {
@@ -89,11 +79,6 @@ function extractVoiceOptions(messageText: string): Partial<SamTTSOptions> {
   return options;
 }
 
-/**
- * SAY_ALOUD Action
- *
- * Speaks text aloud using the SAM speech synthesizer.
- */
 export const sayAloudAction: Action = {
   name: "SAY_ALOUD",
   description: "Speak text aloud using SAM retro speech synthesizer",

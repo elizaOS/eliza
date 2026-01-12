@@ -18,14 +18,7 @@ from elizaos_plugin_mcp.types import (
 
 
 class McpClient:
-    """Client for communicating with MCP servers."""
-
     def __init__(self, transport: Transport) -> None:
-        """Initialize the MCP client.
-
-        Args:
-            transport: The transport to use for communication.
-        """
         self._transport = transport
         self._request_id = 0
         self._status = ConnectionStatus.DISCONNECTED
@@ -33,31 +26,20 @@ class McpClient:
 
     @property
     def status(self) -> ConnectionStatus:
-        """Get the current connection status."""
         return self._status
 
     @property
     def server_info(self) -> dict[str, Any]:
-        """Get the server info received during initialization."""
         return self._server_info
 
     def _next_id(self) -> int:
-        """Generate the next request ID."""
         self._request_id += 1
         return self._request_id
 
     async def connect(self) -> None:
-        """Connect to the MCP server and perform initialization.
-
-        Raises:
-            McpError: If connection or initialization fails.
-        """
         self._status = ConnectionStatus.CONNECTING
 
-        # Connect the transport
         await self._transport.connect()
-
-        # Send initialize request
         init_request = {
             "jsonrpc": "2.0",
             "id": self._next_id(),
@@ -85,7 +67,6 @@ class McpClient:
 
         self._server_info = response.get("result", {})
 
-        # Send initialized notification
         initialized_notification = {
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
@@ -95,19 +76,10 @@ class McpClient:
         self._status = ConnectionStatus.CONNECTED
 
     async def close(self) -> None:
-        """Close the connection to the MCP server."""
         await self._transport.close()
         self._status = ConnectionStatus.DISCONNECTED
 
     async def list_tools(self) -> list[McpTool]:
-        """List all available tools from the server.
-
-        Returns:
-            List of available tools.
-
-        Raises:
-            McpError: If the request fails.
-        """
         if self._status != ConnectionStatus.CONNECTED:
             raise McpError("Client not connected", "NOT_CONNECTED")
 
@@ -137,18 +109,6 @@ class McpClient:
         name: str,
         arguments: dict[str, Any] | None = None,
     ) -> McpToolResult:
-        """Call a tool on the MCP server.
-
-        Args:
-            name: The name of the tool to call.
-            arguments: Arguments to pass to the tool.
-
-        Returns:
-            The result of the tool call.
-
-        Raises:
-            McpError: If the tool call fails.
-        """
         if self._status != ConnectionStatus.CONNECTED:
             raise McpError("Client not connected", "NOT_CONNECTED")
 
@@ -179,14 +139,6 @@ class McpClient:
         return McpToolResult.model_validate(result)
 
     async def list_resources(self) -> list[McpResource]:
-        """List all available resources from the server.
-
-        Returns:
-            List of available resources.
-
-        Raises:
-            McpError: If the request fails.
-        """
         if self._status != ConnectionStatus.CONNECTED:
             raise McpError("Client not connected", "NOT_CONNECTED")
 
@@ -212,17 +164,6 @@ class McpClient:
         return [McpResource.model_validate(resource) for resource in resources_data]
 
     async def read_resource(self, uri: str) -> list[McpResourceContent]:
-        """Read a resource from the MCP server.
-
-        Args:
-            uri: The URI of the resource to read.
-
-        Returns:
-            The content of the resource.
-
-        Raises:
-            McpError: If reading the resource fails.
-        """
         if self._status != ConnectionStatus.CONNECTED:
             raise McpError("Client not connected", "NOT_CONNECTED")
 
@@ -254,14 +195,6 @@ class McpClient:
         return [McpResourceContent.model_validate(content) for content in contents_data]
 
     async def list_resource_templates(self) -> list[McpResourceTemplate]:
-        """List all available resource templates from the server.
-
-        Returns:
-            List of available resource templates.
-
-        Raises:
-            McpError: If the request fails.
-        """
         if self._status != ConnectionStatus.CONNECTED:
             raise McpError("Client not connected", "NOT_CONNECTED")
 
@@ -287,7 +220,6 @@ class McpClient:
         return [McpResourceTemplate.model_validate(template) for template in templates_data]
 
     async def __aenter__(self) -> McpClient:
-        """Async context manager entry."""
         await self.connect()
         return self
 
@@ -297,5 +229,4 @@ class McpClient:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        """Async context manager exit."""
         await self.close()

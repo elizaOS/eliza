@@ -1,7 +1,3 @@
-/**
- * Object generation model handlers for OpenRouter.
- */
-
 import { type IAgentRuntime, logger, ModelType, type ObjectGenerationParams } from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
 import type { JSONSchema7 } from "json-schema";
@@ -11,9 +7,6 @@ import { getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { handleObjectGenerationError } from "../utils/helpers";
 
-/**
- * Common object generation logic for both small and large models.
- */
 async function generateObjectWithModel(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.OBJECT_SMALL | typeof ModelType.OBJECT_LARGE,
@@ -50,9 +43,6 @@ async function generateObjectWithModel(
   }
 }
 
-/**
- * OBJECT_SMALL model handler.
- */
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams
@@ -60,9 +50,6 @@ export async function handleObjectSmall(
   return generateObjectWithModel(runtime, ModelType.OBJECT_SMALL, params);
 }
 
-/**
- * OBJECT_LARGE model handler.
- */
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams

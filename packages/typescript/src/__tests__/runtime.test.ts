@@ -986,10 +986,10 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         const characterWithSettings: Character = {
           ...mockCharacter,
           settings: {
-            MODEL_MAX_TOKEN: 4096,
-            MODEL_TEMPERATURE: 0.5,
-            MODEL_FREQ_PENALTY: 0.8,
-            MODEL_PRESENCE_PENALTY: 0.9,
+            DEFAULT_MAX_TOKENS: "4096",
+            DEFAULT_TEMPERATURE: "0.5",
+            DEFAULT_FREQUENCY_PENALTY: "0.8",
+            DEFAULT_PRESENCE_PENALTY: "0.9",
             // Test invalid values that should be ignored
             MODEL_INVALID: "not-a-number",
           },

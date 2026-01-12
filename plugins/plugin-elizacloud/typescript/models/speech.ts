@@ -10,9 +10,6 @@ import {
 } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
 
-/**
- * function for text-to-speech
- */
 async function fetchTextToSpeech(
   runtime: IAgentRuntime,
   options: OpenAITextToSpeechParams,
@@ -41,7 +38,6 @@ async function fetchTextToSpeech(
       headers: {
         ...getAuthHeader(runtime),
         "Content-Type": "application/json",
-        // Hint desired audio format in Accept when possible
         ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
       },
       body: JSON.stringify({
@@ -58,19 +54,16 @@ async function fetchTextToSpeech(
       throw new Error(`ElizaOS Cloud TTS error ${res.status}: ${err}`);
     }
 
-    // Ensure response body exists
     if (!res.body) {
       throw new Error("ElizaOS Cloud TTS response body is null");
     }
 
-    // In Node.js, convert Web ReadableStream to Node.js Readable
-    // In browser, return the Web ReadableStream directly
     if (!isBrowser()) {
       return await webStreamToNodeStream(res.body);
     }
 
     return res.body;
-  } catch (err: unknown) {
+  } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
       `Failed to fetch speech from ElizaOS Cloud TTS: ${message}`,
@@ -78,14 +71,10 @@ async function fetchTextToSpeech(
   }
 }
 
-/**
- * TEXT_TO_SPEECH model handler
- */
 export async function handleTextToSpeech(
   runtime: IAgentRuntime,
   input: string | OpenAITextToSpeechParams,
 ): Promise<ReadableStream<Uint8Array> | Readable> {
-  // Normalize input into options with per-call overrides
   const options: OpenAITextToSpeechParams =
     typeof input === "string"
       ? { text: input }
@@ -102,7 +91,7 @@ export async function handleTextToSpeech(
   try {
     const speechStream = await fetchTextToSpeech(runtime, options);
     return speechStream;
-  } catch (error: unknown) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error in TEXT_TO_SPEECH: ${message}`);
     throw error;

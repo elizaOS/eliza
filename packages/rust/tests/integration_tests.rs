@@ -1078,7 +1078,10 @@ mod settings_tests {
             )
             .await;
         let value = runtime.get_setting("API_KEY").await;
-        assert_eq!(value, Some(SettingValue::String("test-key-123".to_string())));
+        assert_eq!(
+            value,
+            Some(SettingValue::String("test-key-123".to_string()))
+        );
 
         // Get non-existent setting
         let missing = runtime.get_setting("MISSING_KEY").await;
@@ -1107,7 +1110,10 @@ mod settings_tests {
 
         // Verify preset setting exists
         let value = runtime.get_setting("PRESET_KEY").await;
-        assert_eq!(value, Some(SettingValue::String("preset_value".to_string())));
+        assert_eq!(
+            value,
+            Some(SettingValue::String("preset_value".to_string()))
+        );
     }
 
     /// Test LLM mode defaults to DEFAULT
@@ -1166,11 +1172,7 @@ mod settings_tests {
 
         // Set LLM_MODE via settings
         runtime
-            .set_setting(
-                "LLM_MODE",
-                SettingValue::String("SMALL".to_string()),
-                false,
-            )
+            .set_setting("LLM_MODE", SettingValue::String("SMALL".to_string()), false)
             .await;
 
         let mode = runtime.get_llm_mode().await;
@@ -1190,11 +1192,7 @@ mod settings_tests {
 
         // Set a different LLM_MODE via settings
         runtime
-            .set_setting(
-                "LLM_MODE",
-                SettingValue::String("SMALL".to_string()),
-                false,
-            )
+            .set_setting("LLM_MODE", SettingValue::String("SMALL".to_string()), false)
             .await;
 
         // Constructor option should take precedence

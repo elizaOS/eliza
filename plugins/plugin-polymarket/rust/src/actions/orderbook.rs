@@ -113,6 +113,37 @@ pub fn calculate_order_book_summary(
     (best_bid, best_ask, spread, bid_depth, ask_depth)
 }
 
+/// Get order book summary for a token
+///
+/// # Arguments
+///
+/// * `client` - The CLOB client
+/// * `token_id` - The token ID
+///
+/// # Returns
+///
+/// Tuple of (best_bid, best_ask, spread, bid_depth, ask_depth)
+///
+/// # Errors
+///
+/// Returns an error if the API request fails
+pub async fn get_order_book_summary(
+    client: &ClobClient,
+    token_id: &str,
+) -> Result<(Option<String>, Option<String>, Option<f64>, usize, usize)> {
+    let order_book = client.get_order_book(token_id).await?;
+    let (best_bid, best_ask, spread, bid_depth, ask_depth) =
+        calculate_order_book_summary(&order_book);
+
+    Ok((
+        best_bid.map(String::from),
+        best_ask.map(String::from),
+        spread,
+        bid_depth,
+        ask_depth,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

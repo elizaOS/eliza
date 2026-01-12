@@ -1,34 +1,20 @@
 #![allow(missing_docs)]
-//! Knowledge Plugin for elizaOS.
 
 use crate::service::KnowledgeService;
 use crate::types::{self, *};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Knowledge Plugin - RAG capabilities for elizaOS.
-///
-/// Provides:
-/// - Document processing and chunking
-/// - Embedding generation
-/// - Semantic search
-/// - Knowledge retrieval
 pub struct KnowledgePlugin {
     service: Arc<RwLock<KnowledgeService>>,
     initialized: bool,
 }
 
 impl KnowledgePlugin {
-    /// Plugin name.
     pub const NAME: &'static str = "knowledge";
-
-    /// Plugin description.
     pub const DESCRIPTION: &'static str = "Provides knowledge management and RAG capabilities";
-
-    /// Plugin version.
     pub const VERSION: &'static str = crate::VERSION;
 
-    /// Create a new Knowledge plugin with the given configuration.
     pub fn new(config: KnowledgeConfig) -> Self {
         Self {
             service: Arc::new(RwLock::new(KnowledgeService::new(config))),
@@ -36,17 +22,14 @@ impl KnowledgePlugin {
         }
     }
 
-    /// Create a new Knowledge plugin with default configuration.
     pub fn default() -> Self {
         Self::new(KnowledgeConfig::default())
     }
 
-    /// Get a reference to the knowledge service.
     pub fn service(&self) -> Arc<RwLock<KnowledgeService>> {
         Arc::clone(&self.service)
     }
 
-    /// Initialize the plugin.
     pub async fn init(&mut self) -> types::Result<()> {
         if self.initialized {
             return Ok(());
@@ -66,7 +49,6 @@ impl KnowledgePlugin {
         Ok(())
     }
 
-    /// Load documents from the configured knowledge path.
     async fn load_startup_documents(&self) -> types::Result<()> {
         use std::fs;
         use std::path::Path;
@@ -87,14 +69,12 @@ impl KnowledgePlugin {
             return Ok(());
         }
 
-        // Supported file extensions
         let extensions: &[(&str, &str)] = &[
             ("txt", "text/plain"),
             ("md", "text/markdown"),
             ("json", "application/json"),
         ];
 
-        // Process files
         let entries = fs::read_dir(path)?;
 
         for entry in entries.flatten() {
@@ -160,13 +140,11 @@ impl KnowledgePlugin {
         Ok(())
     }
 
-    /// Add knowledge to the system.
     pub async fn add_knowledge(&self, options: AddKnowledgeOptions) -> types::Result<ProcessingResult> {
         let mut service = self.service.write().await;
         service.add_knowledge(options).await
     }
 
-    /// Search for relevant knowledge.
     pub async fn search(
         &self,
         query: &str,
@@ -177,7 +155,6 @@ impl KnowledgePlugin {
         service.search(query, count, threshold).await
     }
 
-    /// Get knowledge items relevant to a query.
     pub async fn get_knowledge(&self, query: &str, count: usize) -> types::Result<Vec<KnowledgeItem>> {
         let service = self.service.read().await;
         service.get_knowledge(query, count).await
@@ -189,7 +166,6 @@ impl KnowledgePlugin {
         service.delete_knowledge(document_id).await
     }
 
-    /// Get all documents in the knowledge base.
     pub async fn get_documents(&self) -> Vec<KnowledgeDocument> {
         let service = self.service.read().await;
         service.get_documents().into_iter().cloned().collect()
@@ -201,7 +177,6 @@ impl KnowledgePlugin {
         service.get_document(document_id).cloned()
     }
 
-    /// Get context for a message (knowledge provider).
     pub async fn get_context(&self, message: &str, count: usize) -> String {
         if message.trim().is_empty() {
             return String::new();

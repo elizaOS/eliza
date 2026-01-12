@@ -13,19 +13,6 @@ import type {
 import { ModelType } from "../../types/index.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
-/**
- * Represents an action that allows the agent to reply to the current conversation with a generated message.
- *
- * This action can be used as an acknowledgement at the beginning of a chain of actions, or as a final response at the end of a chain of actions.
- *
- * @typedef {Object} replyAction
- * @property {string} name - The name of the action ("REPLY").
- * @property {string[]} similes - An array of similes for the action.
- * @property {string} description - A description of the action and its usage.
- * @property {Function} validate - An asynchronous function for validating the action runtime.
- * @property {Function} handler - An asynchronous function for handling the action logic.
- * @property {ActionExample[][]} examples - An array of example scenarios for the action.
- */
 export const replyAction = {
   name: "REPLY",
   similes: ["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND", "RESPONSE"],
@@ -42,7 +29,6 @@ export const replyAction = {
     callback?: HandlerCallback,
     responses?: Memory[],
   ): Promise<ActionResult> => {
-    // Access previous action results from context if available
     const actionContext = _options?.actionContext;
     const previousResults = actionContext?.previousResults || [];
 
@@ -57,11 +43,9 @@ export const replyAction = {
       );
     }
 
-    // Check if any responses had providers associated with them
     const allProviders =
       responses?.flatMap((res) => res.content?.providers || []) || [];
 
-    // Only generate response using LLM if no suitable response was found
     state = await runtime.composeState(message, [
       ...(allProviders ?? []),
       "RECENT_MESSAGES",
@@ -73,12 +57,10 @@ export const replyAction = {
       template: runtime.character.templates?.replyTemplate || replyTemplate,
     });
 
-    // Streaming is automatic via streaming context (set by MessageService)
     const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
     });
 
-    // Parse XML response
     const parsedXml = parseKeyValueXml(response);
     const thoughtValue = parsedXml?.thought;
     const textValue = parsedXml?.text;

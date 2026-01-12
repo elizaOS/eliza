@@ -2,11 +2,17 @@
 //!
 //! Contains action implementations for goal operations.
 
-mod create_goal;
+mod cancel_goal;
 mod complete_goal;
+mod confirm_goal;
+mod create_goal;
+mod update_goal;
 
-pub use create_goal::CreateGoalAction;
+pub use cancel_goal::CancelGoalAction;
 pub use complete_goal::CompleteGoalAction;
+pub use confirm_goal::ConfirmGoalAction;
+pub use create_goal::CreateGoalAction;
+pub use update_goal::UpdateGoalAction;
 
 use async_trait::async_trait;
 use serde_json::Value;

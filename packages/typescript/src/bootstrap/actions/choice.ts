@@ -14,16 +14,6 @@ import type {
 import { ModelType } from "../../types/index.ts";
 import { composePrompt, parseKeyValueXml } from "../../utils.ts";
 
-/**
- * Represents an action that allows selecting an option for a pending task that has multiple options.
- * @type {Action}
- * @property {string} name - The name of the action
- * @property {string[]} similes - Similar words or phrases for the action
- * @property {string} description - A brief description of the action
- * @property {Function} validate - Asynchronous function to validate the action
- * @property {Function} handler - Asynchronous function to handle the action
- * @property {ActionExample[][]} examples - Examples demonstrating the usage of the action
- */
 export const choiceAction: Action = {
   name: "CHOOSE_OPTION",
   similes: ["SELECT_OPTION", "SELECT", "PICK", "CHOOSE"],
@@ -58,13 +48,11 @@ export const choiceAction: Action = {
       return false;
     }
 
-    // Get all tasks with options metadata
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
       tags: ["AWAITING_CHOICE"],
     });
 
-    // Only validate if there are pending tasks with options
     return (
       pendingTasks &&
       pendingTasks.length > 0 &&
@@ -119,8 +107,6 @@ export const choiceAction: Action = {
       };
     }
 
-    // Format tasks with their options for the LLM, using shortened UUIDs
-    // Filter out tasks without IDs (fail-fast: tasks must have IDs)
     const formattedTasks = tasksWithOptions
       .filter(
         (task): task is typeof task & { id: NonNullable<typeof task.id> } => {
@@ -131,7 +117,6 @@ export const choiceAction: Action = {
         },
       )
       .map((task) => {
-        // Generate a short ID from the task UUID (first 8 characters should be unique enough)
         const shortId = task.id.substring(0, 8);
         const taskMetadata = task.metadata;
         const taskOptions = taskMetadata?.options;
@@ -150,7 +135,6 @@ export const choiceAction: Action = {
         };
       });
 
-    // format tasks as a string
     const tasksString = formattedTasks
       .map((task) => {
         const taskOptions = task.options;
@@ -172,7 +156,6 @@ export const choiceAction: Action = {
     });
 
     const parsed = parseKeyValueXml(result);
-    // parseKeyValueXml returns Record<string, unknown> | null
     interface ParsedChoice {
       taskId?: string;
       selectedOption?: string;
@@ -180,7 +163,6 @@ export const choiceAction: Action = {
     const { taskId, selectedOption } = (parsed as ParsedChoice) || {};
 
     if (taskId && selectedOption) {
-      // Find the task by matching the shortened UUID
       const taskMap = new Map(
         formattedTasks.map((task) => [task.taskId, task]),
       );
@@ -239,7 +221,6 @@ export const choiceAction: Action = {
         };
       }
 
-      // Ensure selectedTask has an id (required for all operations)
       if (!selectedTask.id) {
         throw new Error(
           `Selected task "${selectedTask.name}" is missing required id field`,
@@ -308,12 +289,10 @@ export const choiceAction: Action = {
       };
     }
 
-    // If no task/option was selected, list available options
     let optionsText =
       "Please select a valid option from one of these tasks:\n\n";
 
     tasksWithOptions.forEach((task) => {
-      // Create a shortened UUID for display
       const shortId = task.id?.substring(0, 8);
 
       optionsText += `**${task.name}** (ID: ${shortId}):\n`;

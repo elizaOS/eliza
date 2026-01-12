@@ -1,10 +1,3 @@
-"""
-Action State Provider - Provides the current action state.
-
-This provider supplies information about the current action context,
-including pending actions, completed actions, and action history.
-"""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,14 +13,6 @@ async def get_action_state_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    """
-    Get the current action state.
-
-    Returns:
-    - Pending actions
-    - Recently completed actions
-    - Action history
-    """
     sections: list[str] = []
     action_data: dict[str, list[str]] = {
         "pending": [],
@@ -35,7 +20,6 @@ async def get_action_state_context(
         "available": [],
     }
 
-    # Get available actions from runtime
     available_actions = runtime.get_available_actions()
     action_data["available"] = [a.name for a in available_actions]
 
@@ -43,7 +27,6 @@ async def get_action_state_context(
         sections.append("## Available Actions")
         sections.append(", ".join(action_data["available"]))
 
-    # Get action state from state if available
     if state and state.values:
         pending = state.values.get("pendingActions", [])
         if isinstance(pending, list):
@@ -61,9 +44,7 @@ async def get_action_state_context(
         sections.append("\n## Recently Completed")
         sections.append("\n".join(f"- {a}" for a in action_data["completed"][-5:]))
 
-    context_text = ""
-    if sections:
-        context_text = "# Action State\n" + "\n".join(sections)
+    context_text = "# Action State\n" + "\n".join(sections) if sections else ""
 
     return ProviderResult(
         text=context_text,
@@ -76,7 +57,6 @@ async def get_action_state_context(
     )
 
 
-# Create the provider instance
 action_state_provider = Provider(
     name="ACTION_STATE",
     description="Provides information about the current action state and available actions",

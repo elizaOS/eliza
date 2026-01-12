@@ -1,6 +1,3 @@
-"""Projects provider for Linear plugin."""
-
-from typing import Any
 
 from elizaos_plugin_linear.providers.base import Provider, ProviderResult, RuntimeProtocol
 from elizaos_plugin_linear.services.linear import LinearService
@@ -8,10 +5,9 @@ from elizaos_plugin_linear.services.linear import LinearService
 
 async def get_projects(
     runtime: RuntimeProtocol,
-    _message: Any,
-    _state: Any,
+    _message: object,
+    _state: object,
 ) -> ProviderResult:
-    """Get Linear projects for context."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -22,7 +18,6 @@ async def get_projects(
         if not projects:
             return ProviderResult(text="No Linear projects found")
 
-        # Filter active projects
         active_projects = [p for p in projects if p.get("state") in ("started", "planned", None)]
 
         projects_list = [
@@ -52,8 +47,3 @@ linear_projects_provider = Provider(
     description="Provides context about active Linear projects",
     get=get_projects,
 )
-
-
-
-
-

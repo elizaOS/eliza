@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cleanupTestRuntime,
+  createTestRuntime,
+} from "../bootstrap/__tests__/test-utils";
+import {
   createUniqueUuid,
   findEntityByName,
   formatEntities,
@@ -10,10 +14,6 @@ import * as logger_module from "../logger";
 import type { Entity, Memory, State, UUID } from "../types";
 import type { IAgentRuntime } from "../types/runtime";
 import * as utils from "../utils";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "../bootstrap/__tests__/test-utils";
 
 describe("entities", () => {
   let runtime: IAgentRuntime;
@@ -132,11 +132,12 @@ describe("entities", () => {
 
     it("should return null when room not found", async () => {
       vi.spyOn(runtime, "getRoom").mockResolvedValue(null);
+      const getEntitiesForRoomSpy = vi.spyOn(runtime, "getEntitiesForRoom");
 
       const result = await findEntityByName(runtime, mockMemory, mockState);
 
       expect(result).toBeNull();
-      expect(runtime.getEntitiesForRoom).not.toHaveBeenCalled();
+      expect(getEntitiesForRoomSpy).not.toHaveBeenCalled();
     });
 
     it("should filter components based on permissions", async () => {
@@ -460,7 +461,7 @@ describe("entities", () => {
     });
 
     it("should create UUID from combined string for different IDs", () => {
-      const stringToUuidSpy = vi.spyOn(index, "stringToUuid");
+      const stringToUuidSpy = vi.spyOn(utils, "stringToUuid");
       stringToUuidSpy.mockReturnValue("unique-uuid-123" as UUID);
 
       const result = createUniqueUuid(runtime, "user-456");
@@ -473,7 +474,7 @@ describe("entities", () => {
     });
 
     it("should handle UUID type as base user ID", () => {
-      const stringToUuidSpy = vi.spyOn(index, "stringToUuid");
+      const stringToUuidSpy = vi.spyOn(utils, "stringToUuid");
       stringToUuidSpy.mockReturnValue("unique-uuid-456" as UUID);
 
       const result = createUniqueUuid(runtime, "user-789" as UUID);
@@ -724,7 +725,7 @@ describe("entities", () => {
 
   it("createUniqueUuid combines user and agent ids", () => {
     const id = createUniqueUuid(runtime, "user");
-    const expected = index.stringToUuid(`user:${runtime.agentId}`);
+    const expected = utils.stringToUuid(`user:${runtime.agentId}`);
     expect(id).toBe(expected);
   });
 

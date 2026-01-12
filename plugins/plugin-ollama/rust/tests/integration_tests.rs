@@ -1,14 +1,9 @@
-//! Integration tests for the Ollama client.
-//!
-//! These tests require a running Ollama server.
-//! Run with: OLLAMA_INTEGRATION_TESTS=1 cargo test
-
 use elizaos_plugin_ollama::{
     EmbeddingParams, ObjectGenerationParams, OllamaClient, OllamaConfig, TextGenerationParams,
 };
 
 fn should_run_integration_tests() -> bool {
-    std::env::var("OLLAMA_INTEGRATION_TESTS").map_or(false, |v| v == "1")
+    std::env::var("OLLAMA_INTEGRATION_TESTS").is_ok_and(|v| v == "1")
 }
 
 fn get_client() -> OllamaClient {
@@ -65,8 +60,7 @@ async fn test_generate_object_small() {
     }
 
     let client = get_client();
-    let params =
-        ObjectGenerationParams::new("Generate a simple JSON object with a message field");
+    let params = ObjectGenerationParams::new("Generate a simple JSON object with a message field");
     let response = client.generate_object_small(params).await;
 
     assert!(response.is_ok());
@@ -88,10 +82,3 @@ async fn test_generate_embedding() {
     let response = response.unwrap();
     assert!(!response.embedding.is_empty());
 }
-
-
-
-
-
-
-

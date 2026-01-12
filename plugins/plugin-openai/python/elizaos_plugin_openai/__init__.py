@@ -1,9 +1,3 @@
-"""
-elizaOS OpenAI Plugin - OpenAI API integration for text, image, audio, and embeddings.
-
-This package provides a type-safe async client for OpenAI APIs.
-"""
-
 from elizaos_plugin_openai.audio import (
     detect_audio_mime_type,
     get_extension_for_mime_type,
@@ -57,26 +51,20 @@ from elizaos_plugin_openai.types import (
 __version__ = "1.0.0"
 
 __all__ = [
-    # Main plugin
     "OpenAIPlugin",
     "create_plugin",
     "get_openai_plugin",
     "create_openai_elizaos_plugin",
-    # Client
     "OpenAIClient",
     "OpenAIClientError",
-    # Configuration
     "OpenAIConfig",
-    # Audio utilities
     "detect_audio_mime_type",
     "get_extension_for_mime_type",
     "get_filename_for_data",
-    # Tokenization
     "tokenize",
     "detokenize",
     "count_tokens",
     "truncate_to_token_limit",
-    # Enums
     "AudioFormat",
     "TranscriptionResponseFormat",
     "TimestampGranularity",
@@ -85,7 +73,6 @@ __all__ = [
     "ImageSize",
     "ImageQuality",
     "ImageStyle",
-    # Request types
     "TranscriptionParams",
     "TextToSpeechParams",
     "EmbeddingParams",
@@ -93,7 +80,6 @@ __all__ = [
     "ImageDescriptionParams",
     "TextGenerationParams",
     "ObjectGenerationParams",
-    # Response types
     "ImageDescriptionResult",
     "ImageGenerationResult",
     "TokenUsage",

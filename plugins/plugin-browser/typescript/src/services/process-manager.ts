@@ -1,7 +1,3 @@
-/**
- * Process manager for the browser automation server
- */
-
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
@@ -9,9 +5,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 
-/**
- * Manages the browser automation server process
- */
 export class BrowserProcessManager {
   private process: ChildProcess | null = null;
   private isRunning = false;
@@ -48,10 +41,7 @@ export class BrowserProcessManager {
           ]
         : []),
 
-      // Local development - prefer JS
       ...(!isDocker ? [join(moduleDir, "../server/dist/index.js")] : []),
-
-      // Binary locations
       join(moduleDir, "../server/binaries", binaryNames.primary),
       join(moduleDir, "../server/binaries", binaryNames.fallback),
       join(moduleDir, "../../../browser-server", binaryNames.primary),
@@ -82,9 +72,6 @@ export class BrowserProcessManager {
     return null;
   }
 
-  /**
-   * Start the browser server
-   */
   async start(): Promise<void> {
     if (this.isRunning) {
       logger.warn("Browser server is already running");
@@ -201,9 +188,6 @@ export class BrowserProcessManager {
     throw new Error("Browser server failed to start");
   }
 
-  /**
-   * Stop the browser server
-   */
   async stop(): Promise<void> {
     if (!this.process || !this.isRunning) {
       return;
@@ -225,16 +209,10 @@ export class BrowserProcessManager {
     });
   }
 
-  /**
-   * Check if server is running
-   */
   isServerRunning(): boolean {
     return this.isRunning;
   }
 
-  /**
-   * Get server URL
-   */
   getServerUrl(): string {
     return `ws://localhost:${this.serverPort}`;
   }

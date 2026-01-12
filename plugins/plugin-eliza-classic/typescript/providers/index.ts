@@ -1,0 +1,1 @@
+export { elizaGreetingProvider } from "./elizaGreeting";

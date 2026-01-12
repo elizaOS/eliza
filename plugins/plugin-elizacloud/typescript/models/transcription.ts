@@ -4,9 +4,6 @@ import type { OpenAITranscriptionParams } from "../types";
 import { getAuthHeader, getBaseURL, getSetting } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";
 
-/**
- * TRANSCRIPTION model handler
- */
 export async function handleTranscription(
   runtime: IAgentRuntime,
   input: Blob | File | Buffer | OpenAITranscriptionParams,
@@ -20,19 +17,14 @@ export async function handleTranscription(
 
   const baseURL = getBaseURL(runtime);
 
-  // Support Blob/File/Buffer directly, or an object with { audio: Blob/File/Buffer, ...options }
   let blob: Blob;
   let extraParams: OpenAITranscriptionParams | null = null;
 
   if (input instanceof Blob || input instanceof File) {
     blob = input as Blob;
   } else if (Buffer.isBuffer(input)) {
-    // Convert Buffer to Blob for Node.js environments
-    // Auto-detect MIME type from buffer content
     const detectedMimeType = detectAudioMimeType(input);
     logger.debug(`Auto-detected audio MIME type: ${detectedMimeType}`);
-    // Cast to any to satisfy TypeScript's strict ArrayBufferLike typing
-    // Blob constructor creates a copy of the buffer data
     blob = new Blob([input] as never, { type: detectedMimeType });
   } else if (
     typeof input === "object" &&
@@ -50,9 +42,7 @@ export async function handleTranscription(
         "TRANSCRIPTION param 'audio' must be a Blob/File/Buffer.",
       );
     }
-    // Convert Buffer to Blob if needed
     if (Buffer.isBuffer(params.audio)) {
-      // Use provided mimeType or auto-detect from buffer
       let mimeType = params.mimeType;
       if (!mimeType) {
         mimeType = detectAudioMimeType(params.audio);
@@ -60,8 +50,6 @@ export async function handleTranscription(
       } else {
         logger.debug(`Using provided MIME type: ${mimeType}`);
       }
-      // Cast to any to satisfy TypeScript's strict ArrayBufferLike typing
-      // Blob constructor creates a copy of the buffer data
       blob = new Blob([params.audio] as never, { type: mimeType });
     } else {
       blob = params.audio as Blob;
@@ -129,7 +117,7 @@ export async function handleTranscription(
 
     const data = (await response.json()) as { text: string };
     return data.text || "";
-  } catch (error: unknown) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`TRANSCRIPTION error: ${message}`);
     throw error;

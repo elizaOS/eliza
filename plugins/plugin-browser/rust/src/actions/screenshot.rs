@@ -1,5 +1,3 @@
-//! Browser Screenshot Action
-
 use crate::services::BrowserService;
 use crate::types::ActionResult;
 use crate::utils::{action_error, session_error};
@@ -66,10 +64,5 @@ pub async fn browser_screenshot(
         }
     }
 }
-
-
-
-
-
 
 

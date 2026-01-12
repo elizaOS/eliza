@@ -12,29 +12,19 @@ from elizaos_plugin_mcp.types import McpError, StdioServerConfig
 
 
 class StdioTransport(Transport):
-    """Transport that communicates with an MCP server via stdio."""
-
     def __init__(self, config: StdioServerConfig) -> None:
-        """Initialize the stdio transport.
-
-        Args:
-            config: Configuration for the stdio server.
-        """
         self._config = config
         self._process: asyncio.subprocess.Process | None = None
         self._request_id = 0
 
     async def connect(self) -> None:
-        """Start the MCP server subprocess and establish communication."""
         if self._process is not None:
             raise McpError("Transport already connected", "ALREADY_CONNECTED")
 
-        # Build environment
         env = {**os.environ, **self._config.env}
         if "PATH" not in env and "PATH" in os.environ:
             env["PATH"] = os.environ["PATH"]
 
-        # Start the subprocess
         self._process = await asyncio.create_subprocess_exec(
             self._config.command,
             *self._config.args,
@@ -49,11 +39,9 @@ class StdioTransport(Transport):
             raise McpError("Failed to create stdin/stdout pipes", "PIPE_ERROR")
 
     async def send(self, message: dict[str, Any]) -> None:
-        """Send a JSON-RPC message to the server."""
         if self._process is None or self._process.stdin is None:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
-        # MCP uses newline-delimited JSON (NDJSON) format
         json_str = json.dumps(message)
         content = f"{json_str}\n"
 
@@ -61,12 +49,9 @@ class StdioTransport(Transport):
         await self._process.stdin.drain()
 
     async def receive(self) -> dict[str, Any]:
-        """Receive a JSON-RPC message from the server."""
         if self._process is None or self._process.stdout is None:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
-        # MCP uses newline-delimited JSON (NDJSON) format
-        # Read lines until we get a valid JSON response
         while True:
             line = await asyncio.wait_for(
                 self._process.stdout.readline(),
@@ -89,7 +74,6 @@ class StdioTransport(Transport):
                 continue  # Skip malformed lines
 
     async def close(self) -> None:
-        """Close the connection and terminate the subprocess."""
         if self._process is not None:
             self._process.terminate()
             try:
@@ -100,6 +84,5 @@ class StdioTransport(Transport):
             self._process = None
 
     def next_request_id(self) -> int:
-        """Generate the next request ID."""
         self._request_id += 1
         return self._request_id

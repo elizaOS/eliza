@@ -7,12 +7,6 @@ import {
   type SamTTSOptions,
 } from "../types";
 
-/**
- * SAM TTS Service
- *
- * Provides retro text-to-speech using the SAM Speech Synthesizer.
- * Generates 8-bit audio buffers that can be streamed through the hardware bridge.
- */
 export class SamTTSService extends Service {
   static serviceType = SAMServiceType.SAM_TTS;
 
@@ -30,9 +24,6 @@ export class SamTTSService extends Service {
     logger.info("[SAM-TTS] Service stopped");
   }
 
-  /**
-   * Generate audio buffer from text using SAM TTS
-   */
   generateAudio(text: string, options: Partial<SamTTSOptions> = {}): Uint8Array {
     const opts = { ...DEFAULT_SAM_OPTIONS, ...options };
 
@@ -53,9 +44,6 @@ export class SamTTSService extends Service {
     return audioBuffer;
   }
 
-  /**
-   * Generate audio and send to hardware bridge for playback
-   */
   async speakText(text: string, options: Partial<SamTTSOptions> = {}): Promise<Uint8Array> {
     const audioBuffer = this.generateAudio(text, options);
     const wavBuffer = this.createWAVBuffer(audioBuffer);
@@ -71,9 +59,6 @@ export class SamTTSService extends Service {
     return audioBuffer;
   }
 
-  /**
-   * Create WAV file buffer from raw 8-bit audio data
-   */
   createWAVBuffer(audioData: Uint8Array, sampleRate = 22050): Uint8Array {
     const dataSize = audioData.length;
     const buffer = new Uint8Array(44 + dataSize);

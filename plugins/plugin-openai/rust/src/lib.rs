@@ -1,19 +1,17 @@
-#![allow(missing_docs)]
-//! OpenAI Plugin for elizaOS
+//! OpenAI plugin for elizaOS providing text generation and embedding capabilities.
 //!
-//! This crate provides OpenAI API integration for elizaOS agents.
+//! This crate provides integration with OpenAI's API, including support for:
+//! - Text generation (GPT models)
+//! - Embeddings
+//! - Audio transcription and generation
 //!
 //! # Example
 //!
-//! ```rust,no_run
-//! use elizaos_plugin_openai::get_openai_plugin;
+//! ```no_run
+//! use elizaos_plugin_openai::{OpenAIPlugin, OpenAIConfig};
 //!
-//! # async fn example() -> anyhow::Result<()> {
-//! let plugin = get_openai_plugin()?;
-//! let response = plugin.generate_text("Hello, world!").await?;
-//! println!("{}", response);
-//! # Ok(())
-//! # }
+//! let config = OpenAIConfig::new("your-api-key");
+//! let plugin = OpenAIPlugin::new(config).unwrap();
 //! ```
 
 #![warn(missing_docs)]
@@ -27,64 +25,113 @@ pub mod types;
 pub use audio::{detect_audio_mime_type, get_filename_for_data, AudioMimeType};
 pub use client::OpenAIClient;
 pub use error::{OpenAIError, Result};
+pub use tokenization::{count_tokens, detokenize, tokenize, truncate_to_token_limit};
 pub use types::*;
 
 use anyhow::Result as AnyhowResult;
 use std::sync::Arc;
 
-/// OpenAI plugin for elizaOS.
+/// High-level OpenAI plugin providing simplified access to OpenAI's API.
 ///
-/// This struct wraps the OpenAI client and provides a simple interface
-/// for text generation and other OpenAI API calls.
+/// This struct wraps an [`OpenAIClient`] and provides convenient methods
+/// for common operations like text generation and embedding creation.
 pub struct OpenAIPlugin {
     client: OpenAIClient,
 }
 
 impl OpenAIPlugin {
-    /// Create a new OpenAIPlugin with the given configuration.
+    /// Creates a new OpenAI plugin with the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The OpenAI configuration containing API key and optional settings
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the client initialization fails.
     pub fn new(config: OpenAIConfig) -> Result<Self> {
         let client = OpenAIClient::new(config)?;
         Ok(Self { client })
     }
 
-    /// Generate text from a prompt.
+    /// Generates text from a prompt using default parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `prompt` - The input prompt for text generation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails.
     pub async fn generate_text(&self, prompt: &str) -> Result<String> {
         let params = TextGenerationParams::new(prompt);
         self.client.generate_text(&params).await
     }
 
-    /// Generate text with a system message.
+    /// Generates text from a prompt with a system message.
+    ///
+    /// # Arguments
+    ///
+    /// * `prompt` - The input prompt for text generation
+    /// * `system` - The system message to set context for the model
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails.
     pub async fn generate_text_with_system(&self, prompt: &str, system: &str) -> Result<String> {
         let params = TextGenerationParams::new(prompt).system(system);
         self.client.generate_text(&params).await
     }
 
-    /// Generate text with full parameters.
+    /// Generates text using fully customizable parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - The text generation parameters including prompt, temperature, etc.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails.
     pub async fn generate_text_with_params(&self, params: &TextGenerationParams) -> Result<String> {
         self.client.generate_text(params).await
     }
 
-    /// Create an embedding for text.
+    /// Creates an embedding vector for the given text.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text to create an embedding for
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails.
     pub async fn create_embedding(&self, text: &str) -> Result<Vec<f32>> {
         let params = EmbeddingParams::new(text);
         self.client.create_embedding(&params).await
     }
 
-    /// Get the underlying client for advanced operations.
+    /// Returns a reference to the underlying OpenAI client.
+    ///
+    /// Use this for advanced operations not covered by the high-level methods.
     pub fn client(&self) -> &OpenAIClient {
         &self.client
     }
 }
 
-/// Create an OpenAI plugin from environment variables.
+/// Creates an OpenAI plugin configured from environment variables.
 ///
-/// Required environment variables:
-/// - `OPENAI_API_KEY`: Your OpenAI API key
+/// # Environment Variables
 ///
-/// Optional environment variables:
-/// - `OPENAI_BASE_URL`: Custom API endpoint (default: https://api.openai.com/v1)
-/// - `OPENAI_SMALL_MODEL`: Model for small tasks (default: gpt-5-mini)
-/// - `OPENAI_LARGE_MODEL`: Model for large tasks (default: gpt-5)
+/// * `OPENAI_API_KEY` (required) - Your OpenAI API key
+/// * `OPENAI_BASE_URL` (optional) - Custom base URL for API requests
+/// * `OPENAI_SMALL_MODEL` (optional) - Model to use for small/fast operations
+/// * `OPENAI_LARGE_MODEL` (optional) - Model to use for large/complex operations
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - `OPENAI_API_KEY` environment variable is not set
+/// - Plugin initialization fails
 pub fn get_openai_plugin() -> AnyhowResult<OpenAIPlugin> {
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| anyhow::anyhow!("OPENAI_API_KEY environment variable is required"))?;
@@ -106,32 +153,33 @@ pub fn get_openai_plugin() -> AnyhowResult<OpenAIPlugin> {
     OpenAIPlugin::new(config).map_err(|e| anyhow::anyhow!("Failed to create OpenAI plugin: {}", e))
 }
 
-/// Create an elizaOS Plugin with model handlers for TEXT_LARGE, TEXT_SMALL, and TEXT_EMBEDDING.
+/// Creates an elizaOS-compatible plugin instance for OpenAI.
 ///
-/// This returns a Plugin that can be passed to AgentRuntime to register model handlers.
-/// The plugin reads configuration from environment variables.
+/// This function creates a fully configured [`elizaos::types::Plugin`] that can be
+/// registered with the elizaOS runtime. It provides model handlers for both
+/// `TEXT_LARGE` and `TEXT_SMALL` model types.
 ///
-/// # Example
-/// ```rust,ignore
-/// use elizaos_plugin_openai::create_openai_elizaos_plugin;
-/// use elizaos::runtime::{AgentRuntime, RuntimeOptions};
+/// # Model Handlers
 ///
-/// let plugin = create_openai_elizaos_plugin()?;
-/// let runtime = AgentRuntime::new(RuntimeOptions {
-///     plugins: vec![plugin],
-///     ..Default::default()
-/// }).await?;
-/// ```
+/// * `TEXT_LARGE` - Uses the configured large model for complex text generation
+/// * `TEXT_SMALL` - Uses the configured small model for fast text generation
+///
+/// Both handlers accept JSON parameters with the following fields:
+/// - `prompt` (string) - The input prompt
+/// - `system` (string, optional) - System message for context
+/// - `temperature` (number, optional) - Sampling temperature (default: 0.7)
+///
+/// # Errors
+///
+/// Returns an error if the OpenAI plugin cannot be initialized.
 pub fn create_openai_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
     use elizaos::types::{Plugin, PluginDefinition};
     use std::collections::HashMap;
     
-    // Create the underlying OpenAI plugin
     let openai = Arc::new(get_openai_plugin()?);
     
     let mut model_handlers: HashMap<String, elizaos::types::ModelHandlerFn> = HashMap::new();
     
-    // TEXT_LARGE handler
     let openai_large = openai.clone();
     model_handlers.insert(
         "TEXT_LARGE".to_string(),
@@ -161,7 +209,6 @@ pub fn create_openai_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
         }),
     );
     
-    // TEXT_SMALL handler
     let openai_small = openai.clone();
     model_handlers.insert(
         "TEXT_SMALL".to_string(),
@@ -177,7 +224,6 @@ pub fn create_openai_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.7) as f32;
                 
-                // Use small model by setting it explicitly
                 let mut text_params = TextGenerationParams::new(prompt)
                     .temperature(temperature);
                 

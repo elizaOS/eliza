@@ -1,4 +1,3 @@
-"""Create comment action for Linear plugin."""
 
 import json
 import logging
@@ -38,7 +37,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -53,7 +51,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the create comment action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -71,17 +68,14 @@ async def handler(
         issue_id: str = ""
         comment_body: str = ""
 
-        # Check for explicit options
         if options and options.get("issueId") and options.get("body"):
             issue_id = str(options["issueId"])
             comment_body = str(options["body"])
         else:
-            # Use LLM to extract comment information
             prompt = CREATE_COMMENT_TEMPLATE.format(user_message=content)
             response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
             if not response:
-                # Fallback to regex
                 issue_match = re.search(
                     r"(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)",
                     content,
@@ -102,7 +96,6 @@ async def handler(
                         issue_id = parsed["issueId"]
                         comment_body = parsed.get("commentBody", "")
                     elif parsed.get("issueDescription"):
-                        # Search for the issue by description
                         from elizaos_plugin_linear.types import LinearSearchFilters
 
                         filters = LinearSearchFilters(query=parsed["issueDescription"], limit=5)
@@ -128,7 +121,6 @@ async def handler(
                             issue_id = issues[0]["identifier"]
                             comment_body = parsed.get("commentBody", "")
                         else:
-                            # Multiple matches
                             issue_list = [
                                 f"{i + 1}. {iss['identifier']}: {iss['title']}"
                                 for i, iss in enumerate(issues)
@@ -165,7 +157,6 @@ async def handler(
                         raise RuntimeError("No issue identifier or description found")
 
                 except json.JSONDecodeError:
-                    # Fallback to regex
                     logger.warning("Failed to parse LLM response, falling back to regex")
                     issue_match = re.search(
                         r"(?:comment on|add.*comment.*to|reply to|tell)\s+(\w+-\d+):?\s*(.*)",
@@ -195,10 +186,8 @@ async def handler(
                 )
             return {"text": error_message, "success": False}
 
-        # Find the issue first to get its internal ID
         issue = await linear_service.get_issue(issue_id)
 
-        # Create the comment
         comment_input = LinearCommentInput(
             issue_id=issue["id"],
             body=comment_body,
@@ -254,8 +243,3 @@ create_comment_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

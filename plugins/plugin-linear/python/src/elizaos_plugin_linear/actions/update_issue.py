@@ -1,4 +1,3 @@
-"""Update issue action for Linear plugin."""
 
 import json
 import logging
@@ -44,7 +43,6 @@ async def validate(
     _message: Memory,
     _state: State | None = None,
 ) -> bool:
-    """Validate the action can run."""
     try:
         api_key = runtime.get_setting("LINEAR_API_KEY")
         return bool(api_key)
@@ -59,7 +57,6 @@ async def handler(
     options: dict[str, Any] | None = None,
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
-    """Handle the update issue action."""
     try:
         linear_service: LinearService = runtime.get_service("linear")
         if not linear_service:
@@ -74,7 +71,6 @@ async def handler(
                 )
             return {"text": error_message, "success": False}
 
-        # Use LLM to extract update information
         prompt = UPDATE_ISSUE_TEMPLATE.format(user_message=content)
         response = await runtime.use_model("TEXT_LARGE", {"prompt": prompt})
 
@@ -102,7 +98,6 @@ async def handler(
             if parsed_updates.get("priority"):
                 updates["priority"] = int(parsed_updates["priority"])
 
-            # Handle team change
             if parsed_updates.get("teamKey"):
                 teams = await linear_service.get_teams()
                 team = next(
@@ -112,7 +107,6 @@ async def handler(
                 if team:
                     updates["teamId"] = team["id"]
 
-            # Handle assignee update
             if parsed_updates.get("assignee"):
                 clean_assignee = parsed_updates["assignee"].lstrip("@")
                 users = await linear_service.get_users()
@@ -128,7 +122,6 @@ async def handler(
                 if user:
                     updates["assigneeId"] = user["id"]
 
-            # Handle status update
             if parsed_updates.get("status"):
                 issue = await linear_service.get_issue(issue_id)
                 team = issue.get("team")
@@ -148,7 +141,6 @@ async def handler(
                     if state:
                         updates["stateId"] = state["id"]
 
-            # Handle labels update
             if parsed_updates.get("labels") and isinstance(parsed_updates["labels"], list):
                 team_id = updates.get("teamId")
                 labels = await linear_service.get_labels(team_id)
@@ -166,7 +158,6 @@ async def handler(
                 updates["labelIds"] = label_ids
 
         except json.JSONDecodeError:
-            # Fallback to regex parsing
             logger.warning("Failed to parse LLM response, falling back to regex")
 
             issue_match = re.search(r"(\w+-\d+)", content)
@@ -180,7 +171,6 @@ async def handler(
 
             issue_id = issue_match.group(1)
 
-            # Simple regex patterns
             title_match = re.search(r'title to ["\'](.+?)["\']', content, re.IGNORECASE)
             if title_match:
                 updates["title"] = title_match.group(1)
@@ -265,8 +255,3 @@ update_issue_action = create_action(
     validate=validate,
     handler=handler,
 )
-
-
-
-
-

@@ -1,9 +1,6 @@
-//! Integration tests for the BlueSky plugin.
-
 use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig, CreatePostRequest, PostReference, TimelineRequest};
 
 fn get_test_config() -> Option<BlueSkyConfig> {
-    // Try to load from environment
     BlueSkyConfig::from_env().ok()
 }
 
@@ -46,7 +43,6 @@ async fn test_client_creation() {
 async fn test_client_not_authenticated() {
     let config = BlueSkyConfig::new("test.bsky.social", "test-password").unwrap();
     let client = BlueSkyClient::new(config).unwrap();
-    // Check that session is None when not authenticated
     assert!(client.session().await.is_none());
 }
 
@@ -76,11 +72,8 @@ async fn test_create_post_request_with_reply() {
     assert_eq!(reply.cid, "bafytest");
 }
 
-// Integration tests that require credentials
-// These are skipped if BLUESKY_HANDLE and BLUESKY_PASSWORD are not set
-
 #[tokio::test]
-#[ignore] // Run with: cargo test -- --ignored
+#[ignore]
 async fn test_authentication() {
     let config = match get_test_config() {
         Some(c) => c,
@@ -139,5 +132,3 @@ async fn test_get_timeline() {
         .await;
     assert!(timeline.is_ok());
 }
-
-

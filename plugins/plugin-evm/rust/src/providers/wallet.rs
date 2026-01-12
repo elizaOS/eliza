@@ -1,12 +1,4 @@
 #![allow(missing_docs)]
-//! Wallet provider implementation using alloy-rs
-//!
-//! Provides wallet functionality for EVM chains including:
-//! - Key management with local signer
-//! - Client creation for each chain
-//! - Balance queries
-//! - Transaction signing and sending
-//! - Automatic key generation when not provided
 
 use alloy::{
     hex,
@@ -28,17 +20,13 @@ use crate::constants::DEFAULT_DECIMALS;
 use crate::error::{EVMError, EVMErrorCode, EVMResult};
 use crate::types::{format_amount, ChainConfig, SupportedChain, WalletBalance};
 
-/// Configuration for creating a wallet provider
 #[derive(Debug, Clone)]
 pub struct WalletProviderConfig {
-    /// Private key (hex encoded with 0x prefix)
     pub private_key: String,
-    /// Chains to configure
     pub chains: Vec<ChainConfig>,
 }
 
 impl WalletProviderConfig {
-    /// Create a new configuration
     #[must_use]
     pub fn new(private_key: impl Into<String>) -> Self {
         Self {
@@ -47,14 +35,12 @@ impl WalletProviderConfig {
         }
     }
 
-    /// Add a chain to the configuration
     #[must_use]
     pub fn with_chain(mut self, chain: SupportedChain, rpc_url: Option<String>) -> Self {
         self.chains.push(ChainConfig::new(chain, rpc_url));
         self
     }
 
-    /// Add multiple chains with default RPCs
     #[must_use]
     pub fn with_chains(mut self, chains: &[SupportedChain]) -> Self {
         for chain in chains {
@@ -64,7 +50,6 @@ impl WalletProviderConfig {
     }
 }
 
-/// Full provider type with all fillers (matches alloy 0.8+ recommended fillers)
 pub type FullProvider = FillProvider<
     JoinFill<
         JoinFill<
@@ -78,32 +63,15 @@ pub type FullProvider = FillProvider<
     Ethereum,
 >;
 
-/// Wallet provider for EVM chains
-///
-/// Manages wallet access, chain configuration, and balance queries.
 pub struct WalletProvider {
-    /// Local signer
     signer: PrivateKeySigner,
-    /// Ethereum wallet
     wallet: EthereumWallet,
-    /// Providers for each chain (with wallet filler)
     providers: HashMap<SupportedChain, FullProvider>,
-    /// Chain configurations
     configs: HashMap<SupportedChain, ChainConfig>,
 }
 
 impl WalletProvider {
-    /// Create a new wallet provider
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - Wallet provider configuration
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the private key is invalid or provider creation fails
     pub async fn new(config: WalletProviderConfig) -> EVMResult<Self> {
-        // Parse the private key
         let signer = config
             .private_key
             .parse::<PrivateKeySigner>()
@@ -115,8 +83,6 @@ impl WalletProvider {
             })?;
 
         let wallet = EthereumWallet::from(signer.clone());
-
-        // Create providers for each chain
         let mut providers = HashMap::new();
         let mut configs = HashMap::new();
 
@@ -145,63 +111,43 @@ impl WalletProvider {
         })
     }
 
-    /// Get the wallet address
     #[must_use]
     pub fn address(&self) -> Address {
         self.signer.address()
     }
 
-    /// Get the signer
     #[must_use]
     pub fn signer(&self) -> &PrivateKeySigner {
         &self.signer
     }
 
-    /// Get the wallet
     #[must_use]
     pub fn wallet(&self) -> &EthereumWallet {
         &self.wallet
     }
 
-    /// Get supported chains
     #[must_use]
     pub fn supported_chains(&self) -> Vec<SupportedChain> {
         self.configs.keys().copied().collect()
     }
 
-    /// Check if a chain is configured
     #[must_use]
     pub fn has_chain(&self, chain: SupportedChain) -> bool {
         self.providers.contains_key(&chain)
     }
 
-    /// Get the provider for a chain
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured
     pub fn provider(&self, chain: SupportedChain) -> EVMResult<&FullProvider> {
         self.providers
             .get(&chain)
             .ok_or_else(|| EVMError::chain_not_configured(&chain.to_string()))
     }
 
-    /// Get the chain configuration
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured
     pub fn chain_config(&self, chain: SupportedChain) -> EVMResult<&ChainConfig> {
         self.configs
             .get(&chain)
             .ok_or_else(|| EVMError::chain_not_configured(&chain.to_string()))
     }
 
-    /// Get the native token balance for a chain
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured or RPC call fails
     pub async fn get_balance(&self, chain: SupportedChain) -> EVMResult<U256> {
         let provider = self.provider(chain)?;
         let address = self.address();
@@ -214,21 +160,11 @@ impl WalletProvider {
         })
     }
 
-    /// Get formatted native token balance for a chain
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured or RPC call fails
     pub async fn get_formatted_balance(&self, chain: SupportedChain) -> EVMResult<String> {
         let balance = self.get_balance(chain).await?;
         Ok(format_amount(balance, DEFAULT_DECIMALS))
     }
 
-    /// Get balances for all configured chains
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if any RPC call fails
     pub async fn get_all_balances(&self) -> EVMResult<Vec<WalletBalance>> {
         let mut balances = Vec::new();
         let address = self.address();
@@ -252,11 +188,6 @@ impl WalletProvider {
         Ok(balances)
     }
 
-    /// Get the current nonce for the wallet on a chain
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured or RPC call fails
     pub async fn get_nonce(&self, chain: SupportedChain) -> EVMResult<u64> {
         let provider = self.provider(chain)?;
         let address = self.address();
@@ -272,11 +203,6 @@ impl WalletProvider {
             })
     }
 
-    /// Get the current gas price for a chain
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured or RPC call fails
     pub async fn get_gas_price(&self, chain: SupportedChain) -> EVMResult<u128> {
         let provider = self.provider(chain)?;
 
@@ -288,11 +214,6 @@ impl WalletProvider {
         })
     }
 
-    /// Get the chain ID for a chain
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chain is not configured or RPC call fails
     pub async fn get_chain_id(&self, chain: SupportedChain) -> EVMResult<u64> {
         let provider = self.provider(chain)?;
 
@@ -314,29 +235,12 @@ impl std::fmt::Debug for WalletProvider {
     }
 }
 
-/// Result of auto-generating a private key
 #[derive(Debug, Clone)]
 pub struct GeneratedKey {
-    /// The generated private key (hex-encoded with 0x prefix)
     pub private_key: String,
-    /// The corresponding wallet address
     pub address: Address,
 }
 
-/// Generate a new random private key and return it with the corresponding address.
-///
-/// This function generates a cryptographically secure random private key that can be
-/// used to initialize a wallet provider.
-///
-/// # Example
-///
-/// ```rust
-/// use elizaos_plugin_evm::providers::wallet::generate_private_key;
-///
-/// let generated = generate_private_key();
-/// println!("Generated wallet address: {}", generated.address);
-/// println!("Private key (keep secret!): {}", generated.private_key);
-/// ```
 #[must_use]
 pub fn generate_private_key() -> GeneratedKey {
     let signer = PrivateKeySigner::random();
@@ -357,15 +261,6 @@ pub fn generate_private_key() -> GeneratedKey {
 }
 
 impl WalletProviderConfig {
-    /// Create a new configuration, generating a private key if not provided.
-    ///
-    /// If `private_key` is `None`, a new random key will be generated and a warning
-    /// will be logged.
-    ///
-    /// # Returns
-    ///
-    /// A tuple of (config, generated_key) where `generated_key` is `Some` if a new
-    /// key was generated.
     #[must_use]
     pub fn new_or_generate(private_key: Option<String>) -> (Self, Option<GeneratedKey>) {
         match private_key {

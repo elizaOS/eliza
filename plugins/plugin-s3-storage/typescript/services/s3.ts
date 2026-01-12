@@ -1,9 +1,3 @@
-/**
- * AWS S3 Storage Service
- *
- * Provides file upload and download functionality using AWS S3.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -14,11 +8,6 @@ import { logger, Service, ServiceType } from "@elizaos/core";
 import type { JsonUploadResult, UploadResult } from "../types";
 import { getContentType } from "../types";
 
-/**
- * AWS S3 Storage Service.
- *
- * Provides upload and download capabilities for AWS S3 and S3-compatible storage.
- */
 export class AwsS3Service extends Service {
   static serviceType = ServiceType.REMOTE_FILES;
   capabilityDescription = "The agent is able to upload and download files from AWS S3";
@@ -35,9 +24,6 @@ export class AwsS3Service extends Service {
     }
   }
 
-  /**
-   * Initialize the S3 service.
-   */
   static async start(runtime: IAgentRuntime): Promise<AwsS3Service> {
     logger.log("Initializing AwsS3Service");
     const service = new AwsS3Service(runtime);
@@ -46,9 +32,6 @@ export class AwsS3Service extends Service {
     return service;
   }
 
-  /**
-   * Stop the S3 service.
-   */
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(ServiceType.REMOTE_FILES);
     if (service) {
@@ -56,9 +39,6 @@ export class AwsS3Service extends Service {
     }
   }
 
-  /**
-   * Stop the service and clean up resources.
-   */
   async stop(): Promise<void> {
     if (this.s3Client) {
       await this.s3Client.destroy();
@@ -66,9 +46,6 @@ export class AwsS3Service extends Service {
     }
   }
 
-  /**
-   * Initialize the S3 client with credentials from runtime settings.
-   */
   private async initializeS3Client(): Promise<boolean> {
     if (this.s3Client) return true;
     if (!this.runtime) {
@@ -102,9 +79,6 @@ export class AwsS3Service extends Service {
     return true;
   }
 
-  /**
-   * Upload a file to S3.
-   */
   async uploadFile(
     filePath: string,
     subDirectory = "",
@@ -178,9 +152,6 @@ export class AwsS3Service extends Service {
     }
   }
 
-  /**
-   * Generate a signed URL for an existing file.
-   */
   async generateSignedUrl(fileName: string, expiresIn = 900): Promise<string> {
     if (!(await this.initializeS3Client())) {
       throw new Error("AWS S3 credentials not configured");
@@ -197,9 +168,6 @@ export class AwsS3Service extends Service {
     return await getSignedUrl(this.s3Client, command, { expiresIn });
   }
 
-  /**
-   * Upload a JSON object to S3.
-   */
   async uploadJson(
     jsonData: Record<string, unknown>,
     fileName?: string,
@@ -281,9 +249,6 @@ export class AwsS3Service extends Service {
     }
   }
 
-  /**
-   * Upload bytes to S3.
-   */
   async uploadBytes(
     data: Buffer | Uint8Array,
     fileName: string,

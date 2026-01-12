@@ -1,9 +1,3 @@
-"""
-Browser Select Action
-
-Select an option from a dropdown on the webpage.
-"""
-
 import logging
 from typing import Any
 
@@ -11,7 +5,6 @@ from elizaos_browser.services.browser_service import BrowserService
 from elizaos_browser.types import ActionResult
 from elizaos_browser.utils.errors import (
     ActionError,
-    BrowserError,
     SessionError,
     handle_browser_error,
 )
@@ -38,66 +31,35 @@ async def browser_select(
     message: str,
     callback: Any | None = None,
 ) -> ActionResult:
-    """
-    Select an option from a dropdown on the webpage.
-
-    Args:
-        service: Browser service instance
-        message: Message with option and dropdown
-        callback: Optional callback for responses
-
-    Returns:
-        ActionResult with select details
-    """
-    try:
-        session = await service.get_or_create_session()
-        if not session:
-            error = SessionError("No active browser session")
-            handle_browser_error(error, callback, "select option")
-            return ActionResult(
-                success=False,
-                error="no_session",
-                data={"actionName": "BROWSER_SELECT"},
-            )
-
-        option, dropdown = parse_select_action(message)
-
-        if not option:
-            raise ActionError("select", dropdown, Exception("No option specified to select"))
-
-        result = await service.get_client().select(session.id, option, dropdown)
-        if not result.success:
-            raise ActionError("select", dropdown, Exception(result.error or "Select failed"))
-
-        response_text = f'I\'ve selected "{option}" from the {dropdown}'
-        if callback:
-            callback({"text": response_text, "actions": ["BROWSER_SELECT"]})
-
-        return ActionResult(
-            success=True,
-            data={
-                "actionName": "BROWSER_SELECT",
-                "option": option,
-                "dropdown": dropdown,
-                "sessionId": session.id,
-            },
-        )
-
-    except BrowserError as e:
-        logger.error(f"Error in BROWSER_SELECT action: {e}")
-        handle_browser_error(e, callback)
+    session = await service.get_or_create_session()
+    if not session:
+        error = SessionError("No active browser session")
+        handle_browser_error(error, callback, "select option")
         return ActionResult(
             success=False,
-            error=str(e),
+            error="no_session",
             data={"actionName": "BROWSER_SELECT"},
         )
 
-    except Exception as e:
-        logger.error(f"Error in BROWSER_SELECT action: {e}")
-        browser_error: BrowserError = ActionError("select", "dropdown", e)
-        handle_browser_error(browser_error, callback)
-        return ActionResult(
-            success=False,
-            error=str(e),
-            data={"actionName": "BROWSER_SELECT"},
-        )
+    option, dropdown = parse_select_action(message)
+
+    if not option:
+        raise ActionError("select", dropdown, ValueError("No option specified to select"))
+
+    result = await service.get_client().select(session.id, option, dropdown)
+    if not result.success:
+        raise ActionError("select", dropdown, RuntimeError(result.error or "Select failed"))
+
+    response_text = f'I\'ve selected "{option}" from the {dropdown}'
+    if callback:
+        callback({"text": response_text, "actions": ["BROWSER_SELECT"]})
+
+    return ActionResult(
+        success=True,
+        data={
+            "actionName": "BROWSER_SELECT",
+            "option": option,
+            "dropdown": dropdown,
+            "sessionId": session.id,
+        },
+    )

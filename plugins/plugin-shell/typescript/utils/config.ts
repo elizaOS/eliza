@@ -4,7 +4,6 @@ import { logger } from "@elizaos/core";
 import { z } from "zod";
 import type { ShellConfig } from "../types";
 
-// Environment validation schema using Zod
 const configSchema = z.object({
   enabled: z.boolean(),
   allowedDirectory: z.string(),
@@ -12,9 +11,6 @@ const configSchema = z.object({
   forbiddenCommands: z.array(z.string()),
 });
 
-/**
- * Default forbidden commands for safety
- */
 export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   "rm -rf /",
   "rmdir",
@@ -40,24 +36,18 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   "mkfs",
   "dd if=/dev/zero",
   "shred",
-  ":(){:|:&};:", // Fork bomb
+  ":(){:|:&};:",
 ] as const;
 
-/**
- * Loads and validates the shell plugin configuration
- * @returns The validated configuration
- */
 export function loadShellConfig(): ShellConfig {
   const enabled = process.env.SHELL_ENABLED === "true";
   const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
   const timeout = parseInt(process.env.SHELL_TIMEOUT || "30000", 10);
 
-  // Parse forbidden commands
   const customForbidden = process.env.SHELL_FORBIDDEN_COMMANDS
     ? process.env.SHELL_FORBIDDEN_COMMANDS.split(",").map((cmd) => cmd.trim())
     : [];
 
-  // Combine default and custom forbidden commands
   const forbiddenCommands = [...new Set([...DEFAULT_FORBIDDEN_COMMANDS, ...customForbidden])];
 
   const config: ShellConfig = {
@@ -67,7 +57,6 @@ export function loadShellConfig(): ShellConfig {
     forbiddenCommands,
   };
 
-  // Validate configuration
   const parseResult = configSchema.safeParse(config);
   if (!parseResult.success) {
     const zodError = parseResult.error as {
@@ -78,16 +67,13 @@ export function loadShellConfig(): ShellConfig {
     throw new Error(`Shell plugin configuration error: ${errorMessage}`);
   }
 
-  // Additional validation for allowed directory
   if (enabled && allowedDirectory) {
     try {
-      // Check if directory exists
       const stats = fs.statSync(allowedDirectory);
       if (!stats.isDirectory()) {
         throw new Error(`SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`);
       }
 
-      // Resolve to absolute path
       config.allowedDirectory = path.resolve(allowedDirectory);
 
       logger.info(`Shell plugin enabled with allowed directory: ${config.allowedDirectory}`);

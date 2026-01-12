@@ -1,8 +1,3 @@
-//! Integration tests for the Groq plugin.
-//!
-//! These tests require a valid GROQ_API_KEY environment variable.
-//! Run with: cargo test --test integration_tests -- --ignored
-
 use elizaos_plugin_groq::{GroqClient, GenerateTextParams, GenerateObjectParams};
 
 fn get_client() -> Option<GroqClient> {
@@ -96,5 +91,4 @@ async fn test_client_empty_api_key() {
     let client = GroqClient::new("", None);
     assert!(client.is_err());
 }
-
 

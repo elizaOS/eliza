@@ -7,27 +7,21 @@ import { KnowledgeTab } from "./ui/knowledge-tab.tsx";
 
 const queryClient = new QueryClient();
 
-// Define the interface for the ELIZA_CONFIG
 interface ElizaConfig {
   agentId: string;
   apiBase: string;
 }
 
-// Declare global window extension for TypeScript
 declare global {
   interface Window {
     ELIZA_CONFIG?: ElizaConfig;
   }
 }
 
-/**
- * Main Knowledge route component
- */
 function KnowledgeRoute() {
   const config = window.ELIZA_CONFIG;
   const agentId = config?.agentId;
 
-  // Apply dark mode to the root element
   React.useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
@@ -46,9 +40,6 @@ function KnowledgeRoute() {
   return <KnowledgeProvider agentId={agentId as UUID} />;
 }
 
-/**
- * Knowledge provider component
- */
 function KnowledgeProvider({ agentId }: { agentId: UUID }) {
   return (
     <QueryClientProvider client={queryClient}>
@@ -57,35 +48,28 @@ function KnowledgeProvider({ agentId }: { agentId: UUID }) {
   );
 }
 
-// Initialize the application - no router needed for iframe
 const rootElement = document.getElementById("root");
 if (rootElement) {
   createRoot(rootElement).render(<KnowledgeRoute />);
 }
 
-// Define types for integration with agent UI system
 export interface AgentPanel {
   name: string;
   path: string;
   component: React.ComponentType<Record<string, unknown>>;
   icon?: string;
   public?: boolean;
-  shortLabel?: string; // Optional short label for mobile
+  shortLabel?: string;
 }
 
 interface KnowledgePanelProps extends Record<string, string> {
   agentId: string;
 }
 
-/**
- * Knowledge panel component for the plugin system
- */
 const KnowledgePanelComponent: React.FC<KnowledgePanelProps> = ({ agentId }) => {
   return <KnowledgeTab agentId={agentId as UUID} />;
 };
 
-// Export the panel configuration for integration with the agent UI
-// Cast needed because AgentPanel expects generic props but KnowledgePanelComponent has specific props
 export const panels: AgentPanel[] = [
   {
     name: "Knowledge",

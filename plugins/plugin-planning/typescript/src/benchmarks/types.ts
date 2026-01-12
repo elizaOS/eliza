@@ -1,8 +1,5 @@
 import type { ActionPlan } from "@elizaos/core";
 
-/**
- * Benchmark Configuration
- */
 export interface BenchmarkConfig {
   // Runtime configuration
   realmBenchPath?: string;
@@ -23,9 +20,6 @@ export interface BenchmarkConfig {
   enableMemoryTracking: boolean;
 }
 
-/**
- * REALM-Bench Task Definition
- */
 export interface RealmBenchTask {
   id: string;
   name: string;
@@ -39,9 +33,6 @@ export interface RealmBenchTask {
   maxSteps?: number;
 }
 
-/**
- * REALM-Bench Test Case
- */
 export interface RealmBenchTestCase {
   task: RealmBenchTask;
   input: {
@@ -61,9 +52,6 @@ export interface RealmBenchTestCase {
   };
 }
 
-/**
- * REALM-Bench Execution Result
- */
 export interface RealmBenchResult {
   testCaseId: string;
   taskId: string;
@@ -87,9 +75,6 @@ export interface RealmBenchResult {
   };
 }
 
-/**
- * REALM-Bench Report
- */
 export interface RealmBenchReport {
   totalTests: number;
   passedTests: number;
@@ -114,9 +99,6 @@ export interface RealmBenchReport {
   };
 }
 
-/**
- * API-Bank Test Case
- */
 export interface ApiBankTestCase {
   id: string;
   level: 1 | 2 | 3;
@@ -127,9 +109,6 @@ export interface ApiBankTestCase {
   expectedResponse: string;
 }
 
-/**
- * API-Bank API Definition
- */
 export interface ApiBankApi {
   name: string;
   description: string;
@@ -142,17 +121,11 @@ export interface ApiBankApi {
   returns: string;
 }
 
-/**
- * API-Bank API Call
- */
 export interface ApiBankApiCall {
   api: string;
   parameters: Record<string, unknown>;
 }
 
-/**
- * API-Bank Result
- */
 export interface ApiBankResult {
   testCaseId: string;
   level: number;
@@ -172,9 +145,6 @@ export interface ApiBankResult {
   error?: string;
 }
 
-/**
- * API-Bank Report
- */
 export interface ApiBankReport {
   totalTests: number;
   passedTests: number;
@@ -195,9 +165,6 @@ export interface ApiBankReport {
   };
 }
 
-/**
- * Comprehensive Benchmark Results
- */
 export interface BenchmarkResults {
   metadata: {
     timestamp: string;

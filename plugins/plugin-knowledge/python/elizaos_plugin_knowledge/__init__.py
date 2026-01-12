@@ -1,13 +1,3 @@
-"""
-elizaOS Knowledge Plugin - Python Implementation
-
-Provides Retrieval Augmented Generation (RAG) capabilities including:
-- Document processing and text extraction
-- Text chunking with semantic awareness
-- Embedding generation via multiple providers
-- Semantic search and knowledge retrieval
-"""
-
 from elizaos_plugin_knowledge.types import (
     KnowledgeConfig,
     KnowledgeItem,
@@ -26,10 +16,19 @@ from elizaos_plugin_knowledge.plugin import (
     create_knowledge_plugin,
     get_knowledge_plugin,
 )
+from elizaos_plugin_knowledge.actions import (
+    ActionContext,
+    KnowledgeAction,
+    ProcessKnowledgeAction,
+    SearchKnowledgeAction,
+    get_actions,
+    process_knowledge_action,
+    search_knowledge_action,
+    knowledge_actions,
+)
 
 __version__ = "1.6.1"
 __all__ = [
-    # Types
     "KnowledgeConfig",
     "KnowledgeItem",
     "KnowledgeFragment",
@@ -39,15 +38,20 @@ __all__ = [
     "AddKnowledgeOptions",
     "TextGenerationOptions",
     "ProviderRateLimits",
-    # Service
     "KnowledgeService",
-    # Providers
     "KnowledgeProvider",
     "DocumentsProvider",
-    # Plugin
     "KnowledgePlugin",
     "create_knowledge_plugin",
     "get_knowledge_plugin",
+    "ActionContext",
+    "KnowledgeAction",
+    "ProcessKnowledgeAction",
+    "SearchKnowledgeAction",
+    "get_actions",
+    "process_knowledge_action",
+    "search_knowledge_action",
+    "knowledge_actions",
 ]
 
 

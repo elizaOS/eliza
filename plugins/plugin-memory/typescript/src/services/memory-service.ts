@@ -15,9 +15,6 @@ import type {
   SessionSummary,
 } from "../types";
 
-/**
- * Raw row type for long-term memory database queries
- */
 interface LongTermMemoryRow {
   id: string;
   agentId: string;
@@ -34,10 +31,6 @@ interface LongTermMemoryRow {
   accessCount: number | null;
 }
 
-/**
- * Type definition for Drizzle database operations used by the memory service.
- * This provides proper typing for the database instance accessed via runtime.
- */
 interface DrizzleDb {
   insert<T extends PgTable<TableConfig>>(
     table: T
@@ -71,10 +64,6 @@ interface DrizzleDb {
   };
 }
 
-/**
- * Memory Service
- * Manages both short-term (session summaries) and long-term (persistent facts) memory
- */
 export class MemoryService extends Service {
   static serviceType: ServiceTypeName = "memory" as ServiceTypeName;
 
@@ -83,7 +72,7 @@ export class MemoryService extends Service {
   private lastExtractionCheckpoints: Map<string, number>;
 
   capabilityDescription =
-    "Advanced memory management with short-term summarization and long-term persistent facts";
+    "Memory management with short-term summarization and long-term persistent facts";
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -243,7 +232,7 @@ export class MemoryService extends Service {
     try {
       await this.runtime.setCache(key, messageCount);
       logger.debug(
-        `Set extraction checkpoint for ${entityId} in room ${roomId} at message count ${messageCount}`
+        `Set extraction checkpoint for ${entityId} in room ${roomId} at count ${messageCount}`
       );
     } catch (error) {
       logger.error({ error }, "Failed to persist extraction checkpoint to cache");

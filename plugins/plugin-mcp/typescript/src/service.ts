@@ -52,7 +52,6 @@ export class McpService extends Service {
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    logger.info("[McpService] Constructor called, starting initialization...");
     this.initializationPromise = this.initializeMcpServers();
   }
 
@@ -83,66 +82,22 @@ export class McpService extends Service {
   }
 
   private async initializeMcpServers(): Promise<void> {
-    logger.info("[McpService] Starting MCP server initialization...");
     const mcpSettings = this.getMcpSettings();
-    const serverCount = mcpSettings?.servers ? Object.keys(mcpSettings.servers).length : 0;
-    const serverNames = mcpSettings?.servers ? Object.keys(mcpSettings.servers) : [];
-    logger.info(
-      `[McpService] Getting MCP settings... hasSettings=${!!mcpSettings} hasServers=${!!mcpSettings?.servers} serverCount=${serverCount} servers=${JSON.stringify(serverNames)}`
-    );
 
     if (!mcpSettings || !mcpSettings.servers || Object.keys(mcpSettings.servers).length === 0) {
-      logger.info("[McpService] No MCP servers configured.");
       this.mcpProvider = buildMcpProviderData([]);
       return;
     }
 
-    logger.info(
-      `[McpService] Connecting to ${Object.keys(mcpSettings.servers).length} MCP servers: ${JSON.stringify(Object.keys(mcpSettings.servers))}`
-    );
-
-    const connectionStartTime = Date.now();
     await this.updateServerConnections(mcpSettings.servers);
-    const connectionDuration = Date.now() - connectionStartTime;
-
     const servers = this.getServers();
-    const connectedServers = servers.filter((s) => s.status === "connected");
-    const failedServers = servers.filter((s) => s.status !== "connected");
-
-    if (connectedServers.length > 0) {
-      const toolCounts = connectedServers
-        .map((s) => `${s.name}:${s.tools?.length ?? 0}tools`)
-        .join(", ");
-      logger.info(
-        `[McpService] ✓ Successfully connected ${connectedServers.length}/${servers.length} servers in ${connectionDuration}ms: ${toolCounts}`
-      );
-    }
-
-    if (failedServers.length > 0) {
-      const failedDetails = failedServers
-        .map((s) => `${s.name}(${s.error ?? "unknown error"})`)
-        .join(", ");
-      logger.warn(
-        `[McpService] ⚠️  Failed to connect to ${failedServers.length}/${servers.length} servers: ${failedDetails}`
-      );
-    }
-
-    if (connectedServers.length === 0 && servers.length > 0) {
-      logger.error(
-        `[McpService] ❌ ALL MCP servers failed to connect! MCP tools will NOT be available.`
-      );
-    }
-
     this.mcpProvider = buildMcpProviderData(servers);
-    const mcpDataKeys = Object.keys(this.mcpProvider.data.mcp ?? {});
-    logger.info(`[McpService] MCP provider data built: ${mcpDataKeys.length} server(s) available`);
   }
 
   private getMcpSettings(): McpSettings | undefined {
     const rawSettings = this.runtime.getSetting("mcp");
     let settings: McpSettings | null | undefined = null;
 
-    // Try to parse settings from getSetting result
     if (rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)) {
       const parsed = rawSettings as Record<string, unknown>;
       if ("servers" in parsed && typeof parsed.servers === "object" && parsed.servers !== null) {
@@ -150,34 +105,28 @@ export class McpService extends Service {
       }
     }
 
-    logger.info(
-      `[McpService] getSetting("mcp") result: type=${typeof rawSettings} isNull=${rawSettings === null} hasServers=${!!(settings?.servers)}`
-    );
-
-    // Fallback to character.settings.mcp
     if (!settings || !settings.servers) {
       const characterSettings = this.runtime.character.settings;
-      if (characterSettings && typeof characterSettings === "object" && "mcp" in characterSettings) {
+      if (
+        characterSettings &&
+        typeof characterSettings === "object" &&
+        "mcp" in characterSettings
+      ) {
         const characterMcpSettings = characterSettings.mcp;
         if (
           characterMcpSettings &&
           typeof characterMcpSettings === "object" &&
           "servers" in characterMcpSettings
         ) {
-          logger.info("[McpService] Found MCP settings in character.settings.mcp (fallback)");
           settings = characterMcpSettings as unknown as McpSettings;
         }
       }
     }
 
     if (settings && typeof settings === "object" && settings.servers) {
-      logger.info(
-        `[McpService] MCP settings found with ${Object.keys(settings.servers).length} server(s)`
-      );
       return settings;
     }
 
-    logger.info("[McpService] No valid MCP settings found");
     return undefined;
   }
 
@@ -190,7 +139,6 @@ export class McpService extends Service {
     for (const name of currentNames) {
       if (!newNames.has(name)) {
         await this.deleteConnection(name);
-        logger.info(`Deleted MCP server: ${name}`);
       }
     }
 
@@ -198,16 +146,13 @@ export class McpService extends Service {
       const currentConnection = this.connections.get(name);
       if (!currentConnection) {
         await this.initializeConnection(name, config);
-        logger.info(`✓ Connected to MCP server: ${name}`);
       } else if (JSON.stringify(config) !== currentConnection.server.config) {
         await this.deleteConnection(name);
         await this.initializeConnection(name, config);
-        logger.info(`✓ Reconnected MCP server with updated config: ${name}`);
       }
     });
 
     await Promise.allSettled(connectionPromises);
-    logger.info(`[McpService] All server connection attempts completed`);
   }
 
   private async initializeConnection(name: string, config: McpServerConfig): Promise<void> {
@@ -239,8 +184,6 @@ export class McpService extends Service {
     await client.connect(transport);
 
     const capabilities = client.getServerCapabilities();
-    logger.debug(`[${name}] Server capabilities:`, JSON.stringify(capabilities ?? {}));
-
     const tools = await this.fetchToolsList(name);
     const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
     const resourceTemplates = capabilities?.resources
@@ -261,7 +204,6 @@ export class McpService extends Service {
     state.reconnectAttempts = 0;
     state.consecutivePingFailures = 0;
     this.startPingMonitoring(name);
-    logger.info(`Successfully connected to MCP server: ${name}`);
   }
 
   private setupTransportHandlers(
@@ -281,12 +223,7 @@ export class McpService extends Service {
           errorMessage.includes("SSE error") ||
           errorMessage.includes("timeout"));
 
-      if (isExpectedTimeout) {
-        logger.debug(
-          { serverName: name },
-          `SSE connection timeout for "${name}" (expected, will reconnect)`
-        );
-      } else {
+      if (!isExpectedTimeout) {
         logger.error({ error, serverName: name }, `Transport error for "${name}"`);
         connection.server.status = "disconnected";
         this.appendErrorMessage(connection, error.message);
@@ -298,13 +235,7 @@ export class McpService extends Service {
     };
 
     connection.transport.onclose = async (): Promise<void> => {
-      if (isHttpTransport) {
-        logger.debug(
-          { serverName: name },
-          `SSE connection closed for "${name}" (stateless, will reconnect on demand)`
-        );
-      } else {
-        logger.warn({ serverName: name }, `Transport closed for "${name}"`);
+      if (!isHttpTransport) {
         connection.server.status = "disconnected";
         this.handleDisconnection(name, new Error("Transport closed"));
       }
@@ -319,7 +250,6 @@ export class McpService extends Service {
     const isHttpTransport = config.type !== "stdio";
 
     if (isHttpTransport) {
-      logger.debug(`[McpService] Skipping ping monitoring for HTTP server: ${name}`);
       return;
     }
 
@@ -354,7 +284,6 @@ export class McpService extends Service {
     if (!state) return;
     state.consecutivePingFailures++;
     if (state.consecutivePingFailures >= this.pingConfig.failuresBeforeDisconnect) {
-      logger.warn(`Ping failures exceeded for ${name}, disconnecting and attempting reconnect.`);
       this.handleDisconnection(name, error);
     }
   }
@@ -367,26 +296,17 @@ export class McpService extends Service {
     if (state.pingInterval) clearInterval(state.pingInterval);
     if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
     if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      logger.error(`Max reconnect attempts reached for ${name}. Giving up.`);
       return;
     }
     const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
     state.reconnectTimeout = setTimeout(async () => {
       state.reconnectAttempts++;
-      logger.info(`Attempting to reconnect to ${name} (attempt ${state.reconnectAttempts})...`);
       const connection = this.connections.get(name);
       const config = connection?.server?.config;
       if (config) {
         try {
           await this.initializeConnection(name, JSON.parse(config));
         } catch (err) {
-          logger.error(
-            {
-              error: err instanceof Error ? err.message : String(err),
-              serverName: name,
-            },
-            `Reconnect attempt failed for ${name}`
-          );
           this.handleDisconnection(name, err);
         }
       }
@@ -467,16 +387,10 @@ export class McpService extends Service {
         processedTool.inputSchema = this.applyToolCompatibility(
           tool.inputSchema as JSONSchema7
         ) as typeof tool.inputSchema;
-        logger.debug(`Applied tool compatibility for: ${tool.name} on server: ${serverName}`);
       }
 
       return processedTool;
     });
-
-    logger.info(`Fetched ${tools.length} tools for ${serverName}`);
-    for (const tool of tools) {
-      logger.info(`[${serverName}] ${tool.name}: ${tool.description}`);
-    }
 
     return tools;
   }
@@ -559,12 +473,10 @@ export class McpService extends Service {
     const connection = this.connections.get(serverName);
     const config = connection?.server?.config;
     if (config) {
-      logger.info(`Restarting ${serverName} MCP server...`);
       connection.server.status = "connecting";
       connection.server.error = "";
       await this.deleteConnection(serverName);
       await this.initializeConnection(serverName, JSON.parse(config));
-      logger.info(`${serverName} MCP server connected`);
     }
   }
 
@@ -573,12 +485,6 @@ export class McpService extends Service {
 
     this.toolCompatibility = createMcpToolCompatibility(this.runtime);
     this.compatibilityInitialized = true;
-
-    if (this.toolCompatibility) {
-      logger.info(`Tool compatibility enabled`);
-    } else {
-      logger.info(`No tool compatibility needed`);
-    }
   }
 
   public applyToolCompatibility(toolSchema: JSONSchema7): JSONSchema7 {

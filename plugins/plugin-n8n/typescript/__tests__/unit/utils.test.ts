@@ -1,12 +1,7 @@
-/**
- * Unit tests for utility functions.
- */
-
 import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { isValidJsonSpecification, validatePrompt } from "../../utils/validation";
 
-// Helper function to create a mock Memory with partial data
 function createMockMemory(text: string): Memory {
   return {
     id: crypto.randomUUID(),
@@ -18,7 +13,6 @@ function createMockMemory(text: string): Memory {
   } as Partial<Memory> as Memory;
 }
 
-// Helper function to create an invalid Memory for testing edge cases
 function createInvalidMemory(content: unknown): Memory {
   return { content } as Partial<Memory> as Memory;
 }

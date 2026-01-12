@@ -1,7 +1,3 @@
-/**
- * BlueSky API client using AT Protocol.
- */
-
 import { type AppBskyFeedDefs, BskyAgent, RichText } from "@atproto/api";
 import { logger } from "@elizaos/core";
 import { LRUCache } from "lru-cache";
@@ -24,7 +20,11 @@ import type {
 import { BLUESKY_CHAT_SERVICE_DID, BlueSkyError, CACHE_SIZE, CACHE_TTL } from "./types";
 
 function isPostView(
-  item: AppBskyFeedDefs.PostView | AppBskyFeedDefs.NotFoundPost | AppBskyFeedDefs.BlockedPost | { $type: string; [k: string]: unknown }
+  item:
+    | AppBskyFeedDefs.PostView
+    | AppBskyFeedDefs.NotFoundPost
+    | AppBskyFeedDefs.BlockedPost
+    | { $type: string; [k: string]: string | number | boolean | object | null | undefined }
 ): item is AppBskyFeedDefs.PostView {
   return (
     typeof item === "object" &&
@@ -42,7 +42,7 @@ function isPostView(
 function adaptPostView(postView: AppBskyFeedDefs.PostView): BlueSkyPost {
   const author = postView.author as ATProtocolProfileViewExtended;
   const record = postView.record as ATProtocolPostRecord;
-  
+
   return {
     uri: postView.uri,
     cid: postView.cid,
@@ -155,13 +155,18 @@ export class BlueSkyClient {
       cursor: response.data.cursor,
       feed: response.data.feed.map((item) => ({
         post: adaptPostView(item.post),
-        reply: item.reply && isPostView(item.reply.root) && isPostView(item.reply.parent)
-          ? {
-              root: adaptPostView(item.reply.root),
-              parent: adaptPostView(item.reply.parent),
-            }
-          : undefined,
-        reason: item.reason as Record<string, unknown>,
+        reply:
+          // @ts-expect-error - AT Proto SDK type narrowing issue with reply posts
+          item.reply && isPostView(item.reply.root) && isPostView(item.reply.parent)
+            ? {
+                root: adaptPostView(item.reply.root as AppBskyFeedDefs.PostView),
+                parent: adaptPostView(item.reply.parent as AppBskyFeedDefs.PostView),
+              }
+            : undefined,
+        reason: item.reason as Record<
+          string,
+          string | number | boolean | object | null | undefined
+        >,
       })),
     };
   }
@@ -175,10 +180,16 @@ export class BlueSkyClient {
     const rt = new RichText({ text: request.content.text });
     await rt.detectFacets(this.agent);
 
-    const record: Record<string, unknown> = {
+    const record: Record<
+      string,
+      | string
+      | PostFacet[]
+      | PostEmbed
+      | { root: { uri: string; cid: string }; parent: { uri: string; cid: string } }
+    > = {
       $type: "app.bsky.feed.post",
       text: rt.text,
-      facets: rt.facets,
+      facets: rt.facets as PostFacet[],
       createdAt: new Date().toISOString(),
     };
 

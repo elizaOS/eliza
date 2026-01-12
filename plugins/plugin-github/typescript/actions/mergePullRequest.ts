@@ -89,7 +89,6 @@ export const mergePullRequestAction: Action = {
       const content = message.content as Content;
       const text = content.text?.toLowerCase() ?? "";
 
-      // Determine merge method from text
       let mergeMethod: "merge" | "squash" | "rebase" = "merge";
       if (text.includes("squash")) {
         mergeMethod = "squash";

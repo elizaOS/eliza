@@ -12,9 +12,6 @@ import {
   type UUID,
 } from "./types";
 
-/**
- * Factory function to create a new message memory with proper defaults
- */
 export function createMessageMemory(params: {
   id?: UUID;
   entityId: UUID;
@@ -34,11 +31,6 @@ export function createMessageMemory(params: {
   };
 }
 
-/**
- * Type guard to check if a memory metadata is a DocumentMetadata
- * @param metadata The metadata to check
- * @returns True if the metadata is a DocumentMetadata
- */
 export function isDocumentMetadata(
   metadata: MemoryMetadata,
 ): metadata is DocumentMetadata {
@@ -56,11 +48,6 @@ export function isFragmentMetadata(
   return metadata.type === MemoryType.FRAGMENT;
 }
 
-/**
- * Type guard to check if a memory metadata is a MessageMetadata
- * @param metadata The metadata to check
- * @returns True if the metadata is a MessageMetadata
- */
 export function isMessageMetadata(
   metadata: MemoryMetadata,
 ): metadata is MessageMetadata {
@@ -78,11 +65,6 @@ export function isDescriptionMetadata(
   return metadata.type === MemoryType.DESCRIPTION;
 }
 
-/**
- * Type guard to check if a memory metadata is a CustomMetadata
- * @param metadata The metadata to check
- * @returns True if the metadata is a CustomMetadata
- */
 export function isCustomMetadata(
   metadata: MemoryMetadata,
 ): metadata is CustomMetadata {
@@ -118,12 +100,6 @@ export function isFragmentMemory(
   );
 }
 
-/**
- * Safely access the text content of a memory
- * @param memory The memory to extract text from
- * @param defaultValue Optional default value if no text is found
- * @returns The text content or default value
- */
 export function getMemoryText(memory: Memory, defaultValue = ""): string {
   return memory.content.text ?? defaultValue;
 }

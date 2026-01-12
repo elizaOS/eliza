@@ -52,12 +52,6 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
   );
 }
 
-/**
- * Create a Google Generative AI client instance with proper configuration
- *
- * @param runtime The runtime context
- * @returns Configured Google Generative AI instance
- */
 export function createGoogleGenAI(runtime: IAgentRuntime): GoogleGenAI | null {
   const apiKey = getApiKey(runtime);
   if (!apiKey) {

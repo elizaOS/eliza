@@ -1,38 +1,127 @@
-import { describe, expect, test } from "vitest";
-import { parseRssToJson } from "../parser";
+/**
+ * Integration tests for the RSS plugin.
+ * No API key required for these tests.
+ */
 
-describe("Integration Tests", () => {
-  test("should fetch and parse a real RSS feed", async () => {
-    // Fetch a real RSS feed
-    const response = await fetch("https://hnrss.org/frontpage");
-    const xml = await response.text();
+import { describe, expect, it } from "vitest";
 
-    expect(xml).toBeTruthy();
-    expect(xml.length).toBeGreaterThan(0);
+describe("RSS Plugin Integration Tests", () => {
+  describe("Plugin Structure", () => {
+    it("should export rssPlugin", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(rssPlugin).toBeDefined();
+      expect(rssPlugin.name).toBe("rss");
+    });
 
-    // Parse it
-    const feed = parseRssToJson(xml);
+    it("should have correct description", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(rssPlugin.description).toContain("RSS");
+    });
 
-    expect(feed.title).toBeTruthy();
-    expect(feed.items.length).toBeGreaterThan(0);
+    it("should have services defined", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(rssPlugin.services).toBeDefined();
+      expect(Array.isArray(rssPlugin.services)).toBe(true);
+    });
 
-    console.log(`✅ Fetched "${feed.title}" with ${feed.items.length} items`);
-    console.log(`   First item: ${feed.items[0]?.title}`);
+    it("should have providers defined", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(rssPlugin.providers).toBeDefined();
+      expect(Array.isArray(rssPlugin.providers)).toBe(true);
+    });
+
+    it("should have actions defined", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(rssPlugin.actions).toBeDefined();
+      expect(Array.isArray(rssPlugin.actions)).toBe(true);
+    });
+
+    it("should have init function", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(typeof rssPlugin.init).toBe("function");
+    });
+
+    it("should have tests defined", async () => {
+      const { rssPlugin } = await import("../index");
+      expect(rssPlugin.tests).toBeDefined();
+    });
   });
 
-  test("should fetch and parse an Atom feed", async () => {
-    // Fetch a real Atom feed
-    const response = await fetch("https://github.blog/feed/");
-    const xml = await response.text();
+  describe("Actions", () => {
+    it("should export getFeedAction", async () => {
+      const { getFeedAction } = await import("../actions");
+      expect(getFeedAction).toBeDefined();
+      expect(getFeedAction.name).toBe("GET_NEWSFEED");
+    });
 
-    expect(xml).toBeTruthy();
+    it("should export subscribeFeedAction", async () => {
+      const { subscribeFeedAction } = await import("../actions");
+      expect(subscribeFeedAction).toBeDefined();
+    });
 
-    // Parse it
-    const feed = parseRssToJson(xml);
+    it("should export unsubscribeFeedAction", async () => {
+      const { unsubscribeFeedAction } = await import("../actions");
+      expect(unsubscribeFeedAction).toBeDefined();
+    });
 
-    // GitHub blog might be RSS or Atom, just verify we got content
-    expect(feed.items.length).toBeGreaterThanOrEqual(0);
+    it("should export listFeedsAction", async () => {
+      const { listFeedsAction } = await import("../actions");
+      expect(listFeedsAction).toBeDefined();
+    });
+  });
 
-    console.log(`✅ Fetched GitHub blog with ${feed.items.length} items`);
+  describe("Providers", () => {
+    it("should export feedItemsProvider", async () => {
+      const { feedItemsProvider } = await import("../providers");
+      expect(feedItemsProvider).toBeDefined();
+      expect(feedItemsProvider.name).toBe("FEEDITEMS");
+    });
+  });
+
+  describe("Parser", () => {
+    it("should parse valid RSS", async () => {
+      const { parseRssToJson } = await import("../parser");
+
+      const sampleRss = `<?xml version="1.0"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test Feed</title>
+            <link>https://example.com</link>
+            <description>A test RSS feed</description>
+            <item>
+              <title>Test Article</title>
+              <link>https://example.com/article1</link>
+              <description>This is a test article</description>
+              <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+              <guid>article-1</guid>
+            </item>
+          </channel>
+        </rss>`;
+
+      const feed = parseRssToJson(sampleRss);
+
+      expect(feed.title).toBe("Test Feed");
+      expect(feed.items.length).toBe(1);
+      expect(feed.items[0].title).toBe("Test Article");
+    });
+  });
+
+  describe("Utils", () => {
+    it("should extract URLs from text", async () => {
+      const { extractUrls } = await import("../utils");
+
+      const text = "Check out https://example.com/feed.rss and http://test.com for more.";
+      const urls = extractUrls(text);
+
+      expect(urls.length).toBe(2);
+      expect(urls.some((u) => u.includes("example.com"))).toBe(true);
+    });
+  });
+
+  describe("Service", () => {
+    it("should export RssService", async () => {
+      const { RssService } = await import("../service");
+      expect(RssService).toBeDefined();
+    });
   });
 });

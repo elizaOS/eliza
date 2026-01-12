@@ -1,15 +1,15 @@
 #![allow(missing_docs)]
-//! elizaOS Forms Plugin - Structured conversational data collection
-//!
-//! This plugin provides form management capabilities for collecting structured data
-//! from users through natural conversation.
 
+pub mod actions;
+pub mod providers;
 pub mod types;
 pub mod prompts;
 pub mod service;
 pub mod error;
 mod generated;
 
+pub use actions::*;
+pub use providers::*;
 pub use types::*;
 pub use prompts::*;
 pub use service::*;

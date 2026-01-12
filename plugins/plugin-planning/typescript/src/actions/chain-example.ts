@@ -8,9 +8,6 @@ import type {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-/**
- * Analyze input action - Extracts key information from user input
- */
 export const analyzeInputAction: Action = {
   name: "ANALYZE_INPUT",
   description: "Analyzes user input and extracts key information",
@@ -65,9 +62,6 @@ export const analyzeInputAction: Action = {
   },
 };
 
-/**
- * Process analysis action - Makes decisions based on analysis results
- */
 export const processAnalysisAction: Action = {
   name: "PROCESS_ANALYSIS",
   description: "Processes the analysis results and makes decisions",
@@ -128,9 +122,6 @@ export const processAnalysisAction: Action = {
   },
 };
 
-/**
- * Execute final action - Executes the final action based on processing results
- */
 export const executeFinalAction: Action = {
   name: "EXECUTE_FINAL",
   description: "Executes the final action based on processing results",
@@ -200,9 +191,6 @@ export const executeFinalAction: Action = {
   },
 };
 
-/**
- * Create plan action - Creates comprehensive project plans
- */
 export const createPlanAction: Action = {
   name: "CREATE_PLAN",
   description: "Creates a comprehensive project plan with multiple phases and tasks",

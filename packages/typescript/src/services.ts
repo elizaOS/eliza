@@ -87,7 +87,9 @@ export class ServiceBuilder<TService extends Service = Service> {
     // Define the static start method that returns the correct type
     const startMethod = async (runtime: IAgentRuntime): Promise<TService> => {
       if (!startFn) {
-        throw new Error(`Start function not defined for service ${serviceType}`);
+        throw new Error(
+          `Start function not defined for service ${serviceType}`,
+        );
       }
       return startFn(runtime);
     };

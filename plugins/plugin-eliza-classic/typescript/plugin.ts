@@ -1,11 +1,16 @@
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import { generateResponseAction } from "./actions";
 import { handleTextLarge, handleTextSmall } from "./models";
+import { elizaGreetingProvider } from "./providers";
 
 export const elizaClassicPlugin: Plugin = {
   name: "eliza-classic",
   description: "Classic ELIZA pattern matching psychotherapist - no LLM required",
-  priority: 100, // High priority to override other model providers
+  priority: 100,
+
+  actions: [generateResponseAction],
+  providers: [elizaGreetingProvider],
 
   models: {
     [ModelType.TEXT_LARGE]: async (
@@ -24,10 +29,7 @@ export const elizaClassicPlugin: Plugin = {
   },
 
   async init(_config, _runtime) {
-    logger.info(
-      { src: "plugin:eliza-classic" },
-      "Classic ELIZA pattern matching engine initialized"
-    );
+    logger.info({ src: "plugin:eliza-classic" }, "ELIZA pattern matching initialized");
   },
 
   tests: [

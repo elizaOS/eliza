@@ -1,7 +1,3 @@
-/**
- * Tests for LocalDatabaseAdapter
- */
-
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { UUID } from "@elizaos/core";
@@ -17,7 +13,6 @@ describe("LocalDatabaseAdapter", () => {
   let adapter: LocalDatabaseAdapter;
 
   beforeEach(async () => {
-    // Clean up any existing test data
     if (existsSync(TEST_DATA_DIR)) {
       rmSync(TEST_DATA_DIR, { recursive: true });
     }
@@ -217,7 +212,6 @@ describe("LocalDatabaseAdapter", () => {
       });
 
       expect(results.length).toBeGreaterThan(0);
-      // The most similar should be "Hello world"
       expect(results[0].content.text).toBe("Hello world");
     });
   });

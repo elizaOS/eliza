@@ -13,7 +13,6 @@ import type { Team, User } from "@linear/sdk";
 import { listTeamsTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 
-/** Extended team info with computed properties */
 interface TeamWithDetails extends Team {
   memberCount?: number;
   projectCount?: number;
@@ -97,7 +96,6 @@ export const listTeamsAction: Action = {
       let myTeams = false;
       let includeDetails = false;
 
-      // Use LLM to parse the request
       if (content) {
         const prompt = listTeamsTemplate.replace("{{userMessage}}", content);
         const response = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -125,7 +123,6 @@ export const listTeamsAction: Action = {
 
       let teams = await linearService.getTeams();
 
-      // Filter for specific team
       if (specificTeam) {
         teams = teams.filter(
           (team) =>
@@ -134,7 +131,6 @@ export const listTeamsAction: Action = {
         );
       }
 
-      // Filter by name keywords
       if (nameFilter && !specificTeam) {
         const keywords = nameFilter.toLowerCase().split(/\s+/);
         teams = teams.filter((team) => {
@@ -143,7 +139,6 @@ export const listTeamsAction: Action = {
         });
       }
 
-      // Filter for user's teams if requested
       if (myTeams) {
         try {
           const userTeams = await linearService.getUserTeams();
@@ -173,7 +168,6 @@ export const listTeamsAction: Action = {
         };
       }
 
-      // Get additional details if requested or showing specific team
       let teamsWithDetails: TeamWithDetails[] = teams;
       if (includeDetails || specificTeam) {
         teamsWithDetails = await Promise.all(
@@ -186,7 +180,7 @@ export const listTeamsAction: Action = {
             return Object.assign(team, {
               memberCount: members.length,
               projectCount: projects.length,
-              membersList: specificTeam ? members.slice(0, 5) : [], // Include member details for specific team
+              membersList: specificTeam ? members.slice(0, 5) : [],
             });
           })
         );

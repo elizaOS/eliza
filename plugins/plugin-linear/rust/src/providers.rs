@@ -1,7 +1,4 @@
 #![allow(missing_docs)]
-//! Providers for the Linear plugin.
-//!
-//! Providers supply contextual information to the agent.
 
 use serde_json::json;
 
@@ -9,7 +6,6 @@ use crate::error::Result;
 use crate::service::LinearService;
 use crate::types::*;
 
-/// Get recent issues for context
 pub async fn get_issues_context(service: &LinearService) -> Result<ProviderResult> {
     let filters = SearchFilters {
         limit: Some(10),
@@ -57,7 +53,6 @@ pub async fn get_issues_context(service: &LinearService) -> Result<ProviderResul
     ))
 }
 
-/// Get teams for context
 pub async fn get_teams_context(service: &LinearService) -> Result<ProviderResult> {
     let teams = service.get_teams().await?;
 
@@ -90,16 +85,14 @@ pub async fn get_teams_context(service: &LinearService) -> Result<ProviderResult
     ))
 }
 
-/// Get projects for context
 pub async fn get_projects_context(service: &LinearService) -> Result<ProviderResult> {
     let projects = service.get_projects(None).await?;
 
     if projects.is_empty() {
-        return Ok(ProviderResult::new("No Linear projects found"));
-    }
+            return Ok(ProviderResult::new("No Linear projects found"));
+        }
 
-    // Filter to active projects
-    let active_projects: Vec<_> = projects
+        let active_projects: Vec<_> = projects
         .iter()
         .filter(|p| {
             p.state
@@ -146,7 +139,6 @@ pub async fn get_projects_context(service: &LinearService) -> Result<ProviderRes
     ))
 }
 
-/// Get activity for context
 pub async fn get_activity_context(service: &LinearService) -> Result<ProviderResult> {
     let activity = service.get_activity_log(Some(10));
 
@@ -181,10 +173,5 @@ pub async fn get_activity_context(service: &LinearService) -> Result<ProviderRes
         }),
     ))
 }
-
-
-
-
-
 
 

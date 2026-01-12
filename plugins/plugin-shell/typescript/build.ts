@@ -13,7 +13,6 @@ try {
 
 console.log("Building TypeScript plugin...");
 
-// Build ESM
 await build({
   entrypoints: ["./index.ts"],
   outdir: "./dist",
@@ -26,7 +25,6 @@ await build({
 
 console.log("Build complete!");
 
-// Generate types
 const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDeclarationOnly"], {
   cwd: import.meta.dir,
   stdio: ["inherit", "inherit", "inherit"],

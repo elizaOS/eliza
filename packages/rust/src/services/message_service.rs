@@ -146,14 +146,16 @@ impl IMessageService for DefaultMessageService {
         };
 
         // Generate response using the model (calls registered model handler)
-        let response_text = runtime.use_model(
-            "TEXT_LARGE",
-            serde_json::json!({
-                "prompt": prompt,
-                "system": system_prompt,
-                "temperature": 0.7
-            }),
-        ).await?;
+        let response_text = runtime
+            .use_model(
+                "TEXT_LARGE",
+                serde_json::json!({
+                    "prompt": prompt,
+                    "system": system_prompt,
+                    "temperature": 0.7
+                }),
+            )
+            .await?;
 
         // Create response content
         let response_content = Content {
@@ -210,9 +212,7 @@ fn build_prompt(runtime: &AgentRuntime, message: &Memory, state: &State) -> Stri
     let character_name = {
         #[cfg(not(feature = "wasm"))]
         {
-            futures::executor::block_on(async {
-                runtime.character.read().await.name.clone()
-            })
+            futures::executor::block_on(async { runtime.character.read().await.name.clone() })
         }
         #[cfg(feature = "wasm")]
         {
@@ -268,4 +268,3 @@ mod tests {
         assert!(options.timeout_duration.is_none());
     }
 }
-

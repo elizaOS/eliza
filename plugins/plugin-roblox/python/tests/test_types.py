@@ -1,5 +1,3 @@
-"""Tests for type definitions."""
-
 from datetime import datetime
 from uuid import uuid4
 
@@ -15,7 +13,6 @@ from elizaos_plugin_roblox.types import (
 
 
 def test_roblox_user() -> None:
-    """Test RobloxUser model."""
     user = RobloxUser(
         id=12345,
         username="testuser",
@@ -29,7 +26,6 @@ def test_roblox_user() -> None:
 
 
 def test_roblox_user_with_all_fields() -> None:
-    """Test RobloxUser with all fields."""
     now = datetime.now()
     user = RobloxUser(
         id=12345,
@@ -45,7 +41,6 @@ def test_roblox_user_with_all_fields() -> None:
 
 
 def test_messaging_service_message() -> None:
-    """Test MessagingServiceMessage model."""
     agent_id = uuid4()
     message = MessagingServiceMessage(
         topic="test-topic",
@@ -59,14 +54,12 @@ def test_messaging_service_message() -> None:
 
 
 def test_roblox_event_type() -> None:
-    """Test RobloxEventType enum."""
     assert RobloxEventType.PLAYER_JOINED.value == "roblox:player_joined"
     assert RobloxEventType.PLAYER_LEFT.value == "roblox:player_left"
     assert RobloxEventType.PLAYER_MESSAGE.value == "roblox:player_message"
 
 
 def test_experience_info() -> None:
-    """Test RobloxExperienceInfo model."""
     info = RobloxExperienceInfo(
         universe_id="12345",
         name="Test Game",

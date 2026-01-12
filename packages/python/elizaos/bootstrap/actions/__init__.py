@@ -1,9 +1,3 @@
-"""
-Actions for the elizaOS Bootstrap Plugin.
-
-This module exports all available actions for the bootstrap plugin.
-"""
-
 from .add_contact import add_contact_action
 from .choice import choose_option_action
 from .follow_room import follow_room_action
@@ -42,20 +36,17 @@ __all__ = [
     "update_entity_action",
     "update_role_action",
     "update_settings_action",
-    # Capability lists
     "BASIC_ACTIONS",
     "EXTENDED_ACTIONS",
     "ALL_ACTIONS",
 ]
 
-# Basic actions - included by default
 BASIC_ACTIONS = [
     reply_action,
     ignore_action,
     none_action,
 ]
 
-# Extended actions - opt-in
 EXTENDED_ACTIONS = [
     add_contact_action,
     choose_option_action,
@@ -74,5 +65,4 @@ EXTENDED_ACTIONS = [
     update_settings_action,
 ]
 
-# All actions list for easy registration (backwards compatibility)
 ALL_ACTIONS = BASIC_ACTIONS + EXTENDED_ACTIONS

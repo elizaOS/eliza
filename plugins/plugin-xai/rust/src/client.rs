@@ -885,6 +885,19 @@ impl TwitterClient {
     // Search Methods
     // =========================================================================
 
+    /// Check if the client has valid authentication credentials.
+    pub fn is_authenticated(&self) -> bool {
+        !self.config.api_key.is_empty()
+            && !self.config.api_secret.is_empty()
+            && !self.config.access_token.is_empty()
+            && !self.config.access_token_secret.is_empty()
+    }
+
+    /// Get the authenticated user's username if available.
+    pub fn username(&self) -> Option<&str> {
+        self.me.as_ref().map(|p| p.username.as_str())
+    }
+
     /// Search for posts matching a query.
     pub async fn search_posts(
         &self,

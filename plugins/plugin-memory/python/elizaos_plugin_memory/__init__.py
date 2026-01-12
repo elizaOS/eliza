@@ -1,13 +1,5 @@
 """
-elizaOS Memory Plugin - Advanced memory management with summarization and long-term facts.
-
-This package provides memory management capabilities for elizaOS agents,
-including conversation summarization and persistent fact extraction.
-
-Example:
-    >>> from elizaos_plugin_memory import MemoryPlugin
-    >>> plugin = MemoryPlugin()
-    >>> await plugin.initialize(runtime)
+Memory plugin for conversation summarization and long-term fact extraction.
 """
 
 from typing import TYPE_CHECKING
@@ -33,11 +25,9 @@ __version__ = "1.0.0"
 
 
 class MemoryPlugin:
-    """Memory Plugin for elizaOS."""
-
     name = "memory"
     description = (
-        "Advanced memory management with conversation summarization and long-term persistent memory"
+        "Memory management with conversation summarization and long-term persistent memory"
     )
     version = __version__
 
@@ -55,11 +45,9 @@ class MemoryPlugin:
         self.actions: list[object] = []
 
     async def initialize(self, runtime: "AgentRuntime") -> None:
-        """Initialize the plugin with runtime context."""
         await self.service.start(runtime)
 
     async def shutdown(self) -> None:
-        """Cleanup plugin resources."""
         await self.service.stop()
 
 

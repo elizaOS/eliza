@@ -20,7 +20,6 @@ export const planningPlugin: Plugin = {
   evaluators: [],
 };
 
-// Maintain backwards compatibility
 export const strategyPlugin = planningPlugin;
 
 export default planningPlugin;

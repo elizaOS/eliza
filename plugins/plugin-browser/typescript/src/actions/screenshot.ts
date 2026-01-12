@@ -1,7 +1,3 @@
-/**
- * Browser screenshot action
- */
-
 import type {
   Action,
   ActionResult,

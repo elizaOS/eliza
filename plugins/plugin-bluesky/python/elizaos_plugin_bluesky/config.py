@@ -1,4 +1,3 @@
-"""Configuration for the BlueSky client."""
 
 from __future__ import annotations
 

@@ -1,34 +1,19 @@
 #![allow(missing_docs)]
-//! Type definitions for the GitHub plugin
-//!
-//! Strong types with validation - no unknown or any types.
 
 use serde::{Deserialize, Serialize};
 
-// =============================================================================
-// Core Types
-// =============================================================================
-
-/// GitHub repository reference
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepositoryRef {
-    /// Repository owner (username or organization)
     pub owner: String,
-    /// Repository name
     pub repo: String,
 }
 
-/// File content for commits
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileChange {
-    /// File path relative to repository root
     pub path: String,
-    /// File content
     pub content: String,
-    /// Encoding (utf-8 or base64)
     #[serde(default = "default_encoding")]
     pub encoding: FileEncoding,
-    /// Operation type
     #[serde(default)]
     pub operation: FileOperation,
 }
@@ -37,249 +22,154 @@ fn default_encoding() -> FileEncoding {
     FileEncoding::Utf8
 }
 
-/// File encoding type
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FileEncoding {
-    /// UTF-8 text
     #[default]
     Utf8,
-    /// Base64 encoded
     Base64,
 }
 
-/// File operation type
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileOperation {
-    /// Add a new file
     Add,
-    /// Modify an existing file
     #[default]
     Modify,
-    /// Delete a file
     Delete,
 }
 
-// =============================================================================
-// Issue Types
-// =============================================================================
-
-/// Issue state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IssueState {
-    /// Open issue
     Open,
-    /// Closed issue
     Closed,
 }
 
-/// Issue state reason
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IssueStateReason {
-    /// Completed
     Completed,
-    /// Not planned
     NotPlanned,
-    /// Reopened
     Reopened,
 }
 
-/// GitHub label
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubLabel {
-    /// Label ID
     pub id: u64,
-    /// Label name
     pub name: String,
-    /// Label color (hex without #)
     pub color: String,
-    /// Label description
     pub description: Option<String>,
-    /// Whether this is a default label
     #[serde(default)]
     pub default: bool,
 }
 
-/// GitHub milestone
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubMilestone {
-    /// Milestone number
     pub number: u32,
-    /// Milestone title
     pub title: String,
-    /// Milestone description
     pub description: Option<String>,
-    /// Milestone state
     pub state: MilestoneState,
-    /// Due date (ISO 8601)
     pub due_on: Option<String>,
-    /// Creation timestamp
     pub created_at: String,
-    /// Last update timestamp
     pub updated_at: String,
-    /// Close timestamp
     pub closed_at: Option<String>,
-    /// Open issues count
     #[serde(default)]
     pub open_issues: u32,
-    /// Closed issues count
     #[serde(default)]
     pub closed_issues: u32,
 }
 
-/// Milestone state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MilestoneState {
-    /// Open milestone
     Open,
-    /// Closed milestone
     Closed,
 }
 
-/// GitHub user
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubUser {
-    /// User ID
     pub id: u64,
-    /// Username
     pub login: String,
-    /// Display name
     pub name: Option<String>,
-    /// Avatar URL
     pub avatar_url: String,
-    /// HTML profile URL
     pub html_url: String,
-    /// User type
     #[serde(rename = "type")]
     pub user_type: UserType,
 }
 
-/// User type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserType {
-    /// Regular user
     User,
-    /// Organization
     Organization,
-    /// Bot
     Bot,
 }
 
-/// GitHub issue
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubIssue {
-    /// Issue number
     pub number: u64,
-    /// Issue title
     pub title: String,
-    /// Issue body/description
     pub body: Option<String>,
-    /// Issue state
     pub state: IssueState,
-    /// State reason
     pub state_reason: Option<IssueStateReason>,
-    /// Issue author
     pub user: GitHubUser,
-    /// Assigned users
     #[serde(default)]
     pub assignees: Vec<GitHubUser>,
-    /// Labels
     #[serde(default)]
     pub labels: Vec<GitHubLabel>,
-    /// Milestone
     pub milestone: Option<GitHubMilestone>,
-    /// Creation timestamp (ISO 8601)
     pub created_at: String,
-    /// Last update timestamp (ISO 8601)
     pub updated_at: String,
-    /// Close timestamp (ISO 8601)
     pub closed_at: Option<String>,
-    /// HTML URL
     pub html_url: String,
-    /// Number of comments
     #[serde(default)]
     pub comments: u32,
-    /// Whether this is a pull request
     #[serde(default)]
     pub is_pull_request: bool,
 }
 
-/// Issue creation parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateIssueParams {
-    /// Repository owner
     pub owner: String,
-    /// Repository name
     pub repo: String,
-    /// Issue title
     pub title: String,
-    /// Issue body
     pub body: Option<String>,
-    /// Assignee usernames
     #[serde(default)]
     pub assignees: Vec<String>,
-    /// Label names
     #[serde(default)]
     pub labels: Vec<String>,
-    /// Milestone number
     pub milestone: Option<u32>,
 }
 
-/// Issue update parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateIssueParams {
-    /// Repository owner
     pub owner: String,
-    /// Repository name
     pub repo: String,
-    /// Issue number
     pub issue_number: u64,
-    /// New title
     pub title: Option<String>,
-    /// New body
     pub body: Option<String>,
-    /// New state
     pub state: Option<IssueState>,
-    /// State reason
     pub state_reason: Option<IssueStateReason>,
-    /// Assignee usernames
     pub assignees: Option<Vec<String>>,
-    /// Label names
     pub labels: Option<Vec<String>>,
-    /// Milestone number
     pub milestone: Option<u32>,
 }
 
-/// Issue list parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListIssuesParams {
-    /// Repository owner
     pub owner: String,
-    /// Repository name
     pub repo: String,
-    /// Filter by state
     #[serde(default = "default_issue_state_filter")]
     pub state: IssueStateFilter,
-    /// Filter by labels
     pub labels: Option<String>,
-    /// Sort field
     #[serde(default)]
     pub sort: IssueSort,
-    /// Sort direction
     #[serde(default)]
     pub direction: SortDirection,
-    /// Filter by assignee
     pub assignee: Option<String>,
-    /// Filter by creator
     pub creator: Option<String>,
-    /// Results per page
     #[serde(default = "default_per_page")]
     pub per_page: u8,
-    /// Page number
     #[serde(default = "default_page")]
     pub page: u32,
 }
@@ -360,102 +250,63 @@ pub enum MergeableState {
     Unknown,
 }
 
-/// Branch reference
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubBranchRef {
-    /// Branch name
     #[serde(rename = "ref")]
     pub branch_ref: String,
-    /// Full ref label
     pub label: String,
-    /// Commit SHA
     pub sha: String,
-    /// Repository info
     pub repo: Option<RepositoryRef>,
 }
 
-/// GitHub pull request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubPullRequest {
-    /// PR number
     pub number: u64,
-    /// PR title
     pub title: String,
-    /// PR body
     pub body: Option<String>,
-    /// PR state
     pub state: PullRequestState,
-    /// Whether PR is a draft
     #[serde(default)]
     pub draft: bool,
-    /// Whether PR is merged
     #[serde(default)]
     pub merged: bool,
-    /// Mergeable state
     pub mergeable: Option<bool>,
-    /// Mergeable state detail
     #[serde(default)]
     pub mergeable_state: MergeableState,
-    /// PR author
     pub user: GitHubUser,
-    /// Head branch reference
     pub head: GitHubBranchRef,
-    /// Base branch reference
     pub base: GitHubBranchRef,
-    /// Assigned users
     #[serde(default)]
     pub assignees: Vec<GitHubUser>,
-    /// Requested reviewers
     #[serde(default)]
     pub requested_reviewers: Vec<GitHubUser>,
-    /// Labels
     #[serde(default)]
     pub labels: Vec<GitHubLabel>,
-    /// Milestone
     pub milestone: Option<GitHubMilestone>,
-    /// Creation timestamp
     pub created_at: String,
-    /// Update timestamp
     pub updated_at: String,
-    /// Close timestamp
     pub closed_at: Option<String>,
-    /// Merge timestamp
     pub merged_at: Option<String>,
-    /// HTML URL
     pub html_url: String,
-    /// Number of commits
     #[serde(default)]
     pub commits: u32,
-    /// Additions count
     #[serde(default)]
     pub additions: u32,
-    /// Deletions count
     #[serde(default)]
     pub deletions: u32,
-    /// Changed files count
     #[serde(default)]
     pub changed_files: u32,
 }
 
-/// PR creation parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePullRequestParams {
-    /// Repository owner
     pub owner: String,
-    /// Repository name
     pub repo: String,
-    /// PR title
     pub title: String,
-    /// PR body
     pub body: Option<String>,
-    /// Head branch
     pub head: String,
-    /// Base branch
     pub base: String,
-    /// Create as draft
     #[serde(default)]
     pub draft: bool,
-    /// Allow maintainer edits
     #[serde(default = "default_true")]
     pub maintainer_can_modify: bool,
 }
@@ -884,10 +735,5 @@ pub enum GitHubEventType {
     /// Status event
     Status,
 }
-
-
-
-
-
 
 

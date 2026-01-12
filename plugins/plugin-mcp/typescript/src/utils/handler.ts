@@ -11,13 +11,10 @@ export async function handleNoToolAvailable(
 ): Promise<ActionResult> {
   const responseText =
     "I don't have a specific tool that can help with that request. Let me try to assist you directly instead.";
-  const thoughtText =
-    "No appropriate MCP tool available for this request. Falling back to direct assistance.";
 
   if (callback && toolSelection?.noToolAvailable) {
     await callback({
       text: responseText,
-      thought: thoughtText,
       actions: ["REPLY"],
     });
   }

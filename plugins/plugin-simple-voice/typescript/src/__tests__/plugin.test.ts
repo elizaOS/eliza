@@ -45,7 +45,7 @@ describe("SayAloudAction", () => {
 
     const triggers = ["say aloud hello", "speak this text", "voice command"];
     for (const text of triggers) {
-      expect(await action.validate?.(runtime, createTestMemory(text))).toBe(true);
+      expect(await action.validate?.(runtime, createTestMemory({ content: { text } }))).toBe(true);
     }
   });
 
@@ -54,7 +54,7 @@ describe("SayAloudAction", () => {
 
     const nonTriggers = ["hello world", "what is the weather"];
     for (const text of nonTriggers) {
-      expect(await action.validate?.(runtime, createTestMemory(text))).toBe(false);
+      expect(await action.validate?.(runtime, createTestMemory({ content: { text } }))).toBe(false);
     }
   });
 });

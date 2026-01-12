@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-//! Configuration for the BlueSky client.
 
 use once_cell::sync::Lazy;
 use regex::Regex;

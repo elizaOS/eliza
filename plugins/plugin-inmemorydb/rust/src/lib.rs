@@ -1,8 +1,3 @@
-//! Pure in-memory, ephemeral database storage for elizaOS
-//!
-//! This crate provides a pure in-memory database that is completely ephemeral.
-//! All data is lost when the process restarts or when close() is called.
-
 pub mod adapter;
 pub mod hnsw;
 pub mod storage;
@@ -16,16 +11,8 @@ pub use types::{IStorage, IVectorStorage, VectorSearchResult, COLLECTIONS};
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-/// Global singleton for storage (shared across all agents in the same process)
 static GLOBAL_STORAGE: Mutex<Option<Arc<MemoryStorage>>> = Mutex::new(None);
 
-/// Creates an in-memory database adapter
-///
-/// # Arguments
-/// * `agent_id` - The agent ID
-///
-/// # Returns
-/// The database adapter
 pub fn create_database_adapter(agent_id: &str) -> InMemoryDatabaseAdapter {
     let mut global = GLOBAL_STORAGE.lock();
     let storage = global
@@ -34,13 +21,11 @@ pub fn create_database_adapter(agent_id: &str) -> InMemoryDatabaseAdapter {
     InMemoryDatabaseAdapter::new(storage, agent_id.to_string())
 }
 
-/// Plugin definition for elizaOS
 pub struct InMemoryDbPlugin;
 
 impl InMemoryDbPlugin {
     pub const NAME: &'static str = "@elizaos/plugin-inmemorydb";
-    pub const DESCRIPTION: &'static str =
-        "Pure in-memory, ephemeral database storage for elizaOS - no persistence";
+    pub const DESCRIPTION: &'static str = "Pure in-memory, ephemeral database storage for elizaOS - no persistence";
 }
 
 #[cfg(test)]

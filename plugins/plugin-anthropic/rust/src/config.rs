@@ -1,42 +1,38 @@
-//! Configuration for the Anthropic client.
-//!
-//! Configuration is loaded from environment variables or provided explicitly.
-//! All required values must be present - no defaults for secrets.
-
 use crate::error::{AnthropicError, Result};
 use crate::models::Model;
 
-/// Default API base URL.
+/// The default base URL for the Anthropic API.
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
-
-/// Default API version.
+/// The default API version to use for requests.
 pub const DEFAULT_API_VERSION: &str = "2023-06-01";
 
 /// Configuration for the Anthropic client.
+///
+/// Contains all settings needed to connect to and interact with the Anthropic API,
+/// including authentication, model selection, and timeout settings.
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
-    /// API key (required).
     api_key: String,
-    /// Base URL for the API.
     base_url: String,
-    /// API version string.
     api_version: String,
-    /// Small model to use.
     small_model: Model,
-    /// Large model to use.
     large_model: Model,
-    /// Request timeout in seconds.
     timeout_seconds: u64,
 }
 
 impl AnthropicConfig {
-    /// Create a new configuration with an API key.
+    /// Creates a new configuration with the given API key.
     ///
-    /// Uses default values for other settings.
+    /// Uses default values for all other settings:
+    /// - Base URL: `https://api.anthropic.com`
+    /// - API Version: `2023-06-01`
+    /// - Small Model: Claude 3.5 Haiku
+    /// - Large Model: Claude Sonnet 4
+    /// - Timeout: 60 seconds
     ///
     /// # Errors
     ///
-    /// Returns an error if the API key is empty.
+    /// Returns an error if the API key is empty or contains only whitespace.
     pub fn new<S: Into<String>>(api_key: S) -> Result<Self> {
         let api_key = api_key.into();
         if api_key.trim().is_empty() {
@@ -53,20 +49,19 @@ impl AnthropicConfig {
         })
     }
 
-    /// Load configuration from environment variables.
+    /// Creates a configuration from environment variables.
     ///
-    /// Required:
-    /// - ANTHROPIC_API_KEY
-    ///
-    /// Optional:
-    /// - ANTHROPIC_BASE_URL (default: https://api.anthropic.com)
-    /// - ANTHROPIC_SMALL_MODEL (default: claude-3-5-haiku-20241022)
-    /// - ANTHROPIC_LARGE_MODEL (default: claude-sonnet-4-20250514)
-    /// - ANTHROPIC_TIMEOUT_SECONDS (default: 60)
+    /// Reads the following environment variables:
+    /// - `ANTHROPIC_API_KEY` (required): The API key for authentication
+    /// - `ANTHROPIC_BASE_URL` (optional): Custom base URL
+    /// - `ANTHROPIC_SMALL_MODEL` (optional): Model ID for small model
+    /// - `ANTHROPIC_LARGE_MODEL` (optional): Model ID for large model
+    /// - `ANTHROPIC_TIMEOUT_SECONDS` (optional): Request timeout in seconds
     ///
     /// # Errors
     ///
-    /// Returns an error if ANTHROPIC_API_KEY is not set or is empty.
+    /// Returns an error if `ANTHROPIC_API_KEY` is not set or if any
+    /// provided model ID is invalid.
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
             AnthropicError::api_key(
@@ -77,7 +72,6 @@ impl AnthropicConfig {
 
         let mut config = Self::new(api_key)?;
 
-        // Optional overrides
         if let Ok(base_url) = std::env::var("ANTHROPIC_BASE_URL") {
             if !base_url.is_empty() {
                 config.base_url = base_url;
@@ -105,61 +99,61 @@ impl AnthropicConfig {
         Ok(config)
     }
 
-    /// Get the API key.
+    /// Returns the API key.
     pub fn api_key(&self) -> &str {
         &self.api_key
     }
 
-    /// Get the base URL.
+    /// Returns the base URL for API requests.
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
 
-    /// Get the API version.
+    /// Returns the API version string.
     pub fn api_version(&self) -> &str {
         &self.api_version
     }
 
-    /// Get the small model.
+    /// Returns a reference to the configured small model.
     pub fn small_model(&self) -> &Model {
         &self.small_model
     }
 
-    /// Get the large model.
+    /// Returns a reference to the configured large model.
     pub fn large_model(&self) -> &Model {
         &self.large_model
     }
 
-    /// Get the timeout in seconds.
+    /// Returns the timeout in seconds for API requests.
     pub fn timeout_seconds(&self) -> u64 {
         self.timeout_seconds
     }
 
-    /// Set the base URL.
+    /// Sets a custom base URL for API requests.
     pub fn with_base_url<S: Into<String>>(mut self, base_url: S) -> Self {
         self.base_url = base_url.into();
         self
     }
 
-    /// Set the small model.
+    /// Sets the small model to use for generation.
     pub fn with_small_model(mut self, model: Model) -> Self {
         self.small_model = model;
         self
     }
 
-    /// Set the large model.
+    /// Sets the large model to use for generation.
     pub fn with_large_model(mut self, model: Model) -> Self {
         self.large_model = model;
         self
     }
 
-    /// Set the timeout in seconds.
+    /// Sets the timeout in seconds for API requests.
     pub fn with_timeout(mut self, seconds: u64) -> Self {
         self.timeout_seconds = seconds;
         self
     }
 
-    /// Get the full messages endpoint URL.
+    /// Returns the full URL for the messages API endpoint.
     pub fn messages_url(&self) -> String {
         format!("{}/v1/messages", self.base_url)
     }
@@ -205,5 +199,3 @@ mod tests {
         );
     }
 }
-
-

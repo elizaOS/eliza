@@ -1,7 +1,3 @@
-/**
- * Provider exports for the N8n Plugin.
- */
-
 export {
   pluginCreationCapabilitiesProvider,
   pluginCreationStatusProvider,

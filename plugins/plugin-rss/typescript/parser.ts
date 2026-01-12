@@ -1,22 +1,11 @@
-/**
- * RSS/Atom Feed Parser
- *
- * Pure XML parsing without external dependencies.
- * Supports RSS 2.0 and basic Atom feeds.
- */
-
 import type { RssEnclosure, RssFeed, RssImage, RssItem } from "./types";
 
-/**
- * Helper function to safely parse XML tags with error handling
- */
 function parseTag(tag: string, str: string): string[] {
   try {
     const regex = new RegExp(`<${tag}(?:\\s+[^>]*)?>(.*?)</${tag}>`, "gs");
     const matches: string[] = [];
     let match: RegExpExecArray | null = regex.exec(str);
     while (match !== null) {
-      // Decode HTML entities and trim whitespace
       const content = match[1];
       if (content !== undefined) {
         const value = content
@@ -37,17 +26,11 @@ function parseTag(tag: string, str: string): string[] {
   }
 }
 
-/**
- * Helper function to parse CDATA sections
- */
 function parseCDATA(str: string | undefined): string {
   if (!str) return "";
   return str.replace(/<!\[CDATA\[(.*?)\]\]>/gs, "$1");
 }
 
-/**
- * Parse RSS image element
- */
 function parseImage(imageXml: string): RssImage | null {
   const imageMatch = /<image>(.*?)<\/image>/s.exec(imageXml);
   if (imageMatch?.[1]) {
@@ -63,9 +46,6 @@ function parseImage(imageXml: string): RssImage | null {
   return null;
 }
 
-/**
- * Parse RSS enclosure element
- */
 function parseEnclosure(itemXml: string): RssEnclosure | null {
   const enclosureTag = /<enclosure[^>]*\/?>/i.exec(itemXml);
   if (enclosureTag?.[0]) {
@@ -81,9 +61,6 @@ function parseEnclosure(itemXml: string): RssEnclosure | null {
   return null;
 }
 
-/**
- * Parse a single RSS item
- */
 function parseItem(itemXml: string): RssItem {
   return {
     title: parseTag("title", itemXml)[0] ?? "",
@@ -98,21 +75,13 @@ function parseItem(itemXml: string): RssItem {
   };
 }
 
-/**
- * Parse RSS/Atom XML string to JSON
- *
- * @param xml - Raw XML string from RSS feed
- * @returns Parsed RssFeed object
- */
 export function parseRssToJson(xml: string): RssFeed {
   try {
-    // Remove comments and normalize whitespace
     const cleanXml = xml
       .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/\s+/g, " ")
       .trim();
 
-    // Parse channel metadata
     const channelRegex = /<channel>(.*?)<\/channel>/s;
     const channelMatch = channelRegex.exec(cleanXml);
 
@@ -121,8 +90,6 @@ export function parseRssToJson(xml: string): RssFeed {
     }
 
     const channelXml = channelMatch[1];
-
-    // Extract standard RSS channel elements
     const channel: RssFeed = {
       title: parseTag("title", channelXml)[0] ?? "",
       description: parseCDATA(parseTag("description", channelXml)[0]),
@@ -137,7 +104,6 @@ export function parseRssToJson(xml: string): RssFeed {
       items: [],
     };
 
-    // Parse items
     const itemRegex = /<item>(.*?)<\/item>/gs;
     let itemMatch: RegExpExecArray | null = itemRegex.exec(channelXml);
 
@@ -167,9 +133,6 @@ export function parseRssToJson(xml: string): RssFeed {
   }
 }
 
-/**
- * Create an empty RSS feed structure
- */
 export function createEmptyFeed(): RssFeed {
   return {
     title: "",
