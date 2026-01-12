@@ -251,47 +251,21 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         }
       }
 
-      // 3) Broader participant scan (only if still not enough and no explicit room filter)
+      // 3) Broader room scan (only if still not enough and no explicit room filter)
+      // Optimized: single query instead of N+1 (worlds→rooms loop)
       if (!roomId && !entityId && needsMoreRuns()) {
         try {
-          const worlds = await runtime.getAllWorlds();
-          const roomIds: UUID[] = [];
-          for (const w of worlds) {
-            try {
-              const rooms = await runtime.getRooms(w.id);
-              roomIds.push(...rooms.map((r) => r.id));
-            } catch {
-              // ignore
-            }
-            if (roomIds.length > 20) {
-              break;
-            } // guardrail
-          }
+          const allRoomIds = await runtime.getRoomsForParticipant(agentId);
+          const limitedRoomIds = allRoomIds.slice(0, 20); // guardrail
 
-          const participantLogs = await Promise.all(
-            roomIds.map(async (rId) => {
-              try {
-                const participants: UUID[] = await runtime.getParticipantsForRoom(rId);
-                const otherParticipants = participants.filter((pid) => pid !== agentId).slice(0, 5);
-                const logsPerParticipant = await Promise.all(
-                  otherParticipants.map(() =>
-                    runtime
-                      .getLogs({
-                        roomId: rId,
-                        type: 'run_event',
-                        count: 300,
-                      })
-                      .catch(() => [])
-                  )
-                );
-                return logsPerParticipant.flat();
-              } catch {
-                return [];
-              }
-            })
+          // Fetch logs for each room in parallel (no redundant participant loop)
+          const logsPerRoom = await Promise.all(
+            limitedRoomIds.map((rId) =>
+              runtime.getLogs({ roomId: rId, type: 'run_event', count: 300 }).catch(() => [])
+            )
           );
 
-          for (const logs of participantLogs) {
+          for (const logs of logsPerRoom) {
             ingestRunEvents(logs);
             if (!needsMoreRuns()) {
               break;
