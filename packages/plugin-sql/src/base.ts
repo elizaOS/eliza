@@ -1925,18 +1925,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   ): Promise<UUID> {
     const memoryId = memory.id ?? (v4() as UUID);
 
-    const existing = await this.getMemoryById(memoryId);
-    if (existing) {
-      return memoryId;
-    }
-
-    // only do costly check if we need to
+    // Only do costly similarity check if we need to determine uniqueness
     if (memory.unique === undefined) {
-      memory.unique = true; // set default
+      memory.unique = true;
       if (memory.embedding && Array.isArray(memory.embedding)) {
         const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
           tableName,
-          // Use the scope fields from the memory object for similarity check
           roomId: memory.roomId,
           worldId: memory.worldId,
           entityId: memory.entityId,
@@ -1947,43 +1941,44 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       }
     }
 
-    // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
-    // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
       typeof memory.content === 'string' ? memory.content : JSON.stringify(memory.content ?? {});
 
     const metadataToInsert =
       typeof memory.metadata === 'string' ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
-    // Use withIsolationContext to set Entity RLS context if needed
-    // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
+    // UPSERT: insert or ignore if already exists
     await this.withIsolationContext(memory.entityId, async (tx) => {
-      await tx.insert(memoryTable).values([
-        {
-          id: memoryId,
-          type: tableName,
-          content: sql`${contentToInsert}::jsonb`,
-          metadata: sql`${metadataToInsert}::jsonb`,
-          entityId: memory.entityId,
-          roomId: memory.roomId,
-          worldId: memory.worldId, // Include worldId
-          agentId: memory.agentId || this.agentId,
-          unique: memory.unique,
-          createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
-        },
-      ]);
+      const inserted = await tx
+        .insert(memoryTable)
+        .values([
+          {
+            id: memoryId,
+            type: tableName,
+            content: sql`${contentToInsert}::jsonb`,
+            metadata: sql`${metadataToInsert}::jsonb`,
+            entityId: memory.entityId,
+            roomId: memory.roomId,
+            worldId: memory.worldId,
+            agentId: memory.agentId || this.agentId,
+            unique: memory.unique,
+            createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
+          },
+        ])
+        .onConflictDoNothing()
+        .returning();
 
-      if (memory.embedding && Array.isArray(memory.embedding)) {
+      // Only insert embedding if memory was actually created (not a duplicate)
+      if (inserted.length > 0 && memory.embedding && Array.isArray(memory.embedding)) {
+        const cleanVector = memory.embedding.map((n) =>
+          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+        );
+
         const embeddingValues: Record<string, unknown> = {
           id: v4(),
           memoryId: memoryId,
           createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         };
-
-        const cleanVector = memory.embedding.map((n) =>
-          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-        );
-
         embeddingValues[this.embeddingDimension] = cleanVector;
 
         await tx.insert(embeddingTable).values([embeddingValues]);
@@ -2338,16 +2333,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const roomsWithIds = rooms.map((room) => ({
         ...room,
         agentId: this.agentId,
-        id: room.id || v4(), // ensure each room has a unique ID
+        id: room.id || v4(),
       }));
 
-      const insertedRooms = await this.db
-        .insert(roomTable)
-        .values(roomsWithIds)
-        .onConflictDoNothing()
-        .returning();
-      const insertedIds = insertedRooms.map((r) => r.id as UUID);
-      return insertedIds;
+      // UPSERT: insert or ignore if already exists
+      await this.db.insert(roomTable).values(roomsWithIds).onConflictDoNothing();
+
+      return roomsWithIds.map((r) => r.id as UUID);
     });
   }
 
@@ -3247,7 +3239,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         updatedAt: now,
       };
 
+      logger.info(
+        { src: 'plugin:sql', method: 'ensureMessageServer', serverId: serverToInsert.id },
+        '[DEBUG] BEFORE onConflictDoNothing'
+      );
       await this.db.insert(messageServerTable).values(serverToInsert).onConflictDoNothing(); // In case the ID already exists
+      logger.info(
+        { src: 'plugin:sql', method: 'ensureMessageServer' },
+        '[DEBUG] AFTER onConflictDoNothing'
+      );
 
       // If server already existed, fetch it
       if (data.id) {
@@ -3416,17 +3416,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         updatedAt: now,
       };
 
-      await this.db.transaction(async (tx) => {
-        await tx.insert(channelTable).values(channelToInsert);
+      // UPSERT: insert channel, ignore if already exists
+      await this.db.insert(channelTable).values(channelToInsert).onConflictDoNothing();
 
-        if (participantIds && participantIds.length > 0) {
-          const participantValues = participantIds.map((entityId) => ({
-            channelId: newId,
-            entityId: entityId,
-          }));
-          await tx.insert(channelParticipantsTable).values(participantValues).onConflictDoNothing();
-        }
-      });
+      // UPSERT: insert participants, ignore duplicates
+      if (participantIds && participantIds.length > 0) {
+        const participantValues = participantIds.map((entityId) => ({
+          channelId: newId,
+          entityId: entityId,
+        }));
+        await this.db
+          .insert(channelParticipantsTable)
+          .values(participantValues)
+          .onConflictDoNothing();
+      }
 
       return channelToInsert;
     });
@@ -3708,34 +3711,32 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       const now = new Date();
 
-      await this.db.transaction(async (tx) => {
-        // Update channel details
-        const updateData: Record<string, unknown> = { updatedAt: now };
-        if (updates.name !== undefined) updateData.name = updates.name;
-        if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
+      // Update channel details
+      const updateData: Record<string, unknown> = { updatedAt: now };
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
 
-        await tx.update(channelTable).set(updateData).where(eq(channelTable.id, channelId));
+      await this.db.update(channelTable).set(updateData).where(eq(channelTable.id, channelId));
 
-        // Update participants if provided
-        if (updates.participantCentralUserIds !== undefined) {
-          // Remove existing participants
-          await tx
-            .delete(channelParticipantsTable)
-            .where(eq(channelParticipantsTable.channelId, channelId));
+      // Update participants if provided
+      if (updates.participantCentralUserIds !== undefined) {
+        // Remove existing participants
+        await this.db
+          .delete(channelParticipantsTable)
+          .where(eq(channelParticipantsTable.channelId, channelId));
 
-          // Add new participants
-          if (updates.participantCentralUserIds.length > 0) {
-            const participantValues = updates.participantCentralUserIds.map((entityId) => ({
-              channelId: channelId,
-              entityId: entityId,
-            }));
-            await tx
-              .insert(channelParticipantsTable)
-              .values(participantValues)
-              .onConflictDoNothing();
-          }
+        // Add new participants
+        if (updates.participantCentralUserIds.length > 0) {
+          const participantValues = updates.participantCentralUserIds.map((entityId) => ({
+            channelId: channelId,
+            entityId: entityId,
+          }));
+          await this.db
+            .insert(channelParticipantsTable)
+            .values(participantValues)
+            .onConflictDoNothing();
         }
-      });
+      }
 
       // Return updated channel details
       const updatedChannel = await this.getChannelDetails(channelId);
@@ -3778,10 +3779,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         entityId: entityId,
       }));
 
+      logger.info(
+        { src: 'plugin:sql', method: 'addChannelParticipants', channelId, count: entityIds.length },
+        '[DEBUG] BEFORE onConflictDoNothing'
+      );
       await this.db
         .insert(channelParticipantsTable)
         .values(participantValues)
         .onConflictDoNothing();
+      logger.info(
+        { src: 'plugin:sql', method: 'addChannelParticipants' },
+        '[DEBUG] AFTER onConflictDoNothing'
+      );
     });
   }
 
@@ -3827,6 +3836,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   async addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
+      logger.info(
+        { src: 'plugin:sql', method: 'addAgentToMessageServer', messageServerId, agentId },
+        '[DEBUG] BEFORE onConflictDoNothing'
+      );
       await this.db
         .insert(messageServerAgentsTable)
         .values({
@@ -3834,6 +3847,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           agentId,
         })
         .onConflictDoNothing();
+      logger.info(
+        { src: 'plugin:sql', method: 'addAgentToMessageServer' },
+        '[DEBUG] AFTER onConflictDoNothing'
+      );
     });
   }
 
