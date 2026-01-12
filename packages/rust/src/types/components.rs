@@ -290,16 +290,34 @@ pub struct EvaluatorDefinition {
     pub examples: Vec<EvaluationExample>,
 }
 
-/// Trait for action handlers
+// ============================================================================
+// Platform-Aware Handler Traits
+// ============================================================================
+//
+// These traits use platform-conditional compilation to support both:
+// - Native (multi-threaded): Requires Send + Sync, uses #[async_trait]
+// - WASM (single-threaded): No Send + Sync, uses #[async_trait(?Send)]
+
+/// Trait for action handlers.
+///
+/// Actions are the primary way agents interact with the world. Each action
+/// has a definition (name, description, examples) and handlers for validation
+/// and execution.
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No thread safety requirements (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait ActionHandler: Send + Sync {
-    /// Get the action definition
+    /// Get the action definition (name, description, examples, etc.)
     fn definition(&self) -> ActionDefinition;
 
-    /// Validate if the action should run
+    /// Validate if the action should run for this message.
     async fn validate(&self, message: &Memory, state: Option<&State>) -> bool;
 
-    /// Execute the action
+    /// Execute the action and return the result.
     async fn handle(
         &self,
         message: &Memory,
@@ -308,26 +326,93 @@ pub trait ActionHandler: Send + Sync {
     ) -> Result<Option<ActionResult>, anyhow::Error>;
 }
 
-/// Trait for provider handlers
+/// Trait for action handlers (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait ActionHandler {
+    /// Get the action definition (name, description, examples, etc.)
+    fn definition(&self) -> ActionDefinition;
+
+    /// Validate if the action should run for this message.
+    async fn validate(&self, message: &Memory, state: Option<&State>) -> bool;
+
+    /// Execute the action and return the result.
+    async fn handle(
+        &self,
+        message: &Memory,
+        state: Option<&State>,
+        options: Option<&HandlerOptions>,
+    ) -> Result<Option<ActionResult>, anyhow::Error>;
+}
+
+/// Trait for provider handlers.
+///
+/// Providers supply context to the agent during message processing.
+/// They gather information from various sources and make it available
+/// for decision-making.
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No thread safety requirements (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait ProviderHandler: Send + Sync {
-    /// Get the provider definition
+    /// Get the provider definition (name, description, etc.)
     fn definition(&self) -> ProviderDefinition;
 
-    /// Get provider data
+    /// Get data from this provider for the given message and state.
     async fn get(&self, message: &Memory, state: &State) -> Result<ProviderResult, anyhow::Error>;
 }
 
-/// Trait for evaluator handlers
+/// Trait for provider handlers (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait ProviderHandler {
+    /// Get the provider definition (name, description, etc.)
+    fn definition(&self) -> ProviderDefinition;
+
+    /// Get data from this provider for the given message and state.
+    async fn get(&self, message: &Memory, state: &State) -> Result<ProviderResult, anyhow::Error>;
+}
+
+/// Trait for evaluator handlers.
+///
+/// Evaluators run after actions to assess the agent's response and
+/// potentially trigger follow-up actions or learning.
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No thread safety requirements (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait]
 pub trait EvaluatorHandler: Send + Sync {
-    /// Get the evaluator definition
+    /// Get the evaluator definition (name, description, examples, etc.)
     fn definition(&self) -> EvaluatorDefinition;
 
-    /// Validate if the evaluator should run
+    /// Validate if the evaluator should run for this message.
     async fn validate(&self, message: &Memory, state: Option<&State>) -> bool;
 
-    /// Execute the evaluator
+    /// Execute the evaluator and return the result.
+    async fn handle(
+        &self,
+        message: &Memory,
+        state: Option<&State>,
+    ) -> Result<Option<ActionResult>, anyhow::Error>;
+}
+
+/// Trait for evaluator handlers (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait(?Send)]
+pub trait EvaluatorHandler {
+    /// Get the evaluator definition (name, description, examples, etc.)
+    fn definition(&self) -> EvaluatorDefinition;
+
+    /// Validate if the evaluator should run for this message.
+    async fn validate(&self, message: &Memory, state: Option<&State>) -> bool;
+
+    /// Execute the evaluator and return the result.
     async fn handle(
         &self,
         message: &Memory,

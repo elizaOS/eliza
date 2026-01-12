@@ -28,9 +28,95 @@ use tokio::sync::RwLock;
 #[cfg(feature = "wasm")]
 use std::sync::RwLock;
 
-/// Database adapter trait for runtime storage operations
+/// Database adapter trait for runtime storage operations.
+///
+/// This trait defines the interface for persistent storage backends.
+/// Implementations can use SQLite, PostgreSQL, or other databases.
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No thread safety requirements (uses browser storage or remote API)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait::async_trait]
 pub trait DatabaseAdapter: Send + Sync {
+    /// Initialize the database
+    async fn init(&self) -> Result<()>;
+
+    /// Close the database connection
+    async fn close(&self) -> Result<()>;
+
+    /// Check if the database is ready
+    async fn is_ready(&self) -> Result<bool>;
+
+    /// Get an agent by ID
+    async fn get_agent(&self, agent_id: &UUID) -> Result<Option<Agent>>;
+
+    /// Create an agent
+    async fn create_agent(&self, agent: &Agent) -> Result<bool>;
+
+    /// Update an agent
+    async fn update_agent(&self, agent_id: &UUID, agent: &Agent) -> Result<bool>;
+
+    /// Delete an agent
+    async fn delete_agent(&self, agent_id: &UUID) -> Result<bool>;
+
+    /// Get memories
+    async fn get_memories(&self, params: GetMemoriesParams) -> Result<Vec<Memory>>;
+
+    /// Search memories by embedding
+    async fn search_memories(&self, params: SearchMemoriesParams) -> Result<Vec<Memory>>;
+
+    /// Create a memory
+    async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID>;
+
+    /// Update a memory
+    async fn update_memory(&self, memory: &Memory) -> Result<bool>;
+
+    /// Delete a memory
+    async fn delete_memory(&self, memory_id: &UUID) -> Result<()>;
+
+    /// Get a memory by ID
+    async fn get_memory_by_id(&self, id: &UUID) -> Result<Option<Memory>>;
+
+    /// Create a world
+    async fn create_world(&self, world: &World) -> Result<UUID>;
+
+    /// Get a world by ID
+    async fn get_world(&self, id: &UUID) -> Result<Option<World>>;
+
+    /// Create a room
+    async fn create_room(&self, room: &Room) -> Result<UUID>;
+
+    /// Get a room by ID
+    async fn get_room(&self, id: &UUID) -> Result<Option<Room>>;
+
+    /// Create an entity
+    async fn create_entity(&self, entity: &Entity) -> Result<bool>;
+
+    /// Get an entity by ID
+    async fn get_entity(&self, id: &UUID) -> Result<Option<Entity>>;
+
+    /// Add a participant to a room
+    async fn add_participant(&self, entity_id: &UUID, room_id: &UUID) -> Result<bool>;
+
+    /// Create a task
+    async fn create_task(&self, task: &Task) -> Result<UUID>;
+
+    /// Get a task by ID
+    async fn get_task(&self, id: &UUID) -> Result<Option<Task>>;
+
+    /// Update a task
+    async fn update_task(&self, id: &UUID, task: &Task) -> Result<()>;
+
+    /// Delete a task
+    async fn delete_task(&self, id: &UUID) -> Result<()>;
+}
+
+/// Database adapter trait for runtime storage operations (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait::async_trait(?Send)]
+pub trait DatabaseAdapter {
     /// Initialize the database
     async fn init(&self) -> Result<()>;
 
@@ -284,13 +370,33 @@ pub struct AgentRuntime {
     check_should_respond_option: Option<bool>,
 }
 
-/// Service trait for long-running services
+/// Service trait for long-running services.
+///
+/// Services are background processes that run alongside the agent runtime,
+/// such as task schedulers, message queues, or external API connections.
+///
+/// # Platform Differences
+///
+/// - **Native**: Requires `Send + Sync` for thread-safe sharing
+/// - **WASM**: No thread safety requirements (single-threaded)
+#[cfg(not(target_arch = "wasm32"))]
 #[async_trait::async_trait]
 pub trait Service: Send + Sync {
-    /// Get the service type
+    /// Get the service type identifier
     fn service_type(&self) -> &str;
 
-    /// Stop the service
+    /// Stop the service gracefully
+    async fn stop(&self) -> Result<()>;
+}
+
+/// Service trait for long-running services (WASM version).
+#[cfg(target_arch = "wasm32")]
+#[async_trait::async_trait(?Send)]
+pub trait Service {
+    /// Get the service type identifier
+    fn service_type(&self) -> &str;
+
+    /// Stop the service gracefully
     async fn stop(&self) -> Result<()>;
 }
 
