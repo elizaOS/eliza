@@ -4,7 +4,13 @@
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type { BlueSkyClient } from "../client";
-import type { BlueSkyConfig, BlueSkyNotification, NotificationReason } from "../types";
+import type {
+  BlueSkyConfig,
+  BlueSkyCreatePostEventPayload,
+  BlueSkyNotification,
+  BlueSkyNotificationEventPayload,
+  NotificationReason,
+} from "../types";
 import {
   getActionInterval,
   getMaxActionsProcessing,
@@ -103,10 +109,12 @@ export class BlueSkyAgentManager {
 
     const event = eventMap[notification.reason];
     if (event) {
-      void this.runtime.emitEvent(event, {
+      const payload: BlueSkyNotificationEventPayload = {
+        runtime: this.runtime,
         source: "bluesky",
-        data: { notification },
-      });
+        notification,
+      };
+      void this.runtime.emitEvent(event, payload);
     }
   }
 
@@ -124,10 +132,12 @@ export class BlueSkyAgentManager {
 
     for (const notification of notifications) {
       if (notification.reason === "mention" || notification.reason === "reply") {
-        void this.runtime.emitEvent("bluesky.should_respond", {
+        const payload: BlueSkyNotificationEventPayload = {
+          runtime: this.runtime,
           source: "bluesky",
-          data: { notification },
-        });
+          notification,
+        };
+        void this.runtime.emitEvent("bluesky.should_respond", payload);
       }
     }
   }
@@ -152,9 +162,11 @@ export class BlueSkyAgentManager {
   }
 
   private createAutomatedPost(): void {
-    void this.runtime.emitEvent("bluesky.create_post", {
+    const payload: BlueSkyCreatePostEventPayload = {
+      runtime: this.runtime,
       source: "bluesky",
-      data: { automated: true },
-    });
+      automated: true,
+    };
+    void this.runtime.emitEvent("bluesky.create_post", payload);
   }
 }

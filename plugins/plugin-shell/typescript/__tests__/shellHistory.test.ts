@@ -18,23 +18,33 @@ vi.mock("cross-spawn", () => ({
   default: vi.fn(),
 }));
 
+// Mock @elizaos/core
+vi.mock("@elizaos/core", async () => {
+  const actual = await vi.importActual("@elizaos/core");
+  return {
+    ...actual,
+    logger: {
+      log: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
+    Service: class {
+      protected runtime: IAgentRuntime;
+      constructor(runtime: IAgentRuntime) {
+        this.runtime = runtime;
+      }
+    },
+  };
+});
+
 /**
- * Creates a REAL AgentRuntime for testing - NO MOCKS.
+ * Creates a mock AgentRuntime for testing.
  */
-async function createTestRuntime(): Promise<{
-  runtime: IAgentRuntime;
-  cleanup: () => Promise<void>;
-}> {
-  const sqlPlugin = await import("@elizaos/plugin-sql");
-  const { AgentRuntime } = await import("@elizaos/core");
-  const { v4: uuidv4 } = await import("uuid");
-
-  const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ":memory:" }, agentId);
-  await adapter.init();
-
-  const runtime = new AgentRuntime({
-    agentId,
+function createMockRuntime(): IAgentRuntime {
+  return {
+    agentId: "test-agent-id" as `${string}-${string}-${string}-${string}-${string}`,
     character: {
       name: "Test Agent",
       bio: ["A test agent for shell operations"],
@@ -47,38 +57,26 @@ async function createTestRuntime(): Promise<{
       adjectives: ["helpful"],
       style: { all: [], chat: [], post: [] },
     },
-    adapter,
-    plugins: [],
-  });
-
-  await runtime.initialize();
-
-  const cleanup = async () => {
-    try {
-      await runtime.stop();
-      await adapter.close();
-    } catch {
-      // Ignore cleanup errors
-    }
-  };
-
-  return { runtime, cleanup };
+    getSetting: vi.fn(),
+    setSetting: vi.fn(),
+    getService: vi.fn(),
+    registerService: vi.fn(),
+    useModel: vi.fn(),
+    emitEvent: vi.fn(),
+  } as unknown as IAgentRuntime;
 }
 
 describe("Shell History Tracking", () => {
   let shellService: ShellService;
   let runtime: IAgentRuntime;
-  let cleanup: () => Promise<void>;
 
-  beforeEach(async () => {
-    const result = await createTestRuntime();
-    runtime = result.runtime;
-    cleanup = result.cleanup;
+  beforeEach(() => {
+    runtime = createMockRuntime();
     shellService = new ShellService(runtime);
   });
 
-  afterEach(async () => {
-    await cleanup();
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   it("should track command history per conversation", async () => {

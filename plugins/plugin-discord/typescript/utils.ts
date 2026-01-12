@@ -47,13 +47,6 @@ interface RuntimeWithMessagingAPI extends IAgentRuntime {
 }
 
 /**
- * Runtime with optional message service
- */
-interface RuntimeWithMessageService extends IAgentRuntime {
-  messageService: MessageServiceAPI;
-}
-
-/**
  * Type guard to check if runtime has the messaging API (elizaOS.sendMessage).
  * @param {IAgentRuntime} runtime - The runtime to check
  * @returns {runtime is RuntimeWithMessagingAPI} True if the messaging API is available
@@ -70,15 +63,12 @@ export function hasMessagingAPI(runtime: IAgentRuntime): runtime is RuntimeWithM
 /**
  * Type guard to check if the runtime has the message service API (messageService.handleMessage).
  * @param {IAgentRuntime} runtime - The runtime to check
- * @returns {runtime is RuntimeWithMessageService} True if the message service API is available
+ * @returns {boolean} True if the message service API is available
  */
-export function hasMessageService(runtime: IAgentRuntime): runtime is RuntimeWithMessageService {
+export function hasMessageService(runtime: IAgentRuntime): boolean {
   return (
-    "messageService" in runtime &&
-    typeof (runtime as { messageService?: { handleMessage?: unknown } }).messageService ===
-      "object" &&
     runtime.messageService !== null &&
-    typeof (runtime.messageService as { handleMessage?: unknown }).handleMessage === "function"
+    typeof runtime.messageService?.handleMessage === "function"
   );
 }
 

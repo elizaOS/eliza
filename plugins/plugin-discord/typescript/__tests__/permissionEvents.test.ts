@@ -104,10 +104,7 @@ describe("isElevatedRole", () => {
 describe("diffOverwrites", () => {
   it("returns CREATE action when old is null", () => {
     const newOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
-    const result = diffOverwrites(
-      null,
-      isPermissionOverwrites(newOw) ? newOw : (newOw as PermissionOverwrites)
-    );
+    const result = diffOverwrites(null, newOw as unknown as PermissionOverwrites);
 
     expect(result.action).toBe("CREATE");
     expect(result.changes).toHaveLength(2);
@@ -125,10 +122,7 @@ describe("diffOverwrites", () => {
 
   it("returns DELETE action when new is null", () => {
     const oldOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
-    const result = diffOverwrites(
-      isPermissionOverwrites(oldOw) ? oldOw : (oldOw as PermissionOverwrites),
-      null
-    );
+    const result = diffOverwrites(oldOw as unknown as PermissionOverwrites, null);
 
     expect(result.action).toBe("DELETE");
     expect(result.changes).toHaveLength(2);
@@ -148,8 +142,8 @@ describe("diffOverwrites", () => {
     const oldOw = createMockOverwrite(["ManageMessages"], []);
     const newOw = createMockOverwrite([], ["ManageMessages"]);
     const result = diffOverwrites(
-      isPermissionOverwrites(oldOw) ? oldOw : (oldOw as PermissionOverwrites),
-      isPermissionOverwrites(newOw) ? newOw : (newOw as PermissionOverwrites)
+      oldOw as unknown as PermissionOverwrites,
+      newOw as unknown as PermissionOverwrites
     );
 
     expect(result.action).toBe("UPDATE");
@@ -165,8 +159,8 @@ describe("diffOverwrites", () => {
     const oldOw = createMockOverwrite([], ["ManageMessages"]);
     const newOw = createMockOverwrite([], []);
     const result = diffOverwrites(
-      isPermissionOverwrites(oldOw) ? oldOw : (oldOw as PermissionOverwrites),
-      isPermissionOverwrites(newOw) ? newOw : (newOw as PermissionOverwrites)
+      oldOw as unknown as PermissionOverwrites,
+      newOw as unknown as PermissionOverwrites
     );
 
     expect(result.action).toBe("UPDATE");
@@ -182,8 +176,8 @@ describe("diffOverwrites", () => {
     const oldOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
     const newOw = createMockOverwrite(["SendMessages"], ["ManageMessages"]);
     const result = diffOverwrites(
-      isPermissionOverwrites(oldOw) ? oldOw : (oldOw as PermissionOverwrites),
-      isPermissionOverwrites(newOw) ? newOw : (newOw as PermissionOverwrites)
+      oldOw as unknown as PermissionOverwrites,
+      newOw as unknown as PermissionOverwrites
     );
 
     expect(result.action).toBe("UPDATE");

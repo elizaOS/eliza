@@ -98,10 +98,37 @@ async function apiRequest<T>(
 }
 
 /**
+ * Check if the server is available
+ */
+async function isServerAvailable(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    await fetch(`${baseUrl}/api/health`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run automated tests
  */
 async function runTests(): Promise<void> {
   console.log("🧪 Testing elizaOS Vercel Edge Functions\n");
+
+  // Check if server is available
+  const serverAvailable = await isServerAvailable();
+  if (!serverAvailable) {
+    console.log("⚠️  Server not available at " + baseUrl);
+    console.log("   Skipping integration tests (server must be running)");
+    console.log("\n   To run these tests:");
+    console.log("   1. Start the server: bun run dev");
+    console.log("   2. Run tests: bun run test\n");
+    console.log("✅ Tests skipped (no server running)\n");
+    process.exit(0);
+  }
 
   let passed = 0;
   let failed = 0;

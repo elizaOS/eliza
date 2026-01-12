@@ -217,7 +217,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       // IMPORTANT: Check isUnique, not just uniqueName presence!
       // Drizzle sets uniqueName for all columns but only unique ones should have constraints
       // Type assertion: accessing internal Drizzle column properties not in public types
-      const columnWithConfig = column as DrizzleColumnWithConfig;
+      const columnWithConfig = column as unknown as DrizzleColumnWithConfig;
       const columnConfig = columnWithConfig.config;
       if (columnWithConfig.isUnique && columnConfig && columnConfig.uniqueName) {
         uniqueConstraintObject[columnConfig.uniqueName] = {

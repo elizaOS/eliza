@@ -6,6 +6,8 @@ import { type AppBskyFeedDefs, BskyAgent, RichText } from "@atproto/api";
 import { logger } from "@elizaos/core";
 import { LRUCache } from "lru-cache";
 import type {
+  ATProtocolPostRecord,
+  ATProtocolProfileViewExtended,
   BlueSkyConversation,
   BlueSkyMessage,
   BlueSkyNotification,
@@ -13,6 +15,8 @@ import type {
   BlueSkyProfile,
   BlueSkySession,
   CreatePostRequest,
+  PostEmbed,
+  PostFacet,
   SendMessageRequest,
   TimelineRequest,
   TimelineResponse,
@@ -20,34 +24,62 @@ import type {
 import { BLUESKY_CHAT_SERVICE_DID, BlueSkyError, CACHE_SIZE, CACHE_TTL } from "./types";
 
 /**
+ * Type guard to check if a reply reference item is a valid PostView.
+ * Filters out NotFoundPost, BlockedPost, and other non-PostView types.
+ */
+function isPostView(
+  item: AppBskyFeedDefs.PostView | AppBskyFeedDefs.NotFoundPost | AppBskyFeedDefs.BlockedPost | { $type: string; [k: string]: unknown }
+): item is AppBskyFeedDefs.PostView {
+  // PostView has required properties: uri, cid, author, record, indexedAt
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "uri" in item &&
+    "cid" in item &&
+    "author" in item &&
+    "record" in item &&
+    "indexedAt" in item &&
+    typeof (item as AppBskyFeedDefs.PostView).uri === "string" &&
+    typeof (item as AppBskyFeedDefs.PostView).cid === "string"
+  );
+}
+
+/**
  * Converts an AT Protocol post view to our internal BlueSkyPost type.
  * This adapter handles the conversion from @atproto/api types to our internal representation.
  */
 function adaptPostView(postView: AppBskyFeedDefs.PostView): BlueSkyPost {
+  // Cast author to extended profile type to access optional properties
+  // The AT Protocol types have an index signature [k: string]: unknown for extensibility
+  const author = postView.author as ATProtocolProfileViewExtended;
+  
+  // Cast record to our known post record type
+  const record = postView.record as ATProtocolPostRecord;
+  
   return {
     uri: postView.uri,
     cid: postView.cid,
     author: {
-      did: postView.author.did,
-      handle: postView.author.handle,
-      displayName: postView.author.displayName,
-      description: postView.author.description,
-      avatar: postView.author.avatar,
-      banner: postView.author.banner,
-      followersCount: postView.author.followersCount,
-      followsCount: postView.author.followsCount,
-      postsCount: postView.author.postsCount,
-      indexedAt: postView.author.indexedAt,
-      createdAt: postView.author.createdAt,
+      did: author.did,
+      handle: author.handle,
+      displayName: author.displayName,
+      description: author.description,
+      avatar: author.avatar,
+      banner: author.banner,
+      followersCount: author.followersCount,
+      followsCount: author.followsCount,
+      postsCount: author.postsCount,
+      indexedAt: author.indexedAt,
+      createdAt: author.createdAt,
     },
     record: {
-      $type: postView.record.$type,
-      text: (postView.record as { text?: string }).text ?? "",
-      facets: (postView.record as { facets?: unknown[] }).facets,
-      embed: (postView.record as { embed?: unknown }).embed,
-      createdAt: (postView.record as { createdAt?: string }).createdAt ?? "",
+      $type: record.$type ?? "app.bsky.feed.post",
+      text: record.text ?? "",
+      facets: record.facets as PostFacet[] | undefined,
+      embed: record.embed as PostEmbed | undefined,
+      createdAt: record.createdAt ?? "",
     },
-    embed: postView.embed as { $type: string; [key: string]: unknown } | undefined,
+    embed: postView.embed as PostEmbed | undefined,
     replyCount: postView.replyCount,
     repostCount: postView.repostCount,
     likeCount: postView.likeCount,
@@ -136,7 +168,7 @@ export class BlueSkyClient {
       cursor: response.data.cursor,
       feed: response.data.feed.map((item) => ({
         post: adaptPostView(item.post),
-        reply: item.reply
+        reply: item.reply && isPostView(item.reply.root) && isPostView(item.reply.parent)
           ? {
               root: adaptPostView(item.reply.root),
               parent: adaptPostView(item.reply.parent),

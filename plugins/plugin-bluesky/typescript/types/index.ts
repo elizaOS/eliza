@@ -2,6 +2,7 @@
  * Core types for the BlueSky AT Protocol API.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
 
 // Constants
@@ -194,4 +195,44 @@ export class BlueSkyError extends Error {
     super(message);
     this.name = "BlueSkyError";
   }
+}
+
+// AT Protocol record type with known properties for posts
+export interface ATProtocolPostRecord {
+  $type: string;
+  text: string;
+  facets?: PostFacet[];
+  embed?: PostEmbed;
+  createdAt: string;
+  [k: string]: string | PostFacet[] | PostEmbed | undefined;
+}
+
+// Extended profile view that includes all potential properties from AT Protocol
+export interface ATProtocolProfileViewExtended {
+  did: string;
+  handle: string;
+  displayName?: string;
+  description?: string;
+  avatar?: string;
+  banner?: string;
+  followersCount?: number;
+  followsCount?: number;
+  postsCount?: number;
+  indexedAt?: string;
+  createdAt?: string;
+  [k: string]: string | number | undefined;
+}
+
+// Event payload types for BlueSky events
+export interface BlueSkyEventPayload {
+  runtime: IAgentRuntime;
+  source: "bluesky";
+}
+
+export interface BlueSkyNotificationEventPayload extends BlueSkyEventPayload {
+  notification: BlueSkyNotification;
+}
+
+export interface BlueSkyCreatePostEventPayload extends BlueSkyEventPayload {
+  automated: boolean;
 }

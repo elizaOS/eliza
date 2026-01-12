@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  type MemoryMetadata,
   MemoryType,
   type MessagePayload,
   ModelType,

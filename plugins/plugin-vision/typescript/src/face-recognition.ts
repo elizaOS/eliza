@@ -36,8 +36,9 @@ type ImageAdapter = import("canvas").Image & HTMLImageElement;
 
 function asCanvasEnv(canvas: typeof import("canvas")): FaceApiEnv {
   return {
-    Canvas: canvas.Canvas as typeof HTMLCanvasElement,
-    Image: canvas.Image as typeof HTMLImageElement,
+    // node-canvas types don't match DOM types but are runtime-compatible with face-api.js
+    Canvas: canvas.Canvas as unknown as typeof HTMLCanvasElement,
+    Image: canvas.Image as unknown as typeof HTMLImageElement,
     ImageData: canvas.ImageData as typeof ImageData,
   };
 }
