@@ -3706,32 +3706,35 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       const now = new Date();
 
-      // Update channel details
-      const updateData: Record<string, unknown> = { updatedAt: now };
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
+      // Wrap in transaction for atomicity (delete + insert participants must succeed together)
+      await this.db.transaction(async (tx) => {
+        // Update channel details
+        const updateData: Record<string, unknown> = { updatedAt: now };
+        if (updates.name !== undefined) updateData.name = updates.name;
+        if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
 
-      await this.db.update(channelTable).set(updateData).where(eq(channelTable.id, channelId));
+        await tx.update(channelTable).set(updateData).where(eq(channelTable.id, channelId));
 
-      // Update participants if provided
-      if (updates.participantCentralUserIds !== undefined) {
-        // Remove existing participants
-        await this.db
-          .delete(channelParticipantsTable)
-          .where(eq(channelParticipantsTable.channelId, channelId));
+        // Update participants if provided
+        if (updates.participantCentralUserIds !== undefined) {
+          // Remove existing participants
+          await tx
+            .delete(channelParticipantsTable)
+            .where(eq(channelParticipantsTable.channelId, channelId));
 
-        // Add new participants
-        if (updates.participantCentralUserIds.length > 0) {
-          const participantValues = updates.participantCentralUserIds.map((entityId) => ({
-            channelId: channelId,
-            entityId: entityId,
-          }));
-          await this.db
-            .insert(channelParticipantsTable)
-            .values(participantValues)
-            .onConflictDoNothing();
+          // Add new participants
+          if (updates.participantCentralUserIds.length > 0) {
+            const participantValues = updates.participantCentralUserIds.map((entityId) => ({
+              channelId: channelId,
+              entityId: entityId,
+            }));
+            await tx
+              .insert(channelParticipantsTable)
+              .values(participantValues)
+              .onConflictDoNothing();
+          }
         }
-      }
+      });
 
       // Return updated channel details
       const updatedChannel = await this.getChannelDetails(channelId);
