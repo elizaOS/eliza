@@ -46,7 +46,7 @@ describe('World Integration Tests', () => {
       expect(retrieved?.id).toBe(worldId);
     });
 
-    it('should not create a world with a duplicate id', async () => {
+    it('should ignore duplicate world creation (idempotent upsert)', async () => {
       const worldId = uuidv4() as UUID;
       const world1: World = {
         id: worldId,
@@ -61,7 +61,11 @@ describe('World Integration Tests', () => {
         serverId: 'server2',
       };
       await adapter.createWorld(world1);
-      await expect(adapter.createWorld(world2)).rejects.toThrow();
+      // Second call should succeed silently (onConflictDoNothing)
+      await adapter.createWorld(world2);
+      // Original world should remain unchanged
+      const retrieved = await adapter.getWorld(worldId);
+      expect(retrieved?.name).toBe('Test World 1');
     });
 
     it('should update an existing world', async () => {
