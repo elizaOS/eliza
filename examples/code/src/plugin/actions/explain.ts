@@ -74,7 +74,6 @@ REQUIRES: A valid file path that can be extracted from the user's message.`,
     ].join("\n");
 
     try {
-      // biome-ignore lint/correctness/useHookAtTopLevel: useModel is a runtime method, not a React hook
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
         maxTokens: 1800,

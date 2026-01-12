@@ -247,14 +247,13 @@ export function TaskPane({
       // Pause/resume
       if (char === "p" && !key.ctrl && !key.meta) {
         const status = currentTask.metadata?.status ?? "pending";
+        const taskId = currentTask.id;
         if (status === "running") {
-          taskService.pauseTask(currentTask.id).catch(() => {});
+          taskService.pauseTask(taskId).catch(() => {});
         } else if (status === "paused" || status === "pending") {
           taskService
-            .resumeTask(currentTask.id)
-            .then(() =>
-              taskService.startTaskExecution(currentTask.id!).catch(() => {}),
-            )
+            .resumeTask(taskId)
+            .then(() => taskService.startTaskExecution(taskId).catch(() => {}))
             .catch(() => {});
         }
         return;

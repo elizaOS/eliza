@@ -1,0 +1,2026 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 50,
+    "timestamp": "2026-01-12T00:09:59Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.3997370151216305,
+    "ast_accuracy": 0.4,
+    "exec_accuracy": 0.4,
+    "relevance_accuracy": 0.98,
+    "total_tests": 50,
+    "passed_tests": 20,
+    "failed_tests": 30,
+    "latency": {
+      "avg": 455.3499937057495,
+      "p50": 416.72611236572266,
+      "p95": 808.4578514099121,
+      "p99": 1107.3188781738281
+    },
+    "category_breakdown": {
+      "rest_api": {
+        "total": 12,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 573.0095505714417
+      },
+      "parallel": {
+        "total": 13,
+        "ast_accuracy": 0.6153846153846154,
+        "exec_accuracy": 0.6153846153846154,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 517.4314975738525
+      },
+      "java": {
+        "total": 13,
+        "ast_accuracy": 0.6153846153846154,
+        "exec_accuracy": 0.6153846153846154,
+        "relevance_accuracy": 0.9230769230769231,
+        "avg_latency_ms": 380.89953936063324
+      },
+      "sql": {
+        "total": 12,
+        "ast_accuracy": 0.3333333333333333,
+        "exec_accuracy": 0.3333333333333333,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 351.09013319015503
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 0,
+      "argument_mismatch": 17,
+      "missing_call": 1,
+      "extra_call": 12,
+      "type_error": 0,
+      "relevance_error": 1,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.4872629848783695,
+    "gpt-4o": -0.4912629848783695,
+    "claude-3-opus": -0.45226298487836947,
+    "claude-3-sonnet": -0.42326298487836944,
+    "gemini-1.5-pro": -0.44526298487836946,
+    "qwen-2.5-72b": -0.31226298487836945,
+    "llama-3.1-70b": -0.28526298487836954,
+    "mistral-large": -0.29826298487836944
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Overall score: 39.97% (AST: 40.00%, Exec: 40.00%)",
+      "Best category: parallel (61.54%)",
+      "Needs work: rest_api (0.00%)",
+      "Behind llama-3.1-70b by 28.53%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "rest_44",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 499.2649555206299,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": "48.8584",
+              "lon": "2.2945",
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_69",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 268.42784881591797,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/CA"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_31",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 299.696683883667,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://ip-api.com/json",
+            "params": {
+              "fields": "country,city,timezone",
+              "lang": "fr"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_20",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 779.9906730651855,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR",
+            "headers": {},
+            "timeout": null,
+            "params": {},
+            "allow_redirects": true,
+            "auth": null,
+            "cert": null,
+            "cookies": {},
+            "proxies": {},
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_21",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 412.16588020324707,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_6",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 360.15915870666504,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://covid-193.p.rapidapi.com/statistics",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "covid-193.p.rapidapi.com"
+            },
+            "timeout": 10,
+            "params": {
+              "country": "Uganda"
+            },
+            "stream": false
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_68",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 611.5198135375977,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/JP",
+            "headers": {},
+            "timeout": 10,
+            "params": {},
+            "auth": "None",
+            "cert": "None",
+            "cookies": {},
+            "proxies": {},
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_24",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 808.4578514099121,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Tesla"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_35",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 459.8405361175537,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/search",
+            "params": {
+              "q": "5331 Rexford Court, Montgomery AL 36116",
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "geojson"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_67",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 641.5672302246094,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/FR",
+            "headers": {},
+            "timeout": 10,
+            "params": {},
+            "auth": null,
+            "cert": null,
+            "cookies": {},
+            "proxies": {},
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_17",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 1083.6188793182373,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-EXCHANGERATE-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_58",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 651.4050960540771,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://www.omdbapi.com/",
+            "params": {
+              "t": "Barbie",
+              "y": "2023",
+              "apikey": "YOUR-OMDB-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_177",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 432.1620464324951,
+      "predicted_calls": [
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "gold",
+            "measure": "ounce"
+          }
+        },
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "silver",
+            "measure": "ounce"
+          }
+        },
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "platinum",
+            "measure": "ounce"
+          }
+        },
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "palladium",
+            "measure": "ounce"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "gold",
+            "measure": "ounce"
+          }
+        },
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "silver",
+            "measure": "ounce"
+          }
+        },
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "platinum",
+            "measure": "ounce"
+          }
+        },
+        {
+          "name": "get_metal_price",
+          "arguments": {
+            "metal": "palladium",
+            "measure": "ounce"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_87",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 418.9298152923584,
+      "predicted_calls": [
+        {
+          "name": "calculate_final_velocity",
+          "arguments": {
+            "time": 10,
+            "initial_velocity": 0,
+            "acceleration": 6
+          }
+        },
+        {
+          "name": "calculate_final_velocity",
+          "arguments": {
+            "time": 15,
+            "initial_velocity": 20,
+            "acceleration": 4
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_final_velocity",
+          "arguments": {
+            "initial_velocity": 0,
+            "acceleration": 6,
+            "time": 10
+          }
+        },
+        {
+          "name": "calculate_final_velocity",
+          "arguments": {
+            "initial_velocity": 20,
+            "acceleration": 4,
+            "time": 15
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_45",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 552.9379844665527,
+      "predicted_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "region": "Australia",
+            "genre": "Pop"
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "region": "Australia",
+            "genre": "Rock"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Pop",
+            "region": "Australia",
+            "duration": 0
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Rock",
+            "region": "Australia",
+            "duration": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_107",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 664.4861698150635,
+      "predicted_calls": [
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA1",
+            "species": "Homo sapiens"
+          }
+        },
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA2",
+            "species": "Homo sapiens"
+          }
+        },
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA1",
+            "species": "Pan troglodytes"
+          }
+        },
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA2",
+            "species": "Pan troglodytes"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA1",
+            "species": "Homo sapiens"
+          }
+        },
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA2",
+            "species": "Homo sapiens"
+          }
+        },
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA1",
+            "species": "Pan troglodytes"
+          }
+        },
+        {
+          "name": "get_protein_sequence",
+          "arguments": {
+            "gene": "BRCA2",
+            "species": "Pan troglodytes"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_51",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 454.8149108886719,
+      "predicted_calls": [
+        {
+          "name": "recipe_search.find",
+          "arguments": {
+            "dish": "Chicken Noodle Soup"
+          }
+        },
+        {
+          "name": "recipe_search.find",
+          "arguments": {
+            "dish": "Vegan Salad",
+            "diet": "Vegan"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "recipe_search.find",
+          "arguments": {
+            "dish": "Chicken Noodle Soup",
+            "diet": "Keto"
+          }
+        },
+        {
+          "name": "recipe_search.find",
+          "arguments": {
+            "dish": "Salad",
+            "diet": "Vegan"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_162",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 380.75804710388184,
+      "predicted_calls": [
+        {
+          "name": "probability_of_event",
+          "arguments": {
+            "success_outcomes": "4",
+            "total_outcomes": "52",
+            "format_as_ratio": "false"
+          }
+        },
+        {
+          "name": "probability_of_event",
+          "arguments": {
+            "success_outcomes": "13",
+            "total_outcomes": "52",
+            "format_as_ratio": "false"
+          }
+        },
+        {
+          "name": "probability_of_event",
+          "arguments": {
+            "success_outcomes": "26",
+            "total_outcomes": "52",
+            "format_as_ratio": "true"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "probability_of_event",
+          "arguments": {
+            "success_outcomes": 4,
+            "total_outcomes": 52,
+            "format_as_ratio": false
+          }
+        },
+        {
+          "name": "probability_of_event",
+          "arguments": {
+            "success_outcomes": 13,
+            "total_outcomes": 52,
+            "format_as_ratio": false
+          }
+        },
+        {
+          "name": "probability_of_event",
+          "arguments": {
+            "success_outcomes": 26,
+            "total_outcomes": 52,
+            "format_as_ratio": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_86",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 566.9572353363037,
+      "predicted_calls": [
+        {
+          "name": "kinematics.final_velocity_from_distance",
+          "arguments": {
+            "distance": 100,
+            "acceleration": 5
+          }
+        },
+        {
+          "name": "kinematics.final_velocity_from_distance",
+          "arguments": {
+            "distance": 200,
+            "acceleration": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "kinematics.final_velocity_from_distance",
+          "arguments": {
+            "acceleration": 5,
+            "distance": 100,
+            "initial_velocity": 0
+          }
+        },
+        {
+          "name": "kinematics.final_velocity_from_distance",
+          "arguments": {
+            "acceleration": 10,
+            "distance": 200,
+            "initial_velocity": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_166",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 1107.3188781738281,
+      "predicted_calls": [
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": "2500",
+            "year": "2000",
+            "location": "New York",
+            "rooms": "3"
+          }
+        },
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": "3000",
+            "year": "2005",
+            "location": "Los Angeles",
+            "rooms": "3"
+          }
+        },
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": "2000",
+            "year": "1995",
+            "location": "Chicago",
+            "rooms": "2"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": 2500,
+            "rooms": 3,
+            "year": 2000,
+            "location": "New York"
+          }
+        },
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": 3000,
+            "rooms": 3,
+            "year": 2005,
+            "location": "Los Angeles"
+          }
+        },
+        {
+          "name": "predict_house_price",
+          "arguments": {
+            "area": 2000,
+            "rooms": 2,
+            "year": 1995,
+            "location": "Chicago"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_156",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 496.5822696685791,
+      "predicted_calls": [
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "max_depth": "10",
+            "data": "data_random_forest",
+            "n_estimators": "100"
+          }
+        },
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "max_depth": "20",
+            "data": "data_random_forest",
+            "n_estimators": "200"
+          }
+        },
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "max_depth": "30",
+            "data": "data_random_forest",
+            "n_estimators": "300"
+          }
+        },
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "max_depth": "40",
+            "data": "data_random_forest",
+            "n_estimators": "400"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "n_estimators": 100,
+            "max_depth": 10,
+            "data": "data_random_forest"
+          }
+        },
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "n_estimators": 200,
+            "max_depth": 20,
+            "data": "data_random_forest"
+          }
+        },
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "n_estimators": 300,
+            "max_depth": 30,
+            "data": "data_random_forest"
+          }
+        },
+        {
+          "name": "random_forest.train",
+          "arguments": {
+            "n_estimators": 400,
+            "max_depth": 40,
+            "data": "data_random_forest"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_29",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 337.08906173706055,
+      "predicted_calls": [
+        {
+          "name": "waste_calculation.calculate",
+          "arguments": {
+            "location": "Los Angeles",
+            "population": {
+              "adults": 2,
+              "children": 2
+            }
+          }
+        },
+        {
+          "name": "waste_calculation.calculate",
+          "arguments": {
+            "location": "New York",
+            "population": {
+              "singles": 1
+            }
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "waste_calculation.calculate",
+          "arguments": {
+            "population": {
+              "adults": [
+                2
+              ],
+              "children": [
+                2
+              ],
+              "singles": [
+                0
+              ]
+            },
+            "location": "Los Angeles"
+          }
+        },
+        {
+          "name": "waste_calculation.calculate",
+          "arguments": {
+            "population": {
+              "adults": [
+                0
+              ],
+              "children": [
+                0
+              ],
+              "singles": [
+                1
+              ]
+            },
+            "location": "New York"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_62",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 483.9129447937012,
+      "predicted_calls": [
+        {
+          "name": "algebra.quadratic_roots",
+          "arguments": {
+            "a": "3",
+            "b": "4",
+            "c": "2"
+          }
+        },
+        {
+          "name": "algebra.quadratic_roots",
+          "arguments": {
+            "a": "5",
+            "b": "-7",
+            "c": "3"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "algebra.quadratic_roots",
+          "arguments": {
+            "a": 3,
+            "b": 4,
+            "c": 2
+          }
+        },
+        {
+          "name": "algebra.quadratic_roots",
+          "arguments": {
+            "a": 5,
+            "b": -7,
+            "c": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_82",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 371.0930347442627,
+      "predicted_calls": [
+        {
+          "name": "calculate_velocity",
+          "arguments": {
+            "duration": "5",
+            "distance": "120"
+          }
+        },
+        {
+          "name": "calculate_velocity",
+          "arguments": {
+            "duration": "6",
+            "distance": "150"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_velocity",
+          "arguments": {
+            "distance": 120,
+            "duration": 5,
+            "unit": "km/h"
+          }
+        },
+        {
+          "name": "calculate_velocity",
+          "arguments": {
+            "distance": 150,
+            "duration": 6,
+            "unit": "km/h"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_20",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 362.3547554016113,
+      "predicted_calls": [
+        {
+          "name": "HbaseAdapter.updateConfig",
+          "arguments": {
+            "fileName": "user-mapping.yml",
+            "config": "newMappingConfig"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "HbaseAdapter.updateConfig",
+          "arguments": {
+            "fileName": "user-mapping.yml",
+            "config": "newMappingConfig"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_12",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 338.76514434814453,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "ExasolExecutionContext.setCurrentSchema",
+          "arguments": {
+            "monitor": "progressMonitor",
+            "schemaName": "AnalyticsDB"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_5",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 470.44992446899414,
+      "predicted_calls": [
+        {
+          "name": "manageReactState",
+          "arguments": {
+            "store": {
+              "initialState": "initialStateObject",
+              "reducers": "reducersMap",
+              "middlewares": [
+                "loggerMiddleware"
+              ],
+              "enhancers": [
+                "applyMiddleware('myMiddleWare')"
+              ]
+            },
+            "context": "React context object",
+            "hooks": {
+              "useStateSelectorHook": "useStateSelectorHook",
+              "useDispatchActionHook": "useDispatchActionHook"
+            }
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "manageReactState",
+          "arguments": {
+            "store": {
+              "initialState": [
+                "initialStateObject"
+              ],
+              "reducers": [
+                "reducersMap"
+              ],
+              "middlewares": [
+                [
+                  "loggerMiddleware"
+                ]
+              ],
+              "enhancers": [
+                [
+                  "applyMiddleware('myMiddleWare')"
+                ]
+              ]
+            },
+            "context": "React.createContext()",
+            "hooks": {
+              "useStateSelector": [
+                "useStateSelectorHook"
+              ],
+              "useDispatchAction": [
+                "useDispatchActionHook"
+              ]
+            }
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_38",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 549.6950149536133,
+      "predicted_calls": [
+        {
+          "name": "getDirectoryToWatchFromFailedLookupLocationDirectory",
+          "arguments": {
+            "dir": "react",
+            "dirPath": "/projects/myApp/node_modules/react"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "getDirectoryToWatchFromFailedLookupLocationDirectory",
+          "arguments": {
+            "dir": "/projects/myApp/node_modules/react",
+            "dirPath": "/projects/myApp/node_modules/react"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_71",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 347.39017486572266,
+      "predicted_calls": [
+        {
+          "name": "CoroutineManager.co_exit_to",
+          "arguments": {
+            "arg_object": "resultData",
+            "thisCoroutine": "5",
+            "toCoroutine": "10"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "CoroutineManager.co_exit_to",
+          "arguments": {
+            "arg_object": "resultData",
+            "thisCoroutine": 5,
+            "toCoroutine": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_94",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 218.45698356628418,
+      "predicted_calls": [
+        {
+          "name": "NFILibrary.isMemberReadable",
+          "arguments": {
+            "symbol": "getVersion"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "NFILibrary.isMemberReadable",
+          "arguments": {
+            "symbol": "getVersion",
+            "recursive": "null"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_65",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 508.1138610839844,
+      "predicted_calls": [
+        {
+          "name": "RootObjectMapper.doXContent",
+          "arguments": {
+            "params": "{\"include_defaults\": true, \"dynamic_date_formats\": true, \"dynamic_templates\": true, \"date_detection\": true, \"numeric_detection\": true, \"skip_runtime_fields\": true}",
+            "builder": "xContentBuilderInstance"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RootObjectMapper.doXContent",
+          "arguments": {
+            "builder": "xContentBuilderInstance",
+            "params": [
+              "include_defaults",
+              true,
+              "TOXCONTENT_SKIP_RUNTIME",
+              true
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_61",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 269.071102142334,
+      "predicted_calls": [
+        {
+          "name": "ScoreFunctionBuilders.exponentialDecayFunction",
+          "arguments": {
+            "fieldName": "timestamp",
+            "origin": "now",
+            "scale": "10d",
+            "offset": "2d",
+            "decay": "0.5"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "ScoreFunctionBuilders.exponentialDecayFunction",
+          "arguments": {
+            "fieldName": "timestamp",
+            "origin": "now",
+            "scale": "10d",
+            "offset": "2d",
+            "decay": 0.5
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_36",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 370.2528476715088,
+      "predicted_calls": [
+        {
+          "name": "updateBreak",
+          "arguments": {
+            "node": "breaknode",
+            "label": "loopEnd"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "updateBreak",
+          "arguments": {
+            "node": "breakNode",
+            "label": "loopEnd"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_16",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 343.5821533203125,
+      "predicted_calls": [
+        {
+          "name": "InsnDecoder.invokePolymorphic",
+          "arguments": {
+            "insn": "instructionData",
+            "isRange": "true"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "InsnDecoder.invokePolymorphic",
+          "arguments": {
+            "insn": "instructionData",
+            "isRange": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_40",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 600.369930267334,
+      "predicted_calls": [
+        {
+          "name": "assignOwnDefaults",
+          "arguments": {
+            "objectValue": 12,
+            "sourceValue": 10,
+            "key": "maxItems",
+            "object": {}
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "assignOwnDefaults",
+          "arguments": {
+            "objectValue": 12.0,
+            "sourceValue": 10.0,
+            "key": "maxItems",
+            "object": {}
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_2",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 248.66604804992676,
+      "predicted_calls": [
+        {
+          "name": "FireBirdUtils.getViewSourceWithHeader",
+          "arguments": {
+            "monitor": "dbMonitor",
+            "view": "EmployeeView",
+            "source": "SELECT * FROM Employee WHERE status = 'active'"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "FireBirdUtils.getViewSourceWithHeader",
+          "arguments": {
+            "monitor": "dbMonitor",
+            "view": "EmployeeView",
+            "source": "SELECT * FROM Employee WHERE status = 'active'"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_36",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 291.4879322052002,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Genes",
+            "conditions": [
+              [
+                "GeneID = 'BRCA1'"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Genes",
+            "conditions": [
+              "GeneID = 'BRCA1'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_78",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 275.4790782928467,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "EconomicData",
+            "columns": [
+              "Country",
+              "GDP",
+              "Unemployment_Rate",
+              "Inflation_Rate"
+            ],
+            "insert_values": [
+              [
+                "USA",
+                "21.43 trillion",
+                "3.5%",
+                "1.8%"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "EconomicData",
+            "columns": [
+              "Country",
+              "GDP",
+              "Unemployment_Rate",
+              "Inflation_Rate"
+            ],
+            "insert_values": [
+              "USA",
+              "21.43 trillion",
+              "3.5%",
+              "1.8%"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_8",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 293.0011749267578,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              [
+                "S101",
+                "John Doe",
+                "15",
+                "10"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT INTO",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              "S101",
+              "John Doe",
+              "15",
+              "10"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_66",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 419.57688331604004,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              [
+                "job_title = 'Data Analyst'"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "employees",
+            "conditions": [
+              "job_title='Data Analyst'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_93",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 363.51585388183594,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Inventory",
+            "columns": [
+              "ProductID",
+              "ProductName",
+              "SupplierID",
+              "CategoryID",
+              "QuantityPerUnit",
+              "UnitPrice"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Inventory",
+            "columns": [
+              "ProductID",
+              "ProductName",
+              "SupplierID",
+              "CategoryID",
+              "QuantityPerUnit",
+              "UnitPrice"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_49",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 415.7280921936035,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Employees",
+            "columns": [
+              "EmployeeID",
+              "FirstName",
+              "LastName",
+              "Position",
+              "Salary"
+            ],
+            "insert_values": [
+              [
+                "E123",
+                "Jane",
+                "Doe",
+                "Manager",
+                "80000"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Employees",
+            "columns": [
+              "EmployeeID",
+              "FirstName",
+              "LastName",
+              "Position",
+              "Salary"
+            ],
+            "insert_values": [
+              "E123",
+              "Jane",
+              "Doe",
+              "Manager",
+              80000
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_65",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 381.14094734191895,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "Survey_Responses",
+            "update_values": [
+              "Response = 'Yes'"
+            ],
+            "conditions": [
+              "Age > 50",
+              "Gender = 'Male'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "Survey_Responses",
+            "columns": [
+              "Response"
+            ],
+            "update_values": "Yes",
+            "conditions": [
+              "Age > 50",
+              "Gender = 'Male'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_52",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 251.72924995422363,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Employee",
+            "columns": [
+              "ID",
+              "Name",
+              "Position",
+              "Salary",
+              "Department"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Employee",
+            "columns": [
+              "ID",
+              "Name",
+              "Position",
+              "Salary",
+              "Department"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_68",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 532.2921276092529,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "FirstName",
+              "LastName",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              [
+                "S101",
+                "John",
+                "Doe",
+                "15",
+                "10"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "FirstName",
+              "LastName",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              "S101",
+              "John",
+              "Doe",
+              15,
+              10
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_71",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 312.0262622833252,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "income_data",
+            "columns": [
+              "AVG(income)"
+            ],
+            "conditions": [
+              "city = 'New York'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "income_data",
+            "columns": [
+              "income"
+            ],
+            "conditions": [
+              "city = 'New York"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_86",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 416.72611236572266,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "transactions",
+            "conditions": [
+              "account_type = 'savings'",
+              "amount > 5000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "transactions",
+            "conditions": [
+              "account_type = 'savings'",
+              "amount > 5000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_3",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 260.3778839111328,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "MathScores",
+            "columns": [
+              "StudentID",
+              "AlgebraScore",
+              "GeometryScore",
+              "CalculusScore",
+              "StatisticsScore"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "MathScores",
+            "columns": [
+              "StudentID",
+              "AlgebraScore",
+              "GeometryScore",
+              "CalculusScore",
+              "StatisticsScore"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_96",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 459.5670700073242,
+      "predicted_calls": [
+        {
+          "name": "electromagnetic_force",
+          "arguments": {
+            "distance": 2,
+            "charge1": 5,
+            "charge2": 10,
+            "medium_permittivity": 8.854e-12
+          }
+        },
+        {
+          "name": "electromagnetic_force",
+          "arguments": {
+            "distance": 2,
+            "charge1": 5,
+            "charge2": 10,
+            "medium_permittivity": 5e-12
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "electromagnetic_force",
+          "arguments": {
+            "charge1": 5,
+            "charge2": 10,
+            "distance": 2,
+            "medium_permittivity": 8.854e-12
+          }
+        },
+        {
+          "name": "electromagnetic_force",
+          "arguments": {
+            "charge1": 5,
+            "charge2": 10,
+            "distance": 2,
+            "medium_permittivity": 5e-12
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_76",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 324.5260715484619,
+      "predicted_calls": [
+        {
+          "name": "Intro.step",
+          "arguments": {
+            "w": "800",
+            "h": "600"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "Intro.step",
+          "arguments": {
+            "w": 800,
+            "h": 600
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

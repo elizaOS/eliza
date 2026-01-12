@@ -1,0 +1,170 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:27:47.054152",
+    "seed": 42,
+    "total_duration_ms": 36144.04392242432
+  },
+  "summary": {
+    "status": "excellent",
+    "overall_accuracy": "91.7%",
+    "findings": [
+      "Good overall retrieval accuracy (85-95%)",
+      "Significant 'lost in middle' effect detected (25.0% drop)",
+      "Performance within 10% of Claude-3-Opus (-3.3%)"
+    ],
+    "recommendations": [
+      "Consider chunking strategies or retrieval augmentation for middle content"
+    ]
+  },
+  "metrics": {
+    "overall_accuracy": 0.9166666666666666,
+    "total_tasks": 12,
+    "lost_in_middle_score": 0.25
+  },
+  "results": [
+    {
+      "task_id": "niah_sweep_1",
+      "bench_type": "niah_basic",
+      "context_length": 1029,
+      "needle_position": "start",
+      "expected_answer": "MF8MDD4V",
+      "predicted_answer": "MF8MDD4V",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 2155.3850173950195,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_2",
+      "bench_type": "niah_basic",
+      "context_length": 1018,
+      "needle_position": "start",
+      "expected_answer": "Benjamin Jackson",
+      "predicted_answer": "Benjamin Jackson",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 2343.580961227417,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_3",
+      "bench_type": "niah_basic",
+      "context_length": 1022,
+      "needle_position": "middle",
+      "expected_answer": "https://resource",
+      "predicted_answer": "",
+      "retrieval_success": false,
+      "semantic_similarity": 0.0,
+      "latency_ms": 5721.056938171387,
+      "error": "Empty response"
+    },
+    {
+      "task_id": "niah_sweep_4",
+      "bench_type": "niah_basic",
+      "context_length": 1028,
+      "needle_position": "middle",
+      "expected_answer": "api/v2/handler",
+      "predicted_answer": "api/v2/handler",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 1914.04390335083,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_5",
+      "bench_type": "niah_basic",
+      "context_length": 1021,
+      "needle_position": "end",
+      "expected_answer": "39TEX8FS",
+      "predicted_answer": "39TEX8FS",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 2668.0829524993896,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_6",
+      "bench_type": "niah_basic",
+      "context_length": 1025,
+      "needle_position": "end",
+      "expected_answer": "Eleanor Harrison",
+      "predicted_answer": "Eleanor Harrison",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 1607.8999042510986,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_7",
+      "bench_type": "niah_basic",
+      "context_length": 4086,
+      "needle_position": "start",
+      "expected_answer": "api/v2/processor",
+      "predicted_answer": "api/v2/processor",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 2414.137125015259,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_8",
+      "bench_type": "niah_basic",
+      "context_length": 4088,
+      "needle_position": "start",
+      "expected_answer": "cmd:handler",
+      "predicted_answer": "cmd:handler",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 3042.433023452759,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_9",
+      "bench_type": "niah_basic",
+      "context_length": 4088,
+      "needle_position": "middle",
+      "expected_answer": "G8SBI4Q2",
+      "predicted_answer": "G8SBI4Q2",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 4575.927972793579,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_10",
+      "bench_type": "niah_basic",
+      "context_length": 4093,
+      "needle_position": "middle",
+      "expected_answer": "func_endpoint",
+      "predicted_answer": "func_endpoint",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 3508.104085922241,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_11",
+      "bench_type": "niah_basic",
+      "context_length": 4092,
+      "needle_position": "end",
+      "expected_answer": "KOIXNTM9",
+      "predicted_answer": "KOIXNTM9",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 2857.22017288208,
+      "error": null
+    },
+    {
+      "task_id": "niah_sweep_12",
+      "bench_type": "niah_basic",
+      "context_length": 4100,
+      "needle_position": "end",
+      "expected_answer": "May 26, 2025",
+      "predicted_answer": "May 26, 2025",
+      "retrieval_success": true,
+      "semantic_similarity": 1.0,
+      "latency_ms": 3307.1160316467285,
+      "error": null
+    }
+  ]
+}

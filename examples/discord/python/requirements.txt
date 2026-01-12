@@ -1,0 +1,14 @@
+# elizaOS Python packages (installed from local source)
+# Install with: pip install -r requirements.txt
+
+# Core elizaOS packages (editable installs from repo)
+-e ../../../packages/python
+-e ../../../plugins/plugin-openai/python
+-e ../../../plugins/plugin-sql/python
+-e ../../../plugins/plugin-discord/python
+
+# Additional dependencies
+python-dotenv>=1.0.0
+uuid6>=2024.1.12
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

@@ -1,0 +1,124 @@
+{
+  "total_tasks": 6,
+  "passed_tasks": 0,
+  "failed_tasks": 6,
+  "overall_success_rate": 0.0,
+  "average_duration_ms": 1.2385845184326172,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 12.5,
+    "average_reward": -0.16666666666666666,
+    "memory_usage": {
+      "peak": 0,
+      "average": 0
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "database": {
+        "our_score": 0.0,
+        "gpt4_score": 0.326,
+        "difference": -0.326,
+        "relative_performance": 0.0
+      },
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "gpt4_score": 0.584,
+        "difference": -0.584,
+        "relative_performance": 0.0
+      },
+      "lateral_thinking": {
+        "our_score": 0.0,
+        "gpt4_score": 0.348,
+        "difference": -0.348,
+        "relative_performance": 0.0
+      }
+    },
+    "gpt35_comparison": {
+      "database": {
+        "our_score": 0.0,
+        "gpt35_score": 0.102,
+        "difference": -0.102,
+        "relative_performance": 0.0
+      },
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "gpt35_score": 0.164,
+        "difference": -0.164,
+        "relative_performance": 0.0
+      },
+      "lateral_thinking": {
+        "our_score": 0.0,
+        "gpt35_score": 0.109,
+        "difference": -0.109,
+        "relative_performance": 0.0
+      }
+    },
+    "claude_comparison": {
+      "database": {
+        "our_score": 0.0,
+        "claude_score": 0.298,
+        "difference": -0.298,
+        "relative_performance": 0.0
+      },
+      "knowledge_graph": {
+        "our_score": 0.0,
+        "claude_score": 0.542,
+        "difference": -0.542,
+        "relative_performance": 0.0
+      },
+      "lateral_thinking": {
+        "our_score": 0.0,
+        "claude_score": 0.312,
+        "difference": -0.312,
+        "relative_performance": 0.0
+      }
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "ElizaOS agent capabilities need significant improvement",
+      "Needs improvement in: database, knowledge_graph, lateral_thinking"
+    ],
+    "recommendations": [
+      "Enhance database environment handling capabilities",
+      "Enhance knowledge_graph environment handling capabilities",
+      "Enhance lateral_thinking environment handling capabilities"
+    ],
+    "timestamp": "2026-01-11T23:35:58.723384"
+  },
+  "environment_reports": {
+    "database": {
+      "environment": "database",
+      "total_tasks": 2,
+      "passed_tasks": 0,
+      "failed_tasks": 2,
+      "success_rate": 0.0,
+      "average_steps": 5.0,
+      "average_duration_ms": 1.5041828155517578,
+      "average_reward": -0.5
+    },
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 2,
+      "passed_tasks": 0,
+      "failed_tasks": 2,
+      "success_rate": 0.0,
+      "average_steps": 12.5,
+      "average_duration_ms": 1.0830163955688477,
+      "average_reward": 0.0
+    },
+    "lateral_thinking": {
+      "environment": "lateral_thinking",
+      "total_tasks": 2,
+      "passed_tasks": 0,
+      "failed_tasks": 2,
+      "success_rate": 0.0,
+      "average_steps": 20.0,
+      "average_duration_ms": 1.128554344177246,
+      "average_reward": 0.0
+    }
+  }
+}

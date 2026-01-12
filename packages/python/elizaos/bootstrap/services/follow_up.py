@@ -42,13 +42,16 @@ class FollowUpService(Service):
         self._follow_ups: dict[UUID, FollowUpTask] = {}
         self._runtime: IAgentRuntime | None = None
 
-    async def start(self, runtime: IAgentRuntime) -> None:
-        self._runtime = runtime
+    @classmethod
+    async def start(cls, runtime: IAgentRuntime) -> FollowUpService:
+        service = cls()
+        service._runtime = runtime
         runtime.logger.info(
             "Follow-up service started",
             src="service:follow_up",
             agentId=str(runtime.agent_id),
         )
+        return service
 
     async def stop(self) -> None:
         if self._runtime:

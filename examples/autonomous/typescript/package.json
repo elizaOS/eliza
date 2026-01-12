@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/example-autonomous",
+  "version": "1.0.0",
+  "description": "Autonomous self-looping agent with local AI, shell access, and in-memory database",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run index.ts",
+    "build": "bun build index.ts --outdir=dist",
+    "dev": "bun run --watch index.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-ai": "workspace:*",
+    "@elizaos/plugin-shell": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.8.3"
+  }
+}

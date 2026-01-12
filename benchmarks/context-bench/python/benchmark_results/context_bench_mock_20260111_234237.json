@@ -1,0 +1,138 @@
+{
+  "overall_accuracy": 0.7,
+  "total_tasks": 130,
+  "passed_tasks": 91,
+  "failed_tasks": 39,
+  "avg_semantic_similarity": 0.7457460670586366,
+  "lost_in_middle_score": 0.02702702702702705,
+  "context_degradation_rate": -0.009615384615384609,
+  "avg_latency_ms": 1.79596314063439,
+  "total_duration_ms": 2247.0977306365967,
+  "position_accuracies": {
+    "start": {
+      "accuracy": 0.85,
+      "total_tasks": 20
+    },
+    "early": {
+      "accuracy": 0.8,
+      "total_tasks": 20
+    },
+    "middle": {
+      "accuracy": 0.9,
+      "total_tasks": 20
+    },
+    "late": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "end": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "random": {
+      "accuracy": 0.0,
+      "total_tasks": 30
+    }
+  },
+  "length_accuracies": {
+    "1024": {
+      "accuracy": 0.6538461538461539,
+      "total_tasks": 26
+    },
+    "2048": {
+      "accuracy": 0.7692307692307693,
+      "total_tasks": 26
+    },
+    "4096": {
+      "accuracy": 0.6153846153846154,
+      "total_tasks": 26
+    },
+    "8192": {
+      "accuracy": 0.7692307692307693,
+      "total_tasks": 26
+    },
+    "16384": {
+      "accuracy": 0.6923076923076923,
+      "total_tasks": 26
+    }
+  },
+  "multi_hop_success_rates": {
+    "2": 0.0,
+    "3": 0.0
+  },
+  "comparison_to_leaderboard": {
+    "gpt-4-turbo": {
+      "overall_diff": -0.21000000000000008,
+      "lost_in_middle_diff": 0.09297297297297294,
+      "niah_4k_diff": -0.36461538461538456,
+      "niah_8k_diff": -0.2007692307692307,
+      "niah_16k_diff": -0.25769230769230766,
+      "multi_hop_2_diff": -0.88,
+      "multi_hop_3_diff": -0.72
+    },
+    "gpt-4o": {
+      "overall_diff": -0.24,
+      "lost_in_middle_diff": 0.05297297297297295,
+      "niah_4k_diff": -0.3746153846153846,
+      "niah_8k_diff": -0.2107692307692307,
+      "niah_16k_diff": -0.2776923076923077,
+      "multi_hop_2_diff": -0.91,
+      "multi_hop_3_diff": -0.78
+    },
+    "claude-3-opus": {
+      "overall_diff": -0.25,
+      "lost_in_middle_diff": 0.022972972972972953,
+      "niah_4k_diff": -0.3746153846153846,
+      "niah_8k_diff": -0.2107692307692307,
+      "niah_16k_diff": -0.2776923076923077,
+      "multi_hop_2_diff": -0.92,
+      "multi_hop_3_diff": -0.81
+    },
+    "claude-3-sonnet": {
+      "overall_diff": -0.18000000000000005,
+      "lost_in_middle_diff": 0.12297297297297294,
+      "niah_4k_diff": -0.36461538461538456,
+      "niah_8k_diff": -0.1907692307692307,
+      "niah_16k_diff": -0.24769230769230766,
+      "multi_hop_2_diff": -0.85,
+      "multi_hop_3_diff": -0.68
+    },
+    "llama-3.1-70b": {
+      "overall_diff": -0.10000000000000009,
+      "lost_in_middle_diff": 0.19297297297297294,
+      "niah_4k_diff": -0.33461538461538454,
+      "niah_8k_diff": -0.15076923076923077,
+      "niah_16k_diff": -0.1876923076923077,
+      "multi_hop_2_diff": -0.78,
+      "multi_hop_3_diff": -0.55
+    },
+    "mistral-large": {
+      "overall_diff": -0.06000000000000005,
+      "lost_in_middle_diff": 0.22297297297297294,
+      "niah_4k_diff": -0.32461538461538453,
+      "niah_8k_diff": -0.13076923076923075,
+      "niah_16k_diff": -0.1576923076923077,
+      "multi_hop_2_diff": -0.75,
+      "multi_hop_3_diff": -0.52
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "overall_accuracy": "70.0%",
+    "findings": [
+      "Moderate retrieval accuracy (70-85%)",
+      "Struggles with 2-hop reasoning (0.0% success)",
+      "Struggles with 3-hop reasoning (0.0% success)",
+      "Performance below Claude-3-Opus (-25.0%)"
+    ],
+    "recommendations": [
+      "Consider chain-of-thought prompting for 2+ hop questions",
+      "Consider chain-of-thought prompting for 3+ hop questions"
+    ]
+  },
+  "metadata": {
+    "timestamp": "2026-01-11T23:42:37.962341",
+    "seed": 42,
+    "total_duration_ms": 2247.0977306365967
+  }
+}

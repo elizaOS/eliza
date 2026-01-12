@@ -1,0 +1,192 @@
+{
+  "overall_accuracy": 1.0,
+  "total_tasks": 130,
+  "passed_tasks": 130,
+  "failed_tasks": 0,
+  "avg_semantic_similarity": 0.4104561297866529,
+  "lost_in_middle_score": 0.0,
+  "context_degradation_rate": 0.0,
+  "avg_latency_ms": 1125.6127779300396,
+  "total_duration_ms": 156285.72511672974,
+  "position_heatmap": [
+    [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  ],
+  "position_heatmap_lengths": [
+    1024,
+    2048,
+    4096,
+    8192,
+    16384
+  ],
+  "position_heatmap_positions": [
+    "start",
+    "early",
+    "middle",
+    "late",
+    "end",
+    "random"
+  ],
+  "position_accuracies": {
+    "start": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "early": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "middle": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "late": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "end": {
+      "accuracy": 1.0,
+      "total_tasks": 20
+    },
+    "random": {
+      "accuracy": 1.0,
+      "total_tasks": 30
+    }
+  },
+  "length_accuracies": {
+    "1024": {
+      "accuracy": 1.0,
+      "total_tasks": 26
+    },
+    "2048": {
+      "accuracy": 1.0,
+      "total_tasks": 26
+    },
+    "4096": {
+      "accuracy": 1.0,
+      "total_tasks": 26
+    },
+    "8192": {
+      "accuracy": 1.0,
+      "total_tasks": 26
+    },
+    "16384": {
+      "accuracy": 1.0,
+      "total_tasks": 26
+    }
+  },
+  "multi_hop_success_rates": {
+    "2": 1.0,
+    "3": 1.0
+  },
+  "comparison_to_leaderboard": {
+    "gpt-4-turbo": {
+      "overall_diff": 0.08999999999999997,
+      "lost_in_middle_diff": 0.12,
+      "niah_4k_diff": 0.020000000000000018,
+      "niah_8k_diff": 0.030000000000000027,
+      "niah_16k_diff": 0.050000000000000044,
+      "multi_hop_2_diff": 0.12,
+      "multi_hop_3_diff": 0.28
+    },
+    "gpt-4o": {
+      "overall_diff": 0.06000000000000005,
+      "lost_in_middle_diff": 0.08,
+      "niah_4k_diff": 0.010000000000000009,
+      "niah_8k_diff": 0.020000000000000018,
+      "niah_16k_diff": 0.030000000000000027,
+      "multi_hop_2_diff": 0.08999999999999997,
+      "multi_hop_3_diff": 0.21999999999999997
+    },
+    "claude-3-opus": {
+      "overall_diff": 0.050000000000000044,
+      "lost_in_middle_diff": 0.05,
+      "niah_4k_diff": 0.010000000000000009,
+      "niah_8k_diff": 0.020000000000000018,
+      "niah_16k_diff": 0.030000000000000027,
+      "multi_hop_2_diff": 0.07999999999999996,
+      "multi_hop_3_diff": 0.18999999999999995
+    },
+    "claude-3-sonnet": {
+      "overall_diff": 0.12,
+      "lost_in_middle_diff": 0.15,
+      "niah_4k_diff": 0.020000000000000018,
+      "niah_8k_diff": 0.040000000000000036,
+      "niah_16k_diff": 0.06000000000000005,
+      "multi_hop_2_diff": 0.15000000000000002,
+      "multi_hop_3_diff": 0.31999999999999995
+    },
+    "llama-3.1-70b": {
+      "overall_diff": 0.19999999999999996,
+      "lost_in_middle_diff": 0.22,
+      "niah_4k_diff": 0.050000000000000044,
+      "niah_8k_diff": 0.07999999999999996,
+      "niah_16k_diff": 0.12,
+      "multi_hop_2_diff": 0.21999999999999997,
+      "multi_hop_3_diff": 0.44999999999999996
+    },
+    "mistral-large": {
+      "overall_diff": 0.24,
+      "lost_in_middle_diff": 0.25,
+      "niah_4k_diff": 0.06000000000000005,
+      "niah_8k_diff": 0.09999999999999998,
+      "niah_16k_diff": 0.15000000000000002,
+      "multi_hop_2_diff": 0.25,
+      "multi_hop_3_diff": 0.48
+    }
+  },
+  "summary": {
+    "status": "excellent",
+    "overall_accuracy": "100.0%",
+    "findings": [
+      "Excellent overall retrieval accuracy (\u226595%)",
+      "Performance matches or exceeds Claude-3-Opus baseline (+5.0%)"
+    ],
+    "recommendations": []
+  },
+  "metadata": {
+    "timestamp": "2026-01-12T00:36:57.583557",
+    "seed": 42,
+    "total_duration_ms": 156285.72511672974
+  }
+}

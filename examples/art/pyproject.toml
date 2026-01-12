@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-art"
+version = "1.0.0"
+description = "ART (Adaptive Reinforcement Training) demos for ElizaOS - continuous RL with local models"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "ElizaOS Team" }
+]
+keywords = [
+    "elizaos",
+    "art",
+    "grpo",
+    "reinforcement-learning",
+    "llm-training",
+    "ruler",
+    "openpipe"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "openpipe-art>=0.4.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "typer>=0.9.0",
+    "python-dotenv>=1.0.0",
+    "litellm>=1.30.0",
+    "huggingface-hub>=0.20.0",
+    "transformers>=4.36.0",
+    "torch>=2.0.0",
+    "accelerate>=0.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.0",
+]
+local = [
+    "vllm>=0.3.0",
+    "bitsandbytes>=0.42.0",
+]
+
+[project.scripts]
+elizaos-art = "elizaos_art.cli:app"
+elizaos-art-2048 = "elizaos_art.games.game_2048.cli:app"
+elizaos-art-tictactoe = "elizaos_art.games.tic_tac_toe.cli:app"
+elizaos-art-codenames = "elizaos_art.games.codenames.cli:app"
+elizaos-art-temporal = "elizaos_art.games.temporal_clue.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_art"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

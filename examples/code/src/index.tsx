@@ -97,7 +97,9 @@ async function runInteractive(): Promise<void> {
     if (inkInstance) {
       inkInstance.unmount();
     }
-    cleanup(runtime!);
+    if (runtime) {
+      cleanup(runtime);
+    }
   };
 
   process.on("SIGINT", handleSignal);

@@ -1,0 +1,71 @@
+{
+  "total_tasks": 5,
+  "total_trials": 5,
+  "passed_tasks": 5,
+  "failed_tasks": 0,
+  "overall_success_rate": 1.0,
+  "overall_tool_accuracy": 0.7,
+  "overall_policy_compliance": 1.0,
+  "overall_response_quality": 0.5005027222539502,
+  "average_duration_ms": 5839.911413192749,
+  "pass_k_metrics": {
+    "1": {
+      "k": 1,
+      "pass_rate": 1.0,
+      "trials_passed": 5
+    },
+    "2": {
+      "k": 2,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    },
+    "4": {
+      "k": 4,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    },
+    "8": {
+      "k": 8,
+      "pass_rate": 0.0,
+      "trials_passed": 0
+    }
+  },
+  "overall_metrics": {
+    "total_tokens": 0,
+    "average_tokens_per_task": 0.0,
+    "average_turns_per_task": 2.8,
+    "average_tool_calls_per_task": 1.8,
+    "total_duration_seconds": 29.205709218978882,
+    "memory_peak_mb": 12.572854995727539,
+    "memory_average_mb": 12.32321834564209
+  },
+  "comparison_to_leaderboard": {
+    "best_comparable_model": "gemini-3-pro",
+    "difference_from_best": 0.09299999999999997,
+    "comparison_details": {
+      "gemini-3-pro": 0.09299999999999997,
+      "claude-3.7-sonnet": 0.18799999999999994,
+      "kimi-k2": 0.257,
+      "o3": 0.261,
+      "o4-mini": 0.28200000000000003,
+      "gpt-4o": 0.515,
+      "gpt-4-turbo": 0.579,
+      "claude-3-opus": 0.488,
+      "llama-3.1-70b": 0.618
+    }
+  },
+  "summary": {
+    "status": "success",
+    "key_findings": [
+      "Strong overall performance on Tau-bench tasks"
+    ],
+    "strengths": [
+      "High task completion rate",
+      "Strong policy compliance",
+      "Strong performance in retail domain"
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "timestamp": "2026-01-12T00:37:48.321180"
+  }
+}

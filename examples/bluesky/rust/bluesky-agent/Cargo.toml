@@ -1,0 +1,42 @@
+[package]
+name = "bluesky-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Full-featured Bluesky AI agent using elizaOS"
+publish = false
+
+[[bin]]
+name = "bluesky-agent"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# elizaOS Bluesky Plugin
+elizaos-plugin-bluesky = { path = "../../../../plugins/plugin-bluesky/rust" }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal", "time"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Environment
+dotenvy = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Random for post intervals
+rand = "0.8"
+
+[dev-dependencies]
+# Testing
+tokio-test = "0.4"
+
+[features]
+default = []
+live = []  # Enable live integration tests

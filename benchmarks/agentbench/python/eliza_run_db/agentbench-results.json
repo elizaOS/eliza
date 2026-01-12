@@ -1,0 +1,66 @@
+{
+  "total_tasks": 1,
+  "passed_tasks": 0,
+  "failed_tasks": 1,
+  "overall_success_rate": 0.0,
+  "average_duration_ms": 1.361846923828125,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 0.0,
+    "average_reward": 0.0,
+    "memory_usage": {
+      "peak": 0,
+      "average": 0
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "database": {
+        "our_score": 0.0,
+        "gpt4_score": 0.326,
+        "difference": -0.326,
+        "relative_performance": 0.0
+      }
+    },
+    "gpt35_comparison": {
+      "database": {
+        "our_score": 0.0,
+        "gpt35_score": 0.102,
+        "difference": -0.102,
+        "relative_performance": 0.0
+      }
+    },
+    "claude_comparison": {
+      "database": {
+        "our_score": 0.0,
+        "claude_score": 0.298,
+        "difference": -0.298,
+        "relative_performance": 0.0
+      }
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "ElizaOS agent capabilities need significant improvement",
+      "Needs improvement in: database"
+    ],
+    "recommendations": [
+      "Enhance database environment handling capabilities"
+    ],
+    "timestamp": "2026-01-12T00:31:57.149841"
+  },
+  "environment_reports": {
+    "database": {
+      "environment": "database",
+      "total_tasks": 1,
+      "passed_tasks": 0,
+      "failed_tasks": 1,
+      "success_rate": 0.0,
+      "average_steps": 0.0,
+      "average_duration_ms": 1.361846923828125,
+      "average_reward": 0.0
+    }
+  }
+}

@@ -69,6 +69,10 @@ python_functions = "test_*"
 addopts = "-v -p no:anchorpy"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # Ignore testcontainers deprecation warning (third-party library issue)
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
+]
 
 [tool.mypy]
 python_version = "3.11"

@@ -18,6 +18,7 @@ pub const AUTONOMY_SERVICE_TYPE: &str = "AUTONOMY";
 /// This service runs an autonomous loop that triggers agent thinking
 /// in a dedicated room context, separate from user conversations.
 pub struct AutonomyService {
+    is_enabled: bool,  // Whether autonomy is enabled in settings
     is_running: bool,
     is_thinking: bool, // Guard to prevent overlapping think cycles
     is_stopped: bool,  // Flag to indicate service has been stopped
@@ -30,6 +31,7 @@ impl AutonomyService {
     /// Create a new AutonomyService.
     pub fn new() -> Self {
         Self {
+            is_enabled: false,
             is_running: false,
             is_thinking: false,
             is_stopped: false,
@@ -37,6 +39,11 @@ impl AutonomyService {
             autonomous_room_id: Uuid::new_v4(),
             autonomous_world_id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
         }
+    }
+
+    /// Check if autonomy is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.is_enabled
     }
 
     /// Check if the service has been stopped.
@@ -143,7 +150,7 @@ impl AutonomyService {
     /// Get current autonomy status.
     pub fn get_status(&self) -> AutonomyStatus {
         AutonomyStatus {
-            enabled: self.is_running,
+            enabled: self.is_enabled,
             running: self.is_running,
             thinking: self.is_thinking,
             interval: self.interval_ms,
@@ -151,14 +158,20 @@ impl AutonomyService {
         }
     }
 
-    /// Enable autonomy.
+    /// Enable autonomy (sets enabled flag and starts loop if not stopped).
     pub async fn enable_autonomy(&mut self) {
-        self.is_running = true;
+        self.is_enabled = true;
+        if !self.is_stopped && !self.is_running {
+            self.start_loop().await;
+        }
     }
 
-    /// Disable autonomy.
+    /// Disable autonomy (sets enabled flag and stops loop).
     pub async fn disable_autonomy(&mut self) {
-        self.is_running = false;
+        self.is_enabled = false;
+        if self.is_running {
+            self.stop_loop().await;
+        }
     }
 }
 
@@ -254,11 +267,18 @@ mod tests {
         let service = AutonomyService::new();
         let status = service.get_status();
         
+        // Initially: not enabled, not running, not thinking
         assert!(!status.enabled);
         assert!(!status.running);
         assert!(!status.thinking);
         assert_eq!(status.interval, 30000);
         assert_eq!(status.autonomous_room_id, service.get_autonomous_room_id());
+    }
+
+    #[test]
+    fn test_is_enabled() {
+        let service = AutonomyService::new();
+        assert!(!service.is_enabled());
     }
 
     #[test]
@@ -284,10 +304,13 @@ mod tests {
         let mut service = AutonomyService::new();
         
         assert!(!service.is_loop_running());
+        assert!(!service.is_enabled());
         
         service.enable_autonomy().await;
         
         assert!(service.is_loop_running());
+        assert!(service.is_enabled());
+        assert!(service.get_status().enabled);
     }
 
     #[tokio::test]
@@ -296,9 +319,11 @@ mod tests {
         
         service.enable_autonomy().await;
         assert!(service.is_loop_running());
+        assert!(service.is_enabled());
         
         service.disable_autonomy().await;
         assert!(!service.is_loop_running());
+        assert!(!service.is_enabled());
     }
 
     #[tokio::test]
@@ -307,20 +332,26 @@ mod tests {
         
         // Initial state
         assert!(!service.is_loop_running());
+        assert!(!service.is_enabled());
         
         // Enable
         service.enable_autonomy().await;
         assert!(service.is_loop_running());
+        assert!(service.is_enabled());
         assert!(service.get_status().enabled);
+        assert!(service.get_status().running);
         
         // Disable
         service.disable_autonomy().await;
         assert!(!service.is_loop_running());
+        assert!(!service.is_enabled());
         assert!(!service.get_status().enabled);
+        assert!(!service.get_status().running);
         
         // Re-enable
         service.enable_autonomy().await;
         assert!(service.is_loop_running());
+        assert!(service.is_enabled());
     }
 
     #[tokio::test]

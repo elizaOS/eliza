@@ -73,7 +73,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   if (initializationPromise) {
     await initializationPromise;
-    return runtime!;
+    if (!runtime) {
+      throw new Error("Runtime initialization failed");
+    }
+    return runtime;
   }
 
   initializationPromise = (async () => {
@@ -90,7 +93,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   })();
 
   await initializationPromise;
-  return runtime!;
+  if (!runtime) {
+    throw new Error("Runtime initialization failed");
+  }
+  return runtime;
 }
 
 /**

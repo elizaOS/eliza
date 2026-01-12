@@ -22,13 +22,16 @@ class EmbeddingService(Service):
         self._cache_enabled: bool = True
         self._max_cache_size: int = 1000
 
-    async def start(self, runtime: IAgentRuntime) -> None:
-        self._runtime = runtime
+    @classmethod
+    async def start(cls, runtime: IAgentRuntime) -> EmbeddingService:
+        service = cls()
+        service._runtime = runtime
         runtime.logger.info(
             "Embedding service started",
             src="service:embedding",
             agentId=str(runtime.agent_id),
         )
+        return service
 
     async def stop(self) -> None:
         if self._runtime:

@@ -1,0 +1,444 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 10,
+    "timestamp": "2026-01-12T00:22:10Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.31034482758620685,
+    "ast_accuracy": 0.375,
+    "exec_accuracy": 0.375,
+    "relevance_accuracy": 0.875,
+    "total_tests": 8,
+    "passed_tests": 3,
+    "failed_tests": 5,
+    "latency": {
+      "avg": 439.262318611145,
+      "p50": 404.1011333465576,
+      "p95": 862.6818656921387,
+      "p99": 862.6818656921387
+    },
+    "category_breakdown": {
+      "sql": {
+        "total": 2,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 693.0649280548096
+      },
+      "java": {
+        "total": 3,
+        "ast_accuracy": 0.6666666666666666,
+        "exec_accuracy": 0.6666666666666666,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 319.9637730916341
+      },
+      "parallel": {
+        "total": 3,
+        "ast_accuracy": 0.3333333333333333,
+        "exec_accuracy": 0.3333333333333333,
+        "relevance_accuracy": 0.6666666666666666,
+        "avg_latency_ms": 433.2586129506429
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 1,
+      "argument_mismatch": 3,
+      "missing_call": 1,
+      "extra_call": 0,
+      "type_error": 0,
+      "relevance_error": 1,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0,
+      "no_ground_truth": 2
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.5766551724137932,
+    "gpt-4o": -0.5806551724137932,
+    "claude-3-opus": -0.5416551724137931,
+    "claude-3-sonnet": -0.5126551724137931,
+    "gemini-1.5-pro": -0.5346551724137931,
+    "qwen-2.5-72b": -0.4016551724137931,
+    "llama-3.1-70b": -0.3746551724137932,
+    "mistral-large": -0.3876551724137931
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Overall score: 31.03% (AST: 37.50%, Exec: 37.50%)",
+      "Best category: java (66.67%)",
+      "Needs work: sql (0.00%)",
+      "Behind llama-3.1-70b by 37.47%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "sql_50",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 862.6818656921387,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "employees",
+            "columns": [
+              "name"
+            ],
+            "conditions": [
+              "salary > 50000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "employees",
+            "columns": "name",
+            "conditions": [
+              "salary > 50000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_88",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 523.4479904174805,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Transactions",
+            "columns": [
+              "TransactionID",
+              "Date",
+              "Amount",
+              "Type",
+              "AccountID"
+            ],
+            "insert_values": [
+              "TXN12345",
+              "2022-03-01",
+              5000,
+              "Deposit",
+              "ACC789"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT INTO",
+            "table_name": "Transactions",
+            "columns": [
+              "TransactionID",
+              "Date",
+              "Amount",
+              "Type",
+              "AccountID"
+            ],
+            "insert_values": [
+              "TXN12345",
+              "2022-03-01",
+              "5000",
+              "Deposit",
+              "ACC789"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_43",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 347.05209732055664,
+      "predicted_calls": [
+        {
+          "name": "invokeCallback",
+          "arguments": {
+            "value": "Operation successful",
+            "callback": "processResult",
+            "error": "null"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "invokeCallback",
+          "arguments": {
+            "callback": "processResult",
+            "error": "null",
+            "value": "Operation successful"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_94",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 208.7380886077881,
+      "predicted_calls": [
+        {
+          "name": "NFILibrary.isMemberReadable",
+          "arguments": {
+            "symbol": "getVersion"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "NFILibrary.isMemberReadable",
+          "arguments": {
+            "symbol": "getVersion",
+            "recursive": "null"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_13",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 394.7622776031494,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR",
+            "headers": {},
+            "timeout": null,
+            "params": {},
+            "allow_redirects": true,
+            "auth": null,
+            "cert": null,
+            "cookies": {},
+            "proxies": {},
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_39",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 352.0638942718506,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": 37.4224764,
+              "lon": -122.0842499,
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "geojson"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "parallel_94",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 311.9008541107178,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "calculate_electric_field",
+          "arguments": {
+            "charge": 5,
+            "distance": 2,
+            "permitivity": 0
+          }
+        },
+        {
+          "name": "calculate_electric_field",
+          "arguments": {
+            "charge": 3,
+            "distance": 4,
+            "permitivity": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_95",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 576.4150619506836,
+      "predicted_calls": [
+        {
+          "name": "calculate_magnetic_field",
+          "arguments": {
+            "radius": 0.5,
+            "current": 10
+          }
+        },
+        {
+          "name": "calculate_magnetic_field",
+          "arguments": {
+            "radius": 1,
+            "current": 15
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_magnetic_field",
+          "arguments": {
+            "current": 10,
+            "radius": 0.5,
+            "permeability": 0
+          }
+        },
+        {
+          "name": "calculate_magnetic_field",
+          "arguments": {
+            "current": 15,
+            "radius": 1.0,
+            "permeability": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_39",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 411.45992279052734,
+      "predicted_calls": [
+        {
+          "name": "museum_info.get_info",
+          "arguments": {
+            "location": "Washington D.C.",
+            "details": [
+              "Opening hours",
+              "Adult tickets",
+              "Child tickets"
+            ]
+          }
+        },
+        {
+          "name": "museum_info.get_info",
+          "arguments": {
+            "location": "Paris",
+            "details": [
+              "Opening hours",
+              "Adult tickets",
+              "Child tickets"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "museum_info.get_info",
+          "arguments": {
+            "location": "Washington D.C.",
+            "details": [
+              "Opening hours",
+              "Adult tickets",
+              "Child tickets"
+            ]
+          }
+        },
+        {
+          "name": "museum_info.get_info",
+          "arguments": {
+            "location": "Paris",
+            "details": [
+              "Opening hours",
+              "Adult tickets",
+              "Child tickets"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_25",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 404.1011333465576,
+      "predicted_calls": [
+        {
+          "name": "SmsHomeRecommendSubjectController.updateSort",
+          "arguments": {
+            "id": 42,
+            "sort": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "SmsHomeRecommendSubjectController.updateSort",
+          "arguments": {
+            "id": 42,
+            "sort": 5
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

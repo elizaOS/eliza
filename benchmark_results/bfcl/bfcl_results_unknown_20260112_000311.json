@@ -1,0 +1,469 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 10,
+    "timestamp": "2026-01-12T00:03:11Z"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.3589743589743589,
+    "ast_accuracy": 0.4,
+    "exec_accuracy": 0.4,
+    "relevance_accuracy": 0.9,
+    "total_tests": 10,
+    "passed_tests": 4,
+    "failed_tests": 6,
+    "latency": {
+      "avg": 578.5537004470825,
+      "p50": 573.7910270690918,
+      "p95": 1244.3628311157227,
+      "p99": 1244.3628311157227
+    },
+    "category_breakdown": {
+      "rest_api": {
+        "total": 2,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 816.9795274734497
+      },
+      "sql": {
+        "total": 2,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 829.9273252487183
+      },
+      "java": {
+        "total": 3,
+        "ast_accuracy": 0.6666666666666666,
+        "exec_accuracy": 0.6666666666666666,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 509.8556677500407
+      },
+      "parallel": {
+        "total": 3,
+        "ast_accuracy": 0.6666666666666666,
+        "exec_accuracy": 0.6666666666666666,
+        "relevance_accuracy": 0.6666666666666666,
+        "avg_latency_ms": 320.71876525878906
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 1,
+      "argument_mismatch": 2,
+      "missing_call": 1,
+      "extra_call": 2,
+      "type_error": 0,
+      "relevance_error": 1,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.5280256410256411,
+    "gpt-4o": -0.5320256410256411,
+    "claude-3-opus": -0.49302564102564106,
+    "claude-3-sonnet": -0.46402564102564103,
+    "gemini-1.5-pro": -0.48602564102564105,
+    "qwen-2.5-72b": -0.35302564102564105,
+    "llama-3.1-70b": -0.32602564102564113,
+    "mistral-large": -0.33902564102564103
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "Overall score: 35.90% (AST: 40.00%, Exec: 40.00%)",
+      "Best category: java (66.67%)",
+      "Needs work: sql (0.00%)",
+      "Behind llama-3.1-70b by 32.60%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "rest_45",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 901.8409252166748,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": "35.6895",
+              "longitude": "139.6917",
+              "hourly": [
+                "temperature_2m",
+                "windspeed_10m",
+                "precipitation"
+              ],
+              "daily": [
+                "temperature_2m_max",
+                "temperature_2m_min",
+                "precipitation_sum"
+              ],
+              "temperature_unit": "fahrenheit",
+              "windspeed_unit": "mph",
+              "precipitation_unit": "inch",
+              "timezone": "auto"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_40",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 732.1181297302246,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": "63.65687",
+              "lon": "117.05229",
+              "api_key": "YOUR-GEOCODE-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_50",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 415.49181938171387,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "employees",
+            "columns": [
+              "name"
+            ],
+            "conditions": [
+              "salary > 50000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "employees",
+            "columns": "name",
+            "conditions": [
+              "salary > 50000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_84",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 1244.3628311157227,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "customers",
+            "columns": [
+              "balance"
+            ],
+            "conditions": [
+              "name = 'John Doe'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "customers",
+            "columns": [
+              "balance"
+            ],
+            "update_values": [
+              "1500"
+            ],
+            "conditions": [
+              "name = 'John Doe'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_24",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 565.0069713592529,
+      "predicted_calls": [
+        {
+          "name": "getUniqueSorted",
+          "arguments": {
+            "array": [
+              3,
+              1,
+              2,
+              1,
+              4,
+              3
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "getUniqueSorted",
+          "arguments": {
+            "array": [
+              3,
+              1,
+              2,
+              1,
+              4,
+              3
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_7",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 710.6480598449707,
+      "predicted_calls": [
+        {
+          "name": "EFSNIOResource.copy",
+          "arguments": {
+            "destination": "/backup/data.txt",
+            "force": true,
+            "monitor": "progressTracker"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "EFSNIOResource.copy",
+          "arguments": {
+            "destination": "new Path('/backup/data.txt')",
+            "force": true,
+            "monitor": "progressTracker"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_60",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 573.7910270690918,
+      "predicted_calls": [
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 5
+          }
+        },
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 7
+          }
+        },
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 9
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 5
+          }
+        },
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 7
+          }
+        },
+        {
+          "name": "math.factorial",
+          "arguments": {
+            "number": 9
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_88",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 388.3240222930908,
+      "predicted_calls": [
+        {
+          "name": "calculate_final_speed",
+          "arguments": {
+            "height": "10",
+            "initial_velocity": "0",
+            "gravity": "9.8"
+          }
+        },
+        {
+          "name": "calculate_final_speed",
+          "arguments": {
+            "height": "20",
+            "initial_velocity": "5",
+            "gravity": "9.8"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_final_speed",
+          "arguments": {
+            "initial_velocity": 0,
+            "height": 10,
+            "gravity": 9.8
+          }
+        },
+        {
+          "name": "calculate_final_speed",
+          "arguments": {
+            "initial_velocity": 5,
+            "height": 20,
+            "gravity": 9.8
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_127",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 0.04124641418457031,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "New York, NY",
+            "dietary_preference": [
+              "Vegan",
+              "Gluten-free",
+              "Dairy-free"
+            ]
+          }
+        },
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "Los Angeles, CA",
+            "dietary_preference": [
+              "Vegan",
+              "Gluten-free",
+              "Dairy-free"
+            ]
+          }
+        },
+        {
+          "name": "restaurant.find_nearby",
+          "arguments": {
+            "location": "Chicago, IL",
+            "dietary_preference": [
+              "Vegan",
+              "Gluten-free",
+              "Dairy-free"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_18",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 253.91197204589844,
+      "predicted_calls": [
+        {
+          "name": "calculateFinalVelocity",
+          "arguments": {
+            "time": "5",
+            "gravity": "9.81",
+            "initialVelocity": "0"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculateFinalVelocity",
+          "arguments": {
+            "time": 5.0,
+            "gravity": 9.81,
+            "initialVelocity": 0.0
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

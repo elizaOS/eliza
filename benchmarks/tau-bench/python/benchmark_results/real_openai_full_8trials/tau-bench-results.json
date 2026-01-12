@@ -1,0 +1,72 @@
+{
+  "total_tasks": 18,
+  "total_trials": 144,
+  "passed_tasks": 138,
+  "failed_tasks": 6,
+  "overall_success_rate": 0.9583333333333334,
+  "overall_tool_accuracy": 0.6879629629629629,
+  "overall_policy_compliance": 0.9861111111111112,
+  "overall_response_quality": 0.514796284796901,
+  "average_duration_ms": 4208.9124752415555,
+  "pass_k_metrics": {
+    "1": {
+      "k": 1,
+      "pass_rate": 0.9444444444444444,
+      "trials_passed": 17
+    },
+    "2": {
+      "k": 2,
+      "pass_rate": 0.9444444444444444,
+      "trials_passed": 17
+    },
+    "4": {
+      "k": 4,
+      "pass_rate": 0.9444444444444444,
+      "trials_passed": 17
+    },
+    "8": {
+      "k": 8,
+      "pass_rate": 0.9444444444444444,
+      "trials_passed": 17
+    }
+  },
+  "overall_metrics": {
+    "total_tokens": 0,
+    "average_tokens_per_task": 0.0,
+    "average_turns_per_task": 2.4166666666666665,
+    "average_tool_calls_per_task": 1.4166666666666667,
+    "total_duration_seconds": 606.121456861496,
+    "memory_peak_mb": 14.41999626159668,
+    "memory_average_mb": 13.341398239135742
+  },
+  "comparison_to_leaderboard": {
+    "best_comparable_model": "gemini-3-pro",
+    "difference_from_best": 0.05362499999999998,
+    "comparison_details": {
+      "gemini-3-pro": 0.05362499999999998,
+      "claude-3.7-sonnet": 0.14812499999999995,
+      "kimi-k2": 0.22112500000000002,
+      "o3": 0.22612500000000002,
+      "o4-mini": 0.24662500000000004,
+      "gpt-4o": 0.479625,
+      "gpt-4-turbo": 0.543625,
+      "claude-3-opus": 0.452625,
+      "llama-3.1-70b": 0.584125
+    }
+  },
+  "summary": {
+    "status": "success",
+    "key_findings": [
+      "Strong overall performance on Tau-bench tasks"
+    ],
+    "strengths": [
+      "High task completion rate",
+      "Strong policy compliance",
+      "Strong performance in retail domain",
+      "Strong performance in airline domain"
+    ],
+    "weaknesses": [],
+    "recommendations": [],
+    "timestamp": "2026-01-12T00:55:20.910249"
+  }
+}

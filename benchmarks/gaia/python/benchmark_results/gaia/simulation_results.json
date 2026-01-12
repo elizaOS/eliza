@@ -1,0 +1,8 @@
+{
+  "model": "groq/llama-3.1-8b-instant",
+  "accuracy": 1.0,
+  "correct": 5,
+  "total": 5,
+  "avg_latency_ms": 357.4038505554199,
+  "total_tokens": 1547
+}

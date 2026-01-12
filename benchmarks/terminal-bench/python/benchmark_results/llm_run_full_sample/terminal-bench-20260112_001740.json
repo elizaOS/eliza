@@ -1,0 +1,126 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:17:40.182426",
+    "version": "2.0",
+    "model": "gpt-4o-mini",
+    "max_iterations": 10,
+    "sample_tasks": true
+  },
+  "summary": {
+    "total_tasks": 5,
+    "passed_tasks": 4,
+    "failed_tasks": 1,
+    "accuracy": 0.8,
+    "total_commands": 21,
+    "avg_commands_per_task": 4.2,
+    "total_tokens": 14431,
+    "avg_tokens_per_task": 2886.2,
+    "evaluation_time_seconds": 82.8455331325531,
+    "avg_time_per_task_seconds": 16.56910662651062
+  },
+  "leaderboard_comparison": null,
+  "by_category": {
+    "scripting": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "accuracy": 1.0,
+      "avg_commands": 4.5,
+      "avg_time_ms": 221.73333168029785
+    },
+    "file_operations": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "accuracy": 1.0,
+      "avg_commands": 4.5,
+      "avg_time_ms": 233.43098163604736
+    },
+    "code_compilation": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "accuracy": 0.0,
+      "avg_commands": 3.0,
+      "avg_time_ms": 180.1319122314453
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "accuracy": 1.0,
+      "avg_commands": 3.5,
+      "avg_time_ms": 185.7084035873413
+    },
+    "medium": {
+      "total": 3,
+      "passed": 2,
+      "failed": 1,
+      "accuracy": 0.6666666666666666,
+      "avg_commands": 4.666666666666667,
+      "avg_time_ms": 239.68124389648438
+    }
+  },
+  "error_categories": {
+    "Test failed": 1
+  },
+  "results": [
+    {
+      "task_id": "sample_001",
+      "success": true,
+      "commands_executed": 3,
+      "total_execution_time_ms": 158.8900089263916,
+      "tokens_used": 1779,
+      "test_exit_code": 0,
+      "error_message": null,
+      "category": "scripting",
+      "difficulty": "easy"
+    },
+    {
+      "task_id": "sample_002",
+      "success": true,
+      "commands_executed": 4,
+      "total_execution_time_ms": 212.52679824829102,
+      "tokens_used": 2327,
+      "test_exit_code": 0,
+      "error_message": null,
+      "category": "file_operations",
+      "difficulty": "easy"
+    },
+    {
+      "task_id": "sample_003",
+      "success": true,
+      "commands_executed": 6,
+      "total_execution_time_ms": 284.5766544342041,
+      "tokens_used": 4624,
+      "test_exit_code": 0,
+      "error_message": null,
+      "category": "scripting",
+      "difficulty": "medium"
+    },
+    {
+      "task_id": "sample_004",
+      "success": false,
+      "commands_executed": 3,
+      "total_execution_time_ms": 180.1319122314453,
+      "tokens_used": 1897,
+      "test_exit_code": 1,
+      "error_message": null,
+      "category": "code_compilation",
+      "difficulty": "medium"
+    },
+    {
+      "task_id": "sample_005",
+      "success": true,
+      "commands_executed": 5,
+      "total_execution_time_ms": 254.3351650238037,
+      "tokens_used": 3804,
+      "test_exit_code": 0,
+      "error_message": null,
+      "category": "file_operations",
+      "difficulty": "medium"
+    }
+  ]
+}

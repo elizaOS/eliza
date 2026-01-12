@@ -65,7 +65,6 @@ OUTPUT: Generated code displayed to user. Use WRITE_FILE if the code should be s
     const prompt = `${CODE_GENERATION_SYSTEM_PROMPT}\n\nUser request:\n${request}\n\nGenerate the requested code.`;
 
     try {
-      // biome-ignore lint/correctness/useHookAtTopLevel: useModel is a runtime method, not a React hook
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
         maxTokens: 2000,

@@ -1,0 +1,80 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-swe-bench"
+version = "0.1.0"
+description = "SWE-bench benchmark for ElizaOS Python agents"
+readme = "RESEARCH.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Team", email = "team@elizaos.ai" }
+]
+keywords = ["ai", "agents", "benchmark", "swe-bench", "software-engineering"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "elizaos>=1.0.0",
+    "datasets>=2.14.0",
+    "gitpython>=3.1.0",
+    "unidiff>=0.7.0",
+    "docker>=7.0.0",
+    "swebench>=4.1.0",
+    "python-dotenv>=1.1.0",
+    "openai>=1.99.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.19.0",
+    "ruff>=0.14.0",
+]
+
+[project.scripts]
+swe-bench = "benchmarks.swe_bench.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs/benchmarks/swe-bench"
+Repository = "https://github.com/elizaos/eliza/tree/main/benchmarks/swe-bench"
+
+[tool.hatch.build.targets.wheel]
+packages = ["benchmarks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests as integration tests (may require network/docker)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = false
+check_untyped_defs = true
+no_implicit_optional = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008"]

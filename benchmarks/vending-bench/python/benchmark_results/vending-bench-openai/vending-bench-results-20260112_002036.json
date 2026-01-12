@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:20:36.650684",
+    "duration_seconds": 270.6199312210083,
+    "total_runs": 1,
+    "successful_runs": 1,
+    "model_name": "gpt-4o-mini",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 1,
+    "max_days_per_run": 30,
+    "initial_cash": "500.0",
+    "model_name": "gpt-4o-mini"
+  },
+  "metrics": {
+    "avg_net_worth": "150.8",
+    "max_net_worth": "150.8",
+    "min_net_worth": "150.8",
+    "std_net_worth": "0",
+    "success_rate": 0.0,
+    "profitability_rate": 0.0,
+    "coherence_score": 0.598,
+    "avg_coherence_errors": 60.0,
+    "error_breakdown": {
+      "loop_behavior": 59,
+      "forgotten_order": 1
+    },
+    "avg_items_sold": 0,
+    "avg_orders_placed": 2,
+    "avg_stockout_days": 0,
+    "avg_simulation_days": 30,
+    "avg_tokens_per_run": 220240.0,
+    "avg_latency_per_action_ms": 819.982379133051
+  },
+  "leaderboard_comparison": {
+    "our_score": "150.8",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      {
+        "model": "Grok 4",
+        "score": "4694.15",
+        "comparison": "-$4543.35 (worse)"
+      },
+      {
+        "model": "Claude 3.5 Sonnet",
+        "score": "2217.93",
+        "comparison": "-$2067.13 (worse)"
+      },
+      {
+        "model": "Claude Opus 4",
+        "score": "2077.41",
+        "comparison": "-$1926.61 (worse)"
+      },
+      {
+        "model": "GPT-4o",
+        "score": "1850.00",
+        "comparison": "-$1699.20 (worse)"
+      },
+      {
+        "model": "GPT-4",
+        "score": "1500.00",
+        "comparison": "-$1349.20 (worse)"
+      }
+    ]
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "best_net_worth": "$150.80",
+    "avg_net_worth": "$150.80",
+    "profitability_rate": "0%",
+    "coherence_score": "59.8%",
+    "key_findings": [
+      "Performance needs improvement: only 0% profitable",
+      "Average net worth: $150.80 (range: $150.80 - $150.80)",
+      "Coherence issues detected: 59.8% score",
+      "Common error: loop_behavior (59 occurrences)",
+      "Common error: forgotten_order (1 occurrences)",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Review and improve long-term decision consistency",
+      "Improve sales - review pricing and product selection"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 30,
+      "final_net_worth": "150.80",
+      "profit": "-349.20",
+      "total_revenue": "0",
+      "total_costs": "19.20",
+      "items_sold": 0,
+      "orders_placed": 2,
+      "stockout_days": 0,
+      "coherence_errors": 60,
+      "total_tokens": 220240,
+      "error": null
+    }
+  ]
+}

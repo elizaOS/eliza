@@ -1,0 +1,3841 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 100,
+    "timestamp": "2026-01-12T00:30:02Z",
+    "model": "groq/llama-3.1-8b-instant"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.7006896551724137,
+    "ast_accuracy": 0.6666666666666666,
+    "exec_accuracy": 0.6666666666666666,
+    "relevance_accuracy": 0.9733333333333334,
+    "total_tests": 75,
+    "passed_tests": 50,
+    "failed_tests": 25,
+    "latency": {
+      "avg": 486.2876772880554,
+      "p50": 449.1572380065918,
+      "p95": 851.3689041137695,
+      "p99": 1716.9620990753174
+    },
+    "category_breakdown": {
+      "sql": {
+        "total": 25,
+        "ast_accuracy": 0.56,
+        "exec_accuracy": 0.56,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 382.8382682800293
+      },
+      "java": {
+        "total": 25,
+        "ast_accuracy": 0.64,
+        "exec_accuracy": 0.64,
+        "relevance_accuracy": 0.92,
+        "avg_latency_ms": 514.6380996704102
+      },
+      "parallel": {
+        "total": 25,
+        "ast_accuracy": 0.8,
+        "exec_accuracy": 0.8,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 459.0722846984863
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 4,
+      "argument_mismatch": 18,
+      "missing_call": 2,
+      "extra_call": 1,
+      "type_error": 0,
+      "relevance_error": 2,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0,
+      "no_ground_truth": 25
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.18631034482758635,
+    "gpt-4o": -0.19031034482758635,
+    "claude-3-opus": -0.15131034482758632,
+    "claude-3-sonnet": -0.12231034482758629,
+    "gemini-1.5-pro": -0.1443103448275863,
+    "qwen-2.5-72b": -0.011310344827586305,
+    "llama-3.1-70b": 0.015689655172413608,
+    "mistral-large": 0.0026896551724137074
+  },
+  "summary": {
+    "status": "good",
+    "key_findings": [
+      "Overall score: 70.07% (AST: 66.67%, Exec: 66.67%)",
+      "Best category: parallel (80.00%)",
+      "Needs work: sql (56.00%)",
+      "Outperforms mistral-large by 0.27%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "sql_11",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 475.36516189575195,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Physicists",
+            "columns": [
+              "names",
+              "research_topics"
+            ],
+            "conditions": [
+              "research_topics = 'Quantum Mechanics'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Physicists",
+            "columns": [
+              "name",
+              "research_topic"
+            ],
+            "conditions": "research_topic = 'Quantum Mechanics'"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_44",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 296.983003616333,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "Students",
+            "update_values": [
+              "Grade = 'A'"
+            ],
+            "conditions": [
+              "Name = 'John'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "Students",
+            "columns": [
+              "Grade"
+            ],
+            "update_values": [
+              "A"
+            ],
+            "conditions": [
+              "Name = 'John'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_63",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 406.82077407836914,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "SurveyResults",
+            "columns": [
+              "RespondentID",
+              "Age",
+              "Gender",
+              "Income",
+              "SatisfactionScore"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "SurveyResults",
+            "columns": [
+              "RespondentID",
+              "Age",
+              "Gender",
+              "Income",
+              "SatisfactionScore"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_48",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 437.88790702819824,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              "S101",
+              "John Doe",
+              16,
+              10
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "ID",
+              "Name",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              [
+                "S101",
+                "John Doe",
+                16,
+                10
+              ]
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_28",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 311.7361068725586,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "ChemicalElements",
+            "columns": [
+              "ElementName",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicWeight"
+            ],
+            "insert_values": [
+              "Helium",
+              2,
+              "He",
+              4.002602
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "ChemicalElements",
+            "columns": [
+              "ElementName",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicWeight"
+            ],
+            "insert_values": [
+              "Helium",
+              2,
+              "He",
+              4.002602
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_73",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 272.2511291503906,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FiscalPolicy",
+            "columns": [
+              "Year",
+              "GovernmentSpending",
+              "TaxRevenue",
+              "BudgetDeficit",
+              "PublicDebt"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FiscalPolicy",
+            "columns": [
+              "Year",
+              "GovernmentSpending",
+              "TaxRevenue",
+              "BudgetDeficit",
+              "PublicDebt"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_37",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 268.05686950683594,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Proteins",
+            "conditions": [
+              "ProteinName = 'Hemoglobin'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Proteins",
+            "conditions": [
+              "ProteinName = 'Hemoglobin'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_81",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 355.23390769958496,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Customers",
+            "columns": [
+              "names",
+              "account balances"
+            ],
+            "conditions": [
+              "account balance > 10000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "Customers",
+            "columns": [
+              "name",
+              "account_balances"
+            ],
+            "conditions": [
+              "account_balances > 10000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_93",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 291.7482852935791,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Inventory",
+            "columns": [
+              "ProductID",
+              "ProductName",
+              "SupplierID",
+              "CategoryID",
+              "QuantityPerUnit",
+              "UnitPrice"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Inventory",
+            "columns": [
+              "ProductID",
+              "ProductName",
+              "SupplierID",
+              "CategoryID",
+              "QuantityPerUnit",
+              "UnitPrice"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_18",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 515.9909725189209,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "FreeFallExperiment",
+            "columns": [
+              "Height",
+              "Time",
+              "TrialNumber"
+            ]
+          }
+        },
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "FreeFallExperiment",
+            "columns": [
+              "Height",
+              "Time",
+              "TrialNumber"
+            ],
+            "insert_values": [
+              [
+                10,
+                1.43,
+                1
+              ],
+              [
+                20,
+                2.01,
+                2
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "FreeFallExperiment",
+            "insert_values": [
+              10,
+              1.43,
+              1
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_39",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 323.85897636413574,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Plant_Species",
+            "columns": [
+              "Species_Name",
+              "Height",
+              "Lifespan",
+              "Seed_Weight"
+            ],
+            "insert_values": [
+              "Cactaceae saharae",
+              15,
+              20,
+              0.5
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Plant_Species",
+            "columns": [
+              "Species_Name",
+              "Height",
+              "Lifespan",
+              "Seed_Weight"
+            ],
+            "insert_values": [
+              "Cactaceae saharae",
+              15,
+              20,
+              0.5
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_82",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 412.77313232421875,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Investments",
+            "columns": [
+              "InvestorName",
+              "InvestmentType",
+              "InvestmentAmount",
+              "InvestmentDate"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Investments",
+            "columns": "InvestorName"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_68",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 438.87996673583984,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "FirstName",
+              "LastName",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              "S101",
+              "John",
+              "Doe",
+              15,
+              10
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "FirstName",
+              "LastName",
+              "Age",
+              "Grade"
+            ],
+            "insert_values": [
+              "S101",
+              "John",
+              "Doe",
+              15,
+              10
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_4",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 475.7571220397949,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "StudentGrades",
+            "update_values": [
+              "MathGrade = 95"
+            ],
+            "conditions": [
+              "StudentID = 12345"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "StudentGrades",
+            "columns": [
+              "MathGrade"
+            ],
+            "update_values": [
+              "95"
+            ],
+            "conditions": [
+              "StudentID = 12345"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_91",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 253.85284423828125,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "products",
+            "columns": [
+              "product_name",
+              "product_id",
+              "price"
+            ],
+            "conditions": [
+              "price < 20"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "products",
+            "columns": [
+              "product_name",
+              "product_id",
+              "price"
+            ],
+            "conditions": [
+              "price < 20"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_9",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 394.82712745666504,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "MathScores",
+            "columns": [
+              "StudentID",
+              "Name",
+              "TestScore",
+              "TestDate"
+            ],
+            "insert_values": [
+              "EW123",
+              "Emily Watson",
+              95,
+              "2022-03-01"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "MathScores",
+            "columns": [
+              "StudentID",
+              "Name",
+              "TestScore",
+              "TestDate"
+            ],
+            "insert_values": [
+              "EW123",
+              "Emily Watson",
+              "95",
+              "2022-03-01"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_6",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 555.9489727020264,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "Name",
+              "GPA"
+            ],
+            "conditions": [
+              "GPA < 2.0"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "Students",
+            "columns": [
+              "StudentID",
+              "Name",
+              "GPA"
+            ],
+            "conditions": [
+              "GPA < 2.0"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_92",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 306.0019016265869,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Employee",
+            "columns": [
+              "EmployeeID",
+              "FirstName",
+              "LastName",
+              "Email",
+              "Phone"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Employee",
+            "columns": [
+              "EmployeeID",
+              "FirstName",
+              "LastName",
+              "Email",
+              "Phone"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_70",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 370.1057434082031,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "sales",
+            "columns": [
+              "SUM(quantity_sold)"
+            ],
+            "conditions": [
+              "product_name = 'Product X'",
+              "sale_date >= '2022-01-01'",
+              "sale_date =< '2022-03-31'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "sales",
+            "columns": [
+              "product_name",
+              "quantity_sold"
+            ],
+            "conditions": [
+              "product_name = 'Product X'",
+              "sale_date >= '2022-01-01'",
+              "sale_date <= '2022-03-31'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_32",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 319.5929527282715,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "CellTypes",
+            "columns": [
+              "CellID",
+              "CellName",
+              "Organ",
+              "Function"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "CellTypes",
+            "columns": [
+              "CellID",
+              "CellName",
+              "Organ",
+              "Function"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_51",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 467.55003929138184,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "customers",
+            "columns": [
+              "name",
+              "age"
+            ],
+            "conditions": [
+              "purchase_amount > 1000"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "customers",
+            "columns": [
+              "name",
+              "age"
+            ],
+            "conditions": [
+              "purchases > 1000"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_52",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 267.498254776001,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Employee",
+            "columns": [
+              "ID",
+              "Name",
+              "Position",
+              "Salary",
+              "Department"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Employee",
+            "columns": [
+              "ID",
+              "Name",
+              "Position",
+              "Salary",
+              "Department"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_76",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 260.9739303588867,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "EconomicData",
+            "conditions": [
+              "Indicator = 'GDP'",
+              "Year = '2010'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "DELETE",
+            "table_name": "EconomicData",
+            "conditions": [
+              "Indicator = 'GDP'",
+              "Year = '2010'",
+              "Indicator = 'GDP'",
+              "Year = 2010",
+              "Indicator = GDP",
+              "Year = '2010'",
+              "Indicator = GDP",
+              "Year = 2010"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_74",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 333.2228660583496,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "country_gdp",
+            "update_values": [
+              "gdp = '21.44 trillion USD'"
+            ],
+            "conditions": [
+              "country_name = 'United States'"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "UPDATE",
+            "table_name": "country_gdp",
+            "columns": [
+              "gdp"
+            ],
+            "update_values": [
+              "21.44 trillion USD"
+            ],
+            "conditions": [
+              "country_name = 'United States'"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_69",
+      "category": "sql",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 758.0387592315674,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Census",
+            "columns": [
+              "Year",
+              "Population",
+              "BirthRate",
+              "DeathRate",
+              "NetMigrationRate"
+            ],
+            "insert_values": [
+              2022,
+              331002651,
+              12.4,
+              8.9,
+              2.5
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "Census",
+            "columns": [
+              "Year",
+              "Population",
+              "BirthRate",
+              "DeathRate",
+              "NetMigrationRate"
+            ],
+            "insert_values": [
+              2022,
+              "331002651",
+              12.4,
+              8.9,
+              2.5
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_10",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 419.5420742034912,
+      "predicted_calls": [
+        {
+          "name": "fetchSalesDepartmentRecords",
+          "arguments": {
+            "databaseName": "employeeRecords",
+            "queryFunction": "getSales"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "fetchSalesDepartmentRecords",
+          "arguments": {
+            "databaseName": "employeeRecords",
+            "queryFunction": "getSales"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_17",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 304.6460151672363,
+      "predicted_calls": [
+        {
+          "name": "GenericTypesVisitor.attachGenericTypesInfo",
+          "arguments": {
+            "insn": "newConstructorInsn",
+            "mth": "initMethod"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "GenericTypesVisitor.attachGenericTypesInfo",
+          "arguments": {
+            "mth": "initMethod",
+            "insn": "newConstructorInsn"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_9",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 855.6830883026123,
+      "predicted_calls": [
+        {
+          "name": "writeMultiPoint",
+          "arguments": {
+            "multiPoint": "[Point(1, 2), Point(3, 4), Point(5, 6), Point(7, 8), Point(9, 10)]",
+            "xyzmMode": "XyzmMode.XYZ",
+            "buffer": "ByteBuffer.allocate(1024)"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "writeMultiPoint",
+          "arguments": {
+            "multiPoint": "new MultiPoint(new Point[]{new Point(1, 2), new Point(3, 4), new Point(5, 6), new Point(7, 8), new Point(9, 10)})",
+            "xyzmMode": "XyzmMode.XYZ",
+            "buffer": "ByteBuffer.allocate(1024)"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_52",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 407.9287052154541,
+      "predicted_calls": [
+        {
+          "name": "SamlObjectSignerTests.getChildren",
+          "arguments": {
+            "node": "SAMLAssertionNode",
+            "node_type": "Element"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "SamlObjectSignerTests.getChildren",
+          "arguments": {
+            "node": "SAMLAssertionNode",
+            "node_type": "Element.class"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_42",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 1716.9620990753174,
+      "predicted_calls": [
+        {
+          "name": "B",
+          "arguments": {
+            "t": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "B",
+          "arguments": {
+            "t": 5.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_11",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 607.7380180358887,
+      "predicted_calls": [
+        {
+          "name": "prioritizeAndSort",
+          "arguments": {
+            "items": "myItemList",
+            "priorityStatus": "urgent",
+            "ascending": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "prioritizeAndSort",
+          "arguments": {
+            "items": "myItemList",
+            "priorityStatus": "urgent",
+            "ascending": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_38",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 528.160810470581,
+      "predicted_calls": [
+        {
+          "name": "getDirectoryToWatchFromFailedLookupLocationDirectory",
+          "arguments": {
+            "dir": "react",
+            "dirPath": "/projects/myApp/node_modules/react"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "getDirectoryToWatchFromFailedLookupLocationDirectory",
+          "arguments": {
+            "dir": "/projects/myApp/node_modules/react",
+            "dirPath": "/projects/myApp/node_modules/react"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_22",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 374.5560646057129,
+      "predicted_calls": [
+        {
+          "name": "resetStateProperty",
+          "arguments": {
+            "stateProperty": "userSession"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "resetStateProperty",
+          "arguments": {
+            "stateProperty": "userSession"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_36",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 259.2599391937256,
+      "predicted_calls": [
+        {
+          "name": "ObjectMapEntryReplayDecoder.decode",
+          "arguments": {
+            "parts": "[['userID', 42, 'username', 'johndoe', 'isActive', true]]",
+            "state": "processingState"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "ObjectMapEntryReplayDecoder.decode",
+          "arguments": {
+            "parts": [
+              "userID",
+              42,
+              "username",
+              "johndoe",
+              "isActive",
+              true
+            ],
+            "state": "processingState"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_49",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 340.84510803222656,
+      "predicted_calls": [
+        {
+          "name": "Http2TestExchangeImpl.sendResponseHeaders",
+          "arguments": {
+            "rCode": 404,
+            "responseLength": 1500
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "Http2TestExchangeImpl.sendResponseHeaders",
+          "arguments": {
+            "rCode": 404,
+            "responseLength": 1500
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_22",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 352.25892066955566,
+      "predicted_calls": [
+        {
+          "name": "PmsProductServiceImpl.updateNewStatus",
+          "arguments": {
+            "ids": "[101, 202, 303]",
+            "newStatus": 2
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "PmsProductServiceImpl.updateNewStatus",
+          "arguments": {
+            "ids": [
+              101,
+              202,
+              303
+            ],
+            "newStatus": 2
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_35",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 629.1818618774414,
+      "predicted_calls": [
+        {
+          "name": "areDeclarationFlagsIdentical",
+          "arguments": {
+            "left": "parameterObject",
+            "right": "variableDeclarationObject"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "areDeclarationFlagsIdentical",
+          "arguments": {
+            "left": "parameterObject",
+            "right": "variableDeclarationObject"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_8",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 448.05383682250977,
+      "predicted_calls": [
+        {
+          "name": "EFSNIOFile.setContents",
+          "arguments": {
+            "monitor": "progressMonitor",
+            "source": "fileStream",
+            "force": true,
+            "keepHistory": false
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "EFSNIOFile.setContents",
+          "arguments": {
+            "source": "fileStream",
+            "force": true,
+            "keepHistory": false,
+            "monitor": "progressMonitor"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_50",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 490.70000648498535,
+      "predicted_calls": [
+        {
+          "name": "TransformIndexerStateTests.doDeleteByQuery",
+          "arguments": {
+            "deleteByQueryRequest": "deleteQueryRequest",
+            "responseListener": "testListener"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "TransformIndexerStateTests.doDeleteByQuery",
+          "arguments": {
+            "deleteByQueryRequest": "deleteQueryRequest",
+            "responseListener": "testListener"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_61",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 527.8851985931396,
+      "predicted_calls": [
+        {
+          "name": "ScoreFunctionBuilders.exponentialDecayFunction",
+          "arguments": {
+            "fieldName": "timestamp",
+            "origin": "now",
+            "scale": "10d",
+            "offset": "2d",
+            "decay": 0.5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "ScoreFunctionBuilders.exponentialDecayFunction",
+          "arguments": {
+            "fieldName": "timestamp",
+            "origin": "now",
+            "scale": "10d",
+            "offset": "2d",
+            "decay": 0.5
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_45",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 592.0360088348389,
+      "predicted_calls": [
+        {
+          "name": "Basic.checkSizes",
+          "arguments": {
+            "environ": "envVariables",
+            "size": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "Basic.checkSizes",
+          "arguments": {
+            "environ": "envVariables",
+            "size": 5
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_5",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 353.2381057739258,
+      "predicted_calls": [
+        {
+          "name": "PlainTextPresentation.createPresentation",
+          "arguments": {
+            "controller": "dataController",
+            "parent": "compositeParent"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "PlainTextPresentation.createPresentation",
+          "arguments": {
+            "controller": "dataController",
+            "parent": "compositeParent"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_33",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 763.3647918701172,
+      "predicted_calls": [
+        {
+          "name": "RedissonMapCache.putOperationAsync",
+          "arguments": {
+            "key": "employee:1234",
+            "value": "John Doe"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RedissonMapCache.putOperationAsync",
+          "arguments": {
+            "key": "employee:1234",
+            "value": "John Doe"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_15",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 319.6711540222168,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "ChartSeriesGenerator",
+          "arguments": {
+            "labels": "axisLabelsArray",
+            "data": "dataPointsArray",
+            "color": "defaultColor",
+            "chartLayout": "chartLayoutObject"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_32",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 528.6157131195068,
+      "predicted_calls": [
+        {
+          "name": "RedissonPermitExpirableSemaphore.tryAcquireAsync",
+          "arguments": {
+            "waitTime": 5,
+            "leaseTime": 120,
+            "unit": "SECONDS"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "RedissonPermitExpirableSemaphore.tryAcquireAsync",
+          "arguments": {
+            "waitTime": 5,
+            "leaseTime": 120,
+            "unit": "SECONDS"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_66",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 851.3689041137695,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "CompositeRuntimeField.createChildRuntimeField",
+          "arguments": {
+            "parserContext": "mappingParserContext",
+            "parent": "compositeField1",
+            "parentScriptFactory": "compositeScriptFactory",
+            "onScriptError": "onScriptError.IGNORE"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_94",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 218.42312812805176,
+      "predicted_calls": [
+        {
+          "name": "NFILibrary.isMemberReadable",
+          "arguments": {
+            "symbol": "getVersion"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "NFILibrary.isMemberReadable",
+          "arguments": {
+            "symbol": "getVersion",
+            "recursive": "null"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_98",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 359.01880264282227,
+      "predicted_calls": [
+        {
+          "name": "LoopConditionProfile.calculateProbability",
+          "arguments": {
+            "trueCountLocal": 150,
+            "falseCountLocal": 50
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "LoopConditionProfile.calculateProbability",
+          "arguments": {
+            "trueCountLocal": 150,
+            "falseCountLocal": 50
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_30",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 285.891056060791,
+      "predicted_calls": [
+        {
+          "name": "setText",
+          "arguments": {
+            "newText": "Hello, World!",
+            "start": 5,
+            "length": 7
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "setText",
+          "arguments": {
+            "newText": "Hello, World!",
+            "start": 5.0,
+            "length": 7.0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_70",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 330.92308044433594,
+      "predicted_calls": [
+        {
+          "name": "XMLNamespaceBinder.endElement",
+          "arguments": {
+            "element": {
+              "function_name": "QName",
+              "args": [
+                "http://www.example.com",
+                "item",
+                "ex"
+              ]
+            },
+            "augs": "augmentations"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "XMLNamespaceBinder.endElement",
+          "arguments": {
+            "element": "new QName('http://www.example.com', 'item', 'ex')",
+            "augs": "augmentations"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_59",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 639.3859386444092,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_25",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 790.4520034790039,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Tesla"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_15",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 601.3877391815186,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/USD"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_48",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 762.7670764923096,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_54",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 368.0591583251953,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://mashape-community-urban-dictionary.p.rapidapi.com/define",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "mashape-community-urban-dictionary.p.rapidapi.com"
+            },
+            "params": {
+              "term": "artwash"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_51",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 863.9211654663086,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": "46.0207,46.4836",
+              "longitude": "7.7491,9.8355",
+              "start_date": "2024-04-15",
+              "end_date": "2024-04-21",
+              "daily": "temperature_2m_max,temperature_2m_min",
+              "temperature_unit": "fahrenheit",
+              "wind_speed_unit": "mph",
+              "precipitation_unit": "inch",
+              "timezone": "auto"
+            }
+          }
+        },
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": "46.0207,46.4836",
+              "longitude": "7.7491,9.8355",
+              "start_date": "2024-04-15",
+              "end_date": "2024-04-21",
+              "daily": "precipitation_sum",
+              "temperature_unit": "fahrenheit",
+              "wind_speed_unit": "mph",
+              "precipitation_unit": "inch",
+              "timezone": "auto"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_57",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 464.3359184265137,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_9",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 463.51075172424316,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://covid-193.p.rapidapi.com/statistics",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "covid-193.p.rapidapi.com"
+            },
+            "timeout": 10,
+            "params": {
+              "country": "UK"
+            },
+            "stream": false
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_45",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 775.0711441040039,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_13",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 413.4979248046875,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-EXCHANGERATE-API-KEY"
+            },
+            "timeout": 10,
+            "params": {},
+            "allow_redirects": "true",
+            "auth": "None",
+            "cert": "None",
+            "cookies": {},
+            "proxies": {},
+            "stream": "false",
+            "verify": "true"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_21",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 614.1319274902344,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_28",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 528.7621021270752,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Tesla"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_46",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 643.9859867095947,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast",
+            "params": {
+              "latitude": 35.68,
+              "longitude": -121.34,
+              "daily": "[\"temperature_2m_max\", \"precipitation_sum\"]",
+              "temperature_unit": "fahrenheit",
+              "precipitation_unit": "inch",
+              "forecast_days": 10
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_36",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 443.2797431945801,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/search",
+            "params": {
+              "q": "886 Cannery Row, Monterey, CA",
+              "api_key": "YOUR-GEOCODE-API-KEY",
+              "format": "json"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_47",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 871.042013168335,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&hourly=temperature_2m,wind_speed_10m,precipitation_probability&daily=temperature_2m_max,wind_speed_10m_max,precipitation_probability_mean&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_68",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 808.0520629882812,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/JP",
+            "headers": {},
+            "timeout": 10,
+            "params": {},
+            "auth": "None",
+            "cert": "None",
+            "cookies": {},
+            "proxies": {},
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_60",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 757.7900886535645,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://www.omdbapi.com/",
+            "params": {
+              "t": "The Social Network",
+              "plot": "full",
+              "apikey": "YOUR-OMDB-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_11",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 642.5237655639648,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_55",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 368.40319633483887,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://mashape-community-urban-dictionary.p.rapidapi.com/define",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "mashape-community-urban-dictionary.p.rapidapi.com"
+            },
+            "params": {
+              "term": "lit"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_2",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 442.96908378601074,
+      "predicted_calls": [],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_26",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 455.7178020477295,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://yahoo-finance15.p.rapidapi.com/api/v1/markets/search",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "yahoo-finance15.p.rapidapi.com"
+            },
+            "params": {
+              "search": "Apple"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_40",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 516.3958072662354,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://geocode.maps.co/reverse",
+            "params": {
+              "lat": 63.65687,
+              "lon": 117.05229,
+              "api_key": "YOUR-GEOCODE-API-KEY"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_22",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 459.66291427612305,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_33",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 436.1920356750488,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://ip-api.com/json",
+            "params": {
+              "fields": "query,status,country",
+              "lang": "de"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "rest_67",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 583.7540626525879,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://date.nager.at/api/v3/LongWeekend/2023/FR",
+            "headers": {},
+            "timeout": 10,
+            "params": {},
+            "auth": "None",
+            "cert": "None",
+            "cookies": {},
+            "proxies": {},
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": "No ground truth available for this test case"
+    },
+    {
+      "test_case_id": "parallel_27",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 460.10494232177734,
+      "predicted_calls": [
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Berkeley",
+            "amenities": [
+              "Picnic Tables",
+              "Public Restrooms"
+            ],
+            "proximity": 10
+          }
+        },
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Tokyo",
+            "amenities": [
+              "Playgrounds",
+              "Biking Trails"
+            ],
+            "proximity": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Berkeley",
+            "amenities": [
+              "Picnic Tables",
+              "Public Restrooms"
+            ],
+            "proximity": 10
+          }
+        },
+        {
+          "name": "nature_reserve.find_nearby",
+          "arguments": {
+            "location": "Tokyo",
+            "amenities": [
+              "Playgrounds",
+              "Biking Trails"
+            ],
+            "proximity": 5
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_174",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 456.1622142791748,
+      "predicted_calls": [
+        {
+          "name": "calculate_return_on_investment",
+          "arguments": {
+            "purchase_price": 150,
+            "sale_price": 180,
+            "dividend": 20
+          }
+        },
+        {
+          "name": "calculate_return_on_investment",
+          "arguments": {
+            "purchase_price": 200,
+            "sale_price": 210,
+            "dividend": 30
+          }
+        },
+        {
+          "name": "calculate_return_on_investment",
+          "arguments": {
+            "purchase_price": 250,
+            "sale_price": 300,
+            "dividend": 40
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_return_on_investment",
+          "arguments": {
+            "purchase_price": 150,
+            "sale_price": 180,
+            "dividend": 20
+          }
+        },
+        {
+          "name": "calculate_return_on_investment",
+          "arguments": {
+            "purchase_price": 200,
+            "sale_price": 210,
+            "dividend": 30
+          }
+        },
+        {
+          "name": "calculate_return_on_investment",
+          "arguments": {
+            "purchase_price": 250,
+            "sale_price": 300,
+            "dividend": 40
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_22",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 763.3099555969238,
+      "predicted_calls": [
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "XY1234",
+            "court": "Los Angeles County Court",
+            "details": "trial_date"
+          }
+        },
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "GH5678",
+            "court": "Orange County Court",
+            "details": "trial_date"
+          }
+        },
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "XY1234",
+            "court": "Los Angeles County Court",
+            "details": "status"
+          }
+        },
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "GH5678",
+            "court": "Orange County Court",
+            "details": "status"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "XY1234",
+            "court": "Los Angeles County Court",
+            "details": "status"
+          }
+        },
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "GH5678",
+            "court": "Orange County Court",
+            "details": "status"
+          }
+        },
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "XY1234",
+            "court": "Los Angeles County Court",
+            "details": "trial_date"
+          }
+        },
+        {
+          "name": "court_info.get_case_status",
+          "arguments": {
+            "case_number": "GH5678",
+            "court": "Orange County Court",
+            "details": "trial_date"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_122",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 352.5371551513672,
+      "predicted_calls": [
+        {
+          "name": "calculate_vehicle_emission",
+          "arguments": {
+            "vehicle_type": "gas",
+            "miles_driven": 15000
+          }
+        },
+        {
+          "name": "calculate_vehicle_emission",
+          "arguments": {
+            "vehicle_type": "diesel",
+            "miles_driven": 15000,
+            "emission_factor": 2.7
+          }
+        },
+        {
+          "name": "calculate_vehicle_emission",
+          "arguments": {
+            "vehicle_type": "EV",
+            "miles_driven": 15000,
+            "emission_factor": 0
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_vehicle_emission",
+          "arguments": {
+            "vehicle_type": "gas",
+            "miles_driven": 15000,
+            "emission_factor": 1.4
+          }
+        },
+        {
+          "name": "calculate_vehicle_emission",
+          "arguments": {
+            "vehicle_type": "diesel",
+            "miles_driven": 15000,
+            "emission_factor": 2.7
+          }
+        },
+        {
+          "name": "calculate_vehicle_emission",
+          "arguments": {
+            "vehicle_type": "EV",
+            "miles_driven": 15000,
+            "emission_factor": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_69",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 539.2100811004639,
+      "predicted_calls": [
+        {
+          "name": "calculate_triangle_area",
+          "arguments": {
+            "base": 10,
+            "height": 5
+          }
+        },
+        {
+          "name": "calculate_triangle_area",
+          "arguments": {
+            "base": 8,
+            "height": 6
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_triangle_area",
+          "arguments": {
+            "base": 10,
+            "height": 5
+          }
+        },
+        {
+          "name": "calculate_triangle_area",
+          "arguments": {
+            "base": 8,
+            "height": 6
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_89",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 523.3919620513916,
+      "predicted_calls": [
+        {
+          "name": "get_directions",
+          "arguments": {
+            "start_location": "San Francisco",
+            "end_location": "Palo Alto",
+            "route_type": "fastest"
+          }
+        },
+        {
+          "name": "get_directions",
+          "arguments": {
+            "start_location": "Palo Alto",
+            "end_location": "Golden Gate Bridge, San Francisco",
+            "route_type": "scenic"
+          }
+        },
+        {
+          "name": "get_directions",
+          "arguments": {
+            "start_location": "Golden Gate Bridge, San Francisco",
+            "end_location": "San Francisco",
+            "route_type": "fastest"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_directions",
+          "arguments": {
+            "start_location": "San Francisco",
+            "end_location": "Palo Alto",
+            "route_type": "fastest"
+          }
+        },
+        {
+          "name": "get_directions",
+          "arguments": {
+            "start_location": "Palo Alto",
+            "end_location": "Golden Gate Bridge in San Francisco",
+            "route_type": "scenic"
+          }
+        },
+        {
+          "name": "get_directions",
+          "arguments": {
+            "start_location": "Golden Gate Bridge in San Francisco",
+            "end_location": "San Francisco",
+            "route_type": "fastest"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_19",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 598.8128185272217,
+      "predicted_calls": [
+        {
+          "name": "calculate_mortgage_payment",
+          "arguments": {
+            "interest_rate": 0.04,
+            "loan_amount": 400000,
+            "loan_term": 15
+          }
+        },
+        {
+          "name": "calculate_mortgage_payment",
+          "arguments": {
+            "interest_rate": 0.04,
+            "loan_amount": 400000,
+            "loan_term": 20
+          }
+        },
+        {
+          "name": "calculate_mortgage_payment",
+          "arguments": {
+            "interest_rate": 0.04,
+            "loan_amount": 400000,
+            "loan_term": 30
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_mortgage_payment",
+          "arguments": {
+            "loan_amount": 400000,
+            "interest_rate": 0.04,
+            "loan_term": 15
+          }
+        },
+        {
+          "name": "calculate_mortgage_payment",
+          "arguments": {
+            "loan_amount": 400000,
+            "interest_rate": 0.04,
+            "loan_term": 20
+          }
+        },
+        {
+          "name": "calculate_mortgage_payment",
+          "arguments": {
+            "loan_amount": 400000,
+            "interest_rate": 0.04,
+            "loan_term": 30
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_151",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 518.0158615112305,
+      "predicted_calls": [
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 15,
+            "height": 20,
+            "unit": "square meters"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 25,
+            "height": 30,
+            "unit": "square feet"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 35,
+            "height": 40,
+            "unit": "square inches"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 15,
+            "height": 20,
+            "unit": "square meters"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 25,
+            "height": 30,
+            "unit": "square feet"
+          }
+        },
+        {
+          "name": "geometry.area_triangle",
+          "arguments": {
+            "base": 35,
+            "height": 40,
+            "unit": "square inches"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_55",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 499.92990493774414,
+      "predicted_calls": [
+        {
+          "name": "grocery_store.find_by_criteria",
+          "arguments": {
+            "location": "New York City",
+            "criteria": [
+              "24 hours"
+            ]
+          }
+        },
+        {
+          "name": "grocery_store.find_by_criteria",
+          "arguments": {
+            "location": "San Diego",
+            "criteria": [
+              "Home Delivery"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "grocery_store.find_by_criteria",
+          "arguments": {
+            "location": "New York City",
+            "criteria": [
+              "24 hours"
+            ]
+          }
+        },
+        {
+          "name": "grocery_store.find_by_criteria",
+          "arguments": {
+            "location": "SD",
+            "criteria": [
+              "Home Delivery"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_129",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 477.8788089752197,
+      "predicted_calls": [
+        {
+          "name": "create_histogram",
+          "arguments": {
+            "data": "[12, 15, 11, 14, 18, 19, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]",
+            "bins": 5
+          }
+        },
+        {
+          "name": "create_histogram",
+          "arguments": {
+            "data": "[32, 35, 31, 34, 38, 39, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]",
+            "bins": 5
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "create_histogram",
+          "arguments": {
+            "data": [
+              12,
+              15,
+              11,
+              14,
+              18,
+              19,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26
+            ],
+            "bins": 5
+          }
+        },
+        {
+          "name": "create_histogram",
+          "arguments": {
+            "data": [
+              32,
+              35,
+              31,
+              34,
+              38,
+              39,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46
+            ],
+            "bins": 5
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_146",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 358.08801651000977,
+      "predicted_calls": [
+        {
+          "name": "plot_sine_wave",
+          "arguments": {
+            "start_range": 0,
+            "end_range": 10,
+            "frequency": 5,
+            "amplitude": 2,
+            "phase_shift": 1
+          }
+        },
+        {
+          "name": "plot_sine_wave",
+          "arguments": {
+            "start_range": 0,
+            "end_range": 20,
+            "frequency": 10,
+            "amplitude": 3,
+            "phase_shift": 2
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "plot_sine_wave",
+          "arguments": {
+            "start_range": 0,
+            "end_range": 10,
+            "frequency": 5,
+            "amplitude": 2,
+            "phase_shift": 1
+          }
+        },
+        {
+          "name": "plot_sine_wave",
+          "arguments": {
+            "start_range": 0,
+            "end_range": 20,
+            "frequency": 10,
+            "amplitude": 3,
+            "phase_shift": 2
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_65",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 608.0477237701416,
+      "predicted_calls": [
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 5,
+            "unit": "cm"
+          }
+        },
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 10,
+            "unit": "cm"
+          }
+        },
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 15,
+            "unit": "cm"
+          }
+        },
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 20,
+            "unit": "cm"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 5,
+            "unit": "cm"
+          }
+        },
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 10,
+            "unit": "cm"
+          }
+        },
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 15,
+            "unit": "cm"
+          }
+        },
+        {
+          "name": "calculate_circumference",
+          "arguments": {
+            "radius": 20,
+            "unit": "cm"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_28",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 385.56909561157227,
+      "predicted_calls": [
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Seattle",
+            "hours": 3
+          }
+        },
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Los Angeles",
+            "hours": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Seattle",
+            "hours": 3
+          }
+        },
+        {
+          "name": "get_current_and_future_temperature",
+          "arguments": {
+            "location": "Los Angeles",
+            "hours": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_182",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 449.1572380065918,
+      "predicted_calls": [
+        {
+          "name": "finance.calculate_future_value",
+          "arguments": {
+            "years": 10,
+            "initial_investment": 5000,
+            "rate_of_return": 0.07,
+            "contribution": 0
+          }
+        },
+        {
+          "name": "finance.calculate_future_value",
+          "arguments": {
+            "years": 10,
+            "initial_investment": 3000,
+            "rate_of_return": 0.06,
+            "contribution": 200
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "finance.calculate_future_value",
+          "arguments": {
+            "initial_investment": 5000,
+            "rate_of_return": 0.07,
+            "years": 10,
+            "contribution": 0
+          }
+        },
+        {
+          "name": "finance.calculate_future_value",
+          "arguments": {
+            "initial_investment": 3000,
+            "rate_of_return": 0.06,
+            "years": 10,
+            "contribution": 200
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_45",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 452.1048069000244,
+      "predicted_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "region": "Australia",
+            "genre": "Pop"
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "region": "Australia",
+            "genre": "Rock"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Pop",
+            "region": "Australia",
+            "duration": 0
+          }
+        },
+        {
+          "name": "musicCharts.getMostPlayed",
+          "arguments": {
+            "genre": "Rock",
+            "region": "Australia",
+            "duration": 0
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_193",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 391.0808563232422,
+      "predicted_calls": [
+        {
+          "name": "send_email",
+          "arguments": {
+            "to": "john.doe@example.com",
+            "subject": "Project Update",
+            "body": "Dear John, The project is progressing as planned and we are on track to meet our deadlines. Best, Alex",
+            "cc": "manager@example.com",
+            "bcc": "hr@example.com"
+          }
+        },
+        {
+          "name": "send_email",
+          "arguments": {
+            "to": "jane.doe@example.com",
+            "subject": "Meeting Reminder",
+            "body": "Dear Jane, This is a reminder for our meeting scheduled for tomorrow at 10 AM. Best, Alex",
+            "cc": "assistant@example.com",
+            "bcc": "hr@example.com"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "send_email",
+          "arguments": {
+            "to": "john.doe@example.com",
+            "subject": "Project Update",
+            "body": "Dear John, The project is progressing as planned and we are on track to meet our deadlines. Best, Alex",
+            "cc": "manager@example.com",
+            "bcc": "hr@example.com"
+          }
+        },
+        {
+          "name": "send_email",
+          "arguments": {
+            "to": "jane.doe@example.com",
+            "subject": "Meeting Reminder",
+            "body": "Dear Jane, This is a reminder for our meeting scheduled for tomorrow at 10 AM. Best, Alex",
+            "cc": "assistant@example.com",
+            "bcc": "hr@example.com"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_1",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 279.5219421386719,
+      "predicted_calls": [
+        {
+          "name": "calculate_em_force",
+          "arguments": {
+            "b_field": 5,
+            "area": 2,
+            "d_time": 4
+          }
+        },
+        {
+          "name": "calculate_em_force",
+          "arguments": {
+            "b_field": 5,
+            "area": 2,
+            "d_time": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_em_force",
+          "arguments": {
+            "b_field": 5,
+            "area": 2,
+            "d_time": 4
+          }
+        },
+        {
+          "name": "calculate_em_force",
+          "arguments": {
+            "b_field": 5,
+            "area": 2,
+            "d_time": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_67",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 462.003231048584,
+      "predicted_calls": [
+        {
+          "name": "geometry.calculate_area_circle",
+          "arguments": {
+            "radius": 5,
+            "unit": "meters"
+          }
+        },
+        {
+          "name": "geometry.calculate_area_circle",
+          "arguments": {
+            "radius": 10,
+            "unit": "meters"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "geometry.calculate_area_circle",
+          "arguments": {
+            "radius": 5,
+            "unit": "meters"
+          }
+        },
+        {
+          "name": "geometry.calculate_area_circle",
+          "arguments": {
+            "radius": 10,
+            "unit": "meters"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_176",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 414.54100608825684,
+      "predicted_calls": [
+        {
+          "name": "calculate_cagr",
+          "arguments": {
+            "initial_value": 5000,
+            "final_value": 7000,
+            "period_in_years": 5
+          }
+        },
+        {
+          "name": "calculate_cagr",
+          "arguments": {
+            "initial_value": 8000,
+            "final_value": 12000,
+            "period_in_years": 3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_cagr",
+          "arguments": {
+            "initial_value": 5000,
+            "final_value": 7000,
+            "period_in_years": 5
+          }
+        },
+        {
+          "name": "calculate_cagr",
+          "arguments": {
+            "initial_value": 8000,
+            "final_value": 12000,
+            "period_in_years": 3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_46",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 439.8150444030762,
+      "predicted_calls": [
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Lakers",
+            "season": 2018
+          }
+        },
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Lakers",
+            "season": 2020
+          }
+        },
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Bulls",
+            "season": 2018
+          }
+        },
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Bulls",
+            "season": 2020
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Lakers",
+            "season": 2018
+          }
+        },
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Bulls",
+            "season": 2018
+          }
+        },
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Lakers",
+            "season": 2020
+          }
+        },
+        {
+          "name": "calculate_winning_percentage",
+          "arguments": {
+            "team": "Bulls",
+            "season": 2020
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_148",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 414.47997093200684,
+      "predicted_calls": [
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "time": 25,
+            "distance": 500,
+            "to_unit": "km/h"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "time": 200,
+            "distance": 1000,
+            "to_unit": "m/s"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "time": 600,
+            "distance": 10000,
+            "to_unit": "km/h"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 500,
+            "time": 25,
+            "to_unit": "km/h"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 1000,
+            "time": 200,
+            "to_unit": "m/s"
+          }
+        },
+        {
+          "name": "calculate_speed",
+          "arguments": {
+            "distance": 10000,
+            "time": 600,
+            "to_unit": "km/h"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_192",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 420.64881324768066,
+      "predicted_calls": [
+        {
+          "name": "get_news",
+          "arguments": {
+            "topic": "Climate Change",
+            "quantity": 5,
+            "region": "Europe"
+          }
+        },
+        {
+          "name": "get_news",
+          "arguments": {
+            "topic": "Artificial Intelligence",
+            "quantity": 5,
+            "region": "Europe"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_news",
+          "arguments": {
+            "topic": "Climate Change",
+            "quantity": 5,
+            "region": "Europe"
+          }
+        },
+        {
+          "name": "get_news",
+          "arguments": {
+            "topic": "Artificial Intelligence",
+            "quantity": 5,
+            "region": "Europe"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_136",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 475.48484802246094,
+      "predicted_calls": [
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": false
+          }
+        },
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": true
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": false
+          }
+        },
+        {
+          "name": "city_distance.find_shortest",
+          "arguments": {
+            "start_city": "New York",
+            "end_city": "Los Angeles",
+            "transportation": "bus",
+            "allow_transfer": true
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_160",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 346.24385833740234,
+      "predicted_calls": [
+        {
+          "name": "prob_dist.binomial",
+          "arguments": {
+            "trials": 20,
+            "successes": 5,
+            "p": 0.3
+          }
+        },
+        {
+          "name": "prob_dist.binomial",
+          "arguments": {
+            "trials": 50,
+            "successes": 15,
+            "p": 0.3
+          }
+        },
+        {
+          "name": "prob_dist.binomial",
+          "arguments": {
+            "trials": 100,
+            "successes": 30,
+            "p": 0.3
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "prob_dist.binomial",
+          "arguments": {
+            "trials": 20,
+            "successes": 5,
+            "p": 0.3
+          }
+        },
+        {
+          "name": "prob_dist.binomial",
+          "arguments": {
+            "trials": 50,
+            "successes": 15,
+            "p": 0.3
+          }
+        },
+        {
+          "name": "prob_dist.binomial",
+          "arguments": {
+            "trials": 100,
+            "successes": 30,
+            "p": 0.3
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_98",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 390.6669616699219,
+      "predicted_calls": [
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "distance": 0.5,
+            "charge": 2,
+            "medium": "vacuum"
+          }
+        },
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "distance": 1,
+            "charge": 2,
+            "medium": "vacuum"
+          }
+        },
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "distance": 2,
+            "charge": 2,
+            "medium": "vacuum"
+          }
+        },
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "distance": 1,
+            "charge": 2,
+            "medium": "air"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "charge": 2,
+            "distance": 0.5,
+            "medium": "vacuum"
+          }
+        },
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "charge": 2,
+            "distance": 1.0,
+            "medium": "vacuum"
+          }
+        },
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "charge": 2,
+            "distance": 2.0,
+            "medium": "vacuum"
+          }
+        },
+        {
+          "name": "calculate_electric_field_strength",
+          "arguments": {
+            "charge": 2,
+            "distance": 1.0,
+            "medium": "air"
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

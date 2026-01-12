@@ -1,0 +1,66 @@
+{
+  "total_tasks": 1,
+  "passed_tasks": 0,
+  "failed_tasks": 1,
+  "overall_success_rate": 0.0,
+  "average_duration_ms": 60.884952545166016,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 10.0,
+    "average_reward": -0.49999999999999994,
+    "memory_usage": {
+      "peak": 30367,
+      "average": 30367
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {
+      "operating_system": {
+        "our_score": 0.0,
+        "gpt4_score": 0.421,
+        "difference": -0.421,
+        "relative_performance": 0.0
+      }
+    },
+    "gpt35_comparison": {
+      "operating_system": {
+        "our_score": 0.0,
+        "gpt35_score": 0.36,
+        "difference": -0.36,
+        "relative_performance": 0.0
+      }
+    },
+    "claude_comparison": {
+      "operating_system": {
+        "our_score": 0.0,
+        "claude_score": 0.395,
+        "difference": -0.395,
+        "relative_performance": 0.0
+      }
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "key_findings": [
+      "ElizaOS agent capabilities need significant improvement",
+      "Needs improvement in: operating_system"
+    ],
+    "recommendations": [
+      "Enhance operating_system environment handling capabilities"
+    ],
+    "timestamp": "2026-01-12T00:00:24.257263"
+  },
+  "environment_reports": {
+    "operating_system": {
+      "environment": "operating_system",
+      "total_tasks": 1,
+      "passed_tasks": 0,
+      "failed_tasks": 1,
+      "success_rate": 0.0,
+      "average_steps": 10.0,
+      "average_duration_ms": 60.884952545166016,
+      "average_reward": -0.49999999999999994
+    }
+  }
+}

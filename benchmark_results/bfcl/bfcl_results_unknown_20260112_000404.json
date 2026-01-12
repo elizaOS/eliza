@@ -1,0 +1,884 @@
+{
+  "metadata": {
+    "benchmark": "BFCL",
+    "version": "v3",
+    "mode": "sample",
+    "sample_size": 20,
+    "timestamp": "2026-01-12T00:04:04Z"
+  },
+  "config": {
+    "version": "v3",
+    "categories": null,
+    "max_tests_per_category": null
+  },
+  "metrics": {
+    "overall_score": 0.4,
+    "ast_accuracy": 0.35,
+    "exec_accuracy": 0.35,
+    "relevance_accuracy": 0.95,
+    "total_tests": 20,
+    "passed_tests": 7,
+    "failed_tests": 13,
+    "latency": {
+      "avg": 629.856264591217,
+      "p50": 527.3690223693848,
+      "p95": 2340.261220932007,
+      "p99": 2340.261220932007
+    },
+    "category_breakdown": {
+      "parallel": {
+        "total": 5,
+        "ast_accuracy": 0.8,
+        "exec_accuracy": 0.8,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 932.4930667877197
+      },
+      "sql": {
+        "total": 5,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 526.8136501312256
+      },
+      "rest_api": {
+        "total": 5,
+        "ast_accuracy": 0.0,
+        "exec_accuracy": 0.0,
+        "relevance_accuracy": 1.0,
+        "avg_latency_ms": 504.26955223083496
+      },
+      "java": {
+        "total": 5,
+        "ast_accuracy": 0.6,
+        "exec_accuracy": 0.6,
+        "relevance_accuracy": 0.8,
+        "avg_latency_ms": 555.8487892150879
+      }
+    },
+    "error_analysis": {
+      "name_mismatch": 3,
+      "argument_mismatch": 4,
+      "missing_call": 1,
+      "extra_call": 5,
+      "type_error": 0,
+      "relevance_error": 1,
+      "execution_error": 0,
+      "timeout": 0,
+      "other": 0
+    }
+  },
+  "baseline_comparison": {
+    "gpt-4-turbo": -0.487,
+    "gpt-4o": -0.491,
+    "claude-3-opus": -0.45199999999999996,
+    "claude-3-sonnet": -0.42299999999999993,
+    "gemini-1.5-pro": -0.44499999999999995,
+    "qwen-2.5-72b": -0.31199999999999994,
+    "llama-3.1-70b": -0.28500000000000003,
+    "mistral-large": -0.29799999999999993
+  },
+  "summary": {
+    "status": "fair",
+    "key_findings": [
+      "Overall score: 40.00% (AST: 35.00%, Exec: 35.00%)",
+      "Best category: parallel (80.00%)",
+      "Needs work: rest_api (0.00%)",
+      "Behind llama-3.1-70b by 28.50%"
+    ],
+    "recommendations": [
+      "Focus on improving function name and argument matching",
+      "Improve argument type handling and validation"
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_case_id": "parallel_83",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 667.3460006713867,
+      "predicted_calls": [
+        {
+          "name": "final_velocity",
+          "arguments": {
+            "time": "10",
+            "initial_velocity": "0",
+            "acceleration": "5"
+          }
+        },
+        {
+          "name": "final_velocity",
+          "arguments": {
+            "time": "8",
+            "initial_velocity": "10",
+            "acceleration": "7"
+          }
+        },
+        {
+          "name": "final_velocity",
+          "arguments": {
+            "time": "12",
+            "initial_velocity": "20",
+            "acceleration": "4"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "final_velocity",
+          "arguments": {
+            "initial_velocity": 0,
+            "acceleration": 5,
+            "time": 10
+          }
+        },
+        {
+          "name": "final_velocity",
+          "arguments": {
+            "initial_velocity": 10,
+            "acceleration": 7,
+            "time": 8
+          }
+        },
+        {
+          "name": "final_velocity",
+          "arguments": {
+            "initial_velocity": 20,
+            "acceleration": 4,
+            "time": 12
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_18",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 750.9109973907471,
+      "predicted_calls": [
+        {
+          "name": "financials.calculate_future_value",
+          "arguments": {
+            "present_value": 1000,
+            "annual_interest_rate": 0.05,
+            "number_of_years": 1
+          }
+        },
+        {
+          "name": "financials.calculate_future_value",
+          "arguments": {
+            "present_value": 1000,
+            "annual_interest_rate": 0.05,
+            "number_of_years": 5
+          }
+        },
+        {
+          "name": "financials.calculate_future_value",
+          "arguments": {
+            "present_value": 1000,
+            "annual_interest_rate": 0.05,
+            "number_of_years": 10
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "financials.calculate_future_value",
+          "arguments": {
+            "present_value": 1000,
+            "annual_interest_rate": 0.05,
+            "number_of_years": 1
+          }
+        },
+        {
+          "name": "financials.calculate_future_value",
+          "arguments": {
+            "present_value": 1000,
+            "annual_interest_rate": 0.05,
+            "number_of_years": 5
+          }
+        },
+        {
+          "name": "financials.calculate_future_value",
+          "arguments": {
+            "present_value": 1000,
+            "annual_interest_rate": 0.05,
+            "number_of_years": 10
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_61",
+      "category": "parallel",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 310.1630210876465,
+      "predicted_calls": [
+        {
+          "name": "math.hypot",
+          "arguments": {
+            "x": "3",
+            "y": "4"
+          }
+        },
+        {
+          "name": "math.hypot",
+          "arguments": {
+            "x": "6",
+            "y": "8"
+          }
+        },
+        {
+          "name": "math.hypot",
+          "arguments": {
+            "x": "9",
+            "y": "12",
+            "z": "15"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math.hypot",
+          "arguments": {
+            "x": 3,
+            "y": 4,
+            "z": 0
+          }
+        },
+        {
+          "name": "math.hypot",
+          "arguments": {
+            "x": 6,
+            "y": 8,
+            "z": 0
+          }
+        },
+        {
+          "name": "math.hypot",
+          "arguments": {
+            "x": 9,
+            "y": 12,
+            "z": 15
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_77",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 2340.261220932007,
+      "predicted_calls": [
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 45,
+            "number2": 60
+          }
+        },
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 90,
+            "number2": 120
+          }
+        },
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 36,
+            "number2": 48
+          }
+        },
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 72,
+            "number2": 96
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 45,
+            "number2": 60
+          }
+        },
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 90,
+            "number2": 120
+          }
+        },
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 36,
+            "number2": 48
+          }
+        },
+        {
+          "name": "math.hcf",
+          "arguments": {
+            "number1": 72,
+            "number2": 96
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "parallel_187",
+      "category": "parallel",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 593.7840938568115,
+      "predicted_calls": [
+        {
+          "name": "get_air_quality",
+          "arguments": {
+            "location": "New York City",
+            "detail": true,
+            "historical": "2023-05-05"
+          }
+        },
+        {
+          "name": "get_air_quality",
+          "arguments": {
+            "location": "New York City",
+            "detail": true,
+            "historical": "2023-05-04"
+          }
+        },
+        {
+          "name": "get_air_quality",
+          "arguments": {
+            "location": "New York City",
+            "detail": true,
+            "historical": "2023-05-03"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "get_air_quality",
+          "arguments": {
+            "location": "New York City",
+            "detail": true,
+            "historical": "2023-05-05"
+          }
+        },
+        {
+          "name": "get_air_quality",
+          "arguments": {
+            "location": "New York City",
+            "detail": true,
+            "historical": "2023-05-04"
+          }
+        },
+        {
+          "name": "get_air_quality",
+          "arguments": {
+            "location": "New York City",
+            "detail": true,
+            "historical": "2023-05-03"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_28",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 311.77401542663574,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "ChemicalElements",
+            "columns": [
+              "ElementName",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicWeight"
+            ],
+            "insert_values": [
+              [
+                "Helium",
+                "2",
+                "He",
+                "4.002602"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "ChemicalElements",
+            "columns": [
+              "ElementName",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicWeight"
+            ],
+            "insert_values": [
+              "Helium",
+              2,
+              "He",
+              4.002602
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_20",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 278.6262035369873,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "PeriodicTable",
+            "columns": [
+              "names",
+              "atomic_numbers"
+            ],
+            "conditions": [
+              "atomic_weight < 20"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "PeriodicTable",
+            "columns": [
+              "name",
+              "atomic_numbers"
+            ],
+            "conditions": [
+              "atomic_weight < 20"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_82",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 989.7270202636719,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Investments",
+            "columns": [
+              "InvestorName",
+              "InvestmentType",
+              "InvestmentAmount",
+              "InvestmentDate"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "CREATE",
+            "table_name": "Investments",
+            "columns": "InvestorName"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_29",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 578.2120227813721,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT",
+            "table_name": "PeriodicTable",
+            "columns": [
+              "Element",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicMass"
+            ],
+            "insert_values": [
+              [
+                "Neon",
+                "10",
+                "Ne",
+                "20.1797"
+              ]
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "INSERT INTO",
+            "table_name": "PeriodicTable",
+            "columns": [
+              "Element",
+              "AtomicNumber",
+              "Symbol",
+              "AtomicMass"
+            ],
+            "insert_values": [
+              "Neon",
+              10,
+              "Ne",
+              20.1797
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "sql_30",
+      "category": "sql",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 475.72898864746094,
+      "predicted_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "species",
+            "columns": [
+              "species_name",
+              "lifespan"
+            ],
+            "conditions": [
+              "lifespan > 50"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sql.execute",
+          "arguments": {
+            "sql_keyword": "SELECT",
+            "table_name": "species",
+            "columns": [
+              "species_name"
+            ],
+            "conditions": [
+              "lifespan > 50"
+            ]
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_32",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 664.4179821014404,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "http://ip-api.com/json",
+            "params": {
+              "lang": "es",
+              "fields": "city,country,isp"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_19",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 391.68500900268555,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR"
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_55",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 484.70187187194824,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://mashape-community-urban-dictionary.p.rapidapi.com/define",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "mashape-community-urban-dictionary.p.rapidapi.com"
+            },
+            "params": {
+              "term": "lit"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_21",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 576.4429569244385,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://v6.exchangerate-api.com/v6/YOUR-EXCHANGERATE-API-KEY/latest/EUR",
+            "headers": {},
+            "timeout": null,
+            "params": null,
+            "allow_redirects": true,
+            "auth": null,
+            "cert": null,
+            "cookies": null,
+            "proxies": null,
+            "stream": false,
+            "verify": true
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "rest_9",
+      "category": "rest_api",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 404.0999412536621,
+      "predicted_calls": [
+        {
+          "name": "requests.get",
+          "arguments": {
+            "url": "https://covid-193.p.rapidapi.com/statistics",
+            "headers": {
+              "X-RapidAPI-Key": "YOUR-RAPID-API-KEY",
+              "X-RapidAPI-Host": "covid-193.p.rapidapi.com"
+            },
+            "timeout": 10,
+            "stream": false,
+            "params": {
+              "country": "UK"
+            }
+          }
+        }
+      ],
+      "expected_calls": [],
+      "error": null
+    },
+    {
+      "test_case_id": "javascript_37",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": false,
+      "latency_ms": 527.3690223693848,
+      "predicted_calls": [],
+      "expected_calls": [
+        {
+          "name": "addInitializedPropertyStatements",
+          "arguments": {
+            "statements": "shapeStatements",
+            "property": [
+              "width",
+              "height"
+            ],
+            "receiver": "shape"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_90",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 524.4121551513672,
+      "predicted_calls": [
+        {
+          "name": "sourcepaths002.runIt",
+          "arguments": {
+            "out": "System.out",
+            "args": [
+              "-v",
+              "-p"
+            ]
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "sourcepaths002.runIt",
+          "arguments": {
+            "args": [
+              "-v",
+              "-p"
+            ],
+            "out": "System.out"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_13",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 399.9519348144531,
+      "predicted_calls": [
+        {
+          "name": "AltibaseGrantee.prepareObjectsStatement",
+          "arguments": {
+            "session": "JDBC_session",
+            "owner": "JohnDoe"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "AltibaseGrantee.prepareObjectsStatement",
+          "arguments": {
+            "session": "JDBC_session",
+            "owner": "JohnDoe"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_4",
+      "category": "java",
+      "ast_match": false,
+      "exec_success": false,
+      "relevance_correct": true,
+      "latency_ms": 891.7257785797119,
+      "predicted_calls": [
+        {
+          "name": "DB2ViewBaseDepCache.prepareObjectsStatement",
+          "arguments": {
+            "session": "jdbcSession",
+            "db2ViewBase": "employeeViewBase"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "DB2ViewBaseDepCache.prepareObjectsStatement",
+          "arguments": {
+            "session": "jdbcSession",
+            "db2ViewBase": "EmployeeView"
+          }
+        }
+      ],
+      "error": null
+    },
+    {
+      "test_case_id": "java_16",
+      "category": "java",
+      "ast_match": true,
+      "exec_success": true,
+      "relevance_correct": true,
+      "latency_ms": 435.78505516052246,
+      "predicted_calls": [
+        {
+          "name": "InsnDecoder.invokePolymorphic",
+          "arguments": {
+            "insn": "instructionData",
+            "isRange": "true"
+          }
+        }
+      ],
+      "expected_calls": [
+        {
+          "name": "InsnDecoder.invokePolymorphic",
+          "arguments": {
+            "insn": "instructionData",
+            "isRange": true
+          }
+        }
+      ],
+      "error": null
+    }
+  ]
+}

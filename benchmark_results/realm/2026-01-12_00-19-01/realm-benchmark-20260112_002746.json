@@ -1,0 +1,458 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:27:46.760821",
+    "duration_seconds": 525.16419506073,
+    "total_tasks": 13,
+    "categories": [
+      "sequential",
+      "reactive",
+      "complex",
+      "multi_agent",
+      "tool_use",
+      "reasoning"
+    ],
+    "config": {
+      "execution_model": "dag",
+      "max_steps": 15,
+      "enable_adaptation": true,
+      "model": "gpt-4"
+    }
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "success_rate": "23.1%",
+    "estimated_rank": 8,
+    "key_findings": [
+      "Planning performance needs improvement: 23.1% success rate",
+      "Strongest category: sequential (66.7%)",
+      "Needs improvement: reactive (0.0%)",
+      "High plan quality scores achieved",
+      "Estimated leaderboard rank: #8"
+    ],
+    "recommendations": [
+      "Focus on improving reactive task handling",
+      "Improve plan adaptation strategies"
+    ]
+  },
+  "metrics": {
+    "overall_success_rate": 0.23076923076923078,
+    "total_tasks": 13,
+    "passed_tasks": 3,
+    "failed_tasks": 10,
+    "avg_plan_quality": 0.8615384615384616,
+    "avg_goal_achievement": 0.6474358974358974,
+    "avg_efficiency": 0.6215600447369437,
+    "avg_planning_time_ms": 10098.019714538868,
+    "avg_execution_time_ms": 30294.059143616603,
+    "avg_latency_ms": 40392.07885815547,
+    "total_tokens": 9890,
+    "category_success_rates": {
+      "sequential": 0.6666666666666666,
+      "reactive": 0.0,
+      "complex": 0.0,
+      "multi_agent": 0.0,
+      "tool_use": 0.5,
+      "reasoning": 0.0
+    }
+  },
+  "category_breakdown": {
+    "sequential": {
+      "total": 3.0,
+      "passed": 2.0,
+      "failed": 1.0,
+      "success_rate": 0.6666666666666666,
+      "avg_plan_quality": 1.0,
+      "avg_efficiency": 0.6666672911908892
+    },
+    "reactive": {
+      "total": 2.0,
+      "passed": 0.0,
+      "failed": 2.0,
+      "success_rate": 0.0,
+      "avg_plan_quality": 0.8,
+      "avg_efficiency": 0.6481255806154675
+    },
+    "complex": {
+      "total": 2.0,
+      "passed": 0.0,
+      "failed": 2.0,
+      "success_rate": 0.0,
+      "avg_plan_quality": 0.8,
+      "avg_efficiency": 0.6854744778739081
+    },
+    "multi_agent": {
+      "total": 2.0,
+      "passed": 0.0,
+      "failed": 2.0,
+      "success_rate": 0.0,
+      "avg_plan_quality": 0.7000000000000001,
+      "avg_efficiency": 0.6943790049023099
+    },
+    "tool_use": {
+      "total": 2.0,
+      "passed": 1.0,
+      "failed": 1.0,
+      "success_rate": 0.5,
+      "avg_plan_quality": 1.0,
+      "avg_efficiency": 0.5
+    },
+    "reasoning": {
+      "total": 2.0,
+      "passed": 0.0,
+      "failed": 2.0,
+      "success_rate": 0.0,
+      "avg_plan_quality": 0.8,
+      "avg_efficiency": 0.5121602906121148
+    }
+  },
+  "leaderboard_comparison": {
+    "GPT-4": {
+      "their_score": 69.3,
+      "our_score": 23.076923076923077,
+      "difference": -46.22307692307692,
+      "better": 0.0,
+      "sequential_diff": -11.833333333333343,
+      "reactive_diff": -71.2,
+      "complex_diff": -65.3,
+      "multi_agent_diff": -58.7,
+      "tool_use_diff": -22.099999999999994,
+      "reasoning_diff": -69.8
+    },
+    "GPT-4-Turbo": {
+      "their_score": 72.9,
+      "our_score": 23.076923076923077,
+      "difference": -49.823076923076925,
+      "better": 0.0,
+      "sequential_diff": -15.433333333333337,
+      "reactive_diff": -74.5,
+      "complex_diff": -68.9,
+      "multi_agent_diff": -62.3,
+      "tool_use_diff": -26.400000000000006,
+      "reasoning_diff": -73.2
+    },
+    "Claude-3-Opus": {
+      "their_score": 67.2,
+      "our_score": 23.076923076923077,
+      "difference": -44.12307692307692,
+      "better": 0.0,
+      "sequential_diff": -9.533333333333346,
+      "reactive_diff": -69.8,
+      "complex_diff": -63.1,
+      "multi_agent_diff": -56.2,
+      "tool_use_diff": -20.5,
+      "reasoning_diff": -67.4
+    },
+    "Claude-3-Sonnet": {
+      "their_score": 62.7,
+      "our_score": 23.076923076923077,
+      "difference": -39.62307692307692,
+      "better": 0.0,
+      "sequential_diff": -4.7333333333333485,
+      "reactive_diff": -65.2,
+      "complex_diff": -58.7,
+      "multi_agent_diff": -51.8,
+      "tool_use_diff": -16.299999999999997,
+      "reasoning_diff": -62.9
+    },
+    "Gemini-Pro": {
+      "their_score": 58.7,
+      "our_score": 23.076923076923077,
+      "difference": -35.62307692307692,
+      "better": 0.0,
+      "sequential_diff": -1.8333333333333428,
+      "reactive_diff": -61.3,
+      "complex_diff": -54.2,
+      "multi_agent_diff": -47.6,
+      "tool_use_diff": -12.100000000000001,
+      "reasoning_diff": -58.4
+    },
+    "Llama-3-70B": {
+      "their_score": 52.9,
+      "our_score": 23.076923076923077,
+      "difference": -29.823076923076922,
+      "better": 0.0,
+      "sequential_diff": 4.36666666666666,
+      "reactive_diff": -55.8,
+      "complex_diff": -48.4,
+      "multi_agent_diff": -42.1,
+      "tool_use_diff": -6.700000000000003,
+      "reasoning_diff": -52.3
+    },
+    "Mixtral-8x7B": {
+      "their_score": 45.8,
+      "our_score": 23.076923076923077,
+      "difference": -22.72307692307692,
+      "better": 0.0,
+      "sequential_diff": 12.066666666666656,
+      "reactive_diff": -48.2,
+      "complex_diff": -41.5,
+      "multi_agent_diff": -35.8,
+      "tool_use_diff": 0.7000000000000028,
+      "reasoning_diff": -45.1
+    }
+  },
+  "results": [
+    {
+      "task_id": "seq-001",
+      "category": "sequential",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "sum_two_elements",
+        "multiply_two_elements",
+        "compute_log"
+      ],
+      "duration_ms": 33925.86874961853,
+      "metrics": {
+        "planning_time": 8481.467187404633,
+        "execution_time": 25444.401562213898,
+        "plan_quality": 1.0,
+        "goal_achievement": 0.3333333333333333,
+        "efficiency": 0.5
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "seq-002",
+      "category": "sequential",
+      "success": true,
+      "steps_executed": 4,
+      "actions_performed": [
+        "fetch_data",
+        "filter_data",
+        "sort_data",
+        "export_data"
+      ],
+      "duration_ms": 17624.098777770996,
+      "metrics": {
+        "planning_time": 4406.024694442749,
+        "execution_time": 13218.074083328247,
+        "plan_quality": 1.0,
+        "goal_achievement": 1.0,
+        "efficiency": 0.804176680246989
+      },
+      "error": null
+    },
+    {
+      "task_id": "seq-003",
+      "category": "sequential",
+      "success": true,
+      "steps_executed": 4,
+      "actions_performed": [
+        "read_document",
+        "extract_key_points",
+        "summarize_text",
+        "generate_report"
+      ],
+      "duration_ms": 36500.97680091858,
+      "metrics": {
+        "planning_time": 9125.244200229645,
+        "execution_time": 27375.732600688934,
+        "plan_quality": 1.0,
+        "goal_achievement": 1.0,
+        "efficiency": 0.6958251933256785
+      },
+      "error": null
+    },
+    {
+      "task_id": "react-001",
+      "category": "reactive",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "monitor_status",
+        "check_condition",
+        "scale_resources"
+      ],
+      "duration_ms": 37076.284885406494,
+      "metrics": {
+        "planning_time": 9269.071221351624,
+        "execution_time": 27807.21366405487,
+        "plan_quality": 0.8,
+        "goal_achievement": 0.6666666666666666,
+        "efficiency": 0.588041279051039
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "react-002",
+      "category": "reactive",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "deploy_application",
+        "check_health",
+        "send_notification"
+      ],
+      "duration_ms": 35014.814138412476,
+      "metrics": {
+        "planning_time": 8753.703534603119,
+        "execution_time": 26261.110603809357,
+        "plan_quality": 0.8,
+        "goal_achievement": 0.6666666666666666,
+        "efficiency": 0.7082098821798961
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "complex-001",
+      "category": "complex",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "allocate_resource",
+        "schedule_task",
+        "coordinate_execution"
+      ],
+      "duration_ms": 50133.13412666321,
+      "metrics": {
+        "planning_time": 12533.283531665802,
+        "execution_time": 37599.850594997406,
+        "plan_quality": 0.8,
+        "goal_achievement": 0.6666666666666666,
+        "efficiency": 0.7214825881852044
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "complex-002",
+      "category": "complex",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "configure_pipeline",
+        "run_tests_parallel",
+        "gate_deployment"
+      ],
+      "duration_ms": 42064.03589248657,
+      "metrics": {
+        "planning_time": 10516.008973121643,
+        "execution_time": 31548.02691936493,
+        "plan_quality": 0.8,
+        "goal_achievement": 0.3333333333333333,
+        "efficiency": 0.6494663675626119
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "multi-001",
+      "category": "multi_agent",
+      "success": false,
+      "steps_executed": 2,
+      "actions_performed": [
+        "delegate_task",
+        "aggregate_results"
+      ],
+      "duration_ms": 37982.94401168823,
+      "metrics": {
+        "planning_time": 9495.736002922058,
+        "execution_time": 28487.208008766174,
+        "plan_quality": 0.6000000000000001,
+        "goal_achievement": 0.0,
+        "efficiency": 0.7889836443795099
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "multi-002",
+      "category": "multi_agent",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "analyze_logs",
+        "check_metrics",
+        "correlate_findings"
+      ],
+      "duration_ms": 60033.84518623352,
+      "metrics": {
+        "planning_time": 15008.46129655838,
+        "execution_time": 45025.38388967514,
+        "plan_quality": 0.8,
+        "goal_achievement": 0.0,
+        "efficiency": 0.5997743654251099
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "tool-001",
+      "category": "tool_use",
+      "success": true,
+      "steps_executed": 3,
+      "actions_performed": [
+        "call_api",
+        "parse_json",
+        "send_email"
+      ],
+      "duration_ms": 36932.82604217529,
+      "metrics": {
+        "planning_time": 9233.206510543823,
+        "execution_time": 27699.61953163147,
+        "plan_quality": 1.0,
+        "goal_achievement": 1.0,
+        "efficiency": 0.5
+      },
+      "error": null
+    },
+    {
+      "task_id": "tool-002",
+      "category": "tool_use",
+      "success": false,
+      "steps_executed": 4,
+      "actions_performed": [
+        "read_file",
+        "parse_json",
+        "modify_json",
+        "write_file"
+      ],
+      "duration_ms": 39595.55673599243,
+      "metrics": {
+        "planning_time": 9898.889183998108,
+        "execution_time": 29696.667551994324,
+        "plan_quality": 1.0,
+        "goal_achievement": 0.75,
+        "efficiency": 0.5
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "reason-001",
+      "category": "reasoning",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "gather_information",
+        "evaluate_options",
+        "make_decision"
+      ],
+      "duration_ms": 55401.49211883545,
+      "metrics": {
+        "planning_time": 13850.373029708862,
+        "execution_time": 41551.11908912659,
+        "plan_quality": 0.8,
+        "goal_achievement": 1.0,
+        "efficiency": 0.5
+      },
+      "error": "Task partially completed or failed"
+    },
+    {
+      "task_id": "reason-002",
+      "category": "reasoning",
+      "success": false,
+      "steps_executed": 3,
+      "actions_performed": [
+        "search_direct_flights",
+        "search_connections",
+        "book_travel"
+      ],
+      "duration_ms": 42811.147689819336,
+      "metrics": {
+        "planning_time": 10702.786922454834,
+        "execution_time": 32108.360767364502,
+        "plan_quality": 0.8,
+        "goal_achievement": 1.0,
+        "efficiency": 0.5243205812242295
+      },
+      "error": "Task partially completed or failed"
+    }
+  ]
+}

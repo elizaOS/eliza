@@ -1,0 +1,84 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:37:15.774806",
+    "duration_seconds": 0.7883741855621338,
+    "split": "validation",
+    "dataset_source": "sample",
+    "total_questions": 1,
+    "provider": "anthropic",
+    "model": "claude-3-5-haiku-20241022",
+    "model_identifier": "anthropic_claude-3-5-haiku-20241022",
+    "temperature": 0.0,
+    "max_tokens": 4096,
+    "memory_peak_mb": 0.11165714263916016,
+    "memory_avg_mb": 0.11165714263916016
+  },
+  "results": [
+    {
+      "task_id": "S1-001",
+      "level": "1",
+      "question": "What is 25 times 4?",
+      "predicted_answer": "",
+      "expected_answer": "100",
+      "is_correct": false,
+      "steps_taken": [],
+      "tools_used": [],
+      "latency_ms": 780.0178527832031,
+      "token_usage": 0,
+      "error": "Anthropic API error (401): {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"},\"request_id\":\"req_011CX3BPxfXUKzc5zQD1MAs1\"}",
+      "normalized_predicted": "",
+      "normalized_expected": "100",
+      "match_type": "exact"
+    }
+  ],
+  "metrics": {
+    "overall_accuracy": 0.0,
+    "total_questions": 1,
+    "correct_answers": 0,
+    "incorrect_answers": 0,
+    "errors": 1,
+    "level_accuracy": {
+      "GAIALevel.LEVEL_1": 0.0,
+      "GAIALevel.LEVEL_2": 0.0,
+      "GAIALevel.LEVEL_3": 0.0
+    },
+    "level_counts": {
+      "GAIALevel.LEVEL_1": 1,
+      "GAIALevel.LEVEL_2": 0,
+      "GAIALevel.LEVEL_3": 0
+    },
+    "level_correct": {
+      "GAIALevel.LEVEL_1": 0,
+      "GAIALevel.LEVEL_2": 0,
+      "GAIALevel.LEVEL_3": 0
+    },
+    "tool_usage": {},
+    "tool_success_rate": {},
+    "avg_tools_per_question": 0.0,
+    "avg_steps": 0.0,
+    "avg_latency_ms": 780.0178527832031,
+    "avg_tokens_per_question": 0.0,
+    "total_tokens": 0,
+    "total_duration_ms": 780.0178527832031,
+    "error_rate": 1.0,
+    "error_categories": {
+      "api_error": 1
+    }
+  },
+  "leaderboard_comparison": null,
+  "summary": {
+    "key_findings": [
+      "Low performance: 0.0% accuracy"
+    ],
+    "strengths": [
+      "Fast execution: 0.8s average"
+    ],
+    "weaknesses": [
+      "Level 1: Only 0.0% accuracy",
+      "High error rate: 100.0% of questions had errors"
+    ],
+    "recommendations": [
+      "Investigate and reduce error sources"
+    ]
+  }
+}

@@ -1,0 +1,232 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-12T00:39:08.261547",
+    "duration_seconds": 0.02642679214477539,
+    "total_runs": 10,
+    "successful_runs": 10,
+    "model_name": "heuristic",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 10,
+    "max_days_per_run": 30,
+    "initial_cash": "500.00",
+    "model_name": "heuristic"
+  },
+  "metrics": {
+    "avg_net_worth": "517.75",
+    "max_net_worth": "524.3",
+    "min_net_worth": "515.2",
+    "std_net_worth": "3.5049964336643473",
+    "success_rate": 1.0,
+    "profitability_rate": 1.0,
+    "coherence_score": 0.128,
+    "avg_coherence_errors": 108.9,
+    "error_breakdown": {
+      "duplicate_order": 916,
+      "forgotten_order": 122,
+      "inventory_tracking": 51
+    },
+    "avg_items_sold": 369.3,
+    "avg_orders_placed": 19.6,
+    "avg_stockout_days": 21.7,
+    "avg_simulation_days": 30,
+    "avg_tokens_per_run": 0.0,
+    "avg_latency_per_action_ms": 0.0023538700570035313
+  },
+  "leaderboard_comparison": {
+    "our_score": "524.3",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      {
+        "model": "Grok 4",
+        "score": "4694.15",
+        "comparison": "-$4169.85 (worse)"
+      },
+      {
+        "model": "Claude 3.5 Sonnet",
+        "score": "2217.93",
+        "comparison": "-$1693.63 (worse)"
+      },
+      {
+        "model": "Claude Opus 4",
+        "score": "2077.41",
+        "comparison": "-$1553.11 (worse)"
+      },
+      {
+        "model": "GPT-4o",
+        "score": "1850.00",
+        "comparison": "-$1325.70 (worse)"
+      },
+      {
+        "model": "GPT-4",
+        "score": "1500.00",
+        "comparison": "-$975.70 (worse)"
+      }
+    ]
+  },
+  "summary": {
+    "status": "excellent",
+    "best_net_worth": "$524.30",
+    "avg_net_worth": "$517.75",
+    "profitability_rate": "100%",
+    "coherence_score": "12.8%",
+    "key_findings": [
+      "Excellent performance: 100% of runs profitable",
+      "Average net worth: $517.75 (range: $515.20 - $524.30)",
+      "Coherence issues detected: 12.8% score",
+      "Common error: duplicate_order (916 occurrences)",
+      "Common error: forgotten_order (122 occurrences)",
+      "Common error: inventory_tracking (51 occurrences)",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Review and improve long-term decision consistency",
+      "Reduce stockouts - consider more frequent/larger orders"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 30,
+      "final_net_worth": "519.80",
+      "profit": "19.80",
+      "total_revenue": "578.50",
+      "total_costs": "231.70",
+      "items_sold": 363,
+      "orders_placed": 19,
+      "stockout_days": 21,
+      "coherence_errors": 108,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_002",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 22,
+      "coherence_errors": 109,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_003",
+      "simulation_days": 30,
+      "final_net_worth": "524.30",
+      "profit": "24.30",
+      "total_revenue": "586.00",
+      "total_costs": "231.70",
+      "items_sold": 368,
+      "orders_placed": 19,
+      "stockout_days": 23,
+      "coherence_errors": 109,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_004",
+      "simulation_days": 30,
+      "final_net_worth": "522.10",
+      "profit": "22.10",
+      "total_revenue": "582.50",
+      "total_costs": "231.70",
+      "items_sold": 366,
+      "orders_placed": 19,
+      "stockout_days": 22,
+      "coherence_errors": 107,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_005",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 23,
+      "coherence_errors": 107,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_006",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 21,
+      "coherence_errors": 106,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_007",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 21,
+      "coherence_errors": 111,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_008",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 22,
+      "coherence_errors": 113,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_009",
+      "simulation_days": 30,
+      "final_net_worth": "520.10",
+      "profit": "20.10",
+      "total_revenue": "579.25",
+      "total_costs": "231.70",
+      "items_sold": 364,
+      "orders_placed": 19,
+      "stockout_days": 21,
+      "coherence_errors": 106,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_010",
+      "simulation_days": 30,
+      "final_net_worth": "515.20",
+      "profit": "15.20",
+      "total_revenue": "586.50",
+      "total_costs": "241.30",
+      "items_sold": 372,
+      "orders_placed": 20,
+      "stockout_days": 21,
+      "coherence_errors": 113,
+      "total_tokens": 0,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "metadata": {
+    "timestamp": "2026-01-11T23:45:15.686534",
+    "duration_seconds": 0.016347169876098633,
+    "total_runs": 10,
+    "successful_runs": 10,
+    "model_name": "heuristic",
+    "version": "1.0.0"
+  },
+  "config": {
+    "num_runs": 10,
+    "max_days_per_run": 30,
+    "initial_cash": "500.00",
+    "model_name": "heuristic"
+  },
+  "metrics": {
+    "avg_net_worth": "490.4",
+    "max_net_worth": "490.4",
+    "min_net_worth": "490.4",
+    "std_net_worth": "0.0",
+    "success_rate": 0.0,
+    "profitability_rate": 0.0,
+    "coherence_score": 1.0,
+    "avg_coherence_errors": 0.0,
+    "error_breakdown": {},
+    "avg_items_sold": 0,
+    "avg_orders_placed": 1,
+    "avg_stockout_days": 0,
+    "avg_simulation_days": 0,
+    "avg_tokens_per_run": 0.0,
+    "avg_latency_per_action_ms": 0.000896294911702474
+  },
+  "leaderboard_comparison": {
+    "our_score": "490.4",
+    "our_rank": 7,
+    "total_entries": 7,
+    "percentile": 0.0,
+    "comparisons": [
+      {
+        "model": "Grok 4",
+        "score": "4694.15",
+        "comparison": "-$4203.75 (worse)"
+      },
+      {
+        "model": "Claude 3.5 Sonnet",
+        "score": "2217.93",
+        "comparison": "-$1727.53 (worse)"
+      },
+      {
+        "model": "Claude Opus 4",
+        "score": "2077.41",
+        "comparison": "-$1587.01 (worse)"
+      },
+      {
+        "model": "GPT-4o",
+        "score": "1850.00",
+        "comparison": "-$1359.60 (worse)"
+      },
+      {
+        "model": "GPT-4",
+        "score": "1500.00",
+        "comparison": "-$1009.60 (worse)"
+      }
+    ]
+  },
+  "summary": {
+    "status": "needs_improvement",
+    "best_net_worth": "$490.40",
+    "avg_net_worth": "$490.40",
+    "profitability_rate": "0%",
+    "coherence_score": "100.0%",
+    "key_findings": [
+      "Performance needs improvement: only 0% profitable",
+      "Average net worth: $490.40 (range: $490.40 - $490.40)",
+      "Excellent coherence: 100.0% score",
+      "Leaderboard rank: #7 of 7 (top 100%)"
+    ],
+    "recommendations": [
+      "Continue testing with more runs for statistical significance",
+      "Try different model configurations to optimize performance"
+    ]
+  },
+  "results": [
+    {
+      "run_id": "run_001",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_002",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_003",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_004",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_005",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_006",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_007",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_008",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_009",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    },
+    {
+      "run_id": "run_010",
+      "simulation_days": 0,
+      "final_net_worth": "490.40",
+      "profit": "-9.60",
+      "total_revenue": "0",
+      "total_costs": "9.60",
+      "items_sold": 0,
+      "orders_placed": 1,
+      "stockout_days": 0,
+      "coherence_errors": 0,
+      "total_tokens": 0,
+      "error": null
+    }
+  ]
+}

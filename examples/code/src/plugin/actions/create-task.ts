@@ -452,7 +452,8 @@ INPUTS:
       // When steps are explicitly provided (optSteps), skip model generation.
       const taskId = task.id ?? "";
       let finalSteps = steps;
-      const hasProvidedSteps = (optSteps && optSteps.length > 0) || steps.length > 0;
+      const hasProvidedSteps =
+        (optSteps && optSteps.length > 0) || steps.length > 0;
       if (!hasProvidedSteps) {
         finalSteps = await generatePlanSteps(runtime, {
           taskName: name,
@@ -544,7 +545,10 @@ INPUTS:
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       logger.error(`CREATE_TASK error: ${error}`);
-      if (callback) await callback({ content: { text: `Failed to create task: ${error}` } });
+      if (callback)
+        await callback({
+          content: { text: `Failed to create task: ${error}` },
+        });
       return { success: false, text: error };
     }
   },

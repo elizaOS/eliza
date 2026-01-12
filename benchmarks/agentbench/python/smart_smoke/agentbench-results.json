@@ -1,0 +1,83 @@
+{
+  "total_tasks": 5,
+  "passed_tasks": 5,
+  "failed_tasks": 0,
+  "overall_success_rate": 1.0,
+  "average_duration_ms": 4.225301742553711,
+  "overall_metrics": {
+    "total_tokens": 0.0,
+    "average_tokens_per_task": 0.0,
+    "average_steps_per_task": 1.8,
+    "average_reward": 0.41000000000000003,
+    "memory_usage": {
+      "peak": 35597,
+      "average": 35597
+    }
+  },
+  "comparison_to_baseline": {
+    "gpt4_comparison": {},
+    "gpt35_comparison": {},
+    "claude_comparison": {}
+  },
+  "summary": {
+    "status": "strong",
+    "key_findings": [
+      "ElizaOS demonstrates strong agent capabilities across tested environments",
+      "Strong performance in: operating_system, database, knowledge_graph, lateral_thinking, web_shopping"
+    ],
+    "recommendations": [],
+    "timestamp": "2026-01-12T00:28:47.061321"
+  },
+  "environment_reports": {
+    "operating_system": {
+      "environment": "operating_system",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 14.415979385375977,
+      "average_reward": 0.1
+    },
+    "database": {
+      "environment": "database",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 2.4368762969970703,
+      "average_reward": 0.1
+    },
+    "knowledge_graph": {
+      "environment": "knowledge_graph",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 1.4019012451171875,
+      "average_reward": 0.0
+    },
+    "lateral_thinking": {
+      "environment": "lateral_thinking",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 1.0,
+      "average_duration_ms": 0.7128715515136719,
+      "average_reward": 1.0
+    },
+    "web_shopping": {
+      "environment": "web_shopping",
+      "total_tasks": 1,
+      "passed_tasks": 1,
+      "failed_tasks": 0,
+      "success_rate": 1.0,
+      "average_steps": 5.0,
+      "average_duration_ms": 2.1588802337646484,
+      "average_reward": 0.8500000000000001
+    }
+  }
+}

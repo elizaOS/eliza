@@ -1,0 +1,35 @@
+# ElizaOS ART Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core ART framework
+openpipe-art>=0.4.0
+
+# Type validation
+pydantic>=2.0.0
+
+# CLI and display
+rich>=13.0.0
+typer>=0.9.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# LLM inference
+litellm>=1.30.0
+
+# Model loading
+huggingface-hub>=0.20.0
+transformers>=4.36.0
+torch>=2.0.0
+accelerate>=0.25.0
+
+# Local model inference (llama.cpp Python bindings)
+llama-cpp-python>=0.2.50
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# Optional: vLLM for faster inference (install with pip install -r requirements-local.txt)
+# vllm>=0.3.0
+# bitsandbytes>=0.42.0

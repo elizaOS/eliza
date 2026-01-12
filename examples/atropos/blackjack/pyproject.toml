@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-atropos-blackjack"
+version = "1.0.0"
+description = "Blackjack environment for ElizaOS RL training with Atropos"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "ElizaOS Team" }
+]
+keywords = ["elizaos", "atropos", "reinforcement-learning", "blackjack", "gymnasium"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "elizaos>=1.0.0",
+    "gymnasium>=0.29.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
+openai = [
+    "elizaos-plugin-openai>=1.0.0",
+]
+
+[project.scripts]
+elizaos-blackjack = "elizaos_atropos_blackjack.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_atropos_blackjack"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

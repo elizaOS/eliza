@@ -15,3 +15,4 @@ export const REPLY_CAST_TEMPLATE = replyCastTemplate;
 export const sendCastTemplate = `Based on this request: "{{request}}", generate a concise Farcaster cast (max 320 characters). Be engaging and use appropriate hashtags if relevant.`;
 
 export const SEND_CAST_TEMPLATE = sendCastTemplate;
+

@@ -17,8 +17,8 @@ async function createTestRuntime(settings: Record<string, string> = {}): Promise
 
   const agentId = uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
 
-  // Create the adapter using the exported function with unique memory path
-  const adapter = createDatabaseAdapter({ dataDir: `:memory:${agentId}` }, agentId);
+  // Create the adapter using the exported function with in-memory database
+  const adapter = createDatabaseAdapter({ dataDir: "memory://" }, agentId);
   await adapter.init();
 
   // Run migrations to create the schema

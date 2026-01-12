@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -118,6 +119,7 @@ async def _handle_send_to_admin(
     else:
         message_to_admin = f"Autonomous update: {autonomous_thought}"
 
+    current_time_ms = int(time.time() * 1000)
     admin_message = Memory(
         id=as_uuid(str(uuid.uuid4())),
         entity_id=runtime.agent_id,
@@ -128,10 +130,10 @@ async def _handle_send_to_admin(
             metadata={
                 "type": "autonomous-to-admin-message",
                 "originalThought": autonomous_thought,
-                "timestamp": int(uuid.uuid4().time),
+                "timestamp": current_time_ms,
             },
         ),
-        created_at=int(uuid.uuid4().time),
+        created_at=current_time_ms,
     )
 
     await runtime.create_memory(admin_message, "memories")

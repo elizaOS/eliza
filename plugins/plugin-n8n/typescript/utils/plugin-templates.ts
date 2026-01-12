@@ -378,7 +378,7 @@ async function createTestRuntime(): Promise<{
   const { v4: uuidv4 } = await import('uuid');
 
   const agentId = uuidv4();
-  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: ':memory:' }, agentId);
+  const adapter = sqlPlugin.createDatabaseAdapter({ dataDir: 'memory://' }, agentId);
   await adapter.init();
 
   const runtime = new AgentRuntime({

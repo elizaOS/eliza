@@ -1,4 +1,4 @@
-import { asUUID, logger, type IAgentRuntime, type Memory } from "@elizaos/core";
+import { asUUID, type IAgentRuntime, logger, type Memory } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { FormsService } from "../services/forms-service";

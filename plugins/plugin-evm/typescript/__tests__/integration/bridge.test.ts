@@ -368,10 +368,10 @@ describe("Bridge Action", () => {
   });
 
   describe("Bridge Status and Monitoring", () => {
-    let bridgeAction: BridgeAction;
+    let _bridgeAction: BridgeAction;
 
     beforeEach(() => {
-      bridgeAction = new BridgeAction(wp);
+      _bridgeAction = new BridgeAction(wp);
     });
 
     it("should handle bridge progress monitoring", async () => {

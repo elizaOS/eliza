@@ -1,0 +1,100 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-vending-bench"
+version = "1.0.0"
+description = "Vending-Bench benchmark for ElizaOS - Long-term coherence evaluation"
+readme = "../RESEARCH.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "ElizaOS Team", email = "team@elizaos.ai" }
+]
+keywords = ["ai", "agents", "benchmark", "vending-bench", "coherence", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "elizaos>=1.0.0",
+]
+
+[project.optional-dependencies]
+openai = [
+    "openai>=1.0.0",
+]
+anthropic = [
+    "anthropic>=0.25.0",
+]
+all = [
+    "openai>=1.0.0",
+    "anthropic>=0.25.0",
+]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.19.0",
+    "ruff>=0.14.0",
+]
+
+[project.scripts]
+vending-bench = "elizaos_vending_bench.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs/benchmarks/vending-bench"
+Repository = "https://github.com/elizaos/eliza/tree/main/benchmarks/vending-bench"
+Paper = "https://arxiv.org/abs/2502.15840"
+Leaderboard = "https://andonlabs.com/evals/vending-bench"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_vending_bench"]
+
+[tool.pytest.ini_options]
+testpaths = ["elizaos_vending_bench/tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests as integration tests (may require API keys)",
+    "slow: marks tests as slow (running full simulation)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = false
+check_untyped_defs = true
+no_implicit_optional = true
+disallow_any_explicit = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.coverage.run]
+source = ["elizaos_vending_bench"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

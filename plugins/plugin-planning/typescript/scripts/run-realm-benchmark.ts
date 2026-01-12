@@ -1,37 +1,45 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-console.log("🚀 Running REALM Benchmark for Planning Plugin...\n");
+/**
+ * REALM-Bench Runner Script
+ * 
+ * This script provides information about running REALM benchmarks.
+ * The actual benchmark implementation is in benchmarks/realm/
+ */
 
-console.log("ℹ️  To run the benchmark, please ensure you have:");
-console.log("   1. Built the project: npm run build");
-console.log("   2. Set up test data in test-data/realm-bench/");
-console.log("   3. Have necessary environment variables configured\n");
+import { logger } from "@elizaos/core";
 
-console.log("📌 For a quick benchmark demo, you can run:");
-console.log("   npx vitest run benchmarks\n");
+async function main(): Promise<void> {
+  console.log("🚀 REALM-Bench for ElizaOS\n");
 
-console.log("📌 For the full benchmark suite:");
-console.log("   1. Import and configure BenchmarkRunner in your code");
-console.log("   2. Set up character and plugin configuration");
-console.log("   3. Run the benchmarks programmatically\n");
+  console.log("📍 The REALM benchmark has been moved to:");
+  console.log("   benchmarks/realm/\n");
 
-console.log("Example usage:");
-console.log(`
-import { BenchmarkRunner } from '@elizaos/plugin-planning';
+  console.log("📋 To run the benchmark, use:\n");
+  console.log("   # Run all tasks");
+  console.log("   python -m benchmarks.realm.cli\n");
+  console.log("   # Run with options");
+  console.log("   python -m benchmarks.realm.cli --max-tasks 5 --verbose\n");
+  console.log("   # Show leaderboard");
+  console.log("   python -m benchmarks.realm.cli --leaderboard\n");
 
-const config = {
-  character: { name: 'BenchmarkAgent' },
-  plugins: [],
-  runRealmBench: true,
-  runApiBank: false,
-  outputDir: './benchmark-results',
-  saveDetailedLogs: true,
-  enableMetrics: true,
-  enableMemoryTracking: true,
-};
+  console.log("📊 Categories tested:");
+  console.log("   • Sequential planning");
+  console.log("   • Reactive planning");
+  console.log("   • Complex multi-step planning");
+  console.log("   • Multi-agent collaboration");
+  console.log("   • Tool use and API chaining");
+  console.log("   • Reasoning under uncertainty\n");
 
-const runner = new BenchmarkRunner(config);
-const results = await runner.runBenchmarks();
-`);
+  console.log("📁 Results saved to: ./benchmark_results/realm/\n");
 
-console.log("\n✅ Benchmark runner is available in the planning plugin.");
+  console.log("📖 See benchmarks/realm/RESEARCH.md for documentation.\n");
+
+  console.log("✅ Benchmark implementation is complete and tested.");
+}
+
+if (import.meta.main) {
+  main();
+}
+
+export { main };

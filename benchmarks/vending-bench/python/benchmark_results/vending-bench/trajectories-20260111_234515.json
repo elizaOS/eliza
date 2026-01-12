@@ -1,0 +1,92 @@
+[
+  {
+    "run_id": "run_001",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_002",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_003",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_004",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_005",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_006",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_007",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_008",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_009",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  },
+  {
+    "run_id": "run_010",
+    "final_net_worth": "490.40",
+    "profit": "-9.60",
+    "simulation_days": 0,
+    "actions_count": 300,
+    "coherence_errors": 0,
+    "error": null
+  }
+]

@@ -1,0 +1,32 @@
+{
+  "unknown": {
+    "model": "unknown",
+    "provider": null,
+    "overall_score": 1.0,
+    "ast_accuracy": 1.0,
+    "exec_accuracy": 1.0,
+    "relevance_accuracy": 0.0,
+    "total_tests": 10,
+    "timestamp": "2026-01-11T23:54:45.974950"
+  },
+  "groq/llama-3.1-8b-instant": {
+    "model": "groq/llama-3.1-8b-instant",
+    "provider": "groq",
+    "overall_score": 0.7006896551724137,
+    "ast_accuracy": 0.6666666666666666,
+    "exec_accuracy": 0.6666666666666666,
+    "relevance_accuracy": 0.9733333333333334,
+    "total_tests": 75,
+    "timestamp": "2026-01-12T00:30:02.370910"
+  },
+  "openai/gpt-4o-mini": {
+    "model": "openai/gpt-4o-mini",
+    "provider": "openai",
+    "overall_score": 0.5314039408866995,
+    "ast_accuracy": 0.5217391304347826,
+    "exec_accuracy": 0.5217391304347826,
+    "relevance_accuracy": 1.0,
+    "total_tests": 23,
+    "timestamp": "2026-01-12T00:36:45.470738"
+  }
+}

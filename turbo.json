@@ -263,6 +263,15 @@
       "env": ["LOG_LEVEL"],
       "outputs": []
     },
+    "@elizaos/plugin-forms#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": []
+    },
+    "@elizaos/schemas#build": {
+      "dependsOn": [],
+      "outputs": []
+    },
     "@elizaos/plugin-elizacloud-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],

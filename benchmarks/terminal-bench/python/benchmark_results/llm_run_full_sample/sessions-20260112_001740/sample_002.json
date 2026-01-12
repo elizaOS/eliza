@@ -1,0 +1,36 @@
+{
+  "session_id": "session_sample_002_20260112_001626",
+  "task_id": "sample_002",
+  "success": true,
+  "commands": [
+    {
+      "command": "ls -la /workspace",
+      "stdout": "total 8\ndrwxr-xr-x 2 root root 4096 Jan 12 08:16 .\ndrwxr-xr-x 1 root root 4096 Jan 12 08:16 ..\n",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 86.88092231750488
+    },
+    {
+      "command": "mkdir -p project/src project/tests",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 38.31672668457031
+    },
+    {
+      "command": "cat << 'ELIZAEOF' > project/src/__init__.py\n\nACTION: WRITE_FILE\nPATH: project/tests/__init__.py\nCONTENT: |\nELIZAEOF",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 40.01903533935547
+    },
+    {
+      "command": "touch project/tests/__init__.py",
+      "stdout": "",
+      "stderr": "",
+      "exit_code": 0,
+      "execution_time_ms": 47.31011390686035
+    }
+  ],
+  "total_tokens": 2327
+}
