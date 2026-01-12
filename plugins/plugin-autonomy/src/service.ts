@@ -255,14 +255,19 @@ export class AutonomyService extends Service {
   }
 
   /**
-   * Perform one iteration of autonomous thinking
+   * Perform one iteration of autonomous thinking using the full Eliza agent pipeline.
+   * This processes the message through:
+   * - All registered providers (context gathering)
+   * - The LLM generation pipeline (response creation)
+   * - Action processing (executing decided actions)
+   * - Evaluators (post-response analysis)
    */
   private async performAutonomousThink(): Promise<void> {
     console.log(
-      `[Autonomy] Performing autonomous monologue... (${new Date().toLocaleTimeString()})`
+      `[Autonomy] Performing autonomous thinking... (${new Date().toLocaleTimeString()})`
     );
 
-    // Get the agent's entity first - we'll need it throughout this function
+    // Get the agent's entity
     const agentEntity = this.runtime.getEntityById
       ? await this.runtime.getEntityById(this.runtime.agentId)
       : { id: this.runtime.agentId };
@@ -277,14 +282,12 @@ export class AutonomyService extends Service {
     let lastThought: string | undefined;
     let isFirstThought = false;
 
-    // Get recent autonomous memories from this room
     const recentMemories = await this.runtime.getMemories({
       roomId: this.autonomousRoomId,
       count: 3,
       tableName: 'memories',
     });
 
-    // Find the most recent agent-generated autonomous thought
     const lastAgentThought = recentMemories
       .filter(
         (m) =>
@@ -303,26 +306,23 @@ export class AutonomyService extends Service {
     } else {
       isFirstThought = true;
       console.log(
-        '[Autonomy] No previous autonomous thoughts found, starting fresh monologue'
+        '[Autonomy] No previous autonomous thoughts, starting fresh'
       );
     }
 
-    // Create introspective monologue prompt (not conversational)
+    // Create the monologue prompt
     const monologuePrompt = this.createMonologuePrompt(
       lastThought,
       isFirstThought
     );
-    console.log(
-      `[Autonomy] Monologue prompt: "${monologuePrompt.substring(0, 100)}..."`
-    );
 
-    // Create an autonomous message that will be processed through the full agent pipeline
+    // Create the autonomous message for the full agent pipeline
     const autonomousMessage: Memory = {
-      id: asUUID(uuidv4()), // Generate unique ID for this autonomous message
-      entityId: agentEntity.id ? asUUID(agentEntity.id) : this.runtime.agentId, // Use the agent's entity ID or fallback to agentId
+      id: asUUID(uuidv4()),
+      entityId: agentEntity.id ? asUUID(agentEntity.id) : this.runtime.agentId,
       content: {
         text: monologuePrompt,
-        source: 'autonomous-trigger',
+        source: 'autonomy-plugin',
         metadata: {
           type: 'autonomous-prompt',
           isAutonomous: true,
@@ -337,75 +337,64 @@ export class AutonomyService extends Service {
       createdAt: Date.now(),
     };
 
+    // Response callback - handles the agent's response
+    const callback = async (content: Content): Promise<Memory[]> => {
+      console.log(
+        '[Autonomy] Response generated:',
+        `${content.text?.substring(0, 100)}...`
+      );
+
+      if (content.text) {
+        // Optionally broadcast to WebSocket clients
+        await this.broadcastThoughtToMonologue(
+          content.text,
+          autonomousMessage.id || asUUID(uuidv4())
+        );
+      }
+
+      // Return empty - the message service handles memory creation
+      return [];
+    };
+
     console.log(
-      '[Autonomy] Processing autonomous message through full agent pipeline...'
+      '[Autonomy] Processing through full Eliza agent pipeline (providers, actions, evaluators)...'
     );
 
-    // Process the message through the complete agent pipeline
-    // This will:
-    // 1. Gather context from providers
-    // 2. Generate response using the full LLM pipeline
-    // 3. Execute any actions the agent decides to take
-    // 4. Run evaluators on the result
-    // 5. Store memories appropriately
-    await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-      runtime: this.runtime,
-      message: autonomousMessage,
-      callback: async (content: Content) => {
-        console.log(
-          '[Autonomy] Response generated:',
-          `${content.text?.substring(0, 100)}...`
+    // Use the canonical message service if available (full agent pipeline)
+    // This ensures: providers gather context, LLM generates response,
+    // actions are processed, evaluators run, and memories are stored properly
+    if (this.runtime.messageService) {
+      try {
+        const result = await this.runtime.messageService.handleMessage(
+          this.runtime,
+          autonomousMessage,
+          callback
         );
 
-        // Store the response with autonomous metadata
-        if (content.text) {
-          const responseMemory: Memory = {
-            id: asUUID(uuidv4()),
-            entityId: agentEntity.id
-              ? asUUID(agentEntity.id)
-              : this.runtime.agentId, // Use the agent's entity ID from above or fallback to agentId
-            agentId: this.runtime.agentId,
-            content: {
-              text: content.text,
-              thought: content.thought,
-              actions: content.actions,
-              source:
-                typeof content.source === 'string'
-                  ? content.source
-                  : 'autonomous',
-              metadata: {
-                ...(typeof content.metadata === 'object' &&
-                content.metadata !== null
-                  ? content.metadata
-                  : {}),
-                isAutonomous: true,
-                isInternalThought: true,
-                channelId: 'autonomous',
-                timestamp: Date.now(),
-              },
-            },
-            roomId: this.autonomousRoomId,
-            createdAt: Date.now(),
-          };
+        console.log(
+          `[Autonomy] ✅ Pipeline complete - responded: ${result.didRespond}, mode: ${result.mode}`
+        );
 
-          // Save the autonomous thought
-          await this.runtime.createMemory(responseMemory, 'messages');
-
-          // Broadcast the thought to WebSocket clients
-          await this.broadcastThoughtToMonologue(
-            content.text!,
-            responseMemory.id || asUUID(uuidv4())
+        if (result.responseContent?.actions?.length) {
+          console.log(
+            `[Autonomy] Actions executed: ${result.responseContent.actions.join(', ')}`
           );
         }
-      },
-      onComplete: async () => {
-        console.log('[Autonomy] ✅ Autonomous message processing completed');
-      },
-    });
-
-    console.log(
-      '[Autonomy] ✅ Autonomous message event emitted to agent pipeline'
-    );
+      } catch (error) {
+        console.error('[Autonomy] Error in message processing:', error);
+      }
+    } else {
+      // Fallback to event-based handling for older cores
+      console.log(
+        '[Autonomy] Using event-based fallback (messageService not available)'
+      );
+      await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime: this.runtime,
+        message: autonomousMessage,
+        callback,
+        source: 'autonomy-plugin',
+      });
+    }
   }
   /**
    * Create an introspective monologue prompt suited for internal thoughts

@@ -273,7 +273,12 @@ export class AutonomyService extends Service {
   }
 
   /**
-   * Perform one iteration of autonomous thinking
+   * Perform one iteration of autonomous thinking using the full Eliza agent pipeline.
+   * This processes the message through:
+   * - All registered providers (context gathering)
+   * - The LLM generation pipeline (response creation)
+   * - Action processing (executing decided actions)
+   * - Evaluators (post-response analysis)
    */
   private async performAutonomousThink(): Promise<void> {
     this.runtime.logger.debug(
@@ -294,7 +299,7 @@ export class AutonomyService extends Service {
       return;
     }
 
-    // Get recent autonomous memories
+    // Get recent autonomous memories for context continuation
     let lastThought: string | undefined;
     let isFirstThought = false;
 
@@ -327,7 +332,7 @@ export class AutonomyService extends Service {
       isFirstThought,
     );
 
-    // Create autonomous message
+    // Create the autonomous message for the full agent pipeline
     const autonomousMessage: Memory = {
       id: stringToUuid(uuidv4()),
       entityId: agentEntity.id
@@ -335,7 +340,7 @@ export class AutonomyService extends Service {
         : this.runtime.agentId,
       content: {
         text: monologuePrompt,
-        source: "autonomous-trigger",
+        source: "autonomy-service",
         metadata: {
           type: "autonomous-prompt",
           isAutonomous: true,
@@ -350,66 +355,62 @@ export class AutonomyService extends Service {
       createdAt: Date.now(),
     };
 
+    // Response callback - the message service handles memory creation
+    const callback = async (content: Content): Promise<Memory[]> => {
+      this.runtime.logger.debug(
+        { src: "autonomy", agentId: this.runtime.agentId },
+        `Response generated: ${content.text?.substring(0, 100)}...`,
+      );
+      // Return empty - the message service handles memory storage
+      return [];
+    };
+
     this.runtime.logger.debug(
       { src: "autonomy", agentId: this.runtime.agentId },
-      "Processing autonomous message through agent pipeline...",
+      "Processing through full Eliza agent pipeline (providers, actions, evaluators)...",
     );
 
-    // Emit message event for processing
-    await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-      runtime: this.runtime,
-      source: "autonomy-service",
-      message: autonomousMessage,
-      callback: async (content: Content): Promise<Memory[]> => {
-        this.runtime.logger.debug(
-          { src: "autonomy", agentId: this.runtime.agentId },
-          `Response generated: ${content.text?.substring(0, 100)}...`,
+    // Use the canonical message service if available (full agent pipeline)
+    // This ensures: providers gather context, LLM generates response,
+    // actions are processed, evaluators run, and memories are stored properly
+    if (this.runtime.messageService) {
+      try {
+        const result = await this.runtime.messageService.handleMessage(
+          this.runtime,
+          autonomousMessage,
+          callback,
         );
 
-        if (content.text) {
-          // Safely extract metadata as object
-          const existingMetadata =
-            content.metadata &&
-            typeof content.metadata === "object" &&
-            !Array.isArray(content.metadata)
-              ? (content.metadata as Record<string, unknown>)
-              : {};
+        this.runtime.logger.info(
+          { src: "autonomy", agentId: this.runtime.agentId },
+          `Pipeline complete - responded: ${result.didRespond}, mode: ${result.mode}`,
+        );
 
-          const responseMemory: Memory = {
-            id: stringToUuid(uuidv4()),
-            entityId: agentEntity.id
-              ? stringToUuid(String(agentEntity.id))
-              : this.runtime.agentId,
-            agentId: this.runtime.agentId,
-            content: {
-              text: content.text,
-              thought: content.thought,
-              actions: content.actions,
-              source: content.source || "autonomous",
-              metadata: {
-                ...existingMetadata,
-                isAutonomous: true,
-                isInternalThought: true,
-                channelId: "autonomous",
-                timestamp: Date.now(),
-              },
-            },
-            roomId: this.autonomousRoomId,
-            createdAt: Date.now(),
-          };
-
-          await this.runtime.createMemory(responseMemory, "messages");
-          return [responseMemory];
+        if (result.responseContent?.actions?.length) {
+          this.runtime.logger.info(
+            { src: "autonomy", agentId: this.runtime.agentId },
+            `Actions executed: ${result.responseContent.actions.join(", ")}`,
+          );
         }
-        return [];
-      },
-      onComplete: () => {
-        this.runtime.logger.debug(
-          { src: "autonomy", agentId: this.runtime.agentId },
-          "Autonomous message processing completed",
+      } catch (error) {
+        this.runtime.logger.error(
+          { src: "autonomy", agentId: this.runtime.agentId, error },
+          "Error in autonomous message processing",
         );
-      },
-    });
+      }
+    } else {
+      // Fallback to event-based handling for older cores
+      this.runtime.logger.warn(
+        { src: "autonomy", agentId: this.runtime.agentId },
+        "Using event-based fallback (messageService not available)",
+      );
+      await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime: this.runtime,
+        message: autonomousMessage,
+        callback,
+        source: "autonomy-service",
+      });
+    }
   }
 
   /**
